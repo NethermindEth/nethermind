@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -1029,7 +1030,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public void Scopable_trie_store_default_typed_load_uses_rlp_methods()
+        public void Minimal_scopable_trie_store_typed_load_uses_rlp_methods()
         {
             MemDb memDb = new();
             TrieNode persistedNode = BuildAndPersistSealedBranch(memDb);
@@ -1068,6 +1069,25 @@ namespace Nethermind.Trie.Test.Pruning
             public int LoadCount { get; private set; }
 
             public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
+
+            public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+            {
+                byte[] rlp = LoadRlp(address, in path, in hash, flags)
+                    ?? MissingTrieNodeException.ThrowMissing(address, in path, in hash);
+                return TrieNode.DecodeNode(in path, in hash, rlp);
+            }
+
+            public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+            {
+                byte[]? loadedRlp = TryLoadRlp(address, in path, in hash, flags);
+                return TrieNode.TryDecodeNode(in path, in hash, loadedRlp, out node);
+            }
+
+            public bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
+            {
+                node = null;
+                return false;
+            }
 
             public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
                 TryLoadRlp(address, in path, in hash, flags) ?? MissingTrieNodeException.ThrowMissing(address, in path, in hash);

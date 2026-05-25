@@ -9,9 +9,9 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Trie.Pruning;
 
 /// <summary>
-/// Forwarding base for <see cref="ITrieStore"/> wrappers; defaults delegate to
+/// Forwarding base for <see cref="ITrieStore"/> wrappers; typed-read methods delegate to
 /// <paramref name="inner"/>. Inheriting prevents the recurring wrapper-bypass bug where
-/// the <see cref="IScopableTrieStore"/> defaults silently skip the inner cache.
+/// generic helper paths silently skip the inner cache.
 /// </summary>
 public abstract class WrappingTrieStore(ITrieStore inner) : ITrieStore
 {

@@ -26,13 +26,8 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         Resolve(address).TryLoadRlp(in path, in hash, flags);
 
-    // Forward node lookups to the adapter so its TryGetCachedNode path
-    // (in-memory snapshot via TryFindStateNodes / TryFindStorageNodes) is
-    // consulted before we fall through to LoadRlp. The IScopableTrieStore
-    // default would skip the snapshot entirely and only hit the on-disk
-    // persistence reader, missing nodes that are committed in-memory but
-    // not yet persisted. Same fix pattern as OverlayTrieStore /
-    // WitnessCapturingTrieStore.
+    // Forward node lookups to the adapter so its in-memory snapshot path is
+    // consulted before falling through to the on-disk persistence reader.
     public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         Resolve(address).GetOrLoadNode(in path, in hash, flags);
 
