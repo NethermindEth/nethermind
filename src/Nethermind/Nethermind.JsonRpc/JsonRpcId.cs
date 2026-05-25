@@ -118,7 +118,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     /// <param name="value">The legacy ID value.</param>
     /// <returns>The equivalent typed ID.</returns>
     /// <exception cref="NotSupportedException">Thrown when <paramref name="value"/> is not a supported JSON-RPC ID type.</exception>
-    public static JsonRpcId FromObject(object? value)
+    internal static JsonRpcId FromObject(object? value)
     {
         return value switch
         {
@@ -139,7 +139,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
 
     /// <summary>Converts this typed ID to the legacy boxed representation.</summary>
     /// <returns>The boxed ID value, or null for missing and explicit-null IDs.</returns>
-    public object? ToObject()
+    internal object? ToObject()
     {
         return _kind switch
         {
