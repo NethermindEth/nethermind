@@ -3,10 +3,14 @@
 
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.State.Snap;
+using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -54,9 +58,14 @@ public class FlatSnapTrieFactoryTests
     {
         (FlatSnapTrieFactory factory, IPersistence persistence) = Build();
 
-        factory.CreateStateTree().Should().NotBeNull();
-        factory.CreateStorageTree(default).Should().NotBeNull();
-        factory.CreateStorageTree(new ValueHash256(Nethermind.Core.Extensions.Bytes.FromHexString("11" + new string('0', 62)))).Should().NotBeNull();
+        using (ISnapTree<PathWithAccount> stateTree = factory.CreateStateTree())
+        using (ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default))
+        using (ISnapTree<PathWithStorageSlot> nonDefaultStorageTree = factory.CreateStorageTree(new ValueHash256(Bytes.FromHexString("11" + new string('0', 62)))))
+        {
+            stateTree.Should().NotBeNull();
+            storageTree.Should().NotBeNull();
+            nonDefaultStorageTree.Should().NotBeNull();
+        }
 
         // Clear is the runner's responsibility via EnsureInitialize; tree creation must not invoke it.
         persistence.DidNotReceive().Clear();
@@ -68,7 +77,10 @@ public class FlatSnapTrieFactoryTests
     {
         (FlatSnapTrieFactory factory, _) = Build(doubleWriteCheck);
 
-        Assert.That(factory.CreateStateTree(), Is.Not.Null);
-        Assert.That(factory.CreateStorageTree(default), Is.Not.Null);
+        using ISnapTree<PathWithAccount> stateTree = factory.CreateStateTree();
+        using ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default);
+
+        Assert.That(stateTree, Is.Not.Null);
+        Assert.That(storageTree, Is.Not.Null);
     }
 }
