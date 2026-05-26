@@ -10,13 +10,8 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 
 public class LoadPyspecTestsStrategy : ITestLoadStrategy
 {
-    // PYSPEC_ARCHIVE_VERSION / PYSPEC_ARCHIVE_NAME let workflow_dispatch jobs (e.g. the
-    // FOCIL workflow targeting an unreleased EELS branch) point at a non-default archive
-    // without recompiling. Empty/unset envvars fall through to the in-tree defaults.
-    public string ArchiveVersion { get; init; } =
-        Environment.GetEnvironmentVariable("PYSPEC_ARCHIVE_VERSION") is { Length: > 0 } v ? v : Constants.DEFAULT_ARCHIVE_VERSION;
-    public string ArchiveName { get; init; } =
-        Environment.GetEnvironmentVariable("PYSPEC_ARCHIVE_NAME") is { Length: > 0 } n ? n : Constants.DEFAULT_ARCHIVE_NAME;
+    public string ArchiveVersion { get; init; } = Constants.DEFAULT_ARCHIVE_VERSION;
+    public string ArchiveName { get; init; } = Constants.DEFAULT_ARCHIVE_NAME;
 
     public IEnumerable<EthereumTest> Load(string testsDir, string wildcard = null)
     {
@@ -33,9 +28,21 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             }
         }
 
-        IEnumerable<string> directories = !string.IsNullOrEmpty(testsDir)
-            ? Directory.EnumerateDirectories(ResolveTestsDirectory(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
-            : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
+        string resolvedDir = !string.IsNullOrEmpty(testsDir)
+            ? ResolveTestsDirectory(testsDirectoryName, testsDir)
+            : testsDirectoryName;
+
+        // Upcoming-fork fixtures (e.g. for_bogota before execution-specs#2643 lands
+        // in a release archive) live in test classes that exist in tree before the
+        // archive does. Returning an empty test set lets the NUnit fixture report
+        // zero cases instead of crashing the whole test project with a
+        // DirectoryNotFoundException.
+        if (!Directory.Exists(resolvedDir))
+        {
+            return [];
+        }
+
+        IEnumerable<string> directories = Directory.EnumerateDirectories(resolvedDir, "*", new EnumerationOptions { RecurseSubdirectories = true });
         List<string> testDirs = [];
         foreach (string testDir in directories)
         {

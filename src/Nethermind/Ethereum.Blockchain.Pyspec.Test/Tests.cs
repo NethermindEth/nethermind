@@ -19,6 +19,11 @@ public class CancunBlockchainTests : PyspecBlockchainTestFixture<CancunBlockchai
 public class PragueBlockchainTests : PyspecBlockchainTestFixture<PragueBlockchainTests>;
 public class OsakaBlockchainTests : PyspecBlockchainTestFixture<OsakaBlockchainTests>;
 public class AmsterdamBlockchainTests : PyspecBlockchainTestFixture<AmsterdamBlockchainTests>;
+// Bogota (EIP-7805 FOCIL). Auto-loads from fixtures/blockchain_tests/for_bogota once
+// the execution-specs release archive contains it (execution-specs#2643 stages the
+// tests; their final fork target may end up under amsterdam or bogota — both are
+// handled because AmsterdamBlockchainTests above already globs for_amsterdam too).
+public class BogotaBlockchainTests : PyspecBlockchainTestFixture<BogotaBlockchainTests>;
 public class ParisToShanghaiAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ParisToShanghaiAtTime15kBlockchainTests>;
 public class ShanghaiToCancunAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ShanghaiToCancunAtTime15kBlockchainTests>;
 public class CancunToPragueAtTime15kBlockchainTests : PyspecBlockchainTestFixture<CancunToPragueAtTime15kBlockchainTests>;
@@ -34,6 +39,8 @@ public class CancunEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Can
 public class PragueEngineBlockchainTests : PyspecEngineBlockchainTestFixture<PragueEngineBlockchainTests>;
 public class OsakaEngineBlockchainTests : PyspecEngineBlockchainTestFixture<OsakaEngineBlockchainTests>;
 public class AmsterdamEngineBlockchainTests : PyspecEngineBlockchainTestFixture<AmsterdamEngineBlockchainTests>;
+// Bogota (EIP-7805 FOCIL) engine variant — see BogotaBlockchainTests above.
+public class BogotaEngineBlockchainTests : PyspecEngineBlockchainTestFixture<BogotaEngineBlockchainTests>;
 public class ParisToShanghaiAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ParisToShanghaiAtTime15kEngineBlockchainTests>;
 public class ShanghaiToCancunAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ShanghaiToCancunAtTime15kEngineBlockchainTests>;
 public class CancunToPragueAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<CancunToPragueAtTime15kEngineBlockchainTests>;
@@ -70,10 +77,12 @@ public class CancunStateTests : PyspecStateTestFixture<CancunStateTests>;
 public class PragueStateTests : PyspecStateTestFixture<PragueStateTests>;
 public class OsakaStateTests : PyspecStateTestFixture<OsakaStateTests>;
 public class AmsterdamStateTests : PyspecStateTestFixture<AmsterdamStateTests>;
+public class BogotaStateTests : PyspecStateTestFixture<BogotaStateTests>;
 public class ShanghaiToCancunAtTime15kStateTests : PyspecStateTestFixture<ShanghaiToCancunAtTime15kStateTests>;
 public class CancunToPragueAtTime15kStateTests : PyspecStateTestFixture<CancunToPragueAtTime15kStateTests>;
 
 // Transaction tests - validate raw tx decoding + validation against per-fork expected exceptions.
 public class AmsterdamTransactionTests : PyspecTransactionTestFixture<AmsterdamTransactionTests>;
+public class BogotaTransactionTests : PyspecTransactionTestFixture<BogotaTransactionTests>;
 public class OsakaTransactionTests : PyspecTransactionTestFixture<OsakaTransactionTests>;
 public class PragueTransactionTests : PyspecTransactionTestFixture<PragueTransactionTests>;
