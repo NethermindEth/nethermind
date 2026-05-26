@@ -78,11 +78,11 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     }
 
     protected void RunTest(string input, string output, bool status, IReleaseSpec? spec = null) =>
-        RunTest(new TestCase(Convert.FromHexString(input), Convert.FromHexString(output), status));
+        RunTest(new TestCase(Convert.FromHexString(input), Convert.FromHexString(output), status, spec));
 
     private static void RunTestCore(TestCase testCase, string? reason = null)
     {
-        long gas = Instance.BaseGasCost(DefaultSpec) + Instance.DataGasCost(testCase.Input, testCase.Spec);
+        long gas = Instance.BaseGasCost(testCase.Spec) + Instance.DataGasCost(testCase.Input, testCase.Spec);
 
         Result<byte[]> result = Instance.Run(testCase.Input, testCase.Spec);
 
