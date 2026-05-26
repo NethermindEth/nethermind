@@ -74,18 +74,11 @@ public sealed class SparseRootComputer(ITrieNodeReader reader, Hash256 previousS
         if (_accountChanges is null || _accountChanges.Count == 0)
             return previousStateRoot;
 
-        // Step 1: Reveal existing trie structure for ALL changed account keys
-        // This loads the paths from root to each changed leaf, plus sibling hashes
-        // at each level. Without this, the sparse trie would build a fresh trie
-        // from only the changed accounts and compute a wrong root.
         Hash256[] targetKeys = _accountChanges.Keys.ToArray();
         DecodedMultiProof initialProof = MultiProofReader.ReadAccountProofs(
             reader, previousStateRoot, targetKeys);
         _trie.AccountTrie.RevealNodes(initialProof.AccountNodes);
 
-        // Step 2: Apply leaf updates to the revealed structure
-        // The retry loop handles cases where updates cause structural changes
-        // (splits, collapses) that expose new blinded nodes needing more proofs.
         while (true)
         {
             List<Hash256> targets = [];
@@ -97,7 +90,6 @@ public sealed class SparseRootComputer(ITrieNodeReader reader, Hash256 previousS
             _trie.AccountTrie.RevealNodes(proof.AccountNodes);
         }
 
-        // Step 3: Compute root — uses revealed sibling hashes for unchanged subtrees
         return _trie.ComputeRoot();
     }
 

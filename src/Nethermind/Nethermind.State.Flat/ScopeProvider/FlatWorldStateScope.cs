@@ -29,7 +29,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
-    private readonly SparseRootComputer? _sparseRootComputer;
+    private SparseRootComputer? _sparseRootComputer;
     private Hash256? _sparseComputedRoot;
     private bool _isDisposed = false;
 
@@ -93,6 +93,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         WaitForOutstandingWarmups();
+        _sparseRootComputer?.Dispose();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
     }
@@ -279,6 +280,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
 
         _currentStateId = newStateId;
+
+        if (_sparseRootComputer is not null)
+        {
+            _sparseRootComputer.Dispose();
+            ParentStateTrieNodeReader proofReader = new(_snapshotBundle.ReadOnlyBundle);
+            _sparseRootComputer = new SparseRootComputer(proofReader, newStateId.StateRoot.ToCommitment());
+            _sparseComputedRoot = null;
+        }
+
         _pausePrewarmer = false;
     }
 
