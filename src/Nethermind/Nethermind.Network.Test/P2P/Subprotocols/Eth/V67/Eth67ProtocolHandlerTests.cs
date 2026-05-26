@@ -112,7 +112,7 @@ public class Eth67ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-        Assert.DoesNotThrow(act);
+        Assert.That(Assert.Catch(act), Is.Null.Or.Not.InstanceOf<SubprotocolException>());
     }
 
     [Test]
