@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Linq;
@@ -138,7 +139,7 @@ public partial class EngineModuleTests
 
         RlpBehaviors rlpBehaviors = (inMempoolForm ? RlpBehaviors.InMempoolForm : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors).Bytes).ToArray();
-        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).ToArray();
+        Hash256?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).Select(h => h is null ? null : new Hash256(h)).ToArray();
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
@@ -163,7 +164,7 @@ public partial class EngineModuleTests
         Block? b = payload.TryGetBlock().Data;
         payload.BlockHash = b!.CalculateHash();
 
-        byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
+        Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
@@ -180,7 +181,7 @@ public partial class EngineModuleTests
         Block? b = payload.TryGetBlock().Data;
         payload.BlockHash = b!.CalculateHash();
 
-        byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
+        Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
@@ -198,7 +199,7 @@ public partial class EngineModuleTests
         Block? b = payload.TryGetBlock().Data;
         payload.BlockHash = b!.CalculateHash();
 
-        byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
+        Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
@@ -218,7 +219,7 @@ public partial class EngineModuleTests
         payload.Transactions = [txRlp];
         payload.BlockHash = b!.CalculateHash();
 
-        byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
+        Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
@@ -234,7 +235,7 @@ public partial class EngineModuleTests
 
         payload.Transactions = [[0xC0]];
 
-        byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
+        Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
@@ -302,7 +303,7 @@ public partial class EngineModuleTests
             JsonObject executionPayloadAsJObject = serializer.Deserialize<JsonObject>(executionPayloadString);
             JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(executionPayloadAsJObject), blobsString, parentBeaconBlockRootString);
             JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
-            Assert.That(response is JsonRpcSuccessResponse);
+            Assert.That(response, Is.InstanceOf<ResultWrapper<PayloadStatusV1>>());
         }
 
         string[] props = serializer.Deserialize<JsonObject>(serializer.Serialize(new ExecutionPayload()))
@@ -314,9 +315,8 @@ public partial class EngineModuleTests
             executionPayloadAsJObject[prop] = null;
 
             JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(executionPayloadAsJObject), blobsString);
-            JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
-            Assert.That(response?.Error, Is.Not.Null);
-            Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+            AssertInvalidParams(response);
         }
 
         foreach (string prop in props)
@@ -325,9 +325,25 @@ public partial class EngineModuleTests
             executionPayloadAsJObject.Remove(prop);
 
             JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(executionPayloadAsJObject), blobsString);
-            JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
-            Assert.That(response?.Error, Is.Not.Null);
-            Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+            AssertInvalidParams(response);
+        }
+
+        static void AssertInvalidParams(JsonRpcResponse response)
+        {
+            switch (response)
+            {
+                case JsonRpcErrorResponse errorResponse:
+                    Assert.That(errorResponse.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+                    break;
+                case ResultWrapper<PayloadStatusV1> wrapper:
+                    Assert.That(wrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
+                    Assert.That(wrapper.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+                    break;
+                default:
+                    Assert.Fail($"Unexpected response type {response.GetType().FullName}");
+                    break;
+            }
         }
     }
 
@@ -446,7 +462,7 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             blockchain, CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: [], 0, 0, transactions: transactions, parentBeaconBlockRoot: Keccak.Zero);
-        ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, Keccak.Zero);
+        ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, Array.ConvertAll(blobVersionedHashes, static h => (Hash256?)new Hash256(h)), Keccak.Zero);
 
         return result.Data.Status;
     }
@@ -724,30 +740,50 @@ public partial class EngineModuleTests
     [Test]
     public async Task BlobsV1DirectResponse_WriteToAsync_produces_valid_json()
     {
-        byte[] blob = new byte[16];
-        Random.Shared.NextBytes(blob);
-        byte[] proof = new byte[48];
-        Random.Shared.NextBytes(proof);
-
         ArrayPoolList<BlobAndProofV1?> items = new(2)
         {
-            new BlobAndProofV1(blob, proof),
+            new BlobAndProofV1(RandomBytes(16), RandomBytes(48)),
             null
         };
 
         using BlobsV1DirectResponse response = new(items);
+        await AssertStreamedJsonMatchesSerializer(response);
+    }
 
-        Pipe pipe = new();
-        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
-        await pipe.Writer.CompleteAsync();
+    [Test]
+    public async Task BlobsV2DirectResponse_WriteToAsync_batches_missing_entries_until_completion()
+    {
+        const int Count = 16;
+        byte[]?[] blobs = new byte[Count][];
+        ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[Count];
+        BlobsV2DirectResponse response = new(blobs, proofs, Count);
 
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
+        FlushCountingBufferWriter writer = new();
+        await response.WriteToAsync(writer, CancellationToken.None);
 
-        string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
+        writer.FlushCount.Should().Be(0);
 
-        streamedJson.Should().Be(stjJson);
+        writer.WrittenText.Should().Be($"[{string.Join(',', Enumerable.Repeat("null", Count))}]");
+    }
+
+    [Test]
+    public async Task BlobsV2DirectResponse_WriteToAsync_flushes_large_entries_for_backpressure()
+    {
+        byte[] blob = RandomBytes((int)Eip4844Constants.GasPerBlob);
+        byte[]?[] blobs = [blob];
+        ReadOnlyMemory<byte[]>[] proofs = [Array.Empty<byte[]>()];
+        BlobsV2DirectResponse response = new(blobs, proofs, 1);
+
+        FlushCountingBufferWriter writer = new();
+        await response.WriteToAsync(writer, CancellationToken.None);
+
+        writer.FlushCount.Should().Be(1);
+        writer.MaxSpanSizeHint.Should().Be(blob.Length * 2);
+
+        using JsonDocument doc = JsonDocument.Parse(writer.WrittenText);
+        doc.RootElement.GetArrayLength().Should().Be(1);
+        doc.RootElement[0].GetProperty("proofs").GetArrayLength().Should().Be(0);
+        writer.WrittenText.Should().Be(JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions));
     }
 
     [Test]
@@ -991,7 +1027,7 @@ public partial class EngineModuleTests
         Assert.That(payloadResult.Data, Is.Not.Null);
 
         GetPayloadV3Result payload = payloadResult.Data;
-        await rpcModule.engine_newPayloadV3(payload.ExecutionPayload, payload.BlobsBundle.GetBlobVersionedHashes(), TestItem.KeccakE);
+        await rpcModule.engine_newPayloadV3(payload.ExecutionPayload, Array.ConvertAll(payload.BlobsBundle.GetBlobVersionedHashes(), static h => (Hash256?)new Hash256(h)), TestItem.KeccakE);
 
         ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash);
         await rpcModule.engine_forkchoiceUpdatedV3(newForkchoiceState, null);
@@ -1039,5 +1075,51 @@ public partial class EngineModuleTests
         await blockImprovementWait;
 
         return (rpcModule, payloadId, txs, chain);
+    }
+
+    private sealed class FlushCountingBufferWriter : PipeWriter
+    {
+        private readonly ArrayBufferWriter<byte> _buffer = new();
+        private long _unflushedBytes;
+
+        public int FlushCount { get; private set; }
+        public int MaxSpanSizeHint { get; private set; }
+
+        public string WrittenText => Encoding.UTF8.GetString(_buffer.WrittenSpan);
+
+        public override bool CanGetUnflushedBytes => true;
+
+        public override long UnflushedBytes => _unflushedBytes;
+
+        public override void Advance(int bytes)
+        {
+            _buffer.Advance(bytes);
+            _unflushedBytes += bytes;
+        }
+
+        public override Memory<byte> GetMemory(int sizeHint = 0)
+        {
+            MaxSpanSizeHint = Math.Max(MaxSpanSizeHint, sizeHint);
+            return _buffer.GetMemory(sizeHint);
+        }
+
+        public override Span<byte> GetSpan(int sizeHint = 0)
+        {
+            MaxSpanSizeHint = Math.Max(MaxSpanSizeHint, sizeHint);
+            return _buffer.GetSpan(sizeHint);
+        }
+
+        public override void CancelPendingFlush() { }
+
+        public override void Complete(Exception? exception = null) { }
+
+        public override ValueTask CompleteAsync(Exception? exception = null) => ValueTask.CompletedTask;
+
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+        {
+            FlushCount++;
+            _unflushedBytes = 0;
+            return new ValueTask<FlushResult>(new FlushResult(isCanceled: false, isCompleted: false));
+        }
     }
 }

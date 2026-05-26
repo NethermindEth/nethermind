@@ -3,6 +3,7 @@
 
 using CkzgLib;
 using Nethermind.Core;
+using Nethermind.Serialization.Json;
 using System;
 using System.Text.Json.Serialization;
 
@@ -69,8 +70,8 @@ public class BlobsBundleV2
         Proofs = proofs;
     }
 
-    public byte[][] Commitments { get; }
-    public byte[][] Blobs { get; }
-    public byte[][] Proofs { get; }
+    [JsonConverter(typeof(BlobsBundleByteArrayArrayConverter))] public byte[][] Commitments { get; }
+    [JsonConverter(typeof(BlobsBundleByteArrayArrayConverter))] public byte[][] Blobs { get; }
+    [JsonConverter(typeof(BlobsBundleByteArrayArrayConverter))] public byte[][] Proofs { get; }
 }
 
