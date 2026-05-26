@@ -602,7 +602,7 @@ namespace Nethermind.Consensus.Processing
         protected virtual long GetReportMs() => Environment.TickCount64;
 
         /// <remarks>
-        /// Under <c>ParallelExecution</c>, workers inherit <c>IsBlockProcessingThread = true</c>,
+        /// Under <c>ParallelExecution</c>, workers are explicitly marked with <c>IsBlockProcessingThread = true</c>,
         /// so <c>evm.*</c> and <c>state_reads/writes.*</c> counters sum across all workers (not
         /// per-thread). Wall-clock timings are unaffected.
         /// </remarks>
