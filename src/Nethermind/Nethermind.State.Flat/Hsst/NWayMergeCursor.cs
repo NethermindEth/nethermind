@@ -36,7 +36,13 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
     where TSource : struct, IHsstMergeSource<TReader, TPin>
 {
     private readonly Span<TSource> _sources;
-    private readonly LoserTreeState _state;
+    // Cache the 4 state spans + stride at ctor so the hot loop stays Span-direct
+    // (LoserTreeState's pool-backed properties construct a Span per access).
+    private readonly Span<bool> _hasMore;
+    private readonly Span<byte> _keyBuf;
+    private readonly Span<int> _matchingBuf;
+    private readonly Span<int> _tree;
+    private readonly int _keyStride;
     private readonly int _n;
     private readonly int _pow2N;
     private readonly int _keyLen;
@@ -54,13 +60,13 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
     /// Dense list of cursor slots whose cached key equals <see cref="MinKey"/>, in ascending
     /// slot order. View is backed by <c>state.MatchingBuf</c>; valid until the next <see cref="MoveNext"/>.
     /// </summary>
-    public readonly ReadOnlySpan<int> MatchingSources => _state.MatchingBuf[.._matchCount];
+    public readonly ReadOnlySpan<int> MatchingSources => _matchingBuf[.._matchCount];
 
     /// <summary>
     /// Bytes of the current winner's logical key, length <c>keyLen</c>. Slice over the cached
     /// key buffer in the supplied <see cref="LoserTreeState"/>; valid until the next <see cref="AdvanceMatching"/>.
     /// </summary>
-    public readonly ReadOnlySpan<byte> MinKey => _state.KeyBuf.Slice(_minIdx * _state.KeyStride, _keyLen);
+    public readonly ReadOnlySpan<byte> MinKey => _keyBuf.Slice(_minIdx * _keyStride, _keyLen);
 
     /// <summary>Logical key length in bytes (≤ <c>state.KeyStride</c>), as supplied to the ctor.</summary>
     public readonly int KeyLen => _keyLen;
@@ -85,7 +91,11 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
         int keyLen)
     {
         _sources = sources;
-        _state = state;
+        _hasMore = state.HasMore;
+        _keyBuf = state.KeyBuf;
+        _matchingBuf = state.MatchingBuf;
+        _tree = state.Tree;
+        _keyStride = state.KeyStride;
         _n = sources.Length;
         _keyLen = keyLen;
         _pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, _n));
@@ -105,7 +115,7 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
         // For pow2N==1 (n==0 or n==1) the build loop is empty; tree[1] is the single leaf.
         if (_pow2N == 1)
         {
-            _state.Tree[1] = 0;
+            _tree[1] = 0;
             return;
         }
 
@@ -113,9 +123,9 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
         {
             int left = 2 * t;
             int right = 2 * t + 1;
-            int leftWinner = left >= _pow2N ? left - _pow2N : _state.Tree[left];
-            int rightWinner = right >= _pow2N ? right - _pow2N : _state.Tree[right];
-            _state.Tree[t] = LessOrEqual(leftWinner, rightWinner) ? leftWinner : rightWinner;
+            int leftWinner = left >= _pow2N ? left - _pow2N : _tree[left];
+            int rightWinner = right >= _pow2N ? right - _pow2N : _tree[right];
+            _tree[t] = LessOrEqual(leftWinner, rightWinner) ? leftWinner : rightWinner;
         }
     }
 
@@ -127,12 +137,12 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private readonly bool LessOrEqual(int a, int b)
     {
-        bool aLive = a < _n && _state.HasMore[a];
-        bool bLive = b < _n && _state.HasMore[b];
+        bool aLive = a < _n && _hasMore[a];
+        bool bLive = b < _n && _hasMore[b];
         if (!aLive) return false;
         if (!bLive) return true;
-        int cmp = _state.KeyBuf.Slice(a * _state.KeyStride, _keyLen)
-            .SequenceCompareTo(_state.KeyBuf.Slice(b * _state.KeyStride, _keyLen));
+        int cmp = _keyBuf.Slice(a * _keyStride, _keyLen)
+            .SequenceCompareTo(_keyBuf.Slice(b * _keyStride, _keyLen));
         if (cmp != 0) return cmp < 0;
         return a > b;
     }
@@ -144,16 +154,16 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
     /// </summary>
     public bool MoveNext()
     {
-        int champ = _state.Tree[1];
-        if (champ >= _n || !_state.HasMore[champ]) return false;
+        int champ = _tree[1];
+        if (champ >= _n || !_hasMore[champ]) return false;
         _minIdx = champ;
-        ReadOnlySpan<byte> minKey = _state.KeyBuf.Slice(champ * _state.KeyStride, _keyLen);
+        ReadOnlySpan<byte> minKey = _keyBuf.Slice(champ * _keyStride, _keyLen);
         int matchCount = 0;
         for (int i = 0; i < _n; i++)
         {
-            if (!_state.HasMore[i]) continue;
-            if (_state.KeyBuf.Slice(i * _state.KeyStride, _keyLen).SequenceEqual(minKey))
-                _state.MatchingBuf[matchCount++] = i;
+            if (!_hasMore[i]) continue;
+            if (_keyBuf.Slice(i * _keyStride, _keyLen).SequenceEqual(minKey))
+                _matchingBuf[matchCount++] = i;
         }
         _matchCount = matchCount;
         return true;
@@ -168,12 +178,12 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
     {
         for (int k = 0; k < _matchCount; k++)
         {
-            int i = _state.MatchingBuf[k];
+            int i = _matchingBuf[k];
             TReader r = _sources[i].CreateReader();
             HsstEnumerator<TReader, TPin> e = _sources[i].GetEnumerator();
-            _state.HasMore[i] = e.MoveNext(in r);
-            if (_state.HasMore[i])
-                e.CopyCurrentLogicalKey(in r, _state.KeyBuf.Slice(i * _state.KeyStride, _keyLen));
+            _hasMore[i] = e.MoveNext(in r);
+            if (_hasMore[i])
+                e.CopyCurrentLogicalKey(in r, _keyBuf.Slice(i * _keyStride, _keyLen));
             UpdateLeaf(i);
         }
     }
@@ -191,10 +201,10 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
         while (t > 1)
         {
             int sibling = t ^ 1;
-            int siblingWinner = sibling >= _pow2N ? sibling - _pow2N : _state.Tree[sibling];
+            int siblingWinner = sibling >= _pow2N ? sibling - _pow2N : _tree[sibling];
             if (!LessOrEqual(winner, siblingWinner)) winner = siblingWinner;
             t /= 2;
-            _state.Tree[t] = winner;
+            _tree[t] = winner;
         }
     }
 }
