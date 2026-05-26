@@ -4,7 +4,9 @@
 using System.Security.Cryptography;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using EraException = Nethermind.Era1.EraException;
@@ -35,18 +37,9 @@ public class RemoteEraStoreDecoratorTests
     public async Task FindBlockAndReceipts_WhenEpochMissingLocally_DownloadsAndReturnsBlock()
     {
         await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength: 32, from: 0, to: 0);
-        string exportDir = ctx.ResolveTempDirPath();
-        string eraFile = EraPathUtils.GetAllEraFiles(exportDir, EraETestModule.TestNetwork).First();
-        string filename = Path.GetFileName(eraFile);
-        int epoch = ParseEpoch(filename);
-        byte[] sha256 = SHA256.HashData(await File.ReadAllBytesAsync(eraFile));
+        (int epoch, string filename) = await StageRemoteEpochAsync(ctx);
 
-        _client.FetchManifestAsync(Arg.Any<CancellationToken>())
-            .Returns(new Dictionary<int, RemoteEraEntry> { [epoch] = new(filename, sha256) });
-        _client.DownloadFileAsync(filename, Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo => CopyFile(eraFile, callInfo.ArgAt<string>(1)));
-
-        using RemoteEraStoreDecorator sut = new(localStore: null, _client, _downloadDir.Path, maxEraSize: 16);
+        using RemoteEraStoreDecorator sut = CreateDecorator(localStore: null, maxEraSize: 16);
 
         (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(epoch * 16, ensureValidated: false);
 
@@ -66,7 +59,7 @@ public class RemoteEraStoreDecoratorTests
         localStore.FindBlockAndReceipts(42, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns((expectedBlock, (TxReceipt[]?)expectedReceipts));
 
-        using RemoteEraStoreDecorator sut = new(localStore, _client, _downloadDir.Path, maxEraSize: 16);
+        using RemoteEraStoreDecorator sut = CreateDecorator(localStore, maxEraSize: 16);
 
         (Block? block, TxReceipt[]? _) = await sut.FindBlockAndReceipts(42, ensureValidated: false);
 
@@ -84,7 +77,7 @@ public class RemoteEraStoreDecoratorTests
         _client.FetchManifestAsync(Arg.Any<CancellationToken>())
             .Returns(new Dictionary<int, RemoteEraEntry>());
 
-        using RemoteEraStoreDecorator sut = new(localStore, _client, _downloadDir.Path, maxEraSize: 16);
+        using RemoteEraStoreDecorator sut = CreateDecorator(localStore, maxEraSize: 16);
 
         await sut.Invoking(s => s.FindBlockAndReceipts(5, ensureValidated: false))
             .Should().ThrowAsync<EraException>()
@@ -107,13 +100,65 @@ public class RemoteEraStoreDecoratorTests
             });
 
         string expectedFilePath = Path.Join(_downloadDir.Path, filename);
-        using RemoteEraStoreDecorator sut = new(localStore: null, _client, _downloadDir.Path, maxEraSize: 16);
+        using RemoteEraStoreDecorator sut = CreateDecorator(localStore: null, maxEraSize: 16);
 
         await sut.Invoking(s => s.FindBlockAndReceipts(0, ensureValidated: false))
             .Should().ThrowAsync<EraVerificationException>()
             .WithMessage("*SHA-256*");
 
         File.Exists(expectedFilePath).Should().BeFalse();
+    }
+
+    // ensureValidated (the default) must run EraReader.VerifyContent on the remote path, matching
+    // EraStore: valid content is returned, invalid content throws and is not cached as verified —
+    // a manifest-matching SHA-256 alone is not enough.
+    [TestCase(true, TestName = "FindBlockAndReceipts_WhenEnsureValidatedAndContentValid_ValidatesAndReturnsBlock")]
+    [TestCase(false, TestName = "FindBlockAndReceipts_WhenEnsureValidatedAndContentInvalid_ThrowsAndDoesNotCache")]
+    public async Task FindBlockAndReceipts_WhenEnsureValidated_RunsContentValidation(bool contentValid)
+    {
+        await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength: 32, from: 0, to: 0);
+        (int epoch, string filename) = await StageRemoteEpochAsync(ctx);
+
+        IBlockValidator blockValidator = contentValid ? Always.Valid : Always.Invalid;
+        using RemoteEraStoreDecorator sut = CreateDecorator(localStore: null, maxEraSize: 16, ctx.Resolve<ISpecProvider>(), blockValidator);
+
+        if (contentValid)
+        {
+            (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(epoch * 16);
+            block.Should().NotBeNull();
+            receipts.Should().NotBeNull();
+            block!.Number.Should().Be(epoch * 16);
+        }
+        else
+        {
+            await sut.Invoking(s => s.FindBlockAndReceipts(epoch * 16))
+                .Should().ThrowAsync<EraVerificationException>();
+            // Failed validation caches nothing: the file is removed so a retry re-downloads.
+            File.Exists(Path.Join(_downloadDir.Path, filename)).Should().BeFalse();
+        }
+    }
+
+    private RemoteEraStoreDecorator CreateDecorator(
+        IEraStore? localStore, int maxEraSize, ISpecProvider? specProvider = null, IBlockValidator? blockValidator = null) =>
+        new(localStore, _client, _downloadDir.Path, maxEraSize,
+            specProvider ?? Substitute.For<ISpecProvider>(), blockValidator ?? Always.Valid);
+
+    // Wires the mock client to serve a freshly exported era file (with a matching SHA-256) and
+    // returns its epoch and filename.
+    private async Task<(int Epoch, string Filename)> StageRemoteEpochAsync(IContainer ctx)
+    {
+        string exportDir = ctx.ResolveTempDirPath();
+        string eraFile = EraPathUtils.GetAllEraFiles(exportDir, EraETestModule.TestNetwork).First();
+        string filename = Path.GetFileName(eraFile);
+        int epoch = ParseEpoch(filename);
+        byte[] sha256 = SHA256.HashData(await File.ReadAllBytesAsync(eraFile));
+
+        _client.FetchManifestAsync(Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<int, RemoteEraEntry> { [epoch] = new(filename, sha256) });
+        _client.DownloadFileAsync(filename, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => CopyFile(eraFile, callInfo.ArgAt<string>(1)));
+
+        return (epoch, filename);
     }
 
     private static int ParseEpoch(string filename)

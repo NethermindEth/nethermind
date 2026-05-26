@@ -3,9 +3,11 @@
 
 using System.Security.Cryptography;
 using FluentAssertions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.IO;
 using Nethermind.EraE.Store;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.EraE.Test.Store;
@@ -96,7 +98,9 @@ public class HttpRemoteEraClientIntegrationTests
             localStore: null,
             _client,
             _downloadDir.Path,
-            MaxEraSize);
+            MaxEraSize,
+            MainnetSpecProvider.Instance,
+            Always.Valid);
 
         // Block 1 is the first non-genesis block — epoch 0 must contain it
         (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(1, ensureValidated: false);
