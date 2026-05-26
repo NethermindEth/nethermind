@@ -233,6 +233,11 @@ public sealed class RemoteEraStoreDecorator : IEraStore
 
             return destinationPath;
         }
+        catch (OperationCanceledException)
+        {
+            _contentVerifiedEpochs.TryRemove(epoch, out _);
+            throw;
+        }
         catch (Exception)
         {
             // A failed download, checksum, or content check leaves no trusted state behind.

@@ -99,7 +99,7 @@ public class HttpRemoteEraClientIntegrationTests
             _client,
             _downloadDir.Path,
             MaxEraSize,
-            MainnetSpecProvider.Instance,
+            SepoliaSpecProvider.Instance,
             Always.Valid);
 
         // Block 1 is the first non-genesis block — epoch 0 must contain it

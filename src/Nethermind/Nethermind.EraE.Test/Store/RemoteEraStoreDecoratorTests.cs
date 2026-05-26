@@ -6,6 +6,7 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -110,19 +111,25 @@ public class RemoteEraStoreDecoratorTests
     }
 
     // ensureValidated (the default) must run EraReader.VerifyContent on the remote path, matching
-    // EraStore: valid content is returned, invalid content throws and is not cached as verified —
-    // a manifest-matching SHA-256 alone is not enough.
-    [TestCase(true, TestName = "FindBlockAndReceipts_WhenEnsureValidatedAndContentValid_ValidatesAndReturnsBlock")]
-    [TestCase(false, TestName = "FindBlockAndReceipts_WhenEnsureValidatedAndContentInvalid_ThrowsAndDoesNotCache")]
-    public async Task FindBlockAndReceipts_WhenEnsureValidated_RunsContentValidation(bool contentValid)
+    // EraStore: valid content is returned, while invalid content or an untrusted accumulator root
+    // throws and caches nothing — a manifest-matching SHA-256 alone is not enough.
+    [TestCase(true, true, TestName = "FindBlockAndReceipts_WhenEnsureValidatedAndContentValid_ValidatesAndReturnsBlock")]
+    [TestCase(false, true, TestName = "FindBlockAndReceipts_WhenEnsureValidatedAndContentInvalid_ThrowsAndDoesNotCache")]
+    [TestCase(true, false, TestName = "FindBlockAndReceipts_WhenEnsureValidatedAndAccumulatorUntrusted_ThrowsAndDoesNotCache")]
+    public async Task FindBlockAndReceipts_WhenEnsureValidated_EnforcesContentTrust(bool contentValid, bool accumulatorTrusted)
     {
         await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength: 32, from: 0, to: 0);
         (int epoch, string filename) = await StageRemoteEpochAsync(ctx);
 
         IBlockValidator blockValidator = contentValid ? Always.Valid : Always.Invalid;
-        using RemoteEraStoreDecorator sut = CreateDecorator(localStore: null, maxEraSize: 16, ctx.Resolve<ISpecProvider>(), blockValidator);
+        // A trusted set excluding the epoch's real accumulator root forces the untrusted-root rejection.
+        ISet<ValueHash256>? trustedAccumulators = accumulatorTrusted
+            ? null
+            : new HashSet<ValueHash256> { new("0x1111111111111111111111111111111111111111111111111111111111111111") };
+        using RemoteEraStoreDecorator sut = CreateDecorator(
+            localStore: null, maxEraSize: 16, ctx.Resolve<ISpecProvider>(), blockValidator, trustedAccumulators);
 
-        if (contentValid)
+        if (contentValid && accumulatorTrusted)
         {
             (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(epoch * 16);
             block.Should().NotBeNull();
@@ -133,15 +140,37 @@ public class RemoteEraStoreDecoratorTests
         {
             await sut.Invoking(s => s.FindBlockAndReceipts(epoch * 16))
                 .Should().ThrowAsync<EraVerificationException>();
-            // Failed validation caches nothing: the file is removed so a retry re-downloads.
+            // Rejected content caches nothing: the file is removed so a retry re-downloads.
             File.Exists(Path.Join(_downloadDir.Path, filename)).Should().BeFalse();
         }
     }
 
+    [Test]
+    public async Task FindBlockAndReceipts_WhenUnvalidatedReadPrecedesValidatedRead_StillRunsContentValidation()
+    {
+        await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength: 32, from: 0, to: 0);
+        (int epoch, _) = await StageRemoteEpochAsync(ctx);
+
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(true);
+        using RemoteEraStoreDecorator sut = CreateDecorator(localStore: null, maxEraSize: 16, ctx.Resolve<ISpecProvider>(), blockValidator);
+
+        // An unvalidated read caches availability only and must not run content validation.
+        await sut.FindBlockAndReceipts(epoch * 16, ensureValidated: false);
+        blockValidator.DidNotReceiveWithAnyArgs().ValidateBodyAgainstHeader(default!, default!, out Arg.Any<string?>());
+
+        // A later validated read on the same epoch must still run VerifyContent — the availability
+        // cache alone cannot satisfy it.
+        await sut.FindBlockAndReceipts(epoch * 16, ensureValidated: true);
+        blockValidator.ReceivedWithAnyArgs().ValidateBodyAgainstHeader(default!, default!, out Arg.Any<string?>());
+    }
+
     private RemoteEraStoreDecorator CreateDecorator(
-        IEraStore? localStore, int maxEraSize, ISpecProvider? specProvider = null, IBlockValidator? blockValidator = null) =>
+        IEraStore? localStore, int maxEraSize, ISpecProvider? specProvider = null,
+        IBlockValidator? blockValidator = null, ISet<ValueHash256>? trustedAccumulators = null) =>
         new(localStore, _client, _downloadDir.Path, maxEraSize,
-            specProvider ?? Substitute.For<ISpecProvider>(), blockValidator ?? Always.Valid);
+            specProvider ?? Substitute.For<ISpecProvider>(), blockValidator ?? Always.Valid, trustedAccumulators);
 
     // Wires the mock client to serve a freshly exported era file (with a matching SHA-256) and
     // returns its epoch and filename.
