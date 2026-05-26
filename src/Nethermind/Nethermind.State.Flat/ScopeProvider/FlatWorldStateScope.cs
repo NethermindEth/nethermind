@@ -126,16 +126,24 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (_sparseRootComputer is not null)
         {
-            _sparseComputedRoot = _sparseRootComputer.ComputeStateRoot();
+            try
+            {
+                _sparseComputedRoot = _sparseRootComputer.ComputeStateRoot();
 
-            // Correctness assertion: sparse root must match Patricia root
-            if (_sparseComputedRoot != _stateTree.RootHash)
+                if (_sparseComputedRoot != _stateTree.RootHash)
+                {
+                    ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                    if (logger.IsWarn) logger.Warn(
+                        $"Sparse trie root mismatch! Patricia={_stateTree.RootHash}, Sparse={_sparseComputedRoot}. " +
+                        "Falling back to Patricia root.");
+                    _sparseComputedRoot = null;
+                }
+            }
+            catch (Exception ex)
             {
                 ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                if (logger.IsError) logger.Error(
-                    $"Sparse trie root mismatch! Patricia={_stateTree.RootHash}, Sparse={_sparseComputedRoot}. " +
-                    "Using Patricia root. Please report this as a bug.");
-                _sparseComputedRoot = null; // fall back to Patricia
+                if (logger.IsWarn) logger.Warn($"Sparse trie root computation failed, falling back to Patricia: {ex.Message}");
+                _sparseComputedRoot = null;
             }
         }
     }
