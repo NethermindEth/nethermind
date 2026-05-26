@@ -165,6 +165,7 @@ public class ProcessingStatsTests
         ("evm.creates", JsonValueKind.Number),
         ("evm.self_destructs", JsonValueKind.Number),
         ("evm.contracts_analyzed", JsonValueKind.Number),
+        ("evm.cached_contracts_used", JsonValueKind.Number),
     ];
 
     private static void AssertSlowBlockSchema(string json)

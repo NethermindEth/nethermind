@@ -712,6 +712,7 @@ namespace Nethermind.Consensus.Processing
                     writer.WriteNumber("creates", data.CurrentCreatesOps - data.StartCreateOps);
                     writer.WriteNumber("self_destructs", data.CurrentSelfDestructOps - data.StartSelfDestructOps);
                     writer.WriteNumber("contracts_analyzed", data.CurrentContractsAnalyzed - data.StartContractsAnalyzed);
+                    writer.WriteNumber("cached_contracts_used", data.CurrentCachedContractsUsed - data.StartCachedContractsUsed);
                     writer.WriteEndObject();
 
                     // Per-transaction timing breakdown (when enabled).
