@@ -97,13 +97,13 @@ public static class RpcTest
             return streamableSerialized;
         }
 
-        ArrayBufferWriter<byte> indentedWriter = new();
-        JsonRpcResponseWriter.Write(indentedWriter, response, EthereumJsonSerializer.JsonOptionsIndented);
+        ArrayBufferWriter<byte> writer = new();
+        JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptions);
 
-        string serialized = Encoding.UTF8.GetString(indentedWriter.WrittenSpan);
+        string serialized = Encoding.UTF8.GetString(writer.WrittenSpan);
         await TestContext.Out.WriteLineAsync(serialized);
 
-        indentedWriter.WrittenCount.Should().Be(serialized.Length);
+        writer.WrittenCount.Should().Be(serialized.Length);
 
         return serialized;
     }
