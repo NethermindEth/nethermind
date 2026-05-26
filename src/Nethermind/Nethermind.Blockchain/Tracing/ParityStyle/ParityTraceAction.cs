@@ -11,7 +11,6 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
 public class ParityTraceAction
 {
-    [JsonConverter(typeof(CappedArrayIntJsonConverter))]
     public CappedArray<int> TraceAddress { get; set; }
     public string? CallType { get; set; }
     public bool IncludeInTrace { get; set; } = true;
@@ -22,7 +21,7 @@ public class ParityTraceAction
     public Address? To { get; set; }
     public long Gas { get; set; }
     public UInt256 Value { get; set; }
-    public byte[]? Input { get; set; }
+    public CappedArray<byte> Input { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public ParityTraceResult? Result { get; set; } = new();
@@ -44,7 +43,7 @@ public class ParityTraceAction
         To = null;
         Gas = 0;
         Value = default;
-        Input = null;
+        Input = default;
         if (Result is null)
         {
             Result = new ParityTraceResult();

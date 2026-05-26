@@ -129,6 +129,16 @@ public class ParityLikeTxTracer : TxTracer
 
     protected virtual ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after) => new(before, after);
 
+    protected virtual CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
+    {
+        if (input.IsEmpty) return CappedArray<byte>.Empty;
+        byte[] copy = new byte[input.Length];
+        input.Span.CopyTo(copy);
+        return new CappedArray<byte>(copy, copy.Length);
+    }
+
+    protected virtual void ReturnInputBytes(in CappedArray<byte> input) { }
+
     protected void ResetTracerState(Block block, Transaction? tx)
     {
         _tx = tx;
@@ -208,7 +218,7 @@ public class ParityLikeTxTracer : TxTracer
     {
         if (!IsTracingInstructions) return;
 
-        _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops.ToArray();
+        _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops;
         _vmTraceStack.Pop();
         _currentVmTrace = _vmTraceStack.Count == 0 ? (null, null) : _vmTraceStack.Peek();
         _currentOperation = _currentVmTrace.Ops?.Last();
@@ -252,7 +262,7 @@ public class ParityLikeTxTracer : TxTracer
             action.From = _tx!.SenderAddress;
             action.To = _tx.To;
             action.Value = _tx.Value;
-            action.Input = _tx.Data.AsArray();
+            action.Input = CopyInput(_tx.Data);
             action.Gas = _tx.GasLimit;
             action.CallType = _tx.IsMessageCall ? "call" : "init";
             action.Error = error;
@@ -402,7 +412,7 @@ public class ParityLikeTxTracer : TxTracer
         action.From = from;
         action.To = to;
         action.Value = value;
-        action.Input = input.ToArray();
+        action.Input = CopyInput(input);
         action.Gas = gas;
         action.CallType = GetCallType(callType);
         action.Type = GetActionType(callType);

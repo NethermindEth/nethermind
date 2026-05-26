@@ -83,12 +83,12 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
             else if (reader.ValueTextEquals("input"u8))
             {
                 reader.Read();
-                value.Input = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
+                value.Input = JsonSerializer.Deserialize<CappedArray<byte>>(ref reader, options);
             }
             else if (reader.ValueTextEquals("init"u8))
             {
                 reader.Read();
-                value.Input = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
+                value.Input = JsonSerializer.Deserialize<CappedArray<byte>>(ref reader, options);
             }
             else if (reader.ValueTextEquals("result"u8))
             {
@@ -118,8 +118,7 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
             else if (reader.ValueTextEquals("traceAddress"u8))
             {
                 reader.Read();
-                int[]? raw = JsonSerializer.Deserialize<int[]?>(ref reader, options);
-                value.TraceAddress = raw is null ? default : new CappedArray<int>(raw, raw.Length);
+                value.TraceAddress = JsonSerializer.Deserialize<CappedArray<int>>(ref reader, options);
             }
             else if (reader.ValueTextEquals("includeInTrace"u8))
             {

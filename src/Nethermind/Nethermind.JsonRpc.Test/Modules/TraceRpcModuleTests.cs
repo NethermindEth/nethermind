@@ -481,8 +481,7 @@ public class TraceRpcModuleTests
         long[] positions = { 0 };
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> tracesGet = context.TraceRpcModule.trace_get(transaction2.Hash!, positions);
         traces.Data.ElementAt(0).TransactionHash.Should().BeEquivalentTo(transaction2.Hash);
-        EthereumJsonSerializer serializer = new();
-        serializer.Serialize(traces.Data.ElementAt(1)).Should().Be(serializer.Serialize(tracesGet.Data.ElementAt(0)));
+        new EthereumJsonSerializer().Serialize(traces.Data.ElementAt(1)).Should().Be(new EthereumJsonSerializer().Serialize(tracesGet.Data.ElementAt(0)));
     }
 
     [Test]
@@ -786,7 +785,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_call", transaction, traceTypes, blockParameter);
 
-        Assert.That(serialized, Is.EqualTo(expectedResult), serialized.Replace("\"", "\\\""));
+        JToken.Parse(serialized).Should().BeEquivalentTo(JToken.Parse(expectedResult));
     }
 
     private static readonly IEnumerable<(object, string[], string)> Trace_call_without_blockParameter_test_cases = [
@@ -802,7 +801,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_call", testCase.transaction, testCase.traceTypes);
 
-        Assert.That(serialized, Is.EqualTo(testCase.expectedResult), serialized.Replace("\"", "\\\""));
+        JToken.Parse(serialized).Should().BeEquivalentTo(JToken.Parse(testCase.expectedResult));
     }
 
     [Test]

@@ -5,11 +5,11 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -57,16 +57,16 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private int _storageValueByteCount;
     private bool _hasStorage;
 
-    private readonly List<(byte[] Buffer, int Length)> _pushItems = new(4);
+    private readonly ArrayPoolList<(byte[] Buffer, int Length)> _pushItems = new(4);
 
-    private readonly Stack<VmFrame> _streamingFrames = new(InitialFrameStackCapacity);
-    private readonly Stack<VmFrame> _framePool = new(InitialFrameStackCapacity);
+    private readonly ArrayPoolList<VmFrame> _streamingFrames = new(InitialFrameStackCapacity);
+    private readonly ArrayPoolList<VmFrame> _framePool = new(InitialFrameStackCapacity);
 
-    private readonly Stack<ParityTraceAction> _actionPool = new(InitialFrameStackCapacity);
-    private readonly Stack<ParityAccountStateChange> _accountStateChangePool = new(InitialFrameStackCapacity);
-    private readonly Stack<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = new(InitialFrameStackCapacity);
-    private readonly Stack<ParityStateChange<byte[]>> _byteStateChangePool = new(InitialFrameStackCapacity);
-    private readonly Stack<ParityStateChange<UInt256?>> _uint256StateChangePool = new(InitialFrameStackCapacity);
+    private readonly ArrayPoolList<ParityTraceAction> _actionPool = new(InitialFrameStackCapacity);
+    private readonly ArrayPoolList<ParityAccountStateChange> _accountStateChangePool = new(InitialFrameStackCapacity);
+    private readonly ArrayPoolList<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = new(InitialFrameStackCapacity);
+    private readonly ArrayPoolList<ParityStateChange<byte[]>> _byteStateChangePool = new(InitialFrameStackCapacity);
+    private readonly ArrayPoolList<ParityStateChange<UInt256?>> _uint256StateChangePool = new(InitialFrameStackCapacity);
 
     private int _entriesSinceLastFlush;
     private bool _disposed;
@@ -116,7 +116,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         while (_streamingFrames.Count > 0)
         {
-            ReturnFrame(_streamingFrames.Pop());
+            ReturnFrame(PopLast(_streamingFrames));
         }
 
         _entriesSinceLastFlush = 0;
@@ -149,19 +149,37 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         while (_streamingFrames.Count > 0)
         {
-            ReturnFrame(_streamingFrames.Pop());
+            ReturnFrame(PopLast(_streamingFrames));
         }
 
         while (_framePool.Count > 0)
         {
-            _framePool.Pop().ReleaseBuffers();
+            PopLast(_framePool).ReleaseBuffers();
         }
+        _streamingFrames.Dispose();
+        _framePool.Dispose();
+        _actionPool.Dispose();
+        _accountStateChangePool.Dispose();
+        _storageDictPool.Dispose();
+        _byteStateChangePool.Dispose();
+        _uint256StateChangePool.Dispose();
+        _pushItems.Dispose();
     }
+
+    private static T PopLast<T>(ArrayPoolList<T> list)
+    {
+        int last = list.Count - 1;
+        T item = list[last];
+        list.Truncate(last);
+        return item;
+    }
+
+    private static T PeekLast<T>(ArrayPoolList<T> list) => list[list.Count - 1];
 
     protected override ParityTraceAction RentAction()
     {
         if (_actionPool.Count == 0) return new ParityTraceAction();
-        ParityTraceAction action = _actionPool.Pop();
+        ParityTraceAction action = PopLast(_actionPool);
         action.Reset();
         return action;
     }
@@ -183,19 +201,19 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     protected override ParityAccountStateChange RentAccountStateChange()
     {
         if (_accountStateChangePool.Count == 0) return new ParityAccountStateChange();
-        return _accountStateChangePool.Pop();
+        return PopLast(_accountStateChangePool);
     }
 
     protected override Dictionary<UInt256, ParityStateChange<byte[]>> RentStorageDictionary()
     {
         if (_storageDictPool.Count == 0) return [];
-        return _storageDictPool.Pop();
+        return PopLast(_storageDictPool);
     }
 
     protected override ParityStateChange<byte[]> RentByteStateChange(byte[] before, byte[] after)
     {
         if (_byteStateChangePool.Count == 0) return new ParityStateChange<byte[]>(before, after);
-        ParityStateChange<byte[]> sc = _byteStateChangePool.Pop();
+        ParityStateChange<byte[]> sc = PopLast(_byteStateChangePool);
         sc.Before = before;
         sc.After = after;
         return sc;
@@ -204,10 +222,26 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     protected override ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after)
     {
         if (_uint256StateChangePool.Count == 0) return new ParityStateChange<UInt256?>(before, after);
-        ParityStateChange<UInt256?> sc = _uint256StateChangePool.Pop();
+        ParityStateChange<UInt256?> sc = PopLast(_uint256StateChangePool);
         sc.Before = before;
         sc.After = after;
         return sc;
+    }
+
+    protected override CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
+    {
+        if (input.IsEmpty) return CappedArray<byte>.Empty;
+        byte[] rented = ArrayPool<byte>.Shared.Rent(input.Length);
+        input.Span.CopyTo(rented);
+        return new CappedArray<byte>(rented, input.Length);
+    }
+
+    protected override void ReturnInputBytes(in CappedArray<byte> input)
+    {
+        if (input.IsNotNull && input.UnderlyingLength > 0)
+        {
+            ArrayPool<byte>.Shared.Return(input.UnderlyingArray!);
+        }
     }
 
     private void ReturnActionTree(ParityTraceAction action)
@@ -218,8 +252,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             ReturnActionTree(subtraces[i]);
         }
         ReturnTraceAddress(action.TraceAddress);
+        ReturnInputBytes(action.Input);
         action.Reset();
-        _actionPool.Push(action);
+        _actionPool.Add(action);
     }
 
     private void ReturnStateChanges(Dictionary<Address, ParityAccountStateChange> changes)
@@ -230,16 +265,16 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             {
                 foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> kv in account.Storage)
                 {
-                    _byteStateChangePool.Push(kv.Value);
+                    _byteStateChangePool.Add(kv.Value);
                 }
                 account.Storage.Clear();
-                _storageDictPool.Push(account.Storage);
+                _storageDictPool.Add((Dictionary<UInt256, ParityStateChange<byte[]>>)account.Storage);
                 account.Storage = null;
             }
-            if (account.Balance is not null) { _uint256StateChangePool.Push(account.Balance); account.Balance = null; }
-            if (account.Code is not null) { _byteStateChangePool.Push(account.Code); account.Code = null; }
-            if (account.Nonce is not null) { _uint256StateChangePool.Push(account.Nonce); account.Nonce = null; }
-            _accountStateChangePool.Push(account);
+            if (account.Balance is not null) { _uint256StateChangePool.Add(account.Balance); account.Balance = null; }
+            if (account.Code is not null) { _byteStateChangePool.Add(account.Code); account.Code = null; }
+            if (account.Nonce is not null) { _uint256StateChangePool.Add(account.Nonce); account.Nonce = null; }
+            _accountStateChangePool.Add(account);
         }
     }
 
@@ -249,7 +284,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         FinalizePendingOp(closeWithNullSub: true);
 
-        VmFrame frame = _streamingFrames.Peek();
+        VmFrame frame = PeekLast(_streamingFrames);
         if (!frame.JsonObjectOpened)
         {
             OpenFrameJson(frame);
@@ -338,7 +373,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         if (_streamingFrames.Count == 0) return;
 
-        VmFrame frame = _streamingFrames.Peek();
+        VmFrame frame = PeekLast(_streamingFrames);
         ReadOnlySpan<byte> codeSpan = byteCode.Span;
         EnsureBuffer(ref frame.CodeBuffer, codeSpan.Length);
         codeSpan.CopyTo(frame.CodeBuffer);
@@ -361,7 +396,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         if (action.Type == "suicide")
         {
             frame.IsSuicide = true;
-            _streamingFrames.Push(frame);
+            _streamingFrames.Add(frame);
             return;
         }
 
@@ -372,14 +407,14 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             frame.HasPendingParentOpToClose = true;
         }
 
-        _streamingFrames.Push(frame);
+        _streamingFrames.Add(frame);
     }
 
     protected override void OnLeaveVmFrame(ParityTraceAction action)
     {
         if (!_streamVmTrace) { base.OnLeaveVmFrame(action); return; }
 
-        VmFrame frame = _streamingFrames.Pop();
+        VmFrame frame = PopLast(_streamingFrames);
 
         if (frame.IsSuicide)
         {
@@ -540,7 +575,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
     private void ReleasePushBuffers()
     {
-        Span<(byte[] Buffer, int Length)> span = CollectionsMarshal.AsSpan(_pushItems);
+        Span<(byte[] Buffer, int Length)> span = _pushItems.AsSpan();
         for (int i = 0; i < span.Length; i++)
         {
             byte[] buffer = span[i].Buffer;
@@ -563,12 +598,12 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         buffer = null;
     }
 
-    private VmFrame RentFrame() => _framePool.Count > 0 ? _framePool.Pop() : new VmFrame();
+    private VmFrame RentFrame() => _framePool.Count > 0 ? PopLast(_framePool) : new VmFrame();
 
     private void ReturnFrame(VmFrame frame)
     {
         frame.Reset();
-        _framePool.Push(frame);
+        _framePool.Add(frame);
     }
 
     private sealed class VmFrame

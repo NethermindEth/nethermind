@@ -111,6 +111,8 @@ namespace Nethermind.Serialization.Json
                     new ValueHash256Converter(strictHexFormat),
                     new Hash256Converter(strictHexFormat),
                     new IPAddressConverter(),
+                    new CappedArrayJsonConverter<int>(),
+                    new CappedArrayByteJsonConverter(),
                 }
             };
 

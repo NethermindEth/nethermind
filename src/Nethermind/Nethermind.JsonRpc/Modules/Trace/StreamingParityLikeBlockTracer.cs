@@ -60,6 +60,26 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     }
 
     public StreamingParityLikeBlockTracer(
+        Hash256 txHash,
+        ParityTraceTypes types,
+        ParityTraceStreamMode mode,
+        bool includeTxHash,
+        Utf8JsonWriter writer,
+        PipeWriter? pipeWriter,
+        CancellationToken cancellationToken)
+        : base(txHash, types)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        _defaultTypes = types;
+        _mode = mode;
+        _includeTxHash = includeTxHash;
+        _writer = writer;
+        _pipeWriter = pipeWriter;
+        _cancellationToken = cancellationToken;
+        _jsonOptions = EthereumJsonSerializer.JsonOptions;
+    }
+
+    public StreamingParityLikeBlockTracer(
         IDictionary<Hash256, ParityTraceTypes> typesByTransaction,
         ParityTraceTypes defaultTypes,
         ParityTraceStreamMode mode,

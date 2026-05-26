@@ -72,7 +72,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public int Subtraces { get; set; }
 
-        [JsonConverter(typeof(CappedArrayIntJsonConverter))]
         public CappedArray<int> TraceAddress { get; set; } = default;
 
         public Hash256 TransactionHash { get; set; }

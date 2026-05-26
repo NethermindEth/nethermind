@@ -46,7 +46,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash), "tx hash");
         Assert.That(trace.Action.Gas, Is.EqualTo((long)tx.GasLimit - 21000), "gas");
         Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
-        Assert.That(trace.Action.Input, Is.EqualTo(tx.Data.AsArray()), "input");
+        Assert.That(trace.Action.Input.ToArray(), Is.EqualTo(tx.Data.AsArray()), "input");
         Assert.That(trace.Action.TraceAddress.ToArray(), Is.EqualTo(Array.Empty<int>()), "trace address");
     }
 
@@ -163,7 +163,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] input = Bytes.FromHexString(SampleHexData2);
         UInt256 value = 1.Ether;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(input, value, code);
-        Assert.That(trace.Action.Input, Is.EqualTo(input));
+        Assert.That(trace.Action.Input.ToArray(), Is.EqualTo(input));
     }
 
     [Test]
