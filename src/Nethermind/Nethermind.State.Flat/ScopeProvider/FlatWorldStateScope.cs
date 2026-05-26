@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Sparse;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -28,6 +29,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+    private readonly SparseRootComputer? _sparseRootComputer;
+    private Hash256? _sparseComputedRoot;
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -73,6 +76,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _logManager = logManager;
         _warmer = trieCacheWarmer;
 
+        if (configuration.UseSparseRootComputation && !isReadOnly)
+        {
+            ParentStateTrieNodeReader proofReader = new(snapshotBundle.ReadOnlyBundle);
+            _sparseRootComputer = new SparseRootComputer(proofReader, currentStateId.StateRoot.ToCommitment());
+        }
+
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
     }
@@ -108,8 +117,28 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public Hash256 RootHash => _stateTree.RootHash;
-    public void UpdateRootHash() => _stateTree.UpdateRootHash();
+    public Hash256 RootHash => _sparseComputedRoot ?? _stateTree.RootHash;
+
+    public void UpdateRootHash()
+    {
+        // Always run Patricia — needed for Commit() persistence in M2
+        _stateTree.UpdateRootHash();
+
+        if (_sparseRootComputer is not null)
+        {
+            _sparseComputedRoot = _sparseRootComputer.ComputeStateRoot();
+
+            // Correctness assertion: sparse root must match Patricia root
+            if (_sparseComputedRoot != _stateTree.RootHash)
+            {
+                ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                if (logger.IsError) logger.Error(
+                    $"Sparse trie root mismatch! Patricia={_stateTree.RootHash}, Sparse={_sparseComputedRoot}. " +
+                    "Using Patricia root. Please report this as a bug.");
+                _sparseComputedRoot = null; // fall back to Patricia
+            }
+        }
+    }
 
     public Account? Get(Address address)
     {
@@ -285,6 +314,26 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                 {
                     stateSetter.Set(kv.Key, kv.Value);
+                }
+
+                // M2: Feed the same account changes to SparseRootComputer (if enabled)
+                if (scope._sparseRootComputer is not null)
+                {
+                    Dictionary<Hash256, LeafUpdate> sparseAccountUpdates = new(_dirtyAccounts.Count);
+                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                    {
+                        Hash256 hashedAddr = Keccak.Compute(kv.Key.Value.Bytes);
+                        if (kv.Value is null)
+                        {
+                            sparseAccountUpdates[hashedAddr] = LeafUpdate.Deleted();
+                        }
+                        else
+                        {
+                            byte[] rlp = Nethermind.Serialization.Rlp.AccountDecoder.Instance.Encode(kv.Value).Bytes;
+                            sparseAccountUpdates[hashedAddr] = LeafUpdate.Changed(rlp);
+                        }
+                    }
+                    scope._sparseRootComputer.SetAccountChanges(sparseAccountUpdates);
                 }
             }
             finally

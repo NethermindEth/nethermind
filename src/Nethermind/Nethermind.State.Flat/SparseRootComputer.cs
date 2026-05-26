@@ -1,0 +1,74 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using Nethermind.Core.Crypto;
+using Nethermind.Trie;
+using Nethermind.Trie.Sparse;
+
+namespace Nethermind.State.Flat;
+
+/// <summary>
+/// Orchestrates proof-based state root computation for a single block using the sparse trie.
+/// M2 hybrid: computes root only — persistence is handled by Patricia tree.
+/// </summary>
+public sealed class SparseRootComputer(ITrieNodeReader reader, Hash256 previousStateRoot) : IDisposable
+{
+    private readonly SparseStateTrie _trie = new();
+    private readonly Dictionary<Hash256, (Hash256 PreviousStorageRoot, Dictionary<Hash256, LeafUpdate> Updates)> _storageChanges = [];
+    private Dictionary<Hash256, LeafUpdate>? _accountChanges;
+
+    public void AddStorageChanges(Hash256 accountPathHash, Hash256 previousStorageRoot, Dictionary<Hash256, LeafUpdate> slotUpdates) =>
+        _storageChanges[accountPathHash] = (previousStorageRoot, slotUpdates);
+
+    public void SetAccountChanges(Dictionary<Hash256, LeafUpdate> accountUpdates) =>
+        _accountChanges = accountUpdates;
+
+    public Hash256 ComputeStorageRoot(Hash256 accountPathHash)
+    {
+        if (!_storageChanges.TryGetValue(accountPathHash, out (Hash256 PreviousStorageRoot, Dictionary<Hash256, LeafUpdate> Updates) entry))
+            return Keccak.EmptyTreeHash;
+
+        if (entry.PreviousStorageRoot == Keccak.EmptyTreeHash && entry.Updates.Count == 0)
+            return Keccak.EmptyTreeHash;
+
+        SparsePatriciaTree storageTrie = _trie.GetOrCreateStorageTrie(accountPathHash);
+
+        Dictionary<Hash256, LeafUpdate> updates = entry.Updates;
+        while (true)
+        {
+            List<Hash256> targets = [];
+            storageTrie.UpdateLeaves(updates, (key, _) => targets.Add(key));
+            if (targets.Count == 0) break;
+
+            DecodedMultiProof proof = MultiProofReader.ReadStorageProofs(
+                reader, accountPathHash, entry.PreviousStorageRoot, targets.ToArray());
+            if (proof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? nodes))
+                storageTrie.RevealNodes(nodes);
+        }
+
+        return _trie.ComputeStorageRoot(accountPathHash);
+    }
+
+    public Hash256 ComputeStateRoot()
+    {
+        if (_accountChanges is null || _accountChanges.Count == 0)
+            return previousStateRoot;
+
+        while (true)
+        {
+            List<Hash256> targets = [];
+            _trie.UpdateAccountLeaves(_accountChanges, (key, _) => targets.Add(key));
+            if (targets.Count == 0) break;
+
+            DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
+                reader, previousStateRoot, targets.ToArray());
+            _trie.AccountTrie.RevealNodes(proof.AccountNodes);
+        }
+
+        return _trie.ComputeRoot();
+    }
+
+    public void Dispose() => _trie.Dispose();
+}

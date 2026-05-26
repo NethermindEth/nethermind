@@ -48,4 +48,9 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Use sparse trie for state root computation instead of PatriciaTree.UpdateRootHash(). " +
+        "Computes the root via proof-based incremental hashing while Patricia tree still handles persistence. " +
+        "Milestone M2 hybrid mode.", DefaultValue = "false")]
+    bool UseSparseRootComputation { get; set; }
 }
