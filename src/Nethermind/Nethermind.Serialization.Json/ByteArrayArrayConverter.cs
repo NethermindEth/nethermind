@@ -4,7 +4,6 @@
 #nullable enable
 
 using System;
-using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Text.Json;
@@ -18,7 +17,7 @@ namespace Nethermind.Serialization.Json;
 /// <remarks>
 /// Reuses <see cref="ByteArrayConverter"/> for each element. The initial capacity
 /// is seeded from a per-instance EMA of observed counts, rounded up to the next
-/// power of 2 and rented from <see cref="ArrayPool{T}"/>. Subclasses override
+/// power of 2 and rented from <see cref="System.Buffers.ArrayPool{T}"/>. Subclasses override
 /// <see cref="InitialEwma"/> for fields with known size distributions
 /// (transactions vs. blob bundle vs. execution requests).
 /// </remarks>
