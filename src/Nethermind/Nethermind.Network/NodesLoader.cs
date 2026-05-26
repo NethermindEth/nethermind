@@ -34,7 +34,7 @@ namespace Nethermind.Network
 
         public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
         {
-            List<Node> allPeers = new();
+            List<Node> allPeers = [];
             LoadPeersFromDb(allPeers);
 
             if (!_networkConfig.OnlyStaticPeers)

@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 public class Istanbul() : NamedReleaseSpec<Istanbul>(ConstantinopleFix.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Istanbul";
         spec.IsEip1344Enabled = true;

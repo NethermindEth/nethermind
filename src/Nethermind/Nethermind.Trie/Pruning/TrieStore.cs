@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
@@ -66,6 +67,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private bool _lastPersistedReachedReorgBoundary;
     private long _toBePersistedBlockNumber = -1;
+
+    private static readonly long IncompletePersistedPruneWarnIntervalTicks = Stopwatch.Frequency * 5 * 60;
+    private long _incompletePersistedPruneWarnNextTicks;
 
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
@@ -622,11 +626,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
                 if (!IsInCommitBufferMode && _lastPrunedShardIdx - startingShard >= _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
                 {
-                    // A persisted nodes that was recommitted and is still within pruning boundary cannot be pruned.
-                    // This should be rare but can happen, notably in mainnet block 4500000 around there, But this
-                    // does mean that it will keep retrying to prune persisted nodes. The solution is to either increase
-                    // the memory budget or reduce the pruning boundary.
-                    if (_logger.IsWarn) _logger.Warn($"Unable to completely prune persisted nodes. Consider increasing pruning cache limit or reducing pruning boundary");
+                    if (_logger.IsWarn)
+                    {
+                        long now = Stopwatch.GetTimestamp();
+                        if (now >= _incompletePersistedPruneWarnNextTicks)
+                        {
+                            _incompletePersistedPruneWarnNextTicks = now + IncompletePersistedPruneWarnIntervalTicks;
+                            _logger.Warn("Unable to completely prune persisted nodes. Consider increasing pruning cache limit or reducing pruning boundary. Suppressing similar warnings for 5 minutes.");
+                        }
+                    }
                 }
             }
             finally
@@ -1004,7 +1012,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         PersistOnShutdown();
     }
 
-    private void FlushNonBlockingBuffer()
+    internal void FlushNonBlockingBuffer()
     {
         using Lock.Scope _ = _scopeLock.EnterScope();
         if (_commitBuffer is null) return;
@@ -1715,15 +1723,17 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     internal TrieNode CloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
     {
-        if (node!.FullRlp.IsNull)
+        CappedArray<byte> fullRlp = node!.FullRlp;
+        if (fullRlp.IsNull)
         {
             // // this happens in SyncProgressResolver
             // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
             return new TrieNode(NodeType.Unknown, key.Keccak);
         }
 
-        // we returning a copy to avoid multithreaded access
-        TrieNode trieNode = new(NodeType.Unknown, key.Keccak, node.FullRlp);
+        // AsSpan forces an owned copy via the ReadOnlySpan ctor overload: node.FullRlp may be
+        // pool-backed and returned to the pool while this read-only clone is still in use.
+        TrieNode trieNode = new(NodeType.Unknown, key.Keccak, fullRlp.AsSpan());
         trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);
         trieNode.Keccak = key.Keccak;
         return trieNode;

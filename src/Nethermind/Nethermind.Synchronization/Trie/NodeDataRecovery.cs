@@ -130,15 +130,6 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                 return data[0].ToArray();
             }
         }
-        else if (syncPeer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataPeer))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via nodedata");
-            IByteArrayList? data = await nodeDataPeer.GetNodeData([hash], cancellationToken);
-            if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
-            {
-                return data[0].ToArray();
-            }
-        }
         else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer))
         {
             if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via snap");

@@ -4,7 +4,6 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -41,7 +40,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Setup()
         {
             _ctx = new();
-            _disposables = new();
+            _disposables = [];
             _ctx.Session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
         }
 
@@ -71,7 +70,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             _ctx.ProtocolHandler.HandleMessage(receiptsPacket);
 
             using IOwnedReadOnlyList<TxReceipt[]> result = await task;
-            result.Should().HaveCount(count);
+            Assert.That(result, Has.Count.EqualTo(count));
         }
 
         [Test]
@@ -131,8 +130,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Should_not_exceed_soft_message_size_limit_for_receipts()
         {
-            _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(
-                Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray());
+            TxReceipt[] receipts = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray();
+            int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, 512);
+            _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
 
             using GetReceiptsMessage getReceiptsMessage = new(
                 RepeatPooled(Keccak.Zero, 512));
@@ -140,7 +140,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 new("eth", Eth63MessageCode.GetReceipts, _ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
             _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
-            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(static r => r.TxReceipts.Count == 13));
+            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Count == expectedCount));
         }
 
         private class Context

@@ -9,6 +9,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
@@ -33,16 +34,18 @@ internal static partial class XdcExtensions
 
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader, ulong round = 0)
     {
-        if (specProvider.GetSpec(xdcBlockHeader) is not IXdcReleaseSpec spec)
-            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
+        if (specProvider is XdcChainSpecBasedSpecProvider xdcProvider)
+            return xdcProvider.GetXdcSpec(xdcBlockHeader, round);
         if (round == 0)
             round = xdcBlockHeader.ExtraConsensusData?.BlockRound ?? 0;
-        spec.ApplyV2Config(round);
-        return spec;
+        return specProvider.GetXdcSpec(xdcBlockHeader.Number, round);
     }
 
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long blockNumber, ulong round = 0)
     {
+        if (specProvider is XdcChainSpecBasedSpecProvider xdcProvider)
+            return xdcProvider.GetXdcSpec(blockNumber, round);
+        // Fallback for testing; note that this mutates the spec instance
         if (specProvider.GetSpec(blockNumber, null) is not IXdcReleaseSpec spec)
             throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
         spec.ApplyV2Config(round);
@@ -97,4 +100,19 @@ internal static partial class XdcExtensions
         stream.Position = ctx.Position;
         return signature;
     }
+
+    public static bool IsGapPlusOne(this XdcSubnetBlockHeader header, IXdcReleaseSpec spec)
+    {
+        if (header.Number == 1)
+            return true;
+        return (header.Number % spec.EpochLength) == (spec.EpochLength - spec.Gap + 1);
+    }
+
+    /// <summary>
+    /// Compares two lists of addresses for equality, ignoring order since the order of masternodes in XDC header validation does not matter.
+    /// </summary>
+    /// <param name="a"></param>
+    /// <param name="b"></param>
+    /// <returns>Returns <see cref="true"/> if the lists contain the same addresses, ignoring order; otherwise, <see cref="false"/>.</returns>
+    public static bool ListsAreEqual(this IList<Address> a, IList<Address> b) => a.Count == b.Count && new HashSet<Address>(a).SetEquals(b);
 }

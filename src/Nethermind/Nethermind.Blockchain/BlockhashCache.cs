@@ -231,10 +231,11 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
     public Stats GetStats()
     {
-        Dictionary<CacheNode, int> parents = new();
+        Dictionary<CacheNode, int> parents = [];
         int nodes = 0;
-        foreach (CacheNode node in _blocks.Values)
+        foreach (KeyValuePair<Hash256AsKey, CacheNode> kvp in _blocks)
         {
+            CacheNode node = kvp.Value;
             parents.GetOrAdd(node, static _ => 0);
             if (node.Parent is not null)
             {

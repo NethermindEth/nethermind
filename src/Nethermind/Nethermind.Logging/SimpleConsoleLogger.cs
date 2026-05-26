@@ -32,7 +32,7 @@ namespace Nethermind.Logging
             if (IsTrace) WriteEntry(text);
         }
 
-        public void Error(string text, Exception ex = null)
+        public void Error(string text, Exception? ex = null)
         {
             if (IsError) Console.Error.WriteLine(DateTime.Now.ToString(dateFormat) + text + (ex is not null ? " " + ex : string.Empty));
         }

@@ -847,7 +847,8 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
             try
             {
                 CappedArray<byte> verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
-                new AccountDecoder().Decode(verifyOneProof.AsSpan());
+                Rlp.ValueDecoderContext context = verifyOneProof.AsSpan().AsRlpValueContext();
+                new AccountDecoder().Decode(ref context);
             }
             catch (Exception)
             {

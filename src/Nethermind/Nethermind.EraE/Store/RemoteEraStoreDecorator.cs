@@ -100,10 +100,10 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         _disposed = true;
         _localStore?.Dispose();
         _manifestLock.Dispose();
-        foreach (SemaphoreSlim s in _epochLocks.Values)
-            s.Dispose();
-        foreach (EraReader reader in _openedReaders.Values)
-            reader.Dispose();
+        foreach (KeyValuePair<int, SemaphoreSlim> kvp in _epochLocks)
+            kvp.Value.Dispose();
+        foreach (KeyValuePair<int, EraReader> kvp in _openedReaders)
+            kvp.Value.Dispose();
     }
 
     private EraRenter RentReader(int epoch, string localPath)
@@ -118,8 +118,8 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         if (_openedReaders.Count >= _maxOpenReaders)
         {
             int oldest = int.MaxValue;
-            foreach (int key in _openedReaders.Keys)
-                if (key < oldest) oldest = key;
+            foreach (KeyValuePair<int, EraReader> kvp in _openedReaders)
+                if (kvp.Key < oldest) oldest = kvp.Key;
             if (_openedReaders.TryRemove(oldest, out EraReader? evicted))
                 evicted.Dispose();
         }

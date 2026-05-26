@@ -6,6 +6,9 @@ using Nethermind.Xdc.Spec;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 
 namespace Nethermind.Xdc.Test;
 
@@ -15,10 +18,10 @@ public class XdcSpecProviderTests
     [Test]
     public void V2Configs_ShouldThrow_IfMissingDefaultRoundZero()
     {
-        List<V2ConfigParams> bad = new()
-        {
+        List<V2ConfigParams> bad =
+        [
             new() { SwitchRound = 2000 }
-        };
+        ];
 
         XdcChainSpecEngineParameters p = new();
         Action action = () => p.V2Configs = bad;
@@ -29,12 +32,12 @@ public class XdcSpecProviderTests
     [Test]
     public void V2Configs_ShouldThrow_IfDuplicateSwitchRound()
     {
-        List<V2ConfigParams> dup = new()
-        {
+        List<V2ConfigParams> dup =
+        [
             new() { SwitchRound = 0 },
             new() { SwitchRound = 2000 },
             new() { SwitchRound = 2000 },
-        };
+        ];
 
         XdcChainSpecEngineParameters p = new();
         Action action = () => p.V2Configs = dup;
@@ -45,12 +48,12 @@ public class XdcSpecProviderTests
     [Test]
     public void V2Configs_ShouldBeSortedBySwitchRound()
     {
-        List<V2ConfigParams> unsorted = new()
-        {
+        List<V2ConfigParams> unsorted =
+        [
             new() { SwitchRound = 8000 },
             new() { SwitchRound = 0 },
             new() { SwitchRound = 2000 },
-        };
+        ];
 
         XdcChainSpecEngineParameters p = new() { V2Configs = unsorted };
 
@@ -68,16 +71,51 @@ public class XdcSpecProviderTests
     public void ApplyV2Config_PicksExpectedConfigForRound(
         ulong round, ulong expectedSwitchRound)
     {
-        List<V2ConfigParams> v2Configs = new()
-        {
+        List<V2ConfigParams> v2Configs =
+        [
             new() { SwitchRound = 0 },
             new() { SwitchRound = 2000 },
             new() { SwitchRound = 8000 },
             new() { SwitchRound = 220000 },
-        };
+        ];
 
         V2ConfigParams cfg = XdcReleaseSpec.GetConfigAtRound(v2Configs, round);
 
         cfg.SwitchRound.Should().Be(expectedSwitchRound);
+    }
+
+    [Test]
+    public void GetXdcSpec_ReturnsDifferentSpecInstances()
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip1559Transition = 5,
+            },
+            EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>(),
+        };
+        XdcChainSpecEngineParameters parameters = new()
+        {
+            SwitchBlock = 1,
+            V2Configs =
+            {
+                new() { SwitchRound = 0 },
+                new() { SwitchRound = 10 },
+            }
+        };
+
+
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, parameters, Substitute.For<ILogManager>());
+
+        IXdcReleaseSpec specA = specProvider.GetXdcSpec(6, 6);
+        specA.SwitchRound.Should().Be(0);
+
+        IXdcReleaseSpec specB = specProvider.GetXdcSpec(11, 11);
+        specB.SwitchRound.Should().Be(10);
+
+        specA.SwitchRound.Should().Be(0);
+
+        ReferenceEquals(specA, specB).Should().BeFalse();
     }
 }

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
@@ -13,11 +13,10 @@ namespace Nethermind.Synchronization;
 
 public class SyncPointers : ISyncPointers
 {
-    private readonly IDb _blocksDb;
+    private readonly IDb _metadataDb;
     private readonly IDb _defaultReceiptDbColumn;
 
-    private static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
-
+    private static readonly byte[] LegacyLowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
 
     private long? _lowestInsertedBodyNumber;
     public long? LowestInsertedBodyNumber
@@ -26,7 +25,7 @@ public class SyncPointers : ISyncPointers
         set
         {
             _lowestInsertedBodyNumber = value;
-            if (value.HasValue) _blocksDb[LowestInsertedBodyNumberDbEntryAddress] = Rlp.Encode(value.Value).Bytes;
+            if (value.HasValue) _metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(value.Value).Bytes);
         }
     }
 
@@ -45,21 +44,68 @@ public class SyncPointers : ISyncPointers
         }
     }
 
+    private long? _lowestInsertedBlockAccessListBlock;
 
-    public SyncPointers([KeyFilter(DbNames.Blocks)] IDb blocksDb, IColumnsDb<ReceiptsColumns> receiptsDb, IReceiptConfig receiptConfig)
+    public long? LowestInsertedBlockAccessListBlockNumber
     {
-        _blocksDb = blocksDb;
+        get => _lowestInsertedBlockAccessListBlock;
+        set
+        {
+            _lowestInsertedBlockAccessListBlock = value;
+            if (value.HasValue)
+            {
+                _metadataDb.Set(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber, Rlp.Encode(value.Value).Bytes);
+            }
+        }
+    }
+
+
+    public SyncPointers(
+        [KeyFilter(DbNames.Blocks)] IDb blocksDb,
+        IColumnsDb<ReceiptsColumns> receiptsDb,
+        [KeyFilter(DbNames.Metadata)] IDb metadataDb,
+        IReceiptConfig receiptConfig)
+    {
+        _metadataDb = metadataDb;
         _defaultReceiptDbColumn = receiptsDb.GetColumnDb(ReceiptsColumns.Default);
 
-        LowestInsertedBodyNumber = _blocksDb[LowestInsertedBodyNumberDbEntryAddress]?.AsRlpValueContext().DecodeLong();
+        _lowestInsertedBodyNumber = ReadPointer(_metadataDb, MetadataDbKeys.LowestInsertedBodyNumber);
+        if (_lowestInsertedBodyNumber is null)
+        {
+            MigrateLegacyLowestInsertedBodyNumber(blocksDb);
+        }
 
         byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
         _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new Rlp.ValueDecoderContext(lowestBytes).DecodeLong();
+
+        _lowestInsertedBlockAccessListBlock =
+            ReadPointer(_metadataDb, MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber);
 
         // When not storing receipt, set the lowest inserted receipt to 0 so that old receipt will finish immediately
         if (!receiptConfig.StoreReceipts)
         {
             _lowestInsertedReceiptBlock = 0;
         }
+    }
+
+    private static long? ReadPointer(IDb sourceDb, int metadataKey)
+    {
+        byte[]? pointerBytes = sourceDb.Get(metadataKey);
+        return pointerBytes is null ? null : DecodePointer(pointerBytes);
+    }
+
+    private static long DecodePointer(byte[] pointerBytes) =>
+        new Rlp.ValueDecoderContext(pointerBytes).DecodeLong();
+
+    private void MigrateLegacyLowestInsertedBodyNumber(IDb blocksDb)
+    {
+        byte[]? pointerBytes = blocksDb.Get(LegacyLowestInsertedBodyNumberDbEntryAddress);
+        if (pointerBytes is null)
+        {
+            return;
+        }
+
+        LowestInsertedBodyNumber = DecodePointer(pointerBytes);
+        blocksDb.Remove(LegacyLowestInsertedBodyNumberDbEntryAddress);
     }
 }

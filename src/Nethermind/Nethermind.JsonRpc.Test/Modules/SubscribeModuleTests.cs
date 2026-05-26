@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
 
-            List<JsonRpcResult> jsonRpcResults = new();
+            List<JsonRpcResult> jsonRpcResults = [];
 
             SemaphoreSlim semaphoreSlim = new(0, 1);
             logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
@@ -265,7 +265,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task No_subscription_name()
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe");
-            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"Incorrect parameters count, expected: 2, actual: 0\"},\"id\":67}";
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 0\"},\"id\":67}";
             expectedResult.Should().Be(serialized);
         }
 
@@ -400,7 +400,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Block block0 = Build.A.Block.Genesis.WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
 
-            List<Block> blocks = new() { block0 };
+            List<Block> blocks = [block0];
 
             for (int i = 1; i < 21; i++)
             {
@@ -469,6 +469,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "invalid_param");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
             expectedResult.Should().Be(serialized);
+        }
+
+        [Test]
+        public async Task LogsSubscription_with_too_long_string_arguments_returns_invalid_params()
+        {
+            string args = new('a', 1_000_001);
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
+            expectedResult.Should().Be(serialized, because: "oversized string args should be rejected before subscription creation");
         }
 
         [Test]
@@ -750,7 +759,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithHeader(blockHeader).TestObject;
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
 
-            List<JsonRpcResult> jsonRpcResults = new();
+            List<JsonRpcResult> jsonRpcResults = [];
 
             ManualResetEvent manualResetEvent = new(false);
             ReceiptsEventArgs receiptsEventArgs = new(blockHeader, txReceipts, false);
@@ -1194,7 +1203,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.TestObject;
             Block previousBlock = Build.A.Block.WithHeader(blockHeader).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
-            List<JsonRpcResult> jsonRpcResults = new();
+            List<JsonRpcResult> jsonRpcResults = [];
 
             ManualResetEvent manualResetEvent = new(false);
             BlockReplacementEventArgs blockEventArgs = new(block, previousBlock);

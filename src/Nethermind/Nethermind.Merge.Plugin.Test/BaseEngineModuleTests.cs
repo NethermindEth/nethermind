@@ -33,6 +33,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Synchronization;
+using static Nethermind.Merge.Plugin.MergeConfig;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -90,9 +91,9 @@ public abstract partial class BaseEngineModuleTests
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null,
         ulong slotLength = 12)
     {
-        List<ExecutionPayload> blocks = new();
+        List<ExecutionPayload> blocks = [];
         ExecutionPayload parentBlock = startingParentBlock;
-        Block? block = parentBlock.TryGetBlock().Block;
+        Block? block = parentBlock.TryGetBlock().Data;
         UInt256? startingTotalDifficulty = block!.IsGenesis
             ? block.Difficulty
             : chain.BlockFinder.FindHeader(block.Header.ParentHash!)!.TotalDifficulty;
@@ -114,7 +115,7 @@ public abstract partial class BaseEngineModuleTests
 
             blocks.Add(getPayloadResult);
             parentBlock = getPayloadResult;
-            block = parentBlock.TryGetBlock().Block!;
+            block = parentBlock.TryGetBlock().Data!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }
@@ -188,10 +189,20 @@ public abstract partial class BaseEngineModuleTests
             return this;
         }
 
+        public bool? ParallelExecutionOverride { get; set; }
+
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
             MergeConfig = mergeConfig ?? new MergeConfig();
             MergeConfig.TerminalTotalDifficulty ??= "0";
+            // Production default (7s) is too tight under Flat DB CI load — validation
+            // races the timeout and the handler returns SYNCING, breaking tests that
+            // assert VALID/INVALID. Tests that exercise timeout→SYNCING behavior pass
+            // an explicit shorter value.
+            if (MergeConfig.NewPayloadBlockProcessingTimeout == DefaultNewPayloadBlockProcessingTimeout)
+            {
+                MergeConfig.NewPayloadBlockProcessingTimeout = 60_000;
+            }
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -199,8 +210,17 @@ public abstract partial class BaseEngineModuleTests
         protected override ChainSpec CreateChainSpec() =>
             new() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
 
-        protected override IEnumerable<IConfig> CreateConfigs() =>
-            base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
+        protected override IEnumerable<IConfig> CreateConfigs()
+        {
+            IEnumerable<IConfig> configs = base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
+            if (ParallelExecutionOverride.HasValue)
+            {
+                configs = configs.Select(c => c is IBlocksConfig bc
+                    ? new BlocksConfig { MinGasPrice = bc.MinGasPrice, ParallelExecution = ParallelExecutionOverride.Value }
+                    : c);
+            }
+            return configs;
+        }
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)

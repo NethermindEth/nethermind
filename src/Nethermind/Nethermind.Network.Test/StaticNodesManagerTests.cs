@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using Nethermind.Network.StaticNodes;
@@ -20,8 +21,10 @@ namespace Nethermind.Network.Test
     {
         private IStaticNodesManager _staticNodesManager;
 
-        private const string Enode =
+        private const string EnodeString =
             "enode://94c15d1b9e2fe7ce56e458b9a3b672ef11894ddedd0c6f247e0f1d3487f52b66208fb4aeb8179fce6e3a749ea93ed147c37976d67af557508d199d9594c35f09@192.81.208.223:30303";
+
+        private static readonly NetworkNode Enode = new(EnodeString);
 
         [SetUp]
         public void Setup()

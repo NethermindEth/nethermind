@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -54,6 +54,28 @@ public class Startup : IStartup
     private static ReadOnlySpan<byte> _jsonOpeningBracket => [(byte)'['];
     private static ReadOnlySpan<byte> _jsonComma => [(byte)','];
     private static ReadOnlySpan<byte> _jsonClosingBracket => [(byte)']'];
+
+    public Startup() { }
+
+    // for tests
+    internal Startup(
+        JsonRpcProcessor jsonRpcProcessor,
+        JsonRpcService jsonRpcService,
+        IJsonRpcLocalStats jsonRpcLocalStats,
+        EthereumJsonSerializer jsonSerializer,
+        IJsonRpcConfig jsonRpcConfig,
+        IRpcAuthentication? rpcAuthentication = null,
+        ILogger logger = default
+    )
+    {
+        _jsonRpcProcessor = jsonRpcProcessor;
+        _jsonRpcService = jsonRpcService;
+        _jsonRpcLocalStats = jsonRpcLocalStats;
+        _jsonSerializer = jsonSerializer;
+        _jsonRpcConfig = jsonRpcConfig;
+        _logger = logger;
+        _rpcAuthentication = rpcAuthentication;
+    }
 
     IServiceProvider IStartup.ConfigureServices(IServiceCollection services) => Build(services);
 
@@ -291,7 +313,7 @@ public class Startup : IStartup
         await ctx.Response.CompleteAsync();
     }
 
-    private async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
+    internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
         if (_jsonRpcProcessor.ProcessExit.IsCancellationRequested)
         {
@@ -485,10 +507,10 @@ public class Startup : IStartup
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void WriteOther(Utf8JsonWriter writer, object? id) => JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
+        static void WriteOther(Utf8JsonWriter writer, object id) => JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
     }
 
-    private static async ValueTask WriteStreamableResponseAsync(
+    internal static async ValueTask WriteStreamableResponseAsync(
         CountingWriter writer, JsonRpcResponse response,
         IStreamableResult streamable, CancellationToken ct)
     {
@@ -529,7 +551,8 @@ public class Startup : IStartup
             {
                 case string strId:
                     {
-                        // JSON-RPC IDs are simple values (typically numeric); no escaping needed
+                        // escaping is intentionally skipped for max performance;
+                        // JSON-RPC IDs are usually simple values (typically numeric)
                         Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
                         buf[0] = (byte)'"';
                         int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
@@ -538,8 +561,10 @@ public class Startup : IStartup
                         break;
                     }
                 default:
-                    writer.Write("null"u8);
-                    break;
+                    {
+                        writer.Write("null"u8);
+                        break;
+                    }
             }
         }
     }

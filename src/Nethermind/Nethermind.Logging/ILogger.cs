@@ -56,7 +56,7 @@ public struct ILogger : IEquatable<ILogger>
     public bool Equals(ILogger other) => _logger == other._logger;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public readonly void Error(string text, Exception ex = null)
+    public readonly void Error(string text, Exception? ex = null)
     {
         if (IsError) _logger.Error(text, ex);
     }
@@ -88,7 +88,7 @@ public struct ILogger : IEquatable<ILogger>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void DebugError(
         [InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler,
-        Exception ex = null)
+        Exception? ex = null)
     {
         if (IsDebug) _logger.Error("DEBUG/ERROR: " + handler.ToStringAndClear(), LogEventKind.DebugError, ex);
     }
@@ -98,7 +98,7 @@ public struct ILogger : IEquatable<ILogger>
     /// for callers that pass a literal message with no interpolation.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public readonly void DebugError(string text, Exception ex = null)
+    public readonly void DebugError(string text, Exception? ex = null)
     {
         if (IsDebug) _logger.Error("DEBUG/ERROR: " + text, LogEventKind.DebugError, ex);
     }
@@ -135,7 +135,7 @@ public struct ILogger : IEquatable<ILogger>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void TraceError(
         [InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler,
-        Exception ex = null)
+        Exception? ex = null)
     {
         if (IsTrace) _logger.Error("TRACE/ERROR: " + handler.ToStringAndClear(), LogEventKind.TraceError, ex);
     }
@@ -145,7 +145,7 @@ public struct ILogger : IEquatable<ILogger>
     /// for callers that pass a literal message with no interpolation.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public readonly void TraceError(string text, Exception ex = null)
+    public readonly void TraceError(string text, Exception? ex = null)
     {
         if (IsTrace) _logger.Error("TRACE/ERROR: " + text, LogEventKind.TraceError, ex);
     }

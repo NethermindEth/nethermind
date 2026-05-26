@@ -12,7 +12,7 @@ namespace Nethermind.Evm.Precompiles;
 /// </summary>
 public partial class Bls12381Fp2ToG2Precompile : IPrecompile<Bls12381Fp2ToG2Precompile>
 {
-    public static readonly Bls12381Fp2ToG2Precompile Instance = new();
+    public static Bls12381Fp2ToG2Precompile Instance { get; } = new();
 
     private Bls12381Fp2ToG2Precompile() { }
 

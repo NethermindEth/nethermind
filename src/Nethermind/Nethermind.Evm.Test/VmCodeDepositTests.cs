@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Test
             Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
 
             byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0)).ToArray();
-            Assert.That(returnData, Is.EqualTo(deployed.Bytes), "address returned");
+            Assert.That(returnData, Is.EqualTo(deployed.Bytes.ToArray()), "address returned");
         }
     }
 }

@@ -56,7 +56,7 @@ namespace Nethermind.Logging.NLog
             if (IsTrace) _logger.Trace(text);
         }
 
-        public void Error(string text, Exception ex = null)
+        public void Error(string text, Exception? ex = null)
         {
             if (IsError) _logger.Error(ex, text);
         }
@@ -69,7 +69,7 @@ namespace Nethermind.Logging.NLog
             _logger.Log(evt);
         }
 
-        public void Error(string text, LogEventKind kind, Exception ex = null)
+        public void Error(string text, LogEventKind kind, Exception? ex = null)
         {
             if (!IsError) return;
             LogEventInfo evt = LogEventInfo.Create(global::NLog.LogLevel.Error, _logger.Name, ex, null, text);

@@ -163,9 +163,17 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
             ThrowInvalidPort(port);
         }
 
+        if (ip.Length is not (4 or 16))
+        {
+            ThrowInvalidIP(ip);
+        }
+
         return new IPEndPoint(new IPAddress(ip), port);
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidPort(int port) => throw new NetworkingException($"Invalid discovery port {port}.", NetworkExceptionType.Validation);
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowInvalidIP(ReadOnlySpan<byte> ip) => throw new NetworkingException($"Invalid discovery IP {ip.ToHexString()}.", NetworkExceptionType.Validation);
     }
 }

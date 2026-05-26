@@ -9,6 +9,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
@@ -67,7 +68,8 @@ namespace Nethermind.Merge.AuRa
                 _auraApi!.FinalizationManager ??
                 throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
                     "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
-                _poSSwitcher);
+                _poSSwitcher,
+                _api.BlockTree!);
 
         public override IModule Module => new AuRaMergeModule();
     }
@@ -88,12 +90,17 @@ namespace Nethermind.Merge.AuRa
                 .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
                 .AddScoped<IWithdrawalContract, IWithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
                 .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
+                .AddSingleton<IWithdrawalProcessorFactory, AuraWithdrawalProcessorFactory>()
                 .AddScoped<IBlockProcessor, AuRaMergeBlockProcessor>()
 
                 .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
                 .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
                 .AddDecorator<ISealValidator, MergeSealValidator>()
                 .AddDecorator<ISealer, MergeSealer>()
+
+                // Merge-aware override: skips wiring the branch processor on post-merge chains so
+                // the AuRa finalization manager's startup catch-up walk never runs.
+                .AddStep(typeof(InitializeBlockchainAuRaMerge))
                 ;
     }
 }

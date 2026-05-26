@@ -2,36 +2,34 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
-using System.Threading;
+using System.Text.Json;
 
 namespace Nethermind.Serialization.Json;
 
 public static class ForcedNumberConversion
 {
-    public static readonly ThreadAwareAsyncLocal ForcedConversion = new();
-
     [ThreadStatic]
-    private static NumberConversion? _threadCache;
+    private static NumberConversion _threadCache;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static NumberConversion GetFinalConversion() => _threadCache ?? NumberConversion.Hex;
-
-    /// <summary>
-    /// Wrapper around AsyncLocal that also updates a ThreadStatic cache for fast reads.
-    /// </summary>
-    public sealed class ThreadAwareAsyncLocal
+    public static NumberConversion Value
     {
-        private readonly AsyncLocal<NumberConversion?> _asyncLocal = new();
+        get => _threadCache;
+        set => _threadCache = value;
+    }
 
-        public NumberConversion? Value
+    public static void WriteRawLong(Utf8JsonWriter writer, ReadOnlySpan<byte> name, long value)
+    {
+        writer.WritePropertyName(name);
+
+        NumberConversion previous = Value;
+        Value = NumberConversion.Raw;
+        try
         {
-            get => _asyncLocal.Value;
-            set
-            {
-                _asyncLocal.Value = value;
-                _threadCache = value;
-            }
+            JsonSerializer.Serialize(writer, value, EthereumJsonSerializer.JsonOptions);
+        }
+        finally
+        {
+            Value = previous;
         }
     }
 }
