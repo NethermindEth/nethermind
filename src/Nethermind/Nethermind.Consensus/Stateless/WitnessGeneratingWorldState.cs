@@ -424,6 +424,11 @@ public class WitnessGeneratingWorldState(
         // Slow path: caller didn't surface the hash, so recompute it.
         if (code is { Length: > 0 })
         {
+            // EIP-7702 delegation designators are 23-byte pointers, not executable bytecode.
+            // Stateless verifiers do not need them in the witness codes section (EIP-7928).
+            if (Eip7702Constants.IsDelegatedCode(code))
+                return;
+
             Hash256 codeHash = Keccak.Compute(code);
             // Skip bytecodes deployed in this block — a stateless verifier only needs
             // pre-existing code to validate the pre-state (EIP-7928).
@@ -435,8 +440,9 @@ public class WitnessGeneratingWorldState(
     private void RecordBytecode(in ValueHash256 codeHash, byte[]? code)
     {
         // Fast path: hash already known.
-        // Skip bytecodes deployed in this block (EIP-7928: only pre-state code is needed).
-        if (code is { Length: > 0 } && !_deployedCodeHashes.Contains(codeHash))
+        // EIP-7702 delegation designators are 23-byte pointers, not executable bytecode.
+        // Stateless verifiers do not need them in the witness codes section (EIP-7928).
+        if (code is { Length: > 0 } && !Eip7702Constants.IsDelegatedCode(code) && !_deployedCodeHashes.Contains(codeHash))
             _bytecodes.TryAdd(codeHash, code);
     }
 

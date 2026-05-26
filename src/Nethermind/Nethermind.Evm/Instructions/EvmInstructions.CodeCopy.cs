@@ -199,6 +199,10 @@ public static partial class EvmInstructions
         else
         {
             vm.WorldState.AddAccountRead(address);
+            // EIP-7928: even when copying zero bytes the account was accessed, so its code must
+            // be recorded in the witness so a stateless verifier can validate the code hash in
+            // the state proof.
+            vm.CodeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
         }
 
         return EvmExceptionType.None;
