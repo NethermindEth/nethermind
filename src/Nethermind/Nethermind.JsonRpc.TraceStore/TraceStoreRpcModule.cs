@@ -331,47 +331,6 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         return _traceModule.trace_transaction(txHash, traceNonCanonical);
     }
 
-    private bool TryTraceTransaction<T>(
-        Hash256 txHash,
-        ParityTraceTypes traceTypes,
-        Func<ParityLikeTxTrace, T> map,
-        out ResultWrapper<T>? result)
-    {
-        SearchResult<Hash256> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
-        if (blockHashSearch.IsError)
-        {
-            {
-                result = ResultWrapper<T>.Fail(blockHashSearch);
-                return true;
-            }
-        }
-
-        SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object!));
-        if (blockSearch.IsError)
-        {
-            {
-                result = ResultWrapper<T>.Fail(blockSearch);
-                return true;
-            }
-        }
-
-        Block block = blockSearch.Object!;
-
-        if (TryGetBlockTraces(block.Header, out List<ParityLikeTxTrace>? traces) && traces is not null)
-        {
-            ParityLikeTxTrace? trace = GetTxTrace(txHash, traces);
-            if (trace is not null)
-            {
-                FilterTrace(trace, traceTypes);
-                result = ResultWrapper<T>.Success(map(trace));
-                return true;
-            }
-        }
-
-        result = null;
-        return false;
-    }
-
     private bool TryGetBlockTraces(BlockHeader block, out List<ParityLikeTxTrace>? traces)
     {
         Span<byte> tracesSerialized = _traceStore.GetSpan(block.Hash!);

@@ -469,6 +469,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _hasPendingOp = false;
         ReleaseOpBuffers();
         _entriesSinceLastFlush++;
+        MaybeFlushToWire();
     }
 
     private void EmitPendingOpUpToSub()
