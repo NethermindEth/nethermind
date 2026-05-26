@@ -6,7 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [master, feat/evm-enginetest]
+    branches: [master]
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
   pull_request_review:
@@ -174,7 +174,7 @@ jobs:
           echo "Resolved EEST release: $RESOLVED_EEST_VERSION"
 
       - name: Cache EEST fixtures
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/eest-fixtures
           key: eest-${{ matrix.eest_repository }}-${{ steps.eest_release.outputs.version }}-${{ matrix.eest_archive }}

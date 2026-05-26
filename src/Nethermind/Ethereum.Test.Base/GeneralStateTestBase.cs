@@ -185,9 +185,9 @@ namespace Ethereum.Test.Base
             }
 
             List<string> differences = RunAssertions(test, stateProvider);
-            string? txError = blockValidationError;
-            if (txResult is not null && txResult.Value != TransactionResult.Ok)
-                txError = txResult.Value.ErrorDescription;
+            string? txError = txResult is { TransactionExecuted: false } failedResult
+                ? failedResult.ErrorDescription
+                : blockValidationError;
 
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0)
             {

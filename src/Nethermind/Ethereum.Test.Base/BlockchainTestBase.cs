@@ -281,16 +281,14 @@ public abstract class BlockchainTestBase
             }
 
             Assert.That(differences, Is.Empty, "differences");
-            EthereumTestResult result = new(test.Name, test.ForkName, testPassed);
-            if (headBlock?.Hash is not null)
-                result.LastBlockHash = headBlock.Hash;
-            if (!string.IsNullOrEmpty(lastPayloadStatus))
-                result.LastPayloadStatus = lastPayloadStatus;
-            if (lastValidationError is not null && result.Pass)
-                result.Error = lastValidationError;
-            if (!testPassed)
-                result.Error = string.Join("; ", differences);
-            return result;
+            return new EthereumTestResult(test.Name, test.ForkName, testPassed)
+            {
+                LastBlockHash = headBlock?.Hash,
+                LastPayloadStatus = string.IsNullOrEmpty(lastPayloadStatus) ? null : lastPayloadStatus,
+                Error = !testPassed
+                    ? string.Join("; ", differences)
+                    : lastValidationError,
+            };
         }
         catch (Exception)
         {
@@ -367,7 +365,7 @@ public abstract class BlockchainTestBase
         return result;
     }
 
-    private async static Task<(string status, string? validationError)> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
+    private static async Task<(string status, string? validationError)> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
     {
         if (newPayloads is null || newPayloads.Length == 0) return ("", null);
 
