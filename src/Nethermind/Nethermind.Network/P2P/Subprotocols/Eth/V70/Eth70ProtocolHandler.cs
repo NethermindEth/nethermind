@@ -106,11 +106,6 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 }
 
                 Hash256 blockHash = hashes[blockIndex];
-                if (SyncServer.FindHeader(blockHash) is null)
-                {
-                    break;
-                }
-
                 TxReceipt[]? receipts = SyncServer.GetReceipts(blockHash);
                 if (receipts is null)
                 {

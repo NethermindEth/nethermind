@@ -382,11 +382,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 }
 
                 Hash256 blockHash = hashes[i];
-                if (SyncServer.FindHeader(blockHash) is null)
-                {
-                    break;
-                }
-
                 TxReceipt[]? blockTxReceipts = SyncServer.GetReceipts(blockHash);
                 if (blockTxReceipts is null)
                 {
