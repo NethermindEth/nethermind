@@ -306,4 +306,70 @@ public class SparseRevealTests
         sparseRoot.Should().Be(patriciaNewRoot,
             "SparseRootComputer with 50/200 account updates must match Patricia");
     }
+
+    [TestCase(198, 20)]
+    public void SparseRootComputer_LargeTrie_MatchesPatricia(int trieSize, int updateCount)
+    {
+        // Also test with a full reveal (no updates) to isolate proof reading
+        MemDb dbReveal = new();
+        PatriciaTree treeReveal = new(new RawTrieStore(dbReveal).GetTrieStore(null), LimboLogs.Instance);
+        Hash256[] keysReveal = new Hash256[trieSize];
+        for (int i = 0; i < trieSize; i++)
+        {
+            keysReveal[i] = Keccak.Compute(System.BitConverter.GetBytes(i));
+            treeReveal.Set(keysReveal[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
+        }
+        treeReveal.UpdateRootHash();
+        treeReveal.Commit();
+        Hash256 revealRoot = treeReveal.RootHash;
+
+        HalfPathTrieNodeReader readerReveal = new(new NodeStorage(dbReveal));
+        DecodedMultiProof revealProof = MultiProofReader.ReadAccountProofs(
+            readerReveal, revealRoot, keysReveal);
+
+        using SparsePatriciaTree sparseReveal = new();
+        sparseReveal.RevealNodes(revealProof.AccountNodes);
+        Hash256 revealOnlyRoot = sparseReveal.ComputeRoot();
+
+        TestContext.Out.WriteLine($"Reveal-only: original={revealRoot}, sparse={revealOnlyRoot}, proofNodes={revealProof.AccountNodes.Count}");
+        revealOnlyRoot.Should().Be(revealRoot, "Reveal-only root must match original (no updates)");
+
+        // Main test below:
+        MemDb db = new();
+        PatriciaTree tree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+
+        Hash256[] keys = new Hash256[trieSize];
+        for (int i = 0; i < trieSize; i++)
+        {
+            keys[i] = Keccak.Compute(System.BitConverter.GetBytes(i));
+            tree.Set(keys[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
+        }
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 originalRoot = tree.RootHash;
+
+        Dictionary<Hash256, LeafUpdate> updates = [];
+        for (int i = 0; i < updateCount; i++)
+        {
+            byte[] newRlp = TestItem.GenerateIndexedAccountRlp(50000 + i);
+            tree.Set(keys[i].Bytes, newRlp);
+            updates[keys[i]] = LeafUpdate.Changed(newRlp);
+        }
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 patriciaNewRoot = tree.RootHash;
+
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        using State.Flat.SparseRootComputer computer = new(reader, originalRoot);
+        computer.SetAccountChanges(updates);
+
+        Hash256 sparseRoot = computer.ComputeStateRoot();
+
+        TestContext.Out.WriteLine($"Trie size: {trieSize}, updates: {updateCount}");
+        TestContext.Out.WriteLine($"Patricia root: {patriciaNewRoot}");
+        TestContext.Out.WriteLine($"Sparse root:   {sparseRoot}");
+
+        sparseRoot.Should().Be(patriciaNewRoot,
+            $"SparseRootComputer with {updateCount}/{trieSize} must match Patricia");
+    }
 }
