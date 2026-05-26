@@ -14,21 +14,28 @@ namespace Nethermind.Synchronization.SnapSync;
 /// UpperBound. This is to prevent double writes on partitioned snap ranges.
 /// </summary>
 /// <param name="baseTrieStore"></param>
-public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrieStore
+public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrieStore, ITrieNodeResolverSource
 {
     public ValueHash256 UpperBound = ValueKeccak.MaxValue;
 
-    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => baseTrieStore.FindCachedOrUnknown(in path, hash);
+    public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        baseTrieStore.GetOrLoadNode(in path, in hash, flags);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, hash, flags);
+    public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+        baseTrieStore.TryGetOrLoadNode(in path, in hash, out node, flags);
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
+    public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, in hash, flags);
+
+    public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, in hash, flags);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new NotSupportedException("Get storage trie node resolver not supported");
 
     public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new BoundedSnapCommitter(baseTrieStore.BeginCommit(root, writeFlags), UpperBound);
+
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver() =>
+        baseTrieStore is ITrieNodeResolverSource source ? source.GetReadOnlyTraversalResolver() : null;
 
     private sealed class BoundedSnapCommitter(ICommitter baseCommitter, ValueHash256 subtreeLimit) : ICommitter
     {

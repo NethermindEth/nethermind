@@ -198,7 +198,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                 {
                     // Try using the slot as a leaf with the remaining path as key
                     TrieNode leafNode = TrieNodeFactory.CreateLeaf(slotPathAsTreePath.ToNibble()[currentPath.Length..], new CappedArray<byte>(value));
-                    leafNode.ResolveNode(emptyResolver, currentPath);
+                    TrieNode.ResolveNode(ref leafNode, emptyResolver, in currentPath);
                     leafNode.ResolveKey(emptyResolver, ref currentPath);
                     if (leafNode.Keccak == currentHash)
                     {
@@ -212,8 +212,8 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
 
             result.Add((currentPath, rlp));
 
-            TrieNode node = new(NodeType.Unknown, rlp);
-            node.ResolveNode(emptyResolver, currentPath);
+            TrieNode node = new TrieSyncNode(rlp);
+            TrieNode.ResolveNode(ref node, emptyResolver, in currentPath);
 
             if (_logger.IsTrace) _logger.Trace($"Traversing path {currentPath} with hash {currentHash}");
 

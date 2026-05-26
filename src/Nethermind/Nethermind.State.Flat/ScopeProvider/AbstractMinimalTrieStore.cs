@@ -11,23 +11,57 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 {
-    public abstract TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash);
+    public abstract byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None);
 
-    public abstract byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+    /// <summary>
+    /// Cache-only lookup: derived adapters can plumb in their snapshot-bundle node cache so
+    /// <see cref="ITrieNodeResolver.GetOrLoadNode"/> returns the cached typed node before
+    /// touching <see cref="TryLoadRlp"/>. Default returns no cached node.
+    /// </summary>
+    public virtual bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
+    {
+        node = null;
+        return false;
+    }
 
     public virtual ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         throw new NotSupportedException("Commit not supported");
 
 
-    public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[] LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        byte[]? value = TryLoadRlp(path, hash, flags);
-        return value ?? throw new TrieNodeException($"Missing trie node. {path}:{hash}", path, hash);
+        byte[]? value = TryLoadRlp(path, in hash, flags);
+        return value ?? throw new TrieNodeException($"Missing trie node. {path}:{hash}", path, new Hash256(in hash));
     }
 
     public virtual ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new UnsupportedOperationException("Get trie node resolver not supported");
 
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
+
+    protected static bool TryReturnCachedNode(
+        TrieNode? candidate,
+        Hash256 hash,
+        in TreePath path,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node,
+        Hash256? address = null)
+    {
+        if (candidate is null)
+        {
+            node = null;
+            return false;
+        }
+
+        if (candidate.Keccak != hash)
+        {
+            string location = address is null
+                ? $"Path: {path}."
+                : $"Address {address}. Path: {path}.";
+            throw new NodeHashMismatchException($"Node hash mismatch. {location} Hash: {candidate.Keccak} vs Requested: {hash}");
+        }
+
+        node = candidate;
+        return true;
+    }
 
     public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
     {

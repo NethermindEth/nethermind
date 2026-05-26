@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -12,46 +10,93 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
-/// <remarks>
-/// Delegates all logic to base store except for writing trie nodes (readonly!)
-/// Adds logic for capturing trie nodes accessed during execution and state root recomputation.
-/// </remarks>
-public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStore
+/// <summary>
+/// Read-only wrapper that records every trie node touched during execution / state-root recomputation
+/// for later witness emission. Writes are no-ops.
+/// </summary>
+public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore)
+    : WrappingTrieStore(baseStore), IScopedReadOnlyTraversalProvider
 {
+    private readonly IReadOnlyTrieStore _baseStore = baseStore;
     private readonly ConcurrentDictionary<Hash256AsKey, byte[]> _rlpCollector = new();
 
-    public IEnumerable<byte[]> TouchedNodesRlp => _rlpCollector.Select(static kvp => kvp.Value);
-
-    public void Dispose() => baseStore.Dispose();
-
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
+    public IEnumerable<byte[]> TouchedNodesRlp
     {
-        TrieNode node = baseStore.FindCachedOrUnknown(address, in path, hash);
-        if (node.NodeType != NodeType.Unknown) _rlpCollector.TryAdd(node.Keccak, node.FullRlp.ToArray());
-        return node;
+        get
+        {
+            foreach (KeyValuePair<Hash256AsKey, byte[]> item in _rlpCollector)
+            {
+                yield return item.Value;
+            }
+        }
     }
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        TryLoadRlp(address, in path, hash, flags)
-        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
+    public override byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        TryLoadRlp(address, in path, in hash, flags)
+        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, new Hash256(in hash));
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        byte[]? rlp = baseStore.TryLoadRlp(address, in path, hash, flags);
-        if (rlp is not null) _rlpCollector.TryAdd(hash, rlp);
+        byte[]? rlp = _baseStore.TryLoadRlp(address, in path, in hash, flags);
+        CaptureRlp(in hash, rlp);
         return rlp;
     }
 
-    public bool HasRoot(Hash256 stateRoot) => baseStore.HasRoot(stateRoot);
+    public override TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        TrieNode node = _baseStore.GetOrLoadNode(address, in path, in hash, flags);
+        CaptureNode(node);
+        return node;
+    }
 
-    public IDisposable BeginScope(BlockHeader? baseBlock) => baseStore.BeginScope(baseBlock);
+    public override bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+    {
+        if (!_baseStore.TryGetOrLoadNode(address, in path, in hash, out node, flags)) return false;
+        CaptureNode(node);
+        return true;
+    }
 
-    public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
+    public override bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
+    {
+        if (!_baseStore.TryGetCachedNode(address, in path, in hash, out node)) return false;
+        CaptureNode(node);
+        return true;
+    }
 
-    public INodeStorage.KeyScheme Scheme => baseStore.Scheme;
+    public override IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
+    public override ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 
-    // WitnessCapturingTrieStore is read-only, so we return a no-op committer that doesn't persist any trie nodes
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
+    private void CaptureNode(TrieNode node)
+    {
+        if (node.NodeType != NodeType.Unknown && node.TryGetKeccak(out ValueHash256 keccak))
+        {
+            _rlpCollector.TryAdd(new Hash256(in keccak), node.FullRlp.ToArray());
+        }
+    }
+
+    private void CaptureRlp(in ValueHash256 hash, byte[]? rlp)
+    {
+        if (rlp is not null)
+        {
+            _rlpCollector.TryAdd(new Hash256(in hash), rlp);
+        }
+    }
+
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver(Hash256? address) =>
+        _baseStore.GetTrieStore(address) is ITrieNodeResolverSource source
+            && source.GetReadOnlyTraversalResolver() is { } readOnlyResolver
+                ? new WitnessCapturingReadOnlyTraversalResolver(this, address, readOnlyResolver)
+                : null;
+
+    private sealed class WitnessCapturingReadOnlyTraversalResolver(
+        WitnessCapturingTrieStore fullTrieStore,
+        Hash256? address,
+        ITrieNodeResolver inner) : ReadOnlyTraversalResolver(fullTrieStore, address, inner)
+    {
+        protected override void OnNodeLoaded(TrieNode node) => fullTrieStore.CaptureNode(node);
+
+        protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
+            new WitnessCapturingReadOnlyTraversalResolver(fullTrieStore, address1, InnerResolver!.GetStorageTrieNodeResolver(address1));
+    }
 }

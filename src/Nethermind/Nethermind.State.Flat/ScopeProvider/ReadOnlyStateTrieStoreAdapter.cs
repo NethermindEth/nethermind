@@ -10,10 +10,11 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 internal class ReadOnlyStateTrieStoreAdapter(ReadOnlySnapshotBundle bundle) : AbstractMinimalTrieStore
 {
-    public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-        bundle.TryFindStateNodes(path, hash, out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
+    public override bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
+        bundle.TryFindStateNodes(path, new Hash256(in hash), out node);
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadStateRlp(path, hash, flags);
+    public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        bundle.TryLoadStateRlp(path, new Hash256(in hash), flags);
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => throw new InvalidOperationException("Commit not supported");
 
@@ -30,10 +31,11 @@ internal class ReadOnlyStorageTrieStoreAdapter(
     Hash256AsKey addressHash
 ) : AbstractMinimalTrieStore
 {
-    public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-        bundle.TryFindStorageNodes(addressHash, path, hash, out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
+    public override bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
+        bundle.TryFindStorageNodes(addressHash, path, new Hash256(in hash), out node);
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
+    public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        bundle.TryLoadStorageRlp(addressHash, in path, new Hash256(in hash), flags);
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => throw new InvalidOperationException("Commit not supported");
 }

@@ -20,14 +20,22 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     private ReadOnlyStateTrieStoreAdapter? _adapter;
 
     // IScopableTrieStore — delegate to adapter (set after BeginScope)
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
-        Resolve(address).FindCachedOrUnknown(in path, hash);
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        Resolve(address).LoadRlp(in path, in hash, flags);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        Resolve(address).LoadRlp(in path, hash, flags);
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        Resolve(address).TryLoadRlp(in path, in hash, flags);
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        Resolve(address).TryLoadRlp(in path, hash, flags);
+    // Forward node lookups to the adapter so its in-memory snapshot path is
+    // consulted before falling through to the on-disk persistence reader.
+    public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        Resolve(address).GetOrLoadNode(in path, in hash, flags);
+
+    public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+        Resolve(address).TryGetOrLoadNode(in path, in hash, out node, flags);
+
+    public bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
+        Resolve(address).TryGetCachedNode(in path, in hash, out node);
 
     public INodeStorage.KeyScheme Scheme =>
         _adapter?.Scheme ?? INodeStorage.KeyScheme.HalfPath;

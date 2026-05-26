@@ -75,4 +75,51 @@ public class OverlayTrieStoreTests
         // After all this, the original should not change.
         dbProvider.StateDb.GetAllKeys().Count().Should().Be(originalKeyCount);
     }
+
+    [Test]
+    [NonParallelizable]
+    public void OverlayStore_read_only_lookup_uses_shared_base_nodes()
+    {
+        using TrieStore existingStore = TestTrieStoreFactory.Build(new MemDb(), No.Pruning, No.Persistence, LimboLogs.Instance);
+        PatriciaTree patriciaTree = new(existingStore, LimboLogs.Instance);
+        {
+            using IBlockCommitter _ = existingStore.BeginBlockCommit(0);
+            patriciaTree.Set(TestItem.Keccaks[0].Bytes, TestItem.Keccaks[0].BytesToArray());
+            patriciaTree.Set(TestItem.Keccaks[1].Bytes, TestItem.Keccaks[1].BytesToArray());
+            patriciaTree.Commit();
+        }
+
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        ReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(true);
+        ITrieStore overlayStore = new OverlayTrieStore(readOnlyDbProvider.GetDb<IDb>(DbNames.State), existingStore.AsReadOnly());
+
+        long sharedHitsBefore = existingStore.SharedNodeHitCount;
+        long clonesBefore = existingStore.CloneForReadOnlyCount;
+
+        PatriciaTree overlaidTree = new(overlayStore, LimboLogs.Instance)
+        {
+            RootHash = patriciaTree.RootHash
+        };
+
+        overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
+
+        existingStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
+        existingStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+    }
+
+    [Test]
+    public void TryGetCachedNode_reads_overlay_before_base_cache()
+    {
+        using TestRawTrieStore baseStore = new(new MemDb());
+        using ITrieStore overlayStore = new OverlayTrieStore(new MemDb(), baseStore.AsReadOnly());
+        PatriciaTree overlaidTree = new(overlayStore, LimboLogs.Instance);
+        overlaidTree.Set(TestItem.Keccaks[0].Bytes, TestItem.Keccaks[0].BytesToArray());
+        overlaidTree.Commit();
+        Hash256 overlayRoot = overlaidTree.RootHash;
+
+        bool found = overlayStore.TryGetCachedNode(null, TreePath.Empty, overlayRoot.ValueHash256, out TrieNode? node);
+
+        found.Should().BeTrue();
+        node!.Keccak.Should().Be(overlayRoot);
+    }
 }

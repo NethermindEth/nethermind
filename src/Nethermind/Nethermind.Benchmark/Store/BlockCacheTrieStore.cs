@@ -28,7 +28,7 @@ internal sealed class BlockCacheTrieStore(IScopedTrieStore inner, Dictionary<Tre
     private const int BlockSize = 24;
     private const int ShardCount = 16;
 
-    private readonly ConcurrentDictionary<Hash256, TrieNode> _nodeCache = new();
+    private readonly ConcurrentDictionary<ValueHash256, TrieNode> _nodeCache = new();
     private readonly LruKeyCache<int>[] _shards = CreateShards();
     private long _hits;
     private long _misses;
@@ -63,28 +63,27 @@ internal sealed class BlockCacheTrieStore(IScopedTrieStore inner, Dictionary<Tre
         return (h, m, ng, nh);
     }
 
-    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+    public bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
     {
         Interlocked.Increment(ref _nodeGets);
-        bool existed = _nodeCache.TryGetValue(hash, out TrieNode? node);
-        if (existed)
+        if (_nodeCache.TryGetValue(hash, out node))
         {
             Interlocked.Increment(ref _nodeHits);
-            return node!;
+            return true;
         }
-        return _nodeCache.GetOrAdd(hash, static h => new TrieNode(NodeType.Unknown, h));
+        return false;
     }
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         SimulateBlockCache(in path);
-        return inner.LoadRlp(in path, hash, flags);
+        return inner.LoadRlp(in path, in hash, flags);
     }
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         SimulateBlockCache(in path);
-        return inner.TryLoadRlp(in path, hash, flags);
+        return inner.TryLoadRlp(in path, in hash, flags);
     }
 
     private void SimulateBlockCache(in TreePath path)
@@ -116,7 +115,7 @@ internal sealed class BlockCacheTrieStore(IScopedTrieStore inner, Dictionary<Tre
     /// </summary>
     public static void CollectNodes(IScopedTrieStore store, TrieNode node, TreePath path, List<(TreePath Path, Hash256 Hash)> result)
     {
-        node.ResolveNode(store, path);
+        TrieNode.ResolveNode(ref node, store, in path);
         if (node.Keccak is Hash256 keccak)
             result.Add((path, keccak));
 

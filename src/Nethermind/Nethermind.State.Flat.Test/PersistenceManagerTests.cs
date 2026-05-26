@@ -301,7 +301,7 @@ public class PersistenceManagerTests
 
         // Add trie nodes
         TreePath path = TreePath.Empty;
-        TrieNode node = new(NodeType.Leaf, Keccak.Zero);
+        TrieNode node = TrieNode.CreateLeafTyped(Keccak.Zero);
         snapshot.Content.StateNodes[path] = node;
 
         FakeWriteBatch writeBatch = new();

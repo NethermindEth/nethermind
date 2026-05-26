@@ -307,6 +307,7 @@ public class PatriciaTreeBulkSetterTests
                 }
             }
 
+            // BulkSet must never write more nodes than a per-key Set baseline.
             newWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
             pTree.RootHash.Should().Be(root);
         }
@@ -398,6 +399,7 @@ public class PatriciaTreeBulkSetterTests
 
         TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Sorted Bulk: {preSortedTime}");
         TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Sorted Bulk: {preSortedWriteCount}");
+        // Sorted BulkSet must never write more nodes than a per-key Set baseline.
         preSortedWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
     }
 
@@ -735,20 +737,23 @@ public class PatriciaTreeBulkSetterTests
 
     public class StrictRawScopedTrieStore(IScopedTrieStore baseTrieStore) : IScopedTrieStore
     {
-        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+        public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            TrieNode node = baseTrieStore.FindCachedOrUnknown(in path, hash);
-            if (hash != Keccak.EmptyTreeHash)
+            TrieNode node = baseTrieStore.GetOrLoadNode(in path, in hash, flags);
+            if (hash != Keccak.EmptyTreeHash.ValueHash256)
             {
-                byte[] rlp = LoadRlp(path, hash);
-                Assert.That(Keccak.Compute(rlp), Is.EqualTo(hash));
+                byte[] rlp = LoadRlp(path, in hash);
+                Assert.That(ValueKeccak.Compute(rlp), Is.EqualTo(hash));
             }
             return node;
         }
 
-        public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, hash, flags);
+        public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode node, ReadFlags flags = ReadFlags.None) =>
+            baseTrieStore.TryGetOrLoadNode(in path, in hash, out node, flags);
 
-        public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
+        public byte[] LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, in hash, flags);
+
+        public byte[] TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, in hash, flags);
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => baseTrieStore.GetStorageTrieNodeResolver(address);
 

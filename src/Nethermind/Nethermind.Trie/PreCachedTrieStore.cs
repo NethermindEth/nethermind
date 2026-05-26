@@ -12,50 +12,104 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public sealed class PreCachedTrieStore : ITrieStore
+public sealed class PreCachedTrieStore : WrappingTrieStore, IScopedReadOnlyTraversalProvider
 {
-    private readonly ITrieStore _inner;
     private readonly NodeStorageCache _preBlockCache;
     private readonly SeqlockCache<NodeKey, byte[]>.ValueFactory _loadRlp;
     private readonly SeqlockCache<NodeKey, byte[]>.ValueFactory _tryLoadRlp;
 
-    public PreCachedTrieStore(ITrieStore inner, NodeStorageCache cache)
+    public PreCachedTrieStore(ITrieStore inner, NodeStorageCache cache) : base(inner)
     {
-        _inner = inner;
         _preBlockCache = cache;
 
         // Capture the delegate once for default path to avoid the allocation of the lambda per call
-        _loadRlp = (in NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
-        _tryLoadRlp = (in NodeKey key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
+        _loadRlp = (in NodeKey key) => Inner.LoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
+        _tryLoadRlp = (in NodeKey key) => Inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
     }
 
-    public void Dispose() => _inner.Dispose();
+    public override IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => _inner.BeginCommit(address, root, writeFlags);
-
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => _inner.BeginBlockCommit(blockNumber);
-
-    public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
-
-    public bool HasRoot(Hash256 stateRoot, long blockNumber) => _inner.HasRoot(stateRoot, blockNumber);
-
-    public IDisposable BeginScope(BlockHeader? baseBlock) => _inner.BeginScope(baseBlock);
-
-    public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
-
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) => _inner.FindCachedOrUnknown(address, in path, hash);
-
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        _preBlockCache.GetOrAdd(new(address, in path, hash),
+    public override byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        _preBlockCache.GetOrAdd(new(address, in path, in hash),
             flags == ReadFlags.None ? _loadRlp :
-            (in NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
+            (in NodeKey key) => Inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        _preBlockCache.GetOrAdd(new(address, in path, hash),
+    public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        _preBlockCache.GetOrAdd(new(address, in path, in hash),
             flags == ReadFlags.None ? _tryLoadRlp :
-            (in key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
+            (in key) => Inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
 
-    public INodeStorage.KeyScheme Scheme => _inner.Scheme;
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver(Hash256? address) =>
+        Inner.GetTrieStore(address) is ITrieNodeResolverSource source
+            && source.GetReadOnlyTraversalResolver() is { } readOnlyResolver
+                ? new PreCachedReadOnlyTraversalResolver(this, address, readOnlyResolver)
+                : null;
+
+    private sealed class PreCachedReadOnlyTraversalResolver(
+        PreCachedTrieStore fullTrieStore,
+        Hash256? address,
+        ITrieNodeResolver inner) : ReadOnlyTraversalResolver(fullTrieStore, address, inner)
+    {
+        public override TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            if (fullTrieStore.TryGetCachedNode(Address, in path, in hash, out TrieNode? cached))
+            {
+                return cached;
+            }
+
+            byte[] rlp = fullTrieStore.LoadRlp(Address, in path, in hash, flags)
+                ?? MissingTrieNodeException.ThrowMissing(Address, in path, in hash);
+            TrieNode node = TrieNode.DecodeNode(in path, in hash, rlp);
+            return fullTrieStore.PublishSharedReadOnly(Address, in path, in hash, node);
+        }
+
+        public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+        {
+            if (fullTrieStore.TryGetCachedNode(Address, in path, in hash, out node))
+            {
+                return true;
+            }
+
+            byte[]? rlp = fullTrieStore.TryLoadRlp(Address, in path, in hash, flags);
+            if (rlp is null)
+            {
+                node = null;
+                return false;
+            }
+
+            return TryDecodeAndPublish(fullTrieStore, Address, in path, in hash, rlp, out node);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool TryDecodeAndPublish(
+            PreCachedTrieStore fullTrieStore,
+            Hash256? address,
+            in TreePath path,
+            in ValueHash256 hash,
+            byte[] rlp,
+            [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
+        {
+            try
+            {
+                node = TrieNode.DecodeNode(in path, in hash, rlp);
+                node = fullTrieStore.PublishSharedReadOnly(address, in path, in hash, node);
+                return true;
+            }
+            catch (TrieException)
+            {
+                node = null;
+                return false;
+            }
+        }
+
+        protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
+            new PreCachedReadOnlyTraversalResolver(fullTrieStore, address1, InnerResolver!.GetStorageTrieNodeResolver(address1));
+    }
+
+    private TrieNode PublishSharedReadOnly(Hash256? address, in TreePath path, in ValueHash256 hash, TrieNode node) =>
+        Inner is ISharedReadOnlyTrieStore readOnlyTrieStore
+            ? readOnlyTrieStore.PublishSharedReadOnly(address, in path, in hash, node)
+            : node;
 }
 
 public readonly struct NodeKey : IEquatable<NodeKey>, IHash64bit<NodeKey>

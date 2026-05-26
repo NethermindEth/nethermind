@@ -100,7 +100,6 @@ public class PreimageRecordingPersistenceTests
 
         TreePath path = TreePath.FromHexString("1234");
         byte[] rlp = [0xc1, 0x01];
-        TrieNode node = new(NodeType.Leaf, rlp);
         Hash256 addrHash = TestItem.KeccakA;
         Hash256 slotHash = TestItem.KeccakB;
         Account account = TestItem.GenerateIndexedAccount(0);
@@ -108,8 +107,8 @@ public class PreimageRecordingPersistenceTests
 
         using (IPersistence.IWriteBatch batch = _sut.CreateWriteBatch(from, to, WriteFlags.None))
         {
-            batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
-            batch.SetStorageTrieNode(addrHash, path, node.FullRlp.AsSpan());
+            batch.SetStateTrieNode(path, rlp);
+            batch.SetStorageTrieNode(addrHash, path, rlp);
             batch.SetStorageRaw(addrHash, slotHash, value);
             batch.SetAccountRaw(addrHash, account);
         }

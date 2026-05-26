@@ -79,10 +79,13 @@ public class CommitSetQueue
     {
         lock (_queue)
         {
+            // GetViewBetween only needs (blockNumber, stateRoot) for IComparable<BlockCommitSet>;
+            // SealAsBound supplies the comparison hash directly so we do not have to allocate an
+            // Unknown TrieNode placeholder purely to carry Hash256.Zero / Keccak.MaxValue.
             BlockCommitSet lowerBound = new(blockNumber);
-            lowerBound.Seal(new TrieNode(NodeType.Unknown, Hash256.Zero));
+            lowerBound.SealAsBound(Hash256.Zero);
             BlockCommitSet upperBound = new(blockNumber);
-            upperBound.Seal(new TrieNode(NodeType.Unknown, Keccak.MaxValue));
+            upperBound.SealAsBound(Keccak.MaxValue);
 
             ArrayPoolListRef<BlockCommitSet> result = new();
             result.AddRange(_queue.GetViewBetween(lowerBound, upperBound));

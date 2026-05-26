@@ -27,7 +27,14 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
     public const int MemorySize = 36;
     public ValueHash256 Path;
 
-    public static TreePath Empty => new();
+    private static readonly TreePath _empty;
+
+    /// <summary>
+    /// Returns a reference to the canonical empty <see cref="TreePath"/> (length 0, zeroed path).
+    /// Hot callers that pass to <c>in TreePath</c> parameters or copy-construct from it avoid
+    /// the 36-byte stack zero-init that <c>=&gt; new()</c> would force per call site.
+    /// </summary>
+    public static ref readonly TreePath Empty => ref _empty;
 
     public readonly Span<byte> Span => Path.BytesAsSpan;
 

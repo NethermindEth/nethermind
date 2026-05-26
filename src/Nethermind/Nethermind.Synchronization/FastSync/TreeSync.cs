@@ -803,8 +803,8 @@ namespace Nethermind.Synchronization.FastSync
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
             TreePath path = currentStateSyncItem.Path;
 
-            TrieNode trieNode = new(NodeType.Unknown, currentResponseItem);
-            trieNode.ResolveNode(NullTrieNodeResolver.Instance, path); // TODO: will this work now?
+            TrieNode trieNode = new TrieSyncNode(currentResponseItem);
+            TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in path); // TODO: will this work now?
             switch (trieNode.NodeType)
             {
                 case NodeType.Unknown:
@@ -862,7 +862,12 @@ namespace Nethermind.Synchronization.FastSync
 
                     break;
                 case NodeType.Extension:
-                    Hash256? next = trieNode.GetChild(NullTrieNodeResolver.Instance, ref path, 0)?.Keccak;
+                    // Read the child hash directly from the parent RLP. The old pattern
+                    // GetChild(NullTrieNodeResolver, ..., 0)?.Keccak relied on a placeholder
+                    // returned from GetChild; with the typed hierarchy GetChild now eagerly
+                    // resolves through the resolver, which here is Null and throws. Sync
+                    // only needs the hash to schedule a child fetch, not the resolved node.
+                    Hash256? next = trieNode.GetChildHash(0);
                     if (next is not null)
                     {
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 1);

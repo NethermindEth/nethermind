@@ -68,7 +68,7 @@ public class TrieNodeCacheTests
     {
         TreePath path = TreePath.FromHexString("abcd");
         Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode trieNode = new(NodeType.Leaf, hash);
+        TrieNode trieNode = TrieNode.CreateLeafTyped(hash);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
         transientResource.Nodes.Set(null, in path, trieNode);
@@ -87,7 +87,7 @@ public class TrieNodeCacheTests
         Hash256 address = Keccak.Compute([0xaa, 0xbb]);
         TreePath path = TreePath.FromHexString("1234");
         Hash256 hash = Keccak.Compute([3, 4, 5]);
-        TrieNode trieNode = new(NodeType.Branch, hash);
+        TrieNode trieNode = TrieNode.CreateBranchTyped(hash);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
         transientResource.Nodes.Set(address, in path, trieNode);
@@ -109,7 +109,7 @@ public class TrieNodeCacheTests
 
         TreePath path = TreePath.FromHexString("abcd");
         Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode trieNode = new(NodeType.Leaf, hash);
+        TrieNode trieNode = TrieNode.CreateLeafTyped(hash);
 
         TransientResource transientResource = zeroResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
         transientResource.Nodes.Set(null, in path, trieNode);
@@ -134,9 +134,9 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute([2]);
         Hash256 hash3 = Keccak.Compute([3]);
 
-        transientResource.Nodes.Set(null, in path1, new TrieNode(NodeType.Leaf, hash1));
-        transientResource.Nodes.Set(null, in path2, new TrieNode(NodeType.Branch, hash2));
-        transientResource.Nodes.Set(null, in path3, new TrieNode(NodeType.Extension, hash3));
+        transientResource.Nodes.Set(null, in path1, TrieNode.CreateLeafTyped(hash1));
+        transientResource.Nodes.Set(null, in path2, TrieNode.CreateBranchTyped(hash2));
+        transientResource.Nodes.Set(null, in path3, TrieNode.CreateExtensionTyped(hash3));
 
         _cache.Add(transientResource);
 
@@ -156,8 +156,8 @@ public class TrieNodeCacheTests
         Hash256 stateHash = Keccak.Compute([1]);
         Hash256 storageHash = Keccak.Compute([2]);
 
-        transientResource.Nodes.Set(null, in statePath, new TrieNode(NodeType.Leaf, stateHash));
-        transientResource.Nodes.Set(storageAddress, in storagePath, new TrieNode(NodeType.Leaf, storageHash));
+        transientResource.Nodes.Set(null, in statePath, TrieNode.CreateLeafTyped(stateHash));
+        transientResource.Nodes.Set(storageAddress, in storagePath, TrieNode.CreateLeafTyped(storageHash));
 
         _cache.Add(transientResource);
 
@@ -171,7 +171,7 @@ public class TrieNodeCacheTests
         TreePath path = TreePath.FromHexString("abcd");
         Hash256 storedHash = Keccak.Compute([1, 2, 3]);
         Hash256 queryHash = Keccak.Compute([4, 5, 6]);
-        TrieNode trieNode = new(NodeType.Leaf, storedHash);
+        TrieNode trieNode = TrieNode.CreateLeafTyped(storedHash);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
         transientResource.Nodes.Set(null, in path, trieNode);
@@ -192,12 +192,12 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute([4, 5, 6]);
 
         TransientResource transientResource1 = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource1.Nodes.Set(null, in path, new TrieNode(NodeType.Leaf, hash1));
+        transientResource1.Nodes.Set(null, in path, TrieNode.CreateLeafTyped(hash1));
 
         _cache.Add(transientResource1);
 
         TransientResource transientResource2 = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource2.Nodes.Set(null, in path, new TrieNode(NodeType.Leaf, hash2));
+        transientResource2.Nodes.Set(null, in path, TrieNode.CreateLeafTyped(hash2));
 
         _cache.Add(transientResource2);
 
@@ -214,8 +214,8 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute([2]);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path1, new TrieNode(NodeType.Leaf, hash1));
-        transientResource.Nodes.Set(null, in path2, new TrieNode(NodeType.Leaf, hash2));
+        transientResource.Nodes.Set(null, in path1, TrieNode.CreateLeafTyped(hash1));
+        transientResource.Nodes.Set(null, in path2, TrieNode.CreateLeafTyped(hash2));
 
         _cache.Add(transientResource);
 
@@ -233,8 +233,8 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute([2]);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(address1, in path, new TrieNode(NodeType.Leaf, hash1));
-        transientResource.Nodes.Set(address2, in path, new TrieNode(NodeType.Leaf, hash2));
+        transientResource.Nodes.Set(address1, in path, TrieNode.CreateLeafTyped(hash1));
+        transientResource.Nodes.Set(address2, in path, TrieNode.CreateLeafTyped(hash2));
 
         _cache.Add(transientResource);
 
@@ -255,9 +255,9 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute([2]);
         Hash256 hash3 = Keccak.Compute([3]);
 
-        transientResource.Nodes.Set(null, in path1, new TrieNode(NodeType.Leaf, hash1));
-        transientResource.Nodes.Set(null, in path2, new TrieNode(NodeType.Branch, hash2));
-        transientResource.Nodes.Set(null, in path3, new TrieNode(NodeType.Extension, hash3));
+        transientResource.Nodes.Set(null, in path1, TrieNode.CreateLeafTyped(hash1));
+        transientResource.Nodes.Set(null, in path2, TrieNode.CreateBranchTyped(hash2));
+        transientResource.Nodes.Set(null, in path3, TrieNode.CreateExtensionTyped(hash3));
 
         _cache.Add(transientResource);
 
@@ -286,8 +286,8 @@ public class TrieNodeCacheTests
         Hash256 stateHash = Keccak.Compute([1]);
         Hash256 storageHash = Keccak.Compute([2]);
 
-        transientResource.Nodes.Set(null, in statePath, new TrieNode(NodeType.Leaf, stateHash));
-        transientResource.Nodes.Set(storageAddress, in storagePath, new TrieNode(NodeType.Leaf, storageHash));
+        transientResource.Nodes.Set(null, in statePath, TrieNode.CreateLeafTyped(stateHash));
+        transientResource.Nodes.Set(storageAddress, in storagePath, TrieNode.CreateLeafTyped(storageHash));
 
         _cache.Add(transientResource);
 
@@ -329,7 +329,7 @@ public class ChildCacheTests
     {
         TreePath path = TreePath.FromHexString("abcd");
         Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode trieNode = new(NodeType.Leaf, hash);
+        TrieNode trieNode = TrieNode.CreateLeafTyped(hash);
 
         _cache.Set(null, in path, trieNode);
 
@@ -345,7 +345,7 @@ public class ChildCacheTests
         Hash256 address = Keccak.Compute([0xaa, 0xbb]);
         TreePath path = TreePath.FromHexString("1234");
         Hash256 hash = Keccak.Compute([3, 4, 5]);
-        TrieNode trieNode = new(NodeType.Branch, hash);
+        TrieNode trieNode = TrieNode.CreateBranchTyped(hash);
 
         _cache.Set(address, in path, trieNode);
 
@@ -361,7 +361,7 @@ public class ChildCacheTests
         TreePath path = TreePath.FromHexString("abcd");
         Hash256 storedHash = Keccak.Compute([1, 2, 3]);
         Hash256 queryHash = Keccak.Compute([4, 5, 6]);
-        TrieNode trieNode = new(NodeType.Leaf, storedHash);
+        TrieNode trieNode = TrieNode.CreateLeafTyped(storedHash);
 
         _cache.Set(null, in path, trieNode);
 
@@ -376,8 +376,8 @@ public class ChildCacheTests
     {
         TreePath path = TreePath.FromHexString("abcd");
         Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode existingNode = new(NodeType.Leaf, hash);
-        TrieNode newNode = new(NodeType.Leaf, hash);
+        TrieNode existingNode = TrieNode.CreateLeafTyped(hash);
+        TrieNode newNode = TrieNode.CreateLeafTyped(hash);
 
         _cache.Set(null, in path, existingNode);
         TrieNode result = _cache.GetOrAdd(null, in path, newNode);
@@ -390,7 +390,7 @@ public class ChildCacheTests
     {
         TreePath path = TreePath.FromHexString("abcd");
         Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode newNode = new(NodeType.Leaf, hash);
+        TrieNode newNode = TrieNode.CreateLeafTyped(hash);
 
         TrieNode result = _cache.GetOrAdd(null, in path, newNode);
 
@@ -404,8 +404,8 @@ public class ChildCacheTests
         Hash256 address = Keccak.Compute([0xaa, 0xbb]);
         TreePath path = TreePath.FromHexString("1234");
         Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode existingNode = new(NodeType.Branch, hash);
-        TrieNode newNode = new(NodeType.Branch, hash);
+        TrieNode existingNode = TrieNode.CreateBranchTyped(hash);
+        TrieNode newNode = TrieNode.CreateBranchTyped(hash);
 
         _cache.Set(address, in path, existingNode);
         TrieNode result = _cache.GetOrAdd(address, in path, newNode);
@@ -418,7 +418,7 @@ public class ChildCacheTests
     {
         TreePath path = TreePath.FromHexString("abcd");
         Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode trieNode = new(NodeType.Leaf, hash);
+        TrieNode trieNode = TrieNode.CreateLeafTyped(hash);
 
         _cache.Set(null, in path, trieNode);
         Assert.That(_cache.Count, Is.EqualTo(1));
@@ -440,10 +440,10 @@ public class ChildCacheTests
         Hash256 hash1 = Keccak.Compute([1]);
         Hash256 hash2 = Keccak.Compute([2]);
 
-        _cache.Set(null, in path1, new TrieNode(NodeType.Leaf, hash1));
+        _cache.Set(null, in path1, TrieNode.CreateLeafTyped(hash1));
         Assert.That(_cache.Count, Is.EqualTo(1));
 
-        _cache.Set(null, in path2, new TrieNode(NodeType.Leaf, hash2));
+        _cache.Set(null, in path2, TrieNode.CreateLeafTyped(hash2));
         Assert.That(_cache.Count, Is.EqualTo(2));
     }
 
@@ -464,7 +464,7 @@ public class ChildCacheTests
         {
             TreePath path = TreePath.FromHexString(i.ToString("x8"));
             Hash256 hash = Keccak.Compute([(byte)i]);
-            smallCache.Set(null, in path, new TrieNode(NodeType.Leaf, hash));
+            smallCache.Set(null, in path, TrieNode.CreateLeafTyped(hash));
         }
 
         smallCache.Reset();
@@ -480,8 +480,8 @@ public class ChildCacheTests
         Hash256 stateHash = Keccak.Compute([1, 2, 3]);
         Hash256 storageHash = Keccak.Compute([4, 5, 6]);
         Hash256 storageAddress = Keccak.Compute([0xaa]);
-        TrieNode stateNode = new(NodeType.Leaf, stateHash);
-        TrieNode storageNode = new(NodeType.Branch, storageHash);
+        TrieNode stateNode = TrieNode.CreateLeafTyped(stateHash);
+        TrieNode storageNode = TrieNode.CreateBranchTyped(storageHash);
 
         _cache.Set(null, in path, stateNode);
         _cache.Set(storageAddress, in path, storageNode);

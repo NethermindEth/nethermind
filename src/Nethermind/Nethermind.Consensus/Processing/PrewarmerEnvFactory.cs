@@ -26,6 +26,21 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILifetime
                 .AddSingleton<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
         });
 
-        return childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
+        return new PrewarmerTxProcessingEnv(
+            childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>(),
+            worldState);
+    }
+
+    private sealed class PrewarmerTxProcessingEnv(
+        IReadOnlyTxProcessorSource txProcessingEnv,
+        IPreBlockCacheWarmup preBlockCacheWarmup)
+        : IReadOnlyTxProcessorSource, IPreBlockCacheWarmupSource
+    {
+        public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => txProcessingEnv.Build(baseBlock);
+
+        public IPreBlockCacheWarmupSession BuildPreBlockCacheWarmup(BlockHeader? baseBlock)
+            => preBlockCacheWarmup.BeginPreBlockCacheWarmup(baseBlock);
+
+        public void Dispose() => txProcessingEnv.Dispose();
     }
 }

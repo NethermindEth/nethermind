@@ -55,12 +55,15 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
     protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);
 
-    private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager) : IWorldStateScopeProvider.IScope
+    private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager) : IWorldStateScopeProvider.IScope, IUncachedAccountReader, IUncachedStorageTreeProvider
     {
         public void Dispose()
         {
             _trieStoreCloser.Dispose();
-            _backingStateTree.RootHash = Keccak.EmptyTreeHash;
+            if (!_committed)
+            {
+                _backingStateTree.RootHash = Keccak.EmptyTreeHash;
+            }
             _storages.Clear();
         }
 
@@ -78,6 +81,10 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             return account;
         }
 
+        public Account? GetAccountUncached(Address address) => _backingStateTree.Get(address);
+
+        public bool CanReadAccountUncached => true;
+
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
@@ -89,6 +96,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1 = codeDb;
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
         private readonly ILogManager _logManager = logManager;
+        private bool _committed;
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber) => new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
 
@@ -118,17 +126,19 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
             Task.WaitAll(commitTask.AsSpan());
             _backingStateTree.Commit();
+            _committed = true;
             _storages.Clear();
         }
 
-        internal StorageTree LookupStorageTree(Address address)
+        internal StorageTree LookupStorageTree(Address address, bool cacheAccount = true)
         {
             if (_storages.TryGetValue(address, out StorageTree storageTree))
             {
                 return storageTree;
             }
 
-            storageTree = _scopeProvider.CreateStorageTree(address, Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash);
+            Account? account = cacheAccount ? Get(address) : GetAccountUncached(address);
+            storageTree = _scopeProvider.CreateStorageTree(address, account?.StorageRoot ?? Keccak.EmptyTreeHash);
             _storages[address] = storageTree;
             return storageTree;
         }
@@ -136,6 +146,14 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         public void ClearLoadedAccounts() => _loadedAccounts.Clear();
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => LookupStorageTree(address);
+
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTreeUncachedAccount(Address address)
+        {
+            Account? account = GetAccountUncached(address);
+            return _scopeProvider.CreateStorageTree(address, account?.StorageRoot ?? Keccak.EmptyTreeHash);
+        }
+
+        public bool CanCreateStorageTreeUncachedAccount => true;
     }
 
     private class WorldStateWriteBatch(

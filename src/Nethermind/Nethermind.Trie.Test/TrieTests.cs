@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -115,6 +116,66 @@ namespace Nethermind.Trie.Test
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             checkTree.Get(_keyA).ToArray().Should().NotBeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyA).ToArray().Should().BeEquivalentTo(_longLeaf2);
+        }
+
+        [Test]
+        public void Set_splitting_extension_preserves_unresolved_child_hash()
+        {
+            ValueHash256 childHash = TestItem.Keccaks[0].ValueHash256;
+
+            TrieNode extension = TrieNode.CreateExtensionTyped();
+            extension.Key = HexPrefix.GetArray([1, 2]);
+            extension.SetChildHash(0, new Hash256(childHash));
+
+            TreePath rootPath = TreePath.Empty;
+            CappedArray<byte> rootRlp = extension.RlpEncode(NullTrieNodeResolver.Instance, ref rootPath);
+            ValueHash256 rootHash = ValueKeccak.Compute(rootRlp.AsSpan());
+            MissingChildScopedTrieStore trieStore = new(rootHash, rootRlp.AsSpan().ToArray(), childHash);
+
+            PatriciaTree tree = new(trieStore, new Hash256(rootHash), true, LimboLogs.Instance);
+            tree.Set(Bytes.FromHexString("13"), [1, 2, 3]);
+            tree.UpdateRootHash(canBeParallel: false);
+
+            trieStore.MissingChildLoads.Should().Be(0);
+
+            TrieNode root = tree.RootRef!;
+            root.IsExtension.Should().BeTrue();
+            TreePath path = TreePath.Empty;
+            TrieNode branch = root.GetChild(NullTrieNodeResolver.Instance, ref path, 0)!;
+            branch.IsBranch.Should().BeTrue();
+            branch.GetRawChildRef(2).Should().BeNull();
+            branch.TryGetChildHash(2, out ValueHash256 preservedHash).Should().BeTrue();
+            preservedHash.Should().Be(childHash);
+            branch.GetRawChildRef(3).Should().NotBeNull();
+        }
+
+        [Test]
+        public void Delete_combining_branch_loads_unresolved_child_before_compressing()
+        {
+            TrieNode child = TrieNodeFactory.CreateLeaf([0], new byte[] { 7 });
+            TreePath childPath = TreePath.Empty;
+            CappedArray<byte> childRlp = child.RlpEncode(NullTrieNodeResolver.Instance, ref childPath);
+            ValueHash256 childHash = ValueKeccak.Compute(childRlp.AsSpan());
+
+            TrieNode branch = TrieNode.CreateBranchTyped();
+            branch.SetChildHash(1, new Hash256(childHash));
+            branch.SetChild(2, TrieNodeFactory.CreateLeaf([0], new byte[] { 1, 2, 3 }));
+
+            TreePath rootPath = TreePath.Empty;
+            CappedArray<byte> rootRlp = branch.RlpEncode(NullTrieNodeResolver.Instance, ref rootPath);
+            ValueHash256 rootHash = ValueKeccak.Compute(rootRlp.AsSpan());
+            MissingChildScopedTrieStore trieStore = new(rootHash, rootRlp.AsSpan().ToArray(), childHash, childRlp.AsSpan().ToArray());
+
+            PatriciaTree tree = new(trieStore, new Hash256(rootHash), true, LimboLogs.Instance);
+            tree.Set(Bytes.FromHexString("20"), []);
+            tree.UpdateRootHash(canBeParallel: false);
+
+            trieStore.MissingChildLoads.Should().Be(1);
+
+            TrieNode root = tree.RootRef!;
+            root.IsLeaf.Should().BeTrue();
+            root.Key.Should().Equal(HexPrefix.GetArray([1, 0]));
+            root.Value.ToArray().Should().Equal([7]);
         }
 
         [Test]
@@ -551,6 +612,48 @@ namespace Nethermind.Trie.Test
             PatriciaTree checkTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
             checkTree.RootHash = patriciaTree.RootHash;
             return checkTree;
+        }
+
+        [Test]
+        public void Commit_after_update_root_hash_keeps_root_hash_and_reuses_root_rlp()
+        {
+            Hash256 expectedRootHash;
+
+            {
+                MemDb memDb = new();
+                using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+                PatriciaTree patriciaTree = CreateTreeWithBranch(trieStore);
+
+                patriciaTree.UpdateRootHash();
+                expectedRootHash = patriciaTree.RootHash;
+                TrieNode root = patriciaTree.Root!;
+                CappedArray<byte> rootRlp = root.FullRlp;
+
+                rootRlp.IsNotNull.Should().BeTrue();
+                trieStore.CommitPatriciaTrie(0, patriciaTree);
+
+                patriciaTree.RootHash.Should().Be(expectedRootHash);
+                root.FullRlp.UnderlyingArray.Should().BeSameAs(rootRlp.UnderlyingArray);
+            }
+
+            {
+                MemDb memDb = new();
+                using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+                PatriciaTree patriciaTree = CreateTreeWithBranch(trieStore);
+
+                trieStore.CommitPatriciaTrie(0, patriciaTree);
+
+                patriciaTree.RootHash.Should().Be(expectedRootHash);
+            }
+
+            PatriciaTree CreateTreeWithBranch(ITrieStore trieStore)
+            {
+                PatriciaTree patriciaTree = new(trieStore, _logManager);
+                patriciaTree.Set(_keyA, _longLeaf1);
+                patriciaTree.Set(_keyB, _longLeaf2);
+                patriciaTree.Set(_keyC, _longLeaf3);
+                return patriciaTree;
+            }
         }
 
         [Test]
@@ -1327,6 +1430,41 @@ namespace Nethermind.Trie.Test
             }, CancellationToken.None, TaskCreationOptions.None, schedulerPair.ConcurrentScheduler);
 
             task.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue("Commit deadlocked on bounded scheduler");
+        }
+
+        private sealed class MissingChildScopedTrieStore(
+            ValueHash256 rootHash,
+            byte[] rootRlp,
+            ValueHash256 missingChildHash,
+            byte[]? childRlp = null) : IScopedTrieStore
+        {
+            public int MissingChildLoads { get; private set; }
+
+            public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+            {
+                if (path.Length == 0 && hash == rootHash)
+                {
+                    return rootRlp;
+                }
+
+                if (hash == missingChildHash)
+                {
+                    MissingChildLoads++;
+                    return childRlp;
+                }
+
+                return null;
+            }
+
+            public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+                LoadRlp(in path, in hash, flags);
+
+            public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
+
+            public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.Hash;
+
+            public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
+                throw new InvalidOperationException($"{nameof(BeginCommit)} is not used by this test.");
         }
     }
 }

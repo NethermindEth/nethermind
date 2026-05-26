@@ -46,11 +46,11 @@ public class RlpTrieNodeEncodingBenchmark
         _branch = _extension.GetChild(_store, ref path, 0);
 
         path.AppendMut(0);
-        _branch.TryResolveNode(_store, ref path);
+        TrieNode.TryResolveNode(ref _branch, _store, ref path);
         _branch.NodeType.Should().Be(NodeType.Branch);
 
         _leaf = _branch.GetChild(_store, ref path, 0);
-        _leaf.TryResolveNode(_store, ref path);
+        TrieNode.TryResolveNode(ref _leaf, _store, ref path);
         _leaf.NodeType.Should().Be(NodeType.Leaf);
     }
 

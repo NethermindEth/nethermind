@@ -48,7 +48,7 @@ public class FlatReadOnlyTrieStoreTests
 
     [Test]
     public void Resolve_BeforeBeginScope_Throws() =>
-        Assert.That(() => _store.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA),
+        Assert.That(() => _store.TryGetCachedNode(null, TreePath.Empty, TestItem.KeccakA.ValueHash256, out _),
             Throws.InvalidOperationException);
 
     [Test]
@@ -63,9 +63,9 @@ public class FlatReadOnlyTrieStoreTests
     public void BeginScope_EnablesStateAndStorageNodeLookup()
     {
         TreePath path = TreePath.FromHexString("12");
-        TrieNode stateNode = new(NodeType.Leaf, [0xc1, 0x01]);
+        TrieNode stateNode = TrieNode.CreateLeafTyped([0xc1, 0x01]);
         Hash256 storageAddress = TestItem.KeccakA;
-        TrieNode storageNode = new(NodeType.Leaf, [0xc1, 0x02]);
+        TrieNode storageNode = TrieNode.CreateLeafTyped([0xc1, 0x02]);
 
         _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool, c =>
         {
@@ -75,8 +75,10 @@ public class FlatReadOnlyTrieStoreTests
 
         using IDisposable scope = _store.BeginScope(Build.A.BlockHeader.TestObject);
 
-        _store.FindCachedOrUnknown(null, path, Keccak.Zero).Should().BeSameAs(stateNode);
-        _store.FindCachedOrUnknown(storageAddress, path, Keccak.Zero).Should().BeSameAs(storageNode);
+        _store.TryGetCachedNode(null, path, Keccak.Zero, out TrieNode? foundStateNode).Should().BeTrue();
+        foundStateNode.Should().BeSameAs(stateNode);
+        _store.TryGetCachedNode(storageAddress, path, Keccak.Zero, out TrieNode? foundStorageNode).Should().BeTrue();
+        foundStorageNode.Should().BeSameAs(storageNode);
     }
 
     [Test]
@@ -87,7 +89,7 @@ public class FlatReadOnlyTrieStoreTests
         IDisposable scope = _store.BeginScope(Build.A.BlockHeader.TestObject);
         scope.Dispose();
 
-        Assert.That(() => _store.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA),
+        Assert.That(() => _store.TryGetCachedNode(null, TreePath.Empty, TestItem.KeccakA.ValueHash256, out _),
             Throws.InvalidOperationException);
     }
 

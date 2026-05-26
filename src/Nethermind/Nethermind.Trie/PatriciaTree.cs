@@ -47,6 +47,7 @@ namespace Nethermind.Trie
 
         private static void ReturnTraverseStack(TraverseStack stack) => _threadStaticTraverseStack = stack;
         public readonly IScopedTrieStore TrieStore;
+        private readonly ITrieNodeResolver _readResolver;
         public ICappedArrayPool? _bufferPool;
 
         private readonly bool _allowCommits;
@@ -55,7 +56,96 @@ namespace Nethermind.Trie
 
         private Hash256 _rootHash = Keccak.EmptyTreeHash;
 
-        public TrieNode? RootRef { get; set; }
+        // Distinct sentinel instance of TrieNodeNullSentinel (same class as TrieNode.NullNode
+        // which marks empty branch slots, but a different instance - identity, not type,
+        // disambiguates). When _rootRef holds this sentinel, the root has not yet been
+        // lazy-resolved; any other value (typed TrieNode or null) is the authoritative
+        // result of either lazy-resolve or an explicit setter call.
+        private static readonly TrieNode _unresolvedSentinel = new TrieNodeNullSentinel();
+
+        private TrieNode? _rootRef = _unresolvedSentinel;
+        private readonly Lock _rootRefLock = new();
+
+        /// <summary>
+        /// The in-memory root of this trie. Three states for the backing field:
+        /// <list type="bullet">
+        /// <item><see cref="_unresolvedSentinel"/> - not yet lazy-resolved; first read
+        /// loads from the underlying store via <see cref="ITrieNodeResolver.GetOrLoadNode"/>,
+        /// or returns null when <see cref="_rootHash"/> == <see cref="Keccak.EmptyTreeHash"/>.
+        /// A non-empty hash that cannot be resolved surfaces as
+        /// <see cref="MissingTrieNodeException"/> - state root absent is an invariant
+        /// violation, not "empty trie".</item>
+        /// <item><c>null</c> - authoritative empty root (delete-all, selfdestruct, or
+        /// explicit clear via the setter). Sticks; no re-resolve.</item>
+        /// <item>typed <see cref="TrieNode"/> - resolved root.</item>
+        /// </list>
+        /// Root-hash changes that invalidate a resolved root are published under
+        /// <see cref="_rootRefLock"/> so the sentinel and backing hash cannot be observed
+        /// in opposite orders by the lazy resolver.
+        /// </summary>
+        public TrieNode? RootRef
+        {
+            get
+            {
+                TryResolveRoot(out TrieNode? root, throwOnMissing: true);
+                return root;
+            }
+            set => Volatile.Write(ref _rootRef, value);
+        }
+
+        /// <summary>
+        /// Non-throwing sibling of <see cref="RootRef"/>. Returns <c>true</c> with a possibly-null
+        /// <paramref name="rootRef"/> when the trie is empty or the root resolves; <c>false</c>
+        /// when a non-empty root is missing from the store. Used by visitor/sync paths that handle
+        /// "missing node" explicitly via <c>VisitMissingNode</c>.
+        /// </summary>
+        public bool TryGetRootRef(out TrieNode? rootRef) => TryResolveRoot(out rootRef, throwOnMissing: false);
+
+        // Shared lazy-resolve core. Throwing variant surfaces MissingTrieNodeException for non-empty
+        // roots that aren't in the store - silently degrading to "empty trie" would corrupt downstream
+        // reads (zero balances, bogus "insufficient funds"). Try-variant returns false instead.
+        private bool TryResolveRoot(out TrieNode? rootRef, bool throwOnMissing)
+        {
+            TrieNode? local = Volatile.Read(ref _rootRef);
+            if (!ReferenceEquals(local, _unresolvedSentinel))
+            {
+                rootRef = local;
+                return true;
+            }
+
+            lock (_rootRefLock)
+            {
+                local = _rootRef;
+                if (!ReferenceEquals(local, _unresolvedSentinel))
+                {
+                    rootRef = local;
+                    return true;
+                }
+
+                Hash256 rootHash = _rootHash;
+                if (ReferenceEquals(rootHash, Keccak.EmptyTreeHash))
+                {
+                    Volatile.Write(ref _rootRef, null);
+                    rootRef = null;
+                    return true;
+                }
+
+                TrieNode? resolved;
+                if (throwOnMissing)
+                {
+                    resolved = _readResolver.GetOrLoadNode(in TreePath.Empty, in rootHash.ValueHash256);
+                }
+                else if (!_readResolver.TryGetOrLoadNode(in TreePath.Empty, in rootHash.ValueHash256, out resolved))
+                {
+                    rootRef = null;
+                    return false;
+                }
+
+                Volatile.Write(ref _rootRef, resolved);
+                rootRef = resolved;
+                return true;
+            }
+        }
 
         // Used to estimate if parallelization is needed during commit
         private long _writeBeforeCommit = 0;
@@ -67,14 +157,18 @@ namespace Nethermind.Trie
         {
             get
             {
-                RootRef?.ResolveNode(TrieStore, TreePath.Empty);
+                if (RootRef is { } root)
+                {
+                    TrieNode.ResolveNode(ref root, TrieStore, in TreePath.Empty);
+                    RootRef = root;
+                }
                 return RootRef;
             }
         }
 
         public Hash256 RootHash
         {
-            get => _rootHash;
+            get => Volatile.Read(ref _rootHash);
             set => SetRootHash(value, true);
         }
 
@@ -122,6 +216,7 @@ namespace Nethermind.Trie
         {
             _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+            _readResolver = TrieStore.AsReadOnlyTraversal();
             _allowCommits = allowCommits;
             RootHash = rootHash;
 
@@ -161,8 +256,12 @@ namespace Nethermind.Trie
             // Need to be after committer dispose so that it can find it in trie store properly
             RootRef = newRoot;
 
-            // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
-            SetRootHash(RootRef?.Keccak, true);
+            // resetObjects:false - we just published the freshly-resolved typed root above.
+            // Passing true would invalidate it back to the unresolved sentinel and force the
+            // next RootRef read to lazy-load through the read resolver, which during genesis
+            // processing cannot yet see the committed dirty nodes through that path.
+            // Keeping it is safe because the root was just committed and sealed by this method.
+            SetRootHash(newRoot?.Keccak, resetObjects: false);
         }
 
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, int maxLevelForConcurrentCommit, bool skipSelf = false)
@@ -255,13 +354,7 @@ namespace Nethermind.Trie
                 }
                 else if (_logger.IsTrace)
                 {
-                    extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
-                    if (extensionChild is null)
-                    {
-                        ThrowInvalidExtension();
-                    }
-
-                    TraceExtensionSkip(extensionChild);
+                    TraceExtensionSkip(node);
                 }
                 path.TruncateMut(previousPathLength);
             }
@@ -285,21 +378,38 @@ namespace Nethermind.Trie
 
             return node;
 
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowInvalidExtension() => throw new InvalidOperationException("An attempt to store an extension without a child.");
-
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(TrieNode node, ref TreePath path, int i)
             {
-                TrieNode child = node.GetChildWithChildPath(TrieStore, ref path, i);
-                if (child is not null)
+                // Trace-only path: never resolve the child through the store. During snap
+                // stitching the slot may point at a boundary-proof hash whose RLP is
+                // intentionally not in the store yet, and crashing the commit just to log
+                // it would corrupt sync. Read the hash directly out of the parent RLP, or
+                // fall back to whatever raw reference the slot already holds.
+                if (node.TryGetChildHash(i, out ValueHash256 childHash))
                 {
-                    _logger.Trace($"Skipping commit of {child}");
+                    _logger.Trace($"Skipping commit of child {i} -> {childHash}");
+                }
+                else if (node.GetRawChildRef(i) is { } rawChild)
+                {
+                    _logger.Trace($"Skipping commit of {rawChild}");
                 }
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceExtensionSkip(TrieNode extensionChild) => _logger.Trace($"Skipping commit of {extensionChild}");
+            void TraceExtensionSkip(TrieNode extension)
+            {
+                // Same rationale as Trace above: never resolve through the store from a
+                // pure log helper.
+                if (extension.TryGetChildHash(0, out ValueHash256 childHash))
+                {
+                    _logger.Trace($"Skipping commit of extension child -> {childHash}");
+                }
+                else if (extension.GetRawChildRef(0) is { } rawChild)
+                {
+                    _logger.Trace($"Skipping commit of extension child {rawChild}");
+                }
+            }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceSkipInlineNode(TrieNode node) => _logger.Trace($"Skipping commit of an inlined {node}");
@@ -333,14 +443,35 @@ namespace Nethermind.Trie
 
         public void SetRootHash(Hash256? value, bool resetObjects)
         {
-            _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
-            if (_rootHash == Keccak.EmptyTreeHash)
+            Hash256 rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
+
+            lock (_rootRefLock)
             {
-                RootRef = null;
-            }
-            else if (resetObjects)
-            {
-                RootRef = TrieStore.FindCachedOrUnknown(TreePath.Empty, _rootHash);
+                if (resetObjects && _rootHash == rootHash)
+                {
+                    TrieNode? rootRef = Volatile.Read(ref _rootRef);
+                    if (!ReferenceEquals(rootRef, _unresolvedSentinel)
+                        && rootRef is not null
+                        && !rootRef.IsDirty
+                        && rootRef.TryGetKeccak(out ValueHash256 rootKeccak)
+                        && rootKeccak == rootHash.ValueHash256)
+                    {
+                        return;
+                    }
+                }
+
+                if (rootHash == Keccak.EmptyTreeHash)
+                {
+                    Volatile.Write(ref _rootHash, rootHash);
+                    Volatile.Write(ref _rootRef, null);
+                    return;
+                }
+
+                if (resetObjects)
+                {
+                    Volatile.Write(ref _rootRef, _unresolvedSentinel);
+                }
+                Volatile.Write(ref _rootHash, rootHash);
             }
         }
 
@@ -364,7 +495,9 @@ namespace Nethermind.Trie
 
                 if (rootHash is not null)
                 {
-                    root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                    // Fuse the legacy FindCachedOrUnknown + ResolveNode pair: GetOrLoadNode
+                    // returns a fully resolved typed node and never publishes an Unknown placeholder.
+                    root = _readResolver.GetOrLoadNode(emptyPath, rootHash);
                 }
 
                 CappedArray<byte> result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false);
@@ -422,7 +555,7 @@ namespace Nethermind.Trie
                 TrieNode root = RootRef;
                 if (rootHash is not null)
                 {
-                    root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                    root = _readResolver.GetOrLoadNode(emptyPath, rootHash);
                 }
                 CappedArray<byte> result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
                 return result.ToArray();
@@ -452,7 +585,7 @@ namespace Nethermind.Trie
                 TrieNode root = RootRef;
                 if (rootHash is not null)
                 {
-                    root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                    root = _readResolver.GetOrLoadNode(emptyPath, rootHash);
                 }
                 CappedArray<byte> result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
 
@@ -585,7 +718,7 @@ namespace Nethermind.Trie
                     break;
                 }
 
-                node.ResolveNode(TrieStore, path);
+                TrieNode.ResolveNode(ref node, TrieStore, in path);
 
                 if (node.IsLeaf || node.IsExtension)
                 {
@@ -647,22 +780,31 @@ namespace Nethermind.Trie
                         return originalNode;
                     }
 
-                    // Making a T branch here.
-                    // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
-                    TrieNode theBranch = TrieNodeFactory.CreateBranch();
-
                     // This is the current node branch
+                    // If the existing extension child is still an unresolved by-hash
+                    // reference, carry the hash into the new branch RLP instead of
+                    // loading a witness node that this update does not otherwise need.
                     int currentNodeNib = node.Key[commonPrefixLength];
+                    TrieNode theBranch;
                     if (node.Key.Length == commonPrefixLength + 1 && node.IsExtension)
                     {
-                        // Collapsing the extension, taking the child directly and set the branch
-                        int originalLength = path.Length;
-                        path.AppendMut(node.Key);
-                        theBranch[currentNodeNib] = node.GetChildWithChildPath(TrieStore, ref path, 0);
-                        path.TruncateMut(originalLength);
+                        if (node.GetRawChildRef(0) is null && node.TryGetChildHash(0, out ValueHash256 childHash))
+                        {
+                            theBranch = TrieNodeFactory.CreateBranchWithChildHash(currentNodeNib, in childHash);
+                        }
+                        else
+                        {
+                            theBranch = TrieNodeFactory.CreateBranch();
+                            // Collapsing the extension, taking the child directly and set the branch
+                            int originalLength = path.Length;
+                            path.AppendMut(node.Key);
+                            theBranch[currentNodeNib] = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                            path.TruncateMut(originalLength);
+                        }
                     }
                     else
                     {
+                        theBranch = TrieNodeFactory.CreateBranch();
                         // Note: could be a leaf at the end of the tree which now have zero length key
                         theBranch[currentNodeNib] = node.CloneWithChangedKey(HexPrefix.GetArray(node.Key.AsSpan(commonPrefixLength + 1)));
                     }
@@ -758,7 +900,19 @@ namespace Nethermind.Trie
         {
             if (parent is null) return true;
             if (oldChild is null && newChild is null) return false;
-            if (!ReferenceEquals(oldChild, newChild)) return true;
+            if (!ReferenceEquals(oldChild, newChild))
+            {
+                // Treat resolved and unresolved references with the same keccak as the
+                // same child; the structural payload is identical and re-encode is wasteful.
+                if (oldChild is not null && newChild is not null
+                    && oldChild.TryGetKeccak(out ValueHash256 oldKeccak)
+                    && newChild.TryGetKeccak(out ValueHash256 newKeccak)
+                    && oldKeccak == newKeccak)
+                {
+                    return false;
+                }
+                return true;
+            }
             // So that recalculate root knows to recalculate the parent root.
             // Parent's hash can also be null depending on nesting level - still need to update child, otherwise combine will remain original value
             return newChild.Keccak is null;
@@ -773,20 +927,16 @@ namespace Nethermind.Trie
         internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node, TrieNode? originalNode)
         {
             int onlyChildIdx = -1;
-            TrieNode? onlyChildNode = null;
             path.AppendMut(0);
-            TrieNode.ChildIterator iterator = node.CreateChildIterator();
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
                 path.SetLast(i);
-                TrieNode? child = iterator.GetChildWithChildPath(TrieStore, ref path, i);
 
-                if (child is not null)
+                if (!node.IsChildNull(i))
                 {
                     if (onlyChildIdx == -1)
                     {
                         onlyChildIdx = i;
-                        onlyChildNode = child;
                     }
                     else
                     {
@@ -803,7 +953,8 @@ namespace Nethermind.Trie
             if (onlyChildIdx == -1) return null; // No child at all.
 
             path.AppendMut(onlyChildIdx);
-            onlyChildNode.ResolveNode(TrieStore, path);
+            TrieNode? onlyChildNode = node.GetChildWithChildPath(TrieStore, ref path, onlyChildIdx);
+            TrieNode.ResolveNode(ref onlyChildNode, TrieStore, in path);
             path.TruncateOne();
 
             if (onlyChildNode.IsBranch)
@@ -927,7 +1078,7 @@ namespace Nethermind.Trie
                         return default;
                     }
 
-                    node.ResolveNode(TrieStore, path);
+                    TrieNode.ResolveNode(ref node, _readResolver, in path);
 
                     if (isNodeRead && remainingKey.Length == 0)
                     {
@@ -936,8 +1087,9 @@ namespace Nethermind.Trie
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
-                        if (commonPrefixLength == node.Key!.Length)
+                        byte[] key = node.Key!;
+                        int commonPrefixLength = remainingKey.CommonPrefixLength(key);
+                        if (commonPrefixLength == key.Length)
                         {
                             if (node.IsLeaf)
                             {
@@ -948,10 +1100,9 @@ namespace Nethermind.Trie
                             }
 
                             // Continue traversal to the child of the extension
-                            path.AppendMut(node.Key);
-                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
-                            remainingKey = remainingKey[node!.Key.Length..];
-                            node = extensionChild;
+                            path.AppendMut(key);
+                            node = node.GetChildWithChildPath(_readResolver, ref path, 0);
+                            remainingKey = remainingKey[key.Length..];
 
                             continue;
                         }
@@ -962,10 +1113,7 @@ namespace Nethermind.Trie
 
                     int nib = remainingKey[0];
                     path.AppendMut(nib);
-                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
-
-                    // Continue loop with child as current node
-                    node = child;
+                    node = node.GetChildWithChildPath(_readResolver, ref path, nib);
                     remainingKey = remainingKey[1..];
                 }
             }
@@ -989,14 +1137,23 @@ namespace Nethermind.Trie
                         return;
                     }
 
-                    // Call FindCachedOrUnknown on some path.
-                    if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
-                    node.ResolveNode(TrieStore, path);
+                    // Sealed boundary rebind: hop through the resolver cache so the warm-up
+                    // path shares the canonical node instance. GetOrLoadNode fuses lookup+resolve
+                    // so we drop the subsequent ResolveNode no-op call.
+                    if (node.IsSealed && node.TryGetKeccak(out ValueHash256 sealedKeccak) && path.Length % 2 == 1)
+                    {
+                        node = _readResolver.GetOrLoadNode(path, in sealedKeccak);
+                    }
+                    else
+                    {
+                        TrieNode.ResolveNode(ref node, _readResolver, in path);
+                    }
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
-                        if (commonPrefixLength == node.Key!.Length)
+                        byte[] key = node.Key!;
+                        int commonPrefixLength = remainingKey.CommonPrefixLength(key);
+                        if (commonPrefixLength == key.Length)
                         {
                             if (node.IsLeaf)
                             {
@@ -1005,10 +1162,9 @@ namespace Nethermind.Trie
                             }
 
                             // Continue traversal to the child of the extension
-                            path.AppendMut(node.Key);
-                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: true);
-                            remainingKey = remainingKey[node!.Key.Length..];
-                            node = extensionChild;
+                            path.AppendMut(key);
+                            node = node.GetChildWithChildPath(_readResolver, ref path, 0, keepChildRef: true);
+                            remainingKey = remainingKey[key.Length..];
 
                             continue;
                         }
@@ -1020,10 +1176,7 @@ namespace Nethermind.Trie
                     int nextNib = remainingKey[0];
 
                     path.AppendMut(nextNib);
-                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);
-
-                    // Continue loop with child as current node
-                    node = child;
+                    node = node.GetChildWithChildPath(_readResolver, ref path, nextNib, keepChildRef: true);
                     remainingKey = remainingKey[1..];
                 }
             }
@@ -1088,23 +1241,38 @@ namespace Nethermind.Trie
                 }
             }
 
-            ITrieNodeResolver resolver = flags != ReadFlags.None
-                ? new TrieNodeResolverWithReadFlags(TrieStore, flags)
-                : TrieStore;
+            // Full scans own their working set; publishing every loaded node into the shared
+            // read-only resolver can retain the whole scan in the dirty cache.
+            ITrieNodeResolver resolver = visitor.IsFullDbScan ? TrieStore : _readResolver;
+            if (flags != ReadFlags.None)
+            {
+                resolver = new TrieNodeResolverWithReadFlags(resolver, flags);
+            }
 
             if (storageAddr is not null)
             {
                 resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
             }
 
-            bool TryGetRootRef(out TrieNode? rootRef)
+            bool TryGetRootRefLocal(out TrieNode? rootRef)
             {
                 rootRef = null;
                 if (rootHash != Keccak.EmptyTreeHash)
                 {
                     TreePath emptyPath = TreePath.Empty;
-                    rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(emptyPath, rootHash);
-                    if (!rootRef!.TryResolveNode(resolver, ref emptyPath))
+                    if (RootHash == rootHash)
+                    {
+                        // Use the non-throwing accessor: visitor paths model "missing
+                        // root" via VisitMissingNode, not exception propagation.
+                        if (!TryGetRootRef(out rootRef)
+                            || rootRef is null
+                            || !TrieNode.TryResolveNode(ref rootRef, resolver, ref emptyPath))
+                        {
+                            visitor.VisitMissingNode(default, rootHash);
+                            return false;
+                        }
+                    }
+                    else if (!resolver.TryGetOrLoadNode(emptyPath, rootHash.ValueHash256, out rootRef))
                     {
                         visitor.VisitMissingNode(default, rootHash);
                         return false;
@@ -1117,7 +1285,7 @@ namespace Nethermind.Trie
             if (!visitor.IsFullDbScan)
             {
                 visitor.VisitTree(default, rootHash);
-                if (TryGetRootRef(out TrieNode rootRef))
+                if (TryGetRootRefLocal(out TrieNode rootRef))
                 {
                     TreePath emptyPath = TreePath.Empty;
                     rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
@@ -1130,7 +1298,7 @@ namespace Nethermind.Trie
                 BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
-            else if (TryGetRootRef(out TrieNode rootRef))
+            else if (TryGetRootRefLocal(out TrieNode rootRef))
             {
                 TreePath emptyPath = TreePath.Empty;
                 visitor.VisitTree(default, rootHash);

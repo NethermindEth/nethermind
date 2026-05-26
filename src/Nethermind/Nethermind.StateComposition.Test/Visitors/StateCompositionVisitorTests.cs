@@ -37,7 +37,7 @@ public class StateCompositionVisitorTests
 
         // Create a branch node to trigger TotalBranchNodes count.
         // Use valid empty-branch RLP (17 × 0x80 = all-null children + null value).
-        TrieNode branchNode = new(NodeType.Branch, EmptyBranchRlp());
+        TrieNode branchNode = TrieNode.CreateBranchTyped(EmptyBranchRlp());
         StateCompositionContext branchCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         _visitor.VisitBranch(in branchCtx, branchNode);
 
@@ -70,7 +70,7 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_SeparatesAccountAndStorageTries()
     {
-        TrieNode node = new(NodeType.Branch, EmptyBranchRlp());
+        TrieNode node = TrieNode.CreateBranchTyped(EmptyBranchRlp());
 
         StateCompositionContext accountCtx = new(default, level: 1, isStorage: false, branchChildIndex: null);
         StateCompositionContext storageCtx = new(default, level: 1, isStorage: true, branchChildIndex: null);
@@ -91,7 +91,7 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_TracksDepthDistribution()
     {
-        TrieNode node = new(NodeType.Branch, EmptyBranchRlp());
+        TrieNode node = TrieNode.CreateBranchTyped(EmptyBranchRlp());
 
         for (int depth = 0; depth < 3; depth++)
         {
@@ -112,7 +112,7 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_TracksByteSizes()
     {
-        TrieNode node = new(NodeType.Branch, EmptyBranchRlp());
+        TrieNode node = TrieNode.CreateBranchTyped(EmptyBranchRlp());
 
         StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         _visitor.VisitBranch(in ctx, node);
@@ -125,7 +125,7 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_ClampsDepthAtMaxIndex()
     {
-        TrieNode node = new(NodeType.Leaf, [0xc0]);
+        TrieNode node = TrieNode.CreateLeafTyped([0xc0]);
 
         StateCompositionContext ctx = new(default, level: 20, isStorage: false, branchChildIndex: null);
         _visitor.VisitLeaf(in ctx, node);
@@ -140,7 +140,7 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_CountsStorageSlots()
     {
-        TrieNode node = new(NodeType.Leaf, [0xc0, 0x01]);
+        TrieNode node = TrieNode.CreateLeafTyped([0xc0, 0x01]);
 
         StateCompositionContext storageCtx = new(default, level: 3, isStorage: true, branchChildIndex: null);
 
@@ -170,21 +170,21 @@ public class StateCompositionVisitorTests
     public void Visitor_TracksTopContractsByDepth()
     {
         // Visit 3 accounts with storage, each with different depth storage nodes
-        TrieNode leafNode = new(NodeType.Leaf, [0xc0, 0x01]);
+        TrieNode leafNode = TrieNode.CreateLeafTyped([0xc0, 0x01]);
         StateCompositionContext storageCtx3 = new(default, level: 3, isStorage: true, branchChildIndex: null);
         StateCompositionContext storageCtx7 = new(default, level: 7, isStorage: true, branchChildIndex: null);
         StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
 
         AccountStruct acc1 = new(0, 0, Keccak.Zero.ValueHash256, Keccak.Zero.ValueHash256);
-        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, [0xc0]), in acc1);
+        _visitor.VisitAccount(in accountCtx, TrieNode.CreateLeafTyped([0xc0]), in acc1);
         _visitor.VisitLeaf(in storageCtx3, leafNode);
 
         AccountStruct acc2 = new(0, 0, Keccak.Compute("root2").ValueHash256, Keccak.Zero.ValueHash256);
-        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, [0xc0]), in acc2);
+        _visitor.VisitAccount(in accountCtx, TrieNode.CreateLeafTyped([0xc0]), in acc2);
         _visitor.VisitLeaf(in storageCtx7, leafNode);
 
         AccountStruct acc3 = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
-        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, [0xc0]), in acc3);
+        _visitor.VisitAccount(in accountCtx, TrieNode.CreateLeafTyped([0xc0]), in acc3);
 
         StateCompositionStats stats = _visitor.GetStats(1, null);
 
@@ -195,7 +195,7 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_StorageMaxDepthHistogram_PopulatedCorrectly()
     {
-        TrieNode leafNode = new(NodeType.Leaf, [0xc0, 0x01]);
+        TrieNode leafNode = TrieNode.CreateLeafTyped([0xc0, 0x01]);
         StateCompositionContext storageCtx = new(default, level: 4, isStorage: true, branchChildIndex: null);
         StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
 
@@ -203,13 +203,13 @@ public class StateCompositionVisitorTests
         for (int i = 0; i < 2; i++)
         {
             AccountStruct acc = new(0, 0, Keccak.Compute($"root{i}").ValueHash256, Keccak.Zero.ValueHash256);
-            _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, [0xc0]), in acc);
+            _visitor.VisitAccount(in accountCtx, TrieNode.CreateLeafTyped([0xc0]), in acc);
             _visitor.VisitLeaf(in storageCtx, leafNode);
         }
 
         // Flush last account via non-storage account
         AccountStruct eoa = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
-        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, [0xc0]), in eoa);
+        _visitor.VisitAccount(in accountCtx, TrieNode.CreateLeafTyped([0xc0]), in eoa);
 
         TrieDepthDistribution dist = _visitor.GetTrieDistribution();
 
@@ -222,7 +222,7 @@ public class StateCompositionVisitorTests
     {
         using StateCompositionVisitor visitor = new(LimboLogs.Instance, excludeStorage: true);
 
-        TrieNode node = new(NodeType.Leaf, [0xc0, 0x01]);
+        TrieNode node = TrieNode.CreateLeafTyped([0xc0, 0x01]);
         StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
 
         // Visit account that has storage — ExcludeStorage calls Flush() instead of BeginStorageTrie()
@@ -251,7 +251,7 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_CountsEmptyAccounts()
     {
-        TrieNode node = new(NodeType.Leaf, [0xc0]);
+        TrieNode node = TrieNode.CreateLeafTyped([0xc0]);
         StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
 
         // Totally empty: zero balance, zero nonce, no code, no storage
@@ -276,7 +276,7 @@ public class StateCompositionVisitorTests
     public void Visitor_BranchOccupancyDistribution_HasCorrectShape()
     {
         // Use valid empty-branch RLP so IsChildNull can decode correctly.
-        TrieNode branchNode = new(NodeType.Branch, EmptyBranchRlp());
+        TrieNode branchNode = TrieNode.CreateBranchTyped(EmptyBranchRlp());
 
         StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         _visitor.VisitBranch(in ctx, branchNode);
@@ -293,27 +293,27 @@ public class StateCompositionVisitorTests
 
         // Contract 1: small storage (1 leaf of 2 bytes)
         byte[] smallRlp = [0xc0, 0x01];
-        TrieNode smallLeaf = new(NodeType.Leaf, smallRlp);
+        TrieNode smallLeaf = TrieNode.CreateLeafTyped(smallRlp);
         StateCompositionContext storageCtx = new(default, level: 2, isStorage: true, branchChildIndex: null);
 
         AccountStruct acc1 = new(0, 0, Keccak.Compute("root1").ValueHash256, Keccak.Zero.ValueHash256);
-        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, [0xc0]), in acc1);
+        _visitor.VisitAccount(in accountCtx, TrieNode.CreateLeafTyped([0xc0]), in acc1);
         _visitor.VisitLeaf(in storageCtx, smallLeaf);
 
         // Contract 2: larger storage (3 leaves of 50 bytes each)
         byte[] bigRlp = new byte[50];
         bigRlp[0] = 0xc0;
-        TrieNode bigLeaf = new(NodeType.Leaf, bigRlp);
+        TrieNode bigLeaf = TrieNode.CreateLeafTyped(bigRlp);
 
         AccountStruct acc2 = new(0, 0, Keccak.Compute("root2").ValueHash256, Keccak.Zero.ValueHash256);
-        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, [0xc0]), in acc2);
+        _visitor.VisitAccount(in accountCtx, TrieNode.CreateLeafTyped([0xc0]), in acc2);
         _visitor.VisitLeaf(in storageCtx, bigLeaf);
         _visitor.VisitLeaf(in storageCtx, bigLeaf);
         _visitor.VisitLeaf(in storageCtx, bigLeaf);
 
         // Flush
         AccountStruct eoa = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
-        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, [0xc0]), in eoa);
+        _visitor.VisitAccount(in accountCtx, TrieNode.CreateLeafTyped([0xc0]), in eoa);
 
         StateCompositionStats stats = _visitor.GetStats(1, null);
 
@@ -340,7 +340,7 @@ public class StateCompositionVisitorTests
 
     private void SimulateAccounts(int count, bool hasCode, bool hasStorage)
     {
-        TrieNode node = new(NodeType.Leaf, [0xc0]);
+        TrieNode node = TrieNode.CreateLeafTyped([0xc0]);
 
         AccountStruct account = new(
             nonce: 0,

@@ -294,12 +294,21 @@ public partial class BlockAccessListManager
             DefaultObjectPoolProvider provider = new() { MaximumRetained = ProcessorPoolSize };
             if (prewarmerEnvFactory is not null && preBlockCaches is not null)
             {
-                return provider.Create(new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(prewarmerEnvFactory, preBlockCaches));
+                return provider.Create(new PrewarmerPolicyAdapter(
+                    new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(prewarmerEnvFactory, preBlockCaches)));
             }
 
             return readOnlyTxProcessingEnvFactory is not null
                 ? provider.Create(new ReadOnlyTxProcessingEnvPooledObjectPolicy(readOnlyTxProcessingEnvFactory))
                 : null;
+        }
+
+        private sealed class PrewarmerPolicyAdapter(BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy inner)
+            : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+        {
+            public IReadOnlyTxProcessorSource Create() => inner.Create();
+
+            public bool Return(IReadOnlyTxProcessorSource obj) => inner.Return((IPreBlockCacheWarmupSource)obj);
         }
 
         private static BlockHeader CreateParentStateHeader(Block block, Hash256 stateRoot)

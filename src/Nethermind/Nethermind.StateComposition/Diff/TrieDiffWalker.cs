@@ -118,24 +118,20 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
 
         if (oldHash is null)
         {
-            TrieNode newNode = resolver.FindCachedOrUnknown(in path, newHash!);
-            newNode.ResolveNode(resolver, in path);
+            TrieNode newNode = resolver.GetOrLoadNode(in path, newHash!);
             CollectSubtree(newNode, ref path, resolver, isStorage, added: true, depth: depth);
             return;
         }
 
         if (newHash is null)
         {
-            TrieNode oldNode = resolver.FindCachedOrUnknown(in path, oldHash);
-            oldNode.ResolveNode(resolver, in path);
+            TrieNode oldNode = resolver.GetOrLoadNode(in path, oldHash);
             CollectSubtree(oldNode, ref path, resolver, isStorage, added: false, depth: depth);
             return;
         }
 
-        TrieNode oldResolved = resolver.FindCachedOrUnknown(in path, oldHash);
-        oldResolved.ResolveNode(resolver, in path);
-        TrieNode newResolved = resolver.FindCachedOrUnknown(in path, newHash);
-        newResolved.ResolveNode(resolver, in path);
+        TrieNode oldResolved = resolver.GetOrLoadNode(in path, oldHash);
+        TrieNode newResolved = resolver.GetOrLoadNode(in path, newHash);
 
         DiffNodes(oldResolved, newResolved, ref path, resolver, isStorage, depth);
     }
