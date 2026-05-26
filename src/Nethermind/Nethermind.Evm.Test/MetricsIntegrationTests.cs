@@ -77,14 +77,14 @@ public class MetricsIntegrationTests
         PrivateKey sender = TestItem.PrivateKeyA;
         _worldState.CreateAccount(sender.Address, 10.Ether);
 
-        long startReads = DbMetrics.StateTreeReads;
+        long startReads = DbMetrics.MainThreadStateTreeReads;
         long startWrites = Metrics.MainThreadAccountWrites;
 
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(1.Ether)
             .WithGasLimit(21_000).SignedAndResolved(_ecdsa, sender, true).TestObject;
         ExecuteTx(tx, CreateBlock(tx));
 
-        Assert.That(DbMetrics.StateTreeReads - startReads, Is.GreaterThanOrEqualTo(2));
+        Assert.That(DbMetrics.MainThreadStateTreeReads - startReads, Is.GreaterThanOrEqualTo(2));
         Assert.That(Metrics.MainThreadAccountWrites - startWrites, Is.GreaterThanOrEqualTo(2));
     }
 
@@ -96,13 +96,13 @@ public class MetricsIntegrationTests
         _worldState.CreateAccount(sender.Address, 10.Ether);
         DeployCode(contract, Prepare.EvmCode.Op(Instruction.PUSH0).Op(Instruction.SLOAD).Op(Instruction.POP).Done);
 
-        long startReads = DbMetrics.StorageTreeReads + DbMetrics.StorageTreeCache;
+        long startReads = DbMetrics.MainThreadStorageTreeReads + DbMetrics.MainThreadStorageTreeCache;
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(100_000)
             .SignedAndResolved(_ecdsa, sender, true).TestObject;
         ExecuteTx(tx, CreateBlock(tx));
 
-        long currentReads = DbMetrics.StorageTreeReads + DbMetrics.StorageTreeCache;
+        long currentReads = DbMetrics.MainThreadStorageTreeReads + DbMetrics.MainThreadStorageTreeCache;
         Assert.That(currentReads - startReads, Is.GreaterThanOrEqualTo(1));
     }
 
