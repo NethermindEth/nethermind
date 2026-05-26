@@ -67,6 +67,13 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
                 true
             )
             { TestName = "expLen=uint32.MaxValue (0xffffffff): huge expLength wraps modulus offset to base, must return zero (pre-EIP-7823)" };
+
+            yield return new(
+                "00000000000000000000000000000000000000000000000000000000ffffffbb00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001",
+                "00",
+                true
+            )
+            { TestName = "baseLen=uint32.MaxValue-68 (0xffffffbb): huge baseLength wraps exponent offset to header, must return zero (pre-EIP-7823)" };
         }
     }
 }
