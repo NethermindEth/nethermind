@@ -13,7 +13,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -27,7 +26,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         private IReceiptMonitor _receiptCanonicalityMonitor = null!;
         private IBlockTree _blockTree = null!;
         private ILogManager _logManager = null!;
-        private IJsonSerializer _jsonSerializer = null!;
 
         [SetUp]
         public void Setup()
@@ -36,7 +34,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             _receiptCanonicalityMonitor = Substitute.For<IReceiptMonitor>();
             _blockTree = Substitute.For<IBlockTree>();
             _logManager = Substitute.For<ILogManager>();
-            _jsonSerializer = new EthereumJsonSerializer();
         }
 
         [TearDown]
@@ -118,7 +115,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 Action act = () => new TransactionReceiptsSubscription(
                     _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _logManager, filter);
 
-                Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains(@"Cannot subscribe to more than 200 transaction hashes"));
+                Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains("cannot subscribe to more than 200 transaction hashes"));
             }
             else
             {
@@ -149,11 +146,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             Assert.That(results.Count, Is.EqualTo(2));
 
-            string serialized1 = _jsonSerializer.Serialize(results[0].Response);
+            string serialized1 = RpcTest.SerializeResponse(results[0].Response);
             Assert.That(serialized1, Does.Contain(subscriptionId));
             Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
 
-            string serialized2 = _jsonSerializer.Serialize(results[1].Response);
+            string serialized2 = RpcTest.SerializeResponse(results[1].Response);
             Assert.That(serialized2, Does.Contain(subscriptionId));
             Assert.That(serialized2, Does.Contain(TestItem.KeccakB.ToString()));
         }
@@ -178,7 +175,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
 
             Assert.That(result.Response, Is.Not.Null);
-            string serialized = _jsonSerializer.Serialize(result.Response);
+            string serialized = RpcTest.SerializeResponse(result.Response);
             Assert.That(serialized, Does.Contain(subscriptionId));
             Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
             Assert.That(serialized, Does.Not.Contain(TestItem.KeccakB.ToString()));
@@ -206,10 +203,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             Assert.That(results.Count, Is.EqualTo(2));
 
-            string serialized1 = _jsonSerializer.Serialize(results[0].Response);
+            string serialized1 = RpcTest.SerializeResponse(results[0].Response);
             Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
 
-            string serialized2 = _jsonSerializer.Serialize(results[1].Response);
+            string serialized2 = RpcTest.SerializeResponse(results[1].Response);
             Assert.That(serialized2, Does.Contain(TestItem.KeccakC.ToString()));
         }
 
@@ -256,7 +253,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
 
             Assert.That(result.Response, Is.Not.Null);
-            string serialized = _jsonSerializer.Serialize(result.Response);
+            string serialized = RpcTest.SerializeResponse(result.Response);
             Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
             Assert.That(serialized, Does.Not.Contain(TestItem.KeccakB.ToString()));
             Assert.That(serialized, Does.Not.Contain(TestItem.KeccakC.ToString()));
@@ -286,7 +283,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
 
             Assert.That(result.Response, Is.Not.Null);
-            string serialized = _jsonSerializer.Serialize(result.Response);
+            string serialized = RpcTest.SerializeResponse(result.Response);
 
             Assert.That(serialized, Does.Contain("transactionHash"));
             Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
@@ -322,12 +319,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             Assert.That(results.Count, Is.EqualTo(2));
 
             // First receipt should have logs with indices 0 and 1
-            string serialized1 = _jsonSerializer.Serialize(results[0].Response);
+            string serialized1 = RpcTest.SerializeResponse(results[0].Response);
             Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x0\""));
             Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x1\""));
 
             // Second receipt should have log with index 2 (cumulative)
-            string serialized2 = _jsonSerializer.Serialize(results[1].Response);
+            string serialized2 = RpcTest.SerializeResponse(results[1].Response);
             Assert.That(serialized2, Does.Contain("\"logIndex\":\"0x2\""));
         }
 
@@ -365,7 +362,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
 
             Assert.That(result.Response, Is.Not.Null);
-            string serialized = _jsonSerializer.Serialize(result.Response);
+            string serialized = RpcTest.SerializeResponse(result.Response);
             Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
             Assert.That(serialized, Does.Contain("0x0")); // status 0 for failed tx
         }

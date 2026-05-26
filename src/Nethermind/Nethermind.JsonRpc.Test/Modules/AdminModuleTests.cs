@@ -49,7 +49,6 @@ public class AdminModuleTests
     private IReceiptStorage _receiptStorage = null!;
     private IReceiptMonitor _receiptCanonicalityMonitor = null!;
     private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
-    private IJsonSerializer _jsonSerializer = null!;
     private IBlockTree _blockTree = null!;
     private IStateReader _stateReader = null!;
     private ISubscriptionManager _subscriptionManager = null!;
@@ -66,7 +65,6 @@ public class AdminModuleTests
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
         _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
-        _jsonSerializer = new EthereumJsonSerializer();
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
         _stateReader = Substitute.For<IStateReader>();
         _networkConfig = new NetworkConfig();
@@ -357,7 +355,7 @@ public class AdminModuleTests
         string serializedPeerEventsUnsub = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_unsubscribe", peerEventsId);
         string expectedPeerEventsUnsub = string.Concat(
             "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-            peerEventsId, ".\",\"data\":false},\"id\":67}");
+            peerEventsId, ".\"},\"id\":67}");
         Assert.That(expectedPeerEventsUnsub, Is.EqualTo(serializedPeerEventsUnsub), "after the client closes, the subscription is removed and unsubscribe fails");
     }
 
@@ -384,7 +382,7 @@ public class AdminModuleTests
             out string subscriptionId);
 
         Assert.That(jsonRpcResult.Response, Is.Not.Null, "the subscription must produce a JSON-RPC response when the event fires");
-        string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+        string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
         string expectedResult = BuildExpectedPeerLifecycleNotification(subscriptionId, expectedType, TestItem.PublicKeyA.Hash.ToString(false));
         Assert.That(expectedResult, Is.EqualTo(serialized), $"a peer-{expectedType} event must serialize with type '{expectedType}'");
     }
@@ -405,7 +403,7 @@ public class AdminModuleTests
             disposeSubscription: true);
 
         Assert.That(jsonRpcResult.Response, Is.Not.Null, "the subscription must produce a JSON-RPC response when the event fires");
-        string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+        string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
         string expectedResult = BuildExpectedMessageNotification(subscriptionId, expectedType, TestItem.PublicKeyA.Hash.ToString(false));
         Assert.That(expectedResult, Is.EqualTo(serialized), $"a {expectedType} event must serialize with type '{expectedType}'");
     }
@@ -425,7 +423,10 @@ public class AdminModuleTests
             out string firstSubscriptionId,
             disposeSubscription: true);
         Assert.That(firstResult.Response, Is.Not.Null, "the subscription must notify on the first existing session");
-        Assert.That(BuildExpectedMessageNotification(firstSubscriptionId, expectedType, peerHash), Is.EqualTo(_jsonSerializer.Serialize(firstResult.Response)), $"first session emits {expectedType}");
+        Assert.That(
+            BuildExpectedMessageNotification(firstSubscriptionId, expectedType, peerHash),
+            Is.EqualTo(RpcTest.SerializeResponse(firstResult.Response)),
+            $"first session emits {expectedType}");
 
         JsonRpcResult secondResult = RaisePeerEventAndCapture(
             isReceived
@@ -434,7 +435,10 @@ public class AdminModuleTests
             out string secondSubscriptionId,
             disposeSubscription: true);
         Assert.That(secondResult.Response, Is.Not.Null, "the subscription must also notify on the second existing session");
-        Assert.That(BuildExpectedMessageNotification(secondSubscriptionId, expectedType, peerHash), Is.EqualTo(_jsonSerializer.Serialize(secondResult.Response)), $"second session emits {expectedType}");
+        Assert.That(
+            BuildExpectedMessageNotification(secondSubscriptionId, expectedType, peerHash),
+            Is.EqualTo(RpcTest.SerializeResponse(secondResult.Response)),
+            $"second session emits {expectedType}");
     }
 
     [TestCase(true, "msgrecv", TestName = "PeerEvents_OnMsgReceivedFromNewSession_NotifiesNewSessionMsg")]
@@ -461,7 +465,7 @@ public class AdminModuleTests
             out string subscriptionId);
 
         Assert.That(jsonRpcResult.Response, Is.Not.Null, "the subscription must notify on a session created after subscribe");
-        string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+        string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
         string expectedResult = BuildExpectedMessageNotification(subscriptionId, expectedType, TestItem.PublicKeyA.Hash.ToString(false));
         Assert.That(expectedResult, Is.EqualTo(serialized), $"a {expectedType} event from the new session must serialize with type '{expectedType}'");
     }
@@ -555,8 +559,8 @@ public class AdminModuleTests
 
         PeerInfo peerInfo = result.Data[0];
         Assert.That(peerInfo.Caps, Is.EqualTo(capabilities), "only the advertised eth capability must surface");
-        Assert.That(peerInfo.Protocols.ContainsKey("eth"), Is.True, "the eth protocol entry must be present");
-        Assert.That(peerInfo.Protocols.ContainsKey("snap"), Is.False, "snap was not advertised by this peer");
+        Assert.That(peerInfo.Protocols, Does.ContainKey("eth"), "the eth protocol entry must be present");
+        Assert.That(peerInfo.Protocols, Does.Not.ContainKey("snap"), "snap was not advertised by this peer");
     }
 
     [Test]

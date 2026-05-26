@@ -170,7 +170,7 @@ public class EthRpcSimulateTestsBase
         transaction.Hash = transaction.CalculateHash();
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
         transactionForRpc.Gas = null;
-        ResultWrapper<string> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
-        return ParseECRecoverAddress(Bytes.FromHexString(mainChainResult.Data));
+        ResultWrapper<HexBytes> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
+        return ParseECRecoverAddress(mainChainResult.Data.Bytes.ToArray());
     }
 }

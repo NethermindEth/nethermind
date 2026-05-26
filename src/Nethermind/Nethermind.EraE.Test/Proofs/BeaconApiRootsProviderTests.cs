@@ -50,6 +50,24 @@ public class BeaconApiRootsProviderTests
     }
 
     [Test]
+    public async Task GetBeaconRoots_WhenCacheCapacityExceeded_EvictsOldestSlot()
+    {
+        SequentialHttpMessageHandler handler = new();
+        using BeaconApiRootsProvider sut = new(new Uri("http://localhost:5052"), new HttpClient(handler));
+
+        for (int slot = 0; slot <= HistoricalRootConstants.SlotsPerHistoricalRoot; slot++)
+        {
+            EnqueueRootsResponses(handler);
+            await sut.GetBeaconRoots(slot);
+        }
+
+        EnqueueRootsResponses(handler);
+        await sut.GetBeaconRoots(0);
+
+        Assert.That(handler.CallCount, Is.EqualTo((HistoricalRootConstants.SlotsPerHistoricalRoot + 2) * 2));
+    }
+
+    [Test]
     public async Task GetBeaconRoots_WhenHeadersResponseMissingDataField_ReturnsNull()
     {
         // State root endpoint must NOT be called — handler throws on any extra request
@@ -88,6 +106,12 @@ public class BeaconApiRootsProviderTests
         foreach ((HttpStatusCode statusCode, string body) in responses)
             handler.Enqueue(statusCode, body);
         return new BeaconApiRootsProvider(new Uri("http://localhost:5052"), new HttpClient(handler));
+    }
+
+    private static void EnqueueRootsResponses(SequentialHttpMessageHandler handler)
+    {
+        handler.Enqueue(HttpStatusCode.OK, HeadersJson);
+        handler.Enqueue(HttpStatusCode.OK, StateRootJson);
     }
 
     private sealed class SequentialHttpMessageHandler : HttpMessageHandler

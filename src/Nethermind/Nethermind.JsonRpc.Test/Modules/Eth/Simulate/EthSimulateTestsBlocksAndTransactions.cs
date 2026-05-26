@@ -380,9 +380,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.EthRpcModule, "eth_simulateV1", payload!, "latest");
-        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
-        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
-        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = (IReadOnlyList<SimulateBlockResult<SimulateCallResult>>)successResponse.Result!;
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>(response);
         Log[] logs = data[0].Calls.First().Logs.ToArray();
         Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
     }
@@ -523,8 +521,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
         SimulateCallResult callResult = result.Data.First().Calls.First();
         Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
-        Assert.That(callResult.ReturnData, Is.Not.Null);
-        Assert.That(callResult.ReturnData!.Length, Is.EqualTo(32));
+        Assert.That(callResult.ReturnData, Is.Not.Null.And.Count.EqualTo(32));
         Assert.That(new Hash256(callResult.ReturnData!), Is.EqualTo(expected));
     }
 

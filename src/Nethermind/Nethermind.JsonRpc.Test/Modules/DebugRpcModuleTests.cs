@@ -13,8 +13,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
-using NUnit.Framework;
 using Newtonsoft.Json.Linq;
+using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -52,10 +52,10 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", txArgs);
 
         JToken result = JToken.Parse(response)["result"]!;
-        Assert.That((bool)result["failed"]!, Is.True, "pre-flight failures surface as failed:true under streaming");
-        Assert.That((string)result["returnValue"]!, Is.EqualTo("0x"));
-        Assert.That((string)result["error"]!, Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
-        Assert.That((int)result["errorCode"]!, Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
+        Assert.That(((bool)result["failed"]!), Is.True, "pre-flight failures surface as failed:true under streaming");
+        Assert.That(((string)result["returnValue"]!), Is.EqualTo("0x"));
+        Assert.That(((string)result["error"]!), Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
+        Assert.That(((int)result["errorCode"]!), Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
     }
 
     private static IEnumerable<TestCaseData> TraceCallGethCompatFailureCases()
@@ -100,7 +100,7 @@ public partial class DebugRpcModuleTests
             $"{lastBlockHash}"
         );
 
-        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+        RpcTest.AssertSuccess(response);
     }
 
     [TestCase(
@@ -137,12 +137,12 @@ public partial class DebugRpcModuleTests
         );
 
         JToken result = JToken.Parse(response)["result"]!;
-        Assert.That((bool)result["failed"]!, Is.False, $"trace for case '{name}' must succeed");
+        Assert.That(((bool)result["failed"]!), Is.False, $"trace for case '{name}' must succeed");
 
         if (expectedValue is not null)
         {
             byte[] returnValueBytes = Bytes.FromHexString((string)result["returnValue"]!);
-            Assert.That(Convert.ToHexString(returnValueBytes), Is.EqualTo(expectedValue).IgnoreCase);
+            Assert.That(Convert.ToHexString(returnValueBytes), Is.EqualTo(expectedValue));
         }
     }
 
@@ -194,7 +194,10 @@ public partial class DebugRpcModuleTests
         );
 
         UInt256 gasAvailable = ParseReturnValue(response).ToUInt256();
-        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+        Assert.That(
+            gasAvailable > (UInt256)blockGasLimit,
+            Is.True,
+            $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
     }
 
     private static byte[] ParseReturnValue(string responseJson)
@@ -255,11 +258,8 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
-            Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
-        }
+        Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+        Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
     }
 
     [Test]

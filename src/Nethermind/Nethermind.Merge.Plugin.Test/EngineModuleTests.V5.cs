@@ -5,8 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Linq;
-using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -20,7 +18,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -68,7 +65,7 @@ public partial class EngineModuleTests
 
         Assert.That(buildResult.Result, Is.EqualTo(Result.Success));
         Assert.That(buildResult.Data, Is.Not.Null);
-        Assert.That(buildResult.Data, Is.TypeOf<GetPayloadV5Result>());
+        Assert.That(buildResult.Data, Is.AssignableTo<GetPayloadV5Result>());
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)buildResult.Data!;
 
         ExecutionPayloadV3 executionPayload = payloadResult.ExecutionPayload;
@@ -179,7 +176,7 @@ public partial class EngineModuleTests
 
         Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
-        Assert.That(System.Linq.Enumerable.Count(result.Data!.Select(static b => b!.Proofs.Length)), Is.EqualTo(numberOfBlobs));
+        Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
         Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
     }
 
@@ -248,7 +245,7 @@ public partial class EngineModuleTests
 
             Assert.That(result.Data, Is.Not.Null);
             Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
-            Assert.That(System.Linq.Enumerable.Count(result.Data!.Select(static b => b!.Proofs.Length)), Is.EqualTo(numberOfBlobs));
+            Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
             Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
         }
     }
@@ -286,7 +283,7 @@ public partial class EngineModuleTests
 
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.Count, Is.EqualTo(requestSize));
+        Assert.That(result.Data!, Has.Count.EqualTo(requestSize));
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
@@ -324,32 +321,11 @@ public partial class EngineModuleTests
     [Test]
     public async Task BlobsV2DirectResponse_WriteToAsync_produces_valid_json()
     {
-        // Build a small list with one real entry and one null
-        byte[] blob = new byte[16];
-        Random.Shared.NextBytes(blob);
-        byte[] proof1 = new byte[48];
-        Random.Shared.NextBytes(proof1);
-        byte[] proof2 = new byte[48];
-        Random.Shared.NextBytes(proof2);
-
-        byte[]?[] blobs = [blob, null];
-        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([proof1, proof2]), default];
+        byte[]?[] blobs = [RandomBytes(16), null];
+        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([RandomBytes(48), RandomBytes(48)]), default];
 
         BlobsV2DirectResponse response = new(blobs, proofs, 2);
-
-        // Write via streaming path
-        Pipe pipe = new();
-        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
-        await pipe.Writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
-        // Write via STJ for comparison
-        string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
-
-        Assert.That(streamedJson, Is.EqualTo(stjJson));
+        await AssertStreamedJsonMatchesSerializer(response);
     }
 
     [Test]
@@ -357,14 +333,7 @@ public partial class EngineModuleTests
     {
         BlobsV2DirectResponse response = new([], [], 0);
 
-        Pipe pipe = new();
-        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
-        await pipe.Writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        string json = Encoding.UTF8.GetString(readResult.Buffer);
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
+        string json = await AssertStreamedJsonMatchesSerializer(response);
         Assert.That(json, Is.EqualTo("[]"));
     }
 
@@ -381,6 +350,6 @@ public partial class EngineModuleTests
 
         Pipe pipe = new();
         Func<Task> act = async () => await response.WriteToAsync(pipe.Writer, cts.Token);
-        Assert.That(async () => await act(), Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(async () => await act(), Throws.TypeOf<OperationCanceledException>());
     }
 }

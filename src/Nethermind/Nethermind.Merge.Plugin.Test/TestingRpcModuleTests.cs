@@ -57,7 +57,7 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, [], []);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data, Is.TypeOf<GetPayloadV5Result>());
+        Assert.That(result.Data, Is.AssignableTo<GetPayloadV5Result>());
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
         Assert.That(payloadResult.ExecutionPayload.BlobGasUsed, Is.EqualTo(0));
         Assert.That(payloadResult.ExecutionPayload.ExcessBlobGas, Is.EqualTo(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance)));
@@ -76,7 +76,7 @@ public class TestingRpcModuleTests
             CreateDefaultPayloadAttributes(parentHeader),
             (byte[][])[]);
 
-        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+        Assert.That(response, Is.TypeOf<ResultWrapper<object>>());
     }
 
     [TestCaseSource(nameof(BuildBlockV1ForkCases))]
@@ -251,7 +251,7 @@ public class TestingRpcModuleTests
         IReadOnlyList<Block> updatedBlocks = (IReadOnlyList<Block>)updateMainChainArgs[0]!;
         bool wereProcessed = (bool)updateMainChainArgs[1]!;
         bool forceHeadBlock = (bool)updateMainChainArgs[2]!;
-        Assert.That(updatedBlocks, Has.Count.EqualTo(1));
+        Assert.That(updatedBlocks.Count, Is.EqualTo(1));
         Assert.That(wereProcessed, Is.True, "the producer already executed the block; the main chain must reflect that");
         Assert.That(forceHeadBlock, Is.True,
             "post-merge chains have TotalDifficulty=0; without forceHeadBlock MoveToMain skips UpdateHeadBlock and the next commit reads a stale head.");

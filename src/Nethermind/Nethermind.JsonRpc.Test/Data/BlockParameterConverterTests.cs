@@ -10,10 +10,23 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
 {
-    [Parallelizable(ParallelScope.Self)]
+    [NonParallelizable]
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
+        private bool _previousStrictHexFormat;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
+            EthereumJsonSerializer.StrictHexFormat = false;
+        }
+
+        [TearDown]
+        public void TearDown() =>
+            EthereumJsonSerializer.StrictHexFormat = _previousStrictHexFormat;
+
         [TestCase("0", 0)]
         [TestCase("100", 100)]
         [TestCase("\"0x0\"", 0)]

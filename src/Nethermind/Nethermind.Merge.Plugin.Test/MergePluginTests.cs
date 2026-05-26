@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
@@ -39,10 +40,28 @@ public class MergePluginTests
         public int Value { get; set; }
     }
 
+    private sealed class PriorityProbe
+    {
+        public int Value { get; set; }
+    }
+
     private sealed class ThrowingProbeResolver : IJsonTypeInfoResolver
     {
         public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
             type == typeof(SourceGenProbe) ? throw new InvalidOperationException("probe resolver was used") : null;
+    }
+
+    private sealed class RecordingProbeResolver(string name, List<string> calls) : IJsonTypeInfoResolver
+    {
+        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options)
+        {
+            if (type == typeof(PriorityProbe))
+            {
+                calls.Add(name);
+            }
+
+            return null;
+        }
     }
 
     private ChainSpec _chainSpec = null!;
@@ -138,6 +157,29 @@ public class MergePluginTests
         EthereumJsonSerializer.AddTypeInfoResolver(new ThrowingProbeResolver());
 
         Assert.Throws<InvalidOperationException>(() => serializer.Serialize(new SourceGenProbe { Value = 1 }));
+    }
+
+    [Test]
+    public void AddTypeInfoResolver_orders_resolvers_by_priority_then_registration_order()
+    {
+        List<string> calls = [];
+
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("external", calls));
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("json-rpc-response", calls), JsonTypeInfoResolverPriority.JsonRpcResponse);
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("engine-api", calls), JsonTypeInfoResolverPriority.EngineApi);
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("facade-first", calls), JsonTypeInfoResolverPriority.Facade);
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("facade-second", calls), JsonTypeInfoResolverPriority.Facade);
+
+        _ = EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(PriorityProbe));
+
+        Assert.That(calls, Is.EqualTo(new[]
+        {
+            "engine-api",
+            "facade-first",
+            "facade-second",
+            "json-rpc-response",
+            "external"
+        }));
     }
 
     [Test]
