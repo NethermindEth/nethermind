@@ -1249,6 +1249,26 @@ public class TraceRpcModuleTests
         JToken.Parse(streamed).Should().BeEquivalentTo(JToken.Parse(buffered));
     }
 
+    [Test]
+    public async Task Streaming_vmTrace_matches_buffered_across_nested_call_frame()
+    {
+        Context context = new();
+        await context.Build();
+        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+
+        // PUSH1 0 ×5, PUSH1 0x04, PUSH2 0x5000, CALL, STOP — CALL to identity precompile.
+        string bytecode = "0x600060006000600060006004615000f100";
+        string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":null,\"data\":\"{bytecode}\",\"gas\":\"0xf4240\"}},[\"vmTrace\",\"trace\"]]]";
+
+        config.EnableTracingStreamMode = false;
+        string buffered = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+
+        config.EnableTracingStreamMode = true;
+        string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+
+        JToken.Parse(streamed).Should().BeEquivalentTo(JToken.Parse(buffered));
+    }
+
     private static IEnumerable<TestCaseData> StreamingResourceSafetyCases()
     {
         yield return new TestCaseData((Func<Task>)(async () =>

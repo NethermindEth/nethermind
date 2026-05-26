@@ -71,6 +71,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private int _entriesSinceLastFlush;
     private bool _disposed;
 
+    private bool _outerOpHasSubWritten;
+
     public StreamingParityLikeTxTracer(
         Block block,
         Transaction? tx,
@@ -112,6 +114,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _pendingPc = 0;
         _pendingCost = 0;
         _pendingUsed = 0;
+        _outerOpHasSubWritten = false;
         ReleaseOpBuffers();
 
         while (_streamingFrames.Count > 0)
@@ -402,7 +405,10 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         if (_hasPendingOp)
         {
-            EmitPendingOpUpToSub();
+            _writer.WriteStartObject();
+            _writer.WritePropertyName("sub"u8);
+            frame.OuterPendingPc = _pendingPc;
+            frame.OuterPendingCost = _pendingCost;
             _hasPendingOp = false;
             frame.HasPendingParentOpToClose = true;
         }
@@ -435,11 +441,20 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         }
 
         bool hadPendingParent = frame.HasPendingParentOpToClose;
+        int outerPc = frame.OuterPendingPc;
+        long outerCost = frame.OuterPendingCost;
         ReturnFrame(frame);
 
         if (hadPendingParent)
         {
-            _writer.WriteEndObject();
+            ReleaseOpBuffers();
+            _pendingPc = outerPc;
+            _pendingCost = outerCost;
+            _pendingUsed = 0;
+            _pushAssigned = false;
+            _gasAlreadySetForCurrentOp = false;
+            _hasPendingOp = true;
+            _outerOpHasSubWritten = true;
         }
 
         _gasAlreadySetForCurrentOp = false;
@@ -460,16 +475,85 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private void FinalizePendingOp(bool closeWithNullSub)
     {
         if (!_hasPendingOp) return;
-        EmitPendingOpUpToSub();
-        if (closeWithNullSub)
+
+        if (_outerOpHasSubWritten)
         {
-            _writer.WriteNullValue();
-            _writer.WriteEndObject();
+            EmitOuterOpTail();
+            _outerOpHasSubWritten = false;
         }
+        else
+        {
+            EmitPendingOpUpToSub();
+            if (closeWithNullSub)
+            {
+                _writer.WriteNullValue();
+                _writer.WriteEndObject();
+            }
+        }
+
         _hasPendingOp = false;
         ReleaseOpBuffers();
         _entriesSinceLastFlush++;
         MaybeFlushToWire();
+    }
+
+    private void EmitOuterOpTail()
+    {
+        _writer.WriteNumber("cost"u8, _pendingCost);
+
+        _writer.WritePropertyName("ex"u8);
+        _writer.WriteStartObject();
+
+        _writer.WritePropertyName("mem"u8);
+        if (_hasMemory)
+        {
+            _writer.WriteStartObject();
+            _writer.WritePropertyName("data"u8);
+            WriteHexBytes(_memoryBuffer.AsSpan(0, _memoryByteCount));
+            _writer.WriteNumber("off"u8, _memoryOffset);
+            _writer.WriteEndObject();
+        }
+        else
+        {
+            _writer.WriteNullValue();
+        }
+
+        _writer.WritePropertyName("push"u8);
+        if (_pushAssigned)
+        {
+            _writer.WriteStartArray();
+            for (int i = 0; i < _pushItems.Count; i++)
+            {
+                (byte[] buf, int len) = _pushItems[i];
+                WriteHexBytes(buf.AsSpan(0, len));
+            }
+            _writer.WriteEndArray();
+        }
+        else
+        {
+            _writer.WriteNullValue();
+        }
+
+        _writer.WritePropertyName("store"u8);
+        if (_hasStorage)
+        {
+            _writer.WriteStartObject();
+            _writer.WritePropertyName("key"u8);
+            WriteHexBytes(_storageKeyBuffer.AsSpan(0, _storageKeyByteCount));
+            _writer.WritePropertyName("val"u8);
+            WriteHexBytes(_storageValueBuffer.AsSpan(0, _storageValueByteCount));
+            _writer.WriteEndObject();
+        }
+        else
+        {
+            _writer.WriteNullValue();
+        }
+
+        _writer.WriteNumber("used"u8, _pendingUsed);
+        _writer.WriteEndObject();
+
+        _writer.WriteNumber("pc"u8, _pendingPc);
+        _writer.WriteEndObject();
     }
 
     private void EmitPendingOpUpToSub()
@@ -614,6 +698,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         public bool IsSuicide;
         public bool JsonObjectOpened;
         public bool HasPendingParentOpToClose;
+        public int OuterPendingPc;
+        public long OuterPendingCost;
 
         public void Reset()
         {
@@ -621,6 +707,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             IsSuicide = false;
             JsonObjectOpened = false;
             HasPendingParentOpToClose = false;
+            OuterPendingPc = 0;
+            OuterPendingCost = 0;
         }
 
         public void ReleaseBuffers()

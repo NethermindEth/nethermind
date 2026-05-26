@@ -222,7 +222,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 runBuffered: () =>
                 {
                     IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new ParityLikeBlockTracer(txHash, parityTypes));
-                    return new ParityTxTraceFromReplay(txTrace);
+                    return new ParityTxTraceFromReplay(txTrace, includeTransactionHash: true);
                 });
         }
 
