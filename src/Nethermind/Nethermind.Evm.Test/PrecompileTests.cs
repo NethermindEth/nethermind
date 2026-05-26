@@ -89,7 +89,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.IsSuccess, Is.EqualTo(testCase.ExpectedError is null), reason);
-            Assert.That(result.Data, Is.EquivalentTo(testCase.Expected ?? []), reason);
+            Assert.That(result.Data, Is.EqualTo(testCase.Expected ?? []), reason);
 
             if (testCase.Gas is not null)
             {
