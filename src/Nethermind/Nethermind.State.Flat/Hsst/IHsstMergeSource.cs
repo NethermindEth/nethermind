@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// type so <see cref="GetEnumerator"/> / <see cref="CreateReader"/> resolve to direct calls
 /// in the cursor's hot loop.
 /// </remarks>
-internal interface IHsstMergeSource<TReader, TPin>
+internal interface IHsstMergeSource<TReader, TPin> : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
@@ -27,4 +27,8 @@ internal interface IHsstMergeSource<TReader, TPin>
     /// <summary>Materialise a fresh reader scoped to this source. Called once per cursor
     /// advance and once per value pin during the merge.</summary>
     TReader CreateReader();
+
+    // Dispose (inherited from IDisposable): release the source's enumerator and any other
+    // per-source resources. Called by the merge driver once per source after the cursor
+    // has finished consuming it.
 }
