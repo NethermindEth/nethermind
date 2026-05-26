@@ -41,8 +41,19 @@ public struct SparseTrieNode
     /// <summary>Branch: start index into the subtrie's Children array for this node's dense children.</summary>
     public int ChildrenStart;
 
-    /// <summary>Cached RLP encoding after hashing. Valid when State == Cached.</summary>
+    /// <summary>Cached child-ref encoding after hashing. For nodes with RLP >= 32 bytes, this is the
+    /// 32-byte keccak hash. For smaller nodes, this is the raw inline RLP. Used by parent encoding.</summary>
     public RlpNode CachedRlp;
+
+    /// <summary>Full canonical RLP of this node (before hashing to child-ref form). Used for persistence.
+    /// For nodes with RLP >= 32 bytes: differs from CachedRlp (which is the hash). For smaller nodes: same as CachedRlp.
+    /// Set during EncodeLeaf/EncodeBranch. Null until hashed.</summary>
+    public byte[]? FullRlp;
+
+    /// <summary>For branch-with-ShortKey (folded extension+branch): the inner branch RLP before extension wrapping.
+    /// Both the extension wrapper (FullRlp) and inner branch (InnerBranchRlp) may need separate DB entries.
+    /// Null for pure branches without extension prefix.</summary>
+    public byte[]? InnerBranchRlp;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly bool IsEmpty() => Kind == SparseNodeKind.Empty;

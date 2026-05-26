@@ -558,6 +558,7 @@ public sealed class SparseSubtrie : IDisposable
         pos = Rlp.Encode(rlp, pos, keyBytes);
         Rlp.Encode(rlp, pos, value);
 
+        _arena[nodeIdx].FullRlp = rlp;
         _arena[nodeIdx].CachedRlp = RlpNode.FromRlp(rlp);
         _arena[nodeIdx].State = SparseNodeState.Cached;
     }
@@ -590,12 +591,16 @@ public sealed class SparseSubtrie : IDisposable
         }
         rlp[pos] = 0x80;
 
+        _arena[nodeIdx].FullRlp = rlp;
         _arena[nodeIdx].CachedRlp = RlpNode.FromRlp(rlp);
         _arena[nodeIdx].State = SparseNodeState.Cached;
     }
 
     private void WrapBranchWithExtension(int nodeIdx)
     {
+        // Save the inner branch RLP before wrapping with extension — both may need DB entries
+        _arena[nodeIdx].InnerBranchRlp = _arena[nodeIdx].FullRlp;
+
         byte[] extKey = _arena[nodeIdx].ShortKey!;
         RlpNode branchRlp = _arena[nodeIdx].CachedRlp;
 
@@ -613,6 +618,7 @@ public sealed class SparseSubtrie : IDisposable
         pos = Rlp.Encode(rlp, pos, keyBytes);
         branchRlp.WriteChildRef(rlp.AsSpan(pos));
 
+        _arena[nodeIdx].FullRlp = rlp; // extension wrapper is now the "full" RLP
         _arena[nodeIdx].CachedRlp = RlpNode.FromRlp(rlp);
     }
 
