@@ -281,4 +281,17 @@ public class NativeMemoryListTests
         list[0].Should().Be(0L);
         list[7].Should().Be(7L);
     }
+
+    // Regression for an issue where the (capacity, count) ctor would zero-clear `count` elements
+    // against a buffer sized for `capacity` — heap overwrite when count > capacity on the native
+    // path (no pool overallocation).
+    [TestCase(-1)]
+    [TestCase(5)]
+    public void Ctor_starting_count_out_of_range_throws(int badCount)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => { using NativeMemoryList<int> _ = new(4, badCount); });
+        Assert.Throws<ArgumentOutOfRangeException>(() => CtorRef(badCount));
+
+        static void CtorRef(int bad) { NativeMemoryListRef<int> _ = new(4, bad); }
+    }
 }

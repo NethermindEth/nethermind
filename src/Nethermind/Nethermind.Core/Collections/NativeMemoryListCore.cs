@@ -12,6 +12,13 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections;
 
+// Safety invariant: after every successful public operation, count <= capacity holds, where
+// capacity is the element count of the buffer currently at ptr (returned by AllocateBuffer as
+// `actualCapacity` and tracked through GuardResize / ReduceCount). Writes go through
+// GuardResize, which grows the buffer before the write; reads go through GuardIndex, which
+// bounds-checks against count. FreeBuffer is always called with the exact (ptr, pooledArray,
+// pinHandle) triple returned by the matching AllocateBuffer call — pool-backed and
+// native-allocated buffers are never crossed, so the right free path runs in every case.
 internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
 {
     // Buffers requested below this byte size route through ArrayPool<T>.Shared (pinned)
@@ -72,7 +79,12 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
         pinHandle = default;
         actualCapacity = capacity;
         if (UseAlignedAlloc)
-            return (T*)NativeMemory.AlignedAlloc((nuint)((long)capacity * sizeof(T)), (nuint)sizeof(T));
+            // Floor the alignment at sizeof(nuint): POSIX `aligned_alloc` requires the alignment
+            // to be a multiple of sizeof(void*), so alignments of 1/2/4 on a 64-bit host (i.e.
+            // T = byte/short/int/float) are undefined behavior even though glibc happens to
+            // accept them. The resulting alignment is always at least the element size for
+            // power-of-two T.
+            return (T*)NativeMemory.AlignedAlloc((nuint)((long)capacity * sizeof(T)), (nuint)Math.Max(sizeof(T), sizeof(nuint)));
         return (T*)NativeMemory.Alloc((nuint)capacity, (nuint)sizeof(T));
     }
 
