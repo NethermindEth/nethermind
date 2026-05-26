@@ -26,6 +26,7 @@ namespace Nethermind.State.Flat;
 
 public class PersistenceManager(
     IFlatDbConfig configuration,
+    ICompactionSchedule compactionSchedule,
     IFinalizedStateProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
@@ -44,6 +45,12 @@ public class PersistenceManager(
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
     private readonly IPersistedSnapshotCompactor _compactor = persistedSnapshotCompactor;
     private readonly IPersistedSnapshotRepository _repo = persistedSnapshotRepository;
+    // Per-instance compaction schedule (master PR #11756). Accepted as a ctor dependency so the
+    // public surface matches master, but the long-finality DetermineSnapshotAction below still
+    // computes boundaries via _compactSize directly. Wiring the schedule into the boundary calc
+    // is a follow-up integration; the schedule would let multi-instance deployments stagger
+    // their compaction beats.
+    private readonly ICompactionSchedule _schedule = compactionSchedule;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 

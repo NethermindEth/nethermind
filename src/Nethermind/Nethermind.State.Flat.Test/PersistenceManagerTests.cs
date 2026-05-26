@@ -61,6 +61,7 @@ public class PersistenceManagerTests
 
         _persistenceManager = new PersistenceManager(
             _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
@@ -182,6 +183,7 @@ public class PersistenceManagerTests
         _config.EnableLongFinality = false;
         _persistenceManager = new PersistenceManager(
             _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,

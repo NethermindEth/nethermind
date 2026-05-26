@@ -34,11 +34,17 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Maximum number of in-memory base snapshots before conversion to the persisted-snapshot tier kicks in. Counted as `SnapshotCount` of the in-memory repository, not a block-distance depth. Default is MinReorgDepth + CompactSize.", DefaultValue = "160")]
     int MaxInMemoryBaseSnapshotCount { get; set; }
 
+    [ConfigItem(Description = "Max reorg depth", DefaultValue = "256")]
+    int MaxReorgDepth { get; set; }
+
     [ConfigItem(Description = "Minimum compact size (power of 2, floor for hierarchical compaction)", DefaultValue = "4")]
     int MinCompactSize { get; set; }
 
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     int MinReorgDepth { get; set; }
+
+    [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
+    bool RegenerateCompactionOffset { get; set; }
 
     [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
     long TrieCacheMemoryBudget { get; set; }
