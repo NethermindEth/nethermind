@@ -1,0 +1,104 @@
+name: Hive FOCIL tests (EIP-7805)
+
+# Runs the FOCIL engine suite from the upstream-pending Hive PR
+# (felix314159/hive#3 → ethereum/hive). Manually triggered while the PR is
+# unmerged; once it lands in ethereum/hive, fold these into hive-tests.yml's
+# matrix instead of keeping a separate workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      log-level:
+        description: Log level
+        required: true
+        default: '3'
+        type: choice
+        options: ['0', '1', '2', '3', '4', '5']
+      parallelism:
+        description: Parallelism
+        required: true
+        default: 4
+        type: number
+      buildarg:
+        description: Docker build arguments
+        required: false
+        type: string
+      hive-repo:
+        description: Hive repo carrying the FOCIL simulator
+        required: true
+        default: felix314159/hive
+        type: string
+      hive-branch:
+        description: Hive branch carrying the FOCIL simulator
+        required: true
+        default: focil
+        type: string
+      limit:
+        description: Test name filter (substring/regex passed to --sim.limit)
+        required: false
+        default: 'engine-focil'
+        type: string
+
+jobs:
+  test:
+    name: Hive engine-focil
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v6
+        with:
+          path: nethermind
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_SUMMARY: false
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+          build-args: ${{ github.event.inputs.buildarg }}
+
+      - name: Check out Hive repository (FOCIL branch)
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.inputs.hive-repo }}
+          ref: ${{ github.event.inputs.hive-branch }}
+          path: hive
+
+      - name: Patch Hive Dockerfile to reuse the locally-built Nethermind image
+        run: sed -i 's#FROM $baseimage:$tag#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Run Hive (engine-focil)
+        continue-on-error: true
+        working-directory: hive
+        run: |
+          ./hive \
+            --client nethermind \
+            --sim ethereum/engine \
+            --sim.limit "${{ github.event.inputs.limit }}" \
+            --sim.loglevel "${{ github.event.inputs.log-level }}" \
+            --sim.parallelism "${{ github.event.inputs.parallelism }}"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-focil-${{ github.run_number }}-${{ github.run_attempt }}
+          path: hive/workspace
+          retention-days: 7
+
+      - name: Print results
+        run: |
+          rm -f hive/workspace/logs/hive.json
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
