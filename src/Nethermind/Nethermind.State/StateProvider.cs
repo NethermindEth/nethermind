@@ -725,7 +725,6 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         if (!exists)
         {
             Metrics.IncrementStateTreeReads();
-            EvmMetrics.IncrementAccountReads();
             Account? account = _tree.Get(address);
 
             accountChanges = new(account, account);

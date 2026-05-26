@@ -79,9 +79,6 @@ namespace Nethermind.Consensus.Processing
         private long _startCreateOps;
         private long _startContractsAnalyzed;
         private long _startCachedContractsUsed;
-        private long _startAccountReads;
-        private long _startStorageReads;
-        private long _startCodeReads;
         private long _startCodeBytesRead;
         private long _startAccountWrites;
         private long _startAccountDeleted;
@@ -189,9 +186,6 @@ namespace Nethermind.Consensus.Processing
 
             // Read MainThread* to exclude background prewarmer activity from per-block deltas
             // (cross-client metrics must reflect only the block-processing flow's reads/writes).
-            _startAccountReads = Evm.Metrics.MainThreadAccountReads;
-            _startStorageReads = Evm.Metrics.MainThreadStorageReads;
-            _startCodeReads = Evm.Metrics.MainThreadCodeReads;
             _startCodeBytesRead = Evm.Metrics.MainThreadCodeBytesRead;
             _startAccountWrites = Evm.Metrics.MainThreadAccountWrites;
             _startAccountDeleted = Evm.Metrics.MainThreadAccountDeleted;
@@ -269,10 +263,6 @@ namespace Nethermind.Consensus.Processing
             // Skip entirely when slow block logging is disabled (-1)
             if (_slowBlockThresholdMs >= 0)
             {
-                blockData.DeltaAccountReads = Evm.Metrics.MainThreadAccountReads - _startAccountReads;
-                blockData.DeltaStorageReads = Evm.Metrics.MainThreadStorageReads - _startStorageReads;
-                blockData.DeltaCodeReads = Evm.Metrics.MainThreadCodeReads - _startCodeReads;
-                blockData.DeltaCodeBytesRead = Evm.Metrics.MainThreadCodeBytesRead - _startCodeBytesRead;
                 blockData.DeltaAccountWrites = Evm.Metrics.MainThreadAccountWrites - _startAccountWrites;
                 blockData.DeltaAccountDeleted = Evm.Metrics.MainThreadAccountDeleted - _startAccountDeleted;
                 blockData.DeltaStorageWrites = Evm.Metrics.MainThreadStorageWrites - _startStorageWrites;
@@ -287,6 +277,10 @@ namespace Nethermind.Consensus.Processing
                 blockData.DeltaStorageCacheMisses = DbMetrics.MainThreadStorageTreeReads - _startStorageCacheMisses;
                 blockData.DeltaCodeCacheHits = Evm.Metrics.MainThreadCodeDbCache - _startCodeCacheHits;
                 blockData.DeltaCodeCacheMisses = Evm.Metrics.MainThreadCodeReads - _startCodeCacheMisses;
+                blockData.DeltaAccountReads = blockData.DeltaAccountCacheMisses;
+                blockData.DeltaStorageReads = blockData.DeltaStorageCacheHits + blockData.DeltaStorageCacheMisses;
+                blockData.DeltaCodeReads = blockData.DeltaCodeCacheMisses;
+                blockData.DeltaCodeBytesRead = Evm.Metrics.MainThreadCodeBytesRead - _startCodeBytesRead;
                 blockData.DeltaEip7702DelegationsSet = Evm.Metrics.MainThreadEip7702DelegationsSet - _startEip7702DelegationsSet;
                 blockData.DeltaEip7702DelegationsCleared = Evm.Metrics.MainThreadEip7702DelegationsCleared - _startEip7702DelegationsCleared;
                 blockData.DeltaStorageMerkleTime = Evm.Metrics.MainThreadStorageMerkleTime - _startStorageMerkleTime;

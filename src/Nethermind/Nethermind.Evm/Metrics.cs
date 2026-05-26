@@ -17,16 +17,15 @@ using Nethermind.Core.Threading;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// Compile-time switch for the cross-client execution-metrics counters
-/// (account/storage/code reads + writes, EIP-7702 delegation set/clear, block timing breakdown).
+/// Compile-time switch for the cross-client execution metrics
+/// (writes, code-read diagnostics, EIP-7702 delegation set/clear, block timing breakdown).
 /// </summary>
 /// <remarks>
 /// <para>This is a compile-time gate, deliberately not tied to runtime configuration. Default
 /// builds run with metrics on — every gated <see cref="Metrics"/> Increment* call fires its
 /// underlying <see cref="Interlocked"/> op (~10–15 ns on x64), <b>regardless of</b>
 /// <see cref="BlocksConfig.SlowBlockThresholdMs"/>. The threshold gates slow-block JSON
-/// emission only, not the counter increments — which are also surfaced via Prometheus
-/// independent of the slow-block feature.</para>
+/// emission only, not the exported counter increments.</para>
 /// <para>To eliminate the counter overhead entirely (e.g. for performance-critical benchmark
 /// builds), rebuild with the <c>NETHERMIND_NO_EXECUTION_METRICS</c> symbol defined: the JIT
 /// folds <see cref="IsActive"/> to <c>false</c>, every <c>if (!ExecutionMetricsFlag.IsActive)
@@ -150,57 +149,24 @@ public class Metrics
     // since IsActive is a static property folded to a constant by the JIT, flipping the flag to
     // false elides the Interlocked.Increment / Interlocked.Add when inlined.
 
-    [CounterMetric]
-    [Description("Number of account reads during execution.")]
-    public static long AccountReads => _mainAccountReads + _otherAccountReads;
-    private static long _mainAccountReads;
-    private static long _otherAccountReads;
-    // Exposed for ProcessingStats so block-level deltas exclude background prewarmer activity.
-    internal static long MainThreadAccountReads => _mainAccountReads;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementAccountReads()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainAccountReads : ref _otherAccountReads);
-    }
-
-    [CounterMetric]
-    [Description("Number of storage slot reads during execution.")]
-    public static long StorageReads => _mainStorageReads + _otherStorageReads;
-    private static long _mainStorageReads;
-    private static long _otherStorageReads;
-    internal static long MainThreadStorageReads => _mainStorageReads;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementStorageReads()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageReads : ref _otherStorageReads);
-    }
-
-    [CounterMetric]
-    [Description("Number of code reads during execution.")]
-    public static long CodeReads => _mainCodeReads + _otherCodeReads;
     private static long _mainCodeReads;
-    private static long _otherCodeReads;
     internal static long MainThreadCodeReads => _mainCodeReads;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementCodeReads()
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeReads : ref _otherCodeReads);
+        if (!IsBlockProcessingThread) return;
+        Interlocked.Increment(ref _mainCodeReads);
     }
 
-    [CounterMetric]
-    [Description("Total bytes of code read during execution.")]
-    public static long CodeBytesRead => _mainCodeBytesRead + _otherCodeBytesRead;
     private static long _mainCodeBytesRead;
-    private static long _otherCodeBytesRead;
     internal static long MainThreadCodeBytesRead => _mainCodeBytesRead;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementCodeBytesRead(int bytes)
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCodeBytesRead : ref _otherCodeBytesRead, bytes);
+        if (!IsBlockProcessingThread) return;
+        Interlocked.Add(ref _mainCodeBytesRead, bytes);
     }
 
     [CounterMetric]

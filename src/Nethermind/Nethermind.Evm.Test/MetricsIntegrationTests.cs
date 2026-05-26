@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
+using DbMetrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.Evm.Test;
 
@@ -76,14 +77,14 @@ public class MetricsIntegrationTests
         PrivateKey sender = TestItem.PrivateKeyA;
         _worldState.CreateAccount(sender.Address, 10.Ether);
 
-        long startReads = Metrics.MainThreadAccountReads;
+        long startReads = DbMetrics.StateTreeReads;
         long startWrites = Metrics.MainThreadAccountWrites;
 
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(1.Ether)
             .WithGasLimit(21_000).SignedAndResolved(_ecdsa, sender, true).TestObject;
         ExecuteTx(tx, CreateBlock(tx));
 
-        Assert.That(Metrics.MainThreadAccountReads - startReads, Is.GreaterThanOrEqualTo(2));
+        Assert.That(DbMetrics.StateTreeReads - startReads, Is.GreaterThanOrEqualTo(2));
         Assert.That(Metrics.MainThreadAccountWrites - startWrites, Is.GreaterThanOrEqualTo(2));
     }
 
@@ -95,13 +96,14 @@ public class MetricsIntegrationTests
         _worldState.CreateAccount(sender.Address, 10.Ether);
         DeployCode(contract, Prepare.EvmCode.Op(Instruction.PUSH0).Op(Instruction.SLOAD).Op(Instruction.POP).Done);
 
-        long startReads = Metrics.MainThreadStorageReads;
+        long startReads = DbMetrics.StorageTreeReads + DbMetrics.StorageTreeCache;
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(100_000)
             .SignedAndResolved(_ecdsa, sender, true).TestObject;
         ExecuteTx(tx, CreateBlock(tx));
 
-        Assert.That(Metrics.MainThreadStorageReads - startReads, Is.GreaterThanOrEqualTo(1));
+        long currentReads = DbMetrics.StorageTreeReads + DbMetrics.StorageTreeCache;
+        Assert.That(currentReads - startReads, Is.GreaterThanOrEqualTo(1));
     }
 
     [Test]
