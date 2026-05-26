@@ -104,7 +104,7 @@ public partial class DebugRpcModuleTests
             blockHash,
             new GethTraceOptions { Tracer = NativePrestateTracer.PrestateTracer });
 
-        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+        RpcTest.AssertSuccess<IReadOnlyCollection<GethLikeTxTrace>>(response);
     }
 
     private static IEnumerable<TestCaseData> TraceBlockSource()

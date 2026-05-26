@@ -267,7 +267,7 @@ public partial class BlockAccessListManager
 
             if (inSuggested)
             {
-                if (!gen.ChangesAtRowEqualForOrdinal(sug, row, ordinal))
+                if (!gen.Lanes.ChangesAtRowEqualForOrdinal(sug.Lanes, row, ordinal))
                 {
                     throw new InvalidBlockLevelAccessListException(block.Header,
                         $"Suggested block-level access list contained incorrect changes for {address} at index {index}.");
@@ -279,7 +279,7 @@ public partial class BlockAccessListManager
             // row AND (system-user read at index 0 with no reads, or has reads).
             bool hasReads = gen.HasStorageReadsForOrdinal(ordinal);
             int genReads = IsSystemContract(address) ? 0 : (hasReads ? 1 : 0); // sentinel; only "> 0" matters
-            if (!gen.HasChangesAtRow(row, ordinal) &&
+            if (!gen.Lanes.HasAt(row, ordinal) &&
                 ((index == 0 && address == Address.SystemUser && genReads == 0) || genReads > 0))
             {
                 continue;
@@ -295,7 +295,7 @@ public partial class BlockAccessListManager
         foreach (int ordinal in sug.EnumerateMarkedOrdinals())
         {
             if (gen.HasAccount(ordinal)) continue; // already handled in Pass 1
-            if (sug.HasChangesAtRow(row, ordinal))
+            if (sug.Lanes.HasAt(row, ordinal))
             {
                 throw new InvalidBlockLevelAccessListException(block.Header,
                     $"Suggested block-level access list contained surplus changes for {sug.AddressOf(ordinal)} at index {index}.");

@@ -63,6 +63,9 @@ namespace Nethermind.Db.FullPruning
             string dbPath = firstDb ? originalSetting.DbPath : _fileSystem.Path.Combine(originalSetting.DbPath, _index.ToString());
             DbSettings dbSettings = originalSetting.Clone(dbName, dbPath);
             dbSettings.CanDeleteFolder = !firstDb; // we cannot delete main db folder, only indexed subfolders
+            // Inner DBs are tracked via the FullPruningDb wrapper (registered with a stable name)
+            // so we skip tracking these indexed sub-DBs to avoid stale references after pruning.
+            dbSettings.SkipMetricsTracking = true;
             return dbSettings;
         }
 

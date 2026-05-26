@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 using System.IO;
 using System.Numerics;
 using System.Text.Json;
@@ -18,8 +19,16 @@ namespace Nethermind.JsonRpc.Test.Data
     [TestFixture]
     public class IdConverterTests : SerializationTestBase
     {
-        [Test]
-        public void Can_do_roundtrip_big() => TestRoundtrip<SomethingWithId>("{\"id\":123498132871289317239813219}");
+        private static readonly JsonSerializerOptions _jsonRpcIdOptions = new()
+        {
+            Converters = { new JsonRpcIdConverter() }
+        };
+
+        [TestCase("{\"id\":1234}", TestName = "Long")]
+        [TestCase("{\"id\":123498132871289317239813219}", TestName = "BigInteger")]
+        [TestCase("{\"id\":\"test\"}", TestName = "String")]
+        [TestCase("{\"id\":null}", TestName = "Null")]
+        public void Can_do_roundtrip_object_id(string json) => TestRoundtrip<SomethingWithId>(json);
 
         [Test]
         public void Can_handle_int()
@@ -57,14 +66,97 @@ namespace Nethermind.JsonRpc.Test.Data
             converter.CanConvert(type).Should().Be(true);
         }
 
-        [Test]
-        public void Can_do_roundtrip_long() => TestRoundtrip<SomethingWithId>("{\"id\":1234}");
+        [TestCase("{\"id\":1234}")]
+        [TestCase("{\"id\":123498132871289317239813219}")]
+        [TestCase("{\"id\":\"test\"}")]
+        [TestCase("{\"id\":null}")]
+        public void JsonRpcId_can_do_roundtrip(string json) => TestRoundtrip<SomethingWithJsonRpcId>(json);
+
+        [TestCase("1e2", "100")]
+        [TestCase("12345678901234567890", "12345678901234567890")]
+        public void JsonRpcId_preserves_decimal_raw_writeback(string idJson, string expectedValue)
+        {
+            JsonRpcId id = DeserializeId(idJson);
+
+            id.TryGetDecimal(out decimal value).Should().BeTrue();
+            value.Should().Be(decimal.Parse(expectedValue, CultureInfo.InvariantCulture));
+            Serialize(id).Should().Be(idJson);
+        }
+
+        [TestCase("2.1")]
+        public void JsonRpcId_rejects_fractional_decimal(string idJson)
+        {
+            Action deserialize = () => DeserializeId(idJson);
+
+            deserialize.Should().Throw<NotSupportedException>();
+        }
 
         [Test]
-        public void Can_do_roundtrip_string() => TestRoundtrip<SomethingWithId>("{\"id\":\"test\"}");
+        public void JsonRpcId_preserves_missing_and_explicit_null_states()
+        {
+            JsonRpcId.Missing.IsMissing.Should().BeTrue();
+            JsonRpcId.Null.IsNull.Should().BeTrue();
+            JsonRpcId.Missing.Should().NotBe(JsonRpcId.Null);
+            Serialize(JsonRpcId.Missing).Should().Be("null");
+            Serialize(JsonRpcId.Null).Should().Be("null");
+        }
 
         [Test]
-        public void Can_do_roundtrip_null() => TestRoundtrip<SomethingWithId>("{\"id\":null}");
+        public void JsonRpcId_deserializes_absent_id_as_missing()
+        {
+            SomethingWithJsonRpcId? value = JsonSerializer.Deserialize<SomethingWithJsonRpcId>("{}", _jsonRpcIdOptions);
+
+            value!.Id.IsMissing.Should().BeTrue();
+        }
+
+        [Test]
+        public void JsonRpcId_escapes_string_values()
+        {
+            const string idValue = "a\"\\\n\u263A";
+            JsonRpcId id = new(idValue);
+
+            using JsonDocument document = JsonDocument.Parse(Serialize(id));
+            document.RootElement.GetString().Should().Be(idValue);
+        }
+
+        [Test]
+        public void JsonRpcId_bridges_legacy_object_values()
+        {
+            string stringId = new(['t', 'e', 's', 't']);
+
+            JsonRpcId.FromObject(null).Should().Be(JsonRpcId.Null);
+            JsonRpcId.FromObject(1).ToObject().Should().Be(1L);
+            JsonRpcId.FromObject(2L).ToObject().Should().Be(2L);
+            JsonRpcId.FromObject(3m).ToObject().Should().Be(3m);
+            JsonRpcId.FromObject(stringId).ToObject().Should().BeSameAs(stringId);
+        }
+
+        [Test]
+        public void JsonRpcId_object_equals_never_matches_null()
+        {
+            JsonRpcId.Missing.Equals((object?)null).Should().BeFalse();
+            JsonRpcId.Null.Equals((object?)null).Should().BeFalse();
+        }
+
+        [TestCaseSource(nameof(JsonRpcIdEqualityCases))]
+        public void JsonRpcId_equality_and_hashing(JsonRpcId left, JsonRpcId right, bool expected)
+        {
+            left.Equals(right).Should().Be(expected);
+            right.Equals(left).Should().Be(expected);
+
+            if (expected)
+            {
+                left.GetHashCode().Should().Be(right.GetHashCode());
+            }
+        }
+
+        [TestCaseSource(nameof(JsonRpcResponseIdCases))]
+        public void JsonRpcResponse_serializes_typed_ids(JsonRpcId id, string expectedIdJson)
+        {
+            JsonRpcSuccessResponse response = new() { Id = id, Result = "0x1" };
+
+            TestToJson(response, $"{{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":{expectedIdJson}}}");
+        }
 
         [Test]
         public void Decimal_not_supported()
@@ -95,5 +187,41 @@ namespace Nethermind.JsonRpc.Test.Data
 
             public string Something { get; set; } = null!;
         }
+
+        public class SomethingWithJsonRpcId
+        {
+            [JsonConverter(typeof(JsonRpcIdConverter))]
+            [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+            public JsonRpcId Id { get; set; }
+
+            public string Something { get; set; } = null!;
+        }
+
+        private static string Serialize(JsonRpcId id) => JsonSerializer.Serialize(id, _jsonRpcIdOptions);
+
+        private static JsonRpcId DeserializeId(string json) => JsonSerializer.Deserialize<JsonRpcId>(json, _jsonRpcIdOptions);
+
+        private static readonly TestCaseData[] JsonRpcIdEqualityCases =
+        [
+            new TestCaseData(JsonRpcId.Missing, JsonRpcId.Missing, true).SetName("Missing"),
+            new TestCaseData(JsonRpcId.Null, JsonRpcId.Null, true).SetName("ExplicitNull"),
+            new TestCaseData(JsonRpcId.Missing, JsonRpcId.Null, false).SetName("MissingVsNull"),
+            new TestCaseData(DeserializeId("\"\\u0041\\n\""), new JsonRpcId("A\n"), true).SetName("EscapedString"),
+            new TestCaseData(DeserializeId("1e2"), new JsonRpcId(100m), true).SetName("RawDecimal"),
+            new TestCaseData(new JsonRpcId(1), new JsonRpcId(1m), false).SetName("LongVsDecimalKind")
+        ];
+
+        private static readonly TestCaseData[] JsonRpcResponseIdCases =
+        [
+            new TestCaseData(JsonRpcId.Missing, "null").SetName("Missing"),
+            new TestCaseData(JsonRpcId.Null, "null").SetName("ExplicitNull"),
+            new TestCaseData(new JsonRpcId(1), "1").SetName("Long"),
+            new TestCaseData(new JsonRpcId(1234m), "1234").SetName("DecimalInteger"),
+            new TestCaseData(DeserializeId("1e2"), "1e2").SetName("RawDecimalInteger"),
+            new TestCaseData(new JsonRpcId(12345678901234567890m), "12345678901234567890").SetName("LargeDecimalInteger"),
+            new TestCaseData(new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2"), "\"840b55c4-18b0-431c-be1d-6d22198b53f2\"").SetName("GuidString"),
+            new TestCaseData(new JsonRpcId("a\"\\\n\u263A"), "\"a\\u0022\\\\\\n\\u263A\"").SetName("EscapedString"),
+            new TestCaseData(new JsonRpcId("test"), "\"test\"").SetName("String")
+        ];
     }
 }
