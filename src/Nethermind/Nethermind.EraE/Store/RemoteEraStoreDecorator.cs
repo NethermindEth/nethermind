@@ -215,7 +215,8 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     {
         string root = Path.GetFullPath(_downloadDir);
         string destinationPath = Path.GetFullPath(Path.Join(root, filename));
-        if (!destinationPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        string boundary = Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar;
+        if (!destinationPath.StartsWith(boundary, StringComparison.Ordinal))
             throw new EraException($"Remote eraE manifest filename '{filename}' escapes the download directory.");
 
         return destinationPath;
