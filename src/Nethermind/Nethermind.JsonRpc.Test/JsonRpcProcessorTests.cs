@@ -306,14 +306,17 @@ public class JsonRpcProcessorTests
         return new ReadOnlySequence<byte>(start, 0, end, end.Memory.Length);
     }
 
-    [Test]
-    public void JsonRpcEnvelopeReader_reads_envelope_and_params_range()
+    [TestCase("engine_newPayloadV4")]
+    [TestCase("eth_call")]
+    public void JsonRpcEnvelopeReader_reads_envelope_and_params_range(string methodName)
     {
-        JsonRpcEnvelope envelope = ReadEnvelope("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_newPayloadV3\",\"params\":[1,{\"a\":2}],\"extra\":{\"ignored\":true}}", out byte[] body);
+        JsonRpcEnvelope envelope = ReadEnvelope($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"{methodName}\",\"params\":[1,{{\"a\":2}}],\"extra\":{{\"ignored\":true}}}}", out byte[] body);
 
         envelope.JsonRpc.Should().Be("2.0");
         envelope.Id.Should().Be(new JsonRpcId(1));
-        ReferenceEquals(envelope.Method, "engine_newPayloadV3").Should().BeTrue();
+        string? knownMethodName = TryGetKnownMethodName(methodName);
+        knownMethodName.Should().NotBeNull();
+        envelope.Method.Should().BeSameAs(knownMethodName);
         envelope.HasParams.Should().BeTrue();
         envelope.ParamsKind.Should().Be(JsonValueKind.Array);
         Encoding.UTF8.GetString(body, envelope.ParamsStart, envelope.ParamsLength).Should().Be("[1,{\"a\":2}]");

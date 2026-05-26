@@ -656,25 +656,15 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         JsonReaderState readerState = default;
         int offset = 0;
         bool started = false;
-        List<JsonDocument>? requestDocuments = null;
-        List<JsonRpcRequest>? requestsWithRawParams = null;
+        BatchRequestJsonLifetime batchRequestJsonLifetime = new();
 
         try
         {
             while (JsonRpcArrayReader.TryReadNextItem(batchBody, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> itemBody))
             {
                 requestIndex++;
-                JsonRpcRequest jsonRpcRequest = DeserializeBatchItem(itemBody, out JsonDocument? requestDocument);
-                if (requestDocument is not null)
-                {
-                    requestDocuments ??= [];
-                    requestDocuments.Add(requestDocument);
-                }
-                else if (!jsonRpcRequest.ParamsUtf8.IsEmpty)
-                {
-                    requestsWithRawParams ??= [];
-                    requestsWithRawParams.Add(jsonRpcRequest);
-                }
+                JsonRpcRequest jsonRpcRequest = DeserializeBatchItem(itemBody, out JsonDocument? ownedRequestDocument);
+                batchRequestJsonLifetime.TrackUntilBatchEnd(jsonRpcRequest, ownedRequestDocument);
 
                 JsonRpcResult.Entry response = isStopped
                     ? CreateBatchResponseLimitEntry(jsonRpcRequest)
@@ -701,21 +691,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             }
             finally
             {
-                if (requestDocuments is not null)
-                {
-                    foreach (JsonDocument requestDocument in requestDocuments)
-                    {
-                        requestDocument.Dispose();
-                    }
-                }
-
-                if (requestsWithRawParams is not null)
-                {
-                    foreach (JsonRpcRequest request in requestsWithRawParams)
-                    {
-                        request.DisposeParsedParamsDocument();
-                    }
-                }
+                batchRequestJsonLifetime.Dispose();
             }
         }
     }
@@ -975,6 +951,45 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         ArrayBufferWriter<byte> writer = new();
         JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptionsIndented);
         return Encoding.UTF8.GetString(writer.WrittenSpan);
+    }
+
+    private sealed class BatchRequestJsonLifetime : IDisposable
+    {
+        private List<JsonDocument>? _ownedRequestDocuments;
+        private List<JsonRpcRequest>? _requestsWithRawParams;
+
+        public void TrackUntilBatchEnd(JsonRpcRequest request, JsonDocument? ownedRequestDocument)
+        {
+            if (ownedRequestDocument is not null)
+            {
+                _ownedRequestDocuments ??= [];
+                _ownedRequestDocuments.Add(ownedRequestDocument);
+            }
+            else if (!request.ParamsUtf8.IsEmpty)
+            {
+                _requestsWithRawParams ??= [];
+                _requestsWithRawParams.Add(request);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_ownedRequestDocuments is not null)
+            {
+                foreach (JsonDocument requestDocument in _ownedRequestDocuments)
+                {
+                    requestDocument.Dispose();
+                }
+            }
+
+            if (_requestsWithRawParams is not null)
+            {
+                foreach (JsonRpcRequest request in _requestsWithRawParams)
+                {
+                    request.DisposeParsedParamsDocument();
+                }
+            }
+        }
     }
 
     private readonly record struct DiagnosticJsonRpcResult(JsonElement Response, RpcReport Report);
