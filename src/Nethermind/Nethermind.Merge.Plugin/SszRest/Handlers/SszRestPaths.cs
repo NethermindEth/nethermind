@@ -56,6 +56,6 @@ public static class SszRestPaths
 
     // Bogota (FOCIL — EIP-7805)
     public const string PostV6Payloads = "POST /engine/v6/payloads";
-    public const string GetV1InclusionList = "GET /engine/v1/inclusion_list";
-    public const string PostV1UpdatePayloadWithInclusionList = "POST /engine/v1/payloads/{payload_id}/inclusion_list";
+    public const string GetV1InclusionList = "GET /engine/v1/inclusion_list/{block_hash}";
+    public const string PostV5Forkchoice = "POST /engine/v5/forkchoice";
 }

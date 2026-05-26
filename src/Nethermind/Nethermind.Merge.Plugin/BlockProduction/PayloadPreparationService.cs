@@ -468,42 +468,10 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         _ = GetPayload(payloadId);
 
     /// <summary>
-    /// EIP-7805 (FOCIL): cancels the current improvement task and starts a new one with the
-    /// same parent/attributes. The inclusion-list transactions injected via
-    /// <see cref="Transactions.InclusionListTxSource.Set"/> are picked up by the tx-source
-    /// pipeline (registered via <see cref="Transactions.InclusionListBlockProducerTxSourceFactory"/>)
-    /// on the next pass.
-    /// </summary>
-    public void ForceRebuildPayload(string payloadId)
-    {
-        if (!_rebuildSlots.TryGetValue(payloadId, out RebuildSlot? slot)) return;
-        if (!_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? currentContext)) return;
-
-        Block? best = currentContext.CurrentBestBlock;
-        if (best is null) return;
-
-        // Cancel the in-flight improvement so the new one isn't gated by the unchanged tx-pool counter.
-        currentContext.CancelOngoingImprovements();
-
-        // Fresh cts: the previous one is cancelled/disposed by CancelOngoingImprovements;
-        // ImproveBlock checks IsCancellationRequested before swapping the context.
-        SharedCancellationTokenSource newCts = new(CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken));
-        ImproveBlock(payloadId, slot.ParentHeader, slot.PayloadAttributes, best, DateTimeOffset.UtcNow, currentContext.BlockFees, newCts);
-    }
-
-    /// <summary>
-    /// EIP-7805 (FOCIL): returns the header of the in-flight payload so the IL handler can
-    /// resolve the active spec for decoding/validation.
-    /// </summary>
-    public BlockHeader? GetPayloadHeader(string payloadId) =>
-        _payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? ctx)
-            ? ctx.CurrentBestBlock?.Header
-            : null;
-
-    /// <summary>
     /// EIP-7805 (FOCIL): how many times ImproveBlock has been entered for this payloadId.
-    /// Increments on every (re)build, including the post-IL force-rebuild.
+    /// Exposed for tests; not part of the engine API surface. Increments on the initial
+    /// build plus every subsequent tx-pool-driven improvement.
     /// </summary>
-    public uint? GetPayloadBuildCount(string payloadId) =>
+    internal uint? GetPayloadBuildCount(string payloadId) =>
         _rebuildSlots.TryGetValue(payloadId, out RebuildSlot? slot) ? slot.BuildCount : null;
 }

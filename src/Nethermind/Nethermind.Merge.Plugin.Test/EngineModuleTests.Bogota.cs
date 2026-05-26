@@ -144,7 +144,7 @@ public partial class EngineModuleTests
         chain.TxPool.SubmitTx(tx1, TxHandlingOptions.PersistentBroadcast);
         chain.TxPool.SubmitTx(tx2, TxHandlingOptions.PersistentBroadcast);
 
-        using ArrayPoolList<byte[]>? inclusionList = (await rpc.engine_getInclusionListV1()).Data;
+        using ArrayPoolList<byte[]>? inclusionList = (await rpc.engine_getInclusionListV1(chain.BlockTree.HeadHash)).Data;
 
         byte[] tx1Bytes = Rlp.Encode(tx1).Bytes;
         byte[] tx2Bytes = Rlp.Encode(tx2).Bytes;
@@ -292,36 +292,6 @@ public partial class EngineModuleTests
             Assert.That(successResponse, Is.Not.Null);
             Assert.That(response, Is.EqualTo(ExpectedGetPayloadResponse(chain, block, new UInt256(Convert.ToUInt64(blockFees, 16)))));
         });
-    }
-
-    [Test]
-    public async Task Can_force_rebuild_payload()
-    {
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
-        PayloadPreparationService payloadPreparationService = (PayloadPreparationService)chain.PayloadPreparationService!;
-
-        BlockHeader parentHeader = chain.BlockTree.Head!.Header;
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = Timestamper.UnixTime.Seconds,
-            PrevRandao = Keccak.Zero,
-            SuggestedFeeRecipient = TestItem.AddressC,
-            Withdrawals = [],
-            ParentBeaconBlockRoot = Keccak.Zero
-        };
-
-        string payloadId = payloadPreparationService.StartPreparingPayload(parentHeader, payloadAttributes)!;
-        uint? buildCount = payloadPreparationService.GetPayloadBuildCount(payloadId);
-
-        Assert.That(buildCount, Is.EqualTo(1));
-
-        payloadPreparationService.ForceRebuildPayload(payloadId);
-
-        await Task.Delay(500);
-
-        buildCount = payloadPreparationService.GetPayloadBuildCount(payloadId);
-
-        Assert.That(buildCount, Is.EqualTo(2));
     }
 
     private string?[] InitForkchoiceParams(MergeTestBlockchain chain, byte[][] inclusionListTransactions, Withdrawal[]? withdrawals = null)

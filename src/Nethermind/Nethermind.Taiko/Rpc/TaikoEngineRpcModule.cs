@@ -11,6 +11,7 @@ using Microsoft.IO;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -52,8 +53,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
         IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
-        IHandler<ArrayPoolList<byte[]>> getInclusionListTransactionsHandler,
-        IHandler<(string, byte[][]), string?> updatePayloadWithInclusionListHandler,
+        IHandler<Hash256, ArrayPoolList<byte[]>> getInclusionListTransactionsHandler,
+        InclusionListTxSource inclusionListTxSource,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
@@ -81,7 +82,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 getPayloadBodiesByHashV2Handler,
                 getPayloadBodiesByRangeV2Handler,
                 getInclusionListTransactionsHandler,
-                updatePayloadWithInclusionListHandler,
+                inclusionListTxSource,
                 engineRequestsTracker,
                 specProvider,
                 gcKeeper,

@@ -340,13 +340,12 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
 
-                // EIP-7805 (FOCIL) — engine_getInclusionListV1 / engine_updatePayloadWithInclusionListV1.
-                // InclusionListTxSource is shared between the update handler (Set) and the tx-source
-                // pipeline decorator (read on every BuildBlock), so it must be a singleton.
+                // EIP-7805 (FOCIL) — engine_getInclusionListV1 and engine_forkchoiceUpdatedV5 (PayloadAttributesV5 with inclusionListTransactions).
+                // InclusionListTxSource is shared between the FCU path (Set when payload attrs carry an IL)
+                // and the tx-source pipeline decorator (read on every BuildBlock), so it must be a singleton.
                 .AddSingleton<InclusionListTxSource>()
                 .AddDecorator<IBlockProducerTxSourceFactory, InclusionListBlockProducerTxSourceFactory>()
-                .AddSingleton<IHandler<ArrayPoolList<byte[]>>, GetInclusionListTransactionsHandler>()
-                .AddSingleton<IHandler<(string, byte[][]), string?>, UpdatePayloadWithInclusionListHandler>()
+                .AddSingleton<IHandler<Hash256, ArrayPoolList<byte[]>>, GetInclusionListTransactionsHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>

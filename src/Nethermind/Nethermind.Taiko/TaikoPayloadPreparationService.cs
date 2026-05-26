@@ -198,13 +198,5 @@ public class TaikoPayloadPreparationService(
 
     public void CancelBlockProduction(string payloadId) => _ = GetPayload(payloadId);
 
-    // EIP-7805 (FOCIL) is mainnet-only. Taiko's block production is L2-derived and never
-    // serves the FOCIL engine endpoints, so these are not reachable in practice; throwing
-    // surfaces any misconfiguration that would route an IL update here.
-    public void ForceRebuildPayload(string payloadId) =>
-        throw new NotSupportedException("EIP-7805 (FOCIL) is not supported on Taiko.");
-
-    public BlockHeader? GetPayloadHeader(string payloadId) => null;
-
     public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }
 }
