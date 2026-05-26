@@ -90,7 +90,7 @@ public class CompactionScheduleTests
     public void Constructor_CompactSizeDisabled_OffsetIsZeroAndDbUntouched()
     {
         MemDb metadataDb = new();
-        FlatDbConfig config = new() { CompactSize = 1, MinCompactSize = 0 };
+        FlatDbConfig config = new() { CompactSize = 1 };
 
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
@@ -98,6 +98,7 @@ public class CompactionScheduleTests
         Assert.That(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset), Is.Null);
     }
 
+    [TestCase(1, 1)]    // odd block: 1 & -1 = 1
     [TestCase(2, 2)]
     [TestCase(4, 4)]
     [TestCase(6, 2)]
@@ -109,7 +110,7 @@ public class CompactionScheduleTests
     [TestCase(32, 16)]   // capped at CompactSize=16
     public void GetCompactSize_OffsetZero_MatchesBitTrick(long blockNumber, int expected)
     {
-        FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 2 };
+        FlatDbConfig config = new() { CompactSize = 16 };
         CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, 0);
 
         Assert.That(schedule.GetCompactSize(blockNumber), Is.EqualTo(expected));
@@ -117,12 +118,12 @@ public class CompactionScheduleTests
 
     [TestCase(0, 1)]    // block 0 always 1
     [TestCase(13, 16)]  // 13+3 = 16 -> full
-    [TestCase(16, 1)]   // 16+3 = 19 -> 19 & -19 = 1 (below min)
+    [TestCase(16, 1)]   // 16+3 = 19 -> 19 & -19 = 1 (caller treats as no compaction)
     [TestCase(5, 8)]    // 5+3 = 8
     [TestCase(29, 16)]  // 29+3 = 32 -> 32 & -32 = 32, capped at 16
     public void GetCompactSize_WithOffset3_ShiftsBoundaries(long blockNumber, int expected)
     {
-        FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 2 };
+        FlatDbConfig config = new() { CompactSize = 16 };
         CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, 3);
 
         Assert.That(schedule.GetCompactSize(blockNumber), Is.EqualTo(expected));
@@ -133,7 +134,7 @@ public class CompactionScheduleTests
     [TestCase(7L, 1_000_007L)] // large offsets work modulo CompactSize
     public void GetCompactSize_OffsetLargerThanCompactSize_EquivalentToOffsetModCompactSize(long smallOffset, long largeOffset)
     {
-        FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 2 };
+        FlatDbConfig config = new() { CompactSize = 16 };
         CompactionSchedule small = ScheduleHelper.CreateWithOffset(config, smallOffset);
         CompactionSchedule large = ScheduleHelper.CreateWithOffset(config, largeOffset);
 
@@ -144,18 +145,6 @@ public class CompactionScheduleTests
             Assert.That(large.NextFullCompactionAfter(block), Is.EqualTo(small.NextFullCompactionAfter(block)),
                 $"Next boundary mismatch from block {block} between offset {smallOffset} and {largeOffset}");
         }
-    }
-
-    [Test]
-    public void GetCompactSize_BelowMinCompactSize_ReturnsOne()
-    {
-        FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 4 };
-        CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, 0);
-
-        // block 2 -> (2 & -2) = 2 < min 4
-        Assert.That(schedule.GetCompactSize(2), Is.EqualTo(1));
-        // block 4 -> (4 & -4) = 4 == min, allowed
-        Assert.That(schedule.GetCompactSize(4), Is.EqualTo(4));
     }
 
     [TestCase(0, 0, 16)]    // from 0, offset 0 -> next full at 16
@@ -175,7 +164,7 @@ public class CompactionScheduleTests
     [Test]
     public void NextFullCompactionAfter_CompactSizeDisabled_ReturnsLongMaxValue()
     {
-        FlatDbConfig config = new() { CompactSize = 1, MinCompactSize = 0 };
+        FlatDbConfig config = new() { CompactSize = 1 };
         CompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
 
         Assert.That(schedule.NextFullCompactionAfter(0), Is.EqualTo(long.MaxValue));
@@ -185,14 +174,4 @@ public class CompactionScheduleTests
     public void Constructor_NonPowerOf2CompactSize_Throws() =>
         Assert.Throws<ArgumentException>(() =>
             new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 10 }, LimboLogs.Instance));
-
-    [Test]
-    public void Constructor_NonPowerOf2MinCompactSize_Throws() =>
-        Assert.Throws<ArgumentException>(() =>
-            new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 16, MinCompactSize = 3 }, LimboLogs.Instance));
-
-    [Test]
-    public void Constructor_MinCompactSizeGreaterThanCompactSize_Throws() =>
-        Assert.Throws<ArgumentException>(() =>
-            new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 8, MinCompactSize = 16 }, LimboLogs.Instance));
 }

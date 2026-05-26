@@ -360,7 +360,7 @@ public class SnapshotCompactorTests
     [Test]
     public void GetSnapshotsToCompact_CompactSizeDisabled_ReturnsEmpty()
     {
-        FlatDbConfig config = new() { CompactSize = 1, MinCompactSize = 0 };
+        FlatDbConfig config = new() { CompactSize = 1 };
         SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, _snapshotRepository, LimboLogs.Instance);
 
         StateId from = new(0, Keccak.Zero);
@@ -430,33 +430,6 @@ public class SnapshotCompactorTests
         targetSnapshot!.Dispose();
     }
 
-    [TestCase(2)]  // 2 & -2 = 2 < MinCompactSize(4)
-    [TestCase(6)]  // 6 & -6 = 2 < MinCompactSize(4)
-    [TestCase(10)] // 10 & -10 = 2 < MinCompactSize(4)
-    public void GetSnapshotsToCompact_BelowMinCompactSize_ReturnsEmpty(long blockNumber)
-    {
-        FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 4 };
-        SnapshotRepository repo = new(LimboLogs.Instance);
-        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, repo, LimboLogs.Instance);
-
-        for (long i = 0; i < blockNumber; i++)
-        {
-            StateId from = CreateStateId(i);
-            StateId to = CreateStateId(i + 1);
-            Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            repo.TryAddSnapshot(snapshot);
-            repo.AddStateId(to);
-        }
-
-        StateId targetTo = CreateStateId(blockNumber);
-        repo.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
-
-        using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot!);
-
-        Assert.That(snapshots.Count, Is.EqualTo(0));
-        targetSnapshot!.Dispose();
-    }
-
     [Test]
     public void GetSnapshotsToCompact_SingleSnapshot_ReturnsEmpty()
     {
@@ -520,19 +493,9 @@ public class SnapshotCompactorTests
             new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 10 }, LimboLogs.Instance));
 
     [Test]
-    public void Constructor_NonPowerOf2MinCompactSize_Throws() =>
-        Assert.Throws<ArgumentException>(() =>
-            new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 16, MinCompactSize = 3 }, LimboLogs.Instance));
-
-    [Test]
-    public void Constructor_MinCompactSizeGreaterThanCompactSize_Throws() =>
-        Assert.Throws<ArgumentException>(() =>
-            new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 8, MinCompactSize = 16 }, LimboLogs.Instance));
-
-    [Test]
-    public void GetSnapshotsToCompact_MinCompactSize2_AllowsSize2Compaction()
+    public void GetSnapshotsToCompact_Size2Compaction_AllowedByDefault()
     {
-        FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 2 };
+        FlatDbConfig config = new() { CompactSize = 16 };
         SnapshotRepository repo = new(LimboLogs.Instance);
         SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, repo, LimboLogs.Instance);
 
@@ -591,7 +554,7 @@ public class SnapshotCompactorTests
     {
         // CompactSize=16, offset=3 -> full compaction triggers when (block+3) % 16 == 0,
         // i.e. at blocks 13, 29, 45, ... Build a chain to block 29 (second full boundary).
-        FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 2 };
+        FlatDbConfig config = new() { CompactSize = 16 };
         SnapshotRepository repo = new(LimboLogs.Instance);
         SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 3), _resourcePool, repo, LimboLogs.Instance);
 
@@ -611,7 +574,7 @@ public class SnapshotCompactorTests
         Assert.That(snapshots29.Count, Is.EqualTo(16), "Block 29 should trigger full compaction with offset=3");
         targetSnapshot!.Dispose();
 
-        // Block 16: (16+3) & -(16+3) = 19 & -19 = 1 < MinCompactSize=2 -> no compaction
+        // Block 16: (16+3) & -(16+3) = 19 & -19 = 1 -> caller sees compactSize<=1, no compaction
         StateId target16 = CreateStateId(16);
         repo.TryLeaseState(target16, out targetSnapshot);
         using SnapshotPooledList snapshots16 = compactor.GetSnapshotsToCompact(targetSnapshot!);

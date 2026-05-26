@@ -8,8 +8,8 @@ public interface ICompactionSchedule
     /// <summary>
     /// Compact-size tier (power of 2, capped at <c>CompactSize</c>) that would be triggered
     /// at <paramref name="blockNumber"/>. Considers the per-instance offset so that nodes do
-    /// not compact in lockstep. Returns 1 when no compaction should run (block 0, below
-    /// <c>MinCompactSize</c>, or compaction disabled).
+    /// not compact in lockstep. Returns 1 when no compaction should run (block 0 or compaction
+    /// disabled).
     /// </summary>
     int GetCompactSize(long blockNumber);
 

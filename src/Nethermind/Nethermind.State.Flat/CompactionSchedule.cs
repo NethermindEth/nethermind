@@ -13,7 +13,6 @@ namespace Nethermind.State.Flat;
 public sealed class CompactionSchedule : ICompactionSchedule
 {
     private readonly int _compactSize;
-    private readonly int _minCompactSize;
     private readonly long _offset;
 
     public CompactionSchedule(
@@ -23,13 +22,8 @@ public sealed class CompactionSchedule : ICompactionSchedule
     {
         if (config.CompactSize > 1 && (config.CompactSize & (config.CompactSize - 1)) != 0)
             throw new ArgumentException("Compact size must be a power of 2");
-        if (config.MinCompactSize > 1 && (config.MinCompactSize & (config.MinCompactSize - 1)) != 0)
-            throw new ArgumentException("Min compact size must be a power of 2");
-        if (config.MinCompactSize > config.CompactSize)
-            throw new ArgumentException("Min compact size must be <= compact size");
 
         _compactSize = config.CompactSize;
-        _minCompactSize = Math.Max(config.MinCompactSize, 2);
 
         ILogger logger = logManager.GetClassLogger<CompactionSchedule>();
         _offset = ResolveOffset(metadataDb, config, logger);
@@ -41,8 +35,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
     {
         if (_compactSize <= 1 || blockNumber == 0) return 1;
         long shifted = blockNumber + _offset;
-        int compactSize = (int)Math.Min(shifted & -shifted, _compactSize);
-        return compactSize < _minCompactSize ? 1 : compactSize;
+        return (int)Math.Min(shifted & -shifted, _compactSize);
     }
 
     public long NextFullCompactionAfter(long from)
