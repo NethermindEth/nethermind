@@ -91,6 +91,12 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
     /// (typically a single <c>PinBuffer</c> + <c>using</c>).</summary>
     public readonly TReader CreateReaderAt(int srcIdx) => _sources[srcIdx].CreateReader();
 
+    /// <summary>The cursor's source span (one source per cursor slot). Used by nested-merge
+    /// helpers that need the per-source reader factory list to build inner sources or to walk
+    /// source bytes — handing them <c>cursor.Sources</c> avoids plumbing a parallel
+    /// <c>views</c>/<c>(IntPtr, long)</c> span through every merge layer.</summary>
+    public readonly Span<TSource> Sources => _sources;
+
     /// <param name="sources">N source structs, one per cursor slot. Each source's
     /// enumerator must be positioned at the start of its scope but NOT yet advanced;
     /// the ctor calls <c>MoveNext</c> on each source to prime the loser tree.</param>

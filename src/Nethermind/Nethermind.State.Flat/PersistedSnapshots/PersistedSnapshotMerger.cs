@@ -52,6 +52,13 @@ public static class PersistedSnapshotMerger
         public HsstEnumerator GetEnumerator() => enumerator;
         public WholeReadSessionReader CreateReader() => new((byte*)viewPtr, viewLen);
         public void Dispose() => enumerator.Dispose();
+
+        /// <summary>Return a fresh source backed by the same view but driven by
+        /// <paramref name="newEnumerator"/>. Used by nested-merge helpers that re-seed a
+        /// source at a sub-tag bound without having to plumb the raw (viewPtr, viewLen)
+        /// pair through their parameter lists.</summary>
+        public WholeReadSessionMergeSource WithEnumerator(HsstEnumerator newEnumerator)
+            => new(newEnumerator, viewPtr, viewLen);
     }
 
     /// <summary>Per-key bloom callback for state-trie merges: adds
@@ -84,47 +91,36 @@ public static class PersistedSnapshotMerger
     /// <remarks>Cursor-side reader/pin are pinned to (<see cref="WholeReadSessionReader"/>,
     /// <see cref="NoOpPin"/>) because the merge always reads from open snapshot mmaps; the
     /// three generic parameters are the WRITER-side trio threaded through to
-    /// <see cref="NWayMergePerAddressHsst{TWriter,TReader,TPin}"/>.</remarks>
-    private readonly unsafe ref struct PerAddressColumnValueMerger<TWriter, TReader, TPin>
+    /// <see cref="NWayMergePerAddressHsst{TWriter,TReader,TPin}"/>. Per-source reader
+    /// factories come via the cursor (<c>cursor.CreateMinReader</c>, <c>cursor.Sources</c>);
+    /// no <c>_views</c> field is needed.</remarks>
+    private readonly unsafe struct PerAddressColumnValueMerger<TWriter, TReader, TPin>(
+        BloomFilter bloom, void* slotPrefixBuffersPtr)
         : IHsstBTreeValueMerger<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>
         where TWriter : IByteBufferWriterWithReader<TReader, TPin>
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
-        private readonly ReadOnlySpan<(IntPtr Ptr, long Len)> _views;
-        private readonly BloomFilter _bloom;
         // HsstBTreeBuilderBuffers is itself a ref struct, so it can't be held as a ref field
-        // (CS9050 — a ref field cannot refer to a ref struct). Pin via Unsafe.AsPointer and
-        // re-borrow with Unsafe.AsRef inside MergeValues; the caller guarantees the buffers
-        // live on the stack of NWayMergePerAddressColumn for the duration of the merge.
-        // Constructor takes the raw void* (not a ref parameter) so the C# lifetime analyzer
-        // doesn't infer the struct-instance lifetime is bound to the buffers' scope —
-        // otherwise it refuses to let us pass the struct on to <see cref="HsstBTreeMerger.NWayMerge"/>.
-        private readonly void* _slotPrefixBuffersPtr;
-
-        public PerAddressColumnValueMerger(
-            ReadOnlySpan<(IntPtr Ptr, long Len)> views,
-            BloomFilter bloom,
-            void* slotPrefixBuffersPtr)
-        {
-            _views = views;
-            _bloom = bloom;
-            _slotPrefixBuffersPtr = slotPrefixBuffersPtr;
-        }
+        // (CS9050 — a ref field cannot refer to a ref struct), and the value-merger struct is
+        // captured by primary-ctor here so a `ref` ctor parameter would also over-constrain
+        // its lifetime. Pin via Unsafe.AsPointer at the call site, re-borrow with Unsafe.AsRef
+        // inside MergeValues; the caller guarantees the buffers live on the stack of
+        // NWayMergePerAddressColumn for the duration of the merge.
+        // (Field captured implicitly by primary constructor parameter slotPrefixBuffersPtr.)
 
         public void OnKey(scoped ReadOnlySpan<byte> key)
-            => _bloom.Add(MemoryMarshal.Read<ulong>(key));
+            => bloom.Add(MemoryMarshal.Read<ulong>(key));
 
         public void OnFastCopy(scoped ReadOnlySpan<byte> key,
             scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor)
         {
-            int srcIdx = cursor.MatchingSources[0];
             Bound vb = cursor.MinValue;
             ulong addrKey = MemoryMarshal.Read<ulong>(key);
-            WholeReadSessionReader srcReader = Reader(_views[srcIdx]);
+            WholeReadSessionReader srcReader = cursor.CreateMinReader();
             HsstReader<WholeReadSessionReader, NoOpPin> outer = new(in srcReader, vb);
             if (outer.TrySeek(PersistedSnapshotTags.SlotSubTag, out Bound slotBound))
-                AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, slotBound, addrKey, _bloom);
+                AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, slotBound, addrKey, bloom);
         }
 
         public void MergeValues(ref TWriter writer, scoped ReadOnlySpan<byte> key,
@@ -139,13 +135,14 @@ public static class PersistedSnapshotMerger
             for (int j = 0; j < matchCount; j++)
                 perAddrBounds[j] = cursor.ValueAt(matchingSources[j]);
 
+            Span<WholeReadSessionMergeSource> sources = cursor.Sources;
             using NativeMemoryListRef<Bound> subTagBoundsList = new(
                 matchCount * PersistedSnapshotTags.PerAddrSubTagCount,
                 matchCount * PersistedSnapshotTags.PerAddrSubTagCount);
             Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
             for (int j = 0; j < matchCount; j++)
             {
-                WholeReadSessionReader r = Reader(_views[matchingSources[j]]);
+                WholeReadSessionReader r = sources[matchingSources[j]].CreateReader();
                 HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
                     in r,
                     perAddrBounds[j],
@@ -153,12 +150,12 @@ public static class PersistedSnapshotMerger
             }
 
             ref HsstBTreeBuilderBuffers slotPrefixBuffers =
-                ref Unsafe.AsRef<HsstBTreeBuilderBuffers>(_slotPrefixBuffersPtr);
+                ref Unsafe.AsRef<HsstBTreeBuilderBuffers>(slotPrefixBuffersPtr);
             NWayMergePerAddressHsst<TWriter, TReader, TPin>(
-                matchingSources, matchCount, _views,
+                matchingSources, matchCount, sources,
                 ref writer, ref slotPrefixBuffers,
                 subTagBounds,
-                _bloom, addrKey);
+                bloom, addrKey);
         }
     }
 
@@ -170,44 +167,33 @@ public static class PersistedSnapshotMerger
     /// <see cref="MergeStorageTrieSubTag{TWriter,TReader,TPin}"/>.</summary>
     /// <remarks>Cursor-side reader/pin are pinned to (<see cref="WholeReadSessionReader"/>,
     /// <see cref="NoOpPin"/>); the three generic parameters are the WRITER-side trio
-    /// threaded through to <see cref="MergeStorageTrieSubTag{TWriter,TReader,TPin}"/>.</remarks>
-    private readonly ref struct StorageTrieColumnValueMerger<TWriter, TReader, TPin>
+    /// threaded through to <see cref="MergeStorageTrieSubTag{TWriter,TReader,TPin}"/>.
+    /// Per-source reader factories come via the cursor (<c>cursor.CreateMinReader</c>,
+    /// <c>cursor.Sources</c>); no <c>_views</c> field is needed.</remarks>
+    private readonly struct StorageTrieColumnValueMerger<TWriter, TReader, TPin>(BloomFilter bloom)
         : IHsstBTreeValueMerger<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>
         where TWriter : IByteBufferWriterWithReader<TReader, TPin>
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
-        // Primary constructor would not work here: ReadOnlySpan-typed primary-ctor
-        // parameters cannot be referenced inside instance members (CS9110).
-        private readonly ReadOnlySpan<(IntPtr Ptr, long Len)> _views;
-        private readonly BloomFilter _bloom;
-
-        public StorageTrieColumnValueMerger(
-            ReadOnlySpan<(IntPtr Ptr, long Len)> views, BloomFilter bloom)
-        {
-            _views = views;
-            _bloom = bloom;
-        }
-
         public void OnKey(scoped ReadOnlySpan<byte> key) { }
 
         public void OnFastCopy(scoped ReadOnlySpan<byte> key,
             scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor)
         {
-            int srcIdx = cursor.MatchingSources[0];
             Bound vb = cursor.MinValue;
             ulong addrKey = MemoryMarshal.Read<ulong>(key);
-            WholeReadSessionReader srcReader = Reader(_views[srcIdx]);
+            WholeReadSessionReader srcReader = cursor.CreateMinReader();
             HsstReader<WholeReadSessionReader, NoOpPin> outer = new(in srcReader, vb);
             Bound outerRoot = outer.GetBound();
             if (outer.TrySeek(PersistedSnapshotTags.StorageTopSubTag, out Bound stb))
-                AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, stb, addrKey, _bloom);
+                AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, stb, addrKey, bloom);
             outer.SetBound(outerRoot);
             if (outer.TrySeek(PersistedSnapshotTags.StorageCompactSubTag, out Bound scb))
-                AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, scb, addrKey, _bloom);
+                AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, scb, addrKey, bloom);
             outer.SetBound(outerRoot);
             if (outer.TrySeek(PersistedSnapshotTags.StorageFallbackSubTag, out Bound sfb))
-                AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, sfb, addrKey, _bloom);
+                AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, sfb, addrKey, bloom);
         }
 
         public void MergeValues(ref TWriter writer, scoped ReadOnlySpan<byte> key,
@@ -222,13 +208,14 @@ public static class PersistedSnapshotMerger
             for (int j = 0; j < matchCount; j++)
                 perAddrBounds[j] = cursor.ValueAt(matchingSources[j]);
 
+            Span<WholeReadSessionMergeSource> sources = cursor.Sources;
             using NativeMemoryListRef<Bound> subTagBoundsList = new(
                 matchCount * PersistedSnapshotTags.StorageTrieSubTagCount,
                 matchCount * PersistedSnapshotTags.StorageTrieSubTagCount);
             Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
             for (int j = 0; j < matchCount; j++)
             {
-                WholeReadSessionReader r = Reader(_views[matchingSources[j]]);
+                WholeReadSessionReader r = sources[matchingSources[j]].CreateReader();
                 HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
                     in r,
                     perAddrBounds[j],
@@ -239,18 +226,18 @@ public static class PersistedSnapshotMerger
             try
             {
                 // Emit descending 0x02 (fallback) → 0x01 (compact) → 0x00 (top).
-                MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, _views, subTagBounds,
+                MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sources, subTagBounds,
                     ref perAddrBuilder, PersistedSnapshotTags.StorageFallbackSubTag,
                     subTagIdx: PersistedSnapshotTags.StorageFallbackSubTag[0], innerKeySize: 33, perSourceStride: PersistedSnapshotTags.StorageTrieSubTagCount,
-                    _bloom, addrKey);
-                MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, _views, subTagBounds,
+                    bloom, addrKey);
+                MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sources, subTagBounds,
                     ref perAddrBuilder, PersistedSnapshotTags.StorageCompactSubTag,
                     subTagIdx: PersistedSnapshotTags.StorageCompactSubTag[0], innerKeySize: 8, perSourceStride: PersistedSnapshotTags.StorageTrieSubTagCount,
-                    _bloom, addrKey);
-                MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, _views, subTagBounds,
+                    bloom, addrKey);
+                MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sources, subTagBounds,
                     ref perAddrBuilder, PersistedSnapshotTags.StorageTopSubTag,
                     subTagIdx: PersistedSnapshotTags.StorageTopSubTag[0], innerKeySize: 4, perSourceStride: PersistedSnapshotTags.StorageTrieSubTagCount,
-                    _bloom, addrKey);
+                    bloom, addrKey);
                 perAddrBuilder.Build();
             }
             finally
@@ -403,12 +390,12 @@ public static class PersistedSnapshotMerger
             PerAddressColumnValueMerger<TWriter, TReader, TPin> valueMerger;
             unsafe
             {
-                valueMerger = new(views, bloom, Unsafe.AsPointer(ref slotPrefixBuffers));
+                valueMerger = new(bloom, Unsafe.AsPointer(ref slotPrefixBuffers));
             }
             HsstBTreeMerger.NWayMerge<TWriter, TReader, TPin,
                 WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
                 PerAddressColumnValueMerger<TWriter, TReader, TPin>>(
-                ref writer, AddrKeyLen, ref cursor, ref valueMerger);
+                ref writer, AddrKeyLen, ref cursor, valueMerger);
         }
         finally
         {
@@ -451,11 +438,11 @@ public static class PersistedSnapshotMerger
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
                 sources.AsSpan(0, n), state, AddrKeyLen);
 
-            StorageTrieColumnValueMerger<TWriter, TReader, TPin> valueMerger = new(views, bloom);
+            StorageTrieColumnValueMerger<TWriter, TReader, TPin> valueMerger = new(bloom);
             HsstBTreeMerger.NWayMerge<TWriter, TReader, TPin,
                 WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
                 StorageTrieColumnValueMerger<TWriter, TReader, TPin>>(
-                ref writer, AddrKeyLen, ref cursor, ref valueMerger);
+                ref writer, AddrKeyLen, ref cursor, valueMerger);
         }
         finally
         {
@@ -475,7 +462,7 @@ public static class PersistedSnapshotMerger
     /// </summary>
     private static void NWayMergePerAddressHsst<TWriter, TReader, TPin>(
         scoped ReadOnlySpan<int> matchingSources, int matchCount,
-        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
+        Span<WholeReadSessionMergeSource> outerSources,
         ref TWriter writer,
         ref HsstBTreeBuilderBuffers slotPrefixBuffers,
         scoped ReadOnlySpan<Bound> subTagBounds,
@@ -496,7 +483,7 @@ public static class PersistedSnapshotMerger
             {
                 Bound sdb = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + sdTag];
                 if (sdb.Length != 1) continue;
-                WholeReadSessionReader r = Reader(views[matchingSources[j]]);
+                WholeReadSessionReader r = outerSources[matchingSources[j]].CreateReader();
                 using NoOpPin sdPin = r.PinBuffer(sdb.Offset, 1);
                 if (sdPin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
                     destructBarrier = j;
@@ -533,24 +520,22 @@ public static class PersistedSnapshotMerger
                 if (slotSourceCount > 0)
                 {
                     using ArrayPoolList<WholeReadSessionMergeSource> slotMergeSourcesList = new(slotSourceCount, slotSourceCount);
-                    using NativeMemoryListRef<(IntPtr Ptr, long Len)> slotViewsList = new(slotSourceCount, slotSourceCount);
                     WholeReadSessionMergeSource[] slotSrcArr = slotMergeSourcesList.UnsafeGetInternalArray();
-                    Span<(IntPtr Ptr, long Len)> slotViews = slotViewsList.AsSpan();
                     try
                     {
                         for (int j = 0; j < slotSourceCount; j++)
                         {
-                            slotViews[j] = views[slotSources[j]];
-                            WholeReadSessionReader slotReader = Reader(slotViews[j]);
-                            // Construct each enumerator un-seeded; NWayNestedStreamingSlotMerge's
-                            // outer cursor ctor calls MoveNext on each via the source struct.
-                            slotSrcArr[j] = new(new HsstEnumerator(in slotReader, slotBounds[j]),
-                                slotViews[j].Ptr, slotViews[j].Len);
+                            // Clone the matching outer source with a fresh enumerator scoped
+                            // to this source's slot-HSST bound; WithEnumerator preserves the
+                            // view (Ptr+Len) so CreateReader stays cheap downstream.
+                            WholeReadSessionMergeSource outer = outerSources[slotSources[j]];
+                            WholeReadSessionReader slotReader = outer.CreateReader();
+                            slotSrcArr[j] = outer.WithEnumerator(new HsstEnumerator(in slotReader, slotBounds[j]));
                         }
 
                         ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
                         NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
-                            slotSrcArr.AsSpan(0, slotSourceCount), slotSourceCount, slotViews,
+                            slotSrcArr.AsSpan(0, slotSourceCount), slotSourceCount,
                             ref slotWriter,
                             ref slotPrefixBuffers,
                             bloom, addrBloomKey);
@@ -587,7 +572,7 @@ public static class PersistedSnapshotMerger
                     else
                     {
                         // TryAdd: newer=destructed ([0x00]) -> destructed wins; newer=new ([0x01]) -> keep older.
-                        WholeReadSessionReader r = Reader(views[matchingSources[j]]);
+                        WholeReadSessionReader r = outerSources[matchingSources[j]].CreateReader();
                         using NoOpPin firstBytePin = r.PinBuffer(sdb.Offset, 1);
                         if (firstBytePin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
                         {
@@ -600,7 +585,7 @@ public static class PersistedSnapshotMerger
 
                 if (sdSrcJ >= 0)
                 {
-                    WholeReadSessionReader r = Reader(views[matchingSources[sdSrcJ]]);
+                    WholeReadSessionReader r = outerSources[matchingSources[sdSrcJ]].CreateReader();
                     using NoOpPin sdPin = r.PinBuffer(sdValOff, sdValLen);
                     perAddrBuilder.Add(PersistedSnapshotTags.SelfDestructSubTag, sdPin.Buffer);
                 }
@@ -615,7 +600,7 @@ public static class PersistedSnapshotMerger
                 {
                     Bound ab = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + acctTag];
                     if (ab.Length == 0) continue;
-                    WholeReadSessionReader r = Reader(views[matchingSources[j]]);
+                    WholeReadSessionReader r = outerSources[matchingSources[j]].CreateReader();
                     using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
                     perAddrBuilder.Add(PersistedSnapshotTags.AccountSubTag, acctPin.Buffer);
                     break;
@@ -644,7 +629,6 @@ public static class PersistedSnapshotMerger
     /// </summary>
     private static void NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
         Span<WholeReadSessionMergeSource> outerSources, int n,
-        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
         scoped ref HsstBTreeBuilderBuffers slotPrefixBuffers,
         BloomFilter bloom, ulong addrBloomKey) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
@@ -699,7 +683,7 @@ public static class PersistedSnapshotMerger
             {
                 int srcIdx = outerMatches[0];
                 Bound vb = outerSources[srcIdx].GetEnumerator().CurrentValue;
-                WholeReadSessionReader srcReader = Reader(views[srcIdx]);
+                WholeReadSessionReader srcReader = outerSources[srcIdx].CreateReader();
                 using NoOpPin suffixPin = srcReader.PinBuffer(vb.Offset, vb.Length);
                 if (outerBuilder.TryAddAligned(outerKey, suffixPin.Buffer))
                 {
@@ -728,15 +712,17 @@ public static class PersistedSnapshotMerger
                 using LoserTreeState innerState = new(innerN, InnerKeyLen);
                 try
                 {
-                    // Build inner sources from outerMatches: inner cursor slot k → views[outerMatches[k]].
-                    // Outer entry value is a keys-first TwoByteSlotValue / -Large blob; the cursor
-                    // ctor seeds each one by calling MoveNext through the source.
+                    // Build inner sources from outerMatches: inner cursor slot k clones the
+                    // matching outer source with a fresh TwoByteSlot enumerator scoped to the
+                    // outer entry's value bound. WithEnumerator preserves the original view so
+                    // CreateReader stays cheap; the cursor ctor seeds each via MoveNext.
                     for (int k = 0; k < innerN; k++)
                     {
                         int srcIdx = outerMatches[k];
-                        Bound vb = outerSources[srcIdx].GetEnumerator().CurrentValue;
-                        WholeReadSessionReader r = Reader(views[srcIdx]);
-                        innerSources[k] = new(HsstEnumerator.CreateTwoByteSlot(in r, new Bound(vb.Offset, vb.Length)), views[srcIdx].Ptr, views[srcIdx].Len);
+                        WholeReadSessionMergeSource outer = outerSources[srcIdx];
+                        Bound vb = outer.GetEnumerator().CurrentValue;
+                        WholeReadSessionReader r = outer.CreateReader();
+                        innerSources[k] = outer.WithEnumerator(HsstEnumerator.CreateTwoByteSlot(in r, vb));
                     }
                     NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor = new(
                         innerSources.AsSpan(0, innerN), innerState, InnerKeyLen);
@@ -817,7 +803,7 @@ public static class PersistedSnapshotMerger
     /// </summary>
     private static void MergeStorageTrieSubTag<TWriter, TReader, TPin>(
         scoped ReadOnlySpan<int> matchingSources, int matchCount,
-        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
+        Span<WholeReadSessionMergeSource> outerSources,
         scoped ReadOnlySpan<Bound> subTagBounds,
         ref HsstDenseByteIndexBuilder<TWriter> perAddrBuilder,
         byte[] subTag,
@@ -849,7 +835,7 @@ public static class PersistedSnapshotMerger
         if (active == 1)
         {
             int j = srcs[0];
-            WholeReadSessionReader r = Reader(views[matchingSources[j]]);
+            WholeReadSessionReader r = outerSources[matchingSources[j]].CreateReader();
             using NoOpPin pin = r.PinBuffer(subBounds[0].Offset, subBounds[0].Length);
             perAddrBuilder.Add(subTag, pin.Buffer);
             // Walk the source bytes once for the bloom — the cursor loop below doesn't run.
@@ -867,13 +853,14 @@ public static class PersistedSnapshotMerger
 
         try
         {
-            // Build sources: cursor slot j → views[matchingSources[srcs[j]]]. The cursor
-            // ctor seeds each one by calling MoveNext through the source.
+            // Build sources: clone the matching outer source with a fresh enumerator scoped
+            // to the sub-tag's bound. WithEnumerator preserves the original view (Ptr+Len)
+            // so CreateReader stays cheap. The cursor ctor seeds each one via MoveNext.
             for (int j = 0; j < active; j++)
             {
-                (IntPtr Ptr, long Len) v = views[matchingSources[srcs[j]]];
-                WholeReadSessionReader r = Reader(v);
-                sources[j] = new(new HsstEnumerator(in r, subBounds[j]), v.Ptr, v.Len);
+                WholeReadSessionMergeSource outer = outerSources[matchingSources[srcs[j]]];
+                WholeReadSessionReader r = outer.CreateReader();
+                sources[j] = outer.WithEnumerator(new HsstEnumerator(in r, subBounds[j]));
             }
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
                 sources.AsSpan(0, active), state, innerKeySize);

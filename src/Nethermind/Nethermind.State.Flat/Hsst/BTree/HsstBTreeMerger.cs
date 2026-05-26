@@ -41,7 +41,7 @@ internal static class HsstBTreeMerger
         ref TWriter writer,
         int keyLength,
         scoped ref NWayMergeCursor<TReader, TPin, TSource> cursor,
-        scoped ref TValueMerger valueMerger,
+        TValueMerger valueMerger,
         HsstBTreeOptions? options = null,
         int expectedKeyCount = 16,
         bool keyFirst = false)
@@ -51,7 +51,7 @@ internal static class HsstBTreeMerger
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TSource : struct, IHsstMergeSource<TReader, TPin>
-        where TValueMerger : struct, IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource>, allows ref struct
+        where TValueMerger : struct, IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource>
     {
         // builder is referenced indirectly across MergeValues via BeginValueWrite; the
         // compiler refuses `ref` to a `using`-declared local, so manage disposal manually
