@@ -671,6 +671,29 @@ public partial class EthRpcModuleTests
         return await WriteJsonRpcResponseAsync(response, cancellationToken);
     }
 
+    private static LogsStreamableResult CreateLogsStreamableResult(
+        IEnumerable<FilterLog> logs,
+        long? maxLogsResponseBodySize = null,
+        long? maxBatchResponseBodySize = null,
+        CancellationTokenSource? timeout = null) =>
+        new(logs, 0, enforceMaxLogs: false, maxLogsResponseBodySize, maxBatchResponseBodySize, timeout ?? new CancellationTokenSource(), default);
+
+    private static IEnumerable<TestCaseData> LogsStreamStatusCases()
+    {
+        yield return new TestCaseData(
+            "Truncated",
+            """{"jsonrpc":"2.0","result":[],"_streamStatus":"truncated","id":67}""")
+            .SetName($"{nameof(Eth_get_logs_stream_mode_writes_status)}_Truncated");
+        yield return new TestCaseData(
+            "Timeout",
+            """{"jsonrpc":"2.0","result":[],"_streamStatus":"timeout","id":67}""")
+            .SetName($"{nameof(Eth_get_logs_stream_mode_writes_status)}_Timeout");
+        yield return new TestCaseData(
+            "Failed",
+            ExpectedFilterLogStreamResponse("failed"))
+            .SetName($"{nameof(Eth_get_logs_stream_mode_writes_status)}_Failed");
+    }
+
     private static async Task<string> WriteJsonRpcResponseAsync(JsonRpcResponse response, CancellationToken cancellationToken = default)
     {
         Pipe pipe = new();
@@ -1105,7 +1128,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_logs_stream_mode_stops_before_response_body_limit()
     {
-        using LogsStreamableResult result = new([CreateTestFilterLog()], 0, enforceMaxLogs: false, maxLogsResponseBodySize: 64, maxBatchResponseBodySize: null, new CancellationTokenSource(), default);
+        using LogsStreamableResult result = CreateLogsStreamableResult([CreateTestFilterLog()], maxLogsResponseBodySize: 64);
         using MemoryStream stream = new();
         CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)));
 
@@ -1116,36 +1139,28 @@ public partial class EthRpcModuleTests
         Encoding.UTF8.GetString(stream.ToArray()).Should().Be("[]");
     }
 
-    [Test]
-    public async Task Eth_get_logs_stream_mode_response_body_limit_writes_truncated_status()
+    [TestCaseSource(nameof(LogsStreamStatusCases))]
+    public async Task Eth_get_logs_stream_mode_writes_status(string statusCase, string expected)
     {
-        LogsStreamableResult result = new([CreateTestFilterLog()], 0, enforceMaxLogs: false, maxLogsResponseBodySize: 64, maxBatchResponseBodySize: null, new CancellationTokenSource(), default);
+        string serialized = await WriteLogsStreamableResponseAsync(CreateLogsStreamableStatusResult(statusCase));
 
-        string serialized = await WriteLogsStreamableResponseAsync(result);
+        serialized.Should().Be(expected);
 
-        serialized.Should().Be("""{"jsonrpc":"2.0","result":[],"_streamStatus":"truncated","id":67}""");
-    }
+        static LogsStreamableResult CreateLogsStreamableStatusResult(string statusCase) =>
+            statusCase switch
+            {
+                "Truncated" => CreateLogsStreamableResult([CreateTestFilterLog()], maxLogsResponseBodySize: 64),
+                "Timeout" => CreateTimeoutResult(),
+                "Failed" => CreateLogsStreamableResult(GetLogs()),
+                _ => throw new ArgumentOutOfRangeException(nameof(statusCase), statusCase, null)
+            };
 
-    [Test]
-    public async Task Eth_get_logs_stream_mode_timeout_writes_timeout_status()
-    {
-        CancellationTokenSource timeout = new();
-        timeout.Cancel();
-        LogsStreamableResult result = new([CreateTestFilterLog()], 0, enforceMaxLogs: false, maxLogsResponseBodySize: null, maxBatchResponseBodySize: null, timeout, default);
-
-        string serialized = await WriteLogsStreamableResponseAsync(result);
-
-        serialized.Should().Be("""{"jsonrpc":"2.0","result":[],"_streamStatus":"timeout","id":67}""");
-    }
-
-    [Test]
-    public async Task Eth_get_logs_stream_mode_failure_between_items_writes_failed_status()
-    {
-        LogsStreamableResult result = new(GetLogs(), 0, enforceMaxLogs: false, maxLogsResponseBodySize: null, maxBatchResponseBodySize: null, new CancellationTokenSource(), default);
-
-        string serialized = await WriteLogsStreamableResponseAsync(result);
-
-        serialized.Should().Be(ExpectedFilterLogStreamResponse("failed"));
+        static LogsStreamableResult CreateTimeoutResult()
+        {
+            CancellationTokenSource timeout = new();
+            timeout.Cancel();
+            return CreateLogsStreamableResult([CreateTestFilterLog()], timeout: timeout);
+        }
 
         static IEnumerable<FilterLog> GetLogs()
         {
@@ -1159,7 +1174,7 @@ public partial class EthRpcModuleTests
     {
         string logJson = JsonSerializer.Serialize(CreateTestFilterLog(), EthereumJsonSerializer.JsonOptions);
         long maxLogsResponseBodySize = 1 + Encoding.UTF8.GetByteCount(logJson) + LogsStreamEnvelopeEndReserveBytes;
-        using LogsStreamableResult result = new(GetLogs(), 0, enforceMaxLogs: false, maxLogsResponseBodySize, maxBatchResponseBodySize: null, new CancellationTokenSource(), default);
+        using LogsStreamableResult result = CreateLogsStreamableResult(GetLogs(), maxLogsResponseBodySize);
         using MemoryStream stream = new();
         CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)));
 
@@ -1183,7 +1198,7 @@ public partial class EthRpcModuleTests
         int logBytes = Encoding.UTF8.GetByteCount(logJson);
         long alreadyWrittenBatchBytes = 32;
         long maxBatchResponseBodySize = alreadyWrittenBatchBytes + 1 + logBytes + LogsStreamEnvelopeEndReserveBytes;
-        using LogsStreamableResult result = new(GetLogs(), 0, enforceMaxLogs: false, maxLogsResponseBodySize: long.MaxValue, maxBatchResponseBodySize, new CancellationTokenSource(), default);
+        using LogsStreamableResult result = CreateLogsStreamableResult(GetLogs(), maxLogsResponseBodySize: long.MaxValue, maxBatchResponseBodySize);
         using MemoryStream stream = new();
         CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)), alreadyWrittenBatchBytes);
 
@@ -1205,7 +1220,7 @@ public partial class EthRpcModuleTests
     {
         new JsonRpcConfig().MaxLogsResponseBodySize.Should().BeNull();
 
-        using LogsStreamableResult result = new([CreateTestFilterLog()], 0, enforceMaxLogs: false, maxLogsResponseBodySize: null, maxBatchResponseBodySize: 64, new CancellationTokenSource(), default);
+        using LogsStreamableResult result = CreateLogsStreamableResult([CreateTestFilterLog()], maxBatchResponseBodySize: 64);
         using MemoryStream stream = new();
         CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)));
 

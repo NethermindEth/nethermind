@@ -10,6 +10,7 @@ using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Json;
@@ -42,27 +43,17 @@ public sealed class Hash256ArrayConverter : JsonConverter<Hash256?[]>
         // Pow2 rounding of EMA matches ArrayPool's bucket sizes and gives natural slack
         // (anything in (N/2, N] rounds to N). Rent then snaps to its own bucket >= request.
         int seed = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(2, Volatile.Read(ref _ewma)));
-        Hash256?[] rented = ArrayPool<Hash256?>.Shared.Rent(seed);
-        int count = 0;
+        using ArrayPoolListRef<Hash256?> values = new(seed);
         Span<byte> buffer = stackalloc byte[Hash256.Size];
         while (reader.TokenType != JsonTokenType.EndArray)
         {
-            if (count == rented.Length)
-            {
-                Hash256?[] bigger = ArrayPool<Hash256?>.Shared.Rent(rented.Length << 1);
-                Array.Copy(rented, bigger, count);
-                Array.Clear(rented, 0, count);
-                ArrayPool<Hash256?>.Shared.Return(rented);
-                rented = bigger;
-            }
-
             if (reader.TokenType == JsonTokenType.Null)
             {
-                rented[count++] = null;
+                values.Add(null);
             }
             else if (ByteArrayConverter.TryConvertToExactLength(ref reader, buffer))
             {
-                rented[count++] = new Hash256(buffer);
+                values.Add(new Hash256(buffer));
             }
             else
             {
@@ -75,15 +66,13 @@ public sealed class Hash256ArrayConverter : JsonConverter<Hash256?[]>
             }
         }
 
-        Hash256?[] result = new Hash256?[count];
-        Array.Copy(rented, result, count);
+        Hash256?[] result = values.ToArray();
+        int count = values.Count;
 
         // EMA alpha = 1/8. Race-tolerant: Volatile is enough; lost updates only slow convergence.
         int prev = Volatile.Read(ref _ewma);
         Volatile.Write(ref _ewma, ((prev * 7) + count) >> 3);
 
-        Array.Clear(rented, 0, count);
-        ArrayPool<Hash256?>.Shared.Return(rented);
         return result;
     }
 

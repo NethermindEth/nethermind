@@ -10,6 +10,7 @@ using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Json;
 
@@ -40,31 +41,20 @@ public class ByteArrayArrayConverter : JsonConverter<byte[][]>
         // Pow2 rounding of EMA matches ArrayPool's bucket sizes and gives natural slack
         // (anything in (N/2, N] rounds to N). Rent then snaps to its own bucket >= request.
         int seed = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(2, Volatile.Read(ref _ewma)));
-        byte[][] rented = ArrayPool<byte[]>.Shared.Rent(seed);
-        int count = 0;
+        using ArrayPoolListRef<byte[]> values = new(seed);
         while (reader.TokenType != JsonTokenType.EndArray)
         {
-            if (count == rented.Length)
-            {
-                byte[][] bigger = ArrayPool<byte[]>.Shared.Rent(rented.Length << 1);
-                Array.Copy(rented, bigger, count);
-                Array.Clear(rented, 0, count); // refs must not leak into the pool
-                ArrayPool<byte[]>.Shared.Return(rented);
-                rented = bigger;
-            }
-            rented[count++] = ByteArrayConverter.Convert(ref reader)!;
+            values.Add(ByteArrayConverter.Convert(ref reader)!);
             if (!reader.Read()) ThrowJsonException();
         }
 
-        byte[][] result = new byte[count][];
-        Array.Copy(rented, result, count);
+        byte[][] result = values.ToArray();
+        int count = values.Count;
 
         // EMA alpha = 1/8. Race-tolerant: Volatile is enough; lost updates only slow convergence.
         int prev = Volatile.Read(ref _ewma);
         Volatile.Write(ref _ewma, ((prev * 7) + count) >> 3);
 
-        Array.Clear(rented, 0, count);
-        ArrayPool<byte[]>.Shared.Return(rented);
         return result;
     }
 

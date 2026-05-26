@@ -22,9 +22,8 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test;
 
 [Parallelizable(ParallelScope.Self)]
-[TestFixture(true)]
-[TestFixture(false)]
-public class JsonRpcProcessorTests(bool returnErrors)
+[TestFixture]
+public class JsonRpcProcessorTests
 {
     private const string TransactionCountAddress = "0x7f01d9b227593e033bf8d6fc86e634d27aa85568";
     private const string TransactionCountBlock = "0x668c24";
@@ -51,10 +50,16 @@ public class JsonRpcProcessorTests(bool returnErrors)
     static JsonRpcProcessorTests()
     {
         RuntimeHelpers.RunModuleConstructor(typeof(KnownRpcMethodNames).Module.ModuleHandle);
-        RuntimeHelpers.RunModuleConstructor(typeof(Nethermind.Merge.Plugin.IEngineRpcModule).Module.ModuleHandle);
+        RpcKnownMethodNamesRegistry.Register([
+            "engine_newPayloadV4",
+            "engine_getBlobsV2",
+            "eth_call",
+            "eth_getBlockByNumber",
+            "eth_chainId"
+        ]);
     }
 
-    private JsonRpcProcessor CreateFixtureProcessor(IJsonRpcConfig? config = null) =>
+    private JsonRpcProcessor CreateFixtureProcessor(IJsonRpcConfig? config = null, bool returnErrors = false) =>
         CreateProcessor(CreateService(request => returnErrors ? new JsonRpcErrorResponse { Id = request.Id } : new JsonRpcSuccessResponse { Id = request.Id }, _errorResponse), config);
 
     private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null) =>
@@ -141,7 +146,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         Assembly[] assemblies =
         [
             typeof(IRpcModule).Assembly,
-            typeof(Nethermind.Merge.Plugin.IEngineRpcModule).Assembly,
         ];
 
         foreach (Assembly assembly in assemblies)
@@ -186,8 +190,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
         yield return new TestCaseData(CreateTransactionCountRequest("67") + "{aaa}", false, true).SetName("Second request invalid");
     }
 
-    private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
-        ProcessAsync(CreateFixtureProcessor(config), CreateReader(request), context ?? CreateHttpContext());
+    private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null, bool returnErrors = false) =>
+        ProcessAsync(CreateFixtureProcessor(config, returnErrors), CreateReader(request), context ?? CreateHttpContext());
 
     private static ValueTask<CollectedJsonRpcResponses> ProcessAsync(JsonRpcProcessor processor, string request, JsonRpcContext context, CollectingJsonRpcResponseSink? sink = null) =>
         ProcessAsync(processor, CreateReader(request), context, sink);
@@ -543,24 +547,24 @@ public class JsonRpcProcessorTests(bool returnErrors)
         return fileSystem;
     }
 
-    private CollectedJsonRpcResult AssertBatchResponse(CollectedJsonRpcResult result, int expectedCount)
+    private CollectedJsonRpcResult AssertBatchResponse(CollectedJsonRpcResult result, int expectedCount, bool returnErrors = false)
     {
         result.Response.Should().BeNull();
         result.BatchItems.Should().NotBeNull();
         result.BatchItems.Should().HaveCount(expectedCount);
         if (expectedCount != 0)
         {
-            result.BatchItems.Should().AllSatisfy(AssertResponseTypeMatchesFixtureMode);
+            result.BatchItems.Should().AllSatisfy(response => AssertResponseTypeMatchesFixtureMode(response, returnErrors));
         }
 
         result.BatchItems.Should().NotContain(_errorResponse);
         return result;
     }
 
-    private CollectedJsonRpcResult AssertBatchResponse(CollectedJsonRpcResponses responses, int expectedCount) =>
-        AssertBatchResponse(AssertOnlyResult(responses), expectedCount);
+    private CollectedJsonRpcResult AssertBatchResponse(CollectedJsonRpcResponses responses, int expectedCount, bool returnErrors = false) =>
+        AssertBatchResponse(AssertOnlyResult(responses), expectedCount, returnErrors);
 
-    private void AssertResponseTypeMatchesFixtureMode(JsonRpcResponse response) =>
+    private static void AssertResponseTypeMatchesFixtureMode(JsonRpcResponse response, bool returnErrors) =>
         response.Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
 
     private CollectedJsonRpcResult AssertSingleResponse(CollectedJsonRpcResult result, bool shouldBeParseError = false)
@@ -587,13 +591,14 @@ public class JsonRpcProcessorTests(bool returnErrors)
         Assert.That(AssertSingleResponse(result).Response!.Id, Is.EqualTo(expectedId));
     }
 
-    [Test]
-    public async Task Can_process_uppercase_params()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Can_process_uppercase_params(bool returnErrors)
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67", "Params"));
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67", "Params"), returnErrors: returnErrors);
         JsonRpcResponse response = AssertSingleResponse(result).Response!;
         Assert.That(response.Id, Is.EqualTo(new JsonRpcId(67)));
-        AssertResponseTypeMatchesFixtureMode(response);
+        AssertResponseTypeMatchesFixtureMode(response, returnErrors);
     }
 
     [TestCase(TransactionCountObjectParamsJson, TransactionCountObjectParamsJson, false, TestName = "Nested object params")]
@@ -667,11 +672,11 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
-    public async Task Can_process_batch_request_with_result_limit([Values(false, true)] bool limit)
+    public async Task Can_process_batch_request_with_result_limit([Values(false, true)] bool limit, [Values(false, true)] bool returnErrors)
     {
         CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = limit ? 1 : int.MaxValue };
         using CollectedJsonRpcResponses result = await ProcessAsync(
-            CreateFixtureProcessor(),
+            CreateFixtureProcessor(returnErrors: returnErrors),
             CreateTransactionCountBatchRequest(TransactionCountParamsJson, TransactionCountParamsJson),
             CreateHttpContext(),
             sink);

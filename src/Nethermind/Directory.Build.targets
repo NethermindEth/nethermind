@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(GenerateRpcJsonContext)' == 'true'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.JsonRpc.SourceGenerator\Nethermind.JsonRpc.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" GlobalPropertiesToRemove="GenerateRpcJsonContext" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.JsonRpc.SourceGenerator.Build\Nethermind.JsonRpc.SourceGenerator.Build.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" GlobalPropertiesToRemove="GenerateRpcJsonContext" />
   </ItemGroup>
 

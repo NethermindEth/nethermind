@@ -11,15 +11,12 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Era1.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -214,8 +211,8 @@ public class RpcModuleProviderTests
     [Test]
     public void Rpc_payload_type_info_caches_generated_metadata_and_resolves_fallbacks()
     {
-        JsonTypeInfo<PayloadStatusV1> firstGeneratedLookup = RpcPayloadTypeInfo<PayloadStatusV1>.Get(EthereumJsonSerializer.JsonOptions);
-        JsonTypeInfo<PayloadStatusV1> secondGeneratedLookup = RpcPayloadTypeInfo<PayloadStatusV1>.Get(EthereumJsonSerializer.JsonOptions);
+        JsonTypeInfo<StorageValuesResult> firstGeneratedLookup = RpcPayloadTypeInfo<StorageValuesResult>.Get(EthereumJsonSerializer.JsonOptions);
+        JsonTypeInfo<StorageValuesResult> secondGeneratedLookup = RpcPayloadTypeInfo<StorageValuesResult>.Get(EthereumJsonSerializer.JsonOptions);
         RpcPayloadTypeInfo<FallbackPayload>.Get(EthereumJsonSerializer.JsonOptions).Should().NotBeNull();
 
         firstGeneratedLookup.Should().BeSameAs(secondGeneratedLookup);
@@ -225,16 +222,7 @@ public class RpcModuleProviderTests
     public void Generated_rpc_type_info_covers_json_rpc_assembly_modules()
     {
         List<string> missing = [];
-        AddMissingAssemblyPayloadTypes(typeof(Nethermind.Consensus.Clique.ICliqueRpcModule).Assembly, missing);
-        AddMissingAssemblyPayloadTypes(typeof(Nethermind.Era1.JsonRpc.IEraAdminRpcModule).Assembly, missing);
-        AddMissingAssemblyPayloadTypes(typeof(Nethermind.EraE.JsonRpc.IEraAdminRpcModule).Assembly, missing);
-        AddMissingAssemblyPayloadTypes(typeof(Nethermind.Flashbots.Modules.Flashbots.IFlashbotsRpcModule).Assembly, missing);
-        AddMissingAssemblyPayloadTypes(typeof(Nethermind.HealthChecks.IHealthRpcModule).Assembly, missing);
         AddMissingAssemblyPayloadTypes(typeof(IEthRpcModule).Assembly, missing);
-        AddMissingAssemblyPayloadTypes(typeof(IEngineRpcModule).Assembly, missing);
-        AddMissingAssemblyPayloadTypes(typeof(Nethermind.Optimism.Rpc.IOptimismEngineRpcModule).Assembly, missing);
-        AddMissingAssemblyPayloadTypes(typeof(Nethermind.StateComposition.Rpc.IStateCompositionRpcModule).Assembly, missing);
-        AddMissingAssemblyPayloadTypes(typeof(Nethermind.Taiko.Rpc.ITaikoEngineRpcModule).Assembly, missing);
 
         missing.Should().BeEmpty();
     }
@@ -274,7 +262,7 @@ public class RpcModuleProviderTests
         IRpcModule adminClass = await moduleProvider.Rent("admin_addPeer", true);
         (adminClass is IAdminRpcModule).Should().BeTrue();
         IRpcModule historyClass = await moduleProvider.Rent("admin_exportHistory", true);
-        (historyClass is IEraAdminRpcModule).Should().BeTrue();
+        (historyClass is ITestAdminRpcModule).Should().BeTrue();
     }
 
     [TestCase(true)]
@@ -297,7 +285,7 @@ public class RpcModuleProviderTests
             new JsonRpcConfig { EnabledModules = [ModuleType.Admin] },
             rpcModules:
             [
-                new RpcModuleInfo(typeof(IEraAdminRpcModule), new SingletonModulePool<IEraAdminRpcModule>(Substitute.For<IEraAdminRpcModule>()))
+                new RpcModuleInfo(typeof(ITestAdminRpcModule), new SingletonModulePool<ITestAdminRpcModule>(Substitute.For<ITestAdminRpcModule>()))
             ]);
 
     private void RegisterHotModules()
@@ -483,6 +471,12 @@ public class RpcModuleProviderTests
 
     [RpcModule(ModuleType.Eth)]
     private interface ITestRpcModule : IRpcModule { }
+
+    [RpcModule(ModuleType.Admin)]
+    public interface ITestAdminRpcModule : IRpcModule
+    {
+        ResultWrapper<string> admin_exportHistory();
+    }
 
     private class TestRpcModuleDependencies { internal bool WasRequested; }
 

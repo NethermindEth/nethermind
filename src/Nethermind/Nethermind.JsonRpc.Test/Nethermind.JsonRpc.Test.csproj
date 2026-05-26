@@ -12,17 +12,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
-    <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
-    <ProjectReference Include="..\Nethermind.Era1\Nethermind.Era1.csproj" />
-    <ProjectReference Include="..\Nethermind.EraE\Nethermind.EraE.csproj" />
-    <ProjectReference Include="..\Nethermind.Flashbots\Nethermind.Flashbots.csproj" />
-    <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
-    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
-    <ProjectReference Include="..\Nethermind.Optimism\Nethermind.Optimism.csproj" />
     <ProjectReference Include="..\Nethermind.Specs.Test\Nethermind.Specs.Test.csproj" />
-    <ProjectReference Include="..\Nethermind.StateComposition\Nethermind.StateComposition.csproj" />
-    <ProjectReference Include="..\Nethermind.Taiko\Nethermind.Taiko.csproj" />
   </ItemGroup>
 </Project>
