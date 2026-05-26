@@ -351,7 +351,7 @@ namespace Nethermind.PerfTest
 
             bool isStarted = false;
 
-            TaskCompletionSource<object> completionSource = new();
+            TaskCompletionSource<object> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
             blockTree.NewBestSuggestedBlock += (sender, args) =>
             {
                 if (!isStarted)

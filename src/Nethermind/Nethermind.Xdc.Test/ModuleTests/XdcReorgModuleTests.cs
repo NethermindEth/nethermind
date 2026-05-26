@@ -43,7 +43,7 @@ internal class XdcReorgModuleTests
 
         XdcBlockHeader? finalizedBlock = (XdcBlockHeader)blockChain.BlockTree.FindHeader(finalizedBlockInfo.Hash)!;
 
-        TaskCompletionSource newHeadWaitHandle = new();
+        TaskCompletionSource newHeadWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         blockChain.BlockTree.NewHeadBlock += (_, args) =>
         {
             newHeadWaitHandle.SetResult();
@@ -110,7 +110,7 @@ internal class XdcReorgModuleTests
 
         XdcBlockHeader finalizedBlock = (XdcBlockHeader)blockChain.BlockTree.FindHeader(finalizedBlockInfo.Hash)!;
 
-        TaskCompletionSource newHeadWaitHandle = new();
+        TaskCompletionSource newHeadWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         blockChain.BlockTree.NewHeadBlock += (_, _) => newHeadWaitHandle.SetResult();
 
         XdcBlockHeader forkParent = finalizedBlock;
