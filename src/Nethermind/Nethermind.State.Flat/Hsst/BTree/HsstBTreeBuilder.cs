@@ -6,7 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
-using Nethermind.State.Flat.BSearchIndex;
+using Nethermind.State.Flat.Hsst.BSearchIndex;
 using Nethermind.State.Flat.Storage;
 using Nethermind.State.Flat.Hsst;
 

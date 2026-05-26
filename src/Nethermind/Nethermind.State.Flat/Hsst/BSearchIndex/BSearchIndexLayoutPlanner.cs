@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.State.Flat.BSearchIndex;
+namespace Nethermind.State.Flat.Hsst.BSearchIndex;
 
 /// <summary>
 /// Decides the optimal index-node layout — common-key-prefix length plus

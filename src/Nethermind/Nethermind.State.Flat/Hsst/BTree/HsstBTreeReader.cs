@@ -4,7 +4,7 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Utils;
-using Nethermind.State.Flat.BSearchIndex;
+using Nethermind.State.Flat.Hsst.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.Hsst.BTree;

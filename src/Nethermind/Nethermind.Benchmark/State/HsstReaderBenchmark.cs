@@ -5,7 +5,7 @@ using System;
 using System.IO;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Utils;
-using Nethermind.State.Flat.BSearchIndex;
+using Nethermind.State.Flat.Hsst.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Hsst.BTree;
 using Nethermind.State.Flat.Hsst.PackedArray;

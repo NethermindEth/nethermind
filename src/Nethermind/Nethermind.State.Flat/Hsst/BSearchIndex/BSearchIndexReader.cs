@@ -5,7 +5,7 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Nethermind.State.Flat.BSearchIndex;
+namespace Nethermind.State.Flat.Hsst.BSearchIndex;
 
 /// <summary>
 /// Reads a B-tree index block. An index block stores sorted key-value pairs with a

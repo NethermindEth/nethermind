@@ -4,7 +4,7 @@
 using System.Buffers.Binary;
 using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.BSearchIndex;
+namespace Nethermind.State.Flat.Hsst.BSearchIndex;
 
 /// <summary>
 /// Metadata describing the format of an index node to build.
