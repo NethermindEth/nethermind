@@ -69,6 +69,10 @@ public sealed class SparseRootComputer(ITrieNodeReader reader, Hash256 previousS
         return _trie.ComputeStorageRoot(accountPathHash);
     }
 
+    public Hash256 PreviousRoot => previousStateRoot;
+    public int AccountChangeCount => _accountChanges?.Count ?? 0;
+    public int LastProofNodeCount { get; private set; }
+
     public Hash256 ComputeStateRoot()
     {
         if (_accountChanges is null || _accountChanges.Count == 0)
@@ -77,6 +81,8 @@ public sealed class SparseRootComputer(ITrieNodeReader reader, Hash256 previousS
         Hash256[] targetKeys = _accountChanges.Keys.ToArray();
         DecodedMultiProof initialProof = MultiProofReader.ReadAccountProofs(
             reader, previousStateRoot, targetKeys);
+        LastProofNodeCount = initialProof.AccountNodes.Count;
+
         _trie.AccountTrie.RevealNodes(initialProof.AccountNodes);
 
         while (true)

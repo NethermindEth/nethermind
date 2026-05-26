@@ -158,7 +158,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
                     if (logger.IsWarn) logger.Warn(
                         $"SPARSE ROOT MISMATCH #{mismatchCount}! Patricia={_stateTree.RootHash}, Sparse={_sparseComputedRoot}, " +
-                        $"SparseTime={sw.ElapsedMilliseconds}ms. Falling back to Patricia.");
+                        $"SparseTime={sw.ElapsedMilliseconds}ms, Accounts={_sparseRootComputer.AccountChangeCount}, " +
+                        $"ProofNodes={_sparseRootComputer.LastProofNodeCount}, PrevRoot={_sparseRootComputer.PreviousRoot}. " +
+                        $"Falling back to Patricia.");
                     _sparseComputedRoot = null;
                 }
             }
