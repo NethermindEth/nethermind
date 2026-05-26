@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
@@ -25,9 +23,6 @@ internal sealed class HttpJsonRpcResponseSink(
     ILogger logger,
     long requestStartTimestamp) : IJsonRpcResponseSink
 {
-    private static ReadOnlySpan<byte> JsonOpeningBracket => [(byte)'['];
-    private static ReadOnlySpan<byte> JsonComma => [(byte)','];
-    private static ReadOnlySpan<byte> JsonClosingBracket => [(byte)']'];
     private const string JsonContentType = "application/json";
     private const int BufferedResponseInitialCapacity = 16 * 1024;
     private static readonly StringValues JsonContentTypeHeader = new(JsonContentType);
@@ -94,7 +89,7 @@ internal sealed class HttpJsonRpcResponseSink(
     public ValueTask BeginBatchAsync(CancellationToken cancellationToken)
     {
         EnsureStarted(isCollection: true, response: null);
-        _writer!.Write(JsonOpeningBracket);
+        JsonRpcResponseWriter.WriteBatchStart(_writer!);
         return ValueTask.CompletedTask;
     }
 
@@ -102,7 +97,7 @@ internal sealed class HttpJsonRpcResponseSink(
     {
         if (!_isFirstBatchItem)
         {
-            _writer!.Write(JsonComma);
+            JsonRpcResponseWriter.WriteBatchSeparator(_writer!);
         }
 
         _isFirstBatchItem = false;
@@ -125,12 +120,12 @@ internal sealed class HttpJsonRpcResponseSink(
 
     public ValueTask EndBatchAsync(CancellationToken cancellationToken)
     {
-        _writer!.Write(JsonClosingBracket);
+        JsonRpcResponseWriter.WriteBatchEnd(_writer!);
 
         if (_reportCalls)
         {
             long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(requestStartTimestamp).TotalMicroseconds;
-            jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, BytesWritten);
+            jsonRpcLocalStats.ReportCall(new RpcReport(RpcReport.CollectionSerialization, handlingTimeMicroseconds, true), handlingTimeMicroseconds, BytesWritten);
         }
 
         return ValueTask.CompletedTask;

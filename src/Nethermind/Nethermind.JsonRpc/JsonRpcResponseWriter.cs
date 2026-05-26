@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.IO;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Text.Encodings.Web;
@@ -15,6 +16,9 @@ namespace Nethermind.JsonRpc;
 /// <summary>Writes server-side JSON-RPC response objects to transport-owned buffers.</summary>
 public static class JsonRpcResponseWriter
 {
+    private static readonly byte[] BatchStart = [(byte)'['];
+    private static readonly byte[] BatchSeparator = [(byte)','];
+    private static readonly byte[] BatchEnd = [(byte)']'];
     private static ReadOnlySpan<byte> SuccessEnvelopeStart => "{\"jsonrpc\":\"2.0\",\"result\":"u8;
     private static ReadOnlySpan<byte> StreamStatusSeparator => ",\"_streamStatus\":\""u8;
     private static ReadOnlySpan<byte> IdSeparator => ",\"id\":"u8;
@@ -54,6 +58,27 @@ public static class JsonRpcResponseWriter
         Write(writer, response, options);
         return ValueTask.CompletedTask;
     }
+
+    /// <summary>Writes the opening token for a JSON-RPC batch response.</summary>
+    public static void WriteBatchStart(IBufferWriter<byte> writer) => writer.Write(BatchStart);
+
+    /// <summary>Writes the separator token between JSON-RPC batch response items.</summary>
+    public static void WriteBatchSeparator(IBufferWriter<byte> writer) => writer.Write(BatchSeparator);
+
+    /// <summary>Writes the closing token for a JSON-RPC batch response.</summary>
+    public static void WriteBatchEnd(IBufferWriter<byte> writer) => writer.Write(BatchEnd);
+
+    /// <summary>Writes the opening token for a JSON-RPC batch response.</summary>
+    public static ValueTask WriteBatchStartAsync(Stream stream, CancellationToken cancellationToken) =>
+        stream.WriteAsync(BatchStart, cancellationToken);
+
+    /// <summary>Writes the separator token between JSON-RPC batch response items.</summary>
+    public static ValueTask WriteBatchSeparatorAsync(Stream stream, CancellationToken cancellationToken) =>
+        stream.WriteAsync(BatchSeparator, cancellationToken);
+
+    /// <summary>Writes the closing token for a JSON-RPC batch response.</summary>
+    public static ValueTask WriteBatchEndAsync(Stream stream, CancellationToken cancellationToken) =>
+        stream.WriteAsync(BatchEnd, cancellationToken);
 
     /// <summary>Returns whether <paramref name="response"/> should map to HTTP 503 on HTTP transports.</summary>
     public static bool IsResourceUnavailableError(JsonRpcResponse? response) =>

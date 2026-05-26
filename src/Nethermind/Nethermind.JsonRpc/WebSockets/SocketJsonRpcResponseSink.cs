@@ -20,9 +20,6 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     JsonRpcContext jsonRpcContext) : IJsonRpcResponseSink, IDisposable
     where TStream : Stream, IMessageBorderPreservingStream
 {
-    private static readonly byte[] JsonOpeningBracket = [(byte)'['];
-    private static readonly byte[] JsonComma = [(byte)','];
-    private static readonly byte[] JsonClosingBracket = [(byte)']'];
     private readonly bool _reportCalls = jsonRpcLocalStats.IsEnabled;
     private long _topLevelResponseBytes;
     private long _batchStartTimestamp;
@@ -64,14 +61,14 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         _isFirstBatchItem = true;
         StopRequested = false;
 
-        await stream.WriteAsync(JsonOpeningBracket, cancellationToken);
+        await JsonRpcResponseWriter.WriteBatchStartAsync(stream, cancellationToken);
     }
 
     public async ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
         if (!_isFirstBatchItem)
         {
-            await stream.WriteAsync(JsonComma, cancellationToken);
+            await JsonRpcResponseWriter.WriteBatchSeparatorAsync(stream, cancellationToken);
             _topLevelResponseBytes++;
         }
 
@@ -93,7 +90,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     {
         try
         {
-            await stream.WriteAsync(JsonClosingBracket, cancellationToken);
+            await JsonRpcResponseWriter.WriteBatchEndAsync(stream, cancellationToken);
             _topLevelResponseBytes++;
 
             _topLevelResponseBytes += await stream.WriteEndOfMessageAsync();
@@ -102,7 +99,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
             if (_reportCalls)
             {
                 long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(_batchStartTimestamp).TotalMicroseconds;
-                jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, _topLevelResponseBytes);
+                jsonRpcLocalStats.ReportCall(new RpcReport(RpcReport.CollectionSerialization, handlingTimeMicroseconds, true), handlingTimeMicroseconds, _topLevelResponseBytes);
             }
         }
         finally

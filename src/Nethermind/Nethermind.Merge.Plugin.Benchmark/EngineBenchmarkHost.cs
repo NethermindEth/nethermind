@@ -197,10 +197,6 @@ internal static class EngineBenchmarkHost
 
     private sealed class BenchmarkJsonRpcResponseSink(HttpContext context) : IJsonRpcResponseSink
     {
-        private static readonly byte[] JsonOpeningBracket = [(byte)'['];
-        private static readonly byte[] JsonComma = [(byte)','];
-        private static readonly byte[] JsonClosingBracket = [(byte)']'];
-
         private bool _isFirstBatchItem = true;
 
         public long BytesWritten => 0;
@@ -216,14 +212,14 @@ internal static class EngineBenchmarkHost
         public async ValueTask BeginBatchAsync(CancellationToken cancellationToken)
         {
             EnsureStarted();
-            await context.Response.Body.WriteAsync(JsonOpeningBracket, cancellationToken);
+            await JsonRpcResponseWriter.WriteBatchStartAsync(context.Response.Body, cancellationToken);
         }
 
         public async ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
             if (!_isFirstBatchItem)
             {
-                await context.Response.Body.WriteAsync(JsonComma, cancellationToken);
+                await JsonRpcResponseWriter.WriteBatchSeparatorAsync(context.Response.Body, cancellationToken);
             }
 
             _isFirstBatchItem = false;
@@ -232,7 +228,7 @@ internal static class EngineBenchmarkHost
 
         public async ValueTask EndBatchAsync(CancellationToken cancellationToken)
         {
-            await context.Response.Body.WriteAsync(JsonClosingBracket, cancellationToken);
+            await JsonRpcResponseWriter.WriteBatchEndAsync(context.Response.Body, cancellationToken);
             await context.Response.CompleteAsync();
         }
 
