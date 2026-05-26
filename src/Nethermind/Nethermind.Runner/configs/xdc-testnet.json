@@ -12,6 +12,9 @@
   "Discovery": {
     "DiscoveryVersion": "V4"
   },
+  "Pruning": {
+    "PruningBoundary": 4096
+  },
   "Blocks": {
     "TargetBlockGasLimit": 420000000
   },
@@ -22,9 +25,9 @@
     "FastSync": true,
     "SnapSync": false,
     "NeedToWaitForHeader": true,
-    "PivotNumber": 82020000,
-    "PivotHash": "0x65e162324089c819f016c1e28d9d6ea6d1f5737aff3e82f47813f29582555d4b",
-    "PivotTotalDifficulty": "338357235",
+    "PivotNumber": 82240000,
+    "PivotHash": "0xe2852e76fe88cfdb08b210019feed9408b85259079101ba28ebd0fb01cf0b2a9",
+    "PivotTotalDifficulty": "338577235",
     "AncientReceiptsBarrier": 56828700,
     "AncientBodiesBarrier": 56828700
   },

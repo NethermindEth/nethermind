@@ -64,6 +64,12 @@ public class ForkchoiceUpdatedHandler(
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
     }
 
+    /// <summary>
+    /// MAY-skip clause from
+    /// <see href="https://github.com/ethereum/execution-apis/pull/786">execution-apis#786</see>:
+    /// returns Valid when <paramref name="newHeadHeader"/> is a canonical ancestor of the latest
+    /// known finalized block, so the FCU is answered without performing a reorg.
+    /// </summary>
     protected virtual bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
         [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)
     {
@@ -355,17 +361,19 @@ public class ForkchoiceUpdatedHandler(
         if (candidateHeader is null) return false;
         if (candidateHeader.Number > newHeadHeader.Number) return true;
 
+        bool headIsMain = _blockTree.IsMainChain(newHeadHeader);
         bool candidateIsMain = _blockTree.IsMainChain(candidateHeader);
-        if (_blockTree.IsMainChain(newHeadHeader)) return !candidateIsMain;
+        if (headIsMain && candidateIsMain) return false;
 
-        // newHead is not main; walk parents. Depth bounded by (newHead.Number - candidate.Number).
+        // Walk parents to validate ancestry (newHead is not main or outdated main-chain markers).
+        // Depth bounded by (newHead.Number - candidate.Number).
         BlockHeader cursor = newHeadHeader;
         while (cursor.Number > candidateHeader.Number)
         {
             if (_blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not { } parent) return true;
 
             // Candidate on main chain: any main-chain ancestor proves ancestry. Checked after the
-            // parent step so we don't re-probe newHeadHeader itself (already known non-main above).
+            // parent step so we don't re-probe newHeadHeader itself.
             if (candidateIsMain && _blockTree.IsMainChain(parent)) return false;
             cursor = parent;
         }

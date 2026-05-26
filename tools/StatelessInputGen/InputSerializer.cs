@@ -8,7 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Stateless.Execution;
+namespace Nethermind.StatelessInputGen;
 
 /// <summary>
 /// Provides methods for zkVM input serialization. <see cref="Witness.Keys"/> are ignored.
@@ -26,7 +26,7 @@ public static class InputSerializer
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        IRlpStreamEncoder<Block> blockDecoder = Rlp.GetStreamEncoder<Block>()!; // cannot be null
+        IRlpDecoder<Block> blockDecoder = Rlp.GetDecoder<Block>()!; // cannot be null
         int blockLen = blockDecoder.GetLength(block, RlpBehaviors.None);
         int codesLen = GetSerializedLength(witness.Codes);
         int headersLen = GetSerializedLength(witness.Headers);
@@ -65,7 +65,7 @@ public static class InputSerializer
         ulong chainId = ReadUInt64(input, ref offset);
         int blockLength = ReadInt32(input, ref offset);
 
-        IRlpValueDecoder<Block> blockDecoder = Rlp.GetValueDecoder<Block>()!; // cannot be null
+        IRlpDecoder<Block> blockDecoder = Rlp.GetDecoder<Block>()!; // cannot be null
         Rlp.ValueDecoderContext blockContext = new(input.Slice(offset, blockLength));
         Block block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
         blockContext.Check(blockLength);

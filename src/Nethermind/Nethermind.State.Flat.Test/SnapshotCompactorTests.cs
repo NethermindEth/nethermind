@@ -76,8 +76,10 @@ public class SnapshotCompactorTests
         Address address = new("0x1234567890123456789012345678901234567890");
         snapshot.Content.Accounts[address] = new Account(1, 100);
 
-        SnapshotPooledList snapshots = new(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -123,8 +125,10 @@ public class SnapshotCompactorTests
         snapshot.Content.StorageNodes[(address1Hash, storageNodePath1)] = new TrieNode(NodeType.Leaf, storageNodeHash1);
         snapshot.Content.StorageNodes[(address2Hash, storageNodePath2)] = new TrieNode(NodeType.Branch, storageNodeHash2);
 
-        SnapshotPooledList snapshots = new(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -178,9 +182,11 @@ public class SnapshotCompactorTests
         Hash256 address2Hash = address2.ToAccountPath.ToCommitment();
         snapshot1.Content.StorageNodes[(address2Hash, storageNodePath2)] = new TrieNode(NodeType.Branch, Keccak.Zero);
 
-        SnapshotPooledList snapshots = new(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -220,9 +226,11 @@ public class SnapshotCompactorTests
         snapshot1.Content.StateNodes[statePath] = new TrieNode(NodeType.Branch, Keccak.Zero);
         snapshot1.Content.StorageNodes[(addressHash, storageNodePath)] = new TrieNode(NodeType.Branch, Keccak.Zero);
 
-        SnapshotPooledList snapshots = new(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -258,9 +266,11 @@ public class SnapshotCompactorTests
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot1.Content.SelfDestructedStorageAddresses[address] = false;
 
-        SnapshotPooledList snapshots = new(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -284,9 +294,11 @@ public class SnapshotCompactorTests
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot1.Content.SelfDestructedStorageAddresses[address] = true;
 
-        SnapshotPooledList snapshots = new(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -304,8 +316,10 @@ public class SnapshotCompactorTests
 
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
-        SnapshotPooledList snapshots = new(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -320,8 +334,10 @@ public class SnapshotCompactorTests
 
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
-        SnapshotPooledList snapshots = new(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 

@@ -11,16 +11,13 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class SlotChangesDecoder :
-    IRlpValueDecoder<ReadOnlySlotChanges>,
-    IRlpStreamEncoder<ReadOnlySlotChanges>,
-    IRlpStreamEncoder<GeneratedSlotChanges>
+public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
 {
     public static readonly SlotChangesDecoder Instance = new();
 
     private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
-    public ReadOnlySlotChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    protected override ReadOnlySlotChanges DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
@@ -55,13 +52,13 @@ public class SlotChangesDecoder :
         return slotChanges;
     }
 
-    public int GetLength(ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public int GetLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public void Encode(RlpStream stream, ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Key);

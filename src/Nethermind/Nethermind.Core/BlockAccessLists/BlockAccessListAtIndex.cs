@@ -3,8 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Int256;
 
@@ -21,16 +24,19 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 {
     private const int InitialChangeCapacity = 64;
 
+    // Caps pool retention so a one-off oversized block doesn't permanently inflate the slice.
+    private const int MaxPooledAccountChanges = 4096;
+
     public uint Index { get; set; }
 
-    // Plain Dictionary on the per-tx hot path. The sorted iteration the BAL needs is provided
-    // later by GeneratedBlockAccessList._accountChanges (itself a SortedDictionary) when this
-    // slice is merged in; sorting on every AddBalanceChange/AddNonceChange/AddStorageChange
-    // was O(log n) per call for a property no one between insert and merge consumes.
-    private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = new();
+    private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
     private readonly List<Change> _changes = new(InitialChangeCapacity);
 
-    public IEnumerable<AccountChangesAtIndex> AccountChanges => _accountChanges.Values;
+    private readonly List<CodeChange> _previousCodeChanges = [];
+
+    private readonly Stack<AccountChangesAtIndex> _accountChangesPool = new();
+
+    public Dictionary<Address, AccountChangesAtIndex>.ValueCollection AccountChanges => _accountChanges.Values;
     public int AccountCount => _accountChanges.Count;
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
     public AccountChangesAtIndex? GetAccountChanges(Address address)
@@ -38,8 +44,16 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void Clear()
     {
+        int spareCount = _accountChangesPool.Count;
+        foreach (AccountChangesAtIndex value in _accountChanges.Values)
+        {
+            if (spareCount >= MaxPooledAccountChanges) break;
+            _accountChangesPool.Push(value);
+            spareCount++;
+        }
         _accountChanges.Clear();
         _changes.Clear();
+        _previousCodeChanges.Clear();
     }
 
     public void Reset()
@@ -68,11 +82,14 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         UInt256 preTxBalance = accountChanges.PreTxBalance ??= before;
 
-        _changes.Add(new()
+        BalanceChange? previous = accountChanges.BalanceChange;
+        _changes.Add(new Change
         {
-            Address = address,
+            Account = accountChanges,
             Type = ChangeType.BalanceChange,
-            PreviousBalance = accountChanges.BalanceChange,
+            HasPrevious = previous.HasValue,
+            PreviousIndex = previous?.Index ?? 0,
+            PreviousValue = new ChangeValue(previous?.Value ?? default),
         });
 
         accountChanges.BalanceChange = preTxBalance != after
@@ -88,16 +105,20 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         }
 
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
+
+        bool isFirstCall = accountChanges.PreTxCode is null;
         byte[] preTxCode = accountChanges.PreTxCode ??= before;
 
-        _changes.Add(new()
+        CodeChange? previous = accountChanges.CodeChange;
+        if (previous.HasValue) _previousCodeChanges.Add(previous.Value);
+        _changes.Add(new Change
         {
-            Address = address,
+            Account = accountChanges,
             Type = ChangeType.CodeChange,
-            PreviousCode = accountChanges.CodeChange,
+            HasPrevious = previous.HasValue,
         });
 
-        accountChanges.CodeChange = !preTxCode.AsSpan().SequenceEqual(after.Span)
+        accountChanges.CodeChange = isFirstCall || !preTxCode.AsSpan().SequenceEqual(after.Span)
             ? new CodeChange(Index, after.ToArray())
             : null;
     }
@@ -111,11 +132,14 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        _changes.Add(new()
+        NonceChange? previous = accountChanges.NonceChange;
+        _changes.Add(new Change
         {
-            Address = address,
+            Account = accountChanges,
             Type = ChangeType.NonceChange,
-            PreviousNonce = accountChanges.NonceChange,
+            HasPrevious = previous.HasValue,
+            PreviousIndex = previous?.Index ?? 0,
+            PreviousValue = new ChangeValue(previous?.Value ?? 0UL),
         });
 
         accountChanges.NonceChange = new NonceChange(Index, newNonce);
@@ -125,7 +149,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     {
         if (!_accountChanges.ContainsKey(address))
         {
-            _accountChanges.Add(address, new AccountChangesAtIndex(address));
+            _accountChanges.Add(address, RentAccountChanges(address));
         }
     }
 
@@ -135,17 +159,18 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        accountChanges.TryGetStorageChange(key, out StorageChange? oldStorageChange);
-        accountChanges.RemoveStorageChange(key);
+        accountChanges.TryRemoveStorageChange(key, out StorageChange? oldStorageChange);
 
         UInt256 preTxStorage = accountChanges.GetOrCapturePreTxStorage(key, before);
 
-        _changes.Add(new()
+        _changes.Add(new Change
         {
-            Address = address,
+            Account = accountChanges,
             Slot = key,
             Type = ChangeType.StorageChange,
-            PreviousStorage = oldStorageChange,
+            HasPrevious = oldStorageChange.HasValue,
+            PreviousIndex = oldStorageChange?.Index ?? 0,
+            PreviousValue = new ChangeValue(oldStorageChange?.Value ?? default),
         });
 
         if (preTxStorage != after)
@@ -177,45 +202,46 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     {
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        // capture current per-slot changes so revert can restore them
-        // SortedDictionary doesn't allow modifying while enumerating, so snapshot keys first
-        UInt256[] changedSlots = [.. accountChanges.ChangedSlots];
-        foreach (UInt256 slot in changedSlots)
+        using ArrayPoolListRef<UInt256> changedSlots = new(accountChanges.StorageChangeCount);
+        foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
         {
-            if (accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange))
+            changedSlots.Add(kv.Key);
+            _changes.Add(new Change
             {
-                _changes.Add(new()
-                {
-                    Address = address,
-                    Type = ChangeType.StorageChange,
-                    Slot = slot,
-                    PreviousStorage = slotChange,
-                });
-            }
-        }
-
-        if (accountChanges.NonceChange is not null)
-        {
-            _changes.Add(new()
-            {
-                Address = address,
-                Type = ChangeType.NonceChange,
-                PreviousNonce = accountChanges.NonceChange,
+                Account = accountChanges,
+                Type = ChangeType.StorageChange,
+                Slot = kv.Key,
+                HasPrevious = true,
+                PreviousIndex = kv.Value.Index,
+                PreviousValue = new ChangeValue(kv.Value.Value),
             });
         }
 
-        if (accountChanges.CodeChange is not null)
+        if (accountChanges.NonceChange is { } nonce)
         {
-            _changes.Add(new()
+            _changes.Add(new Change
             {
-                Address = address,
+                Account = accountChanges,
+                Type = ChangeType.NonceChange,
+                HasPrevious = true,
+                PreviousIndex = nonce.Index,
+                PreviousValue = new ChangeValue(nonce.Value),
+            });
+        }
+
+        if (accountChanges.CodeChange is { } code)
+        {
+            _previousCodeChanges.Add(code);
+            _changes.Add(new Change
+            {
+                Account = accountChanges,
                 Type = ChangeType.CodeChange,
-                PreviousCode = accountChanges.CodeChange,
+                HasPrevious = true,
             });
         }
 
         // SELFDESTRUCT clears storage (changes become reads), nonce and code
-        foreach (UInt256 slot in changedSlots)
+        foreach (UInt256 slot in changedSlots.AsSpan())
         {
             accountChanges.RemoveStorageChange(slot);
             accountChanges.AddStorageRead(slot);
@@ -235,27 +261,42 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         int end = span.Length;
         if (snapshot >= end) return;
 
+        Span<CodeChange> codeReverts = CollectionsMarshal.AsSpan(_previousCodeChanges);
+        int codeCursor = codeReverts.Length;
+
         for (int i = end - 1; i >= snapshot; i--)
         {
             ref readonly Change change = ref span[i];
-            AccountChangesAtIndex accountChanges = _accountChanges[change.Address];
+            AccountChangesAtIndex accountChanges = change.Account;
             switch (change.Type)
             {
                 case ChangeType.BalanceChange:
-                    accountChanges.BalanceChange = change.PreviousBalance;
+                    accountChanges.BalanceChange = change.HasPrevious
+                        ? new BalanceChange(change.PreviousIndex, change.PreviousValue.Balance)
+                        : null;
                     break;
                 case ChangeType.CodeChange:
-                    accountChanges.CodeChange = change.PreviousCode;
+                    if (change.HasPrevious)
+                    {
+                        Debug.Assert(codeCursor > 0, "Code revert cursor underflow: _previousCodeChanges count does not match _changes journal.");
+                        accountChanges.CodeChange = codeReverts[--codeCursor];
+                    }
+                    else
+                    {
+                        accountChanges.CodeChange = null;
+                    }
                     break;
                 case ChangeType.NonceChange:
-                    accountChanges.NonceChange = change.PreviousNonce;
+                    accountChanges.NonceChange = change.HasPrevious
+                        ? new NonceChange(change.PreviousIndex, change.PreviousValue.Nonce)
+                        : null;
                     break;
                 case ChangeType.StorageChange:
-                    UInt256 slot = change.Slot!.Value;
+                    UInt256 slot = change.Slot;
                     accountChanges.RemoveStorageChange(slot);
-                    if (change.PreviousStorage is not null)
+                    if (change.HasPrevious)
                     {
-                        accountChanges.SetStorageChange(slot, change.PreviousStorage.Value);
+                        accountChanges.SetStorageChange(slot, new StorageChange(change.PreviousIndex, change.PreviousValue.Storage));
                         accountChanges.RemoveStorageRead(slot);
                     }
                     else
@@ -269,6 +310,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             }
         }
         CollectionsMarshal.SetCount(_changes, snapshot);
+        CollectionsMarshal.SetCount(_previousCodeChanges, codeCursor);
     }
 
     public override string ToString()
@@ -292,10 +334,20 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     {
         if (!_accountChanges.TryGetValue(address, out AccountChangesAtIndex? existing))
         {
-            existing = new AccountChangesAtIndex(address);
+            existing = RentAccountChanges(address);
             _accountChanges.Add(address, existing);
         }
         return existing;
+    }
+
+    private AccountChangesAtIndex RentAccountChanges(Address address)
+    {
+        if (_accountChangesPool.TryPop(out AccountChangesAtIndex? recycled))
+        {
+            recycled.Reset(address);
+            return recycled;
+        }
+        return new AccountChangesAtIndex(address);
     }
 
     private enum ChangeType
@@ -308,12 +360,28 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     private readonly struct Change
     {
-        public Address Address { get; init; }
-        public UInt256? Slot { get; init; }
+        public AccountChangesAtIndex Account { get; init; }
         public ChangeType Type { get; init; }
-        public BalanceChange? PreviousBalance { get; init; }
-        public NonceChange? PreviousNonce { get; init; }
-        public CodeChange? PreviousCode { get; init; }
-        public StorageChange? PreviousStorage { get; init; }
+        public bool HasPrevious { get; init; }
+        public uint PreviousIndex { get; init; }
+        public UInt256 Slot { get; init; }
+        public ChangeValue PreviousValue { get; init; }
+    }
+
+    private readonly struct ChangeValue
+    {
+        private readonly UInt256 _data;
+
+        public ChangeValue(UInt256 balance) => _data = balance;
+
+        public ChangeValue(ulong nonce) => _data = new UInt256(nonce);
+
+        public ChangeValue(in EvmWord storage) => _data = Unsafe.As<EvmWord, UInt256>(ref Unsafe.AsRef(in storage));
+
+        public UInt256 Balance => _data;
+
+        public ulong Nonce => _data.u0;
+
+        public EvmWord Storage => Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in _data));
     }
 }

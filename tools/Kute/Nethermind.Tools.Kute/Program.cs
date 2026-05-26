@@ -62,7 +62,7 @@ public static class Program
             // Disable proxy auto-detection to avoid timeout (~2s) on Windows.
             // Each Kute invocation is a separate process, so the proxy lookup
             // would otherwise be paid on every single measured request.
-            var handler = new SocketsHttpHandler
+            SocketsHttpHandler handler = new()
             {
                 UseProxy = false,
                 AutomaticDecompression = DecompressionMethods.None,
@@ -82,8 +82,8 @@ public static class Program
         );
         collection.AddSingleton<IMessageProvider<JsonRpc>>(_ =>
         {
-            FileMessageProvider ofStrings = new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!);
-            JsonRpcMessageProvider ofJsonRpc = new JsonRpcMessageProvider(ofStrings);
+            FileMessageProvider ofStrings = new(parseResult.GetValue(Config.MessagesFilePath)!);
+            JsonRpcMessageProvider ofJsonRpc = new(ofStrings);
             IMessageProvider<JsonRpc> provider = parseResult.GetValue(Config.UnwrapBatch)
                 ? new UnwrapBatchJsonRpcMessageProvider(ofJsonRpc)
                 : ofJsonRpc;
@@ -128,13 +128,13 @@ public static class Program
             });
         collection.AddSingleton<IMetricsReporter>(provider =>
         {
-            MemoryMetricsReporter memoryReporter = new MemoryMetricsReporter();
-            ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, provider.GetRequiredService<IMetricsReportFormatter>());
+            MemoryMetricsReporter memoryReporter = new();
+            ConsoleTotalReporter consoleReporter = new(memoryReporter, provider.GetRequiredService<IMetricsReportFormatter>());
             IMetricsReporter progressReporter = parseResult.GetValue(Config.ShowProgress)
                 ? new ConsoleProgressReporter()
                 : new NullMetricsReporter();
 
-            Dictionary<string, string> labels = parseResult.GetValue(Config.Labels) ?? new();
+            Dictionary<string, string> labels = parseResult.GetValue(Config.Labels) ?? [];
             string? prometheusGateway = parseResult.GetValue(Config.PrometheusPushGateway);
             string? prometheusGatewayUser = parseResult.GetValue(Config.PrometheusPushGatewayUser);
             string? prometheusGatewayPassword = parseResult.GetValue(Config.PrometheusPushGatewayPassword);

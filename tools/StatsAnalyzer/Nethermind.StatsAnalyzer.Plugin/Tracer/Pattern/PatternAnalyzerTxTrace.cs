@@ -21,5 +21,5 @@ public class PatternAnalyzerTxTrace
 
 
     [JsonPropertyName("stats")]
-    public List<PatternAnalyzerTraceEntry> Entries { get; set; } = new();
+    public List<PatternAnalyzerTraceEntry> Entries { get; set; } = [];
 }

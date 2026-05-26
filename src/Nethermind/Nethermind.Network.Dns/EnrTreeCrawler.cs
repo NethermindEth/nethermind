@@ -80,7 +80,7 @@ public class EnrTreeCrawler(ILogger logger)
     {
         public SearchContext(string startRef) => RefsToVisit.Enqueue(startRef);
 
-        public HashSet<string> VisitedRefs { get; } = new();
+        public HashSet<string> VisitedRefs { get; } = [];
 
         public Queue<string> RefsToVisit { get; } = new();
     }

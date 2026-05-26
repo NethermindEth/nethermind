@@ -9,6 +9,20 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+    <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.SszGenerator\Nethermind.Serialization.SszGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Nethermind.Merge.Plugin\Data\ExecutionPayload.cs" Link="IO\EngineApiDto\ExecutionPayload.cs" />
+    <Compile Include="..\Nethermind.Merge.Plugin\Data\ExecutionPayloadV3.cs" Link="IO\EngineApiDto\ExecutionPayloadV3.cs" />
+    <Compile Include="..\Nethermind.Merge.Plugin\Data\ExecutionPayloadV4.cs" Link="IO\EngineApiDto\ExecutionPayloadV4.cs" />
+    <Compile Include="..\Nethermind.Merge.Plugin\Data\IExecutionPayloadParams.cs" Link="IO\EngineApiDto\IExecutionPayloadParams.cs" />
+    <Compile Include="..\Nethermind.Merge.Plugin\Handlers\IForkValidator.cs" Link="IO\EngineApiDto\IForkValidator.cs" />
+    <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszExecutionPayload.cs" Link="IO\EngineApiDto\SszExecutionPayload.cs" />
+    <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszNumericChecks.cs" Link="IO\EngineApiDto\SszNumericChecks.cs" />
+    <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszWireTypes.cs" Link="IO\EngineApiDto\SszWireTypes.cs" />
   </ItemGroup>
 
 </Project>

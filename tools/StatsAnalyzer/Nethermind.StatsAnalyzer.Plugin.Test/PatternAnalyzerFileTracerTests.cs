@@ -31,7 +31,7 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
     private PatternAnalyzerFileTracer _tracerIgnore;
     private string _testFileName;
     private string _testIgnoreFileName;
-    private readonly HashSet<Instruction> _ignoreSet = new() { Instruction.JUMPDEST, Instruction.JUMP };
+    private readonly HashSet<Instruction> _ignoreSet = [Instruction.JUMPDEST, Instruction.JUMP];
 
     public override void Setup()
 
@@ -58,11 +58,11 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
 
         // Tests rely on every block being recorded; force sequential exec.
         IBlocksConfig sequentialBlocksConfig = new BlocksConfig { ParallelExecution = false };
-        _tracer = new PatternAnalyzerFileTracer(new ResettableList<Instruction>(), 1, 100,
-            _patternStatsAnalyzer, new HashSet<Instruction>(), _fileSystem,
+        _tracer = new PatternAnalyzerFileTracer([], 1, 100,
+            _patternStatsAnalyzer, [], _fileSystem,
             _logger, 1, ProcessingMode.Sequential, SortOrder.Descending, _testFileName, CancellationToken.None,
             sequentialBlocksConfig);
-        _tracerIgnore = new PatternAnalyzerFileTracer(new ResettableList<Instruction>(), 1, 100,
+        _tracerIgnore = new PatternAnalyzerFileTracer([], 1, 100,
             _patternStatsAnalyzerIgnore, _ignoreSet, _fileSystem, _logger, 1,
             ProcessingMode.Sequential,
             SortOrder.Descending, _testIgnoreFileName, CancellationToken.None,

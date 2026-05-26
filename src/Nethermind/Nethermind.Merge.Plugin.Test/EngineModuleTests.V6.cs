@@ -851,11 +851,11 @@ public partial class EngineModuleTests
 
         // Apply BAL modifications for error testing
         payload.ExecutionRequests = payloadResult.Data!.ExecutionRequests;
-        BlockDecodingResult blockResult = payload.TryGetBlock();
-        Block block = blockResult.Block!;
+        Result<Block> blockResult = payload.TryGetBlock();
+        Block block = blockResult.Data!;
         ReadOnlyBlockAccessList validBal = block.BlockAccessList!;
 
-        SortedDictionary<Address, ReadOnlyAccountChanges> modifiedAccounts = new();
+        SortedDictionary<Address, ReadOnlyAccountChanges> modifiedAccounts = [];
         Address senderAddress = TestItem.AddressA;
 
         ReadOnlyBlockAccessList modifiedBal = CreateBlockAccessList();

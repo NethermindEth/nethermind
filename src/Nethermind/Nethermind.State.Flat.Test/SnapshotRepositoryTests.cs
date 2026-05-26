@@ -85,7 +85,7 @@ public class SnapshotRepositoryTests
 
     private List<Snapshot> BuildSnapshotChain(long startBlock, long endBlock)
     {
-        List<Snapshot> snapshots = new();
+        List<Snapshot> snapshots = [];
         for (long i = startBlock; i < endBlock; i++)
         {
             snapshots.Add(AddSnapshotToRepository(i, i + 1));

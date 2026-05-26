@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
@@ -11,33 +12,37 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Stateless.Execution.IO;
 
 namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
-    public static Block Execute(ReadOnlySpan<byte> data)
+    public static byte[] Execute(ReadOnlySpan<byte> data)
     {
-        Witness witness;
-        (Block suggestedBlock, witness, ulong chainId) = InputSerializer.Deserialize(data);
+        StatelessPayload payload = InputDecoder.Decode(data);
+        ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig.ChainId);
+        IReleaseSpec spec = specProvider.GetSpec(payload.ChainConfig.ActiveFork.Activation.ToForkActivation());
+        EthereumEcdsa ecdsa = new(payload.ChainConfig.ChainId);
 
-        using (witness)
+        // Recover sender addresses for transactions,
+        // as RLP-deserialized blocks don't have them
+        foreach (Transaction tx in payload.Block.Transactions)
+            tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+
+        using Witness witness = payload.Witness.ToWitness();
+        bool success = Execute(payload.Block, witness, specProvider);
+        StatelessValidationResult result = new()
         {
-            ISpecProvider specProvider = GetSpecProvider(chainId);
-            IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            EthereumEcdsa ecdsa = new(chainId);
+            NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
+            IsSuccess = success,
+            ChainConfig = payload.ChainConfig
+        };
 
-            // Recover sender addresses for transactions,
-            // as RLP-deserialized blocks don't have them
-            foreach (Transaction tx in suggestedBlock.Transactions)
-                tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
-
-            return Execute(suggestedBlock, witness, specProvider);
-        }
+        return StatelessValidationResult.Encode(result);
     }
 
-    public static Block Execute(
-        Block suggestedBlock, Witness witness, ISpecProvider specProvider)
+    public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
     {
         BlockHeader? parentHeader = null;
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
@@ -52,7 +57,10 @@ public static class StatelessExecutor
         }
 
         if (parentHeader is null)
-            throw new InvalidOperationException("Witness is missing the parent header");
+        {
+            Debug.Fail("Witness is missing the parent header");
+            return false;
+        }
 
         StatelessBlockTree blockTree = new(headers);
         HeaderValidator headerValidator = new(
@@ -70,7 +78,10 @@ public static class StatelessExecutor
         );
 
         if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error))
-            throw new InvalidBlockException(suggestedBlock, error!);
+        {
+            Debug.Fail(error);
+            return false;
+        }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance);
@@ -86,9 +97,12 @@ public static class StatelessExecutor
             specProvider.GetSpec(suggestedBlock.Header));
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
-            throw new InvalidBlockException(processedBlock, error!);
+        {
+            Debug.Fail(error);
+            return false;
+        }
 
-        return processedBlock;
+        return true;
     }
 
     private static ISpecProvider GetSpecProvider(ulong chainId) => chainId switch
