@@ -14,7 +14,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
 {
     private readonly int _compactSize;
     private readonly int _minCompactSize;
-    private readonly int _offset;
+    private readonly long _offset;
 
     public CompactionSchedule(
         [KeyFilter(DbNames.Metadata)] IDb metadataDb,
@@ -35,7 +35,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
         _offset = ResolveOffset(metadataDb, config, logger);
     }
 
-    public int Offset => _offset;
+    public long Offset => _offset;
 
     public int GetCompactSize(long blockNumber)
     {
@@ -53,13 +53,13 @@ public sealed class CompactionSchedule : ICompactionSchedule
         return from + distance;
     }
 
-    private int ResolveOffset(IDb metadataDb, IFlatDbConfig config, ILogger logger)
+    private long ResolveOffset(IDb metadataDb, IFlatDbConfig config, ILogger logger)
     {
         if (_compactSize <= 1) return 0;
 
         if (config.RegenerateCompactionOffset)
         {
-            int regenerated = GenerateAndPersist(metadataDb);
+            long regenerated = GenerateAndPersist(metadataDb);
             if (logger.IsInfo) logger.Info($"Regenerated FlatDb compaction offset {regenerated} (RegenerateCompactionOffset=true)");
             return regenerated;
         }
@@ -67,15 +67,15 @@ public sealed class CompactionSchedule : ICompactionSchedule
         byte[]? stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset);
         if (stored is null)
         {
-            int generated = GenerateAndPersist(metadataDb);
+            long generated = GenerateAndPersist(metadataDb);
             if (logger.IsInfo) logger.Info($"Generated new FlatDb compaction offset {generated}");
             return generated;
         }
 
-        int decoded = stored.AsRlpValueContext().DecodeInt();
-        if (decoded < 0 || decoded >= _compactSize)
+        long decoded = stored.AsRlpValueContext().DecodeLong();
+        if (decoded < 0)
         {
-            if (logger.IsWarn) logger.Warn($"Stored FlatDb compaction offset {decoded} is out of range for CompactSize {_compactSize}; regenerating");
+            if (logger.IsWarn) logger.Warn($"Stored FlatDb compaction offset {decoded} is negative; regenerating");
             return GenerateAndPersist(metadataDb);
         }
 
@@ -83,9 +83,9 @@ public sealed class CompactionSchedule : ICompactionSchedule
         return decoded;
     }
 
-    private int GenerateAndPersist(IDb metadataDb)
+    private long GenerateAndPersist(IDb metadataDb)
     {
-        int offset = Random.Shared.Next(0, _compactSize);
+        long offset = Random.Shared.NextInt64(0, int.MaxValue);
         metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, Rlp.Encode(offset).Bytes);
         return offset;
     }

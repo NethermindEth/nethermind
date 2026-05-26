@@ -10,7 +10,7 @@ namespace Nethermind.State.Flat.Test;
 
 internal static class ScheduleHelper
 {
-    public static CompactionSchedule CreateWithOffset(IFlatDbConfig config, int offset)
+    public static CompactionSchedule CreateWithOffset(IFlatDbConfig config, long offset)
     {
         MemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, Rlp.Encode(offset).Bytes);
