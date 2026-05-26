@@ -36,6 +36,8 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
 
     public NativeMemoryList(int capacity, int count)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(count, capacity);
         _ptr = NativeMemoryListCore<T>.AllocateBuffer(capacity, out _pooledArray, out _pinHandle, out _capacity);
         if (count > 0) new Span<T>(_ptr, count).Clear();
         _count = count;

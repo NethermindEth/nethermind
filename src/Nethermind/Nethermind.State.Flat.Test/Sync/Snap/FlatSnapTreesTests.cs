@@ -90,12 +90,7 @@ public class FlatSnapTreesTests
     {
         IPersistence.IPersistenceReader reader = Reader();
         reader.GetAccountRaw(Arg.Any<ValueHash256>()).Returns((byte[]?)null);
-        // Manual stub: NSubstitute/Castle DynamicProxy cannot generate valid IL for
-        // IWriteBatch.SetStateTrieNode (the combination of `in TreePath` with
-        // `ReadOnlySpan<byte>` triggers InvalidProgramException at proxy invocation
-        // time). The commit path calls SetStateTrieNode for the in-bound key, so this
-        // test cannot use Substitute.For<IPersistence.IWriteBatch>().
-        RecordingWriteBatch writer = new();
+        FakeWriteBatch writer = new();
         using FlatSnapStateTree tree = NewStateTree(reader, writer);
 
         Account account = new(1, 100);
@@ -105,35 +100,7 @@ public class FlatSnapTreesTests
         tree.BulkSetAndUpdateRootHash([new PathWithAccount(lowPath, account), new PathWithAccount(highPath, account)]);
         tree.Commit(PathHash("55"));
 
-        writer.SetAccountRawCalls.Should().ContainSingle();
-        writer.SetAccountRawCalls[0].Path.Should().Be(lowPath);
-        writer.SetAccountRawCalls[0].Account.Should().Be(account);
-    }
-
-    /// <summary>
-    /// Manual <see cref="IPersistence.IWriteBatch"/> stub used by tests whose commit
-    /// path invokes <c>SetStateTrieNode(in TreePath, ReadOnlySpan&lt;byte&gt;)</c> —
-    /// NSubstitute's Castle DynamicProxy cannot generate valid IL for that
-    /// signature (in/ref + ref struct combination), so a substitute would throw
-    /// <see cref="System.InvalidProgramException"/> on first invocation.
-    /// </summary>
-    private sealed class RecordingWriteBatch : IPersistence.IWriteBatch
-    {
-        public List<(ValueHash256 Path, Account Account)> SetAccountRawCalls { get; } = [];
-        public int DisposeCount { get; private set; }
-
-        public void SelfDestruct(Address addr) { }
-        public void SetAccount(Address addr, Account? account) { }
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) { }
-        public void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp) { }
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp) { }
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) { }
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account) => SetAccountRawCalls.Add((addrHash, account));
-        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) { }
-        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) { }
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) { }
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) { }
-        public void Dispose() => DisposeCount++;
+        writer.SetAccountRawCalls.Should().ContainSingle().Which.Should().BeEquivalentTo((lowPath, account));
     }
 
     [Test]

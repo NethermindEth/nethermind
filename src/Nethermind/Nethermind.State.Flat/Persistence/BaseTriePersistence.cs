@@ -158,7 +158,7 @@ public static class BaseTriePersistence
                 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
         }
 
-        public void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp)
+        public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp)
         {
             switch (path.Length)
             {
@@ -174,7 +174,7 @@ public static class BaseTriePersistence
             }
         }
 
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp)
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp)
         {
             switch (path.Length)
             {

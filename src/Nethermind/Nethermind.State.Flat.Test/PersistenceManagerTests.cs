@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -489,19 +490,18 @@ public class PersistenceManagerTests
         TrieNode node = new(NodeType.Leaf, Keccak.Zero);
         snapshot.Content.StateNodes[path] = node;
 
-        IPersistence.IWriteBatch innerBatch = Substitute.For<IPersistence.IWriteBatch>();
-        FakeTrieWriteBatch writeBatch = new(innerBatch);
+        FakeWriteBatch writeBatch = new();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
 
         // Act
         _persistenceManager.PersistSnapshot(snapshot);
 
         // Assert
-        innerBatch.Received().SetAccount(TestItem.AddressA, Arg.Any<Account?>());
-        innerBatch.Received().SetAccount(TestItem.AddressB, Arg.Any<Account?>());
-        innerBatch.Received().SetStorage(TestItem.AddressA, (UInt256)1, Arg.Any<SlotValue?>());
-        innerBatch.Received().SetStorage(TestItem.AddressA, (UInt256)2, Arg.Any<SlotValue?>());
-        Assert.That(writeBatch.StateTrieNodeCalls, Is.GreaterThanOrEqualTo(1));
+        writeBatch.SetAccountCalls.Should().Contain(c => c.Addr == TestItem.AddressA);
+        writeBatch.SetAccountCalls.Should().Contain(c => c.Addr == TestItem.AddressB);
+        writeBatch.SetStorageCalls.Should().Contain(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1);
+        writeBatch.SetStorageCalls.Should().Contain(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2);
+        writeBatch.SetStateTrieNodeCalls.Should().NotBeEmpty();
         Assert.That(node.IsPersisted, Is.True);
     }
 

@@ -28,6 +28,8 @@ public unsafe ref struct NativeMemoryListRef<T> where T : unmanaged
 
     public NativeMemoryListRef(int capacity, int startingCount = 0)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(startingCount);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(startingCount, capacity);
         _ptr = NativeMemoryListCore<T>.AllocateBuffer(capacity, out _pooledArray, out _pinHandle, out _capacity);
         if (startingCount > 0) new Span<T>(_ptr, startingCount).Clear();
         _count = startingCount;

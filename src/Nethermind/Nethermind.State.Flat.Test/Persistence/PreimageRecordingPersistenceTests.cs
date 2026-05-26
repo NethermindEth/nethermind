@@ -95,12 +95,12 @@ public class PreimageRecordingPersistenceTests
     {
         StateId from = StateId.PreGenesis;
         StateId to = new(1, TestItem.KeccakA);
-        IPersistence.IWriteBatch innerSubstitute = Substitute.For<IPersistence.IWriteBatch>();
-        FakeTrieWriteBatch innerBatch = new(innerSubstitute);
+        FakeWriteBatch innerBatch = new();
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
 
         TreePath path = TreePath.FromHexString("1234");
         byte[] rlp = [0xc1, 0x01];
+        TrieNode node = new(NodeType.Leaf, rlp);
         Hash256 addrHash = TestItem.KeccakA;
         Hash256 slotHash = TestItem.KeccakB;
         Account account = TestItem.GenerateIndexedAccount(0);
@@ -108,20 +108,24 @@ public class PreimageRecordingPersistenceTests
 
         using (IPersistence.IWriteBatch batch = _sut.CreateWriteBatch(from, to, WriteFlags.None))
         {
-            batch.SetStateTrieNode(path, rlp);
-            batch.SetStorageTrieNode(addrHash, path, rlp);
+            batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
+            batch.SetStorageTrieNode(addrHash, path, node.FullRlp.AsSpan());
             batch.SetStorageRaw(addrHash, slotHash, value);
             batch.SetAccountRaw(addrHash, account);
         }
 
-        // Trie operations take ReadOnlySpan<byte>; FakeTrieWriteBatch counts them since
-        // NSubstitute can't generate a proxy for ref-struct args.
-        Assert.That(innerBatch.StateTrieNodeCalls, Is.EqualTo(1));
-        Assert.That(innerBatch.StorageTrieNodeCalls, Is.EqualTo(1));
+        // Verify trie operations delegated
+        innerBatch.SetStateTrieNodeCalls.Should().ContainSingle().Which.Should().BeEquivalentTo((path, rlp));
+        innerBatch.SetStorageTrieNodeCalls.Should().ContainSingle().Which.Should().BeEquivalentTo((addrHash, path, rlp));
 
         // Without preimage, raw operations stay raw
-        innerSubstitute.Received(1).SetStorageRaw(addrHash, slotHash, Arg.Is<SlotValue?>(v => v != null));
-        innerSubstitute.Received(1).SetAccountRaw(addrHash, account);
+        ValueHash256 addrHashValue = addrHash.ValueHash256;
+        ValueHash256 slotHashValue = slotHash.ValueHash256;
+        innerBatch.SetStorageRawCalls.Should().ContainSingle()
+            .Which.Should().Match<(ValueHash256 Addr, ValueHash256 Slot, SlotValue? Value)>(c =>
+                c.Addr == addrHashValue && c.Slot == slotHashValue && c.Value != null);
+        innerBatch.SetAccountRawCalls.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo((addrHashValue, account));
 
         // No preimages should be recorded for trie/raw operations
         _preimageDb.Keys.Should().BeEmpty();
