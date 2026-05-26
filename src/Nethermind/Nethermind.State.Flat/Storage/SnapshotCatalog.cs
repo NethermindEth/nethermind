@@ -119,12 +119,6 @@ public sealed class SnapshotCatalog(IDb db)
     }
 
     /// <summary>
-    /// Each mutating operation persists immediately, so Save is a no-op.
-    /// Kept for source-compat with the previous file-backed catalog.
-    /// </summary>
-    public void Save() { }
-
-    /// <summary>
     /// Load all entries from the underlying DB into the in-memory list.
     /// </summary>
     public void Load()

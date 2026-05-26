@@ -63,7 +63,6 @@ public class StorageLayerTests
         SnapshotCatalog catalog = new(catalogDb);
         catalog.Add(new(s0, s1, new(0, 0, 1024), new BlobRange(3, 4096, 8192), SnapshotKind.Base));
         catalog.Add(new(s1, s2, new(0, 1024, 2048), BlobRange.None, SnapshotKind.Persistable));
-        catalog.Save();
 
         // Load in new instance
         SnapshotCatalog loaded = new(catalogDb);
