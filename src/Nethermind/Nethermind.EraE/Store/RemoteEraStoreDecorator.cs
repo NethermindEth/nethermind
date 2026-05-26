@@ -235,6 +235,8 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         }
         catch (OperationCanceledException)
         {
+            if (!_availableEpochs.ContainsKey(epoch) && File.Exists(destinationPath))
+                File.Delete(destinationPath);
             _contentVerifiedEpochs.TryRemove(epoch, out _);
             throw;
         }
