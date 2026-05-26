@@ -129,13 +129,13 @@ internal static class StructLogEnvelopeWriter
         bool failed = errorMessage is not null || trace is null || trace.Failed;
         byte[] returnValue = trace?.ReturnValue ?? [];
 
-        ForcedNumberConversion.WriteRawLong(writer, "gas"u8, gas);
+        writer.WriteNumber("gas"u8, gas);
 
         writer.WritePropertyName("failed"u8);
         writer.WriteBooleanValue(failed);
 
         writer.WritePropertyName("returnValue"u8);
-        JsonSerializer.Serialize(writer, returnValue, EthereumJsonSerializer.JsonOptions);
+        ByteArrayConverter.Convert(writer, returnValue, skipLeadingZeros: false);
 
         if (errorMessage is not null)
         {

@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -24,6 +28,8 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
+using Nethermind.JsonRpc;
+using Nethermind.Serialization.Json;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -76,6 +82,39 @@ namespace Nethermind.Merge.Plugin.Test
                 _ => throw new ArgumentOutOfRangeException(nameof(version))
             };
             errorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+        }
+
+        private static async Task<string> AssertStreamedJsonMatchesSerializer<TResponse>(TResponse response)
+            where TResponse : IStreamableResult
+        {
+            Pipe pipe = new();
+            await response.WriteToAsync(pipe.Writer, CancellationToken.None);
+            await pipe.Writer.CompleteAsync();
+
+            ReadResult readResult = await pipe.Reader.ReadAsync();
+            string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
+            pipe.Reader.AdvanceTo(readResult.Buffer.End);
+
+            streamedJson.Should().Be(JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions));
+            return streamedJson;
+        }
+
+        private static Withdrawal[] CreateDirectResponseWithdrawals() =>
+        [
+            new()
+            {
+                Index = 1,
+                ValidatorIndex = 2,
+                Address = TestItem.AddressA,
+                AmountInGwei = 3
+            }
+        ];
+
+        private static byte[] RandomBytes(int length)
+        {
+            byte[] bytes = new byte[length];
+            Random.Shared.NextBytes(bytes);
+            return bytes;
         }
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,

@@ -64,22 +64,21 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
     // Message IDs 0x00–0x13 → 20 codes
     public override int MessageIdSpaceSize => 20;
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {
             case Eth71MessageCode.GetBlockAccessLists:
                 HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
-                break;
+                return true;
             case Eth71MessageCode.BlockAccessLists:
                 BlockAccessListsMessage balMsg = Deserialize<BlockAccessListsMessage>(message.Content);
                 ReportIn(balMsg, size);
                 Handle(balMsg, size);
-                break;
+                return true;
             default:
-                base.HandleMessageCore(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 

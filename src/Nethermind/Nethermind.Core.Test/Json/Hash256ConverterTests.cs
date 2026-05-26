@@ -52,6 +52,18 @@ public class Hash256ConverterTests
         Assert.That(deserialized, Is.EqualTo(hash));
     }
 
+    [Test]
+    public void Value_hash_writes_roundtrip()
+    {
+        JsonSerializerOptions valueOptions = new() { Converters = { new ValueHash256Converter() } };
+        ValueHash256 hash = new(CreateSequentialBytes(32));
+
+        string json = JsonSerializer.Serialize(hash, valueOptions);
+        ValueHash256 deserialized = JsonSerializer.Deserialize<ValueHash256>(json, valueOptions);
+
+        Assert.That(deserialized, Is.EqualTo(hash));
+    }
+
     static IEnumerable<TestCaseData> RoundtripTestCases =
     [
         new TestCaseData(Keccak.Compute("test data"u8))

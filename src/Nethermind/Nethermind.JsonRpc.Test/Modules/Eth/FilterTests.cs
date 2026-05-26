@@ -110,6 +110,43 @@ public class FilterTests
         filter.Should().BeEquivalentTo(expectation);
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ReadJson_materializes_topics_before_json_document_is_disposed(bool filterAsString)
+    {
+        string filterJson = JsonSerializer.Serialize(
+            new
+            {
+                topics = new object?[]
+                {
+                    "0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7",
+                    null,
+                    new[]
+                    {
+                        "0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001",
+                        "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+                    }
+                }
+            });
+        string json = filterAsString ? JsonSerializer.Serialize(filterJson) : filterJson;
+        Filter filter = new();
+
+        using (JsonDocument doc = JsonDocument.Parse(json))
+        {
+            filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
+        }
+
+        filter.Topics.Should().BeEquivalentTo(new Hash256[]?[]
+        {
+            [new("0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7")],
+            null,
+            [
+                new("0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001"),
+                new("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")
+            ]
+        });
+    }
+
     [Test]
     public void ReadJson_throws_when_filter_string_exceeds_limit()
     {
