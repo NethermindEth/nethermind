@@ -92,23 +92,17 @@ public static class PersistedSnapshotMerger
     /// <see cref="NoOpPin"/>) because the merge always reads from open snapshot mmaps; the
     /// three generic parameters are the WRITER-side trio threaded through to
     /// <see cref="NWayMergePerAddressHsst{TWriter,TReader,TPin}"/>. Per-source reader
-    /// factories come via the cursor (<c>cursor.CreateMinReader</c>, <c>cursor.Sources</c>);
-    /// no <c>_views</c> field is needed.</remarks>
-    private readonly unsafe struct PerAddressColumnValueMerger<TWriter, TReader, TPin>(
-        BloomFilter bloom, void* slotPrefixBuffersPtr)
+    /// factories come via the cursor (<c>cursor.CreateMinReader</c>, <c>cursor.Sources</c>).
+    /// The shared <see cref="HsstBTreeBuilderBuffers"/> arena (re-used across every emitted
+    /// address) is held via <see cref="HsstBTreeBuilderBuffersContainer"/> — a class handle
+    /// that hides the ref-to-ref-struct workaround.</remarks>
+    private readonly struct PerAddressColumnValueMerger<TWriter, TReader, TPin>(
+        BloomFilter bloom, HsstBTreeBuilderBuffersContainer slotPrefixBuffers)
         : IHsstBTreeValueMerger<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>
         where TWriter : IByteBufferWriterWithReader<TReader, TPin>
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
-        // HsstBTreeBuilderBuffers is itself a ref struct, so it can't be held as a ref field
-        // (CS9050 — a ref field cannot refer to a ref struct), and the value-merger struct is
-        // captured by primary-ctor here so a `ref` ctor parameter would also over-constrain
-        // its lifetime. Pin via Unsafe.AsPointer at the call site, re-borrow with Unsafe.AsRef
-        // inside MergeValues; the caller guarantees the buffers live on the stack of
-        // NWayMergePerAddressColumn for the duration of the merge.
-        // (Field captured implicitly by primary constructor parameter slotPrefixBuffersPtr.)
-
         public void OnKey(scoped ReadOnlySpan<byte> key)
             => bloom.Add(MemoryMarshal.Read<ulong>(key));
 
@@ -149,11 +143,9 @@ public static class PersistedSnapshotMerger
                     subTagBounds.Slice(j * PersistedSnapshotTags.PerAddrSubTagCount, PersistedSnapshotTags.PerAddrSubTagCount));
             }
 
-            ref HsstBTreeBuilderBuffers slotPrefixBuffers =
-                ref Unsafe.AsRef<HsstBTreeBuilderBuffers>(slotPrefixBuffersPtr);
             NWayMergePerAddressHsst<TWriter, TReader, TPin>(
                 matchingSources, matchCount, sources,
-                ref writer, ref slotPrefixBuffers,
+                ref writer, ref slotPrefixBuffers.Buffers,
                 subTagBounds,
                 bloom, addrKey);
         }
@@ -387,11 +379,9 @@ public static class PersistedSnapshotMerger
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
                 sources.AsSpan(0, n), state, AddrKeyLen);
 
-            PerAddressColumnValueMerger<TWriter, TReader, TPin> valueMerger;
-            unsafe
-            {
-                valueMerger = new(bloom, Unsafe.AsPointer(ref slotPrefixBuffers));
-            }
+            HsstBTreeBuilderBuffersContainer slotPrefixBuffersContainer = new(ref slotPrefixBuffers);
+            PerAddressColumnValueMerger<TWriter, TReader, TPin> valueMerger =
+                new(bloom, slotPrefixBuffersContainer);
             HsstBTreeMerger.NWayMerge<TWriter, TReader, TPin,
                 WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
                 PerAddressColumnValueMerger<TWriter, TReader, TPin>>(
