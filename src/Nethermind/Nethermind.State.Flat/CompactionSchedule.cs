@@ -1,0 +1,92 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Core;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+
+namespace Nethermind.State.Flat;
+
+public sealed class CompactionSchedule : ICompactionSchedule
+{
+    private readonly int _compactSize;
+    private readonly int _minCompactSize;
+    private readonly int _offset;
+
+    public CompactionSchedule(
+        [KeyFilter(DbNames.Metadata)] IDb metadataDb,
+        IFlatDbConfig config,
+        ILogManager logManager)
+    {
+        if (config.CompactSize > 1 && (config.CompactSize & (config.CompactSize - 1)) != 0)
+            throw new ArgumentException("Compact size must be a power of 2");
+        if (config.MinCompactSize > 1 && (config.MinCompactSize & (config.MinCompactSize - 1)) != 0)
+            throw new ArgumentException("Min compact size must be a power of 2");
+        if (config.MinCompactSize > config.CompactSize)
+            throw new ArgumentException("Min compact size must be <= compact size");
+
+        _compactSize = config.CompactSize;
+        _minCompactSize = Math.Max(config.MinCompactSize, 2);
+
+        ILogger logger = logManager.GetClassLogger<CompactionSchedule>();
+        _offset = ResolveOffset(metadataDb, config, logger);
+    }
+
+    public int Offset => _offset;
+
+    public int GetCompactSize(long blockNumber)
+    {
+        if (_compactSize <= 1 || blockNumber == 0) return 1;
+        long shifted = blockNumber + _offset;
+        int compactSize = (int)Math.Min(shifted & -shifted, _compactSize);
+        return compactSize < _minCompactSize ? 1 : compactSize;
+    }
+
+    public long NextFullCompactionAfter(long from)
+    {
+        if (_compactSize <= 1) return long.MaxValue;
+        long mod = (from + _offset) % _compactSize;
+        long distance = mod == 0 ? _compactSize : _compactSize - mod;
+        return from + distance;
+    }
+
+    private int ResolveOffset(IDb metadataDb, IFlatDbConfig config, ILogger logger)
+    {
+        if (_compactSize <= 1) return 0;
+
+        if (config.RegenerateCompactionOffset)
+        {
+            int regenerated = GenerateAndPersist(metadataDb);
+            if (logger.IsInfo) logger.Info($"Regenerated FlatDb compaction offset {regenerated} (RegenerateCompactionOffset=true)");
+            return regenerated;
+        }
+
+        byte[]? stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset);
+        if (stored is null)
+        {
+            int generated = GenerateAndPersist(metadataDb);
+            if (logger.IsInfo) logger.Info($"Generated new FlatDb compaction offset {generated}");
+            return generated;
+        }
+
+        int decoded = stored.AsRlpValueContext().DecodeInt();
+        if (decoded < 0 || decoded >= _compactSize)
+        {
+            if (logger.IsWarn) logger.Warn($"Stored FlatDb compaction offset {decoded} is out of range for CompactSize {_compactSize}; regenerating");
+            return GenerateAndPersist(metadataDb);
+        }
+
+        if (logger.IsInfo) logger.Info($"Loaded FlatDb compaction offset {decoded}");
+        return decoded;
+    }
+
+    private int GenerateAndPersist(IDb metadataDb)
+    {
+        int offset = Random.Shared.Next(0, _compactSize);
+        metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, Rlp.Encode(offset).Bytes);
+        return offset;
+    }
+}

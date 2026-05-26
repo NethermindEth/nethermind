@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -48,6 +49,7 @@ public class PersistenceManagerTests
 
         _persistenceManager = new PersistenceManager(
             _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
@@ -383,6 +385,39 @@ public class PersistenceManagerTests
 
         // Verify current persisted state was updated
         Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(to));
+    }
+
+    #endregion
+
+    #region Offset Behavior
+
+    [TestCase(3, 13)]
+    [TestCase(5, 11)]
+    [TestCase(0, 16)]
+    public void DetermineSnapshotToPersist_WithOffset_FirstBoundaryShifted(int offset, int expectedTargetBlock)
+    {
+        // Fresh DB: currentPersistedState = Block0 (block 0).
+        // With CompactSize=16 and offset=N, the next full compaction boundary is at block 16-N.
+        PersistenceManager pm = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, offset),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            LimboLogs.Instance);
+
+        StateId target = CreateStateId(expectedTargetBlock);
+        StateId latest = CreateStateId(200);
+        _finalizedStateProvider.SetFinalizedBlockNumber(200);
+        _finalizedStateProvider.SetFinalizedStateRootAt(expectedTargetBlock, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot expected = CreateSnapshot(Block0, target, compacted: true);
+
+        Snapshot? result = pm.DetermineSnapshotToPersist(latest);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.To, Is.EqualTo(target));
+        result.Dispose();
     }
 
     #endregion

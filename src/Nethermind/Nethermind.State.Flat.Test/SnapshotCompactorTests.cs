@@ -28,7 +28,7 @@ public class SnapshotCompactorTests
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
         _snapshotRepository = new SnapshotRepository(LimboLogs.Instance);
-        _compactor = new SnapshotCompactor(_config, _resourcePool, _snapshotRepository, LimboLogs.Instance);
+        _compactor = new SnapshotCompactor(_config, ScheduleHelper.CreateWithOffset(_config, 0), _resourcePool, _snapshotRepository, LimboLogs.Instance);
     }
 
     private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
@@ -361,7 +361,7 @@ public class SnapshotCompactorTests
     public void GetSnapshotsToCompact_CompactSizeDisabled_ReturnsEmpty()
     {
         FlatDbConfig config = new() { CompactSize = 1, MinCompactSize = 0 };
-        SnapshotCompactor compactor = new(config, _resourcePool, _snapshotRepository, LimboLogs.Instance);
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, _snapshotRepository, LimboLogs.Instance);
 
         StateId from = new(0, Keccak.Zero);
         StateId to = new(16, Keccak.Zero);
@@ -437,7 +437,7 @@ public class SnapshotCompactorTests
     {
         FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 4 };
         SnapshotRepository repo = new(LimboLogs.Instance);
-        SnapshotCompactor compactor = new(config, _resourcePool, repo, LimboLogs.Instance);
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, repo, LimboLogs.Instance);
 
         for (long i = 0; i < blockNumber; i++)
         {
@@ -517,24 +517,24 @@ public class SnapshotCompactorTests
     [Test]
     public void Constructor_NonPowerOf2CompactSize_Throws() =>
         Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 10 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
+            new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 10 }, LimboLogs.Instance));
 
     [Test]
     public void Constructor_NonPowerOf2MinCompactSize_Throws() =>
         Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 16, MinCompactSize = 3 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
+            new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 16, MinCompactSize = 3 }, LimboLogs.Instance));
 
     [Test]
     public void Constructor_MinCompactSizeGreaterThanCompactSize_Throws() =>
         Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 8, MinCompactSize = 16 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
+            new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 8, MinCompactSize = 16 }, LimboLogs.Instance));
 
     [Test]
     public void GetSnapshotsToCompact_MinCompactSize2_AllowsSize2Compaction()
     {
         FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 2 };
         SnapshotRepository repo = new(LimboLogs.Instance);
-        SnapshotCompactor compactor = new(config, _resourcePool, repo, LimboLogs.Instance);
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, repo, LimboLogs.Instance);
 
         for (long i = 0; i < 2; i++)
         {
@@ -584,5 +584,57 @@ public class SnapshotCompactorTests
     {
         int actualCompactSize = (int)Math.Min(blockNumber & -blockNumber, 16);
         Assert.That(actualCompactSize, Is.EqualTo(expectedCompactSize));
+    }
+
+    [Test]
+    public void GetSnapshotsToCompact_WithOffset_FullCompactionShiftedFromBoundary()
+    {
+        // CompactSize=16, offset=3 -> full compaction triggers when (block+3) % 16 == 0,
+        // i.e. at blocks 13, 29, 45, ... Build a chain to block 29 (second full boundary).
+        FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 2 };
+        SnapshotRepository repo = new(LimboLogs.Instance);
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 3), _resourcePool, repo, LimboLogs.Instance);
+
+        for (long i = 0; i < 29; i++)
+        {
+            StateId from = CreateStateId(i);
+            StateId to = CreateStateId(i + 1);
+            Snapshot s = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+            repo.TryAddSnapshot(s);
+            repo.AddStateId(to);
+        }
+
+        // Block 29: (29+3) & -(29+3) = 32 & -32 = 32, capped at CompactSize=16 -> full compaction
+        StateId target29 = CreateStateId(29);
+        repo.TryLeaseState(target29, out Snapshot? targetSnapshot);
+        using SnapshotPooledList snapshots29 = compactor.GetSnapshotsToCompact(targetSnapshot!);
+        Assert.That(snapshots29.Count, Is.EqualTo(16), "Block 29 should trigger full compaction with offset=3");
+        targetSnapshot!.Dispose();
+
+        // Block 16: (16+3) & -(16+3) = 19 & -19 = 1 < MinCompactSize=2 -> no compaction
+        StateId target16 = CreateStateId(16);
+        repo.TryLeaseState(target16, out targetSnapshot);
+        using SnapshotPooledList snapshots16 = compactor.GetSnapshotsToCompact(targetSnapshot!);
+        Assert.That(snapshots16.Count, Is.EqualTo(0), "Block 16 should NOT trigger compaction with offset=3");
+        targetSnapshot!.Dispose();
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_WithOffset_UsesCorrectUsageTier()
+    {
+        // CompactSize=16, offset=3. At block 13 the bit trick yields 16 -> Compact16 tier.
+        FlatDbConfig config = new() { CompactSize = 16 };
+        SnapshotRepository repo = new(LimboLogs.Instance);
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 3), _resourcePool, repo, LimboLogs.Instance);
+
+        StateId from = new(0, Keccak.Zero);
+        StateId to = new(13, Keccak.Zero);
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+
+        SnapshotPooledList snapshots = new(1) { snapshot };
+
+        using Snapshot compacted = compactor.CompactSnapshotBundle(snapshots);
+
+        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compact16));
     }
 }
