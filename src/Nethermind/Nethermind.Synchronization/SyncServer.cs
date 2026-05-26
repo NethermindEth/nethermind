@@ -375,7 +375,17 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public TxReceipt[] GetReceipts(Hash256? blockHash) => blockHash is not null ? _receiptFinder.Get(blockHash) : [];
+        public TxReceipt[]? GetReceipts(Hash256? blockHash)
+        {
+            if (blockHash is null) return null;
+
+            Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
+            if (block is null || block.IsBodyMissing) return null;
+            if (block.Transactions.Length == 0) return [];
+
+            TxReceipt[] receipts = _receiptFinder.Get(blockHash);
+            return receipts.Length == 0 ? null : receipts;
+        }
 
         public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash) =>
             _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.BlockAccessListHash is null

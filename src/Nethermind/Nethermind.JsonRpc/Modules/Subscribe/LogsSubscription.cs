@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => TryPublishReceiptsInBackground(e.BlockHeader, () => e.TxReceipts, nameof(_receiptCanonicalityMonitor.ReceiptsInserted), e.WasRemoved);
 
-        private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName, bool removed) => ScheduleAction(async () => await TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
+        private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName, bool removed) => ScheduleAction(() => TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
 
         private async Task TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName, bool removed)
         {

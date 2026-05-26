@@ -94,9 +94,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_simulateV1", payload!, "latest");
-        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
-        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
-        IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = (IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>)successResponse.Result!;
+        IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>>(response);
         Assert.That(data.First().Traces.First().TxHash, Is.EqualTo(new Core.Crypto.Hash256("0xe690a6e09e13d163bc8b92c725202e9633770b14c8541a0ee48794ae014351f0")));
     }
 

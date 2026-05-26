@@ -52,6 +52,7 @@ public partial class BlockProcessor
             }
 
             Metrics.ResetBlockStats();
+            inner.SetupTxTimingMetrics(block);
 
             return !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
@@ -82,7 +83,7 @@ public partial class BlockProcessor
                     BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalRegularGas, totalStateGas, in intrinsicGas);
                 }
 
-                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, in intrinsicGas);
+                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner, in intrinsicGas);
                 totalRegularGas = receiptsTracer.CumulativeRegularGasUsed;
                 totalStateGas = receiptsTracer.BlockStateGasUsed;
 
@@ -136,7 +137,7 @@ public partial class BlockProcessor
                         len + 1,
                         ParallelUnbalancedWork.DefaultOptions,
                         (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
-                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread),
+                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner),
                         static (i, state) =>
                         {
                             // Propagate the parent thread's IsBlockProcessingThread flag onto the
@@ -180,6 +181,7 @@ public partial class BlockProcessor
                                             txIndex,
                                             state.receiptsTracers[txIndex],
                                             state.processingOptions,
+                                            state.inner,
                                             in intrinsicGas);
                                     }
                                     state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, intrinsicGas, null));
@@ -378,9 +380,20 @@ public partial class BlockProcessor
             int index,
             BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
+            IBlockProcessor.IBlockTransactionsExecutor inner,
             in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
         {
-            TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider, in intrinsicGas);
+            long txStart = inner.StartTxTimer();
+            TransactionResult result;
+            try
+            {
+                result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider, in intrinsicGas);
+            }
+            finally
+            {
+                // Stop the timer even on failure so a slow-block log captures the failing tx's time
+                inner.StopTxTimer(index, txStart);
+            }
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
         }
 

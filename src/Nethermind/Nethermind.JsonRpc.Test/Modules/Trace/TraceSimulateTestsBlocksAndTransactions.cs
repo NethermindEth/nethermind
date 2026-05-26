@@ -89,9 +89,7 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.TraceRpcModule, "trace_simulateV1", payload!, "latest");
-        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
-        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
-        IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = (IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>)successResponse.Result!;
+        IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>>(response);
         Assert.That(data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x45635998c509d5571fcc391772c5af77f3f202b70ea9fafb48ea8eb475288b59")));
     }
 

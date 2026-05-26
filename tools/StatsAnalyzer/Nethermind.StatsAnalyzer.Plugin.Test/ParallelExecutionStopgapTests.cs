@@ -53,7 +53,7 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
         IBlocksConfig blocksConfig = new BlocksConfig { ParallelExecution = false };
         (string fileName, PatternAnalyzerFileTracer tracer) = BuildTracer(blocksConfig, "seq.json");
 
-        RunSingleBlock(tracer, bal: new BlockAccessList());
+        RunSingleBlock(tracer, bal: new());
 
         Assert.That(_fileSystem.File.ReadAllText(fileName), Is.EqualTo(SingleBlockExpected));
     }
@@ -75,7 +75,7 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
         IBlocksConfig blocksConfig = new BlocksConfig { ParallelExecution = true };
         (string fileName, PatternAnalyzerFileTracer tracer) = BuildTracer(blocksConfig, "parallel.json");
 
-        RunSingleBlock(tracer, bal: new BlockAccessList());
+        RunSingleBlock(tracer, bal: new());
 
         // Skipped write must leave the seed content intact.
         Assert.That(_fileSystem.File.ReadAllText(fileName), Is.EqualTo(InitialFileContent));
@@ -88,7 +88,7 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
         (string _, PatternAnalyzerFileTracer tracer) = BuildTracer(cfg, "gating.json");
 
         Block sequentialBlock = BuildBlock(bal: null);
-        Block parallelBlock = BuildBlock(bal: new BlockAccessList());
+        Block parallelBlock = BuildBlock(bal: new());
 
         tracer.StartNewBlockTrace(sequentialBlock);
         Assert.That(ReadTracerSkip(tracer), Is.False,
@@ -103,7 +103,7 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
             "skip flag must reset on next sequential block");
     }
 
-    private Block BuildBlock(BlockAccessList? bal)
+    private Block BuildBlock(ReadOnlyBlockAccessList? bal)
     {
         ForkActivation forkActivation = MainnetSpecProvider.PragueActivation;
         byte[] code = Prepare.EvmCode.PushData(0).Done;
@@ -148,7 +148,7 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
         return (fileName, tracer);
     }
 
-    private void RunSingleBlock(PatternAnalyzerFileTracer tracer, BlockAccessList? bal)
+    private void RunSingleBlock(PatternAnalyzerFileTracer tracer, ReadOnlyBlockAccessList? bal)
     {
         byte[] code = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Done;
         ForkActivation forkActivation = MainnetSpecProvider.PragueActivation;

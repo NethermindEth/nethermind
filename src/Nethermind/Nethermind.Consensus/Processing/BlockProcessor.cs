@@ -16,6 +16,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -130,16 +131,15 @@ public partial class BlockProcessor(
 
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        _stateProvider.Commit(spec, commitRoots: false);
+        CommitState(spec);
 
-        TxReceipt[] receipts;
-        receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
-        _stateProvider.Commit(spec, commitRoots: false);
+        CommitState(spec);
 
         CalculateBlooms(receipts);
 
@@ -148,20 +148,20 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        SetReceiptsRoot(header, receipts, spec, block);
 
         ApplyMinerRewards(block, blockTracer, spec);
         _systemContractHandler.ProcessWithdrawals(block, spec);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
-        _stateProvider.Commit(spec, commitRoots: false);
+        CommitState(spec);
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
-        _stateProvider.Commit(spec, commitRoots: true);
+        CommitStateAndStorageRoots(spec);
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
@@ -170,8 +170,7 @@ public partial class BlockProcessor(
 
         if (ShouldComputeStateRoot(header))
         {
-            _stateProvider.RecalculateStateRoot();
-            header.StateRoot = _stateProvider.StateRoot;
+            ComputeStateRoot(header);
         }
 
         _balManager.SetBlockAccessList(block);
@@ -181,8 +180,38 @@ public partial class BlockProcessor(
         return receipts;
     }
 
+    private void CommitState(IReleaseSpec spec)
+    {
+        using MetricsTimer<CommitTimeSink> _ = new();
+        _stateProvider.Commit(spec, commitRoots: false);
+    }
+
+    private void CommitStateAndStorageRoots(IReleaseSpec spec)
+    {
+        using MetricsTimer<StorageMerkleTimeSink> _ = new();
+        _stateProvider.Commit(spec, commitRoots: true);
+    }
+
+    private void ComputeStateRoot(BlockHeader header)
+    {
+        using (MetricsTimer<StateRootTimeSink> _ = new())
+        {
+            _stateProvider.RecalculateStateRoot();
+        }
+        header.StateRoot = _stateProvider.StateRoot;
+    }
+
+    private static void SetReceiptsRoot(BlockHeader header, TxReceipt[] receipts, IReleaseSpec spec, Block block)
+    {
+        using MetricsTimer<ReceiptsRootTimeSink> _ = new();
+        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void CalculateBlooms(TxReceipt[] receipts) => ParallelUnbalancedWork.For(
+    private static void CalculateBlooms(TxReceipt[] receipts)
+    {
+        using MetricsTimer<BloomsTimeSink> _ = new();
+        ParallelUnbalancedWork.For(
             0,
             receipts.Length,
             ParallelUnbalancedWork.DefaultOptions,
@@ -192,6 +221,50 @@ public partial class BlockProcessor(
                 receipts[i].CalculateBloom();
                 return receipts;
             });
+    }
+
+    // Timing sinks — forward elapsed ticks into the appropriate EVM metric counters.
+    // CommitStateAndStorageRoots and ComputeStateRoot both feed StateHashTime (sum of the two),
+    // so each sink also bumps StateHashTime alongside its specific metric.
+    // Each sink wires IsEnabled to ExecutionMetricsFlag.IsActive: when the flag is off, the JIT
+    // folds the surrounding MetricsTimer's Stopwatch calls and AddTicks dispatch to nothing.
+    private readonly struct CommitTimeSink : IMetricSink
+    {
+        public static void AddTicks(long ticks) => Evm.Metrics.IncrementCommitTime(ticks);
+        public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
+    }
+
+    private readonly struct StorageMerkleTimeSink : IMetricSink
+    {
+        public static void AddTicks(long ticks)
+        {
+            Evm.Metrics.IncrementStateHashTime(ticks);
+            Evm.Metrics.IncrementStorageMerkleTime(ticks);
+        }
+        public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
+    }
+
+    private readonly struct StateRootTimeSink : IMetricSink
+    {
+        public static void AddTicks(long ticks)
+        {
+            Evm.Metrics.IncrementStateHashTime(ticks);
+            Evm.Metrics.IncrementStateRootTime(ticks);
+        }
+        public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
+    }
+
+    private readonly struct ReceiptsRootTimeSink : IMetricSink
+    {
+        public static void AddTicks(long ticks) => Evm.Metrics.IncrementReceiptsRootTime(ticks);
+        public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
+    }
+
+    private readonly struct BloomsTimeSink : IMetricSink
+    {
+        public static void AddTicks(long ticks) => Evm.Metrics.IncrementBloomsTime(ticks);
+        public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void SetAccountChanges(Block block)
