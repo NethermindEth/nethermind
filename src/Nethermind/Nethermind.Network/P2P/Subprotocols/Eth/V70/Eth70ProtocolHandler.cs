@@ -61,7 +61,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     public new static byte Version => EthVersions.Eth70;
     public override byte ProtocolVersion => Version;
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -70,13 +70,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content);
                 ReportIn(receiptsMessage, size);
                 Handle(receiptsMessage, size);
-                break;
+                return true;
             case Eth70MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage70, ReceiptsMessage70>(message, Handle);
-                break;
+                return true;
             default:
-                base.HandleMessageCore(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 
