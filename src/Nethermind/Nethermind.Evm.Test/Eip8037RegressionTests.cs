@@ -99,10 +99,10 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        // Gas calculation:
+        // Gas calculation for CREATE:
         //   Intrinsic (CALL to existing account): 21000
         //   Factory pre-CREATE opcodes: 21 gas
-        //   CREATE/CREATE2 opcode costs:
+        //   CREATE opcode costs:
         //     CreateRegular(9000) + InitCodeWord(2) = 9002 regular
         //     CreateState(183600) -> spills entirely to regular (factory has 0 state reservoir)
         //     Total: 192602 regular
@@ -111,7 +111,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         //   Child: 1540 gas -> 9 for init code -> 1531 remaining for code deposit
         //   Factory post-CREATE: 12 gas (PUSH, MSTORE, PUSH, PUSH, RETURN)
         //   Total: 21000 + 21 + 192602 + 1564 = 215187
-        //   CREATE2 adds salt PUSH(3) + Sha3Word(6), so it uses 215196 for the same child frame gas.
+        //   CREATE2 delta: salt PUSH(3) before the opcode + one-word Sha3Word(6)
+        //   during the opcode. Gas limit: 215187 + 9 = 215196 for the same child frame gas.
 
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
