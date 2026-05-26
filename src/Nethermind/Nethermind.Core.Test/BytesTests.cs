@@ -17,6 +17,17 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class BytesTests
     {
+        private static string CreateHexString(int byteLength)
+        {
+            char[] chars = new char[byteLength * 2];
+            for (int i = 0; i < byteLength; i++)
+            {
+                HexConverter.ToCharsBuffer((byte)i, chars, i * 2);
+            }
+
+            return new string(chars);
+        }
+
         [TestCase("0x", "0x", 0)]
         [TestCase(null, null, 0)]
         [TestCase(null, "0x", -1)]
@@ -68,6 +79,22 @@ namespace Nethermind.Core.Test
                 {
                     Assert.That(utf8[i], Is.EqualTo((byte)hex[i]));
                 }
+            }
+        }
+
+        [TestCase(32)]
+        [TestCase(64)]
+        [TestCase(128)]
+        public void FromHexString_large_even_length_matches_expected_bytes(int byteLength)
+        {
+            string hex = CreateHexString(byteLength);
+
+            byte[] bytes = Bytes.FromHexString(hex);
+
+            Assert.That(bytes.Length, Is.EqualTo(byteLength));
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                Assert.That(bytes[i], Is.EqualTo((byte)i));
             }
         }
 
