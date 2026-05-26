@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
@@ -67,6 +68,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private bool _lastPersistedReachedReorgBoundary;
     private long _toBePersistedBlockNumber = -1;
 
+    private static readonly long IncompletePersistedPruneWarnIntervalTicks = Stopwatch.Frequency * 5 * 60;
+    private long _incompletePersistedPruneWarnNextTicks;
+
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
     private readonly IFinalizedStateProvider _finalizedStateProvider;
@@ -101,10 +105,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
         _dirtyNodesTasks = new Task[_shardedDirtyNodeCount];
         _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
+        TrieStoreDirtyNodesCache.GetDictionarySizing(out int concurrencyLevel, out int initialBuckets);
         for (int i = 0; i < _shardedDirtyNodeCount; i++)
         {
             _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, keepRoot: _deleteOldNodes, _logger);
-            _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
+            _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256?>(concurrencyLevel, initialBuckets);
         }
     }
 
@@ -621,11 +626,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
                 if (!IsInCommitBufferMode && _lastPrunedShardIdx - startingShard >= _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
                 {
-                    // A persisted nodes that was recommitted and is still within pruning boundary cannot be pruned.
-                    // This should be rare but can happen, notably in mainnet block 4500000 around there, But this
-                    // does mean that it will keep retrying to prune persisted nodes. The solution is to either increase
-                    // the memory budget or reduce the pruning boundary.
-                    if (_logger.IsWarn) _logger.Warn($"Unable to completely prune persisted nodes. Consider increasing pruning cache limit or reducing pruning boundary");
+                    if (_logger.IsWarn)
+                    {
+                        long now = Stopwatch.GetTimestamp();
+                        if (now >= _incompletePersistedPruneWarnNextTicks)
+                        {
+                            _incompletePersistedPruneWarnNextTicks = now + IncompletePersistedPruneWarnIntervalTicks;
+                            _logger.Warn("Unable to completely prune persisted nodes. Consider increasing pruning cache limit or reducing pruning boundary. Suppressing similar warnings for 5 minutes.");
+                        }
+                    }
                 }
             }
             finally
@@ -849,25 +858,32 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             int shardIdx = GetNodeShardIdx(treePath, tn.Keccak);
 
             HashAndTinyPath key = new(address, new TinyTreePath(treePath));
+            RecordPersistedHash(_persistedHashes[shardIdx], key, tn.Keccak, _deleteOldNodes);
+        }
+    }
 
-            if (_deleteOldNodes)
+    internal static void RecordPersistedHash(
+        ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes,
+        in HashAndTinyPath key,
+        Hash256 hash,
+        bool deleteOldNodes)
+    {
+        if (persistedHashes.TryAdd(key, hash) || !deleteOldNodes)
+        {
+            return;
+        }
+
+        // If TryGetValue returns false the key was removed by NoResizeClear, which runs after (not
+        // during) PruneCache has finished consuming the dictionary. The sentinel is no longer needed
+        // once that pass has completed, so exiting the loop is safe.
+        while (persistedHashes.TryGetValue(key, out Hash256? existingHash))
+        {
+            // When deleting old nodes, the first revisit marks the key as ambiguous by switching it to null.
+            // After that, additional revisits are pure read-only probes, so we retry only until that
+            // one-way state transition succeeds instead of routing every revisit through AddOrUpdate.
+            if (existingHash is null || persistedHashes.TryUpdate(key, null, existingHash))
             {
-                _persistedHashes[shardIdx].AddOrUpdate(
-                    key,
-                    static (_, newHash) => newHash,
-                    static (_, hash, _) => null,
-                    tn.Keccak);
-            }
-            else
-            {
-                _persistedHashes[shardIdx].AddOrUpdate(
-                    key,
-                    static (_, newHash) => newHash,
-                    // When not deleting old nodes, key tracking is used to prune in memory cache. It is
-                    // safe to accidentally remove key by taking non-canon block as canon as it will just load
-                    // from disk again.
-                    static (_, hash, _) => hash,
-                    tn.Keccak);
+                return;
             }
         }
     }
@@ -996,7 +1012,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         PersistOnShutdown();
     }
 
-    private void FlushNonBlockingBuffer()
+    internal void FlushNonBlockingBuffer()
     {
         using Lock.Scope _ = _scopeLock.EnterScope();
         if (_commitBuffer is null) return;
@@ -1707,15 +1723,17 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     internal TrieNode CloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
     {
-        if (node!.FullRlp.IsNull)
+        CappedArray<byte> fullRlp = node!.FullRlp;
+        if (fullRlp.IsNull)
         {
             // // this happens in SyncProgressResolver
             // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
             return new TrieNode(NodeType.Unknown, key.Keccak);
         }
 
-        // we returning a copy to avoid multithreaded access
-        TrieNode trieNode = new(NodeType.Unknown, key.Keccak, node.FullRlp);
+        // AsSpan forces an owned copy via the ReadOnlySpan ctor overload: node.FullRlp may be
+        // pool-backed and returned to the pool while this read-only clone is still in use.
+        TrieNode trieNode = new(NodeType.Unknown, key.Keccak, fullRlp.AsSpan());
         trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);
         trieNode.Keccak = key.Keccak;
         return trieNode;

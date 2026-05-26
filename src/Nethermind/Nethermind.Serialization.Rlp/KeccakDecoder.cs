@@ -7,7 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp
 {
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(KeccakDecoder))]
-    public sealed class KeccakDecoder() : RlpValueDecoder<Hash256>
+    public sealed class KeccakDecoder() : RlpDecoder<Hash256>
     {
         public static readonly KeccakDecoder Instance = new();
 

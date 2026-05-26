@@ -13,7 +13,7 @@ namespace Nethermind.Logging
     public class ConsoleAsyncLogger : InterfaceLogger
     {
         private readonly LogLevel _logLevel;
-        private readonly string _prefix;
+        private readonly string? _prefix;
         private readonly BlockingCollection<string> _queuedEntries = new(new ConcurrentQueue<string>());
 
         public void Flush()
@@ -24,7 +24,7 @@ namespace Nethermind.Logging
 
         private readonly Task _task;
 
-        public ConsoleAsyncLogger(LogLevel logLevel, string prefix = null)
+        public ConsoleAsyncLogger(LogLevel logLevel, string? prefix = null)
         {
             _logLevel = logLevel;
             _prefix = prefix;
@@ -61,7 +61,7 @@ namespace Nethermind.Logging
 
         public void Trace(string text) => Log(text);
 
-        public void Error(string text, Exception ex = null) => Log(ex is not null ? $"{text}, Exception: {ex}" : text);
+        public void Error(string text, Exception? ex = null) => Log(ex is not null ? $"{text}, Exception: {ex}" : text);
 
         public bool IsInfo => (int)_logLevel >= 2;
         public bool IsWarn => (int)_logLevel >= 1;

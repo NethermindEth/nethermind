@@ -39,12 +39,9 @@ public class SnapProtocolHandlerTests
         {
             get
             {
-                if (_messageSerializationService is null)
-                {
-                    _messageSerializationService = new MessageSerializationService(
-                        SerializerInfo.Create(new AccountRangeMessageSerializer())
-                    );
-                }
+                _messageSerializationService ??= new MessageSerializationService(
+                    SerializerInfo.Create(new AccountRangeMessageSerializer())
+                );
 
                 return _messageSerializationService;
             }
@@ -86,7 +83,7 @@ public class SnapProtocolHandlerTests
 
         public TimeSpan SimulatedLatency { get; set; } = TimeSpan.Zero;
 
-        private readonly List<long> _recordedResponseBytesLength = new();
+        private readonly List<long> _recordedResponseBytesLength = [];
 
         public Context WithResponseBytesRecorder
         {

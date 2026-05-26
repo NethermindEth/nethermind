@@ -12,7 +12,6 @@ using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Grpc;
 using Nethermind.Init;
 using Nethermind.Init.Snapshot;
@@ -36,11 +35,13 @@ public class EthereumStepsLoaderTests
     [Test]
     public void BuildInSteps_IsCorrect()
     {
-        HashSet<StepInfo> steps = new();
-        steps.AddRange(LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly));
-        steps.AddRange(LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly));
+        HashSet<StepInfo> steps =
+        [
+            .. LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly),
+            .. LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly),
+        ];
 
-        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ExitOnInvalidBlock), typeof(ImportFlatDb)];
+        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ImportFlatDb)];
         steps = steps.Where((s) => !optionalSteps.Contains(s.StepBaseType)).ToHashSet();
 
         using IContainer container = new ContainerBuilder()

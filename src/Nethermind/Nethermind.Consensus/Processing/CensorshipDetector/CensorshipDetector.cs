@@ -64,7 +64,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
             {
                 if (Address.TryParse(hexString, out Address address))
                 {
-                    _bestTxPerObservedAddresses ??= new Dictionary<AddressAsKey, Transaction>();
+                    _bestTxPerObservedAddresses ??= [];
                     _bestTxPerObservedAddresses[address!] = null;
                 }
                 else

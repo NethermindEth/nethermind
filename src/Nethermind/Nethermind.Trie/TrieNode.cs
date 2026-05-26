@@ -1545,7 +1545,7 @@ namespace Nethermind.Trie
                 return child;
 
                 [DoesNotReturn, StackTraceHidden]
-                void ThrowUnexpectedTypeException(TrieNode @this, int childIndex, object childOrRef)
+                static void ThrowUnexpectedTypeException(TrieNode @this, int childIndex, object childOrRef)
                 {
                     bool isKeccakCalculated = @this.Keccak is not null && @this.FullRlp.IsNotNull;
                     bool isKeccakCorrect =

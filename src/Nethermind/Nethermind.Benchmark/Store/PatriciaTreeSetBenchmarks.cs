@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;

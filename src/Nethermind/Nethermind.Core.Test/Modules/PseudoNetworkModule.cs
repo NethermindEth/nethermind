@@ -8,7 +8,6 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.State;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Core.Test.Modules;
@@ -33,18 +32,11 @@ public class PseudoNetworkModule() : Module
                     {
                         ProtocolsManager protocolManager = m.Instance;
                         ISyncConfig syncConfig = m.Context.Resolve<ISyncConfig>();
-                        IWorldStateManager worldStateManager = m.Context.Resolve<IWorldStateManager>();
 
                         if (syncConfig.SnapServingEnabled == true || syncConfig.SnapSync)
                         {
                             protocolManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
                         }
-
-                        if (worldStateManager.HashServer is null)
-                        {
-                            protocolManager.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
-                        }
-
                     });
             })
 

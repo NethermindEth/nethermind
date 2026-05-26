@@ -18,6 +18,7 @@ namespace Nethermind.Core.Specs
         long MaxCodeSize { get; }
         long MinGasLimit { get; }
         long MinHistoryRetentionEpochs { get; }
+        long MinBalRetentionEpochs { get; }
         long GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
         long DifficultyBombDelay { get; }
@@ -378,6 +379,16 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip7934Enabled { get; }
         int Eip7934MaxRlpBlockSize { get; }
+
+        /// <summary>
+        ///  Increase Calldata Floor Cost
+        /// </summary>
+        bool IsEip7976Enabled { get; }
+
+        /// <summary>
+        /// Access List Token Floor Pricing
+        /// </summary>
+        bool IsEip7981Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.

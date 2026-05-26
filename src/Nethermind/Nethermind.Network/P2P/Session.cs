@@ -25,6 +25,13 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
+    internal interface ISessionActivityObserver
+    {
+        void OnSessionActivity(Session session);
+
+        void OnSessionDisconnected(Session session, DisconnectEventArgs args);
+    }
+
     public class Session : ISession
     {
         private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
@@ -38,6 +45,8 @@ namespace Nethermind.Network.P2P
         private readonly IChannel _channel;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IChannelHandlerContext? _context;
+        private volatile ISessionActivityObserver? _activityObserver;
+        private volatile bool _isChannelClosed;
 
         public Session(
             int localPort,
@@ -79,6 +88,7 @@ namespace Nethermind.Network.P2P
 
         public bool IsClosing => State > SessionState.Initialized;
         private bool IsClosed => State > SessionState.DisconnectingProtocols;
+        public bool IsChannelClosed => _isChannelClosed;
         public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
         public PublicKey? RemoteNodeId { get; set; }
@@ -189,6 +199,7 @@ namespace Nethermind.Network.P2P
             (string? protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
             zeroPacket.Protocol = protocol;
 
+            _activityObserver?.OnSessionActivity(this);
             MsgReceived?.Invoke(this, new PeerEventArgs(_node, zeroPacket.Protocol, zeroPacket.PacketType, zeroPacket.Content.ReadableBytes));
 
             RecordIncomingMessageMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.ReadableBytes);
@@ -247,6 +258,7 @@ namespace Nethermind.Network.P2P
                 message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
                 int size = _packetSender.Enqueue(message);
 
+                _activityObserver?.OnSessionActivity(this);
                 MsgDelivered?.Invoke(this, new PeerEventArgs(_node, message.Protocol, message.PacketType, size));
 
                 RecordOutgoingMessageMetric(message, size);
@@ -401,8 +413,9 @@ namespace Nethermind.Network.P2P
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (!_protocols.IsEmpty)
             {
-                foreach (IProtocolHandler protocolHandler in _protocols.Values)
+                foreach (KeyValuePair<string, IProtocolHandler> kvp in _protocols)
                 {
+                    IProtocolHandler protocolHandler = kvp.Value;
                     try
                     {
                         if (_logger.IsTrace) TraceDisconnectingProtocol(protocolHandler, disconnectReason, details);
@@ -440,7 +453,7 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void DebugDisconnectProtocolFailed(IProtocolHandler handler, Exception e)
-                => _logger.Error($"DEBUG/ERROR Failed to disconnect {handler.Name} correctly", e);
+                => _logger.DebugError($"Failed to disconnect {handler.Name} correctly", e);
         }
 
         private readonly Lock _sessionStateLock = new();
@@ -504,15 +517,18 @@ namespace Nethermind.Network.P2P
                 State = SessionState.Disconnected;
             }
 
+            ISessionActivityObserver? activityObserver = _activityObserver;
             if (_disconnectedHandlers.HasHandlers)
             {
                 if (_logger.IsTrace) TraceDisconnectedEvent(disconnectReason, disconnectType);
                 _disconnectedHandlers.Invoke(this, disconnectEventArgs);
             }
-            else if (_logger.IsDebug)
+            else if (_logger.IsDebug && activityObserver is null)
             {
                 DebugNoDisconnectedSubscriptions();
             }
+
+            activityObserver?.OnSessionDisconnected(this, disconnectEventArgs);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceAlreadyDisconnected(DisconnectReason reason, DisconnectType type)
@@ -536,8 +552,10 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void DebugNoDisconnectedSubscriptions()
-                => _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected event on {this}");
+                => _logger.DebugError($"No subscriptions for session disconnected event on {this}");
         }
+
+        internal void MarkChannelClosed() => _isChannelClosed = true;
 
         private async Task DisconnectAsync(DisconnectType disconnectType)
         {
@@ -585,6 +603,8 @@ namespace Nethermind.Network.P2P
         public event EventHandler<EventArgs> Initialized;
         public event EventHandler<PeerEventArgs> MsgReceived;
         public event EventHandler<PeerEventArgs> MsgDelivered;
+
+        internal void SetActivityObserver(ISessionActivityObserver? activityObserver) => _activityObserver = activityObserver;
 
         public void Dispose()
         {
@@ -782,7 +802,7 @@ namespace Nethermind.Network.P2P
 
             public bool HasHandlers
             {
-                get { lock (_lock) { return _count != 0; }; }
+                get { lock (_lock) { return _count != 0; } }
             }
 
             public void Add(EventHandler<DisconnectEventArgs> handler)

@@ -376,6 +376,15 @@ public class GethGenesisLoaderTests
         chainSpec.Parameters.Eip6110TransitionTimestamp.Should().Be(1800000000);
     }
 
+    [Test]
+    public void Defaults_deposit_contract_to_zero_when_unspecified()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(chainId: 12345, configExtra: "\"pragueTime\": 1800000000");
+
+        chainSpec.Parameters.DepositContractAddress.Should().Be(Address.Zero);
+        chainSpec.Parameters.Eip6110TransitionTimestamp.Should().Be(1800000000);
+    }
+
     /// <summary>
     /// Returns EIP numbers newly enabled by <paramref name="fork"/> compared to its <paramref name="parent"/>.
     /// </summary>
@@ -401,7 +410,7 @@ public class GethGenesisLoaderTests
     /// </summary>
     private static IEnumerable<(Type type, NamedReleaseSpec instance)> GetAllForkInstances()
     {
-        IEnumerable<Type> GetNameReleaseSpecs() => typeof(NamedReleaseSpec).Assembly.GetTypes()
+        static IEnumerable<Type> GetNameReleaseSpecs() => typeof(NamedReleaseSpec).Assembly.GetTypes()
             .Where(t => t.IsSubclassOf(typeof(NamedReleaseSpec))
                         && t is { IsAbstract: false, IsGenericType: false }
                         && t.Namespace == typeof(NamedReleaseSpec).Namespace);

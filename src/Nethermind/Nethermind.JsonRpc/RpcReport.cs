@@ -5,6 +5,7 @@ namespace Nethermind.JsonRpc
 {
     public readonly record struct RpcReport(string Method, long HandlingTimeMicroseconds, bool Success)
     {
+        public const string UnknownMethod = "unknown";
         public static readonly RpcReport Error = new("# error #", 0, false);
     }
 }

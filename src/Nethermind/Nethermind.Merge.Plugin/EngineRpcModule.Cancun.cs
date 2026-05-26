@@ -15,7 +15,7 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], GetPayloadV3Result?> _getPayloadHandlerV3 = getPayloadHandlerV3;
-    private readonly IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> _getBlobsHandler = getBlobsHandler;
+    private readonly IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> _getBlobsHandler = getBlobsHandler;
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V3);
@@ -26,6 +26,6 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId) =>
         _getPayloadHandlerV3.HandleAsync(payloadId);
 
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes) =>
+    public Task<ResultWrapper<IReadOnlyList<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes) =>
         _getBlobsHandler.HandleAsync(blobVersionedHashes);
 }

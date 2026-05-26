@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,6 +25,7 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture(FlatLayout.PreimageFlat)]
 public class FlatTrieVerifierTests(FlatLayout layout)
 {
+    private static readonly AccountDecoder SlimAccountDecoder = AccountDecoder.Slim;
     private MemDb _trieDb = null!;
     private RawScopedTrieStore _trieStore = null!;
     private StateTree _stateTree = null!;
@@ -113,7 +113,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
             ? CreatePreimageAddressKey(address)
             : ValueKeccak.Compute(address.Bytes);
 
-        using NettyRlpStream stream = AccountDecoder.Slim.EncodeToNewNettyStream(corruptedAccount);
+        using NettyRlpStream stream = SlimAccountDecoder.EncodeToNewNettyStream(corruptedAccount);
         accountDb.Set(addrKey.BytesAsSpan[..20], stream.AsSpan().ToArray());
     }
 

@@ -28,6 +28,7 @@ public partial class EngineModuleTests
         "0xc1ecac4884c36982061392807b9307fb0d701a05d9d9fd7dc7e82d2ec96cf9af",
         "0x8ffb712de6b72f59def7b84f361e6c23519f7f8674d7e6552e23617a996d8ed3",
         "0x0f0b18188ed90425")]
+    [NonParallelizable]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -233,6 +234,32 @@ public partial class EngineModuleTests
         Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
+    [Test]
+    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
+        Block block = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .TestObject;
+        ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
+        executionPayload.BlockAccessList = Bytes.FromHexString("0xc0");
+
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV4(
+            executionPayload,
+            [],
+            Keccak.Zero,
+            []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
     [TestCase(30)]
     public async Task can_progress_chain_one_by_one_v4(int count)
     {
@@ -270,9 +297,9 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain,
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null, bool withRequests = false)
     {
-        List<ExecutionPayload> blocks = new();
+        List<ExecutionPayload> blocks = [];
         ExecutionPayload parentBlock = startingParentBlock;
-        Block? block = parentBlock.TryGetBlock().Block;
+        Block? block = parentBlock.TryGetBlock().Data;
         UInt256? startingTotalDifficulty = block!.IsGenesis
             ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
         BlockHeader parentHeader = block!.Header;
@@ -296,7 +323,7 @@ public partial class EngineModuleTests
 
             blocks.Add(getPayloadResult);
             parentBlock = getPayloadResult;
-            block = parentBlock.TryGetBlock().Block!;
+            block = parentBlock.TryGetBlock().Data!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }

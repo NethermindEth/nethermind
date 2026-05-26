@@ -266,6 +266,67 @@ public class ReceiptsSyncFeedTests
         _feed.IsFinished.Should().Be(shouldFinish);
     }
 
+    [Test]
+    public async Task When_AncientReceiptsBarrier_exceeds_SyncPivot_then_finishes_immediately()
+    {
+        // Reproduces the Hoodi case: config PivotNumber unset (0), barrier above chain length,
+        // real pivot supplied via _blockTree.SyncPivot.
+        Scenario scenario = _256BodiesWithOneTxEach;
+        _syncConfig = new TestSyncConfig
+        {
+            FastSync = true,
+            PivotNumber = 0,
+            AncientBodiesBarrier = 4_367_322,
+            AncientReceiptsBarrier = 4_367_322,
+            DownloadReceiptsInFastSync = true,
+        };
+        _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()!.Hash!));
+        _blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(
+            ci =>
+            {
+                Block? block = scenario.Blocks[ci.Arg<long>()];
+                return block is null
+                    ? null
+                    : new BlockInfo(block.Hash!, block.TotalDifficulty ?? 0) { BlockNumber = ci.Arg<long>() };
+            });
+        _receiptStorage.HasBlock(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(false);
+        _syncPointers = new MemorySyncPointers();
+
+        _feed = new ReceiptsSyncFeed(
+            _specProvider,
+            _blockTree,
+            _receiptStorage,
+            _syncPointers,
+            _syncPeerPool,
+            _syncConfig,
+            _syncReport,
+            _historyPruner,
+            _metadataDb,
+            LimboLogs.Instance);
+
+        _feed.InitializeFeed();
+        using ReceiptsSyncBatch? _ = await _feed.PrepareRequest();
+
+        _feed.IsFinished.Should().BeTrue();
+    }
+
+    // Regression for #9002: decreasing AncientReceiptsBarrier after a partial sync must not leave the feed stuck.
+    [Test]
+    public void When_AncientReceiptsBarrier_decreased_after_partial_sync_feed_is_not_finished()
+    {
+        // Previous run reached block 768; restart with a lower barrier of 256.
+        _syncConfig.AncientBodiesBarrier = 256;
+        _syncConfig.AncientReceiptsBarrier = 256;
+        _receiptStorage.HasBlock(Arg.Is(_pivotNumber), Arg.Any<Hash256>()).Returns(true);
+        _syncPointers.LowestInsertedReceiptBlockNumber = 768;
+
+        _feed = CreateFeed();
+        _feed.InitializeFeed();
+
+        // Receipts 256..767 are still missing — feed must stay active.
+        _feed.IsFinished.Should().BeFalse();
+    }
+
     private void LoadScenario(Scenario scenario) =>
         LoadScenario(scenario, _syncConfig);
 
@@ -325,7 +386,7 @@ public class ReceiptsSyncFeedTests
         /* we have only 256 receipts altogether but we start with many peers
            so most of our requests will be empty */
 
-        List<ReceiptsSyncBatch?> batches = new();
+        List<ReceiptsSyncBatch?> batches = [];
         for (int i = 0; i < 100; i++)
         {
             batches.Add(await _feed.PrepareRequest());
@@ -351,11 +412,12 @@ public class ReceiptsSyncFeedTests
     {
         LoadScenario(_1024BodiesWithOneTxEach);
         using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
-        ArrayPoolList<TxReceipt[]?> response = new(batch!.Infos.Length, batch!.Infos.Length);
-
-        // default receipts that we use when constructing receipt root for tests have stats code 0
-        // so by using 1 here we create a different tx root
-        response[0] = new[] { Build.A.Receipt.WithStatusCode(1).TestObject };
+        ArrayPoolList<TxReceipt[]?> response = new(batch!.Infos.Length, batch!.Infos.Length)
+        {
+            // default receipts that we use when constructing receipt root for tests have stats code 0
+            // so by using 1 here we create a different tx root
+            [0] = new[] { Build.A.Receipt.WithStatusCode(1).TestObject }
+        };
 
         batch!.Response = response!;
 
@@ -435,4 +497,23 @@ public class ReceiptsSyncFeedTests
         Assert.That(feed.IsFinished, Is.True);
     }
 
+    [TestCase(true, true, true, TestName = "NormalizeZeroBlooms recomputes when logs present and bloom empty")]
+    [TestCase(false, true, false, TestName = "NormalizeZeroBlooms leaves legitimately empty receipts alone")]
+    [TestCase(true, false, false, TestName = "NormalizeZeroBlooms does not overwrite a non-empty bloom")]
+    public void NormalizeZeroBlooms(bool hasLogs, bool startBloomEmpty, bool expectRecompute)
+    {
+        LogEntry[] logs = hasLogs
+            ? [Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject]
+            : [];
+        TxReceipt receipt = Build.A.Receipt.WithLogs(logs).TestObject;
+        Bloom initialBloom = startBloomEmpty
+            ? Bloom.Empty
+            : new Bloom([Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject]);
+        receipt.Bloom = initialBloom;
+        Bloom expectedBloom = expectRecompute ? new Bloom(receipt.Logs) : initialBloom;
+
+        ReceiptsSyncFeed.NormalizeZeroBlooms([receipt]);
+
+        receipt.Bloom.Should().Be(expectedBloom);
+    }
 }

@@ -79,7 +79,7 @@ namespace Nethermind.State
             return _stateProvider.GetAccount(address);
         }
 
-        bool IAccountStateProvider.TryGetAccount(Address address, out AccountStruct account)
+        public bool TryGetAccount(Address address, out AccountStruct account)
         {
             // Note: This call is for compatibility with `IAccountStateProvider` and should not be called directly by VM. Because its slower.
             account = _stateProvider.GetAccount(address)
@@ -89,21 +89,13 @@ namespace Nethermind.State
             return !account.IsTotallyEmpty;
         }
 
-        UInt256 IAccountStateProvider.GetNonce(Address address) => _stateProvider.GetAccount(address).Nonce;
-
-        UInt256 IAccountStateProvider.GetBalance(Address address) => _stateProvider.GetAccount(address).Balance;
-
-        bool IAccountStateProvider.IsStorageEmpty(Address address) => _persistentStorageProvider.IsStorageEmpty(address);
-
-        bool IAccountStateProvider.HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
-
         public bool IsContract(Address address)
         {
             DebugGuardInScope();
             return _stateProvider.IsContract(address);
         }
 
-        public byte[] GetOriginal(in StorageCell storageCell)
+        public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         {
             DebugGuardInScope();
             return _persistentStorageProvider.GetOriginal(storageCell);
@@ -186,7 +178,7 @@ namespace Nethermind.State
             _stateProvider.AddToBalance(address, balanceChange, spec, out oldBalance);
         }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-            => AddToBalance(address, balanceChange, spec, out _);
+            => AddToBalance(address, balanceChange, spec, out UInt256 oldBalance);
         public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             DebugGuardInScope();
@@ -221,6 +213,10 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _stateProvider.GetNonce(address);
         }
+
+        public bool IsStorageEmpty(Address address) => _persistentStorageProvider.IsStorageEmpty(address);
+
+        public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
         public IDisposable BeginScope(BlockHeader? baseBlock)
         {
@@ -278,12 +274,6 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             return ref _stateProvider.GetCodeHash(address);
-        }
-
-        ValueHash256 IAccountStateProvider.GetCodeHash(Address address)
-        {
-            DebugGuardInScope();
-            return _stateProvider.GetCodeHash(address);
         }
 
         public bool AccountExists(Address address)

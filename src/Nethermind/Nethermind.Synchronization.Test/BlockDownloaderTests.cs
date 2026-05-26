@@ -146,7 +146,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        List<long> newHeadSequence = new();
+        List<long> newHeadSequence = [];
         ctx.BlockTree.BlockAddedToMain += (_, b) => newHeadSequence.Add(b.Block.Number);
 
         await ctx.FastSyncUntilNoRequest(peerInfo);
@@ -374,7 +374,7 @@ public partial class BlockDownloaderTests
         syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(async ci => await ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), responseOptions));
 
-        List<Hash256> requestedHashes = new();
+        List<Hash256> requestedHashes = [];
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
@@ -631,6 +631,35 @@ public partial class BlockDownloaderTests
         ctx.ShouldFastSyncedUntil(beaconPivotNumber - fastSyncLag);
     }
 
+
+    [Test]
+    public async Task Second_sync_does_not_redownload_blocks()
+    {
+        SyncPeerMock syncPeer = new(10, false, Response.AllCorrect);
+
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+        long afterFirstSync = ctx.BlockTree.BestSuggestedHeader!.Number;
+
+        syncPeer.ExtendTree(20);
+
+        // Simulate 5 blocks arriving via P2P - advances BestKnownNumber without going through BlockDownloader
+        for (long i = afterFirstSync + 1; i <= afterFirstSync + 5; i++)
+        {
+            BlockHeader? header = syncPeer.BlockTree.FindHeader(i, BlockTreeLookupOptions.None);
+            if (header is not null) ctx.BlockTree.SuggestHeader(header);
+        }
+        long bestKnownAfterPropagation = ctx.BlockTree.BestKnownNumber;
+
+        using BlocksRequest? secondRequest = await ctx.FullSyncFeedComponent.Feed.PrepareRequest();
+        secondRequest.Should().NotBeNull();
+        secondRequest.BodiesRequests.Count.Should().BeGreaterThan(0);
+        secondRequest.BodiesRequests[0].Number.Should().BeGreaterThan(bestKnownAfterPropagation);
+    }
 
     private class SlowSealValidator : ISealValidator
     {
@@ -1128,6 +1157,8 @@ public partial class BlockDownloaderTests
 
     private class ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
     {
+        private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
+
         private readonly IBlockTree _blockTree = blockTree;
         private readonly Dictionary<long, Hash256> _testHeaderMapping = testHeaderMapping;
 
@@ -1144,11 +1175,9 @@ public partial class BlockDownloaderTests
                 throw new TimeoutException();
             }
 
-            BlockHeader startBlock = _blockTree.FindHeader(_testHeaderMapping[startNumber], BlockTreeLookupOptions.None)!;
-            if (startBlock is null)
-            {
-                throw new Exception($"Null start block {startNumber} {_testHeaderMapping[startNumber]}");
-            }
+            BlockHeader startBlock = _blockTree.FindHeader(_testHeaderMapping[startNumber], BlockTreeLookupOptions.None)
+                ?? throw new($"Null start block {startNumber} {_testHeaderMapping[startNumber]}");
+
             BlockHeader[] headers = new BlockHeader[number];
             headers[0] = startBlock;
             if (!justFirst)
@@ -1197,8 +1226,8 @@ public partial class BlockDownloaderTests
         private readonly BlockHeadersMessageSerializer _headersSerializer = new();
         private readonly BlockBodiesMessageSerializer _bodiesSerializer = new();
         private readonly ReceiptsMessageSerializer _receiptsSerializer = new(MainnetSpecProvider.Instance);
-        private readonly Dictionary<Hash256, BlockHeader> _headers = new();
-        private readonly Dictionary<Hash256, BlockBody> _bodies = new();
+        private readonly Dictionary<Hash256, BlockHeader> _headers = [];
+        private readonly Dictionary<Hash256, BlockBody> _bodies = [];
 
         public async Task<OwnedBlockBodies> BuildBlocksResponse(IList<Hash256> blockHashes, Response flags)
         {
@@ -1283,7 +1312,7 @@ public partial class BlockDownloaderTests
 
                 _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                     ? Keccak.EmptyTreeHash
-                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamEncoder<TxReceipt>()!);
+                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], ReceiptDecoder);
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());

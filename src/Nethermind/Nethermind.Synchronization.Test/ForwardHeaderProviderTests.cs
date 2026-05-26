@@ -284,7 +284,6 @@ public partial class ForwardHeaderProviderTests
     }
 
     [Test, MaxTime(7000)]
-    [Ignore("Fails OneLoggerLogManager Travis only")]
     public async Task Can_cancel_seal_validation()
     {
         await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(new SlowSealValidator()));
@@ -706,8 +705,8 @@ public partial class ForwardHeaderProviderTests
         private readonly BlockHeadersMessageSerializer _headersSerializer = new();
         private readonly BlockBodiesMessageSerializer _bodiesSerializer = new();
         private readonly ReceiptsMessageSerializer _receiptsSerializer = new(MainnetSpecProvider.Instance);
-        private readonly Dictionary<Hash256, BlockHeader> _headers = new();
-        private readonly Dictionary<Hash256, BlockBody> _bodies = new();
+        private readonly Dictionary<Hash256, BlockHeader> _headers = [];
+        private readonly Dictionary<Hash256, BlockBody> _bodies = [];
 
         public async Task<OwnedBlockBodies> BuildBlocksResponse(IList<Hash256> blockHashes, Response flags)
         {

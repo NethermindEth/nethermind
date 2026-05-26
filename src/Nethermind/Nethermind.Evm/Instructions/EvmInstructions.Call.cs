@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -130,10 +131,7 @@ public static partial class EvmInstructions
         }
 
         // Pop additional parameters: data offset, data length, output offset, and output length.
-        if (!stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataLength) ||
-            !stack.PopUInt256(out UInt256 outputOffset) ||
-            !stack.PopUInt256(out UInt256 outputLength))
+        if (!stack.PopUInt256(out UInt256 dataOffset, out UInt256 dataLength, out UInt256 outputOffset, out UInt256 outputLength))
         {
             goto StackUnderflow;
         }
@@ -169,8 +167,12 @@ public static partial class EvmInstructions
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
-        bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(
+            codeSource,
+            followDelegation: false,
+            vmSpec: spec,
+            delegationAddress: out Address? delegated);
 
         if (spec.UseHotAndColdStorage && delegated is not null)
         {
@@ -189,23 +191,36 @@ public static partial class EvmInstructions
 
         if (newAccountOutOfGas) goto OutOfGas;
 
-
-        // Retrieve code information for the call and schedule background analysis if needed.
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
-
-        // Get remaining gas for 63/64 calculation
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-
-        // Apply the 63/64 gas rule if enabled.
-        if (spec.Use63Over64Rule)
+        // EIP-7702: load delegated code after cold-access charge above.
+        if (delegated is not null)
         {
-            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
+            // EIP-7928: decorator fast-path skips world-state reads; record explicitly.
+            state.AddAccountRead(delegated);
+
+            // EIP-7702: precompile MUST NOT execute via delegation; the decorator would route to the precompile CodeInfo.
+            codeInfo = spec.IsPrecompile(delegated)
+                ? CodeInfo.Empty
+                : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
         }
 
-        // If gasLimit exceeds the host's representable range, treat as out-of-gas.
-        if (gasLimit >= long.MaxValue) goto OutOfGas;
+        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        long gasLimitUl;
 
-        long gasLimitUl = (long)gasLimit;
+        if (spec.Use63Over64Rule)
+        {
+            // EIP-150: cap is a non-negative long, so min(gasLimit, cap) fits without 256-bit math.
+            Debug.Assert(gasAvailable >= 0, "GetRemainingGas must be non-negative; (ulong)cap below would otherwise wrap.");
+            long cap = gasAvailable - gasAvailable / 64;
+            gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= (ulong)cap
+                ? (long)gasLimit.u0
+                : cap;
+        }
+        else
+        {
+            if (!gasLimit.IsUint64 || gasLimit.u0 >= long.MaxValue) goto OutOfGas;
+            gasLimitUl = (long)gasLimit.u0;
+        }
+
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
@@ -222,7 +237,7 @@ public static partial class EvmInstructions
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
+            EvmExceptionType pushResult = stack.PushZero<TTracingInst>();
 
             // Optionally report memory changes for refund tracing.
             if (vm.TxTracer.IsTracingRefunds)
@@ -244,7 +259,7 @@ public static partial class EvmInstructions
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
             }
-            return EvmExceptionType.None;
+            return pushResult;
         }
 
         // Take a snapshot of the state for potential rollback.
@@ -256,7 +271,8 @@ public static partial class EvmInstructions
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
-            stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
+            EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
+            if (pushResult != EvmExceptionType.None) return pushResult;
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
             vm.AddTransferLog<TEip7708>(caller, target, transferValue);
             return FastCall(vm, spec, in transferValue, target);
@@ -337,8 +353,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Pop memory position and length for the return data.
-        if (!stack.PopUInt256(out UInt256 position) ||
-            !stack.PopUInt256(out UInt256 length))
+        if (!stack.PopUInt256(out UInt256 position, out UInt256 length))
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.

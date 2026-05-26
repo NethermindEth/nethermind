@@ -16,7 +16,7 @@ public class AutoCancelTokenSourceTests
     [Test]
     public void AutoCancelOnExitClosure()
     {
-        CancellationToken TaskWithInnerCancellation(CancellationToken token)
+        static CancellationToken TaskWithInnerCancellation(CancellationToken token)
         {
             using AutoCancelTokenSource cts = token.CreateChildTokenSource();
             return cts.Token;

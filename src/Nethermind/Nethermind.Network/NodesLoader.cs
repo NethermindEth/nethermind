@@ -34,7 +34,7 @@ namespace Nethermind.Network
 
         public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
         {
-            List<Node> allPeers = new();
+            List<Node> allPeers = [];
             LoadPeersFromDb(allPeers);
 
             if (!_networkConfig.OnlyStaticPeers)
@@ -79,7 +79,7 @@ namespace Nethermind.Network
                 }
                 catch (Exception)
                 {
-                    if (_logger.IsDebug) _logger.Error($"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                    _logger.DebugError($"peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
                     continue;
                 }
 

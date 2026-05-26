@@ -50,6 +50,9 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block hash and replays the block that is already present in the database.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null);
 
+    [JsonRpcMethod(Description = "Replays a block and returns the world-state root after each transaction in execution order. EIP-4788/EIP-2935 system calls and withdrawals do not produce an entry. Failed transactions still produce a root (geth partial-result semantics). The block must be canonical or in the bad-block store.", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null);
+
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null);
 
@@ -88,6 +91,9 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Get Raw Block format.")]
     ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter);
+
+    [JsonRpcMethod(Description = "Get raw block access list format.")]
+    ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Receipt format.")]
     ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter);

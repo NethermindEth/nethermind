@@ -35,9 +35,9 @@ namespace Nethermind.Db
 
         public void ClearTempChanges()
         {
-            foreach (IReadOnlyDb readonlyDb in _registeredDbs.Values)
+            foreach (KeyValuePair<string, IReadOnlyDb> kvp in _registeredDbs)
             {
-                readonlyDb.ClearTempChanges();
+                kvp.Value.ClearTempChanges();
             }
         }
 

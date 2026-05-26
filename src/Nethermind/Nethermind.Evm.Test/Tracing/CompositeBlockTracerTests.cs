@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Evm.Tracing;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -66,4 +67,63 @@ public class CompositeBlockTracerTests
         IReadOnlyCollection<ParityLikeTxTrace> parityResult = parityLikeBlockTracer.BuildResult();
         parityResult.Count.Should().Be(3);
     }
+
+    [Test]
+    public void StartNewTxTrace_returns_single_child_tracer_directly()
+    {
+        TestTxTracer txTracer = new();
+        CompositeBlockTracer blockTracer = new();
+        blockTracer.Add(new TestBlockTracer(txTracer));
+
+        ITxTracer result = blockTracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+
+        Assert.That(result, Is.SameAs(txTracer));
+    }
+
+    [Test]
+    public void StartNewTxTrace_returns_single_non_null_child_tracer_directly()
+    {
+        TestTxTracer txTracer = new();
+        CompositeBlockTracer blockTracer = new();
+        blockTracer.Add(NullBlockTracer.Instance);
+        blockTracer.Add(new TestBlockTracer(txTracer));
+
+        ITxTracer result = blockTracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+
+        Assert.That(result, Is.SameAs(txTracer));
+    }
+
+    [Test]
+    public void GetParallelSafeTracer_cache_tracks_nested_composite_mutation()
+    {
+        CompositeBlockTracer parent = new();
+        CompositeBlockTracer nested = new();
+        parent.Add(nested);
+
+        Assert.That(parent.GetParallelSafeTracer(), Is.SameAs(NullBlockTracer.Instance));
+
+        ParallelSafeTestBlockTracer first = new();
+        nested.Add(first);
+
+        IBlockTracer firstResult = parent.GetParallelSafeTracer();
+        Assert.That(firstResult, Is.SameAs(first));
+        Assert.That(parent.GetParallelSafeTracer(), Is.SameAs(firstResult));
+
+        nested.Add(new ParallelSafeTestBlockTracer());
+
+        IBlockTracer secondResult = parent.GetParallelSafeTracer();
+        Assert.That(secondResult, Is.TypeOf<CompositeBlockTracer>());
+        Assert.That(secondResult, Is.Not.SameAs(firstResult));
+    }
+
+    private sealed class TestTxTracer : TxTracer;
+
+    private class TestBlockTracer(ITxTracer? txTracer = null) : BlockTracer
+    {
+        private readonly ITxTracer _txTracer = txTracer ?? NullTxTracer.Instance;
+
+        public override ITxTracer StartNewTxTrace(Transaction? tx) => _txTracer;
+    }
+
+    private sealed class ParallelSafeTestBlockTracer : TestBlockTracer, IParallelSafeBlockTracer;
 }

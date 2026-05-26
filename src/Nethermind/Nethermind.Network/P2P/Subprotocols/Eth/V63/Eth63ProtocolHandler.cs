@@ -39,8 +39,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ITxGossipPolicy? transactionsGossipPolicy = null)
             : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
-            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(Send);
-            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(Send);
+            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(this);
+            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(this);
         }
 
         public override byte ProtocolVersion => EthVersions.Eth63;
