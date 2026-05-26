@@ -102,10 +102,13 @@ public class FilterStoreTests
     {
         get
         {
-            yield return new TestCaseData(null, AddressFilter.AnyAddress);
-            yield return new TestCaseData(new HashSet<AddressAsKey> { new(TestItem.AddressA) }, new AddressFilter(TestItem.AddressA));
+            yield return new TestCaseData(null, AddressFilter.AnyAddress)
+                .SetName("Correctly_creates_address_filter_any_address");
+            yield return new TestCaseData(new HashSet<AddressAsKey> { new(TestItem.AddressA) }, new AddressFilter(TestItem.AddressA))
+                .SetName("Correctly_creates_address_filter_single_address");
             yield return new TestCaseData(new HashSet<AddressAsKey> { new(TestItem.AddressA), new(TestItem.AddressB) },
-                new AddressFilter([TestItem.AddressA, TestItem.AddressB]));
+                new AddressFilter([TestItem.AddressA, TestItem.AddressB]))
+                .SetName("Correctly_creates_address_filter_multiple_addresses");
         }
     }
 
@@ -123,22 +126,27 @@ public class FilterStoreTests
     {
         get
         {
-            yield return new TestCaseData(null, SequenceTopicsFilter.AnyTopic);
+            yield return new TestCaseData(null, SequenceTopicsFilter.AnyTopic)
+                .SetName("Correctly_creates_topics_filter_any_topic");
 
             yield return new TestCaseData(new[] { new[] { TestItem.KeccakA } },
-                new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA)));
+                new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA)))
+                .SetName("Correctly_creates_topics_filter_single_topic");
 
             yield return new TestCaseData(new[] { new[] { TestItem.KeccakA }, new[] { TestItem.KeccakB } },
-                new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)));
+                new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)))
+                .SetName("Correctly_creates_topics_filter_topic_sequence");
 
             yield return new TestCaseData(new[] { null, new[] { TestItem.KeccakB } },
-                new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)));
+                new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)))
+                .SetName("Correctly_creates_topics_filter_any_then_specific");
 
             yield return new TestCaseData(
                 new[] { new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC }, new[] { TestItem.KeccakD } },
                 new SequenceTopicsFilter(
                     new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB),
-                        new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
+                        new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)))
+                .SetName("Correctly_creates_topics_filter_or_then_specific");
         }
     }
 

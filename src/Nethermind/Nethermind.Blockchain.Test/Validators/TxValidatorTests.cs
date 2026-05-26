@@ -655,37 +655,37 @@ public class TxValidatorTests
             yield return new TestCaseData(MakeArray(0)) { TestName = "Empty hash", ExpectedResult = false };
             yield return new TestCaseData(MakeArray(1, 1))
             {
-                TestName = "Correct version, incorrect length",
+                TestName = "Correct version, one byte",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(31, 1))
             {
-                TestName = "Correct version, incorrect length",
+                TestName = "Correct version, short length",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(33, 1))
             {
-                TestName = "Correct version, incorrect length",
+                TestName = "Correct version, long length",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, 0))
             {
-                TestName = "Incorrect version, correct length",
+                TestName = "Zero version, correct length",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 - 1))
             {
-                TestName = "Incorrect version, correct length",
+                TestName = "Lower version, correct length",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 + 1))
             {
-                TestName = "Incorrect version, correct length",
+                TestName = "Higher version, correct length",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1))
             {
-                TestName = "Correct version, correct length",
+                TestName = "Correct version, correct length with zero payload",
                 ExpectedResult = true
             };
         }
@@ -697,7 +697,7 @@ public class TxValidatorTests
         {
             yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1, 0))
             {
-                TestName = "Correct version, correct length",
+                TestName = "Correct version, correct length with explicit zero",
                 ExpectedResult = true
             };
         }
@@ -747,38 +747,38 @@ public class TxValidatorTests
             yield return new TestCaseData(Cancun.Instance, MakeTestObject((int)Cancun.Instance.MaxBlobCount - 1)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Less than maximum BlobVersionedHashes",
+                TestName = "Cancun less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
             yield return new TestCaseData(Cancun.Instance, MakeTestObject((int)Cancun.Instance.MaxBlobCount)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Maximum BlobVersionedHashes",
+                TestName = "Cancun maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
             yield return new TestCaseData(Cancun.Instance, MakeTestObject((int)Cancun.Instance.MaxBlobCount + 1)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Too many BlobVersionedHashes",
+                TestName = "Cancun too many BlobVersionedHashes",
                 ExpectedResult = false
             };
 
             yield return new TestCaseData(Prague.Instance, MakeTestObject((int)Prague.Instance.MaxBlobCount - 1)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Less than maximum BlobVersionedHashes",
+                TestName = "Prague less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
             yield return new TestCaseData(Prague.Instance, MakeTestObject((int)Prague.Instance.MaxBlobCount)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Maximum BlobVersionedHashes",
+                TestName = "Prague maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
             yield return new TestCaseData(Prague.Instance, MakeTestObject((int)Prague.Instance.MaxBlobCount + 1)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Too many BlobVersionedHashes",
+                TestName = "Prague too many BlobVersionedHashes",
                 ExpectedResult = false
             };
 

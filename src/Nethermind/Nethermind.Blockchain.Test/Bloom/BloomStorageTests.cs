@@ -74,12 +74,18 @@ public class BloomStorageTests
             int bucketItems = new BloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } }, new MemDb(), new InMemoryDictionaryFileStoreFactory()).MaxBucketSize;
             int count = bucketItems * Buckets;
             int maxIndex = count - 1;
-            yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets);
-            yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket);
-            yield return new TestCaseData(5, 49, true, GetRange(45, 5), 4 + 45); // 4 lookups at level one (16), 45 lookups at bottom level (49-5+1)
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier), searchesPerBucket - 1); // skips highest level
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 2 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 2), (searchesPerBucket - 1) * 2); // skips highest level
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 3 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 3), searchesPerBucket * 3); // doesn't skip highest level
+            yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets)
+                .SetName("Returns_no_blocks_when_blooms_do_not_match");
+            yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket)
+                .SetName("Returns_all_blocks_when_all_blooms_match");
+            yield return new TestCaseData(5, 49, true, GetRange(45, 5), 4 + 45)
+                .SetName("Returns_range_after_level_one_lookup");
+            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier), searchesPerBucket - 1)
+                .SetName("Returns_single_bucket_without_highest_level_lookup");
+            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 2 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 2), (searchesPerBucket - 1) * 2)
+                .SetName("Returns_two_buckets_without_highest_level_lookup");
+            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 3 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 3), searchesPerBucket * 3)
+                .SetName("Returns_three_buckets_with_highest_level_lookup");
         }
     }
 
