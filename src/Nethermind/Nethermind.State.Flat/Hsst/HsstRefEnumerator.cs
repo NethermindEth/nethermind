@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// stores the reader so callers don't have to pass it on every <see cref="MoveNext"/>.
 /// All layout-specific iteration (PackedArray / BTree) lives on the merge
 /// enumerator's variants. Construction is cheap — for BTree it only records the scope
-/// bounds (<see cref="HsstEnumerator{TReader,TPin}"/>'s <c>BTreeVariant</c> ctor); the
+/// bounds (<see cref="HsstEnumerator{TReader,TPin}"/>'s <c>HsstBTreeEnumerator</c> ctor); the
 /// actual tree walk happens lazily on each <see cref="MoveNext"/>, descending one leaf
 /// at a time and buffering that leaf's metaStart pointers in a reusable array.
 ///
