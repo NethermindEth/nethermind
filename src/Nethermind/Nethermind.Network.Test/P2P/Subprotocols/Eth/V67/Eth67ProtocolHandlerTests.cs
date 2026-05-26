@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -112,7 +113,17 @@ public class Eth67ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-        Assert.DoesNotThrow<SubprotocolException>(act);
+        Exception? exception = null;
+        try
+        {
+            act();
+        }
+        catch (Exception e)
+        {
+            exception = e;
+        }
+
+        Assert.That(exception, Is.Null.Or.Not.InstanceOf<SubprotocolException>());
     }
 
     [Test]

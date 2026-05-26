@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
 
@@ -48,7 +49,7 @@ public static class ReceiptAssertionExtensions
                     options = excludedProperty switch
                     {
                         nameof(TxReceipt.Error) => options.Excluding(static receipt => receipt.Error),
-                        _ => options
+                        _ => throw new ArgumentException($"Unknown TxReceipt property: {excludedProperty}", nameof(excludedProperties))
                     };
                 }
 

@@ -316,7 +316,7 @@ public class LogFinderTests
 
         await Task.Delay(timeout * waitTime);
 
-        TestDelegate action = () => _ = logs.ToArray();
+        Action action = () => _ = logs.ToArray();
 
         if (waitTime > 1)
         {

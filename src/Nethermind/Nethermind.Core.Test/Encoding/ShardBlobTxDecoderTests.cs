@@ -53,7 +53,7 @@ public partial class ShardBlobTxDecoderTests
         byte[] bytes = Bytes.FromHexString(
             "b8aa03f8a7018001808252089400000000000000000000000000000000000000000180c001f841a00100000000000000000000000000000000000000000000000000000000000000a0010000000000000000000000000000000000000000000000000000000000000080a00fb9ad625df88e2fea9e088b69a31497f0d9b767067db8c03fd2453d7092e7bfa0086f2930db968d992d0fb06ddc903ca5522ba38bedc0530eb28b61082897efa1");
 
-        TestDelegate tryDecode = () =>
+        Action tryDecode = () =>
         {
             Rlp.ValueDecoderContext ctx = new(bytes);
             _txDecoder.Decode(ref ctx);
@@ -112,7 +112,7 @@ public partial class ShardBlobTxDecoderTests
         }
 
         // Decoding should fail
-        TestDelegate tryDecode = () =>
+        Action tryDecode = () =>
         {
             Rlp.ValueDecoderContext ctx = new(stream.Data);
             _txDecoder.Decode(ref ctx);

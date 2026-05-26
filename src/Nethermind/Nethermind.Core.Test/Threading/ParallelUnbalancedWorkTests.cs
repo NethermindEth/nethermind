@@ -29,7 +29,7 @@ public class ParallelUnbalancedWorkTests
     {
         InvalidOperationException expected = new("boom");
 
-        TestDelegate act = () => ParallelUnbalancedWork.For(0, 1000, FourThreads, i =>
+        Action act = () => ParallelUnbalancedWork.For(0, 1000, FourThreads, i =>
         {
             if (i == 500) throw expected;
         });
@@ -41,7 +41,7 @@ public class ParallelUnbalancedWorkTests
     [Test]
     public void For_WhenWorkerThrows_PreservesOriginalStackTrace()
     {
-        TestDelegate act = () => ParallelUnbalancedWork.For(0, 1000, FourThreads, i =>
+        Action act = () => ParallelUnbalancedWork.For(0, 1000, FourThreads, i =>
         {
             if (i == 100) ThrowFromHelper();
         });
