@@ -74,10 +74,11 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     // instead.
     private HsstBTreeBuilderBuffers _ownedBuffers;
 
-    // Pointer to the caller's HsstBTreeBuilderBuffers when constructed via the borrowed
-    // overload; default(void*) for the auto-owned path. Stored as void* because
-    // HsstBTreeBuilderBuffers is a ref struct and not eligible for T* / managed fields.
-    private readonly unsafe void* _externalBuffers;
+    // Ref to the caller's HsstBTreeBuilderBuffers when constructed via the borrowed
+    // overload; default (invalid) for the auto-owned path — guard with _useExternalBuffers.
+    // HsstBTreeBuilder is a ref struct so a ref field is allowed; HsstBTreeBuilderBuffers
+    // is no longer a ref struct so CS9050 doesn't apply.
+    private readonly ref HsstBTreeBuilderBuffers _externalBuffers;
     private readonly bool _useExternalBuffers;
 
     // Index of the first entry that has not yet been folded into a page-local leaf.
@@ -146,7 +147,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// responsibility to dispose.
     /// See the primary constructor for <paramref name="keyFirst"/> semantics.
     /// </summary>
-    public unsafe HsstBTreeBuilder(ref TWriter writer, scoped ref HsstBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false)
+    public HsstBTreeBuilder(ref TWriter writer, ref HsstBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(keyLength, -1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLength, 255);
@@ -160,7 +161,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _keyFirst = keyFirst;
 
         buffers.ResetForBuild(expectedKeyCount);
-        _externalBuffers = Unsafe.AsPointer(ref buffers);
+        _externalBuffers = ref buffers;
         _useExternalBuffers = true;
         _pendingFirstEntryIdx = 0;
         _lastWriterPage = (_writer.Written - _writer.FirstOffset) / PageLayout.PageSize;
@@ -199,23 +200,21 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// caller's (borrowed overload) or <see cref="_ownedBuffers"/> (auto-owned).
     /// </summary>
     [UnscopedRef]
-    private unsafe ref HsstBTreeBuilderBuffers Buffers
+    private ref HsstBTreeBuilderBuffers Buffers
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => ref _useExternalBuffers
-            ? ref Unsafe.AsRef<HsstBTreeBuilderBuffers>(_externalBuffers)
-            : ref _ownedBuffers;
+        get => ref _useExternalBuffers ? ref _externalBuffers : ref _ownedBuffers;
     }
 
     [UnscopedRef]
-    private ref NativeMemoryListRef<long> EntryPositions
+    private ref NativeMemoryList<long> EntryPositions
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => ref Buffers.EntryPositions;
     }
 
     [UnscopedRef]
-    private ref NativeMemoryListRef<byte> PendingKeys
+    private ref NativeMemoryList<byte> PendingKeys
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => ref Buffers.PendingKeys;
@@ -1033,10 +1032,10 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // The parallel CurrentLevelFirstKeys list carries each descriptor's
         // first-entry full key in matching order so this loop never re-reads the
         // data section.
-        ref NativeMemoryListRef<HsstIndexNodeInfo> currentNative = ref bufs.CurrentLevel;
-        ref NativeMemoryListRef<HsstIndexNodeInfo> nextNative = ref bufs.NextLevel;
-        ref NativeMemoryListRef<byte> currentFirstKeys = ref bufs.CurrentLevelFirstKeys;
-        ref NativeMemoryListRef<byte> nextFirstKeys = ref bufs.NextLevelFirstKeys;
+        ref NativeMemoryList<HsstIndexNodeInfo> currentNative = ref bufs.CurrentLevel;
+        ref NativeMemoryList<HsstIndexNodeInfo> nextNative = ref bufs.NextLevel;
+        ref NativeMemoryList<byte> currentFirstKeys = ref bufs.CurrentLevelFirstKeys;
+        ref NativeMemoryList<byte> nextFirstKeys = ref bufs.NextLevelFirstKeys;
         nextNative.Clear();
         nextFirstKeys.Clear();
 
@@ -1112,10 +1111,10 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             }
 
             // Swap roles for the next level — ref reassignment, no struct copy.
-            ref NativeMemoryListRef<HsstIndexNodeInfo> tmpNodes = ref currentNative;
+            ref NativeMemoryList<HsstIndexNodeInfo> tmpNodes = ref currentNative;
             currentNative = ref nextNative;
             nextNative = ref tmpNodes;
-            ref NativeMemoryListRef<byte> tmpKeys = ref currentFirstKeys;
+            ref NativeMemoryList<byte> tmpKeys = ref currentFirstKeys;
             currentFirstKeys = ref nextFirstKeys;
             nextFirstKeys = ref tmpKeys;
         }

@@ -1,33 +1,29 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
-
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// Class handle to a caller-owned <see cref="HsstBTreeBuilderBuffers"/> instance.
-/// Lets the buffers be referenced from regular (non-ref) struct fields — needed because
-/// the buffers are a ref struct that can be neither a class field (CS0610) nor a ref
-/// field on a non-ref struct (CS9051), and a ref field even on a ref struct can't refer
-/// to a ref struct (CS9050).
+/// Heap-owning handle for an <see cref="HsstBTreeBuilderBuffers"/> instance. Lets the
+/// buffers be referenced from regular (non-ref) struct fields that need to outlive a
+/// single stack frame — e.g. a value-merger callback that's passed to an N-way merge
+/// driver and must amortise the per-build buffer rentals across many emitted entries.
 /// </summary>
 /// <remarks>
-/// <para>The container does NOT own the buffers — the caller allocates and disposes them on
-/// its own stack frame and constructs the container with <c>ref</c> to that local. Lifetime
-/// contract: the container must not outlive the referenced buffers (same contract as
-/// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/>'s borrowed-buffers constructor;
-/// no compiler check, so don't store the container past the buffers' scope).</para>
-/// <para>The class itself is tiny (one pointer field) and allocated once per merge.</para>
+/// <para>The container OWNS the buffers — they live as a field on the class instance and
+/// are released by <see cref="Dispose"/>. The <see cref="Buffers"/> ref property returns a
+/// real <c>ref</c> into the field, so callers can pass it on to <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/>'s
+/// borrowed-buffers constructor without any unsafe pointer laundering.</para>
+/// <para>One small heap allocation per container instance.</para>
 /// </remarks>
-internal sealed unsafe class HsstBTreeBuilderBuffersContainer
+internal sealed class HsstBTreeBuilderBuffersContainer(int expectedKeyCount = 16) : IDisposable
 {
-    private readonly void* _ptr;
+    private HsstBTreeBuilderBuffers _buffers = new(expectedKeyCount);
 
-    public HsstBTreeBuilderBuffersContainer(ref HsstBTreeBuilderBuffers buffers)
-        => _ptr = Unsafe.AsPointer(ref buffers);
+    /// <summary>The contained buffers, returned by ref so callers can hand them to
+    /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/>'s borrowed-buffers constructor
+    /// or to helpers that take <c>ref HsstBTreeBuilderBuffers</c>.</summary>
+    public ref HsstBTreeBuilderBuffers Buffers => ref _buffers;
 
-    /// <summary>Re-borrows the buffers as a <c>ref</c>. Valid as long as the original
-    /// stack-allocated buffers instance is still alive.</summary>
-    public ref HsstBTreeBuilderBuffers Buffers => ref Unsafe.AsRef<HsstBTreeBuilderBuffers>(_ptr);
+    public void Dispose() => _buffers.Dispose();
 }

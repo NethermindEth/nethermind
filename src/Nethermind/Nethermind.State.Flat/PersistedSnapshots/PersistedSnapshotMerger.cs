@@ -360,12 +360,11 @@ public static class PersistedSnapshotMerger
         WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
 
         // Reusable work buffers for the per-address slot prefix/suffix HSST builders.
-        // Declared at column scope so the rentals stay alive across every merged
-        // address — the prefix builder is created once per address and the suffix
-        // builder once per prefix group per address, so churn dominates otherwise.
-        // Plain local (not `using`) so it can be captured by ref into the value-merger
-        // struct and reach NWayMergePerAddressHsst through the merge body.
-        HsstBTreeBuilderBuffers slotPrefixBuffers = new();
+        // The container is a class so the value-merger can hold it as a regular field; the
+        // contained buffers live across every merged address — the prefix builder is created
+        // once per address and the suffix builder once per prefix group per address, so
+        // amortising the rentals matters.
+        using HsstBTreeBuilderBuffersContainer slotPrefixBuffers = new();
 
         try
         {
@@ -379,9 +378,8 @@ public static class PersistedSnapshotMerger
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
                 sources.AsSpan(0, n), state, AddrKeyLen);
 
-            HsstBTreeBuilderBuffersContainer slotPrefixBuffersContainer = new(ref slotPrefixBuffers);
             PerAddressColumnValueMerger<TWriter, TReader, TPin> valueMerger =
-                new(bloom, slotPrefixBuffersContainer);
+                new(bloom, slotPrefixBuffers);
             HsstBTreeMerger.NWayMerge<TWriter, TReader, TPin,
                 WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
                 PerAddressColumnValueMerger<TWriter, TReader, TPin>>(
@@ -390,7 +388,6 @@ public static class PersistedSnapshotMerger
         finally
         {
             for (int i = 0; i < n; i++) sources[i].Dispose();
-            slotPrefixBuffers.Dispose();
         }
     }
 

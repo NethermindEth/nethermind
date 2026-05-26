@@ -274,13 +274,12 @@ public static class PersistedSnapshotBuilder
         Span<byte> slotKey = stackalloc byte[32];
         Span<byte> currentPrefixBuf = stackalloc byte[slotPrefixLength];
         // Reusable work buffer for the slot prefix (30-byte) HSST BTree builder.
-        // Constructed once per address. Sharing the buffer struct across every
-        // iteration of the address loop avoids the rent/return churn that would
-        // otherwise hit ArrayPool / NativeMemory once per slot subtree.
-        // Declared as a plain local (not `using`) so it can be passed by ref into
-        // the builder constructor — the compiler forbids `ref` on `using` variables.
-        // The slot suffix layer now uses TwoByteSlotValue[Large] which pool internally.
-        HsstBTreeBuilderBuffers slotPrefixBuffers = new();
+        // Constructed once per address. Sharing the buffers across every iteration of
+        // the address loop avoids the rent/return churn that would otherwise hit
+        // ArrayPool / NativeMemory once per slot subtree. Using the container class
+        // (rather than a stack local) lets us pass `ref Buffers` into the builder ctor
+        // and have the container's `using` handle Dispose at scope end.
+        using HsstBTreeBuilderBuffersContainer slotPrefixBuffers = new();
 
         // Pooled staging buffer for the per-prefix sub-slot HSST. The slot-prefix
         // BTree is built in key-first mode (IndexType.BTreeKeyFirst) so its outer
@@ -362,7 +361,7 @@ public static class PersistedSnapshotBuilder
             // tags in strictly descending order.
             {
                 ref TWriter slotWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers, slotPrefixLength, keyFirst: true);
+                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers.Buffers, slotPrefixLength, keyFirst: true);
 
                 while (storageIdx < sortedStorages.Count &&
                     sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))
@@ -466,7 +465,6 @@ public static class PersistedSnapshotBuilder
         addressLevel.Build();
         outer.FinishValueWrite(PersistedSnapshotTags.AccountColumnTag);
         ArrayPool<byte>.Shared.Return(rlpBuffer);
-        slotPrefixBuffers.Dispose();
     }
 
     private static void WriteStorageTrieColumn<TWriter, TReader, TPin>(

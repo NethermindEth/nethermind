@@ -23,10 +23,14 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// an internal instance, so behavior is identical to the pre-refactor code at the cost
 /// of one struct-sized field.
 /// </summary>
-public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
+public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
 {
     // Per-key metadata position list — owned by the outer HsstBTreeBuilder phase.
-    internal NativeMemoryListRef<long> EntryPositions = new(expectedKeyCount);
+    // Using NativeMemoryList<T> (class) rather than NativeMemoryListRef<T> (ref
+    // struct) keeps the struct itself non-ref so it can live as a field of a class
+    // (see HsstBTreeBuilderBuffersContainer) and so HsstBTreeBuilder's borrowed-
+    // buffers ref field needs no Unsafe.AsPointer indirection.
+    internal NativeMemoryList<long> EntryPositions = new(expectedKeyCount);
 
     // Full keys for the entries that are still pending — i.e. not yet folded into
     // an inline page-local leaf. Flat (pendingCount * keyLength) layout. Cleared
@@ -35,14 +39,14 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // worth of entries (a few hundred entries × keyLength, low KB) — once flushed,
     // the leftmost-entry key the index builder still needs for intermediate
     // construction is preserved in <see cref="CurrentLevelFirstKeys"/>.
-    internal NativeMemoryListRef<byte> PendingKeys = new(64);
+    internal NativeMemoryList<byte> PendingKeys = new(64);
 
     // Current/next index-build level node lists. Populated during Add (entry
     // descriptors pushed for each Add; collapsed into a leaf descriptor when a
     // page-local leaf is emitted); then consumed by HsstBTreeBuilder.BuildIndex as
     // the bottom level and flipped between iterations as it walks up to the root.
-    internal NativeMemoryListRef<HsstIndexNodeInfo> CurrentLevel = new(64);
-    internal NativeMemoryListRef<HsstIndexNodeInfo> NextLevel = new(64);
+    internal NativeMemoryList<HsstIndexNodeInfo> CurrentLevel = new(64);
+    internal NativeMemoryList<HsstIndexNodeInfo> NextLevel = new(64);
 
     // First-entry full key for every descriptor in <see cref="CurrentLevel"/> /
     // <see cref="NextLevel"/>, in matching order. Flat (descriptorCount * keyLength)
@@ -53,8 +57,8 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // without reaching back into the already-written data region for a 20-byte
     // address that may straddle a 4 KiB page. Flipped together with the level
     // lists at the end of each Build iteration.
-    internal NativeMemoryListRef<byte> CurrentLevelFirstKeys = new(64);
-    internal NativeMemoryListRef<byte> NextLevelFirstKeys = new(64);
+    internal NativeMemoryList<byte> CurrentLevelFirstKeys = new(64);
+    internal NativeMemoryList<byte> NextLevelFirstKeys = new(64);
 
     // ArrayPool-backed scratch — null until first build that uses them.
     internal byte[]? CommonPrefixArr = null;

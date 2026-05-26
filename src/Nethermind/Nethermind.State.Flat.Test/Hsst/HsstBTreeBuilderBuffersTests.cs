@@ -38,7 +38,9 @@ public class HsstBTreeBuilderBuffersTests
 
         // Shared-buffers path — two consecutive builds against one buffers struct.
         // The second build is the one that actually exercises buffer reuse.
-        HsstBTreeBuilderBuffers buffers = new();
+        // Explicit arg invokes the primary ctor (running the field initializers);
+        // `new()` would skip it and zero-init the class-typed list fields to null.
+        HsstBTreeBuilderBuffers buffers = new(16);
         try
         {
             byte[] shared1 = BuildWithBuffers(ref buffers, keyLength, entries);
