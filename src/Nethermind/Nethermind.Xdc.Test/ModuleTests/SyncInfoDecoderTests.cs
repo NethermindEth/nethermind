@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -30,8 +28,7 @@ public class SyncInfoDecoderTests
                         [new Signature(new byte[64], 0), new Signature(new byte[64], 0)],
                         0
                     )
-                ),
-                true
+                )
             );
 
             yield return new TestCaseData(
@@ -42,8 +39,7 @@ public class SyncInfoDecoderTests
                         0
                     ),
                     new TimeoutCertificate(1, [], 0)
-                ),
-                false
+                )
             );
 
             yield return new TestCaseData(
@@ -54,37 +50,25 @@ public class SyncInfoDecoderTests
                         ulong.MaxValue
                     ),
                     new TimeoutCertificate(ulong.MaxValue, [], ulong.MaxValue)
-                ),
-                true
+                )
             );
         }
     }
 
     [TestCaseSource(nameof(SyncInfoCases))]
-    public void EncodeDecode_RoundTrip_Matches_AllFields(SyncInfo syncInfo, bool useRlpStream)
+    public void EncodeDecode_RoundTrip_Matches_AllFields(SyncInfo syncInfo)
     {
         SyncInfoDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(syncInfo);
-        RlpStream stream = new(encoded.Bytes);
-        SyncInfo decoded;
+        Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
+        SyncInfo decoded = decoder.Decode(ref decoderContext);
 
-        if (useRlpStream)
-        {
-            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
-        else
-        {
-            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
-
-        decoded.Should().BeEquivalentTo(syncInfo);
+        Assert.That(decoded, Is.EqualTo(syncInfo).UsingPropertiesComparer());
     }
 
     [Test]
-    public void Encode_UseBothRlpStreamAndValueDecoderContext_IsEquivalentAfterReencoding()
+    public void EncodeToStream_RoundTrip_Matches_AllFields()
     {
         SyncInfo syncInfo = new(
             new QuorumCertificate(
@@ -104,18 +88,10 @@ public class SyncInfoDecoderTests
         decoder.Encode(stream, syncInfo);
         stream.Position = 0;
 
-        // Decode with ValueDecoderContext
-        Rlp.ValueDecoderContext streamCtx = new(stream.Data.AsSpan());
-        SyncInfo decodedStream = decoder.Decode(ref streamCtx);
-
-        // Decode with ValueDecoderContext
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-        SyncInfo decodedContext = decoder.Decode(ref decoderContext);
+        SyncInfo decoded = decoder.Decode(ref decoderContext);
 
-        // Both should be equivalent to original
-        decodedStream.Should().BeEquivalentTo(syncInfo);
-        decodedContext.Should().BeEquivalentTo(syncInfo);
-        decodedStream.Should().BeEquivalentTo(decodedContext);
+        Assert.That(decoded, Is.EqualTo(syncInfo).UsingPropertiesComparer());
     }
 
     [Test]
@@ -147,7 +123,7 @@ public class SyncInfoDecoderTests
     {
         SyncInfoDecoder decoder = new();
 
-        Rlp encoded = decoder.Encode(null!);
+        Rlp encoded = decoder.Encode((SyncInfo)null!);
 
         Assert.That(encoded, Is.EqualTo(Rlp.OfEmptyList));
     }
@@ -156,7 +132,8 @@ public class SyncInfoDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         SyncInfoDecoder decoder = new();
-        SyncInfo decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
+        Rlp.ValueDecoderContext context = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
+        SyncInfo decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);
     }
@@ -171,4 +148,5 @@ public class SyncInfoDecoderTests
 
         Assert.That(decoded, Is.Null);
     }
+
 }

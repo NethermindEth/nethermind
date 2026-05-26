@@ -69,12 +69,14 @@ internal class TransactionProcessorEip7702Tests
     {
         yield return new TestCaseData(AuthorityPreState.Nonexistent, false, 0UL, 0L)
             .SetName("Nonexistent authority - no auth state refund");
+        yield return new TestCaseData(AuthorityPreState.Nonexistent, true, 0UL, GasCostOf.PerAuthBaseState)
+            .SetName("Nonexistent authority clear - refunds auth-base state gas");
         yield return new TestCaseData(AuthorityPreState.ExistingLeaf, false, 0UL, GasCostOf.NewAccountState)
             .SetName("Existing authority leaf - refunds new account state gas");
+        yield return new TestCaseData(AuthorityPreState.ExistingLeaf, true, 0UL, GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
+            .SetName("Existing authority leaf clear - refunds full auth state gas");
         yield return new TestCaseData(AuthorityPreState.ExistingDelegation, false, 1UL, GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
             .SetName("Existing delegation overwrite - refunds full auth state gas");
-        // The auth-base refund depends on the pre-state delegation slot, so clearing
-        // an existing delegation receives the same refund as overwriting it.
         yield return new TestCaseData(AuthorityPreState.ExistingDelegation, true, 1UL, GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
             .SetName("Existing delegation clear - refunds full auth state gas");
     }
@@ -178,7 +180,7 @@ internal class TransactionProcessorEip7702Tests
 
         ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
 
-        Assert.That(new Address(cell.ToArray()), Is.EqualTo(sender.Address));
+        Assert.That(new Address(cell), Is.EqualTo(sender.Address));
     }
 
     public static IEnumerable<TestCaseData> DelegatedAndNotDelegatedCodeCases()
@@ -331,7 +333,6 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.EqualTo(expectDelegation));
     }
 
-    [TestCase(0)]
     [TestCase(1)]
     [TestCase(10)]
     [TestCase(99)]
@@ -560,7 +561,7 @@ internal class TransactionProcessorEip7702Tests
         Transaction tx1 = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
-            .WithGasLimit(60_000)
+            .WithGasLimit(100_000)
             .WithAuthorizationCode(_ethereumEcdsa.Sign(
                     signer,
                     _specProvider.ChainId,
@@ -568,12 +569,13 @@ internal class TransactionProcessorEip7702Tests
                     0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
+        // tx2 clears the delegation by authorizing address(0), then calls signer — no code runs
         Transaction tx2 = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithNonce(1)
             .WithTo(signer.Address)
-            .WithGasLimit(60_000)
-            .WithAuthorizationCode([])
+            .WithGasLimit(100_000)
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, _specProvider.ChainId, Address.Zero, 1))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)

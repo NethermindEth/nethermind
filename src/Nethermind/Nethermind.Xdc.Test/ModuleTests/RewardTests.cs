@@ -350,16 +350,16 @@ public class RewardTests
 
         // SignerA signs blocks `mergeSignRange` and `2*mergeSignRange`
         // SignerB signs block `mergeSignRange`
-        List<Transaction> txsAtFirstIncludedBlock = new()
-        {
+        List<Transaction> txsAtFirstIncludedBlock =
+        [
             BuildSigningTx(xdcSpec, firstSignedBlockNumber, blockHeaders[firstSignedBlockNumber].Hash!, signerA, nonce: 1),
             BuildSigningTx(xdcSpec, firstSignedBlockNumber, blockHeaders[firstSignedBlockNumber].Hash!, signerB, nonce: 2),
-        };
+        ];
 
-        List<Transaction> txsAtSecondIncludedBlock = new()
-        {
+        List<Transaction> txsAtSecondIncludedBlock =
+        [
             BuildSigningTx(xdcSpec, secondSignedBlockNumber, blockHeaders[secondSignedBlockNumber].Hash!, signerA, nonce: 3),
-        };
+        ];
 
         blocks[firstIncludedTxBlockNumber] = new Block(blockHeaders[firstIncludedTxBlockNumber], new BlockBody(txsAtFirstIncludedBlock.ToArray(), null, null));
         blocks[secondIncludedTxBlockNumber] = new Block(blockHeaders[secondIncludedTxBlockNumber], new BlockBody(txsAtSecondIncludedBlock.ToArray(), null, null));

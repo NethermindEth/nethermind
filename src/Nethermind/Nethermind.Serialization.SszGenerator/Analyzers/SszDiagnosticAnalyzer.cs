@@ -24,7 +24,7 @@ public abstract class SszDiagnosticAnalyzer : DiagnosticAnalyzer
         type.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => MatchesAttributeName(attr, SszRootAttributeNames));
 
     protected static bool IsCollectionType(ITypeSymbol typeSymbol) =>
-            typeSymbol is IArrayTypeSymbol || (typeSymbol is INamedTypeSymbol namedTypeSymbol
+            typeSymbol is IArrayTypeSymbol || SszTypeHelpers.IsSpanType(typeSymbol) || SszTypeHelpers.IsMemoryType(typeSymbol) || (typeSymbol is INamedTypeSymbol namedTypeSymbol
                 && (namedTypeSymbol.Name == nameof(BitArray) || namedTypeSymbol.AllInterfaces.Any(i => i.Name == nameof(IEnumerable))));
 
     protected static bool IsPropertyMarkedWithCollectionAttribute(PropertyDeclarationSyntax property) =>

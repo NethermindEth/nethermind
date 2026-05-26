@@ -26,6 +26,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -693,6 +694,18 @@ public class Eth70ProtocolHandlerTests
             SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await Act());
             Assert.That(exception?.Message, Is.EqualTo(expectedException));
         }
+    }
+
+    [Test]
+    public void Should_reject_null_receipt_payload_during_deserialization()
+    {
+        TxReceipt[] receipts = [null!];
+        using ReceiptsMessage70 response = new(1111, new[] { receipts }.ToPooledList(), false);
+
+        HandleIncomingStatusMessage();
+        RlpException? exception = Assert.Throws<RlpException>(() => HandleZeroMessage(response, Eth70MessageCode.Receipts));
+
+        Assert.That(exception?.Message, Is.EqualTo("Unexpected null receipt payload"));
     }
 
     [Test]

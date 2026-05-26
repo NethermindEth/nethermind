@@ -306,7 +306,7 @@ public class DiscoveryManager : IDiscoveryManager
 
     private static HashSet<IPAddress> GetValidDestinationAddresses(INetworkConfig networkConfig, INodeTable nodeTable)
     {
-        HashSet<IPAddress> addresses = new();
+        HashSet<IPAddress> addresses = [];
 
         if (nodeTable.MasterNode?.Address.Address is { } masterAddress)
         {
@@ -396,7 +396,7 @@ public class DiscoveryManager : IDiscoveryManager
     {
         if (_nodeLifecycleManagers.TryRemove(key, out INodeLifecycleManager? manager))
         {
-            manager.OnStateChanged -= ManagerOnOnStateChanged;
+            manager.OnStateChanged -= _managerOnStateChanged;
             _discoveryStorage.RemoveNode(manager.ManagedNode.Id);
             return true;
         }

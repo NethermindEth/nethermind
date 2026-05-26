@@ -321,7 +321,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInUpdatingPivot()
         {
-            bool updateRequestedAndNotFinished = _syncConfig.MaxAttemptsToUpdatePivot > 0;
+            bool updateRequestedAndNotFinished = _syncConfig.MaxAttemptsToUpdatePivot is > 0 or ISyncConfig.InfiniteAttempts;
             bool isPostMerge = _beaconSyncStrategy.MergeTransitionFinished;
             bool stateSyncNotFinished = _syncProgressResolver.FindBestFullState() == 0;
 
@@ -698,8 +698,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks)
         {
-            List<string> matched = new();
-            List<string> failed = new();
+            List<string> matched = [];
+            List<string> failed = [];
 
             foreach ((string name, bool isSatisfied) in checks)
             {

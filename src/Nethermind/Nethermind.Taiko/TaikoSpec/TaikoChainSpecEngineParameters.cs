@@ -15,6 +15,8 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
     public long? PacayaTransition { get; set; }
     public ulong? ShastaTimestamp { get; set; }
     public ulong? UnzenTimestamp { get; set; }
+    public ulong? UnzenBlockZkGasLimit { get; set; }
+    public ulong? UnzenTxIntrinsicZkGas { get; set; }
     public bool? UseSurgeGasPriceOracle { get; set; }
     public ulong? Rip7728TransitionTimestamp { get; set; }
     public ulong? L1StaticCallTransitionTimestamp { get; set; }

@@ -90,7 +90,7 @@ public class DbPersistingBlockTracerTests
                             IncludeInTrace = true,
                             Input = TestItem.RandomDataC,
                             Result = new ParityTraceResult { GasUsed = 20, Output = TestItem.RandomDataD },
-                            Subtraces = new List<ParityTraceAction>(),
+                            Subtraces = [],
                             To = TestItem.AddressC,
                             TraceAddress = [0],
                             CreationMethod = "create",

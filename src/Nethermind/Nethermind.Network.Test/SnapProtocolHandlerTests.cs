@@ -83,7 +83,7 @@ public class SnapProtocolHandlerTests
 
         public TimeSpan SimulatedLatency { get; set; } = TimeSpan.Zero;
 
-        private readonly List<long> _recordedResponseBytesLength = new();
+        private readonly List<long> _recordedResponseBytesLength = [];
 
         public Context WithResponseBytesRecorder
         {

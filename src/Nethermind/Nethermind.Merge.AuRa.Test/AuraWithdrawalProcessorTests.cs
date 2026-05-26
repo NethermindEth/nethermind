@@ -73,4 +73,27 @@ public class AuraWithdrawalProcessorTests
             Arg.Any<IList<ulong>>(),
             Arg.Any<IList<Address>>());
     }
+
+    [Test]
+    public void Should_not_invoke_contract_for_genesis()
+    {
+        IWithdrawalContract contract = Substitute.For<IWithdrawalContract>();
+        ILogManager logManager = Substitute.For<ILogManager>();
+        AuraWithdrawalProcessor withdrawalProcessor = new(contract, logManager);
+        Block block = Build.A.Block
+            .Genesis
+            .WithWithdrawals([])
+            .TestObject;
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+
+        spec.WithdrawalsEnabled.Returns(true);
+
+        withdrawalProcessor.ProcessWithdrawals(block, spec);
+
+        contract.Received(0).ExecuteWithdrawals(
+            Arg.Any<BlockHeader>(),
+            Arg.Any<UInt256>(),
+            Arg.Any<IList<ulong>>(),
+            Arg.Any<IList<Address>>());
+    }
 }

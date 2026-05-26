@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
@@ -90,7 +91,7 @@ public class ShareableOverridableEnvSourceTests
     private sealed class FakeEnvFactory(bool throwOnBuild = false)
     {
         private bool _throwOnBuild = throwOnBuild;
-        private readonly List<FakeEnv> _envs = new();
+        private readonly List<FakeEnv> _envs = [];
 
         public int Created => _envs.Count;
         public int DisposedCount
@@ -117,7 +118,7 @@ public class ShareableOverridableEnvSourceTests
     {
         public bool IsDisposed { get; private set; }
 
-        public Scope<Marker> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null)
+        public Scope<Marker> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null)
         {
             if (throwOnBuild) throw new InvalidOperationException("simulated build failure");
             return new Scope<Marker>(new Marker(), new NoopDisposable());

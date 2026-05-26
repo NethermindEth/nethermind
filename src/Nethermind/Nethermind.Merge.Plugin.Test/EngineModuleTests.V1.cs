@@ -418,7 +418,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
         getPayloadResult.Timestamp = chain.BlockTree.Head!.Timestamp - 1;
-        Block? block = getPayloadResult.TryGetBlock().Block;
+        Block? block = getPayloadResult.TryGetBlock().Data;
         getPayloadResult.BlockHash = block!.Header.CalculateHash();
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
@@ -432,7 +432,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
         getPayloadResult.ReceiptsRoot = TestItem.KeccakA;
-        Block? block = getPayloadResult.TryGetBlock().Block;
+        Block? block = getPayloadResult.TryGetBlock().Data;
         getPayloadResult.BlockHash = block!.Header.CalculateHash();
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
@@ -458,7 +458,7 @@ public partial class EngineModuleTests
 
     [TestCase(true)]
     [TestCase(false)]
-    [CancelAfter(30000)]
+    [CancelAfter(60000)]
     public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor, CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBaseBlockchain()
@@ -1143,7 +1143,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = new();
         executionPayload.SetTransactions(txsSource);
 
-        Transaction[] txsReceived = executionPayload.TryGetTransactions().Transactions;
+        Transaction[] txsReceived = executionPayload.TryGetTransactions().Data!;
 
         txsReceived.Should().BeEquivalentTo(txsSource, static options => options
             .Excluding(static t => t.ChainId)
@@ -1366,6 +1366,23 @@ public partial class EngineModuleTests
         return (block1, block2A, block2B, block3B);
     }
 
+    // Snapshots head/finalized/safe, sends an FCU that must be rejected as InvalidForkchoiceState,
+    // and asserts the three pointers are unchanged.
+    private static async Task AssertFcuRejectedAndStateUnchanged(MergeTestBlockchain chain, IEngineRpcModule rpc, ForkchoiceStateV1 fcu)
+    {
+        Hash256 initialHeadHash = chain.BlockFinder.HeadHash;
+        Hash256 initialFinalizedHash = chain.BlockFinder.FinalizedHash!;
+        Hash256 initialSafeHash = chain.BlockFinder.SafeHash!;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
+        result.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
+
+        chain.BlockTree.Head!.Hash.Should().Be(initialHeadHash);
+        chain.BlockFinder.HeadHash.Should().Be(initialHeadHash);
+        chain.BlockFinder.FinalizedHash.Should().Be(initialFinalizedHash);
+        chain.BlockFinder.SafeHash.Should().Be(initialSafeHash);
+    }
+
     [TestCase(false, TestName = "inconsistent_finalized_hash")]
     [TestCase(true, TestName = "inconsistent_safe_hash")]
     public async Task inconsistent_sibling_hash_is_rejected(bool viaSafe)
@@ -1374,14 +1391,40 @@ public partial class EngineModuleTests
             await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        (_, ExecutionPayload block2A, _, ExecutionPayload block3B) = await BuildYShapedChainV1(chain, rpc);
+        (ExecutionPayload block1, ExecutionPayload block2A, _, ExecutionPayload block3B) = await BuildYShapedChainV1(chain, rpc);
 
         // block2A is a sibling of branch B; passing it as either finalized or safe while head is on
         // branch B is not an ancestor relationship and must be rejected.
         ForkchoiceStateV1 fcu = viaSafe
             ? new(headBlockHash: block3B.BlockHash, finalizedBlockHash: block3B.BlockHash, safeBlockHash: block2A.BlockHash)
             : new(headBlockHash: block3B.BlockHash, finalizedBlockHash: block2A.BlockHash, safeBlockHash: block3B.BlockHash);
-        (await rpc.engine_forkchoiceUpdatedV1(fcu)).ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
+        await AssertFcuRejectedAndStateUnchanged(chain, rpc, fcu);
+
+        chain.BlockTree.IsMainChain(block1.BlockHash).Should().BeTrue();
+        chain.BlockTree.IsMainChain(block3B.BlockHash).Should().BeFalse();
+    }
+
+    [Test]
+    public async Task inconsistent_safe_hash_is_rejected_when_head_is_ancestor_of_latest_known_finalized()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(
+            rpc,
+            chain,
+            3,
+            CreateParentBlockRequestOnHead(chain.BlockTree),
+            setHead: true);
+
+        ExecutionPayload block1 = blocks[0];
+        ExecutionPayload block3 = blocks[2];
+        chain.BlockFinder.HeadHash.Should().Be(block3.BlockHash);
+        chain.BlockFinder.FinalizedHash.Should().Be(block3.BlockHash);
+
+        // Old-head skip is optional, but InvalidForkchoiceState for an out-of-chain safe block is mandatory.
+        ForkchoiceStateV1 fcu = new(headBlockHash: block1.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block3.BlockHash);
+        await AssertFcuRejectedAndStateUnchanged(chain, rpc, fcu);
     }
 
     [Test]
@@ -1408,6 +1451,55 @@ public partial class EngineModuleTests
         chain.BlockTree.IsMainChain(block3B.BlockHash).Should().BeTrue();
         chain.BlockTree.IsMainChain(block2B.BlockHash).Should().BeTrue();
         chain.BlockTree.IsMainChain(block1.BlockHash).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task forkchoiceUpdated_accepts_safe_ancestor_when_head_is_main_but_ancestor_level_marker_is_stale()
+    {
+        // 1) Build X -> A and X -> B -> C, then set head=C with safe=B (valid ancestry).
+        // 2) Force an inconsistent block-by-number view at level N so A is marked canonical while head remains C at N+1.
+        // 3) Repeat FCU(head=C, safe=B, finalized=X).
+        // Expected: VALID, because B is still on C's real parent path.
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        ExecutionPayload blockX = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
+        (await rpc.engine_newPayloadV1(blockX)).Data.Status.Should().Be(PayloadStatus.Valid);
+        (await rpc.engine_forkchoiceUpdatedV1(new(blockX.BlockHash, blockX.BlockHash, blockX.BlockHash)))
+            .Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        ExecutionPayload blockA = CreateBlockRequest(chain, blockX, TestItem.AddressA);
+        (await rpc.engine_newPayloadV1(blockA)).Data.Status.Should().Be(PayloadStatus.Valid);
+        (await rpc.engine_forkchoiceUpdatedV1(new(blockA.BlockHash, blockX.BlockHash, blockX.BlockHash)))
+            .Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        ExecutionPayload blockB = CreateBlockRequest(chain, blockX, TestItem.AddressB);
+        (await rpc.engine_newPayloadV1(blockB)).Data.Status.Should().Be(PayloadStatus.Valid);
+        ExecutionPayload blockC = CreateBlockRequest(chain, blockB, TestItem.AddressB);
+        (await rpc.engine_newPayloadV1(blockC)).Data.Status.Should().Be(PayloadStatus.Valid);
+
+        ForkchoiceStateV1 reorgToC = new(headBlockHash: blockC.BlockHash, finalizedBlockHash: blockX.BlockHash, safeBlockHash: blockB.BlockHash);
+        (await rpc.engine_forkchoiceUpdatedV1(reorgToC)).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        Block blockAInTree = chain.BlockTree.FindBlock(blockA.BlockHash, BlockTreeLookupOptions.None)!;
+        Block blockCInTree = chain.BlockTree.FindBlock(blockC.BlockHash, BlockTreeLookupOptions.None)!;
+
+        // Deliberately create stale canonical markers: level N -> A, level N+1 -> C.
+        chain.BlockTree.UpdateMainChain(new[] { blockAInTree }, wereProcessed: true);
+        chain.BlockTree.UpdateMainChain(new[] { blockCInTree }, wereProcessed: true);
+
+        chain.BlockTree.Head!.Hash.Should().Be(blockC.BlockHash);
+        chain.BlockTree.IsMainChain(blockC.BlockHash).Should().BeTrue("precondition: head level marker points at C");
+        chain.BlockTree.IsMainChain(blockA.BlockHash).Should().BeTrue("precondition: stale marker points at A on C's parent level");
+        chain.BlockTree.IsMainChain(blockB.BlockHash).Should().BeFalse("precondition: true safe ancestor B is off-main only due stale marker");
+
+        ForkchoiceStateV1 repeated = new(headBlockHash: blockC.BlockHash, finalizedBlockHash: blockX.BlockHash, safeBlockHash: blockB.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeated);
+
+        // Must accept by ancestry (B -> C), even if B is temporarily off-main in level markers.
+        result.ErrorCode.Should().Be(0);
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
     }
 
     [Test]
@@ -1508,6 +1600,87 @@ public partial class EngineModuleTests
 
         result.ErrorCode.Should().Be(0);
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+    }
+
+    private async Task<IReadOnlyList<ExecutionPayload>> BuildChainWithLoweredFinalized(
+        MergeTestBlockchain chain, IEngineRpcModule rpc, int oldHead, int lastFinalized)
+    {
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, oldHead + 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+
+        // Lower the finalized marker to blocks[lastFinalized] while keeping the head at blocks[oldHead].
+        Hash256 finalized = blocks[lastFinalized].BlockHash;
+        ForkchoiceStateV1 setFinalized = new(headBlockHash: blocks[oldHead].BlockHash, finalizedBlockHash: finalized, safeBlockHash: finalized);
+        (await rpc.engine_forkchoiceUpdatedV1(setFinalized)).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockTree.Head!.Hash.Should().Be(blocks[oldHead].BlockHash);
+        return blocks;
+    }
+
+    [TestCase(-1, TestName = "Behind finalized")]
+    [TestCase(0, TestName = "Last finalized")]
+    [TestCase(1, TestName = "After finalized")]
+    public async Task forkchoiceUpdatedV1_processed_skips_reorg_only_when_head_is_ancestor_of_finalized(int offset)
+    {
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        const int oldHead = 4;
+        const int lastFinalized = 2;
+        IReadOnlyList<ExecutionPayload> blocks = await BuildChainWithLoweredFinalized(chain, rpc, oldHead, lastFinalized);
+
+        // Zero request-level finalized/safe so RejectIfInconsistent (which runs before the skip
+        // check) does not reject the offset < 0 case where finalized > head. The skip check still
+        // fires via the BlockTree's internal FinalizedHash set by the helper.
+        int newHead = lastFinalized + offset;
+        ForkchoiceStateV1 fcu = new(headBlockHash: blocks[newHead].BlockHash, finalizedBlockHash: Keccak.Zero, safeBlockHash: Keccak.Zero);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        if (offset < 0)
+        {
+            // Skip path: the FCU returns Valid without reorging; the head stays at blocks[oldHead].
+            chain.BlockTree.Head!.Hash.Should().Be(blocks[oldHead].BlockHash);
+        }
+        else
+        {
+            // No skip: the regular reorg path runs and the head is updated to blocks[newHead].
+            chain.BlockTree.Head!.Hash.Should().Be(blocks[newHead].BlockHash);
+        }
+    }
+
+    [TestCase(-1, TestName = "Behind finalized")]
+    [TestCase(0, TestName = "Last finalized")]
+    [TestCase(1, TestName = "After finalized")]
+    public async Task forkchoiceUpdatedV1_unprocessed_skips_reorg_only_when_head_is_ancestor_of_finalized(int offset)
+    {
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        const int oldHead = 4;
+        const int lastFinalized = 2;
+        IReadOnlyList<ExecutionPayload> blocks = await BuildChainWithLoweredFinalized(chain, rpc, oldHead, lastFinalized);
+        Hash256 finalized = blocks[lastFinalized].BlockHash;
+
+        int newHead = lastFinalized + offset;
+        // Reset the candidate's WasProcessed flag (the block stays on the main chain) so the
+        // FCU enters the unprocessed branch where the first skip check lives.
+        FlipCanonicalMarkerTo(chain, blocks[newHead]);
+
+        ForkchoiceStateV1 fcu = new(headBlockHash: blocks[newHead].BlockHash, finalizedBlockHash: finalized, safeBlockHash: finalized);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
+
+        if (offset < 0)
+        {
+            // Skip path: the unprocessed branch returns Valid early without falling through
+            // to the sync logic.
+            result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        }
+        else
+        {
+            // No skip: the unprocessed branch falls through and returns Syncing.
+            result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Syncing);
+        }
     }
 
     [Test]

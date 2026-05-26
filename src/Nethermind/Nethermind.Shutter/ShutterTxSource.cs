@@ -72,7 +72,7 @@ public class ShutterTxSource(
             }
 
             ulong taskId = _keyWaitTaskId++;
-            tcs = new();
+            tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
             CancellationTokenRegistration ctr = cancellationToken.Register(() => CancelWaitForTransactions(slot, taskId));
 
             if (!_keyWaitTasks.ContainsKey(slot))

@@ -18,8 +18,8 @@ namespace Nethermind.Facade.Simulate;
 /// <param name="readonlyBaseHeaderStore"></param>
 public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore) : IHeaderStore
 {
-    private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = new();
-    private readonly Dictionary<Hash256AsKey, long> _blockNumberDict = new();
+    private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = [];
+    private readonly Dictionary<Hash256AsKey, long> _blockNumberDict = [];
 
     public void Insert(BlockHeader header)
     {

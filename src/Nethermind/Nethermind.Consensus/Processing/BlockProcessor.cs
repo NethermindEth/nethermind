@@ -102,7 +102,7 @@ public partial class BlockProcessor(
         suggestedBlock.AccountChanges = block.AccountChanges;
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
         suggestedBlock.GeneratedBlockAccessList = block.GeneratedBlockAccessList;
-        suggestedBlock.EncodedBlockAccessList = block.EncodedBlockAccessList;
+        suggestedBlock.EncodedBlockAccessList = block.EncodedBlockAccessList ?? suggestedBlock.EncodedBlockAccessList;
     }
 
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
@@ -316,7 +316,9 @@ public partial class BlockProcessor(
             RequestsHash = bh.RequestsHash,
             IsPostMerge = bh.IsPostMerge,
             ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
-            SlotNumber = bh.SlotNumber
+            SlotNumber = bh.SlotNumber,
+            // Carried for the verify-only fast path which doesn't recompute it.
+            BlockAccessListHash = bh.BlockAccessListHash
         };
 
         if (!ShouldComputeStateRoot(bh))

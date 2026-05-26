@@ -61,12 +61,17 @@ public partial class BlockProcessor
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+            // Block-building has no suggested BAL to compare against — we are producing it
+            // here. ValidateBlockAccessList would early-return on `BlockAccessList is null`
+            // anyway, but skipping the call avoids the NextTransaction → Validate dance and
+            // makes the building intent explicit on this hot path.
+            bool shouldValidateBal = shouldValidate && !processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock);
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
             long totalRegularGas = 0;
             long totalStateGas = 0;
 
             balManager.NextTransaction();
-            balManager.ValidateBlockAccessList(block, 0);
+            if (shouldValidateBal) balManager.ValidateBlockAccessList(block, 0);
 
             for (uint i = 0; i < block.Transactions.Length; i++)
             {
@@ -94,7 +99,7 @@ public partial class BlockProcessor
 
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
-                balManager.ValidateBlockAccessList(block, i + 1);
+                if (shouldValidateBal) balManager.ValidateBlockAccessList(block, i + 1);
             }
 
             return [.. receiptsTracer.TxReceipts];
@@ -122,7 +127,10 @@ public partial class BlockProcessor
             {
                 try
                 {
-                    // ParallelUnbalancedWork handles uneven tx execution times better than Parallel.For
+                    // Iterations: 0 = ApplyStateChanges, 1..len = tx (scheduled order =
+                    // _txExecutionOrder[i-1]; balIndex = scheduledTxIndex+1). Pre-execution
+                    // (StoreBeaconRoot + ApplyBlockhashStateChanges) ran sequentially in
+                    // BlockProcessor.ProcessBlock before this method was called.
                     ParallelUnbalancedWork.For(
                         0,
                         len + 1,
@@ -131,6 +139,9 @@ public partial class BlockProcessor
                             txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner),
                         static (i, state) =>
                         {
+                            // Propagate the parent thread's IsBlockProcessingThread flag onto the
+                            // worker so processing-stats heuristics (e.g. allocation-thread filters)
+                            // continue to attribute work correctly across the parallel boundary.
                             bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
                             ProcessingThread.IsBlockProcessingThread = state.isBlockProcessingThread;
                             try
@@ -139,13 +150,17 @@ public partial class BlockProcessor
                                 {
                                     // ApplyStateChanges mutates the shared stateProvider so runs inside
                                     // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                                    // workers read from BAL-backed world states, not stateProvider.
+                                    // workers read from BAL-backed world states, not stateProvider, so
+                                    // neither races with this write.
                                     BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                                     return state;
                                 }
 
                                 int txIndex = state.txExecutionOrder[i - 1];
                                 Transaction tx = state.txs[txIndex];
+                                // Pre-compute intrinsic gas on the worker thread; carry it through the
+                                // gas-results tuple so IncrementalValidation's per-tx EIP-8037 inclusion
+                                // check doesn't recalculate dynamic state-byte costs on the validator.
                                 IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
                                 try
                                 {
@@ -258,6 +273,10 @@ public partial class BlockProcessor
             }
         }
 
+        /// <summary>Canonical tx-execution lead: the prefix of the schedule that always runs in
+        /// natural block order. Chosen so single- and small-tx blocks don't pay the sort cost;
+        /// larger blocks reorder the tail to surface the heaviest gas-limit txs first, which
+        /// reduces tail-latency stragglers in <see cref="ParallelUnbalancedWork.For"/>.</summary>
         internal static int GetCanonicalExecutionLead(int txCount)
         {
             int lead = Math.Max(8, Nethermind.Core.Cpu.RuntimeInformation.ProcessorCount * 2);
@@ -377,6 +396,9 @@ public partial class BlockProcessor
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
         }
 
+        /// <summary>Stable, allocation-free sort key for the tx-tail schedule. Sorts heaviest
+        /// estimated-work transactions first; ties resolved by ascending tx index so the
+        /// schedule is deterministic.</summary>
         private readonly struct TxExecutionSortKey(Transaction tx, int index) : IComparable<TxExecutionSortKey>
         {
             private readonly long _gasLimit = tx.GasLimit;

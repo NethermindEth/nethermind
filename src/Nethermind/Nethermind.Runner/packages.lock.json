@@ -641,6 +641,7 @@
       "nethermind.blockchain": {
         "type": "Project",
         "dependencies": {
+          "Collections.Pooled": "[1.0.82, )",
           "Microsoft.ClearScript.V8.Native.linux-arm64": "[7.5.0, )",
           "Microsoft.ClearScript.V8.Native.linux-x64": "[7.5.0, )",
           "Microsoft.ClearScript.V8.Native.osx-arm64": "[7.5.0, )",
@@ -908,7 +909,8 @@
           "Nethermind.Network.Dns": "[1.39.0-unstable, )",
           "Nethermind.Network.Enr": "[1.39.0-unstable, )",
           "Nethermind.Specs": "[1.39.0-unstable, )",
-          "Nethermind.State.Flat": "[1.39.0-unstable, )"
+          "Nethermind.State.Flat": "[1.39.0-unstable, )",
+          "Nethermind.Synchronization": "[1.39.0-unstable, )"
         }
       },
       "nethermind.init.snapshot": {

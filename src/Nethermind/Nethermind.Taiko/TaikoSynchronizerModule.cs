@@ -3,19 +3,26 @@
 
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Taiko;
 
 /// <remarks>
-/// On Taiko, every block header has <c>TotalDifficulty == 0</c> (post-merge from genesis —
-/// taiko-geth's <c>params/taiko_config.go</c> sets <c>TerminalTotalDifficulty: 0</c>),
-/// while <c>Difficulty</c> is repurposed as the per-block ZK gas used (non-consensus).
-/// The default <see cref="CumulativeTotalDifficultyStrategy"/> computes
-/// <c>(TD ?? 0) - Difficulty</c> and underflows during fast-block header insertion,
-/// stopping snap-sync. Mirror taiko-geth's behaviour: parent TD is always zero on Taiko.
+/// Wires Taiko-specific sync decorators:
+/// <see cref="ZeroTotalDifficultyStrategy"/> (Taiko's <c>TotalDifficulty</c> is always 0;
+/// the default cumulative strategy underflows on the per-block ZK-gas <c>Difficulty</c>),
+/// <see cref="TaikoSyncProgressResolver"/> (widens
+/// <see cref="ISyncProgressResolver.FindBestHeader"/> for the snapshot-invariant check),
+/// <see cref="TaikoEthSyncingInfo"/> (widens the suggested-header read for
+/// <c>eth_syncing</c>), and <see cref="TaikoBeaconSync"/> (widens the
+/// <c>chainMerged</c> check inside <c>IsBeaconSyncHeadersFinished</c> so second-and-onwards
+/// beacon-sync triggers can hand off to <see cref="SyncMode.Full"/>).
 /// </remarks>
 public sealed class TaikoSynchronizerModule : Module
 {
@@ -23,5 +30,14 @@ public sealed class TaikoSynchronizerModule : Module
         .AddSingleton<ITotalDifficultyStrategy, ZeroTotalDifficultyStrategy>()
         .AddDecorator<ISyncProgressResolver>((ctx, inner) =>
             new TaikoSyncProgressResolver(ctx.Resolve<IBlockTree>(), inner))
+        .AddDecorator<IEthSyncingInfo>((ctx, inner) =>
+            new TaikoEthSyncingInfo(ctx.Resolve<IBlockTree>(), inner))
+        .AddDecorator<IBeaconSyncStrategy>((ctx, inner) =>
+            new TaikoBeaconSync(
+                inner,
+                ctx.Resolve<IBlockTree>(),
+                ctx.Resolve<IBeaconPivot>(),
+                ctx.Resolve<ISyncConfig>(),
+                ctx.Resolve<ILogManager>()))
         .AddSingleton<TaikoBeaconHeadAdvancer>();
 }
