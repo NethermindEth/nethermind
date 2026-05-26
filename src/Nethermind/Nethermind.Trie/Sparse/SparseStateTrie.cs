@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Sparse;
@@ -17,6 +18,9 @@ public sealed class SparseStateTrie : IDisposable
 
     /// <summary>Storage tries keyed by accountPathHash (keccak(address)).</summary>
     private readonly Dictionary<Hash256, SparsePatriciaTree> _storageTries = [];
+
+    private BucketedLfu<Hash256>? _hotAccountsLfu;
+    private BucketedLfu<(Hash256, Hash256)>? _hotSlotsLfu;
 
     public bool IsRevealed => _accountTrie is not null;
 
@@ -82,6 +86,41 @@ public sealed class SparseStateTrie : IDisposable
         {
             trie.WipeStorage();
         }
+    }
+
+    /// <summary>
+    /// Initializes LFU caches for cross-block hot path retention.
+    /// Called at the start of each block from PreservedSparseTrie.Take().
+    /// </summary>
+    public void SetHotCacheCapacities(int maxHotAccounts, int maxHotSlots)
+    {
+        _hotAccountsLfu ??= new BucketedLfu<Hash256>(maxHotAccounts);
+        _hotSlotsLfu ??= new BucketedLfu<(Hash256, Hash256)>(maxHotSlots);
+    }
+
+    /// <summary>
+    /// Touches account and slot keys in the LFU caches during UpdateLeaves.
+    /// Call after each UpdateAccountLeaves/UpdateStorageLeaves.
+    /// </summary>
+    public void TouchLfu(Hash256 accountPathHash) =>
+        _hotAccountsLfu?.Touch(accountPathHash);
+
+    public void TouchSlotLfu(Hash256 accountPathHash, Hash256 slotHash) =>
+        _hotSlotsLfu?.Touch((accountPathHash, slotHash));
+
+    /// <summary>
+    /// Prunes cold paths from the sparse trie based on LFU frequency.
+    /// Called after root computation, before storing back as PreservedSparseTrie.
+    /// Entries not in the retained set are collapsed back to Blinded stubs.
+    /// Storage tries with zero retained slots are cleared and pooled for reuse.
+    /// </summary>
+    public void Prune(int maxHotAccounts, int maxHotSlots)
+    {
+        // M3 stub: LFU decay and evict, then prune account trie and storage tries.
+        // Full implementation requires SparsePatriciaTree.Prune(retainedLeaves) which
+        // collapses non-retained paths to Blinded. Deferred to full M3 integration.
+        _hotAccountsLfu?.DecayAndEvict(maxHotAccounts);
+        _hotSlotsLfu?.DecayAndEvict(maxHotSlots);
     }
 
     public void Clear()
