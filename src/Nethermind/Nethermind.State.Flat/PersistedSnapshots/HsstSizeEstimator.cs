@@ -49,7 +49,7 @@ internal static class HsstSizeEstimator
     {
         int storageCount = 0;
         int distinctAddresses = 0;
-        HashSet<Address> seenAddresses = new();
+        HashSet<Address> seenAddresses = [];
 
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
         {
@@ -178,7 +178,7 @@ internal static class HsstSizeEstimator
     {
         int nodeCount = 0;
         int distinctHashes = 0;
-        HashSet<Hash256> seenHashes = new();
+        HashSet<Hash256> seenHashes = [];
 
         foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
         {
@@ -217,7 +217,7 @@ internal static class HsstSizeEstimator
     {
         int nodeCount = 0;
         int distinctHashes = 0;
-        HashSet<Hash256> seenHashes = new();
+        HashSet<Hash256> seenHashes = [];
 
         foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
         {
@@ -259,7 +259,7 @@ internal static class HsstSizeEstimator
     {
         int nodeCount = 0;
         int distinctHashes = 0;
-        HashSet<Hash256> seenHashes = new();
+        HashSet<Hash256> seenHashes = [];
 
         foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
         {

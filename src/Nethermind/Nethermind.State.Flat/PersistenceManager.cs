@@ -105,7 +105,7 @@ public class PersistenceManager(
         if (batch.Count == 0) return;
 
         using ArrayPoolList<StateId> boundaries = new(batch.Count);
-        SortedDictionary<int, List<StateId>> buckets = new();
+        SortedDictionary<int, List<StateId>> buckets = [];
         for (int i = 0; i < batch.Count; i++)
         {
             StateId s = batch[i];
