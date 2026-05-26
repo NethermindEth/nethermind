@@ -159,22 +159,22 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);
+    }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        JsonRpcResponse HandleMissingResultWrapper(JsonRpcRequest request, string methodName, Action? returnAction)
-        {
-            string errorMessage = $"Method {methodName} execution result does not implement IResultWrapper";
-            if (_logger.IsError) _logger.Error(errorMessage);
-            return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, in request.IdRef, returnAction);
-        }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private JsonRpcResponse HandleMissingResultWrapper(JsonRpcRequest request, string methodName, Action? returnAction)
+    {
+        string errorMessage = $"Method {methodName} execution result does not implement IResultWrapper";
+        if (_logger.IsError) _logger.Error(errorMessage);
+        return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, in request.IdRef, returnAction);
+    }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        JsonRpcResponse HandleUnsupportedResultWrapper(JsonRpcRequest request, string methodName, Action? returnAction)
-        {
-            string errorMessage = $"Method {methodName} execution result implements IResultWrapper but not JsonRpcResponse";
-            if (_logger.IsError) _logger.Error(errorMessage);
-            return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, in request.IdRef, returnAction);
-        }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private JsonRpcResponse HandleUnsupportedResultWrapper(JsonRpcRequest request, string methodName, Action? returnAction)
+    {
+        string errorMessage = $"Method {methodName} execution result implements IResultWrapper but not JsonRpcResponse";
+        if (_logger.IsError) _logger.Error(errorMessage);
+        return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, in request.IdRef, returnAction);
     }
 
     private static void ReturnParameters(object?[]? parameters, bool returnToPool)
@@ -203,17 +203,57 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         LogRequest(methodName, expectedParameters, useUtf8Parameters, providedParametersUtf8, providedParameters);
 
-        if (expectedParameters.Length == 0)
-        {
-            if (HasUnexpectedZeroParameterArray(useUtf8Parameters, providedParametersUtf8, providedParameters))
-            {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
-            }
+        return expectedParameters.Length == 0
+            ? PrepareNoParameters(
+                request,
+                methodName,
+                useUtf8Parameters,
+                providedParametersUtf8,
+                providedParameters,
+                out parameters)
+            : PrepareNonEmptyParameters(
+                request,
+                methodName,
+                expectedParameters,
+                useUtf8Parameters,
+                providedParametersUtf8,
+                providedParameters,
+                out parameters,
+                out parameterCount,
+                out returnParametersToPool);
+    }
 
-            parameters = [];
-            return null;
+    private JsonRpcErrorResponse? PrepareNoParameters(
+        JsonRpcRequest request,
+        string methodName,
+        bool useUtf8Parameters,
+        ReadOnlyMemory<byte> providedParametersUtf8,
+        JsonElement providedParameters,
+        out object?[] parameters)
+    {
+        parameters = [];
+        if (HasUnexpectedZeroParameterArray(useUtf8Parameters, providedParametersUtf8, providedParameters))
+        {
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
         }
 
+        return null;
+    }
+
+    private JsonRpcErrorResponse? PrepareNonEmptyParameters(
+        JsonRpcRequest request,
+        string methodName,
+        ExpectedParameter[] expectedParameters,
+        bool useUtf8Parameters,
+        ReadOnlyMemory<byte> providedParametersUtf8,
+        JsonElement providedParameters,
+        out object?[]? parameters,
+        out int parameterCount,
+        out bool returnParametersToPool)
+    {
+        parameters = null;
+        parameterCount = 0;
+        returnParametersToPool = false;
         try
         {
             return useUtf8Parameters
