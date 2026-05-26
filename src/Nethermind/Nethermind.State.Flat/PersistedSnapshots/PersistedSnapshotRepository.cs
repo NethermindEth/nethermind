@@ -250,7 +250,6 @@ public sealed class PersistedSnapshotRepository(
         lock (_catalogLock)
         {
             _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, blobRange, SnapshotKind.Base));
-            _catalog.Save();
 
             persisted = new PersistedSnapshot(snapshot.From, snapshot.To, reservation, _blobs, _arena.Tier, blobRange);
             RegisterBlooms(persisted, bloom);
@@ -289,7 +288,6 @@ public sealed class PersistedSnapshotRepository(
         {
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, BlobRange.None,
                 isPersistable ? SnapshotKind.Persistable : SnapshotKind.Compacted));
-            _catalog.Save();
 
             snapshot = new PersistedSnapshot(from, to, reservation, _blobs, _arena.Tier);
             RegisterBlooms(snapshot, bloom);
@@ -529,7 +527,6 @@ public sealed class PersistedSnapshotRepository(
                     && !_compactedStateIds.Contains(tip)
                     && !_persistableStateIds.Contains(tip))
                     _lastRegisteredState = ComputeLastRegisteredLocked();
-                _catalog.Save();
             }
 
             _bloomManager.PruneBefore(stateId);
