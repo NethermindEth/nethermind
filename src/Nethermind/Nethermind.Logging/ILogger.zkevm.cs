@@ -7,89 +7,96 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Logging;
 
 #pragma warning disable NETH003 // Build variant: only one of ILogger.std.cs / ILogger.zkevm.cs is compiled per build
-/// <summary>
-/// zkEVM-build specialization of <see cref="ILogger"/>: every level flag is the literal constant
-/// <c>false</c> and every log method is an empty body marked <see cref="MethodImplOptions.AggressiveInlining"/>.
-/// </summary>
-/// <remarks>
-/// Inside a zk prover the host has no logging surface, and any work performed to build a log
-/// message is wasted - including allocations behind interpolated strings. Because the level
-/// predicates here are literal <c>false</c>, the C# compiler emits the interpolated-string
-/// handler's <c>out bool shouldAppend</c> as a constant <c>false</c> at every call site, so the
-/// JIT eliminates the entire <c>Append*</c> chain. The empty, inlined method bodies then
-/// collapse the trailing call itself, leaving zero IL behind a log statement.
-/// </remarks>
-public readonly struct ILogger : IEquatable<ILogger>
+/// <summary>zkEVM no-op <see cref="ILogger"/>: all flags literal <c>false</c>, all log methods empty + inlined.</summary>
+public readonly struct ILogger(InterfaceLogger logger) : IEquatable<ILogger>
 {
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ILogger(InterfaceLogger logger) => _ = logger;
-
+    /// <summary>Always <c>false</c>.</summary>
     public bool IsTrace { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => false; }
+    /// <summary>Always <c>false</c>.</summary>
     public bool IsDebug { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => false; }
+    /// <summary>Always <c>false</c>.</summary>
     public bool IsInfo { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => false; }
+    /// <summary>Always <c>false</c>.</summary>
     public bool IsWarn { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => false; }
+    /// <summary>Always <c>false</c>.</summary>
     public bool IsError { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => false; }
 
 #if DEBUG
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SetDebugMode() { }
 #endif
 
+    /// <summary>Underlying logger; stored so callers may <c>lock</c> on it.</summary>
     public InterfaceLogger UnderlyingLogger
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => null!;
+        get => logger;
     }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Debug(string text) { }
 
+    /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Equals(ILogger other) => true;
+    public bool Equals(ILogger other) => UnderlyingLogger == other.UnderlyingLogger;
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Error(string text, Exception? ex = null) { }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Info(string text) { }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Trace(string text) { }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Warn(string text) { }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DebugError(
         [InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler,
         Exception? ex = null)
     { }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DebugError(string text, Exception? ex = null) { }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DebugWarn(
         [InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler)
     { }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DebugWarn(string text) { }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TraceError(
         [InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler,
         Exception? ex = null)
     { }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TraceError(string text, Exception? ex = null) { }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TraceWarn(
         [InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler)
     { }
 
+    /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TraceWarn(string text) { }
 }
