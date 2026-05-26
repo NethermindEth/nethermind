@@ -97,20 +97,13 @@ public static class RpcTest
             return streamableSerialized;
         }
 
-        // IStreamableResult delegates run the trace; re-serialising would double-execute.
-        if (response is not JsonRpcSuccessResponse { Result: IStreamableResult })
-        {
-            Stream indentedStream = new MemoryStream();
-            await serializer.SerializeAsync(indentedStream, response, cts.Token, true).ConfigureAwait(false);
-        }
-
         ArrayBufferWriter<byte> indentedWriter = new();
         JsonRpcResponseWriter.Write(indentedWriter, response, EthereumJsonSerializer.JsonOptionsIndented);
 
-        string serialized = Encoding.UTF8.GetString(writer.WrittenSpan);
+        string serialized = Encoding.UTF8.GetString(indentedWriter.WrittenSpan);
         await TestContext.Out.WriteLineAsync(serialized);
 
-        writer.WrittenCount.Should().Be(serialized.Length);
+        indentedWriter.WrittenCount.Should().Be(serialized.Length);
 
         return serialized;
     }
