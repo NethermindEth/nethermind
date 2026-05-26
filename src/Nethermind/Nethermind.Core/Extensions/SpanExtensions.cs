@@ -13,7 +13,6 @@ using System.Runtime.Intrinsics;
 using Arm = System.Runtime.Intrinsics.Arm;
 using x64 = System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Extensions
 {
@@ -103,64 +102,25 @@ namespace Nethermind.Core.Extensions
 
         private static string ToHexStringWithEip55Checksum(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros)
         {
-            string hashHex = Keccak.Compute(bytes.ToHexString(false)).ToString(false);
-
             int leadingZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros;
-            if (leadingZeros >= 2)
+            if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
-                bytes = bytes[(leadingZeros / 2)..];
+                return withZeroX ? Bytes.ZeroHexValue : Bytes.ZeroValue;
             }
+
             char[] charArray = ArrayPool<char>.Shared.Rent(length);
 
             Span<char> chars = charArray.AsSpan(0, length);
-
-            if (withZeroX)
+            try
             {
-                // In reverse, bounds check on [1] will elide bounds check on [0]
-                chars[1] = 'x';
-                chars[0] = '0';
-                // Trim off the two chars from the span
-                chars = chars[2..];
+                bytes.OutputBytesToCharHexWithEip55Checksum(chars, withZeroX, leadingZeros);
+                return new string(chars);
             }
-
-            uint[] lookup32 = Bytes.Lookup32;
-
-            bool odd = (leadingZeros & 1) != 0;
-            int oddity = odd ? 2 : 0;
-            if (odd)
+            finally
             {
-                // Odd number of hex chars, handle the first
-                // separately so loop can work in pairs
-                uint val = lookup32[bytes[0]];
-                char char2 = (char)(val >> 16);
-                chars[0] = char.IsLetter(char2) && hashHex[1] > '7'
-                            ? char.ToUpper(char2)
-                            : char2;
-
-                // Trim off the first byte and char from the spans
-                chars = chars[1..];
-                bytes = bytes[1..];
+                ArrayPool<char>.Shared.Return(charArray);
             }
-
-            for (int i = 0; i < chars.Length; i += 2)
-            {
-                uint val = lookup32[bytes[i / 2]];
-                char char1 = (char)val;
-                char char2 = (char)(val >> 16);
-
-                chars[i] = char.IsLetter(char1) && hashHex[i + oddity] > '7'
-                            ? char.ToUpper(char1)
-                            : char1;
-                chars[i + 1] = char.IsLetter(char2) && hashHex[i + 1 + oddity] > '7'
-                            ? char.ToUpper(char2)
-                            : char2;
-            }
-
-            string result = new(charArray.AsSpan(0, length));
-            ArrayPool<char>.Shared.Return(charArray);
-
-            return result;
         }
 
         public static ReadOnlySpan<T> TakeAndMove<T>(this ref ReadOnlySpan<T> span, int length)
@@ -195,6 +155,23 @@ namespace Nethermind.Core.Extensions
             newList.AddRange(span);
             return newList;
         }
+
+        /// <summary>
+        /// Returns whether <paramref name="a"/>[aStart..aStart+length] sequence-equals
+        /// <paramref name="b"/>[bStart..bStart+length]. Shorthand for the
+        /// <c>a.Slice(aStart, length).SequenceEqual(b.Slice(bStart, length))</c> pattern.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool SliceEqual<T>(this ReadOnlySpan<T> a, int aStart, ReadOnlySpan<T> b, int bStart, int length) where T : IEquatable<T>
+            => a.Slice(aStart, length).SequenceEqual(b.Slice(bStart, length));
+
+        /// <summary>
+        /// Copy <paramref name="src"/>[srcStart..srcStart+length] into
+        /// <paramref name="dst"/>[dstStart..dstStart+length].
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void CopySlice<T>(this Span<T> src, int srcStart, Span<T> dst, int dstStart, int length)
+            => src.Slice(srcStart, length).CopyTo(dst.Slice(dstStart, length));
 
         /// <summary>
         /// Computes a very fast, non-cryptographic 32-bit hash of the supplied bytes.

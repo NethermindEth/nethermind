@@ -39,7 +39,7 @@ public class AccumulatorCalculator : IDisposable
 
     public ValueHash256[] GetProof(int blockIndex)
     {
-        if (blockIndex < 0 || blockIndex >= _roots.Count)
+        if ((uint)blockIndex >= (uint)_roots.Count)
             throw new ArgumentOutOfRangeException(nameof(blockIndex), $"Block index {blockIndex} is out of range [0, {_roots.Count - 1}].");
 
         int count = _roots.Count;

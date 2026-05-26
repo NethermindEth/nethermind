@@ -11,7 +11,7 @@ namespace Nethermind.Core
 {
     public class CompositeComparer<T>(IEnumerable<IComparer<T>> comparers) : IComparer<T>
     {
-        internal readonly List<IComparer<T>> _comparers = new(comparers);
+        internal readonly List<IComparer<T>> _comparers = [.. comparers];
 
         public CompositeComparer(params IComparer<T>[] comparers) : this((IEnumerable<IComparer<T>>)comparers)
         {

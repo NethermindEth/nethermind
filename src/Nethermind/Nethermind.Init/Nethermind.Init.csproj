@@ -15,6 +15,7 @@
     <ProjectReference Include="..\Nethermind.Network.Enr\Nethermind.Network.Enr.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.State.Flat\Nethermind.State.Flat.csproj" />
+    <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
 
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Nethermind.Runner.Test</_Parameter1>

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
@@ -29,10 +30,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
             else
             {
+                ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
                 stream.StartSequence(pwasLength);
-                for (int i = 0; i < message.PathsWithAccounts.Count; i++)
+                for (int i = 0; i < pathsWithAccounts.Length; i++)
                 {
-                    PathWithAccount pwa = message.PathsWithAccounts[i];
+                    PathWithAccount pwa = pathsWithAccounts[i];
 
                     int accountContentLength = _decoder.GetContentLength(pwa.Account);
                     int pwaLength = Rlp.LengthOf(pwa.Path) + Rlp.LengthOfSequence(accountContentLength);
@@ -65,8 +67,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 pathsWithAccounts = new ArrayPoolList<PathWithAccount>(count);
                 for (int i = 0; i < count; i++)
                 {
-                    ctx.ReadSequenceLength();
+                    int length = ctx.ReadSequenceLength();
+                    int checkPosition = ctx.Position + length;
                     pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+                    ctx.Check(checkPosition);
                 }
 
                 message.PathsWithAccounts = pathsWithAccounts;
@@ -94,9 +98,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int pwasLength = 0;
             if (message.PathsWithAccounts is not null && message.PathsWithAccounts.Count > 0)
             {
-                for (int i = 0; i < message.PathsWithAccounts.Count; i++)
+                ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
+                for (int i = 0; i < pathsWithAccounts.Length; i++)
                 {
-                    PathWithAccount pwa = message.PathsWithAccounts[i];
+                    PathWithAccount pwa = pathsWithAccounts[i];
                     int itemLength = Rlp.LengthOf(pwa.Path);
                     itemLength += _decoder.GetLength(pwa.Account);
 

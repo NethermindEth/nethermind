@@ -10,7 +10,10 @@ namespace Nethermind.History;
 public interface IHistoryPruner
 {
     public long? CutoffBlockNumber { get; }
+    public long? BalCutoffBlockNumber { get; }
     public BlockHeader? OldestBlockHeader { get; }
 
     event EventHandler<OnNewOldestBlockArgs> NewOldestBlock;
+
+    void SchedulePruneHistory();
 }

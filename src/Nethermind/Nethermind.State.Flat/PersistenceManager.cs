@@ -30,7 +30,7 @@ public class PersistenceManager(
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
-    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = new(); // Presort make it faster
+    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
     private StateId _currentPersistedStateId = StateId.PreGenesis;
@@ -285,7 +285,7 @@ public class PersistenceManager(
 
                 stateNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStateTrieNode(path, node);
+                batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
 
                 node.IsPersisted = true;
             }
@@ -313,7 +313,7 @@ public class PersistenceManager(
 
                 storageNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, node);
+                batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 node.IsPersisted = true;
             }
 

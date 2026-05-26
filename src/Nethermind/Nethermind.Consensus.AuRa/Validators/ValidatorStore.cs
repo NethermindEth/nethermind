@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -18,7 +19,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private readonly IDb _db;
         private long _latestFinalizedValidatorsBlockNumber;
-        private ValidatorInfo _latestValidatorInfo;
+        private ValidatorInfo? _latestValidatorInfo;
         private static readonly int EmptyBlockNumber = -1;
         private static readonly ValidatorInfo EmptyValidatorInfo = new(-1, -1, []);
         private static Hash256 GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
@@ -59,7 +60,13 @@ namespace Nethermind.Consensus.AuRa.Validators
                 Rlp.ValueDecoderContext ctx = new(_db.Get(PendingValidatorsKey) ?? Rlp.OfEmptyList.Bytes);
                 return PendingValidatorsDecoder.Decode(ref ctx);
             }
-            set => _db.Set(PendingValidatorsKey, PendingValidatorsDecoder.Encode(value).Bytes);
+            set => StorePendingValidators(value);
+        }
+
+        private void StorePendingValidators(PendingValidators value)
+        {
+            using NettyRlpStream stream = PendingValidatorsDecoder.EncodeToNewNettyStream(value);
+            _db.PutSpan(PendingValidatorsKey.Bytes, stream.AsSpan());
         }
 
         private ValidatorInfo FindValidatorInfo(in long blockNumber)
@@ -84,8 +91,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (blockNumber > EmptyBlockNumber)
             {
-                byte[] bytes = _db.Get(GetKey(blockNumber));
-                return bytes is not null ? Rlp.Decode<ValidatorInfo>(bytes) : null;
+                Span<byte> bytes = _db.Get(GetKey(blockNumber));
+
+                return bytes.IsEmpty
+                    ? throw new InvalidOperationException($"No validator info for block number {blockNumber}.")
+                    : Rlp.Decode<ValidatorInfo>(bytes);
             }
 
             return EmptyValidatorInfo;

@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -205,7 +206,7 @@ public class RetryCacheTests
         TestHandler staleHandler = new();
 
         bag.TryAdd(handler1, 8);
-        Assert.That(bag.Drain(), Has.Length.EqualTo(1));
+        Assert.That(DrainToList(bag), Has.Count.EqualTo(1));
 
         // Bag is now inactive (drained). Simulate pool return + reuse.
         bag.Reset();
@@ -221,8 +222,8 @@ public class RetryCacheTests
         bool addedAfterReactivation = bag.TryAdd(staleHandler, 8);
         Assert.That(addedAfterReactivation, Is.True);
 
-        IMessageHandler<ResourceRequestMessage>[] handlers = bag.Drain();
-        Assert.That(handlers, Has.Length.EqualTo(1));
+        List<IMessageHandler<ResourceRequestMessage>> handlers = DrainToList(bag);
+        Assert.That(handlers, Has.Count.EqualTo(1));
         Assert.That(handlers[0], Is.SameAs(staleHandler));
     }
 
@@ -233,7 +234,7 @@ public class RetryCacheTests
         bag.Activate();
 
         bag.TryAdd(new TestHandler(), 8);
-        bag.Drain();
+        DrainToList(bag);
 
         // Bag is inactive after drain — TryAdd must be rejected
         bool added = bag.TryAdd(new TestHandler(), 8);
@@ -264,8 +265,8 @@ public class RetryCacheTests
         Assert.That(bag.TryAdd(handler, 8), Is.True);
         Assert.That(bag.TryAdd(handler, 8), Is.False);
 
-        IMessageHandler<ResourceRequestMessage>[] handlers = bag.Drain();
-        Assert.That(handlers, Has.Length.EqualTo(1));
+        List<IMessageHandler<ResourceRequestMessage>> handlers = DrainToList(bag);
+        Assert.That(handlers, Has.Count.EqualTo(1));
     }
 
     [Test]
@@ -278,5 +279,18 @@ public class RetryCacheTests
         _cache.Announced(42, retryHandler);
 
         Assert.That(() => receivedResourceId, Is.EqualTo(42).After(AssertTimeoutMs, 100));
+    }
+
+    private static List<IMessageHandler<ResourceRequestMessage>> DrainToList(HandlerBag<ResourceRequestMessage> bag)
+    {
+        List<IMessageHandler<ResourceRequestMessage>> handlers = [];
+        HandlerCollector collector = new(handlers);
+        bag.Drain(ref collector);
+        return handlers;
+    }
+
+    private readonly struct HandlerCollector(List<IMessageHandler<ResourceRequestMessage>> handlers) : IHandlerBagDrainProcessor<ResourceRequestMessage>
+    {
+        public void Process(IMessageHandler<ResourceRequestMessage> handler) => handlers.Add(handler);
     }
 }

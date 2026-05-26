@@ -49,15 +49,23 @@ namespace Nethermind.Trie
 
                 HexPrefix.CopyToSpan(hexPrefix, isLeaf: false, keyBytes);
 
-                int previousLength = item.AppendChildPath(ref path, 0);
-                TrieNode nodeRef = item.GetChildWithChildPath(tree, ref path, 0);
-                Debug.Assert(nodeRef is not null,
-                    "Extension child is null when encoding.");
+                // Fast path: child was unresolved to a Hash256 (e.g. by pruning) — encode the hash directly
+                // without materializing a TrieNode via FindCachedOrUnknown + ResolveKey.
+                TrieNode? nodeRef = null;
+                if (item._nodeData[0] is not Hash256 childKeccak)
+                {
+                    int previousLength = item.AppendChildPath(ref path, 0);
+                    nodeRef = item.GetChildWithChildPath(tree, ref path, 0);
+                    Debug.Assert(nodeRef is not null,
+                        "Extension child is null when encoding.");
 
-                nodeRef.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                path.TruncateMut(previousLength);
+                    nodeRef.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                    path.TruncateMut(previousLength);
 
-                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
+                    childKeccak = nodeRef.Keccak;
+                }
+
+                int contentLength = Rlp.LengthOf(keyBytes) + (childKeccak is not null ? Rlp.LengthOfKeccakRlp : nodeRef!.FullRlp.Length);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = bufferPool.SafeRent(totalLength);
@@ -69,19 +77,19 @@ namespace Nethermind.Trie
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
                 }
-                if (nodeRef.Keccak is null)
+                if (childKeccak is not null)
                 {
-                    // I think it can only happen if we have a short extension to a branch with a short extension as the only child?
+                    Rlp.Encode(destination, position, childKeccak);
+                }
+                else
+                {
+                    // Inline child: happens with a short extension to a branch with a short extension as the only child
                     // so |
                     // so |
                     // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
-                    nodeRef.FullRlp.AsSpan().CopyTo(destination.Slice(position));
-                }
-                else
-                {
-                    Rlp.Encode(destination, position, nodeRef.Keccak);
+                    nodeRef!.FullRlp.AsSpan().CopyTo(destination.Slice(position));
                 }
 
                 return data;

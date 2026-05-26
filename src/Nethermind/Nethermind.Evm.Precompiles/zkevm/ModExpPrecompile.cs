@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -30,7 +31,7 @@ public partial class ModExpPrecompile
             .SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength + (int)expLength, (int)modulusLength);
         byte[] result = new byte[modulusLength];
 
-        ZiskBindings.Crypto.modexp_bytes_c(@base, baseLength, exp, expLength, modulus, modulusLength, result);
+        Accelerators.ModExp(@base, exp, modulus, result);
 
         return result;
     }

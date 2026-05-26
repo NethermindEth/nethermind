@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test;
 
 public class MessageDictionaryTests
 {
-    private readonly List<Eth66Message<GetBlockHeadersMessage>> _recordedRequests = new();
+    private readonly List<Eth66Message<GetBlockHeadersMessage>> _recordedRequests = [];
     private MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>
         _testMessageDictionary;
 
@@ -27,7 +27,7 @@ public class MessageDictionaryTests
     public void Setup()
     {
         _recordedRequests.Clear();
-        _testMessageDictionary = new((message) => _recordedRequests.Add(message));
+        _testMessageDictionary = new(RecordingProtocolHandler.Create(_recordedRequests));
     }
 
     [Test]
@@ -115,7 +115,7 @@ public class MessageDictionaryTests
     [Test]
     public void Handle_disposes_tuple_disposable_component_on_unmatched_request()
     {
-        MessageDictionary<Eth66Message<GetBlockHeadersMessage>, (IDisposable, long)> dictionary = new(_ => { });
+        MessageDictionary<Eth66Message<GetBlockHeadersMessage>, (IDisposable, long)> dictionary = new(RecordingProtocolHandler.Create<Eth66Message<GetBlockHeadersMessage>>());
         IDisposable inner = Substitute.For<IDisposable>();
 
         dictionary.Invoking(d => d.Handle(9999, (inner, 100L), 100))

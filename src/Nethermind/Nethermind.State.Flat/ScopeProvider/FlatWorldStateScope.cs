@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
@@ -27,12 +27,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
-    private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
+    private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
     // tasks within the trie warmer's ring buffer.
     private int _hintSequenceId = 0;
+    private int _outstandingWarmups = 0;
     private StateId _currentStateId;
     internal bool _pausePrewarmer = false;
 
@@ -79,8 +80,32 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+        WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
+    }
+
+    // Exposed for tests to observe when the wait loop is entered.
+    internal Action? OnWaitingForWarmups;
+
+    private void WaitForOutstandingWarmups()
+    {
+        if (Volatile.Read(ref _outstandingWarmups) == 0) return;
+
+        OnWaitingForWarmups?.Invoke();
+
+        SpinWait spinWait = new();
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        while (Volatile.Read(ref _outstandingWarmups) != 0)
+        {
+            if (stopwatch.ElapsedMilliseconds > 1000)
+            {
+                ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                if (logger.IsWarn) logger.Warn($"TrieWarmer outstanding jobs ({Volatile.Read(ref _outstandingWarmups)}) did not drain within 1s during scope dispose");
+                return;
+            }
+            spinWait.SpinOnce();
+        }
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
@@ -109,7 +134,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _snapshotBundle.SetAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
-            _warmer.PushAddressJob(this, address, _hintSequenceId);
+            if (_warmer.PushAddressJob(this, address, _hintSequenceId))
+                Interlocked.Increment(ref _outstandingWarmups);
         }
     }
 
@@ -119,14 +145,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
-        if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
+        try
+        {
+            if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
 
-        // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
-        // this is just for warming up
-        _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+            // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
+            // this is just for warming up
+            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
-        return true;
+            return true;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _outstandingWarmups);
+        }
     }
+
+    internal void IncrementOutstandingWarmups() => Interlocked.Increment(ref _outstandingWarmups);
+
+    internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => CreateStorageTreeImpl(address);
 
@@ -156,34 +193,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
 
-        using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-
-        commitTask.Add(Task.Factory.StartNew(() =>
-        {
-            // Commit will copy the trie nodes from the tree to the bundle.
-            // Its fine to commit the state tree together with the storage tree at this point as the storage tree
-            // root has been resolved and updated to the state tree within the writebatch.
-            _stateTree.Commit();
-        }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
-
-        foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages)
-        {
-            if (_concurrencyQuota.TryRequestConcurrencyQuota())
-            {
-                commitTask.Add(Task.Factory.StartNew((ctx) =>
-                {
-                    FlatStorageTree st = (FlatStorageTree)ctx!;
-                    st.CommitTree();
-                    _concurrencyQuota.ReturnConcurrencyQuota();
-                }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
-            }
-            else
-            {
-                storage.Value.CommitTree();
-            }
-        }
-
-        Task.WaitAll(commitTask.AsSpan());
+        // Storage tree commits already happened during WriteBatch.Dispose() via
+        // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
+        _stateTree.Commit();
 
         _storages.Clear();
 
@@ -255,7 +267,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (account is null)
                     {
                         if (storageRoot == Keccak.EmptyTreeHash) continue;
-                        using IWorldStateScopeProvider.IStorageWriteBatch wb = CreateStorageWriteBatch(entry.Item1, 0);
+                        using IWorldStateScopeProvider.IStorageWriteBatch wb = CreateStorageWriteBatch(key.Value, 0);
                         wb.Clear();
                         continue;
                     }
@@ -264,8 +276,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                     scope._snapshotBundle.SetAccount(key, account);
 
-                    OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
-                    if (logger.IsTrace) Trace(key, storageRoot, account);
+                    Address address = key.Value;
+                    OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
+                    if (logger.IsTrace) Trace(address, storageRoot, account);
                 }
 
                 using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);

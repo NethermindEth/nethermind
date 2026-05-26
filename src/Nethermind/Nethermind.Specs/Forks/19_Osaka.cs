@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 public class Osaka() : NamedReleaseSpec<Osaka>(Prague.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Osaka";
         spec.IsEip7594Enabled = true;

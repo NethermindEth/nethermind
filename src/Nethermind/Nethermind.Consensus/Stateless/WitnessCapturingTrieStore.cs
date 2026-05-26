@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -19,7 +20,7 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
 {
     private readonly ConcurrentDictionary<Hash256AsKey, byte[]> _rlpCollector = new();
 
-    public IEnumerable<byte[]> TouchedNodesRlp => _rlpCollector.Values;
+    public IEnumerable<byte[]> TouchedNodesRlp => _rlpCollector.Select(static kvp => kvp.Value);
 
     public void Dispose() => baseStore.Dispose();
 
@@ -30,12 +31,9 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
         return node;
     }
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
-    {
-        byte[]? rlp = TryLoadRlp(address, in path, hash, flags);
-        if (rlp is null) throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
-        return rlp;
-    }
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        TryLoadRlp(address, in path, hash, flags)
+        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {

@@ -29,8 +29,20 @@ using Nethermind.State;
 namespace Nethermind.Merge.Plugin.Test
 {
     [Parallelizable(ParallelScope.All)]
-    public partial class EngineModuleTests : BaseEngineModuleTests
+    [TestFixture(true)]
+    [TestFixture(false)]
+    public partial class EngineModuleTests(bool parallel) : BaseEngineModuleTests
     {
+        protected bool Parallel { get; } = parallel;
+
+        protected override MergeTestBlockchain CreateBaseBlockchain(
+            IMergeConfig? mergeConfig = null)
+        {
+            MergeTestBlockchain bc = base.CreateBaseBlockchain(mergeConfig);
+            bc.ParallelExecutionOverride = Parallel;
+            return bc;
+        }
+
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Hash256 headBlockHash, Hash256 finalizedBlockHash,
@@ -136,9 +148,9 @@ namespace Nethermind.Merge.Plugin.Test
             ISpecProvider specProvider = childContainer.Resolve<ISpecProvider>();
 
             ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
-            Block? block = blockRequest.TryGetBlock().Block;
+            Block? block = blockRequest.TryGetBlock().Data;
 
-            using (IDisposable _ = worldState.BeginScope(parent.TryGetBlock().Block?.Header))
+            using (IDisposable _ = worldState.BeginScope(parent.TryGetBlock().Data?.Header))
             {
                 IWithdrawalProcessor withdrawalProcessor = childContainer.Resolve<IWithdrawalProcessor>();
 
@@ -166,10 +178,10 @@ namespace Nethermind.Merge.Plugin.Test
             Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
-            Block? block = blockRequestV3.TryGetBlock().Block;
+            Block? block = blockRequestV3.TryGetBlock().Data;
 
             IWorldState globalWorldState = chain.MainWorldState;
-            using (globalWorldState.BeginScope(parent.TryGetBlock().Block!.Header))
+            using (globalWorldState.BeginScope(parent.TryGetBlock().Data!.Header))
             {
                 BlockhashStore blockHashStore = new(globalWorldState);
                 blockHashStore.ApplyBlockhashStateChanges(block!.Header, chain.SpecProvider.GetSpec(block.Header));
@@ -256,7 +268,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         private static bool TryCalculateHash(ExecutionPayload request, out Hash256 hash)
         {
-            Block? block = request.TryGetBlock().Block;
+            Block? block = request.TryGetBlock().Data;
             if (block is not null)
             {
                 hash = block.CalculateHash();

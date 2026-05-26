@@ -117,10 +117,7 @@ namespace Nethermind.TxPool.Test.Collections
                 Interlocked.Increment(ref _allCount);
             }
 
-            ~WithFinalizer()
-            {
-                Interlocked.Increment(ref _finalizedCount);
-            }
+            ~WithFinalizer() => Interlocked.Increment(ref _finalizedCount);
         }
 
         private class WithFinalizerComparer : IEqualityComparer<WithFinalizer>

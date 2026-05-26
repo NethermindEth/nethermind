@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,7 +14,7 @@ public partial class Bls12381G2MsmPrecompile : IPrecompile<Bls12381G2MsmPrecompi
 {
     public const int ItemSize = 288;
 
-    public static readonly Bls12381G2MsmPrecompile Instance = new();
+    public static Bls12381G2MsmPrecompile Instance { get; } = new();
 
     private Bls12381G2MsmPrecompile() { }
 
