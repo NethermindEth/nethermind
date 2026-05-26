@@ -229,6 +229,53 @@ public class SparseRevealTests
     }
 
     [Test]
+    public void SparseRootComputer_TwoConsecutiveBlocks_MatchesPatricia()
+    {
+        // This reproduces the EXPB flow: two consecutive blocks where
+        // block 2 updates accounts that exist from block 1.
+        MemDb db = new();
+
+        // Block 1: Insert 20 accounts
+        PatriciaTree tree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        for (int i = 0; i < 20; i++)
+            tree.Set(TestItem.Keccaks[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 block1Root = tree.RootHash;
+
+        TestContext.Out.WriteLine($"Block 1 root: {block1Root}");
+
+        // Block 2: Update 5 existing accounts
+        byte[][] newRlps = new byte[5][];
+        for (int i = 0; i < 5; i++)
+        {
+            newRlps[i] = TestItem.GenerateIndexedAccountRlp(100 + i);
+            tree.Set(TestItem.Keccaks[i].Bytes, newRlps[i]);
+        }
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 block2Root = tree.RootHash;
+
+        TestContext.Out.WriteLine($"Block 2 root: {block2Root}");
+
+        // Now reproduce block 2 via SparseRootComputer using block1Root as previous
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        using State.Flat.SparseRootComputer computer = new(reader, block1Root);
+
+        Dictionary<Hash256, LeafUpdate> updates = [];
+        for (int i = 0; i < 5; i++)
+            updates[TestItem.Keccaks[i]] = LeafUpdate.Changed(newRlps[i]);
+
+        computer.SetAccountChanges(updates);
+        Hash256 sparseRoot = computer.ComputeStateRoot();
+
+        TestContext.Out.WriteLine($"Sparse root:  {sparseRoot}");
+
+        sparseRoot.Should().Be(block2Root,
+            "Two-block SparseRootComputer must match Patricia for block 2");
+    }
+
+    [Test]
     public void SparseRootComputer_200Accounts_Update50_MatchesPatricia()
     {
         MemDb db = new();
