@@ -20,6 +20,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
@@ -338,6 +339,14 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>, GetBlobsHandlerV2>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
+
+                // EIP-7805 (FOCIL) — engine_getInclusionListV1 / engine_updatePayloadWithInclusionListV1.
+                // InclusionListTxSource is shared between the update handler (Set) and the tx-source
+                // pipeline decorator (read on every BuildBlock), so it must be a singleton.
+                .AddSingleton<InclusionListTxSource>()
+                .AddDecorator<IBlockProducerTxSourceFactory, InclusionListBlockProducerTxSourceFactory>()
+                .AddSingleton<IHandler<ArrayPoolList<byte[]>>, GetInclusionListTransactionsHandler>()
+                .AddSingleton<IHandler<(string, byte[][]), string?>, UpdatePayloadWithInclusionListHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>

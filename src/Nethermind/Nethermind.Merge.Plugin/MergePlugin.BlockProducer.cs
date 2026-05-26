@@ -31,7 +31,6 @@ namespace Nethermind.Merge.Plugin
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
 
-                // TODO: wire IL tx source via BlockProducerEnvFactory once FOCIL ILs are sourced from DI.
                 IBlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.CreatePersistent();
 
                 PostMergeBlockProducer postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);

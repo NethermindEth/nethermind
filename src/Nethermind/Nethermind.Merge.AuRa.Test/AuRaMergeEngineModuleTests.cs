@@ -231,8 +231,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            InclusionListTxSource = new InclusionListTxSource(EthereumEcdsa, SpecProvider, LogManager);
-            // TODO: wire InclusionListTxSource through BlockProducerEnvFactory for AuRa+FOCIL block production.
+            InclusionListTxSource = Container.Resolve<InclusionListTxSource>();
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.CreatePersistent();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;

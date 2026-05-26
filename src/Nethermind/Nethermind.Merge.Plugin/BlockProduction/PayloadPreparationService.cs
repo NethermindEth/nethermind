@@ -52,6 +52,25 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
 
+    // EIP-7805 (FOCIL) — metadata kept alongside _payloadStorage so engine_updatePayloadWithInclusionListV1
+    // can force-rebuild the same payloadId after the CL injects an inclusion list. The IL transactions
+    // themselves live in InclusionListTxSource (registered into the tx-source pipeline via
+    // InclusionListBlockProducerTxSourceFactory); ForceRebuildPayload just re-triggers ImproveBlock so
+    // the next pass drains them.
+    private readonly ConcurrentDictionary<string, RebuildSlot> _rebuildSlots = new();
+
+    private sealed record RebuildSlot(
+        BlockHeader ParentHeader,
+        PayloadAttributes PayloadAttributes,
+        SharedCancellationTokenSource Cts)
+    {
+        // Volatile to make the count visible across the producer thread and the test
+        // thread checking GetPayloadBuildCount without a lock.
+        private int _buildCount;
+        public uint BuildCount => (uint)Volatile.Read(ref _buildCount);
+        public void IncrementBuildCount() => Interlocked.Increment(ref _buildCount);
+    }
+
     public PayloadPreparationService(
         IBlockProducer blockProducer,
         ITxPool txPool,
@@ -135,7 +154,13 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
-    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
+    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+    {
+        RebuildSlot slot = _rebuildSlots.AddOrUpdate(payloadId,
+            _ => new RebuildSlot(parentHeader, payloadAttributes, cts),
+            (_, existing) => existing with { Cts = cts });
+        slot.IncrementBuildCount();
+
         _payloadStorage.AddOrUpdate(payloadId,
             id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
             (id, currentContext) =>
@@ -165,6 +190,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     return currentContext;
                 }
             });
+    }
 
 
     private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
@@ -326,6 +352,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
                     {
                         context.DisposeAndCancelOngoingImprovements();
+                        _rebuildSlots.TryRemove(payload.Key, out _);
                         if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
                     }
                 }
@@ -433,20 +460,50 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 context.DisposeAndCancelOngoingImprovements();
             }
         }
+        _rebuildSlots.Clear();
     }
 
     public void CancelBlockProduction(string payloadId) =>
         // GetPayload cancels the request
         _ = GetPayload(payloadId);
 
-    // EIP-7805 (FOCIL): forces a payload rebuild after engine_updatePayloadWithInclusionListV1.
-    // TODO: actual rebuild implementation needs to be wired up once payload-store schema is FOCIL-aware.
-    public void ForceRebuildPayload(string payloadId) { }
+    /// <summary>
+    /// EIP-7805 (FOCIL): cancels the current improvement task and starts a new one with the
+    /// same parent/attributes. The inclusion-list transactions injected via
+    /// <see cref="Transactions.InclusionListTxSource.Set"/> are picked up by the tx-source
+    /// pipeline (registered via <see cref="Transactions.InclusionListBlockProducerTxSourceFactory"/>)
+    /// on the next pass.
+    /// </summary>
+    public void ForceRebuildPayload(string payloadId)
+    {
+        if (!_rebuildSlots.TryGetValue(payloadId, out RebuildSlot? slot)) return;
+        if (!_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? currentContext)) return;
 
-    // EIP-7805 (FOCIL): returns the in-progress payload's header for IL validation.
-    // TODO: implement once payload-store schema exposes header without finalizing.
-    public BlockHeader? GetPayloadHeader(string payloadId) => null;
+        Block? best = currentContext.CurrentBestBlock;
+        if (best is null) return;
 
-    // EIP-7805 (FOCIL): test-introspection of build count, replaced by proper telemetry in task 5.
-    public uint? GetPayloadBuildCount(string payloadId) => null;
+        // Cancel the in-flight improvement so the new one isn't gated by the unchanged tx-pool counter.
+        currentContext.CancelOngoingImprovements();
+
+        // Fresh cts: the previous one is cancelled/disposed by CancelOngoingImprovements;
+        // ImproveBlock checks IsCancellationRequested before swapping the context.
+        SharedCancellationTokenSource newCts = new(CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken));
+        ImproveBlock(payloadId, slot.ParentHeader, slot.PayloadAttributes, best, DateTimeOffset.UtcNow, currentContext.BlockFees, newCts);
+    }
+
+    /// <summary>
+    /// EIP-7805 (FOCIL): returns the header of the in-flight payload so the IL handler can
+    /// resolve the active spec for decoding/validation.
+    /// </summary>
+    public BlockHeader? GetPayloadHeader(string payloadId) =>
+        _payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? ctx)
+            ? ctx.CurrentBestBlock?.Header
+            : null;
+
+    /// <summary>
+    /// EIP-7805 (FOCIL): how many times ImproveBlock has been entered for this payloadId.
+    /// Increments on every (re)build, including the post-IL force-rebuild.
+    /// </summary>
+    public uint? GetPayloadBuildCount(string payloadId) =>
+        _rebuildSlots.TryGetValue(payloadId, out RebuildSlot? slot) ? slot.BuildCount : null;
 }
