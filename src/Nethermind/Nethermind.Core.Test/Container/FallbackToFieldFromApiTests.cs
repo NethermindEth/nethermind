@@ -43,7 +43,7 @@ public class FallbackToFieldFromApiTests
         Action act = (() => container.Resolve<TargetService>());
         if (allowRedundantRegistrations)
         {
-            Assert.That(Assert.Catch(act), Is.Null.Or.Not.InstanceOf<InvalidConfigurationException>());
+            Assert.That(act, Throws.Nothing);
         }
         else
         {

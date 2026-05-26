@@ -58,7 +58,7 @@ public class ReadOnlyBlockTreeTests
         }
         else
         {
-            Assert.That(Assert.Catch(action), Is.Null.Or.Not.InstanceOf<InvalidOperationException>());
+            Assert.That(action, Throws.Nothing);
         }
     }
 }

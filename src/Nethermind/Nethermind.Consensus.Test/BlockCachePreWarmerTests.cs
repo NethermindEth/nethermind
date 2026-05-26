@@ -3,7 +3,9 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Concurrent;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Microsoft.Extensions.ObjectPool;
@@ -17,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -237,6 +240,50 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
+    /// Verifies that the prewarmer does not inherit the <see cref="ProcessingThread.IsBlockProcessingThread"/>
+    /// flag from the caller, so speculative EVM work is attributed to the _other* metric counters.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_DoesNotFlowIsBlockProcessingThread_IntoTask()
+    {
+        bool observedFlag = true;
+        using ManualResetEventSlim observed = new(initialState: false);
+
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        FlagCapturingPolicy flagPolicy = new(envFactory, preBlockCaches, observed, v => observedFlag = v);
+        using BlockCachePreWarmer flagWarmer = new(
+            flagPolicy,
+            maxPoolSize: 10,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        Task prewarmTask = Task.CompletedTask;
+        ProcessingThread.IsBlockProcessingThread = true;
+        try
+        {
+            prewarmTask = flagWarmer.PreWarmCaches(BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+            Assert.That(
+                ProcessingThread.IsBlockProcessingThread,
+                Is.True,
+                "scheduling prewarming must not disturb the caller's thread-local flag");
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = false;
+        }
+
+        await prewarmTask;
+        Assert.That(observed.Wait(TimeSpan.FromSeconds(5)), Is.True, "the flag-capturing policy must have been invoked");
+        Assert.That(observedFlag, Is.False, "IsBlockProcessingThread must be false inside the prewarmer task");
+    }
+
+    /// <summary>
     /// Verifies the prewarmer gate logic: ParallelExecution ON skips speculative prewarming
     /// only when BAL is active for the spec (so parallel execution can actually run); when
     /// BAL is not active, speculative prewarming runs regardless of ParallelExecution.
@@ -388,6 +435,48 @@ public class BlockCachePreWarmerTests
             .WithTransactions(txs)
             .WithGasLimit(30_000_000)
             .TestObject;
+    }
+
+    /// <summary>
+    /// Pool policy that captures the processing-thread flag when the prewarmer builds an env.
+    /// </summary>
+    private sealed class FlagCapturingPolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        ManualResetEventSlim observed,
+        Action<bool> capture)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        private readonly ManualResetEventSlim _observed = observed;
+        private readonly Action<bool> _capture = capture;
+        private int _captured;
+
+        public IReadOnlyTxProcessorSource Create()
+        {
+            IReadOnlyTxProcessorSource inner = factory.Create(caches);
+            return new CapturingEnv(inner, this);
+        }
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        private sealed class CapturingEnv(
+            IReadOnlyTxProcessorSource inner,
+            FlagCapturingPolicy owner)
+            : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            {
+                if (Interlocked.CompareExchange(ref owner._captured, 1, 0) == 0)
+                {
+                    owner._capture(ProcessingThread.IsBlockProcessingThread);
+                    owner._observed.Set();
+                }
+
+                return inner.Build(baseBlock);
+            }
+
+            public void Dispose() => inner.Dispose();
+        }
     }
 
     /// <summary>

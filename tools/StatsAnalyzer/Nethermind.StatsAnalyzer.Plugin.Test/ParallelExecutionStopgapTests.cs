@@ -53,7 +53,7 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
         IBlocksConfig blocksConfig = new BlocksConfig { ParallelExecution = false };
         (string fileName, PatternAnalyzerFileTracer tracer) = BuildTracer(blocksConfig, "seq.json");
 
-        RunSingleBlock(tracer, bal: new ReadOnlyBlockAccessList());
+        RunSingleBlock(tracer, bal: new());
 
         Assert.That(_fileSystem.File.ReadAllText(fileName), Is.EqualTo(SingleBlockExpected));
     }
@@ -75,7 +75,7 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
         IBlocksConfig blocksConfig = new BlocksConfig { ParallelExecution = true };
         (string fileName, PatternAnalyzerFileTracer tracer) = BuildTracer(blocksConfig, "parallel.json");
 
-        RunSingleBlock(tracer, bal: new ReadOnlyBlockAccessList());
+        RunSingleBlock(tracer, bal: new());
 
         // Skipped write must leave the seed content intact.
         Assert.That(_fileSystem.File.ReadAllText(fileName), Is.EqualTo(InitialFileContent));
@@ -88,7 +88,7 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
         (string _, PatternAnalyzerFileTracer tracer) = BuildTracer(cfg, "gating.json");
 
         Block sequentialBlock = BuildBlock(bal: null);
-        Block parallelBlock = BuildBlock(bal: new ReadOnlyBlockAccessList());
+        Block parallelBlock = BuildBlock(bal: new());
 
         tracer.StartNewBlockTrace(sequentialBlock);
         Assert.That(ReadTracerSkip(tracer), Is.False,

@@ -38,7 +38,7 @@ internal class ProposedBlockTests
             await blockChain.VotesManager.HandleVote(vote);
         }
 
-        TaskCompletionSource newRoundWaitHandle = new();
+        TaskCompletionSource newRoundWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         blockChain.XdcContext.NewRoundSetEvent += (s, a) => { newRoundWaitHandle.SetResult(); };
 
         //Set current signer as the one that didn't vote
@@ -114,7 +114,7 @@ internal class ProposedBlockTests
         // Our highest QC should be 1 number behind head
         Assert.That(beforeFinalVote.ProposedBlockInfo.BlockNumber, Is.EqualTo(head.Number - 1));
 
-        TaskCompletionSource newRoundWaitHandle = new();
+        TaskCompletionSource newRoundWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         blockChain.XdcContext.NewRoundSetEvent += (s, a) => { newRoundWaitHandle.SetResult(); };
 
         //Set current signer as the one that didn't vote

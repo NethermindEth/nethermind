@@ -111,7 +111,7 @@ public class StateCompositionServiceTests
     {
         IStateReader stateReader = Substitute.For<IStateReader>();
         ManualResetEventSlim entered = new(false);
-        TaskCompletionSource blocker = new();
+        TaskCompletionSource blocker = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         stateReader.WhenForAnyArgs(x =>
             x.RunTreeVisitor<StateCompositionContext>(null!, null))
@@ -147,7 +147,7 @@ public class StateCompositionServiceTests
     {
         IStateReader stateReader = Substitute.For<IStateReader>();
         ManualResetEventSlim entered = new(false);
-        TaskCompletionSource blocker = new();
+        TaskCompletionSource blocker = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         AccountStruct withStorageAccount = new(0, 0,
             Keccak.Zero.ValueHash256, Keccak.Zero.ValueHash256);

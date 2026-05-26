@@ -1452,6 +1452,57 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task forkchoiceUpdated_accepts_safe_ancestor_when_head_is_main_but_ancestor_level_marker_is_stale()
+    {
+        // 1) Build X -> A and X -> B -> C, then set head=C with safe=B (valid ancestry).
+        // 2) Force an inconsistent block-by-number view at level N so A is marked canonical while head remains C at N+1.
+        // 3) Repeat FCU(head=C, safe=B, finalized=X).
+        // Expected: VALID, because B is still on C's real parent path.
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        ExecutionPayload blockX = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
+        Assert.That((await rpc.engine_newPayloadV1(blockX)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(
+            (await rpc.engine_forkchoiceUpdatedV1(new(blockX.BlockHash, blockX.BlockHash, blockX.BlockHash))).Data.PayloadStatus.Status,
+            Is.EqualTo(PayloadStatus.Valid));
+
+        ExecutionPayload blockA = CreateBlockRequest(chain, blockX, TestItem.AddressA);
+        Assert.That((await rpc.engine_newPayloadV1(blockA)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(
+            (await rpc.engine_forkchoiceUpdatedV1(new(blockA.BlockHash, blockX.BlockHash, blockX.BlockHash))).Data.PayloadStatus.Status,
+            Is.EqualTo(PayloadStatus.Valid));
+
+        ExecutionPayload blockB = CreateBlockRequest(chain, blockX, TestItem.AddressB);
+        Assert.That((await rpc.engine_newPayloadV1(blockB)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        ExecutionPayload blockC = CreateBlockRequest(chain, blockB, TestItem.AddressB);
+        Assert.That((await rpc.engine_newPayloadV1(blockC)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+
+        ForkchoiceStateV1 reorgToC = new(headBlockHash: blockC.BlockHash, finalizedBlockHash: blockX.BlockHash, safeBlockHash: blockB.BlockHash);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(reorgToC)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+
+        Block blockAInTree = chain.BlockTree.FindBlock(blockA.BlockHash, BlockTreeLookupOptions.None)!;
+        Block blockCInTree = chain.BlockTree.FindBlock(blockC.BlockHash, BlockTreeLookupOptions.None)!;
+
+        // Deliberately create stale canonical markers: level N -> A, level N+1 -> C.
+        chain.BlockTree.UpdateMainChain(new[] { blockAInTree }, wereProcessed: true);
+        chain.BlockTree.UpdateMainChain(new[] { blockCInTree }, wereProcessed: true);
+
+        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blockC.BlockHash));
+        Assert.That(chain.BlockTree.IsMainChain(blockC.BlockHash), Is.True, "precondition: head level marker points at C");
+        Assert.That(chain.BlockTree.IsMainChain(blockA.BlockHash), Is.True, "precondition: stale marker points at A on C's parent level");
+        Assert.That(chain.BlockTree.IsMainChain(blockB.BlockHash), Is.False, "precondition: true safe ancestor B is off-main only due stale marker");
+
+        ForkchoiceStateV1 repeated = new(headBlockHash: blockC.BlockHash, finalizedBlockHash: blockX.BlockHash, safeBlockHash: blockB.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeated);
+
+        // Must accept by ancestry (B -> C), even if B is temporarily off-main in level markers.
+        Assert.That(result.ErrorCode, Is.EqualTo(0));
+        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+    }
+
+    [Test]
     public async Task forkchoiceUpdated_isInconsistent_takes_fast_path_when_candidate_is_on_main_chain()
     {
         // Coverage for the candidateIsMain/headNotMain branch of IsInconsistent: stale canonical
