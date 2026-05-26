@@ -326,12 +326,7 @@ namespace Nethermind.Synchronization.Test
             Block? block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
             Block? block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
-            // Genesis is registered in the container's block tree and has zero
-            // transactions, so GetReceipts returns the legitimate empty array.
             SyncServer.GetReceipts(block0!.Hash!).Should().BeEmpty();
-            // block1 was added to a locally-scoped block tree that the container does
-            // not see, and TestItem.KeccakA is a totally unknown hash. Both should
-            // return null to distinguish "not known" from "known and empty".
             SyncServer.GetReceipts(block1!.Hash!).Should().BeNull();
             SyncServer.GetReceipts(TestItem.KeccakA).Should().BeNull();
         }
