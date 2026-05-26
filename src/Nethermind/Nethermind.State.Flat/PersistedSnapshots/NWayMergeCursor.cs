@@ -3,8 +3,8 @@
 
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using Nethermind.State.Flat.Storage;
-using HsstEnumerator = Nethermind.State.Flat.Hsst.HsstEnumerator<Nethermind.State.Flat.Storage.WholeReadSessionReader, Nethermind.State.Flat.Hsst.NoOpPin>;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using HsstEnumerator = Nethermind.State.Flat.Hsst.HsstEnumerator<Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionReader, Nethermind.State.Flat.Hsst.NoOpPin>;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 

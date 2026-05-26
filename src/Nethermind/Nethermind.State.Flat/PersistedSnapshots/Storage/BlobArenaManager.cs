@@ -4,7 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// File pool for trie-node RLP bytes. Standalone — owns its own file pool, with no

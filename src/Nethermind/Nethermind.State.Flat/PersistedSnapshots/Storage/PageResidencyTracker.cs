@@ -6,7 +6,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// Receives eviction notifications surfaced by <see cref="PageResidencyTracker.TryTouch"/>.

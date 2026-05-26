@@ -3,7 +3,7 @@
 
 using System.Buffers;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// Writer that appends trie-node RLPs into a blob arena file. The returned

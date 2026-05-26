@@ -5,7 +5,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Numerics;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// Manages multiple arena files for snapshot storage. Handles allocation,

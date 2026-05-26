@@ -9,7 +9,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence.BloomFilter;
-using Nethermind.State.Flat.Storage;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Prometheus;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;

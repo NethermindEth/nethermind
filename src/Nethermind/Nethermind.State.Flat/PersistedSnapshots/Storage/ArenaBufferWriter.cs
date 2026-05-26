@@ -6,7 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// Arena-backed <see cref="IByteBufferWriter"/> with a 1 MiB write-buffer plus

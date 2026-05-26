@@ -9,7 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.Storage;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst.BTree;

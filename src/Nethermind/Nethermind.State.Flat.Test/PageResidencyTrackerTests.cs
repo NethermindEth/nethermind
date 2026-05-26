@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
 using Nethermind.State.Flat.Hsst;
-using Nethermind.State.Flat.Storage;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;

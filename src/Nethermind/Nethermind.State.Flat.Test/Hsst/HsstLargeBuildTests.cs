@@ -7,7 +7,7 @@ using System.IO;
 using System.IO.MemoryMappedFiles;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst;
-using Nethermind.State.Flat.Storage;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Hsst.BTree;
 using Nethermind.State.Flat.Hsst.PackedArray;
 using Nethermind.State.Flat.Hsst.DenseByteIndex;

@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Core.Utils;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// A single append-only arena file for storing persisted snapshot HSST data.

@@ -4,7 +4,7 @@
 using System.Numerics;
 using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// Pointer-backed <see cref="IHsstByteReader{TPin}"/> over an arena-mmap region. On every

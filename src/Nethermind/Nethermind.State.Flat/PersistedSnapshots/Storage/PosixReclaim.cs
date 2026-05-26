@@ -3,7 +3,7 @@
 
 using System.Runtime.InteropServices;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>Outcome of a <see cref="PosixReclaim.TryPunchHole"/> attempt.</summary>
 internal enum PunchHoleOutcome

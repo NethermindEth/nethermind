@@ -3,7 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.State.Flat.Persistence.BloomFilter;
-using Nethermind.State.Flat.Storage;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 

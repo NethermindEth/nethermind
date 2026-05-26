@@ -12,7 +12,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Hsst;
-using Nethermind.State.Flat.Storage;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;

@@ -3,7 +3,7 @@
 
 using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// <see cref="IHsstByteReader{TPin}"/> over a <see cref="WholeReadSession"/>'s mmap view.

@@ -13,7 +13,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.Storage;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;

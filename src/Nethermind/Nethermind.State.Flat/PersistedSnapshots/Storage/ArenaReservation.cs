@@ -4,7 +4,7 @@
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// A reservation of space within an arena. Delegates span access to the owning <see cref="IArenaManager"/>.

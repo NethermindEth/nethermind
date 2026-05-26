@@ -4,7 +4,7 @@
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Core.Utils;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// A blob arena file storing trie-node RLP bytes. Owns its <see cref="SafeFileHandle"/>

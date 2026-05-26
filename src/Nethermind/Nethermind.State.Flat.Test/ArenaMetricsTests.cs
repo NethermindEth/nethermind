@@ -4,7 +4,7 @@
 using System;
 using System.IO;
 using FluentAssertions;
-using Nethermind.State.Flat.Storage;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NonBlocking;
 using NUnit.Framework;
 

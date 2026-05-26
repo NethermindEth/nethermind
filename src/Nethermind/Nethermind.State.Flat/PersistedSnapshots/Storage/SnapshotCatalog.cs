@@ -5,7 +5,7 @@ using System.Buffers.Binary;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// Persists snapshot metadata in a key-value store (RocksDB column or MemDb).

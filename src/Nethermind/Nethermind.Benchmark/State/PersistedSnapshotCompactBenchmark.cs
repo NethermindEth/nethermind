@@ -14,7 +14,7 @@ using Nethermind.Int256;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.Storage;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.Benchmarks.State;
 
