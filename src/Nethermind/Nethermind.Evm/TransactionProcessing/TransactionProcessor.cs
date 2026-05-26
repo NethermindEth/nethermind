@@ -1208,7 +1208,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
         }
 
-        private GasConsumed RefundFailedEip8037Gas(
+        protected virtual GasConsumed RefundFailedEip8037Gas(
             Transaction tx,
             IReleaseSpec spec,
             ExecutionOptions opts,
