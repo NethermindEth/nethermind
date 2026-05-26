@@ -160,7 +160,7 @@ internal ref struct BSearchIndexWriter<TWriter>
     ///
     /// <see cref="BSearchIndexMetadata.KeyType"/>, <see cref="BSearchIndexMetadata.KeySlotSize"/>,
     /// and the common-key-prefix passed at construction are taken as-is — the writer does
-    /// not auto-detect or adjust. Callers (e.g. <c>HsstIndexBuilder</c>) decide both jointly
+    /// not auto-detect or adjust. Callers (e.g. <c>HsstBTreeBuilder</c>) decide both jointly
     /// via <see cref="BSearchIndexLayoutPlanner.Plan"/> and pre-strip prefix bytes from
     /// each <see cref="AddKey"/> call so that <see cref="_keyBuf"/> already holds suffixes.
     /// </summary>

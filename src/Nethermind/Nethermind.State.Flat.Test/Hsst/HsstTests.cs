@@ -228,7 +228,7 @@ public class HsstTests
     /// the entry's flag byte. Without the trigger-3 single-entry short-circuit
     /// in <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}"/>.Build,
     /// FlushPendingNotOnCurrentPage drains the lone pending entry as a direct
-    /// Entry descriptor and EmitInlineLeaf never runs. HsstIndexBuilder.Build's
+    /// Entry descriptor and EmitInlineLeaf never runs. BuildIndex's
     /// currentNative.Count == 1 early-return then returns
     /// <c>absoluteIndexStart - only.ChildOffset</c> — the entry record's full
     /// byte length (1 + keyLen + LEB128 + valueLen) — as the rootSize, which

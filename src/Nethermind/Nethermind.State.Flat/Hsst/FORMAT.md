@@ -669,12 +669,10 @@ add a new file that encodes or decodes HSST bytes, append it here.
 
 Writers / encoders:
 - `Hsst/HsstBTreeBuilder.cs` — top-level HSST builder; writes the data region,
-  drives the index builder, appends the trailing `IndexType` byte. Supports
-  both `BTree` (0x01, key-after-value entries) and `BTreeKeyFirst` (0x07,
-  key-first entries) via a constructor flag.
-- `Hsst/HsstIndexBuilder.cs` — drives B-tree shape (leaf splitting,
-  intermediate-node promotion). Aware of key-first entry layout so its
-  separator-recompute reads can locate keys without skipping a LEB128.
+  builds the B-tree index region (leaf splitting, intermediate-node promotion),
+  appends the trailing `IndexType` byte. Supports both `BTree` (0x01,
+  key-after-value entries) and `BTreeKeyFirst` (0x07, key-first entries) via a
+  constructor flag.
 - `BSearchIndex/BSearchIndexWriter.cs` — writes a single B-tree index
   node's bytes (`Metadata | Keys section | Values section`, with the
   fixed 12-byte metadata header at the front).

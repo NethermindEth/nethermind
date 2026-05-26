@@ -470,7 +470,7 @@ public class BSearchIndexTests
     public void CommonKeyPrefix_RoundTrip_AndBoundaryLookups(int keyType)
     {
         // 8 keys all sharing 4-byte prefix "DEADBEEF", then 1 differing byte.
-        // Caller (mimicking HsstIndexBuilder) decides the prefix and the layout
+        // Caller (mimicking HsstBTreeBuilder) decides the prefix and the layout
         // jointly, then passes both to the writer as construction options.
         string[] separatorHexes =
         [

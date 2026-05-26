@@ -38,8 +38,8 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
 
     // Current/next index-build level node lists. Populated during Add (entry
     // descriptors pushed for each Add; collapsed into a leaf descriptor when a
-    // page-local leaf is emitted); then consumed by HsstIndexBuilder.Build as the
-    // bottom level and flipped between iterations as it walks up to the root.
+    // page-local leaf is emitted); then consumed by HsstBTreeBuilder.BuildIndex as
+    // the bottom level and flipped between iterations as it walks up to the root.
     internal NativeMemoryListRef<HsstIndexNodeInfo> CurrentLevel = new(64);
     internal NativeMemoryListRef<HsstIndexNodeInfo> NextLevel = new(64);
 
@@ -48,7 +48,7 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // layout: the i-th descriptor's first-key occupies bytes
     // [i * keyLength, (i + 1) * keyLength). Populated whenever a descriptor is
     // pushed (inline leaf, direct-flush entry, or freshly written intermediate)
-    // so that HsstIndexBuilder.Build can read every child's first-key directly
+    // so that HsstBTreeBuilder.BuildIndex can read every child's first-key directly
     // without reaching back into the already-written data region for a 20-byte
     // address that may straddle a 4 KiB page. Flipped together with the level
     // lists at the end of each Build iteration.
@@ -59,21 +59,22 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     internal byte[]? CommonPrefixArr = null;
     internal byte[]? ValueScratch = null;
 
-    // Per-Build scratch for HsstIndexBuilder.ChooseIntermediateChildCount and
-    // HsstIndexBuilder.WriteIndexNode. Previously stackalloc'd per call (255 bytes
+    // Per-Build scratch for HsstBTreeBuilder.ChooseIntermediateChildCount and
+    // HsstBTreeBuilder.WriteIndexNode. Previously stackalloc'd per call (255 bytes
     // each for firstSep / sepBuf, plus variable-sized int[] / byte[] for sepLengths
     // / keyBuf). Promoted to pooled fields so a hot caller (e.g.
     // PersistedSnapshotBuilder, which fires many small Builds back-to-back) reuses
-    // the rented buffers across calls. Sized lazily by HsstIndexBuilder; null until
+    // the rented buffers across calls. Sized lazily by HsstBTreeBuilder; null until
     // the first build that needs them.
     internal byte[]? IndexFirstSepScratch = null;
     internal byte[]? IndexSepBufScratch = null;
     internal byte[]? IndexKeyBufScratch = null;
     internal int[]? IndexSepLengthsScratch = null;
 
-    // Root node's first-entry full key, populated by HsstIndexBuilder.Build at its
-    // final return so HsstIndexBuilder.CopyRootPrefixBytes can supply the trailer's
-    // RootPrefix bytes from memory rather than re-reading from the data section.
+    // Root node's first-entry full key, populated by HsstBTreeBuilder.BuildIndex at
+    // its final return so HsstBTreeBuilder.CopyRootPrefixBytes can supply the
+    // trailer's RootPrefix bytes from memory rather than re-reading from the data
+    // section.
     // ArrayPool-backed for cross-build reuse; null until the first non-empty build.
     internal byte[]? RootFirstKey = null;
 
@@ -147,7 +148,7 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
 }
 
 /// <summary>
-/// Per-node record used by <see cref="HsstIndexBuilder{TWriter, TReader, TPin}"/> while
+/// Per-node record used by <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}"/> while
 /// it walks the index region bottom-up. Lifted out of the generic builder so that
 /// <see cref="HsstBTreeBuilderBuffers"/> — which is not generic in <c>TWriter</c> — can
 /// hold preallocated lists of these.

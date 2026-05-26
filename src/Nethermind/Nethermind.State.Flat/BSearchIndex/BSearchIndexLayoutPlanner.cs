@@ -8,7 +8,7 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// (KeyType, KeySlotSize) — from per-entry separator lengths and a pre-computed
 /// cross-entry LCP.
 ///
-/// Used by callers (e.g. <c>HsstIndexBuilder</c>) that already know each
+/// Used by callers (e.g. <c>HsstBTreeBuilder</c>) that already know each
 /// separator's length and have the leaf-wide LCP available from their own state
 /// (no byte content needed). The resulting prefix length and key-type are then
 /// passed to <see cref="BSearchIndexWriter{TWriter}"/> as construction options,
@@ -197,7 +197,7 @@ internal static class BSearchIndexLayoutPlanner
 
     /// <summary>
     /// Slot-widening rule shared by <see cref="PlanFromProfile"/> and callers that size a
-    /// node before planning it (e.g. <c>HsstIndexBuilder</c>'s split heuristic): the
+    /// node before planning it (e.g. <c>HsstBTreeBuilder</c>'s split heuristic): the
     /// SIMD-eligible Uniform slot width a node whose longest separator is
     /// <paramref name="maxLen"/> bytes is widened up to — {2, 4, 8} when the per-key
     /// <paramref name="keyLength"/> budget allows — or <paramref name="maxLen"/> unchanged
