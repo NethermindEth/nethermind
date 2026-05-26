@@ -86,8 +86,8 @@ namespace Nethermind.Specs.Test
         }
 
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.AmsterdamBlockTimestamp, false)]
-        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.Fork7805BlockTimestamp, true)]
-        public void Fork7805_eips(long blockNumber, ulong timestamp, bool isEnabled) =>
+        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.BogotaBlockTimestamp, true)]
+        public void Bogota_eips(long blockNumber, ulong timestamp, bool isEnabled) =>
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7805Enabled.Should().Be(isEnabled);
 
         [Test]

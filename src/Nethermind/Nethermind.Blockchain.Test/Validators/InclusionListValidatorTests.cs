@@ -28,7 +28,7 @@ public class InclusionListValidatorTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new CustomSpecProvider(((ForkActivation)0, Fork7805.Instance));
+        _specProvider = new CustomSpecProvider(((ForkActivation)0, Bogota.Instance));
 
         // MemDb stateDb = new();
         // TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);

@@ -54,7 +54,7 @@ public static class SszRestPaths
     public const string PostV2PayloadBodiesByHash = "POST /engine/v2/payloads/bodies/by-hash";
     public const string PostV2PayloadBodiesByRange = "POST /engine/v2/payloads/bodies/by-range";
 
-    // Fork7805 (FOCIL)
+    // Bogota (FOCIL — EIP-7805)
     public const string PostV6Payloads = "POST /engine/v6/payloads";
     public const string GetV1InclusionList = "GET /engine/v1/inclusion_list";
     public const string PostV1UpdatePayloadWithInclusionList = "POST /engine/v1/payloads/{payload_id}/inclusion_list";

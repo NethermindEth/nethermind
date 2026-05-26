@@ -29,7 +29,7 @@ public static class EngineApiVersions
         public const int V3 = 3; // Cancun
         public const int V4 = 4; // Prague/Osaka
         public const int V5 = 5; // Amsterdam
-        public const int V6 = 6; // Fork7805 (FOCIL)
+        public const int V6 = 6; // Bogota (FOCIL)
         public const int Latest = V6;
     }
 
@@ -73,14 +73,14 @@ public static class EngineApiVersions
     /// <summary>engine_getInclusionList method versions (EIP-7805).</summary>
     public static class GetInclusionList
     {
-        public const int V1 = 1; // Fork7805
+        public const int V1 = 1; // Bogota
         public const int Latest = V1;
     }
 
     /// <summary>engine_updatePayloadWithInclusionList method versions (EIP-7805).</summary>
     public static class UpdatePayloadWithInclusionList
     {
-        public const int V1 = 1; // Fork7805
+        public const int V1 = 1; // Bogota
         public const int Latest = V1;
     }
 }

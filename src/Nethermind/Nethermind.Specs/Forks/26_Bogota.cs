@@ -3,11 +3,11 @@
 
 namespace Nethermind.Specs.Forks;
 
-public class Fork7805() : NamedReleaseSpec<Fork7805>(Amsterdam.Instance)
+public class Bogota() : NamedReleaseSpec<Bogota>(Amsterdam.Instance)
 {
     public override void Apply(NamedReleaseSpec spec)
     {
-        spec.Name = "Fork7805";
+        spec.Name = "Bogota";
         spec.IsEip7805Enabled = true;
     }
 }

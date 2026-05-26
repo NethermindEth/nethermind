@@ -31,7 +31,7 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
     public const ulong BPO1BlockTimestamp = 0x69383057;
     public const ulong BPO2BlockTimestamp = 0x695db057;
     public const ulong AmsterdamBlockTimestamp = ulong.MaxValue - 1;
-    public const ulong Fork7805BlockTimestamp = ulong.MaxValue;
+    public const ulong BogotaBlockTimestamp = ulong.MaxValue;
 
     public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
     public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);
@@ -40,7 +40,7 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
     public static ForkActivation BPO1Activation { get; } = (ParisBlockNumber + 5, BPO1BlockTimestamp);
     public static ForkActivation BPO2Activation { get; } = (ParisBlockNumber + 6, BPO2BlockTimestamp);
     public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 7, AmsterdamBlockTimestamp);
-    public static ForkActivation Fork7805Activation { get; } = (ParisBlockNumber + 8, Fork7805BlockTimestamp);
+    public static ForkActivation BogotaActivation { get; } = (ParisBlockNumber + 8, BogotaBlockTimestamp);
 
     public MainnetSpecProvider() : this(new ForkSchedule
     {
@@ -65,7 +65,7 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
         [BPO1BlockTimestamp] = BPO1.Instance,
         [BPO2BlockTimestamp] = BPO2.Instance,
         [AmsterdamBlockTimestamp] = Amsterdam.Instance,
-        [Fork7805BlockTimestamp] = Fork7805.Instance,
+        [BogotaBlockTimestamp] = Bogota.Instance,
     })
     { }
 

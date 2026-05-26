@@ -46,7 +46,7 @@ public partial class EngineModuleTests
         string stateRoot, string payloadId)
     {
         using MergeTestBlockchain chain =
-            await CreateBlockchain(Fork7805.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+            await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Hash256 expectedBlockHash = new(blockHash);
@@ -122,7 +122,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Can_get_inclusion_list_V5()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         Transaction tx1 = Build.A.Transaction
@@ -165,7 +165,7 @@ public partial class EngineModuleTests
         string blockHash,
         string stateRoot)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 prevRandao = Keccak.Zero;
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -231,7 +231,7 @@ public partial class EngineModuleTests
         string blockFees,
         string gasUsed)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         Transaction tx = Build.A.Transaction
@@ -297,7 +297,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Can_force_rebuild_payload()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
         PayloadPreparationService payloadPreparationService = (PayloadPreparationService)chain.PayloadPreparationService!;
 
         BlockHeader parentHeader = chain.BlockTree.Head!.Header;
