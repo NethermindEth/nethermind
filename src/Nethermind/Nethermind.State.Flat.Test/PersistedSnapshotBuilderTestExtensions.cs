@@ -54,15 +54,15 @@ internal static class PersistedSnapshotBuilderTestExtensions
         using PooledByteBufferWriter pooled = new(checked((int)totalSize));
         int n = snapshots.Count;
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using NativeMemoryListRef<(IntPtr Ptr, long Len)> viewsList = new(n, n);
+        using NativeMemoryListRef<WholeReadSessionView> viewsList = new(n, n);
         WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
-        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
+        Span<WholeReadSessionView> views = viewsList.AsSpan();
         try
         {
             for (int i = 0; i < n; i++)
             {
                 sessionArr[i] = snapshots[i].BeginWholeReadSession();
-                views[i] = sessionArr[i].GetRawView();
+                views[i] = sessionArr[i].GetView();
             }
             PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
                 views, ref pooled.GetWriter(), bloom: Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue());

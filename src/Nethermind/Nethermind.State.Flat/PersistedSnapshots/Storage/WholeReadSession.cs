@@ -43,15 +43,16 @@ public sealed class WholeReadSession : IDisposable
     }
 
     /// <summary>
-    /// Raw view fields suitable for caching across an entire merge loop, then constructing
-    /// <see cref="WholeReadSessionReader"/> instances on demand without re-paying the
-    /// per-call dispose check. The returned pointer is owned by this session — the caller
-    /// must ensure the session is not disposed while the cached fields are in use.
+    /// Cached view coordinates suitable for caching across an entire merge loop, then
+    /// constructing <see cref="WholeReadSessionReader"/> instances on demand without
+    /// re-paying the per-call dispose check. The returned pointer is owned by this
+    /// session — the caller must ensure the session is not disposed while the view is
+    /// in use.
     /// </summary>
-    public unsafe (IntPtr DataPtr, long Length) GetRawView()
+    public unsafe WholeReadSessionView GetView()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return ((IntPtr)_view.DataPtr, _view.Size);
+        return new WholeReadSessionView((IntPtr)_view.DataPtr, _view.Size);
     }
 
     /// <summary>

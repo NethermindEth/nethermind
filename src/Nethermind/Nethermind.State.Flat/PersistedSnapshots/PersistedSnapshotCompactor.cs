@@ -123,9 +123,9 @@ public class PersistedSnapshotCompactor(
         // value span — no pre-pass on this side.
         int n = snapshots.Count;
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using NativeMemoryListRef<(IntPtr Ptr, long Len)> viewsList = new(n, n);
+        using NativeMemoryListRef<WholeReadSessionView> viewsList = new(n, n);
         WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
-        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
+        Span<WholeReadSessionView> views = viewsList.AsSpan();
         try
         {
             long estimatedSize = 0;
@@ -136,7 +136,7 @@ public class PersistedSnapshotCompactor(
                 // snapshot that supersedes these sources warms its own cache lazily on the
                 // first read of each address, so there's no value in keeping these pages.
                 sessionArr[i] = snapshots[i].BeginWholeReadSession();
-                views[i] = sessionArr[i].GetRawView();
+                views[i] = sessionArr[i].GetView();
 
                 estimatedSize += snapshots[i].Size;
                 using PersistedSnapshotBloom srcBloom = bloomManager.LeaseOrSentinel(snapshots[i].To);
