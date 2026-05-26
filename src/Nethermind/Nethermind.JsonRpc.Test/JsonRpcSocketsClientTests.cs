@@ -195,7 +195,7 @@ public class JsonRpcSocketsClientTests
 
             int concurrentCall = 0;
             TaskCompletionSource completeSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            async ValueTask ResponseFunc(CallInfo c)CallInfo c)
+            async ValueTask ResponseFunc(CallInfo c)
             {
                 Interlocked.Increment(ref concurrentCall);
                 await completeSource.Task;
