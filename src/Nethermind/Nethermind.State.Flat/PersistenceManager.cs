@@ -285,7 +285,7 @@ public class PersistenceManager(
 
                 stateNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStateTrieNode(path, node);
+                batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
 
                 node.IsPersisted = true;
             }
@@ -313,7 +313,7 @@ public class PersistenceManager(
 
                 storageNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, node);
+                batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 node.IsPersisted = true;
             }
 

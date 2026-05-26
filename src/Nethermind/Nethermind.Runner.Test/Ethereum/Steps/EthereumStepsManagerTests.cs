@@ -278,7 +278,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     [RunnerStepDependencies(dependencies: [], dependents: [typeof(StepB)])]
     public class StepE : IStep
     {
-        public TaskCompletionSource Waiter = new();
+        public TaskCompletionSource Waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public virtual Task Execute(CancellationToken cancellationToken) => Waiter.Task;
     }
