@@ -80,6 +80,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             ParentStateTrieNodeReader proofReader = new(snapshotBundle.ReadOnlyBundle);
             _sparseRootComputer = new SparseRootComputer(proofReader, currentStateId.StateRoot.ToCommitment());
+            ILogger initLogger = logManager.GetClassLogger<FlatWorldStateScope>();
+            if (initLogger.IsInfo) initLogger.Info(
+                $"SPARSE TRIE ENABLED: SparseRootComputer created with previousStateRoot={currentStateId.StateRoot}");
         }
 
         _warmer.OnEnterScope();
@@ -119,6 +122,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => _sparseComputedRoot ?? _stateTree.RootHash;
 
+    private static int _sparseMatchCount;
+    private static int _sparseMismatchCount;
+    private static int _sparseFailCount;
+
     public void UpdateRootHash()
     {
         // Always run Patricia — needed for Commit() persistence in M2
@@ -128,21 +135,39 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             try
             {
+                System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
                 _sparseComputedRoot = _sparseRootComputer.ComputeStateRoot();
+                sw.Stop();
 
-                if (_sparseComputedRoot != _stateTree.RootHash)
+                if (_sparseComputedRoot == _stateTree.RootHash)
                 {
+                    int matchCount = Interlocked.Increment(ref _sparseMatchCount);
+                    if (matchCount % 100 == 1 || matchCount <= 5)
+                    {
+                        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                        if (logger.IsInfo) logger.Info(
+                            $"SPARSE ROOT MATCH #{matchCount}! Root={_sparseComputedRoot}, " +
+                            $"SparseTime={sw.ElapsedMilliseconds}ms, " +
+                            $"Totals: match={matchCount} mismatch={_sparseMismatchCount} fail={_sparseFailCount}");
+                    }
+                }
+                else
+                {
+                    int mismatchCount = Interlocked.Increment(ref _sparseMismatchCount);
                     ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
                     if (logger.IsWarn) logger.Warn(
-                        $"Sparse trie root mismatch! Patricia={_stateTree.RootHash}, Sparse={_sparseComputedRoot}. " +
-                        "Falling back to Patricia root.");
+                        $"SPARSE ROOT MISMATCH #{mismatchCount}! Patricia={_stateTree.RootHash}, Sparse={_sparseComputedRoot}, " +
+                        $"SparseTime={sw.ElapsedMilliseconds}ms. Falling back to Patricia.");
                     _sparseComputedRoot = null;
                 }
             }
             catch (Exception ex)
             {
+                int failCount = Interlocked.Increment(ref _sparseFailCount);
                 ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                if (logger.IsWarn) logger.Warn($"Sparse trie root computation failed, falling back to Patricia: {ex.Message}");
+                if (logger.IsWarn) logger.Warn(
+                    $"SPARSE ROOT FAIL #{failCount}! Exception={ex.GetType().Name}: {ex.Message}, " +
+                    $"Totals: match={_sparseMatchCount} mismatch={_sparseMismatchCount} fail={failCount}");
                 _sparseComputedRoot = null;
             }
         }
