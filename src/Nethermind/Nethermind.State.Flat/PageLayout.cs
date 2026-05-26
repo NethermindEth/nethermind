@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.State.Flat.Storage;
+namespace Nethermind.State.Flat;
 
 /// <summary>
 /// Page-alignment constants shared by the flat-state on-disk writers. The 4 KiB page size

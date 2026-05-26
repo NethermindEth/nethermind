@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
-using Nethermind.State.Flat.Storage;
+using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.Hsst;
+namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
 /// Pointer-backed <see cref="IHsstByteReader{TPin}"/> over an arena-mmap region. On every
