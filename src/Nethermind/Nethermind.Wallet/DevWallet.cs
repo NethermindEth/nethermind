@@ -106,9 +106,26 @@ namespace Nethermind.Wallet
                 return false;
             }
 
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
-            signature = new Signature(rs, v);
+            signature = Sign(in message, key);
             return true;
+        }
+
+        public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
+        {
+            if (!_passwords.ContainsKey(address) || !CheckPassword(address, passphrase) || !_keys.TryGetValue(address, out PrivateKey key))
+            {
+                signature = null;
+                return false;
+            }
+
+            signature = Sign(in message, key);
+            return true;
+        }
+
+        private static Signature Sign(in ValueHash256 message, PrivateKey key)
+        {
+            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            return new Signature(rs, v);
         }
     }
 }

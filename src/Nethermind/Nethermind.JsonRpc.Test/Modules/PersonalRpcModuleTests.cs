@@ -65,6 +65,24 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public async Task Personal_sign_with_passphrase_does_not_unlock_account()
+        {
+            string passphrase = "testPass";
+            Address address = _wallet.NewAccount(passphrase.Secure());
+            _wallet.LockAccount(address);
+            Assert.That(_wallet.IsUnlocked(address), Is.False, "precondition: account starts locked");
+
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
+
+            string signed = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString(), passphrase);
+            Assert.That(signed, Does.Contain("\"result\""));
+            Assert.That(_wallet.IsUnlocked(address), Is.False, "passphrase sign must not persistently unlock the account");
+
+            string withoutPassphrase = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString());
+            Assert.That(withoutPassphrase, Does.Contain("\"error\""));
+        }
+
+        [Test]
         [Ignore("Cannot reproduce GO signing yet")]
         public async Task Personal_ec_sign()
         {
