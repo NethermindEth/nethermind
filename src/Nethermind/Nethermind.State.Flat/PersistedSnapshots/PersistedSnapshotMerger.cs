@@ -170,10 +170,11 @@ public static class PersistedSnapshotMerger
             WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
             for (int i = 0; i < n; i++) sources[i] = new(enums[i], views[i].Ptr, views[i].Len);
             LoserTreeState state = new(hasMore.AsSpan(), keyBuf, matchingBuf, tree, keyStride);
+            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
+                sources.AsSpan(0, n), state, keySize);
 
             HsstPackedArrayMerger.NWayMerge<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, StatePathBloomCallback>(
-                ref writer, keySize, NodeRef.Size,
-                sources.AsSpan(0, n), state, new StatePathBloomCallback(bloom));
+                ref writer, NodeRef.Size, ref cursor, new StatePathBloomCallback(bloom));
         }
         finally
         {
@@ -947,11 +948,12 @@ public static class PersistedSnapshotMerger
                 sources[j] = new(innerEnums[j], v.Ptr, v.Len);
             }
             LoserTreeState state = new(innerHasMore, keyBuf, matchingBuf, tree, innerKeySize);
+            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
+                sources.AsSpan(0, active), state, innerKeySize);
 
             ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
             HsstPackedArrayMerger.NWayMerge<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, AddrXorStatePathBloomCallback>(
-                ref subWriter, innerKeySize, NodeRef.Size,
-                sources.AsSpan(0, active), state, new AddrXorStatePathBloomCallback(bloom, addrKey));
+                ref subWriter, NodeRef.Size, ref cursor, new AddrXorStatePathBloomCallback(bloom, addrKey));
             perAddrBuilder.FinishValueWrite(subTag);
         }
         finally

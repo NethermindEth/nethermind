@@ -62,6 +62,18 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
     /// </summary>
     public readonly ReadOnlySpan<byte> MinKey => _state.KeyBuf.Slice(_minIdx * _state.KeyStride, _keyLen);
 
+    /// <summary>Logical key length in bytes (≤ <c>state.KeyStride</c>), as supplied to the ctor.</summary>
+    public readonly int KeyLen => _keyLen;
+
+    /// <summary>Value bound of the current winner — routes to the winning source's enumerator's
+    /// <c>CurrentValue</c>. Valid after a true <see cref="MoveNext"/>, until <see cref="AdvanceMatching"/>.</summary>
+    public readonly Bound MinValue => _sources[_minIdx].GetEnumerator().CurrentValue;
+
+    /// <summary>Materialise a fresh reader for the current winner — routes to the winning
+    /// source's <c>CreateReader()</c>. Each call constructs a new reader; the caller is
+    /// responsible for its lifetime (typically a single <c>PinBuffer</c> + <c>using</c>).</summary>
+    public readonly TReader CreateMinReader() => _sources[_minIdx].CreateReader();
+
     /// <param name="sources">N source structs, one per cursor slot, already primed
     /// (each source's enumerator <c>MoveNext</c>'d once, key copied into <c>state.KeyBuf</c>,
     /// <c>state.HasMore[i]</c> set accordingly).</param>
