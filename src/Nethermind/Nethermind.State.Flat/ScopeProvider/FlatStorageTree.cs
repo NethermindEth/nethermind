@@ -24,6 +24,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private readonly SnapshotBundle _bundle;
     private readonly Hash256 _addressHash;
 
+    /// <summary>Exposed for sparse trie proof prefetching (M5).</summary>
+    public Hash256 AccountPathHash => _addressHash;
+
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
     private int _selfDestructKnownStateIdx;
