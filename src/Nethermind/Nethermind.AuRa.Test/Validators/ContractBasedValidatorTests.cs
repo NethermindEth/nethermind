@@ -522,17 +522,7 @@ public class ContractBasedValidatorTests
             _blockTree.FindBlock(_block.Header.Hash, Arg.Any<BlockTreeLookupOptions>()).Returns(new Block(_block.Header.Clone()));
 
             Action preProcess = () => validator.OnBlockProcessingStart(_block);
-            Exception? exception = null;
-            try
-            {
-                preProcess();
-            }
-            catch (Exception e)
-            {
-                exception = e;
-            }
-
-            Assert.That(exception, Is.Null.Or.Not.InstanceOf<InvalidOperationException>(), test.TestName);
+            Assert.DoesNotThrow(preProcess, test.TestName);
             validator.OnBlockProcessingEnd(_block, txReceipts);
             int finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
             _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
