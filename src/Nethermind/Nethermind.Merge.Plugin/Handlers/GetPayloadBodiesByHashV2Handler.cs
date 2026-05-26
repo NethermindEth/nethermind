@@ -16,7 +16,7 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
 {
     protected override ExecutionPayloadBodyV2Result CreateResult(Block block, Hash256 blockHash)
     {
-        using MemoryManager<byte>? blockAccessList = balStore.GetRlp(blockHash);
+        using MemoryManager<byte>? blockAccessList = balStore.GetRlp(block.Number, blockHash);
         return new(block.Transactions, block.Withdrawals, blockAccessList?.Memory.ToArray());
     }
 }

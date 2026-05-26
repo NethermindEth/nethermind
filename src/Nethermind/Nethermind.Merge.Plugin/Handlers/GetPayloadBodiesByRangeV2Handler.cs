@@ -15,7 +15,7 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
 {
     protected override ExecutionPayloadBodyV2Result CreateResult(Block block)
     {
-        using MemoryManager<byte>? blockAccessList = block.Hash is null ? null : balStore.GetRlp(block.Hash);
+        using MemoryManager<byte>? blockAccessList = block.Hash is null ? null : balStore.GetRlp(block.Number, block.Hash);
         return new(block.Transactions, block.Withdrawals, blockAccessList?.Memory.ToArray());
     }
 }

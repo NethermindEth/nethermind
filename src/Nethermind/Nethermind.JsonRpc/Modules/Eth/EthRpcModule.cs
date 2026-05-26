@@ -1102,7 +1102,7 @@ public partial class EthRpcModule(
             return ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
         }
 
-        ReadOnlyBlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Hash);
+        ReadOnlyBlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Number, block.Hash);
 
         return bal is null ?
             ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)

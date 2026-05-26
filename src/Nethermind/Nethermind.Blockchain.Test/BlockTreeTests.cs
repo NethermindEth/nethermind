@@ -115,7 +115,7 @@ public class BlockTreeTests
             .TestObject;
 
         blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
-        using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Hash!);
+        using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Number, block.Hash!);
         missingBal.Should().BeNull();
 
         byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
@@ -125,7 +125,7 @@ public class BlockTreeTests
 
         blockTree.UpdateMainChain([block], true);
 
-        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block.Hash!);
+        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block.Number, block.Hash!);
         persistedBal.Should().NotBeNull();
         persistedBal!.Memory.ToArray().Should().Equal(encodedBal);
     }
