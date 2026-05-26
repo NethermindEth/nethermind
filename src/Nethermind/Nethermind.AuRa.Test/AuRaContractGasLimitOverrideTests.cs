@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Config;
@@ -45,7 +44,7 @@ namespace Nethermind.AuRa.Test
 
             BlocksConfig config = new() { TargetBlockGasLimit = 4000000 };
             AuRaContractGasLimitOverride gasLimitOverride = new(
-                new List<IBlockGasLimitContract> { blockGasLimitContract1, blockGasLimitContract2, blockGasLimitContract3 },
+                [blockGasLimitContract1, blockGasLimitContract2, blockGasLimitContract3],
                 new AuRaContractGasLimitOverride.Cache(),
                 minimum2MlnGasPerBlockWhenUsingBlockGasLimit,
                 new TargetAdjustedGasLimitCalculator(MainnetSpecProvider.Instance, config),

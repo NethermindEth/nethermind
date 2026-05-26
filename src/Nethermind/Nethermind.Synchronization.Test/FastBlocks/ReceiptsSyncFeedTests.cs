@@ -386,7 +386,7 @@ public class ReceiptsSyncFeedTests
         /* we have only 256 receipts altogether but we start with many peers
            so most of our requests will be empty */
 
-        List<ReceiptsSyncBatch?> batches = new();
+        List<ReceiptsSyncBatch?> batches = [];
         for (int i = 0; i < 100; i++)
         {
             batches.Add(await _feed.PrepareRequest());
@@ -412,11 +412,12 @@ public class ReceiptsSyncFeedTests
     {
         LoadScenario(_1024BodiesWithOneTxEach);
         using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
-        ArrayPoolList<TxReceipt[]?> response = new(batch!.Infos.Length, batch!.Infos.Length);
-
-        // default receipts that we use when constructing receipt root for tests have stats code 0
-        // so by using 1 here we create a different tx root
-        response[0] = new[] { Build.A.Receipt.WithStatusCode(1).TestObject };
+        ArrayPoolList<TxReceipt[]?> response = new(batch!.Infos.Length, batch!.Infos.Length)
+        {
+            // default receipts that we use when constructing receipt root for tests have stats code 0
+            // so by using 1 here we create a different tx root
+            [0] = new[] { Build.A.Receipt.WithStatusCode(1).TestObject }
+        };
 
         batch!.Response = response!;
 
@@ -496,4 +497,23 @@ public class ReceiptsSyncFeedTests
         Assert.That(feed.IsFinished, Is.True);
     }
 
+    [TestCase(true, true, true, TestName = "NormalizeZeroBlooms recomputes when logs present and bloom empty")]
+    [TestCase(false, true, false, TestName = "NormalizeZeroBlooms leaves legitimately empty receipts alone")]
+    [TestCase(true, false, false, TestName = "NormalizeZeroBlooms does not overwrite a non-empty bloom")]
+    public void NormalizeZeroBlooms(bool hasLogs, bool startBloomEmpty, bool expectRecompute)
+    {
+        LogEntry[] logs = hasLogs
+            ? [Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject]
+            : [];
+        TxReceipt receipt = Build.A.Receipt.WithLogs(logs).TestObject;
+        Bloom initialBloom = startBloomEmpty
+            ? Bloom.Empty
+            : new Bloom([Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject]);
+        receipt.Bloom = initialBloom;
+        Bloom expectedBloom = expectRecompute ? new Bloom(receipt.Logs) : initialBloom;
+
+        ReceiptsSyncFeed.NormalizeZeroBlooms([receipt]);
+
+        receipt.Bloom.Should().Be(expectedBloom);
+    }
 }

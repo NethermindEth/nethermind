@@ -12,14 +12,13 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Nethermind.Core.Buffers;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -73,8 +72,9 @@ namespace Nethermind.Serialization.Rlp
 
         public int Length => Bytes.Length;
 
-        private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
+        private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = [];
         private static readonly Lock _decoderLock = new();
+        private static readonly CappedArray<byte>[] s_intPreEncodes = CreatePreEncodes();
 
         public static void ResetDecoders()
         {
@@ -126,39 +126,17 @@ namespace Nethermind.Serialization.Rlp
             return span.ToArray();
         }
 
-        internal static ArrayPoolList<byte> ByteSpanToArrayPool(ReadOnlySpan<byte> span)
-        {
-            if (span.Length == 0)
-            {
-                return ArrayPoolList<byte>.Empty();
-            }
-
-            if (span.Length == 1)
-            {
-                int value = span[0];
-                byte[][] arrays = RlpStream.SingleByteArrays;
-                if ((uint)value < (uint)arrays.Length)
-                {
-                    return arrays[value].ToPooledList();
-                }
-            }
-
-            return span.ToPooledList();
-        }
-
-        public static IRlpValueDecoder<T>? GetValueDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;
-        public static IRlpStreamEncoder<T>? GetStreamEncoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamEncoder<T> : null;
-        public static IRlpObjectDecoder<T> GetObjectDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.GetValueOrDefault(new(typeof(T), key)) as IRlpObjectDecoder<T> ?? throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+        public static IRlpDecoder<T>? GetDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpDecoder<T> : null;
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
-            IRlpValueDecoder<T>? rlpDecoder = GetValueDecoder<T>();
+            IRlpDecoder<T>? rlpDecoder = GetDecoder<T>();
             return rlpDecoder is not null
                 ? DecodeArrayPool(ref decoderContext, rlpDecoder, rlpBehaviors, limit)
                 : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
-        public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, IRlpValueDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, IRlpDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             ArrayPoolList<T>? result = null;
             try
@@ -236,7 +214,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static T Decode<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            IRlpValueDecoder<T> rlpDecoder = GetValueDecoder<T>() ??
+            IRlpDecoder<T> rlpDecoder = GetDecoder<T>() ??
                 throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
 
             bool shouldCheckStream = decoderContext.Position == 0 && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes;
@@ -263,52 +241,19 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public static Rlp Encode(Account item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => AccountDecoder.Instance.Encode(item, behaviors);
-
-        public static Rlp Encode(LogEntry item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => LogEntryDecoder.Instance.Encode(item, behaviors);
-
-        public static Rlp Encode(BlockAccessList item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => new(BlockAccessListDecoder.EncodeToBytes(item, behaviors));
-
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            if (item is Rlp rlp)
-            {
-                return rlp;
-            }
-
-            IRlpStreamEncoder<T>? rlpStreamEncoder = GetStreamEncoder<T>();
-            if (rlpStreamEncoder is not null)
-            {
-                int totalLength = rlpStreamEncoder.GetLength(item, behaviors);
-                RlpStream stream = new(totalLength);
-                rlpStreamEncoder.Encode(stream, item, behaviors);
-                return new Rlp(stream.Data.ToArray());
-            }
-
-            return GetObjectDecoder<T>().Encode(item, behaviors);
-        }
+            => item is Rlp rlp
+                ? rlp
+                : GetDecoder<T>() is { } rlpDecoder
+                    ? rlpDecoder.Encode(item, behaviors)
+                    : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            if (items is [])
-            {
-                return OfEmptyList;
-            }
-
-            IRlpStreamEncoder<T>? rlpStreamEncoder = GetStreamEncoder<T>();
-            if (rlpStreamEncoder is not null)
-            {
-                int totalLength = rlpStreamEncoder.GetLength(items, behaviors);
-                RlpStream stream = new(totalLength);
-                rlpStreamEncoder.Encode(stream, items, behaviors);
-                return new Rlp(stream.Data.ToArray());
-            }
-
-            return GetObjectDecoder<T>().Encode(items, behaviors);
-        }
+            => items is []
+                ? OfEmptyList
+                : GetDecoder<T>() is { } rlpDecoder
+                    ? rlpDecoder.Encode(items, behaviors)
+                    : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static Rlp Encode(int[] integers)
         {
@@ -319,6 +264,19 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return Encode(rlpSequence);
+        }
+
+        public static CappedArray<byte> EncodeToCappedArray(int item, ICappedArrayPool? bufferPool = null)
+        {
+            CappedArray<byte>[] cache = s_intPreEncodes;
+            if ((uint)item < (uint)cache.Length)
+            {
+                return cache[item];
+            }
+
+            CappedArray<byte> buffer = bufferPool.SafeRent(LengthOf(item));
+            buffer.AsRlpStream().Encode(item);
+            return buffer;
         }
 
         public static Rlp Encode(Transaction transaction) => Encode(transaction, false);
@@ -341,14 +299,14 @@ namespace Nethermind.Serialization.Rlp
             < 0 => Encode(new BigInteger(value), 8),
             0L => OfZero,
             < 0x80 => new((byte)value),
-            < 0x100 => new(new byte[] { 129, (byte)value }),
-            < 0x1_0000 => new(new byte[] { 130, (byte)(value >> 8), (byte)value }),
-            < 0x100_0000 => new(new byte[] { 131, (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x1_0000_0000 => new(new byte[] { 132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x100_0000_0000 => new(new byte[] { 133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x1_0000_0000_0000 => new(new byte[] { 134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x100_0000_0000_0000 => new(new byte[] { 135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            _ => new(new byte[] { 136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
+            < 0x100 => new([129, (byte)value]),
+            < 0x1_0000 => new([130, (byte)(value >> 8), (byte)value]),
+            < 0x100_0000 => new([131, (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000 => new([132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000 => new([133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000_0000 => new([134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000_0000 => new([135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            _ => new([136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
         };
 
         // caller is responsible for allocating buffer large enough (max 9 bytes)
@@ -749,21 +707,31 @@ namespace Nethermind.Serialization.Rlp
                 return data;
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public readonly void Check(int nextCheck)
             {
                 if (Position != nextCheck)
                 {
-                    throw new RlpException($"Data checkpoint failed. Expected {nextCheck} and is {Position}");
+                    ThrowCheckpointFailed(nextCheck, Position);
                 }
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public readonly void CheckEnd()
             {
                 if (Position != Length)
                 {
-                    throw new RlpException($"Data checkpoint failed. Expected to reach the end of the sequence, but is at {Position}");
+                    ThrowCheckEndFailed(Position);
                 }
             }
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowCheckpointFailed(int expected, int position) =>
+                throw new RlpException($"Data checkpoint failed. Expected {expected} and is {position}");
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowCheckEndFailed(int position) =>
+                throw new RlpException($"Data checkpoint failed. Expected to reach the end of the sequence, but is at {position}");
 
             // This class was introduce to reduce allocations when deserializing receipts. In order to deserialize receipts we first try to deserialize it in new format and then in old format.
             // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings.
@@ -1470,9 +1438,9 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+            public T[] DecodeArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
             {
-                decoder ??= GetValueDecoder<T>()
+                decoder ??= GetDecoder<T>()
                     ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
 
                 int positionCheck = ReadSequenceLength() + Position;
@@ -1577,11 +1545,13 @@ namespace Nethermind.Serialization.Rlp
                 => throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
 
             [StackTraceHidden]
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public readonly void GuardLimit(int count, RlpLimit? limit = null) =>
                 Rlp.GuardLimit(count, Length - Position, limit);
 
             // ReSharper disable once MemberHidesStaticFromOuterClass
             [StackTraceHidden]
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void GuardSize(int actual, int expected) =>
                 Rlp.GuardSize(actual, expected);
         }
@@ -1846,18 +1816,22 @@ namespace Nethermind.Serialization.Rlp
         private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
 
         [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
         {
             RlpLimit l = limit ?? RlpLimit.DefaultLimit;
-            if (count < 0 || count > bytesLeft || count > l.Limit)
+            // First test rejects either bound being negative.
+            if ((bytesLeft | l.Limit) < 0 || (uint)count > (uint)bytesLeft || (uint)count > (uint)l.Limit)
             {
                 ThrowCountOverLimit((uint)count, bytesLeft, l);
             }
         }
 
         [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GuardSize(int actual, int expected)
         {
+            // expected == -1 is the sentinel for "no constraint".
             if (expected >= 0 && actual != expected)
             {
                 ThrowUnexpectedCount(actual, expected);
@@ -1884,6 +1858,23 @@ namespace Nethermind.Serialization.Rlp
         [StackTraceHidden]
         private static void ThrowBufferTooSmall(Span<byte> buffer, int minLength) =>
             throw new ArgumentException($"Buffer is too small. Minimal length: {minLength}, actual length: {buffer.Length}");
+
+        private static CappedArray<byte>[] CreatePreEncodes()
+        {
+            const int maxCache = 1024;
+
+            CappedArray<byte>[] cache = new CappedArray<byte>[maxCache];
+
+            for (int i = 0; i < cache.Length; i++)
+            {
+                int size = LengthOf(i);
+                byte[] buffer = new byte[size];
+                buffer.AsRlpStream().Encode(i);
+                cache[i] = new CappedArray<byte>(buffer);
+            }
+
+            return cache;
+        }
     }
 
     public readonly partial struct RlpDecoderKey(Type type, string key = RlpDecoderKey.Default) : IEquatable<RlpDecoderKey>

@@ -25,7 +25,7 @@ public class ParityTraceAction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public ParityTraceResult? Result { get; set; } = new();
 
-    public List<ParityTraceAction> Subtraces { get; set; } = new();
+    public List<ParityTraceAction> Subtraces { get; set; } = [];
     public Address? Author { get; set; }
     public string? RewardType { get; set; }
     public string? Error { get; set; }

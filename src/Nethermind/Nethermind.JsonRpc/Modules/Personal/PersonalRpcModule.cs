@@ -73,7 +73,9 @@ namespace Nethermind.JsonRpc.Modules.Personal
                 wallet.UnlockAccount(address, notSecuredHere);
             }
 
-            return ResultWrapper<Signature>.Success(wallet.SignMessage(message, address));
+            return wallet.TrySignMessage(message, address, out Signature signature)
+                ? ResultWrapper<Signature>.Success(signature)
+                : ResultWrapper<Signature>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
         }
     }
 }

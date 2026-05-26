@@ -59,7 +59,7 @@ namespace Nethermind.Config.Test
                 bitArray.Set(4, (i >> 4) % 2 == 1);
                 bitArray.Set(5, (i >> 5) % 2 == 1);
 
-                Dictionary<string, string> args = new();
+                Dictionary<string, string> args = [];
                 if (bitArray.Get(4))
                 {
                     args.Add("JsonRpc.Enabled", bitArray.Get(5).ToString());
@@ -71,7 +71,7 @@ namespace Nethermind.Config.Test
                     Environment.SetEnvironmentVariable("NETHERMIND_JSONRPCCONFIG_ENABLED", bitArray.Get(3).ToString(), EnvironmentVariableTarget.Process);
                 }
 
-                Dictionary<string, string> fakeJson = new();
+                Dictionary<string, string> fakeJson = [];
                 if (bitArray.Get(0))
                 {
                     fakeJson.Add("JsonRpc.Enabled", bitArray.Get(1).ToString());

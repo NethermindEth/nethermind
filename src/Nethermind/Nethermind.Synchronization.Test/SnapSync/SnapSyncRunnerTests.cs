@@ -22,7 +22,7 @@ public class SnapSyncRunnerTests
     [TestCase(DispatcherOutcome.Cancels, typeof(OperationCanceledException))]
     public async Task Run_invokes_lifecycle_in_order(DispatcherOutcome outcome, Type? expectedException)
     {
-        List<string> calls = new();
+        List<string> calls = [];
         ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
         factory.When(f => f.EnsureInitialize()).Do(_ => calls.Add("EnsureInitialize"));
         factory.When(f => f.FinalizeSync()).Do(_ => calls.Add("FinalizeSync"));

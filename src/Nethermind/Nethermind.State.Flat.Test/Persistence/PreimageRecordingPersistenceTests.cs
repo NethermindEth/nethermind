@@ -95,11 +95,12 @@ public class PreimageRecordingPersistenceTests
     {
         StateId from = StateId.PreGenesis;
         StateId to = new(1, TestItem.KeccakA);
-        IPersistence.IWriteBatch innerBatch = Substitute.For<IPersistence.IWriteBatch>();
+        FakeWriteBatch innerBatch = new();
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
 
         TreePath path = TreePath.FromHexString("1234");
-        TrieNode node = new(NodeType.Leaf, [0xc1, 0x01]);
+        byte[] rlp = [0xc1, 0x01];
+        TrieNode node = new(NodeType.Leaf, rlp);
         Hash256 addrHash = TestItem.KeccakA;
         Hash256 slotHash = TestItem.KeccakB;
         Account account = TestItem.GenerateIndexedAccount(0);
@@ -107,19 +108,24 @@ public class PreimageRecordingPersistenceTests
 
         using (IPersistence.IWriteBatch batch = _sut.CreateWriteBatch(from, to, WriteFlags.None))
         {
-            batch.SetStateTrieNode(path, node);
-            batch.SetStorageTrieNode(addrHash, path, node);
+            batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
+            batch.SetStorageTrieNode(addrHash, path, node.FullRlp.AsSpan());
             batch.SetStorageRaw(addrHash, slotHash, value);
             batch.SetAccountRaw(addrHash, account);
         }
 
         // Verify trie operations delegated
-        innerBatch.Received(1).SetStateTrieNode(path, node);
-        innerBatch.Received(1).SetStorageTrieNode(addrHash, path, node);
+        innerBatch.SetStateTrieNodeCalls.Should().ContainSingle().Which.Should().BeEquivalentTo((path, rlp));
+        innerBatch.SetStorageTrieNodeCalls.Should().ContainSingle().Which.Should().BeEquivalentTo((addrHash, path, rlp));
 
         // Without preimage, raw operations stay raw
-        innerBatch.Received(1).SetStorageRaw(addrHash, slotHash, Arg.Is<SlotValue?>(v => v != null));
-        innerBatch.Received(1).SetAccountRaw(addrHash, account);
+        ValueHash256 addrHashValue = addrHash.ValueHash256;
+        ValueHash256 slotHashValue = slotHash.ValueHash256;
+        innerBatch.SetStorageRawCalls.Should().ContainSingle()
+            .Which.Should().Match<(ValueHash256 Addr, ValueHash256 Slot, SlotValue? Value)>(c =>
+                c.Addr == addrHashValue && c.Slot == slotHashValue && c.Value != null);
+        innerBatch.SetAccountRawCalls.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo((addrHashValue, account));
 
         // No preimages should be recorded for trie/raw operations
         _preimageDb.Keys.Should().BeEmpty();

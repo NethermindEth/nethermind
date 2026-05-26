@@ -19,7 +19,7 @@ public class DiscoveryConnectionsPool(ILogger logger, INetworkConfig networkConf
     private readonly INetworkConfig _networkConfig = networkConfig;
     private readonly IDiscoveryConfig _discoveryConfig = discoveryConfig;
     private readonly IPAddress _ip = IPAddress.Parse(networkConfig.LocalIp!);
-    private readonly Dictionary<int, Task<IChannel>> _byPort = new();
+    private readonly Dictionary<int, Task<IChannel>> _byPort = [];
 
     public async Task<IChannel> BindAsync(Bootstrap bootstrap, int port)
     {

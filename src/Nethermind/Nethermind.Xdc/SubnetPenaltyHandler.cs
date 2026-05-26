@@ -20,13 +20,13 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             ?? throw new InvalidOperationException($"Header not found for block {number - 1}");
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header);
 
-        HashSet<Address> penalties = new();
+        HashSet<Address> penalties = [];
 
 
         List<Hash256> listBlockHash = [];
         List<long> listBlockNumber = [];
 
-        Dictionary<Address, int> minerStatistics = new();
+        Dictionary<Address, int> minerStatistics = [];
 
 
         long parentNumber = number - 1;
@@ -71,7 +71,7 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             parentHash = parentHeader.ParentHash;
         }
 
-        HashSet<Hash256> blockHashes = new();
+        HashSet<Hash256> blockHashes = [];
 
         long startRange = Math.Max(number - (long)currentSpec.RangeReturnSigner + 1, 0);
         for (int i = listBlockNumber.Count - 1; i >= 0; i--)

@@ -13,6 +13,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Validation;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
@@ -620,15 +621,18 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tx.SupportsAuthorizationList)
             {
-                if (tx.IsContractCreation)
+                ValidationResult noCreation = SetCodeTxValidation.ValidateNoContractCreation(tx);
+                if (!noCreation)
                 {
                     TraceLogInvalidTx(tx, "SETCODE_TX_CREATE");
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{TxErrorMessages.NotAllowedCreateTransaction} (sender {tx.SenderAddress})");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{noCreation.Error} (sender {tx.SenderAddress})");
                 }
-                if (!tx.HasAuthorizationList)
+
+                ValidationResult authList = SetCodeTxValidation.ValidateAuthorizationList(tx);
+                if (!authList)
                 {
                     TraceLogInvalidTx(tx, "EMPTY_AUTHORIZATION_LIST");
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{TxErrorMessages.MissingAuthorizationList} (sender {tx.SenderAddress})");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{authList.Error} (sender {tx.SenderAddress})");
                 }
             }
 
@@ -1158,6 +1162,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
 
+        // Keep available for override for Arbitrum plugin needs
         protected virtual GasConsumed RefundOnContractCollision(
             Transaction tx,
             IReleaseSpec spec,
@@ -1184,7 +1189,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, spentGas, blockStateGas);
         }
 
-        private GasConsumed RefundOnTopLevelHalt(
+        protected virtual GasConsumed RefundOnTopLevelHalt(
             Transaction tx,
             IReleaseSpec spec,
             ExecutionOptions opts,

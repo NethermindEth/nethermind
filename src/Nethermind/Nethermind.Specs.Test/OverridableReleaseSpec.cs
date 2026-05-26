@@ -20,6 +20,7 @@ namespace Nethermind.Specs.Test
         public long MaxCodeSize { get; set; } = spec.MaxCodeSize;
         public long MinGasLimit { get; set; } = spec.MinGasLimit;
         public long MinHistoryRetentionEpochs { get; set; } = spec.MinHistoryRetentionEpochs;
+        public long MinBalRetentionEpochs { get; set; } = spec.MinBalRetentionEpochs;
         public long GasLimitBoundDivisor { get; set; } = spec.GasLimitBoundDivisor;
         public UInt256 BlockReward { get; set; } = spec.BlockReward;
         public long DifficultyBombDelay { get; set; } = spec.DifficultyBombDelay;
