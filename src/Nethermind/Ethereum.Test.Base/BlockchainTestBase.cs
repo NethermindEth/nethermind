@@ -353,13 +353,13 @@ public abstract class BlockchainTestBase
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, "engine_newPayloadV" + newPayloadVersion, paramsJson);
 
             // RPC-level errors (e.g. wrong payload version) are valid for negative tests
-            if (npResponse is JsonRpcErrorResponse errorResponse)
+            if (TryGetRpcError(npResponse, out int errorCode, out string? errorMessage))
             {
-                AssertExpectedRpcError(errorResponse, validationError, newPayloadVersion);
+                AssertExpectedRpcError(errorCode, errorMessage, validationError, newPayloadVersion);
             }
             else
             {
-                PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
+                PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
                 AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
 
                 if (payloadStatus.Status == PayloadStatus.Valid)
@@ -371,8 +371,35 @@ public abstract class BlockchainTestBase
         }
     }
 
-    private static void AssertExpectedRpcError(JsonRpcErrorResponse errorResponse, string? validationError, int payloadVersion) =>
-        Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
+    private static bool TryGetRpcError(JsonRpcResponse response, out int errorCode, out string? errorMessage)
+    {
+        switch (response)
+        {
+            case JsonRpcErrorResponse errorResponse:
+                errorCode = errorResponse.Error?.Code ?? ErrorCodes.InternalError;
+                errorMessage = errorResponse.Error?.Message;
+                return true;
+            case IResultWrapper { Result.ResultType: ResultType.Failure } resultWrapper:
+                errorCode = resultWrapper.ErrorCode;
+                errorMessage = resultWrapper.Result.Error;
+                return true;
+            default:
+                errorCode = 0;
+                errorMessage = null;
+                return false;
+        }
+    }
+
+    private static PayloadStatusV1 GetPayloadStatus(JsonRpcResponse response, int payloadVersion) =>
+        response switch
+        {
+            ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
+            JsonRpcSuccessResponse { Result: PayloadStatusV1 payloadStatus } => payloadStatus,
+            _ => throw new AssertionException($"engine_newPayloadV{payloadVersion} returned unexpected response type {response.GetType().FullName}")
+        };
+
+    private static void AssertExpectedRpcError(int errorCode, string? errorMessage, string? validationError, int payloadVersion) =>
+        Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorCode} {errorMessage}");
 
     private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion)
     {
@@ -501,8 +528,11 @@ public abstract class BlockchainTestBase
     private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
         SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion, $$"""[{"headBlockHash":"{{blockHash}}","safeBlockHash":"{{blockHash}}","finalizedBlockHash":"{{blockHash}}"},null]""");
 
-    private static void AssertRpcSuccess(JsonRpcResponse response) =>
-        Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>(), response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
+    private static void AssertRpcSuccess(JsonRpcResponse response)
+    {
+        Assert.That(response, Is.InstanceOf<IResultWrapper>(), response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
+        Assert.That(((IResultWrapper)response).Result.ResultType, Is.EqualTo(ResultType.Success));
+    }
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
     {

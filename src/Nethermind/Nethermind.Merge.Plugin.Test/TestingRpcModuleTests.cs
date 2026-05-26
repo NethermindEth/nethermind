@@ -58,7 +58,7 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, [], []);
 
         result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().BeOfType<GetPayloadV5Result>();
+        result.Data.Should().BeAssignableTo<GetPayloadV5Result>();
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
         payloadResult.ExecutionPayload.BlobGasUsed.Should().Be(0);
         payloadResult.ExecutionPayload.ExcessBlobGas.Should().Be(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance));
@@ -77,7 +77,7 @@ public class TestingRpcModuleTests
             CreateDefaultPayloadAttributes(parentHeader),
             (byte[][])[]);
 
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        response.Should().BeOfType<ResultWrapper<object>>();
     }
 
     [TestCaseSource(nameof(BuildBlockV1ForkCases))]

@@ -525,6 +525,21 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task PayloadBodiesV1DirectResponse_WriteToAsync_produces_valid_json()
+    {
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        Withdrawal[] withdrawals = CreateDirectResponseWithdrawals();
+
+        PayloadBodiesV1DirectResponse response = new([
+            new ExecutionPayloadBodyV1Result([transaction], withdrawals),
+            null,
+            new ExecutionPayloadBodyV1Result([], null)
+        ]);
+
+        await AssertStreamedJsonMatchesSerializer(response);
+    }
+
+    [Test]
     public virtual async Task newPayloadV1_should_fail_with_withdrawals()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" });
@@ -886,20 +901,9 @@ public partial class EngineModuleTests
         Block block = Build.A.Block.TestObject;
         ExecutionPayloadBodyV1Result result = new(Array.Empty<Transaction>(), null);
 
-        yield return (
-            _ => null,
-            new ExecutionPayloadBodyV1Result?[] { null, null, null, null, null }
-        );
-
-        yield return (
-            i => i.ArgAt<long>(0) % 2 == 0 ? block : null,
-            new[] { null, result, null, result, null }
-        );
-
-        yield return (
-            _ => block,
-            (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]
-        );
+        yield return (_ => null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, null, null, null]);
+        yield return (i => i.ArgAt<long>(0) % 2 == 0 ? block : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
+        yield return (_ => block, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]);
     }
 
     protected static IEnumerable<(

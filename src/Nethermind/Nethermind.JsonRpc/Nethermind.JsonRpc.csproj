@@ -2,8 +2,9 @@
   <PropertyGroup>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
   </PropertyGroup>
-  
+
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
