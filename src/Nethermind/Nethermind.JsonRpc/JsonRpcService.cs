@@ -201,17 +201,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool useUtf8Parameters = CanDeserializeParametersFromUtf8(request, expectedParameters);
         JsonElement providedParameters = useUtf8Parameters ? default : request.Params;
 
-        if (_logger.IsTrace)
-        {
-            if (useUtf8Parameters)
-            {
-                LogRequest(methodName, providedParametersUtf8, expectedParameters);
-            }
-            else
-            {
-                LogRequest(methodName, providedParameters, expectedParameters);
-            }
-        }
+        LogRequest(methodName, expectedParameters, useUtf8Parameters, providedParametersUtf8, providedParameters);
 
         if (expectedParameters.Length == 0)
         {
@@ -226,68 +216,24 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            if (useUtf8Parameters)
-            {
-                parameters = DeserializeParameters(
+            return useUtf8Parameters
+                ? PrepareUtf8Parameters(
                     expectedParameters,
+                    methodName,
+                    in request.IdRef,
                     providedParametersUtf8,
-                    out int providedParametersLength,
-                    out int missingParamsCount,
-                    out ExceptionDispatchInfo? parameterDeserializationException,
-                    out returnParametersToPool);
-
-                JsonRpcErrorResponse? validationError = ValidateMissingParameters(
+                    out parameters,
+                    out parameterCount,
+                    out returnParametersToPool)
+                : PrepareJsonElementParameters(
                     expectedParameters,
                     methodName,
                     in request.IdRef,
-                    providedParametersLength,
-                    ref missingParamsCount);
-                if (validationError is not null)
-                {
-                    ReturnParameters(parameters, returnParametersToPool);
-                    parameters = null;
-                    returnParametersToPool = false;
-                    return validationError;
-                }
-
-                parameterDeserializationException?.Throw();
-                parameterCount = Math.Min(expectedParameters.Length, providedParametersLength + missingParamsCount);
-                FillDefaultParameters(expectedParameters, parameters, providedParametersLength, parameterCount);
-            }
-            else
-            {
-                int providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
-                int missingParamsCount = expectedParameters.Length - providedParametersLength;
-                int initialMissingParamsCount = missingParamsCount;
-
-                if (providedParametersLength > 0)
-                {
-                    foreach (JsonElement item in providedParameters.EnumerateArray())
-                    {
-                        UpdateMissingParamsCount(item, ref missingParamsCount, initialMissingParamsCount);
-                    }
-                }
-
-                JsonRpcErrorResponse? validationError = ValidateMissingParameters(
-                    expectedParameters,
-                    methodName,
-                    in request.IdRef,
-                    providedParametersLength,
-                    ref missingParamsCount);
-                if (validationError is not null)
-                {
-                    return validationError;
-                }
-
-                parameters = DeserializeParameters(
-                    expectedParameters,
-                    providedParametersLength,
                     providedParameters,
                     providedParametersUtf8,
-                    missingParamsCount,
+                    out parameters,
                     out parameterCount,
                     out returnParametersToPool);
-            }
         }
         catch (Exception e)
         {
@@ -295,8 +241,124 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
         }
+    }
 
+    private JsonRpcErrorResponse? PrepareUtf8Parameters(
+        ExpectedParameter[] expectedParameters,
+        string methodName,
+        in JsonRpcId requestId,
+        ReadOnlyMemory<byte> providedParametersUtf8,
+        out object?[]? parameters,
+        out int parameterCount,
+        out bool returnParametersToPool)
+    {
+        parameters = DeserializeParameters(
+            expectedParameters,
+            providedParametersUtf8,
+            out int providedParametersLength,
+            out int missingParamsCount,
+            out ExceptionDispatchInfo? parameterDeserializationException,
+            out returnParametersToPool);
+
+        JsonRpcErrorResponse? validationError = ValidateMissingParameters(
+            expectedParameters,
+            methodName,
+            in requestId,
+            providedParametersLength,
+            ref missingParamsCount);
+        if (validationError is not null)
+        {
+            ReturnParameters(parameters, returnParametersToPool);
+            parameters = null;
+            returnParametersToPool = false;
+            parameterCount = 0;
+            return validationError;
+        }
+
+        parameterDeserializationException?.Throw();
+        parameterCount = Math.Min(expectedParameters.Length, providedParametersLength + missingParamsCount);
+        FillDefaultParameters(expectedParameters, parameters, providedParametersLength, parameterCount);
         return null;
+    }
+
+    private JsonRpcErrorResponse? PrepareJsonElementParameters(
+        ExpectedParameter[] expectedParameters,
+        string methodName,
+        in JsonRpcId requestId,
+        JsonElement providedParameters,
+        ReadOnlyMemory<byte> providedParametersUtf8,
+        out object?[]? parameters,
+        out int parameterCount,
+        out bool returnParametersToPool)
+    {
+        parameters = null;
+        parameterCount = 0;
+        returnParametersToPool = false;
+
+        int providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
+        int missingParamsCount = CountMissingJsonElementParameters(expectedParameters, providedParameters, providedParametersLength);
+
+        JsonRpcErrorResponse? validationError = ValidateMissingParameters(
+            expectedParameters,
+            methodName,
+            in requestId,
+            providedParametersLength,
+            ref missingParamsCount);
+        if (validationError is not null)
+        {
+            return validationError;
+        }
+
+        parameters = DeserializeParameters(
+            expectedParameters,
+            providedParametersLength,
+            providedParameters,
+            providedParametersUtf8,
+            missingParamsCount,
+            out parameterCount,
+            out returnParametersToPool);
+        return null;
+    }
+
+    private static int CountMissingJsonElementParameters(
+        ExpectedParameter[] expectedParameters,
+        JsonElement providedParameters,
+        int providedParametersLength)
+    {
+        int missingParamsCount = expectedParameters.Length - providedParametersLength;
+        int initialMissingParamsCount = missingParamsCount;
+
+        if (providedParametersLength > 0)
+        {
+            foreach (JsonElement item in providedParameters.EnumerateArray())
+            {
+                UpdateMissingParamsCount(item, ref missingParamsCount, initialMissingParamsCount);
+            }
+        }
+
+        return missingParamsCount;
+    }
+
+    private void LogRequest(
+        string methodName,
+        ExpectedParameter[] expectedParameters,
+        bool useUtf8Parameters,
+        ReadOnlyMemory<byte> providedParametersUtf8,
+        JsonElement providedParameters)
+    {
+        if (!_logger.IsTrace)
+        {
+            return;
+        }
+
+        if (useUtf8Parameters)
+        {
+            LogRequest(methodName, providedParametersUtf8, expectedParameters);
+        }
+        else
+        {
+            LogRequest(methodName, providedParameters, expectedParameters);
+        }
     }
 
     private static bool HasUnexpectedZeroParameterArray(
