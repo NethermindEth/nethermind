@@ -475,6 +475,7 @@ public class RpcModuleProviderTests
     [RpcModule(ModuleType.Admin)]
     public interface ITestAdminRpcModule : IRpcModule
     {
+        [JsonRpcMethod(Description = "Test admin history export method.")]
         ResultWrapper<string> admin_exportHistory();
     }
 
