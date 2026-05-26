@@ -23,7 +23,14 @@ internal static class FlatEntryWriter
     public static void WriteAccountFlatEntries(
         IPersistence.IWriteBatch writeBatch,
         TreePath path,
-        TrieNode node)
+        TrieNode node) =>
+        WriteAccountFlatEntries(writeBatch, path, node, default);
+
+    public static void WriteAccountFlatEntries(
+        IPersistence.IWriteBatch writeBatch,
+        TreePath path,
+        TrieNode node,
+        ReadOnlySpan<byte> rlp)
     {
         if (node.IsLeaf)
         {
@@ -44,7 +51,7 @@ internal static class FlatEntryWriter
 
         if (node.IsBranch)
         {
-            BranchInlineChildLeafEnumerator enumerator = new(ref path, node);
+            BranchInlineChildLeafEnumerator enumerator = new(ref path, rlp.IsEmpty ? node.FullRlp.AsSpan() : rlp);
             while (enumerator.MoveNext())
             {
                 Rlp.ValueDecoderContext context = enumerator.CurrentValue.AsRlpValueContext();
@@ -68,7 +75,15 @@ internal static class FlatEntryWriter
         IPersistence.IWriteBatch writeBatch,
         Hash256 address,
         TreePath path,
-        TrieNode node)
+        TrieNode node) =>
+        WriteStorageFlatEntries(writeBatch, address, path, node, default);
+
+    public static void WriteStorageFlatEntries(
+        IPersistence.IWriteBatch writeBatch,
+        Hash256 address,
+        TreePath path,
+        TrieNode node,
+        ReadOnlySpan<byte> rlp)
     {
         if (node.IsLeaf)
         {
@@ -88,7 +103,7 @@ internal static class FlatEntryWriter
 
         if (node.IsBranch)
         {
-            BranchInlineChildLeafEnumerator enumerator = new(ref path, node);
+            BranchInlineChildLeafEnumerator enumerator = new(ref path, rlp.IsEmpty ? node.FullRlp.AsSpan() : rlp);
             while (enumerator.MoveNext())
             {
                 Rlp.ValueDecoderContext ctx = enumerator.CurrentValue.AsRlpValueContext();
@@ -122,9 +137,14 @@ internal static class FlatEntryWriter
         private ReadOnlySpan<byte> _currentRlp;
 
         public BranchInlineChildLeafEnumerator(ref TreePath path, TrieNode node)
+            : this(ref path, node.FullRlp.AsSpan())
+        {
+        }
+
+        public BranchInlineChildLeafEnumerator(ref TreePath path, ReadOnlySpan<byte> rlp)
         {
             _path = ref path;
-            _rlp = node.FullRlp.AsSpan();
+            _rlp = rlp;
             _originalPathLength = path.Length;
             _index = -1;
             _currentFullPath = default;

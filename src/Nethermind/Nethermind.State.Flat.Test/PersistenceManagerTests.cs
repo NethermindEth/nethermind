@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -302,18 +303,18 @@ public class PersistenceManagerTests
         TrieNode node = TrieNode.CreateLeafTyped(Keccak.Zero);
         snapshot.Content.StateNodes[path] = node;
 
-        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        FakeWriteBatch writeBatch = new();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
 
         // Act
         _persistenceManager.PersistSnapshot(snapshot);
 
         // Assert
-        writeBatch.Received().SetAccount(TestItem.AddressA, Arg.Any<Account?>());
-        writeBatch.Received().SetAccount(TestItem.AddressB, Arg.Any<Account?>());
-        writeBatch.Received().SetStorage(TestItem.AddressA, (UInt256)1, Arg.Any<SlotValue?>());
-        writeBatch.Received().SetStorage(TestItem.AddressA, (UInt256)2, Arg.Any<SlotValue?>());
-        writeBatch.Received().SetStateTrieNode(Arg.Any<TreePath>(), Arg.Any<TrieNode>());
+        writeBatch.SetAccountCalls.Should().Contain(c => c.Addr == TestItem.AddressA);
+        writeBatch.SetAccountCalls.Should().Contain(c => c.Addr == TestItem.AddressB);
+        writeBatch.SetStorageCalls.Should().Contain(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1);
+        writeBatch.SetStorageCalls.Should().Contain(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2);
+        writeBatch.SetStateTrieNodeCalls.Should().NotBeEmpty();
         Assert.That(node.IsPersisted, Is.True);
     }
 

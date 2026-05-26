@@ -89,7 +89,7 @@ public class FlatSnapTreesTests
     {
         IPersistence.IPersistenceReader reader = Reader();
         reader.GetAccountRaw(Arg.Any<ValueHash256>()).Returns((byte[]?)null);
-        IPersistence.IWriteBatch writer = WriteBatch();
+        FakeWriteBatch writer = new();
         using FlatSnapStateTree tree = NewStateTree(reader, writer);
 
         Account account = new(1, 100);
@@ -99,8 +99,7 @@ public class FlatSnapTreesTests
         tree.BulkSetAndUpdateRootHash([new PathWithAccount(lowPath, account), new PathWithAccount(highPath, account)]);
         tree.Commit(PathHash("55"));
 
-        writer.Received(1).SetAccountRaw(lowPath, account);
-        writer.DidNotReceive().SetAccountRaw(highPath, Arg.Any<Account>());
+        writer.SetAccountRawCalls.Should().ContainSingle().Which.Should().BeEquivalentTo((lowPath, account));
     }
 
     [Test]
