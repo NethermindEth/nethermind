@@ -146,17 +146,6 @@ namespace Nethermind.Serialization.SszGenerator.Test
             BinaryPrimitives.WriteUInt32LittleEndian(span, value.Value);
     }
 
-    public sealed class ValueHash256SszVectorConverter : SszVectorConverter<ValueHash256>
-    {
-        public const int Length = ValueHash256.MemorySize;
-
-        private ValueHash256SszVectorConverter() { }
-
-        public static ValueHash256 FromSpan(ReadOnlySpan<byte> span) => new(span);
-
-        public static void ToSpan(Span<byte> span, ValueHash256 value) => value.Bytes.CopyTo(span);
-    }
-
     //// Does not compile
     //[SszContainer]
     //public partial struct NoProps

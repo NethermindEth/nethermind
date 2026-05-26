@@ -5,7 +5,7 @@ using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Ssz;
 
-namespace Nethermind.EraE.Proofs;
+namespace Nethermind.Merkleization;
 
 public sealed class ValueHash256SszVectorConverter : SszVectorConverter<ValueHash256>
 {

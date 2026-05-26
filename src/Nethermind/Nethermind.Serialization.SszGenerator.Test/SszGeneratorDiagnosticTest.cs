@@ -43,9 +43,92 @@ public class SszGeneratorDiagnosticTest
             """;
 
         CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        Diagnostic diagnostic = GetSsz003Diagnostic(source, parseOptions, nameof(Converter_without_public_const_length_reports_diagnostic));
+        Assert.That(diagnostic.GetMessage(), Does.Contain("public const int Length"));
+    }
+
+    [Test]
+    public void Converter_without_from_span_reports_diagnostic()
+    {
+        const string source = """
+            using System;
+            using Nethermind.Serialization.Ssz;
+
+            [SszContainer]
+            public partial struct BadContainer
+            {
+                public BadFixedBytes Value { get; set; }
+            }
+
+            public readonly struct BadFixedBytes
+            {
+            }
+
+            public sealed class BadFixedBytesConverter : SszVectorConverter<BadFixedBytes>
+            {
+                public const int Length = 4;
+
+                public static void ToSpan(Span<byte> span, BadFixedBytes value)
+                {
+                }
+            }
+            """;
+
+        CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        Diagnostic diagnostic = GetSsz003Diagnostic(source, parseOptions, nameof(Converter_without_from_span_reports_diagnostic));
+        Assert.That(diagnostic.GetMessage(), Does.Contain("FromSpan"));
+    }
+
+    [Test]
+    public void Duplicate_converters_for_same_type_report_diagnostic()
+    {
+        const string source = """
+            using System;
+            using Nethermind.Serialization.Ssz;
+
+            [SszContainer]
+            public partial struct DuplicateContainer
+            {
+                public DuplicateFixedBytes Value { get; set; }
+            }
+
+            public readonly struct DuplicateFixedBytes
+            {
+            }
+
+            public sealed class FirstDuplicateFixedBytesConverter : SszVectorConverter<DuplicateFixedBytes>
+            {
+                public const int Length = 4;
+
+                public static DuplicateFixedBytes FromSpan(ReadOnlySpan<byte> span) => default;
+
+                public static void ToSpan(Span<byte> span, DuplicateFixedBytes value)
+                {
+                }
+            }
+
+            public sealed class SecondDuplicateFixedBytesConverter : SszVectorConverter<DuplicateFixedBytes>
+            {
+                public const int Length = 4;
+
+                public static DuplicateFixedBytes FromSpan(ReadOnlySpan<byte> span) => default;
+
+                public static void ToSpan(Span<byte> span, DuplicateFixedBytes value)
+                {
+                }
+            }
+            """;
+
+        CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        Diagnostic diagnostic = GetSsz003Diagnostic(source, parseOptions, nameof(Duplicate_converters_for_same_type_report_diagnostic));
+        Assert.That(diagnostic.GetMessage(), Does.Contain("Multiple SSZ converters"));
+    }
+
+    private static Diagnostic GetSsz003Diagnostic(string source, CSharpParseOptions parseOptions, string assemblyName)
+    {
         SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
         CSharpCompilation compilation = CSharpCompilation.Create(
-            nameof(Converter_without_public_const_length_reports_diagnostic),
+            assemblyName,
             [syntaxTree],
             BuildMetadataReferences(),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
@@ -54,18 +137,16 @@ public class SszGeneratorDiagnosticTest
             .WithUpdatedParseOptions(parseOptions);
         driver = driver.RunGenerators(compilation);
 
-        Diagnostic? diagnostic = null;
         foreach (Diagnostic candidate in driver.GetRunResult().Diagnostics)
         {
             if (candidate.Id == "SSZ003")
             {
-                diagnostic = candidate;
-                break;
+                return candidate;
             }
         }
 
-        Assert.That(diagnostic, Is.Not.Null);
-        Assert.That(diagnostic!.GetMessage(), Does.Contain("public const int Length"));
+        Assert.Fail("Expected SSZ003 diagnostic.");
+        return null!;
     }
 
     private static IIncrementalGenerator CreateSszGenerator()

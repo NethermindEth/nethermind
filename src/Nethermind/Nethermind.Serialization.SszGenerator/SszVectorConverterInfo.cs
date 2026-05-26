@@ -26,10 +26,12 @@ internal sealed class SszVectorConverterInfo
             if (converter is not null)
             {
                 string key = converter.TargetNamespace + "." + converter.TargetTypeReferenceName;
-                if (!result.ContainsKey(key))
+                if (result.TryGetValue(key, out SszVectorConverterInfo? existingConverter))
                 {
-                    result.Add(key, converter);
+                    throw new InvalidOperationException($"Multiple SSZ converters found for {key}: {existingConverter.ConverterStaticMemberAccess} and {converter.ConverterStaticMemberAccess}.");
                 }
+
+                result.Add(key, converter);
             }
         }
 
@@ -96,11 +98,19 @@ internal sealed class SszVectorConverterInfo
         }
 
         ITypeSymbol targetType = implementedInterface.TypeArguments[0].WithNullableAnnotation(NullableAnnotation.NotAnnotated);
-        if (!TryGetLength(converterType, out int length, out string? lengthError)
-            || !HasFromSpanMethod(converterType, targetType)
-            || !HasToSpanMethod(converterType, targetType))
+        if (!TryGetLength(converterType, out int length, out string? lengthError))
         {
-            throw new InvalidOperationException(lengthError ?? $"SSZ converter {converterType.ToDisplayString()} has an invalid converter shape.");
+            throw new InvalidOperationException(lengthError!);
+        }
+
+        if (!HasFromSpanMethod(converterType, targetType))
+        {
+            throw new InvalidOperationException($"SSZ converter {converterType.ToDisplayString()} must declare public static {targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} FromSpan(ReadOnlySpan<byte> span).");
+        }
+
+        if (!HasToSpanMethod(converterType, targetType))
+        {
+            throw new InvalidOperationException($"SSZ converter {converterType.ToDisplayString()} must declare public static void ToSpan(Span<byte> span, {targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} value).");
         }
 
         return new()
@@ -148,7 +158,7 @@ internal sealed class SszVectorConverterInfo
                 && SymbolEqualityComparer.Default.Equals(m.Parameters[1].Type, targetType));
 
     private static bool IsSpanOfByte(ITypeSymbol type, string name) =>
-        type is INamedTypeSymbol { IsGenericType: true, ContainingNamespace.Name: "System", TypeArguments.Length: 1 } named
+        type is INamedTypeSymbol { IsGenericType: true, ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true }, TypeArguments.Length: 1 } named
         && named.Name == name
         && named.TypeArguments[0].SpecialType == SpecialType.System_Byte;
 
@@ -156,7 +166,7 @@ internal sealed class SszVectorConverterInfo
         type.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToString() : string.Empty;
 
     private static string GetTypeName(ITypeSymbol type) =>
-        string.IsNullOrEmpty(type.ContainingNamespace?.ToString()) ? type.ToString() : type.Name.Replace(type.ContainingNamespace! + ".", "");
+        string.IsNullOrEmpty(type.ContainingNamespace?.ToString()) ? type.ToString() : type.Name;
 
     private static bool IsPackedSszPrimitive(ITypeSymbol type) =>
         type.SpecialType
