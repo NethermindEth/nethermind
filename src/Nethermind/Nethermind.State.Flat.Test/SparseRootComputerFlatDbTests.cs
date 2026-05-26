@@ -112,17 +112,13 @@ public class SparseRootComputerFlatDbTests
     [Test]
     public void FlatDbReader_SnapshotChain_FindsNodes()
     {
-        // Verify that trie nodes placed in a snapshot chain can be found
-        // by ParentStateTrieNodeReader
         ResourcePool pool = new(new FlatDbConfig { CompactSize = 2 });
 
-        // Create a trie node and place it in the snapshot
         TreePath rootPath = TreePath.Empty;
         byte[] rootRlp = [0xc8, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-                          0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80]; // minimal branch RLP
+                          0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80];
         Hash256 rootHash = Keccak.Compute(rootRlp);
         TrieNode rootNode = new(NodeType.Unknown, rootHash, rootRlp);
-        // Constructor with (NodeType, Hash256, byte[]) already seals the node
 
         SnapshotContent snapshotContent = pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
         snapshotContent.StateNodes[new HashedKey<TreePath>(rootPath)] = rootNode;
@@ -134,8 +130,10 @@ public class SparseRootComputerFlatDbTests
         IPersistence.IPersistenceReader mockReader = Substitute.For<IPersistence.IPersistenceReader>();
         ReadOnlySnapshotBundle roBundle = new(snapList, mockReader, false);
 
-        // Test: ParentStateTrieNodeReader should find the node
-        ParentStateTrieNodeReader proofReader = new(roBundle);
+        ITrieNodeCache noopCache = Substitute.For<ITrieNodeCache>();
+        SnapshotBundle bundle = new(roBundle, noopCache, pool, ResourcePool.Usage.MainBlockProcessing);
+
+        ParentStateTrieNodeReader proofReader = new(bundle);
 
         byte[] result = proofReader.LoadStateRlp(rootPath, rootHash);
         result.Should().BeEquivalentTo(rootRlp, "ParentStateTrieNodeReader must find node in snapshot chain");

@@ -78,7 +78,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (configuration.UseSparseRootComputation && !isReadOnly)
         {
-            ParentStateTrieNodeReader proofReader = new(snapshotBundle.ReadOnlyBundle);
+            ParentStateTrieNodeReader proofReader = new(snapshotBundle);
             _sparseRootComputer = new SparseRootComputer(proofReader, currentStateId.StateRoot.ToCommitment());
             ILogger initLogger = logManager.GetClassLogger<FlatWorldStateScope>();
             if (initLogger.IsInfo) initLogger.Info(
@@ -286,7 +286,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (_sparseRootComputer is not null)
         {
             _sparseRootComputer.Dispose();
-            ParentStateTrieNodeReader proofReader = new(_snapshotBundle.ReadOnlyBundle);
+            ParentStateTrieNodeReader proofReader = new(_snapshotBundle);
             _sparseRootComputer = new SparseRootComputer(proofReader, newStateId.StateRoot.ToCommitment());
             _sparseComputedRoot = null;
         }

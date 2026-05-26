@@ -10,40 +10,36 @@ namespace Nethermind.State.Flat;
 
 /// <summary>
 /// Reads trie nodes from the parent block's committed state for proof generation.
-/// Uses <see cref="ReadOnlySnapshotBundle"/> (snapshot chain + persistence reader).
-/// Does NOT search the current block's dirty buffers — proofs reference the PREVIOUS state.
-/// Thread-safe: <see cref="ReadOnlySnapshotBundle"/> is immutable.
+/// Searches: trieNodeCache → scope-local committed snapshots → outer snapshot chain → persistence.
+/// Does NOT search the current block's dirty buffer (<c>_changedStateNodes</c>).
 /// </summary>
-public sealed class ParentStateTrieNodeReader(ReadOnlySnapshotBundle roBundle) : ITrieNodeReader
+public sealed class ParentStateTrieNodeReader(SnapshotBundle snapshotBundle) : ITrieNodeReader
 {
     public byte[] LoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        // Step 1: Search committed snapshot chain by path
-        if (roBundle.TryFindStateNodes(path, hash, out TrieNode? found))
+        if (snapshotBundle.TryFindCommittedStateNode(path, hash, out TrieNode? found))
         {
-            // Validate hash — snapshot matches by path, hash may differ if overwritten
-            if (found.Keccak is not null && found.Keccak != hash)
-                return LoadFromPersistence(path, hash, flags, address: null);
-
-            byte[]? rlp = found.FullRlp.IsNotNull ? found.FullRlp.ToArray() : null;
-            if (rlp is not null && rlp.Length > 0)
-                return rlp;
+            if (found.Keccak is not null && found.Keccak == hash)
+            {
+                byte[]? rlp = found.FullRlp.IsNotNull ? found.FullRlp.ToArray() : null;
+                if (rlp is not null && rlp.Length > 0)
+                    return rlp;
+            }
         }
 
-        // Step 2: Fall back to persistence reader (flat DB columns)
         return LoadFromPersistence(path, hash, flags, address: null);
     }
 
     public byte[] LoadStorageRlp(Hash256 accountPathHash, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        if (roBundle.TryFindStorageNodes(accountPathHash, path, hash, out TrieNode? found))
+        if (snapshotBundle.TryFindCommittedStorageNode(accountPathHash, path, hash, out TrieNode? found))
         {
-            if (found.Keccak is not null && found.Keccak != hash)
-                return LoadFromPersistence(path, hash, flags, accountPathHash);
-
-            byte[]? rlp = found.FullRlp.IsNotNull ? found.FullRlp.ToArray() : null;
-            if (rlp is not null && rlp.Length > 0)
-                return rlp;
+            if (found.Keccak is not null && found.Keccak == hash)
+            {
+                byte[]? rlp = found.FullRlp.IsNotNull ? found.FullRlp.ToArray() : null;
+                if (rlp is not null && rlp.Length > 0)
+                    return rlp;
+            }
         }
 
         return LoadFromPersistence(path, hash, flags, accountPathHash);
@@ -52,8 +48,8 @@ public sealed class ParentStateTrieNodeReader(ReadOnlySnapshotBundle roBundle) :
     private byte[] LoadFromPersistence(in TreePath path, Hash256 hash, ReadFlags flags, Hash256? address)
     {
         byte[] rlp = (address is null
-            ? roBundle.TryLoadStateRlp(path, hash, flags)
-            : roBundle.TryLoadStorageRlp(address, path, hash, flags))
+            ? snapshotBundle.TryLoadStateRlp(path, hash, flags)
+            : snapshotBundle.TryLoadStorageRlp(address, path, hash, flags))
             ?? throw new MissingTrieNodeException(
                 $"Trie node not found in snapshots or persistence at path {path}",
                 address, path, hash);

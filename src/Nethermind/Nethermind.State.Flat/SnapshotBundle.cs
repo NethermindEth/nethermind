@@ -189,6 +189,12 @@ public sealed class SnapshotBundle : IDisposable
         return node;
     }
 
+    internal bool TryFindCommittedStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
+        DoFindStateNodeExternal(path, hash, out node);
+
+    internal bool TryFindCommittedStorageNode(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
+        DoTryFindStorageNodeExternal(address, path, hash, out node);
+
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         if (_trieNodeCache.TryGet(null, path, hash, out node))
