@@ -2,19 +2,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
 
 public static class TxsDecoder
 {
+    // Above this count, parallel decoding pays back its scheduling cost. Picked to match
+    // the threshold the RecoverSignatures pipeline uses for sender recovery; below it the
+    // serial path is faster and avoids touching the thread pool on hot RPC paths.
+    private const int ParallelDecodeThreshold = 8;
+
     public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors)
     {
         IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
         if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
-        Transaction[] transactions = new Transaction[txData.Length];
+        if (txData.Length >= ParallelDecodeThreshold)
+        {
+            return DecodeParallel(txData, rlpDecoder, skipErrors);
+        }
 
+        Transaction[] transactions = new Transaction[txData.Length];
         int added = 0;
         for (int i = 0; i < transactions.Length; i++)
         {
@@ -41,6 +52,74 @@ public static class TxsDecoder
         }
 
         return new TransactionDecodingResult(transactions);
+    }
+
+    private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
+    {
+        Transaction?[] slots = new Transaction?[txData.Length];
+        string? error = null;
+        int firstError = int.MaxValue;
+        object errorGate = new();
+
+        Parallel.For(0, txData.Length, (i, state) =>
+        {
+            try
+            {
+                Rlp.ValueDecoderContext ctx = new(txData[i]);
+                slots[i] = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+            }
+            catch (Exception e) when (e is RlpException or ArgumentException)
+            {
+                if (skipErrors) return;
+                lock (errorGate)
+                {
+                    if (i < firstError)
+                    {
+                        firstError = i;
+                        error = e is RlpException rlpEx
+                            ? $"Transaction {i} is not valid: {rlpEx.Message}"
+                            : $"Transaction {i} is not valid";
+                    }
+                }
+                state.Stop();
+            }
+        });
+
+        if (error is not null)
+        {
+            return new TransactionDecodingResult(error);
+        }
+
+        // Compact the array — Parallel.For doesn't preserve a single contiguous prefix when
+        // skipErrors leaves nulls scattered. Order is preserved.
+        Transaction[] result;
+        if (skipErrors)
+        {
+            int count = 0;
+            for (int i = 0; i < slots.Length; i++)
+            {
+                if (slots[i] is not null) count++;
+            }
+            result = new Transaction[count];
+            int j = 0;
+            for (int i = 0; i < slots.Length; i++)
+            {
+                if (slots[i] is { } tx)
+                {
+                    result[j++] = tx;
+                }
+            }
+        }
+        else
+        {
+            result = new Transaction[slots.Length];
+            for (int i = 0; i < slots.Length; i++)
+            {
+                result[i] = slots[i]!;
+            }
+        }
+
+        return new TransactionDecodingResult(result);
     }
 }
 
