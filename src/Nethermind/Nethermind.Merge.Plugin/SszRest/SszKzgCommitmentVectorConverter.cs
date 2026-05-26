@@ -1,0 +1,18 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Nethermind.Serialization.Ssz;
+
+namespace Nethermind.Merge.Plugin.SszRest;
+
+public sealed class SszKzgCommitmentVectorConverter : SszVectorConverter<SszKzgCommitment>
+{
+    public const int Length = SszKzgCommitment.KzgCommitmentLength;
+
+    private SszKzgCommitmentVectorConverter() { }
+
+    public static SszKzgCommitment FromSpan(ReadOnlySpan<byte> span) => SszKzgCommitment.FromSpan(span);
+
+    public static void ToSpan(Span<byte> span, SszKzgCommitment value) => value.AsSpan().CopyTo(span);
+}

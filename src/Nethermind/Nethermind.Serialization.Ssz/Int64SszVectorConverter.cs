@@ -1,0 +1,18 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers.Binary;
+
+namespace Nethermind.Serialization.Ssz;
+
+public sealed class Int64SszVectorConverter : SszVectorConverter<long>
+{
+    public const int Length = sizeof(long);
+
+    private Int64SszVectorConverter() { }
+
+    public static long FromSpan(ReadOnlySpan<byte> span) => BinaryPrimitives.ReadInt64LittleEndian(span);
+
+    public static void ToSpan(Span<byte> span, long value) => Ssz.Encode(span, value);
+}

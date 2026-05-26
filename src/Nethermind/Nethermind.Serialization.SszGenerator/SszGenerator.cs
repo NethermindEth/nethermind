@@ -783,12 +783,26 @@ internal static class SszCodecHelpers
 
     private static string UsingsBlock(SszType decl, List<SszType> foundTypes) =>
         string.Join("\n", foundTypes
-            .Select(x => x.Namespace)
+            .SelectMany(GeneratedNamespaces)
             .Concat(decl.TypeParameterConstraintNamespaces)
             .Distinct()
             .OrderBy(x => x)
             .Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz")
             .Select(n => $"using {n};"));
+
+    private static IEnumerable<string> GeneratedNamespaces(SszType type)
+    {
+        string? typeNamespace = type.Namespace;
+        if (typeNamespace is { Length: > 0 })
+        {
+            yield return typeNamespace;
+        }
+
+        foreach (string namespaceName in type.AdditionalNamespaces)
+        {
+            yield return namespaceName;
+        }
+    }
 
     private static string? GenerateClassCode(SourceProductionContext context, SszType decl, List<SszType> foundTypes, Location? location)
     {

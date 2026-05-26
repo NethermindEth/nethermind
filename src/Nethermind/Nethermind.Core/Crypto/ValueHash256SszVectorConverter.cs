@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Ssz;
 
-namespace Nethermind.Merkleization;
+namespace Nethermind.Core.Crypto;
 
 public sealed class ValueHash256SszVectorConverter : SszVectorConverter<ValueHash256>
 {

@@ -7,7 +7,9 @@ internal sealed class SszVectorConverterInfo
     public required string TargetName { get; init; }
     public required string TargetNamespace { get; init; }
     public required string TargetTypeReferenceName { get; init; }
+    public required string ConverterNamespace { get; init; }
     public required string ConverterStaticMemberAccess { get; init; }
+    public required string ConverterDisplayName { get; init; }
     public required int Length { get; init; }
     public required bool IsSszPrimitive { get; init; }
 
@@ -28,7 +30,7 @@ internal sealed class SszVectorConverterInfo
                 string key = converter.TargetNamespace + "." + converter.TargetTypeReferenceName;
                 if (result.TryGetValue(key, out SszVectorConverterInfo? existingConverter))
                 {
-                    throw new InvalidOperationException($"Multiple SSZ converters found for {key}: {existingConverter.ConverterStaticMemberAccess} and {converter.ConverterStaticMemberAccess}.");
+                    throw new InvalidOperationException($"Multiple SSZ converters found for {key}: {existingConverter.ConverterDisplayName} and {converter.ConverterDisplayName}.");
                 }
 
                 result.Add(key, converter);
@@ -118,7 +120,9 @@ internal sealed class SszVectorConverterInfo
             TargetName = GetTypeName(targetType),
             TargetNamespace = GetNamespace(targetType),
             TargetTypeReferenceName = targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
-            ConverterStaticMemberAccess = converterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            ConverterNamespace = GetNamespace(converterType),
+            ConverterStaticMemberAccess = converterType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+            ConverterDisplayName = converterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             Length = length,
             IsSszPrimitive = IsPackedSszPrimitive(targetType),
         };

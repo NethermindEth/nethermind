@@ -22,6 +22,7 @@ class SszType
                 StaticLength = converter.Length,
                 IsRefType = !converter.IsSszPrimitive,
                 IsSszPrimitive = converter.IsSszPrimitive,
+                AdditionalNamespaces = { converter.ConverterNamespace },
                 CustomEncodeTemplate = $"{converter.ConverterStaticMemberAccess}.ToSpan({{0}}, {{1}});",
                 CustomDecodeTemplate = $"{{1}} = {converter.ConverterStaticMemberAccess}.FromSpan({{0}});",
             });
@@ -71,6 +72,11 @@ class SszType
     /// <c>using</c> for each so the constraint clause resolves in the generated file.
     /// </summary>
     public List<string> TypeParameterConstraintNamespaces { get; } = [];
+
+    /// <summary>
+    /// Extra namespaces referenced by generated code for this type, such as the namespace that contains its vector converter.
+    /// </summary>
+    public List<string> AdditionalNamespaces { get; } = [];
 
     /// <summary><c>true</c> when this <see cref="SszType"/> represents an open type parameter (forces variable-size encoding).</summary>
     public bool IsTypeParameter { get; init; }
