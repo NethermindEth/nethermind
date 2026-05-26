@@ -99,11 +99,9 @@ namespace Nethermind.Wallet
                 return false;
             }
 
-            using (key)
-            {
-                signature = Sign(in message, key);
-                return true;
-            }
+            using PrivateKey disposableKey = key;
+            signature = Sign(in message, disposableKey);
+            return true;
         }
 
         private static Signature Sign(in ValueHash256 message, PrivateKey key)

@@ -112,6 +112,7 @@ namespace Nethermind.Wallet
 
         public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
         {
+            // Dev accounts created with AnyPassword accept any passphrase here (see CheckPassword) — dev-only behavior.
             if (!_passwords.ContainsKey(address) || !CheckPassword(address, passphrase) || !_keys.TryGetValue(address, out PrivateKey key))
             {
                 signature = null;
