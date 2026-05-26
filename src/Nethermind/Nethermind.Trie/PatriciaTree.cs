@@ -1241,7 +1241,9 @@ namespace Nethermind.Trie
                 }
             }
 
-            ITrieNodeResolver resolver = _readResolver;
+            // Full scans own their working set; publishing every loaded node into the shared
+            // read-only resolver can retain the whole scan in the dirty cache.
+            ITrieNodeResolver resolver = visitor.IsFullDbScan ? TrieStore : _readResolver;
             if (flags != ReadFlags.None)
             {
                 resolver = new TrieNodeResolverWithReadFlags(resolver, flags);

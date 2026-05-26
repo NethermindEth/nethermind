@@ -992,11 +992,11 @@ namespace Nethermind.Trie.Test.Pruning
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount.Should().BeGreaterThan(loadedFromCacheBefore);
         }
 
-        private sealed class CountingVisitor : ITreeVisitor<EmptyContext>
+        private sealed class CountingVisitor(bool isFullDbScan = false) : ITreeVisitor<EmptyContext>
         {
             public int BranchVisits { get; private set; }
             public int LeafVisits { get; private set; }
-            public bool IsFullDbScan => false;
+            public bool IsFullDbScan => isFullDbScan;
             public bool ExpectAccounts => false;
 
             public bool ShouldVisit(in EmptyContext nodeContext, in ValueHash256 nextNode) => true;
@@ -1006,6 +1006,28 @@ namespace Nethermind.Trie.Test.Pruning
             public void VisitExtension(in EmptyContext nodeContext, TrieNode node) { }
             public void VisitLeaf(in EmptyContext nodeContext, TrieNode node) => LeafVisits++;
             public void VisitAccount(in EmptyContext nodeContext, TrieNode node, in AccountStruct account) { }
+        }
+
+        private static (TrieNode Root, TrieNode Child, TreePath ChildPath) BuildAndPersistSealedBranchWithHashedLeafChild(
+            IKeyValueStoreWithBatching kvStore,
+            INodeStorage.KeyScheme scheme)
+        {
+            TrieNode child = TrieNodeFactory.CreateLeaf([], new CappedArray<byte>(new byte[64]));
+            TrieNode root = TrieNode.CreateBranchTyped();
+            root.SetChild(0, child);
+
+            TreePath emptyPath = TreePath.Empty;
+            TreePath childPath = TreePath.FromNibble([0]);
+            child.ResolveKey(NullTrieNodeResolver.Instance, ref childPath);
+            child.Seal();
+            root.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
+            root.Seal();
+
+            NodeStorage storage = new(kvStore, scheme, requirePath: scheme == INodeStorage.KeyScheme.HalfPath);
+            storage.Set(null, childPath, child.Keccak!.ValueHash256, child.FullRlp.AsSpan());
+            storage.Set(null, emptyPath, root.Keccak!.ValueHash256, root.FullRlp.AsSpan());
+
+            return (root, child, childPath);
         }
 
         [Test]
@@ -1068,6 +1090,24 @@ namespace Nethermind.Trie.Test.Pruning
             visitor.LeafVisits.Should().Be(1);
             fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore + 1);
             fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+        }
+
+        [Test]
+        public void Read_only_full_scan_does_not_publish_nodes_to_dirty_cache()
+        {
+            MemDb memDb = new();
+            (TrieNode root, TrieNode child, TreePath childPath) =
+                BuildAndPersistSealedBranchWithHashedLeafChild(memDb, scheme);
+            using TrieStore fullTrieStore = CreateTrieStore(kvStore: memDb);
+            PatriciaTree readOnlyTree = new(fullTrieStore.AsReadOnly().GetTrieStore(null), LimboLogs.Instance);
+            CountingVisitor visitor = new(isFullDbScan: true);
+
+            readOnlyTree.Accept(visitor, root.Keccak!);
+
+            visitor.BranchVisits.Should().Be(1);
+            visitor.LeafVisits.Should().Be(1);
+            fullTrieStore.IsNodeCached(null, TreePath.Empty, root.Keccak).Should().BeFalse();
+            fullTrieStore.IsNodeCached(null, childPath, child.Keccak).Should().BeFalse();
         }
 
         [TestCase(ReadOnlyMissLoadVariant.GetOrLoad)]
