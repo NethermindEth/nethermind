@@ -194,8 +194,8 @@ public class JsonRpcSocketsClientTests
             await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
 
             int concurrentCall = 0;
-            TaskCompletionSource completeSource = new();
-            async ValueTask ResponseFunc(CallInfo c)
+            TaskCompletionSource completeSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            async ValueTask ResponseFunc(CallInfo c)CallInfo c)
             {
                 Interlocked.Increment(ref concurrentCall);
                 await completeSource.Task;

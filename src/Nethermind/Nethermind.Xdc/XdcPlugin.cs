@@ -50,13 +50,10 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _nethermindApi.Context.Resolve<ISpecProvider>(),
             blockProducer,
             _nethermindApi.Context.Resolve<IEpochSwitchManager>(),
-            _nethermindApi.Context.Resolve<ISnapshotManager>(),
             _nethermindApi.Context.Resolve<IMasternodesCalculator>(),
             _nethermindApi.Context.Resolve<IVotesManager>(),
             _nethermindApi.Context.Resolve<ISigner>(),
             _nethermindApi.Context.Resolve<ITimeoutTimer>(),
-            _nethermindApi.ProcessExit,
-            _nethermindApi.Context.Resolve<ISignTransactionManager>(),
             _nethermindApi.Context.Resolve<ILogManager>()
             );
     public IBlockProducer InitBlockProducer()

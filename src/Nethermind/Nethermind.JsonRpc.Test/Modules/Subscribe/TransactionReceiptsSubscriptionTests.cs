@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             out string subscriptionId,
             bool shouldReceiveResult = true)
         {
-            TransactionReceiptsSubscription subscription = new(
+            using TransactionReceiptsSubscription subscription = new(
                 _jsonRpcDuplexClient,
                 _receiptCanonicalityMonitor,
                 _blockTree,
@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             out string subscriptionId,
             int expectedCount)
         {
-            TransactionReceiptsSubscription subscription = new(
+            using TransactionReceiptsSubscription subscription = new(
                 _jsonRpcDuplexClient,
                 _receiptCanonicalityMonitor,
                 _blockTree,
@@ -121,7 +121,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             }
             else
             {
-                TransactionReceiptsSubscription subscription = new(
+                using TransactionReceiptsSubscription subscription = new(
                     _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _logManager, filter);
 
                 subscription.Should().NotBeNull();
