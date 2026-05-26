@@ -183,12 +183,7 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
         // (BE) during build for the strict-ascending compare in Add().
         int keysBytes = n * KeyLength;
         Span<byte> keysSpan = _writer.GetSpan(keysBytes);
-        ReadOnlySpan<byte> logicalKeys = _keys.AsSpan(0, keysBytes);
-        for (int i = 0; i < n; i++)
-        {
-            keysSpan[i * 2 + 0] = logicalKeys[i * 2 + 1];
-            keysSpan[i * 2 + 1] = logicalKeys[i * 2 + 0];
-        }
+        HsstTwoByteSlotKeys.CopyLogicalToStored(_keys.AsSpan(0, keysBytes), keysSpan);
         _writer.Advance(keysBytes);
 
         // Offsets: N − 1 u16 LE values (Offset_1..Offset_{N-1}); Offset_0 is omitted.

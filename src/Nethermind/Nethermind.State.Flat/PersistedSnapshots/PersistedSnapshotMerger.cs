@@ -51,6 +51,47 @@ public static class PersistedSnapshotMerger
             => new(newEnumerator, view);
     }
 
+    /// <summary>Seed every cursor slot in <paramref name="sources"/> at the column-tag's
+    /// bound for the matching <paramref name="views"/> entry. Each source opens a reader,
+    /// seeks the column tag in the root HSST, and constructs an enumerator over that bound
+    /// (empty bound for sources that don't carry the tag — the loser tree treats them as
+    /// exhausted on first MoveNext). Shared by every column-merge helper.</summary>
+    private static void SeedSourcesAtColumn(
+        ReadOnlySpan<WholeReadSessionView> views, byte[] tag,
+        Span<WholeReadSessionMergeSource> sources)
+    {
+        for (int i = 0; i < views.Length; i++)
+        {
+            WholeReadSessionReader r = views[i].CreateReader();
+            HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
+            Bound cb = hsst.TrySeek(tag, out Bound cbOut) ? cbOut : default;
+            sources[i] = new(new HsstEnumerator(in r, cb), views[i]);
+        }
+    }
+
+    /// <summary>For each matching source in <paramref name="cursor"/>'s <c>MatchingSources</c>,
+    /// captures the per-source per-address bound from the cursor's current value AND resolves
+    /// the per-source sub-tag bounds via <see cref="HsstDenseByteIndexReader.TryResolveAll"/>.
+    /// Shared by both BTree value-mergers (per-address column 0x01 with
+    /// <c>PerAddrSubTagCount</c> sub-tags, storage-trie column 0x05 with
+    /// <c>StorageTrieSubTagCount</c> sub-tags). Caller allocates the output spans sized
+    /// <c>matchCount</c> and <c>matchCount * subTagCount</c> respectively.</summary>
+    private static void ResolvePerAddrAndSubTagBounds(
+        scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor,
+        Span<Bound> perAddrBounds, Span<Bound> subTagBounds, int subTagCount)
+    {
+        ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
+        Span<WholeReadSessionMergeSource> sources = cursor.Sources;
+        for (int j = 0; j < matchingSources.Length; j++)
+        {
+            perAddrBounds[j] = cursor.ValueAt(matchingSources[j]);
+            WholeReadSessionReader r = sources[matchingSources[j]].CreateReader();
+            HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
+                in r, perAddrBounds[j],
+                subTagBounds.Slice(j * subTagCount, subTagCount));
+        }
+    }
+
     /// <summary>Per-key bloom callback for state-trie merges: adds
     /// <c>StatePathKey(minKey)</c> to <paramref name="bloom"/>.</summary>
     private readonly struct StatePathBloomCallback(BloomFilter bloom)
@@ -113,28 +154,16 @@ public static class PersistedSnapshotMerger
             ulong addrKey = MemoryMarshal.Read<ulong>(key);
             ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
             int matchCount = matchingSources.Length;
+            const int SubTagCount = PersistedSnapshotTags.PerAddrSubTagCount;
 
             using NativeMemoryListRef<Bound> perAddrBoundsList = new(matchCount, matchCount);
+            using NativeMemoryListRef<Bound> subTagBoundsList = new(matchCount * SubTagCount, matchCount * SubTagCount);
             Span<Bound> perAddrBounds = perAddrBoundsList.AsSpan();
-            for (int j = 0; j < matchCount; j++)
-                perAddrBounds[j] = cursor.ValueAt(matchingSources[j]);
-
-            Span<WholeReadSessionMergeSource> sources = cursor.Sources;
-            using NativeMemoryListRef<Bound> subTagBoundsList = new(
-                matchCount * PersistedSnapshotTags.PerAddrSubTagCount,
-                matchCount * PersistedSnapshotTags.PerAddrSubTagCount);
             Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
-            for (int j = 0; j < matchCount; j++)
-            {
-                WholeReadSessionReader r = sources[matchingSources[j]].CreateReader();
-                HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
-                    in r,
-                    perAddrBounds[j],
-                    subTagBounds.Slice(j * PersistedSnapshotTags.PerAddrSubTagCount, PersistedSnapshotTags.PerAddrSubTagCount));
-            }
+            ResolvePerAddrAndSubTagBounds(ref cursor, perAddrBounds, subTagBounds, SubTagCount);
 
             NWayMergePerAddressHsst<TWriter, TReader, TPin>(
-                matchingSources, matchCount, sources,
+                matchingSources, matchCount, cursor.Sources,
                 ref writer, ref slotPrefixBuffers.Buffers,
                 subTagBounds,
                 bloom, addrKey);
@@ -184,25 +213,14 @@ public static class PersistedSnapshotMerger
             ulong addrKey = MemoryMarshal.Read<ulong>(key);
             ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
             int matchCount = matchingSources.Length;
+            const int SubTagCount = PersistedSnapshotTags.StorageTrieSubTagCount;
 
             using NativeMemoryListRef<Bound> perAddrBoundsList = new(matchCount, matchCount);
+            using NativeMemoryListRef<Bound> subTagBoundsList = new(matchCount * SubTagCount, matchCount * SubTagCount);
             Span<Bound> perAddrBounds = perAddrBoundsList.AsSpan();
-            for (int j = 0; j < matchCount; j++)
-                perAddrBounds[j] = cursor.ValueAt(matchingSources[j]);
-
-            Span<WholeReadSessionMergeSource> sources = cursor.Sources;
-            using NativeMemoryListRef<Bound> subTagBoundsList = new(
-                matchCount * PersistedSnapshotTags.StorageTrieSubTagCount,
-                matchCount * PersistedSnapshotTags.StorageTrieSubTagCount);
             Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
-            for (int j = 0; j < matchCount; j++)
-            {
-                WholeReadSessionReader r = sources[matchingSources[j]].CreateReader();
-                HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
-                    in r,
-                    perAddrBounds[j],
-                    subTagBounds.Slice(j * PersistedSnapshotTags.StorageTrieSubTagCount, PersistedSnapshotTags.StorageTrieSubTagCount));
-            }
+            ResolvePerAddrAndSubTagBounds(ref cursor, perAddrBounds, subTagBounds, SubTagCount);
+            Span<WholeReadSessionMergeSource> sources = cursor.Sources;
 
             HsstDenseByteIndexBuilder<TWriter> perAddrBuilder = new(ref writer);
             try
@@ -210,15 +228,15 @@ public static class PersistedSnapshotMerger
                 // Emit descending 0x02 (fallback) → 0x01 (compact) → 0x00 (top).
                 MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sources, subTagBounds,
                     ref perAddrBuilder, PersistedSnapshotTags.StorageFallbackSubTag,
-                    subTagIdx: PersistedSnapshotTags.StorageFallbackSubTag[0], innerKeySize: 33, perSourceStride: PersistedSnapshotTags.StorageTrieSubTagCount,
+                    subTagIdx: PersistedSnapshotTags.StorageFallbackSubTag[0], innerKeySize: 33, perSourceStride: SubTagCount,
                     bloom, addrKey);
                 MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sources, subTagBounds,
                     ref perAddrBuilder, PersistedSnapshotTags.StorageCompactSubTag,
-                    subTagIdx: PersistedSnapshotTags.StorageCompactSubTag[0], innerKeySize: 8, perSourceStride: PersistedSnapshotTags.StorageTrieSubTagCount,
+                    subTagIdx: PersistedSnapshotTags.StorageCompactSubTag[0], innerKeySize: 8, perSourceStride: SubTagCount,
                     bloom, addrKey);
                 MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sources, subTagBounds,
                     ref perAddrBuilder, PersistedSnapshotTags.StorageTopSubTag,
-                    subTagIdx: PersistedSnapshotTags.StorageTopSubTag[0], innerKeySize: 4, perSourceStride: PersistedSnapshotTags.StorageTrieSubTagCount,
+                    subTagIdx: PersistedSnapshotTags.StorageTopSubTag[0], innerKeySize: 4, perSourceStride: SubTagCount,
                     bloom, addrKey);
                 perAddrBuilder.Build();
             }
@@ -307,13 +325,7 @@ public static class PersistedSnapshotMerger
 
         try
         {
-            for (int i = 0; i < n; i++)
-            {
-                WholeReadSessionReader r = views[i].CreateReader();
-                HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
-                Bound cb = hsst.TrySeek(tag, out Bound cbOut) ? cbOut : default;
-                sources[i] = new(new HsstEnumerator(in r, cb), views[i]);
-            }
+            SeedSourcesAtColumn(views, tag, sources.AsSpan(0, n));
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
                 sources.AsSpan(0, n), state, keySize);
 
@@ -358,13 +370,7 @@ public static class PersistedSnapshotMerger
 
         try
         {
-            for (int i = 0; i < n; i++)
-            {
-                WholeReadSessionReader r = views[i].CreateReader();
-                HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
-                Bound cb = hsst.TrySeek(tag, out Bound cbOut) ? cbOut : default;
-                sources[i] = new(new HsstEnumerator(in r, cb), views[i]);
-            }
+            SeedSourcesAtColumn(views, tag, sources.AsSpan(0, n));
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
                 sources.AsSpan(0, n), state, AddrKeyLen);
 
@@ -405,13 +411,7 @@ public static class PersistedSnapshotMerger
 
         try
         {
-            for (int i = 0; i < n; i++)
-            {
-                WholeReadSessionReader r = views[i].CreateReader();
-                HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
-                Bound cb = hsst.TrySeek(tag, out Bound cbOut) ? cbOut : default;
-                sources[i] = new(new HsstEnumerator(in r, cb), views[i]);
-            }
+            SeedSourcesAtColumn(views, tag, sources.AsSpan(0, n));
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
                 sources.AsSpan(0, n), state, AddrKeyLen);
 

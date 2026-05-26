@@ -166,15 +166,12 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
         BinaryPrimitives.WriteUInt16LittleEndian(header, (ushort)(n - 1));
         _writer.Advance(2);
 
-        // Keys: N · 2 bytes, byte-reversed on the way out (LE-stored).
+        // Keys: N · 2 bytes, byte-reversed on the way out (LE-stored convention; see
+        // HsstTwoByteSlotKeys for the rationale and HsstTwoByteSlotValueBuilder for the
+        // full comment.)
         int keysBytes = n * KeyLength;
         Span<byte> keysSpan = _writer.GetSpan(keysBytes);
-        ReadOnlySpan<byte> logicalKeys = _keys.AsSpan(0, keysBytes);
-        for (int i = 0; i < n; i++)
-        {
-            keysSpan[i * 2 + 0] = logicalKeys[i * 2 + 1];
-            keysSpan[i * 2 + 1] = logicalKeys[i * 2 + 0];
-        }
+        HsstTwoByteSlotKeys.CopyLogicalToStored(_keys.AsSpan(0, keysBytes), keysSpan);
         _writer.Advance(keysBytes);
 
         // Offsets: N − 1 u24 LE values (Offset_1..Offset_{N-1}); Offset_0 is omitted.
