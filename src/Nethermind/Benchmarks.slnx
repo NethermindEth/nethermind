@@ -61,4 +61,5 @@
   <Project Path="Nethermind.Network.Benchmark/Nethermind.Network.Benchmark.csproj" />
   <Project Path="Nethermind.Precompiles.Benchmark/Nethermind.Precompiles.Benchmark.csproj" />
   <Project Path="Nethermind.Precompiles.Benchmark.Test/Nethermind.Precompiles.Benchmark.Test.csproj" />
+  <Project Path="Nethermind.Trie.Benchmark/Nethermind.Trie.Benchmark.csproj" />
 </Solution>

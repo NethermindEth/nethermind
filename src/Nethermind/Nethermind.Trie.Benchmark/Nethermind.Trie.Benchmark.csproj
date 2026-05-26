@@ -2,6 +2,7 @@
 
     <PropertyGroup>
       <OutputType>Exe</OutputType>
+      <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     </PropertyGroup>
 
     <ItemGroup>
