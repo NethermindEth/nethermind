@@ -24,6 +24,7 @@ using System.Net;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using System.Collections.Generic;
+using Nethermind.Network.Discovery.Discv5;
 
 namespace Nethermind.Shutter;
 

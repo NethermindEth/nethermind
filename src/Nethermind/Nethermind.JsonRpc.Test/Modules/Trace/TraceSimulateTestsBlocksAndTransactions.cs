@@ -18,8 +18,10 @@ using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules.Simulate;
 using NUnit.Framework;
+using Nethermind.JsonRpc.Test.Modules.Eth;
+using Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
-namespace Nethermind.JsonRpc.Test.Modules.Eth;
+namespace Nethermind.JsonRpc.Test.Modules.Trace;
 
 public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<ParityLikeTxTrace>
 {

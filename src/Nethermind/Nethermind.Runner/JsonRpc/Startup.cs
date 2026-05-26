@@ -36,6 +36,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Runner.Monitoring;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 

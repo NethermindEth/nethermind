@@ -26,7 +26,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 
-namespace Nethermind.Xdc.Test.P2P;
+namespace Nethermind.Xdc.Test;
 
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcProtocolHandlerTests

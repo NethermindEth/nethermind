@@ -15,7 +15,7 @@ using Nethermind.Runner.Monitoring;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 
-namespace Nethermind.Runner;
+namespace Nethermind.Runner.Monitoring;
 
 public static class DataFeedExtensions
 {

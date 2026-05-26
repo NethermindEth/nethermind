@@ -12,7 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Network.Discovery;
+namespace Nethermind.Network.Discovery.Discv5;
 
 /// <summary>
 /// Adapter, integrating DotNetty externally-managed <see cref="IChannel"/> with Lantern.Discv5

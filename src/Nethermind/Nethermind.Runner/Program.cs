@@ -39,6 +39,7 @@ using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
 using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
 using Testably.Abstractions;
+using Nethermind.Network.Discovery.Discv5;
 #if !DEBUG
 using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 #endif
