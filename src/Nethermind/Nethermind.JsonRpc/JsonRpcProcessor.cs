@@ -197,55 +197,114 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
             if (processingState.PendingSingleDocument is not null)
             {
-                JsonDocument jsonDocument = processingState.PendingSingleDocument;
-                processingState.PendingSingleDocument = null;
-                PendingSingleDocumentResult pendingResult = await ProcessPendingSingleDocumentToSink(
-                    jsonDocument,
+                result = await ProcessPendingSingleDocumentToSink(
+                    processingState,
                     buffer,
                     isCompleted,
                     context,
                     sink,
                     options,
-                    processingState.PendingSingleDocumentStartTime,
                     cancellationToken);
-
-                processingState.PendingSingleDocument = pendingResult.PendingDocument;
                 reader.AdvanceTo(buffer.End);
                 advanced = true;
-                if (pendingResult.Result.HasValue)
+            }
+            else
+            {
+                if (processingState.FreshState)
                 {
-                    await WriteSingleEntryAsync(pendingResult.Result.Value, sink, cancellationToken);
+                    buffer = buffer.TrimStart();
                 }
 
-                processingState.ShouldExit |= pendingResult.ShouldExit;
-                return;
-            }
+                if (buffer.IsEmpty && readResult.IsCompleted && options.InputMode == JsonRpcInputMode.SingleDocument)
+                {
+                    result = GetParsingError(startTime, in buffer, "Error during parsing/validation: empty request.");
+                    processingState.ShouldExit = true;
+                }
+                else if (!buffer.IsEmpty)
+                {
+                    try
+                    {
+                        if (options.InputMode == JsonRpcInputMode.SingleDocument &&
+                            isCompleted &&
+                            buffer.IsSingleSegment)
+                        {
+                            if (TryReadSingleObjectRequest(buffer.First, out JsonRpcRequest? directRequest))
+                            {
+                                processingState.ShouldExit = true;
 
-            if (processingState.FreshState)
-            {
-                buffer = buffer.TrimStart();
-            }
+                                try
+                                {
+                                    await ProcessSingleRequestToSink(directRequest, context, sink, cancellationToken);
+                                }
+                                finally
+                                {
+                                    reader.AdvanceTo(buffer.End);
+                                    advanced = true;
+                                }
+                                return;
+                            }
 
-            if (buffer.IsEmpty && readResult.IsCompleted && options.InputMode == JsonRpcInputMode.SingleDocument)
-            {
-                result = GetParsingError(startTime, in buffer, "Error during parsing/validation: empty request.");
-                processingState.ShouldExit = true;
-            }
-            else if (!buffer.IsEmpty)
-            {
-                AvailableBufferResult availableBufferResult = await ProcessAvailableBufferToSink(
-                    reader,
-                    buffer,
-                    isCompleted,
-                    processingState,
-                    context,
-                    sink,
-                    options,
-                    startTime,
-                    cancellationToken);
-                result = availableBufferResult.Result;
-                buffer = availableBufferResult.Buffer;
-                advanced = availableBufferResult.Advanced;
+                            if (await TryProcessBatchRequestDirectly(buffer.First, context, sink, cancellationToken))
+                            {
+                                processingState.ShouldExit = true;
+                                reader.AdvanceTo(buffer.End);
+                                advanced = true;
+                                return;
+                            }
+                        }
+
+                        processingState.FreshState = TryParseJson(ref buffer, isCompleted, ref processingState.ReaderState, out JsonDocument? jsonDocument, options);
+                        if (processingState.FreshState)
+                        {
+                            if (options.InputMode == JsonRpcInputMode.SingleDocument)
+                            {
+                                result = await ProcessParsedSingleDocumentToSink(
+                                    processingState,
+                                    jsonDocument,
+                                    buffer,
+                                    isCompleted,
+                                    context,
+                                    sink,
+                                    options,
+                                    startTime,
+                                    cancellationToken);
+
+                                reader.AdvanceTo(buffer.End);
+                                advanced = true;
+                            }
+                            else
+                            {
+                                await ProcessJsonDocumentToSink(jsonDocument, context, sink, options, startTime, cancellationToken);
+                            }
+                        }
+                        else if (isCompleted && !buffer.IsEmpty)
+                        {
+                            result = GetParsingError(startTime, in buffer, "Error during parsing/validation: incomplete request.");
+                            processingState.ShouldExit = true;
+                        }
+
+                        if (!advanced)
+                        {
+                            reader.AdvanceTo(buffer.Start, buffer.End);
+                            advanced = true;
+                        }
+                    }
+                    catch (BadHttpRequestException e)
+                    {
+                        Handle(e);
+                        processingState.ShouldExit = true;
+                    }
+                    catch (ConnectionResetException e)
+                    {
+                        Handle(e);
+                        processingState.ShouldExit = true;
+                    }
+                    catch (JsonException ex)
+                    {
+                        result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
+                        processingState.ShouldExit = true;
+                    }
+                }
             }
 
             if (result.HasValue)
@@ -264,133 +323,41 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
-    private async ValueTask<AvailableBufferResult> ProcessAvailableBufferToSink(
-        PipeReader reader,
-        ReadOnlySequence<byte> buffer,
-        bool isCompleted,
+    private async ValueTask<JsonRpcResult.Entry?> ProcessPendingSingleDocumentToSink(
         PipeJsonProcessingState processingState,
-        JsonRpcContext context,
-        IJsonRpcResponseSink sink,
-        JsonRpcProcessingOptions options,
-        long startTime,
-        CancellationToken cancellationToken)
-    {
-        bool advanced = false;
-        try
-        {
-            if (options.InputMode == JsonRpcInputMode.SingleDocument &&
-                isCompleted &&
-                buffer.IsSingleSegment)
-            {
-                if (TryReadSingleObjectRequest(buffer.First, out JsonRpcRequest? directRequest))
-                {
-                    processingState.ShouldExit = true;
-
-                    try
-                    {
-                        await ProcessSingleRequestToSink(directRequest, context, sink, cancellationToken);
-                    }
-                    finally
-                    {
-                        reader.AdvanceTo(buffer.End);
-                        advanced = true;
-                    }
-                    return new AvailableBufferResult(null, buffer, advanced);
-                }
-
-                if (await TryProcessBatchRequestDirectly(buffer.First, context, sink, cancellationToken))
-                {
-                    processingState.ShouldExit = true;
-                    reader.AdvanceTo(buffer.End);
-                    advanced = true;
-                    return new AvailableBufferResult(null, buffer, advanced);
-                }
-            }
-
-            processingState.FreshState = TryParseJson(ref buffer, isCompleted, ref processingState.ReaderState, out JsonDocument? jsonDocument, options);
-            if (processingState.FreshState)
-            {
-                ParsedJsonDocumentResult parsedResult = await ProcessParsedJsonDocumentToSink(
-                    jsonDocument,
-                    buffer,
-                    isCompleted,
-                    context,
-                    sink,
-                    options,
-                    startTime,
-                    cancellationToken);
-
-                processingState.PendingSingleDocument = parsedResult.PendingSingleDocument;
-                processingState.PendingSingleDocumentStartTime = parsedResult.PendingSingleDocumentStartTime;
-                processingState.ShouldExit |= parsedResult.ShouldExit;
-                if (parsedResult.AdvanceToEnd)
-                {
-                    reader.AdvanceTo(buffer.End);
-                    advanced = true;
-                }
-
-                return new AvailableBufferResult(parsedResult.Result, buffer, advanced);
-            }
-
-            if (isCompleted && !buffer.IsEmpty)
-            {
-                processingState.ShouldExit = true;
-                JsonRpcResult.Entry result = GetParsingError(startTime, in buffer, "Error during parsing/validation: incomplete request.");
-                return new AvailableBufferResult(result, buffer, advanced);
-            }
-
-            reader.AdvanceTo(buffer.Start, buffer.End);
-            advanced = true;
-            return new AvailableBufferResult(null, buffer, advanced);
-        }
-        catch (BadHttpRequestException e)
-        {
-            Handle(e);
-            processingState.ShouldExit = true;
-            return new AvailableBufferResult(null, buffer, advanced);
-        }
-        catch (ConnectionResetException e)
-        {
-            Handle(e);
-            processingState.ShouldExit = true;
-            return new AvailableBufferResult(null, buffer, advanced);
-        }
-        catch (JsonException ex)
-        {
-            processingState.ShouldExit = true;
-            JsonRpcResult.Entry result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
-            return new AvailableBufferResult(result, buffer, advanced);
-        }
-    }
-
-    private async ValueTask<PendingSingleDocumentResult> ProcessPendingSingleDocumentToSink(
-        JsonDocument pendingSingleDocument,
         ReadOnlySequence<byte> buffer,
         bool isCompleted,
         JsonRpcContext context,
         IJsonRpcResponseSink sink,
         JsonRpcProcessingOptions options,
-        long startTime,
         CancellationToken cancellationToken)
     {
+        JsonDocument pendingSingleDocument = processingState.PendingSingleDocument!;
+        processingState.PendingSingleDocument = null;
+
         ReadOnlySequence<byte> trailingBuffer = buffer.TrimStart();
         if (!trailingBuffer.IsEmpty)
         {
             pendingSingleDocument.Dispose();
-            JsonRpcResult.Entry result = GetParsingError(startTime, in trailingBuffer, "Error during parsing/validation: trailing data after JSON-RPC request.");
-            return new PendingSingleDocumentResult(result, null, true);
+            processingState.ShouldExit = true;
+            return GetParsingError(processingState.PendingSingleDocumentStartTime, in trailingBuffer, "Error during parsing/validation: trailing data after JSON-RPC request.");
         }
 
         if (isCompleted)
         {
-            await ProcessJsonDocumentToSink(pendingSingleDocument, context, sink, options, startTime, cancellationToken);
-            return new PendingSingleDocumentResult(null, null, true);
+            await ProcessJsonDocumentToSink(pendingSingleDocument, context, sink, options, processingState.PendingSingleDocumentStartTime, cancellationToken);
+            processingState.ShouldExit = true;
+        }
+        else
+        {
+            processingState.PendingSingleDocument = pendingSingleDocument;
         }
 
-        return new PendingSingleDocumentResult(null, pendingSingleDocument, false);
+        return null;
     }
 
-    private async ValueTask<ParsedJsonDocumentResult> ProcessParsedJsonDocumentToSink(
+    private async ValueTask<JsonRpcResult.Entry?> ProcessParsedSingleDocumentToSink(
+        PipeJsonProcessingState processingState,
         JsonDocument jsonDocument,
         ReadOnlySequence<byte> remainingBuffer,
         bool isCompleted,
@@ -400,27 +367,26 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         long startTime,
         CancellationToken cancellationToken)
     {
-        if (options.InputMode != JsonRpcInputMode.SingleDocument)
-        {
-            await ProcessJsonDocumentToSink(jsonDocument, context, sink, options, startTime, cancellationToken);
-            return ParsedJsonDocumentResult.ContinueReading;
-        }
-
         ReadOnlySequence<byte> trailingBuffer = remainingBuffer.TrimStart();
         if (!trailingBuffer.IsEmpty)
         {
             jsonDocument.Dispose();
-            JsonRpcResult.Entry result = GetParsingError(startTime, in trailingBuffer, "Error during parsing/validation: trailing data after JSON-RPC request.");
-            return new ParsedJsonDocumentResult(result, null, 0, true, true);
+            processingState.ShouldExit = true;
+            return GetParsingError(startTime, in trailingBuffer, "Error during parsing/validation: trailing data after JSON-RPC request.");
         }
 
         if (isCompleted)
         {
             await ProcessJsonDocumentToSink(jsonDocument, context, sink, options, startTime, cancellationToken);
-            return new ParsedJsonDocumentResult(null, null, 0, true, true);
+            processingState.ShouldExit = true;
+        }
+        else
+        {
+            processingState.PendingSingleDocument = jsonDocument;
+            processingState.PendingSingleDocumentStartTime = startTime;
         }
 
-        return new ParsedJsonDocumentResult(null, jsonDocument, startTime, false, true);
+        return null;
     }
 
     private async ValueTask ProcessSingleDocumentMemoryToSink(
@@ -1046,21 +1012,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         public bool ShouldExit;
         public JsonDocument? PendingSingleDocument;
         public long PendingSingleDocumentStartTime;
-    }
-
-    private readonly record struct AvailableBufferResult(JsonRpcResult.Entry? Result, ReadOnlySequence<byte> Buffer, bool Advanced);
-
-    private readonly record struct PendingSingleDocumentResult(JsonRpcResult.Entry? Result, JsonDocument? PendingDocument, bool ShouldExit);
-
-    private readonly record struct ParsedJsonDocumentResult(
-        JsonRpcResult.Entry? Result,
-        JsonDocument? PendingSingleDocument,
-        long PendingSingleDocumentStartTime,
-        bool ShouldExit,
-        bool AdvanceToEnd)
-    {
-        public static ParsedJsonDocumentResult ContinueReading { get; } =
-            new(null, null, 0, false, false);
     }
 
     private sealed class BatchRequestJsonLifetime : IDisposable
