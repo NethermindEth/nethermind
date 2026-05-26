@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Text.Json;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
