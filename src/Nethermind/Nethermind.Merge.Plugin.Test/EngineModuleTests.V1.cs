@@ -1615,9 +1615,9 @@ public partial class EngineModuleTests
         return blocks;
     }
 
-    [TestCase(-1, TestName = "Behind finalized")]
-    [TestCase(0, TestName = "Last finalized")]
-    [TestCase(1, TestName = "After finalized")]
+    [TestCase(-1, TestName = "Processed behind finalized")]
+    [TestCase(0, TestName = "Processed last finalized")]
+    [TestCase(1, TestName = "Processed after finalized")]
     public async Task forkchoiceUpdatedV1_processed_skips_reorg_only_when_head_is_ancestor_of_finalized(int offset)
     {
         using MergeTestBlockchain chain =
@@ -1648,9 +1648,9 @@ public partial class EngineModuleTests
         }
     }
 
-    [TestCase(-1, TestName = "Behind finalized")]
-    [TestCase(0, TestName = "Last finalized")]
-    [TestCase(1, TestName = "After finalized")]
+    [TestCase(-1, TestName = "Unprocessed behind finalized")]
+    [TestCase(0, TestName = "Unprocessed last finalized")]
+    [TestCase(1, TestName = "Unprocessed after finalized")]
     public async Task forkchoiceUpdatedV1_unprocessed_skips_reorg_only_when_head_is_ancestor_of_finalized(int offset)
     {
         using MergeTestBlockchain chain =

@@ -115,7 +115,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 Action act = () => new TransactionReceiptsSubscription(
                     _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _logManager, filter);
 
-                Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains("cannot subscribe to more than 200 transaction hashes"));
+                Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains("Cannot subscribe to more than 200 transaction hashes"));
             }
             else
             {

@@ -29,7 +29,7 @@ public class SyncInfoDecoderTests
                         0
                     )
                 )
-            );
+            ).SetName("WithCertificates");
 
             yield return new TestCaseData(
                 new SyncInfo(
@@ -40,7 +40,7 @@ public class SyncInfoDecoderTests
                     ),
                     new TimeoutCertificate(1, [], 0)
                 )
-            );
+            ).SetName("EmptyCertificates");
 
             yield return new TestCaseData(
                 new SyncInfo(
@@ -51,7 +51,7 @@ public class SyncInfoDecoderTests
                     ),
                     new TimeoutCertificate(ulong.MaxValue, [], ulong.MaxValue)
                 )
-            );
+            ).SetName("MaxValues");
         }
     }
 

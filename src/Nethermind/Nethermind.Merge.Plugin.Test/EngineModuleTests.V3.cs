@@ -719,7 +719,6 @@ public partial class EngineModuleTests
 
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobVersionedHashesRequest.ToArray());
 
-        Assert.That(result.Data, Is.EqualTo(blobsAndProofs));
         BlobAndProofV1?[] resultBlobsAndProofs = result.Data.ToArray();
         Assert.That(resultBlobsAndProofs.Length, Is.EqualTo(requestSize));
         for (int i = 0; i < requestSize; i++)

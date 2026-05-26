@@ -38,16 +38,17 @@ public class Hash256ArrayConverterTests
         }
         else
         {
-            Assert.That(hashes, Is.Not.Null.And.Count.EqualTo(expected.Length));
+            Assert.That(hashes, Is.Not.Null);
+            Assert.That(hashes!.Length, Is.EqualTo(expected.Length));
             for (int i = 0; i < expected.Length; i++)
             {
                 if (expected[i] is null)
                 {
-                    Assert.That(hashes![i], Is.Null);
+                    Assert.That(hashes[i], Is.Null);
                 }
                 else
                 {
-                    Assert.That(hashes![i], Is.EqualTo(expected[i]!));
+                    Assert.That(hashes[i], Is.EqualTo(expected[i]!));
                 }
             }
         }

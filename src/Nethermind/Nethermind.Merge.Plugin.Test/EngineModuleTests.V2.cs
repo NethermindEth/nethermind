@@ -784,18 +784,20 @@ public partial class EngineModuleTests
         return getPayloadResult.Data!;
     }
 
-    protected static IEnumerable<(
-        Withdrawal[][] Withdrawals, // withdrawals per payload
-        (Address, UInt256)[] expectedAccountIncrease)> WithdrawalsTestCases()
+    protected static IEnumerable<TestCaseData> WithdrawalsTestCases()
     {
-        yield return ([Array.Empty<Withdrawal>()], Array.Empty<(Address, UInt256)>());
-        yield return ([[TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth]],
+        static TestCaseData Case(string name, Withdrawal[][] withdrawals, (Address, UInt256)[] expectedAccountIncrease) =>
+            new TestCaseData(((Withdrawal[][] Withdrawals, (Address, UInt256)[] ExpectedAccountIncrease))(withdrawals, expectedAccountIncrease))
+                .SetName(name);
+
+        yield return Case("EmptyWithdrawals", [Array.Empty<Withdrawal>()], Array.Empty<(Address, UInt256)>());
+        yield return Case("TwoAccountsSinglePayload", [[TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth]],
             [(TestItem.AddressA, 1.Ether), (TestItem.AddressB, 2.Ether)]);
-        yield return ([[TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth]],
+        yield return Case("SameAccountSinglePayload", [[TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth]],
             [(TestItem.AddressA, 2.Ether), (TestItem.AddressB, 0.Ether)]);
-        yield return ([[TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth], [TestItem.WithdrawalA_1Eth]],
+        yield return Case("SameAccountMultiplePayloads", [[TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth], [TestItem.WithdrawalA_1Eth]],
             [(TestItem.AddressA, 3.Ether), (TestItem.AddressB, 0.Ether)]);
-        yield return ([
+        yield return Case("MixedMultiplePayloads", [
                 [TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth], // 1st payload
                 [TestItem.WithdrawalA_1Eth], // 2nd payload
                 [], // 3rd payload
@@ -879,39 +881,41 @@ public partial class EngineModuleTests
         return executionPayload;
     }
 
-    protected static IEnumerable<(
-        IReleaseSpec releaseSpec,
-        Withdrawal[]? Withdrawals,
-        bool isValid
-        )> ZeroWithdrawalsTestCases()
+    protected static IEnumerable<TestCaseData> ZeroWithdrawalsTestCases()
     {
-        yield return (London.Instance, null, true);
-        yield return (Shanghai.Instance, null, false);
-        yield return (London.Instance, Array.Empty<Withdrawal>(), false);
-        yield return (Shanghai.Instance, Array.Empty<Withdrawal>(), true);
-        yield return (London.Instance, new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth }, false);
+        static TestCaseData Case(string name, IReleaseSpec releaseSpec, Withdrawal[]? withdrawals, bool isValid) =>
+            new TestCaseData(((IReleaseSpec ReleaseSpec, Withdrawal[]? Withdrawals, bool IsValid))(releaseSpec, withdrawals, isValid))
+                .SetName(name);
+
+        yield return Case("LondonNullWithdrawals", London.Instance, null, true);
+        yield return Case("ShanghaiNullWithdrawals", Shanghai.Instance, null, false);
+        yield return Case("LondonEmptyWithdrawals", London.Instance, Array.Empty<Withdrawal>(), false);
+        yield return Case("ShanghaiEmptyWithdrawals", Shanghai.Instance, Array.Empty<Withdrawal>(), true);
+        yield return Case("LondonNonEmptyWithdrawals", London.Instance, new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth }, false);
     }
 
-    protected static IEnumerable<(
-        Func<CallInfo, Block?>,
-        IReadOnlyList<ExecutionPayloadBodyV1Result?>
-        )> PayloadBodiesByRangeNullTrimTestCases()
+    protected static IEnumerable<TestCaseData> PayloadBodiesByRangeNullTrimTestCases()
     {
+        static TestCaseData Case(string name, Func<CallInfo, Block?> blockFinder, IReadOnlyList<ExecutionPayloadBodyV1Result?> expectedBodies) =>
+            new TestCaseData(((Func<CallInfo, Block?> BlockFinder, IReadOnlyList<ExecutionPayloadBodyV1Result?> ExpectedBodies))(blockFinder, expectedBodies))
+                .SetName(name);
+
         Block block = Build.A.Block.TestObject;
         ExecutionPayloadBodyV1Result result = new(Array.Empty<Transaction>(), null);
 
-        yield return (_ => null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, null, null, null]);
-        yield return (i => i.ArgAt<long>(0) % 2 == 0 ? block : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
-        yield return (_ => block, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]);
+        yield return Case("AllMissing", _ => null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, null, null, null]);
+        yield return Case("EveryOtherBlockMissing", i => i.ArgAt<long>(0) % 2 == 0 ? block : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
+        yield return Case("AllPresent", _ => block, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]);
     }
 
-    protected static IEnumerable<(
-        Withdrawal[]? Withdrawals,
-        string payloadId
-        )> PayloadIdTestCases()
+    protected static IEnumerable<TestCaseData> PayloadIdTestCases()
     {
-        yield return (null, "0xe3b6f7433feedc38");
-        yield return (Array.Empty<Withdrawal>(), "0xf74921b673b2e08e");
-        yield return ([Build.A.Withdrawal.TestObject], "0xe0d0b996245ec3a6");
+        static TestCaseData Case(string name, Withdrawal[]? withdrawals, string payloadId) =>
+            new TestCaseData(((Withdrawal[]? Withdrawals, string PayloadId))(withdrawals, payloadId))
+                .SetName(name);
+
+        yield return Case("NullWithdrawals", null, "0xe3b6f7433feedc38");
+        yield return Case("EmptyWithdrawals", Array.Empty<Withdrawal>(), "0xf74921b673b2e08e");
+        yield return Case("OneWithdrawal", [Build.A.Withdrawal.TestObject], "0xe0d0b996245ec3a6");
     }
 }

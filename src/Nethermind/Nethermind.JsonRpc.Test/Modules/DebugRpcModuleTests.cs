@@ -142,7 +142,7 @@ public partial class DebugRpcModuleTests
         if (expectedValue is not null)
         {
             byte[] returnValueBytes = Bytes.FromHexString((string)result["returnValue"]!);
-            Assert.That(Convert.ToHexString(returnValueBytes), Is.EqualTo(expectedValue));
+            Assert.That(returnValueBytes.ToHexString(), Is.EqualTo(expectedValue));
         }
     }
 

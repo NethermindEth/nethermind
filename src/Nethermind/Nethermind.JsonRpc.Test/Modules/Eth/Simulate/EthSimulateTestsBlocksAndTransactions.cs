@@ -521,8 +521,9 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
         SimulateCallResult callResult = result.Data.First().Calls.First();
         Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
-        Assert.That(callResult.ReturnData, Is.Not.Null.And.Count.EqualTo(32));
-        Assert.That(new Hash256(callResult.ReturnData!), Is.EqualTo(expected));
+        Assert.That(callResult.ReturnData, Is.Not.Null);
+        Assert.That(callResult.ReturnData!.Length, Is.EqualTo(32));
+        Assert.That(new Hash256(callResult.ReturnData), Is.EqualTo(expected));
     }
 
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480

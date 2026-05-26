@@ -22,7 +22,8 @@ internal class XdcSortTests
             ];
         Address[] expectedOrder = [TestItem.AddressC, TestItem.AddressB, TestItem.AddressA];
 
-        yield return new TestCaseData(candidatesAndStake, expectedOrder);
+        yield return new TestCaseData(candidatesAndStake, expectedOrder)
+            .SetName("EqualStakeOriginalOrder");
 
         candidatesAndStake =
             [
@@ -32,7 +33,8 @@ internal class XdcSortTests
             ];
         expectedOrder = [TestItem.AddressB, TestItem.AddressC, TestItem.AddressA];
 
-        yield return new TestCaseData(candidatesAndStake, expectedOrder);
+        yield return new TestCaseData(candidatesAndStake, expectedOrder)
+            .SetName("AddressBHighestStake");
 
         candidatesAndStake =
             [
@@ -42,7 +44,8 @@ internal class XdcSortTests
             ];
         expectedOrder = [TestItem.AddressC, TestItem.AddressA, TestItem.AddressB];
 
-        yield return new TestCaseData(candidatesAndStake, expectedOrder);
+        yield return new TestCaseData(candidatesAndStake, expectedOrder)
+            .SetName("AddressAAndCHighestStake");
 
         candidatesAndStake =
             [
@@ -52,7 +55,8 @@ internal class XdcSortTests
             ];
         expectedOrder = [TestItem.AddressA, TestItem.AddressC, TestItem.AddressB];
 
-        yield return new TestCaseData(candidatesAndStake, expectedOrder);
+        yield return new TestCaseData(candidatesAndStake, expectedOrder)
+            .SetName("EqualStakeDifferentInputOrder");
         // Test with 20 items with same stake to verify unstable sort behavior
         candidatesAndStake = Enumerable.Range(0, 20)
             .Select(i => new CandidateStake()
@@ -67,7 +71,8 @@ internal class XdcSortTests
             .Select(i => new Address($"0x{i:D40}"))
             .ToArray();
 
-        yield return new TestCaseData(candidatesAndStake, expectedOrder);
+        yield return new TestCaseData(candidatesAndStake, expectedOrder)
+            .SetName("TwentyEqualStakeItems");
     }
 
     [TestCaseSource(nameof(CandidatesWithStake))]
