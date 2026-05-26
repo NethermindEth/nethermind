@@ -123,7 +123,7 @@ public class HsstTests
     [TestCase(5000)]
     public void Multiple_Entries_RoundTrip(int count)
     {
-        List<(string Key, string Value)> expected = new();
+        List<(string Key, string Value)> expected = [];
         for (int i = 0; i < count; i++)
         {
             string key = $"key_{i:D6}";
@@ -268,7 +268,7 @@ public class HsstTests
     [TestCase(200)]
     public void Enumeration_Returns_Sorted_Entries(int count)
     {
-        List<(string Key, string Value)> entries = new();
+        List<(string Key, string Value)> entries = [];
         for (int i = 0; i < count; i++)
         {
             string key = $"key_{i:D6}";

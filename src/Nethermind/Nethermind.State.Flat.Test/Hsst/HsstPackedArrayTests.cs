@@ -48,7 +48,7 @@ public class HsstPackedArrayTests
     private static (byte[][] Keys, byte[][] Values) MakeSortedKeys(int count, int seed = 1)
     {
         Random rng = new(seed);
-        HashSet<string> seen = new();
+        HashSet<string> seen = [];
         List<byte[]> ks = new(count);
         while (ks.Count < count)
         {

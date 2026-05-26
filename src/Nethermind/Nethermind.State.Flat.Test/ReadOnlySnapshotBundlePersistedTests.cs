@@ -58,8 +58,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, hsstData);
-        PersistedSnapshotList list = new(1);
-        list.Add(persisted);
+        PersistedSnapshotList list = new(1) { persisted };
 
         // Mock persistence reader that should NOT be called for this path
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -96,8 +95,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, hsstData);
-        PersistedSnapshotList list = new(1);
-        list.Add(persisted);
+        PersistedSnapshotList list = new(1) { persisted };
 
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
 
@@ -134,8 +132,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, hsstData);
-        PersistedSnapshotList list = new(1);
-        list.Add(persisted);
+        PersistedSnapshotList list = new(1) { persisted };
 
         // Mock persistence reader returns data for the missing path
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();

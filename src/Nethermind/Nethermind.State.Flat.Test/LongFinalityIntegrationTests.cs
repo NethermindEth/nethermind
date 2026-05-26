@@ -199,9 +199,7 @@ public class LongFinalityIntegrationTests
         byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _helperBlobs);
         PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(s0, s1, data1);
         PersistedSnapshot baseSnap2 = CreatePersistedSnapshot(s1, s2, data2);
-        PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(baseSnap1);
-        toMerge.Add(baseSnap2);
+        PersistedSnapshotList toMerge = new(2) { baseSnap1, baseSnap2 };
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
 
         PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, merged,

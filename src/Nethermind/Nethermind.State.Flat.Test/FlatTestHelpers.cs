@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using NSubstitute;
 
 namespace Nethermind.State.Flat.Test;
@@ -28,5 +30,6 @@ internal static class FlatTestHelpers
     /// optionally pre-populating the snapshot content via <paramref name="populate"/>.
     /// </summary>
     public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, Action<SnapshotContent>? populate = null) =>
-        new(SnapshotList(MakeSnapshot(pool, populate)), Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics: false);
+        new(SnapshotList(MakeSnapshot(pool, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
+            recordDetailedMetrics: false, PersistedSnapshotList.Empty(), new ArrayPoolList<PersistedSnapshotBloom>(0));
 }

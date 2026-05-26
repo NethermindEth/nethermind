@@ -644,7 +644,7 @@ public class BSearchIndexTests
         }
         Array.Sort(keys, (a, b) => a.AsSpan().SequenceCompareTo(b));
         // Drop duplicates (would break sorted-order writes).
-        List<byte[]> dedup = new() { keys[0] };
+        List<byte[]> dedup = [keys[0]];
         for (int i = 1; i < count; i++)
             if (!keys[i].AsSpan().SequenceEqual(dedup[^1])) dedup.Add(keys[i]);
         keys = dedup.ToArray();

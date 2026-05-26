@@ -305,9 +305,7 @@ public class PersistedSnapshotTests
         PersistedSnapshot p2 = CreatePersistedSnapshot(s1, s2, data2);
 
         // Ordered oldest-first; query newest-first via indexer
-        PersistedSnapshotList list = new(2);
-        list.Add(p1);
-        list.Add(p2);
+        PersistedSnapshotList list = new(2) { p1, p2 };
         byte[]? result = null;
         bool found = false;
         for (int i = list.Count - 1; i >= 0; i--)
@@ -351,9 +349,7 @@ public class PersistedSnapshotTests
         Snapshot snap2 = new(s1, s2, content2, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _blobs);
 
-        PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(CreatePersistedSnapshot(s0, s1, data1));
-        toMerge.Add(CreatePersistedSnapshot(s1, s2, data2));
+        PersistedSnapshotList toMerge = new(2) { CreatePersistedSnapshot(s0, s1, data1), CreatePersistedSnapshot(s1, s2, data2) };
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s2, merged);
 
@@ -433,9 +429,7 @@ public class PersistedSnapshotTests
         Snapshot newer = new(s1, s2, newerContent, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] dataNewer = PersistedSnapshotBuilderTestExtensions.Build(newer, _blobs);
 
-        PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(CreatePersistedSnapshot(s0, s1, dataOlder));
-        toMerge.Add(CreatePersistedSnapshot(s1, s2, dataNewer));
+        PersistedSnapshotList toMerge = new(2) { CreatePersistedSnapshot(s0, s1, dataOlder), CreatePersistedSnapshot(s1, s2, dataNewer) };
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s2, merged);
 
