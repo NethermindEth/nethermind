@@ -94,7 +94,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             keyStore.GetKey(address, Arg.Any<SecureString>())
                 .Returns<(PrivateKey, Result)>(ci => ci.Arg<SecureString>().Unsecure() == correctPassphrase
                     ? (new PrivateKey(privateKeyHex), Result.Success)
-                    : (default, Result.Fail("authentication failed")));
+                    : (null!, Result.Fail("authentication failed")));
 
             DevKeyStoreWallet wallet = new(keyStore, LimboLogs.Instance, createTestAccounts: false);
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, wallet, keyStore);
