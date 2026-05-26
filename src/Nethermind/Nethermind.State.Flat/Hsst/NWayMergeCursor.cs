@@ -80,6 +80,17 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
     /// responsible for its lifetime (typically a single <c>PinBuffer</c> + <c>using</c>).</summary>
     public readonly TReader CreateMinReader() => _sources[_minIdx].CreateReader();
 
+    /// <summary>Value bound of source <paramref name="srcIdx"/>'s current entry. Valid while
+    /// the source's cached key still equals <see cref="MinKey"/> (i.e. for slots present in
+    /// <see cref="MatchingSources"/>, between <see cref="MoveNext"/> and the corresponding
+    /// <see cref="AdvanceMatching"/>). Routes to <c>_sources[srcIdx].GetEnumerator().CurrentValue</c>.</summary>
+    public readonly Bound ValueAt(int srcIdx) => _sources[srcIdx].GetEnumerator().CurrentValue;
+
+    /// <summary>Materialise a fresh reader for source <paramref name="srcIdx"/>. Routes to
+    /// <c>_sources[srcIdx].CreateReader()</c>; caller owns the returned reader's lifetime
+    /// (typically a single <c>PinBuffer</c> + <c>using</c>).</summary>
+    public readonly TReader CreateReaderAt(int srcIdx) => _sources[srcIdx].CreateReader();
+
     /// <param name="sources">N source structs, one per cursor slot. Each source's
     /// enumerator must be positioned at the start of its scope but NOT yet advanced;
     /// the ctor calls <c>MoveNext</c> on each source to prime the loser tree.</param>
