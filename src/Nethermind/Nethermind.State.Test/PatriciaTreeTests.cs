@@ -12,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -26,7 +27,7 @@ namespace Nethermind.Store.Test
         {
             Account account = new(1);
             using ITrieStore trieStore = CreateTrieStore();
-            using var _ = trieStore.BeginBlockCommit(0);
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit();
@@ -47,7 +48,7 @@ namespace Nethermind.Store.Test
             StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
             {
-                using var _ = trieStore.BeginBlockCommit(0);
+                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.Set(TestItem.AddressB, account);
                 stateTree.Commit();
@@ -71,7 +72,7 @@ namespace Nethermind.Store.Test
             using ITrieStore trieStore = CreateTrieStore(db);
 
             {
-                using var _ = trieStore.BeginBlockCommit(0);
+                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
                 StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.Commit();
@@ -99,7 +100,7 @@ namespace Nethermind.Store.Test
 
             Hash256 stateRoot;
             {
-                using var _ = fullTrieStore.BeginBlockCommit(0);
+                using IBlockCommitter _ = fullTrieStore.BeginBlockCommit(0);
                 StateTree stateTree = new(trieStore, LimboLogs.Instance);
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.UpdateRootHash();
@@ -108,6 +109,45 @@ namespace Nethermind.Store.Test
             }
 
             fullTrieStore.HasRoot(stateRoot).Should().Be(hasRoot);
+        }
+
+
+        [Test]
+        public void Modify_LeafOnlyNode_And_RecalculateRoot()
+        {
+            using ITrieStore fullTrieStore = CreateTrieStore();
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+
+            PatriciaTree tree = new(trieStore, LimboLogs.Instance);
+            tree.Set(new ValueHash256("2222222222222222222222222222222222222222222222222222222222222222").BytesAsSpan, [1]);
+            tree.UpdateRootHash();
+
+            Hash256 rootHash = tree.RootHash;
+
+            tree.Set(new ValueHash256("2222222222222222222222222222222222222222222222222222222222222222").BytesAsSpan, [2]);
+            tree.UpdateRootHash();
+
+            tree.RootHash.Should().NotBe(rootHash);
+        }
+
+        [Test]
+        public void Accept_with_nonexistent_storage([Values] bool isFullDbScan)
+        {
+            using ITrieStore trieStore = CreateTrieStore();
+            StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+            {
+                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+                stateTree.Set(TestItem.AddressA, new Account(1));
+                stateTree.Commit();
+            }
+
+            ITreeVisitor<EmptyContext> visitor = Substitute.For<ITreeVisitor<EmptyContext>>();
+            {
+                visitor.IsFullDbScan.Returns(isFullDbScan);
+            }
+
+            stateTree.Accept(visitor, stateTree.RootHash, storageAddr: TestItem.KeccakA);
+            visitor.Received(1).VisitTree(Arg.Any<EmptyContext>(), Keccak.EmptyTreeHash);
         }
 
         private ITrieStore CreateTrieStore(IDb db = null)

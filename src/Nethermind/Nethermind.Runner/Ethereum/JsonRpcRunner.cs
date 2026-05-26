@@ -11,50 +11,56 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Runner.Logging;
 using Nethermind.Sockets;
+using Nethermind.Synchronization.Peers;
+using Nethermind.TxPool;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 using WebHost = Nethermind.Runner.JsonRpc.WebHost;
 
 namespace Nethermind.Runner.Ethereum
 {
-    public class JsonRpcRunner
+    public class JsonRpcRunner(
+        JsonRpcProcessor jsonRpcProcessor,
+        IJsonRpcUrlCollection jsonRpcUrlCollection,
+        IWebSocketsManager webSocketsManager,
+        IConfigProvider configurationProvider,
+        IRpcAuthentication rpcAuthentication,
+        ILogManager logManager,
+        IJsonRpcServiceConfigurer[] jsonRpcServices,
+        ITxPool txPool,
+        ISpecProvider specProvider,
+        IReceiptFinder receiptFinder,
+        IBlockTree blockTree,
+        ISyncPeerPool syncPeerPool,
+        IMainProcessingContext mainProcessingContext)
     {
-        private readonly Nethermind.Logging.ILogger _logger;
-        private readonly IConfigProvider _configurationProvider;
-        private readonly IRpcAuthentication _rpcAuthentication;
-        private readonly ILogManager _logManager;
-        private readonly IJsonRpcProcessor _jsonRpcProcessor;
-        private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
-        private readonly IWebSocketsManager _webSocketsManager;
+        private readonly Nethermind.Logging.ILogger _logger = logManager.GetClassLogger<JsonRpcRunner>();
+        private readonly IConfigProvider _configurationProvider = configurationProvider;
+        private readonly IRpcAuthentication _rpcAuthentication = rpcAuthentication;
+        private readonly ILogManager _logManager = logManager;
+        private readonly JsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
+        private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection = jsonRpcUrlCollection;
+        private readonly IWebSocketsManager _webSocketsManager = webSocketsManager;
         private WebHost? _webApp;
-        private readonly IJsonRpcServiceConfigurer[] _jsonRpcServices;
-
-        public JsonRpcRunner(
-            IJsonRpcProcessor jsonRpcProcessor,
-            IJsonRpcUrlCollection jsonRpcUrlCollection,
-            IWebSocketsManager webSocketsManager,
-            IConfigProvider configurationProvider,
-            IRpcAuthentication rpcAuthentication,
-            ILogManager logManager,
-            IJsonRpcServiceConfigurer[] jsonRpcServices)
-        {
-            _configurationProvider = configurationProvider;
-            _rpcAuthentication = rpcAuthentication;
-            _jsonRpcUrlCollection = jsonRpcUrlCollection;
-            _logManager = logManager;
-            _jsonRpcProcessor = jsonRpcProcessor;
-            _webSocketsManager = webSocketsManager;
-            _jsonRpcServices = jsonRpcServices;
-            _logger = logManager.GetClassLogger();
-        }
+        private readonly IJsonRpcServiceConfigurer[] _jsonRpcServices = jsonRpcServices;
+        private readonly ITxPool _txPool = txPool;
+        private readonly ISpecProvider _specProvider = specProvider;
+        private readonly IReceiptFinder _receiptFinder = receiptFinder;
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly ISyncPeerPool _syncPeerPool = syncPeerPool;
+        private readonly IMainProcessingContext _mainProcessingContext = mainProcessingContext;
 
         public async Task Start(CancellationToken cancellationToken)
         {
@@ -84,6 +90,12 @@ namespace Nethermind.Runner.Ethereum
                     s.AddSingleton(_jsonRpcUrlCollection);
                     s.AddSingleton(_webSocketsManager);
                     s.AddSingleton(_rpcAuthentication);
+                    s.AddSingleton(_txPool);
+                    s.AddSingleton(_specProvider);
+                    s.AddSingleton(_receiptFinder);
+                    s.AddSingleton(_blockTree);
+                    s.AddSingleton(_syncPeerPool);
+                    s.AddSingleton(_mainProcessingContext);
                     foreach (IJsonRpcServiceConfigurer configurer in _jsonRpcServices)
                     {
                         configurer.Configure(s);
@@ -97,6 +109,8 @@ namespace Nethermind.Runner.Ethereum
                     logging.SetMinimumLevel(LogLevel.Information);
                     logging.ClearProviders();
                     logging.AddProvider(new CustomMicrosoftLoggerProvider(_logManager));
+                    logging.Configure(options =>
+                        options.ActivityTrackingOptions = ActivityTrackingOptions.None);
                 });
 
             WebApplication webApp = builder.Build();

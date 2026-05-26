@@ -5,14 +5,9 @@ using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Merge.Plugin;
 
-public class MergeBlockProductionPolicy : IMergeBlockProductionPolicy
+public class MergeBlockProductionPolicy(IBlockProductionPolicy preMergeBlockProductionPolicy) : IMergeBlockProductionPolicy
 {
-    private readonly IBlockProductionPolicy _preMergeBlockProductionPolicy;
-
-    public MergeBlockProductionPolicy(IBlockProductionPolicy preMergeBlockProductionPolicy)
-    {
-        _preMergeBlockProductionPolicy = preMergeBlockProductionPolicy;
-    }
+    private readonly IBlockProductionPolicy _preMergeBlockProductionPolicy = preMergeBlockProductionPolicy;
 
     public bool ShouldStartBlockProduction() => true;
 

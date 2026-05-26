@@ -20,12 +20,9 @@ public static class NewPayloadV1Result
             throw new ArgumentException("Must have a message set.", nameof(validationError));
         return Invalid(null, validationError);
     }
-    public static ResultWrapper<PayloadStatusV1> Invalid(Hash256? latestValidHash, string? validationError = null)
-        => ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1() { Status = PayloadStatus.Invalid, LatestValidHash = latestValidHash, ValidationError = validationError });
+    public static ResultWrapper<PayloadStatusV1> Invalid(Hash256? latestValidHash, string? validationError = null) => ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1() { Status = PayloadStatus.Invalid, LatestValidHash = latestValidHash, ValidationError = validationError });
 
-    public static ResultWrapper<PayloadStatusV1> InvalidInclusionList(Hash256? latestValidHash)
-        => ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1() { Status = PayloadStatus.InvalidInclusionList, LatestValidHash = latestValidHash });
+    public static ResultWrapper<PayloadStatusV1> InvalidInclusionList(Hash256? latestValidHash) => ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1() { Status = PayloadStatus.InvalidInclusionList, LatestValidHash = latestValidHash });
 
-    public static ResultWrapper<PayloadStatusV1> Valid(Hash256? latestValidHash)
-        => ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1() { Status = PayloadStatus.Valid, LatestValidHash = latestValidHash });
+    public static ResultWrapper<PayloadStatusV1> Valid(Hash256? latestValidHash) => ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1() { Status = PayloadStatus.Valid, LatestValidHash = latestValidHash });
 }

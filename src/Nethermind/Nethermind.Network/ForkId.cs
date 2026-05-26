@@ -7,17 +7,11 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network
 {
-    public readonly struct ForkId : IEquatable<ForkId>
+    public readonly struct ForkId(uint forkHash, ulong next) : IEquatable<ForkId>
     {
-        public ForkId(uint forkHash, ulong next)
-        {
-            ForkHash = forkHash;
-            Next = next;
-        }
+        public uint ForkHash { get; } = forkHash;
 
-        public uint ForkHash { get; }
-
-        public ulong Next { get; }
+        public ulong Next { get; } = next;
 
         public byte[] HashBytes
         {
@@ -29,24 +23,12 @@ namespace Nethermind.Network
             }
         }
 
-        public bool Equals(ForkId other)
-        {
-            return ForkHash == other.ForkHash && Next == other.Next;
-        }
+        public bool Equals(ForkId other) => ForkHash == other.ForkHash && Next == other.Next;
 
-        public override bool Equals(object obj)
-        {
-            return obj is ForkId other && Equals(other);
-        }
+        public override bool Equals(object obj) => obj is ForkId other && Equals(other);
 
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(ForkHash.GetHashCode(), Next);
-        }
+        public override int GetHashCode() => HashCode.Combine(ForkHash.GetHashCode(), Next);
 
-        public override string ToString()
-        {
-            return $"{HashBytes.ToHexString()} {Next}";
-        }
+        public override string ToString() => $"{HashBytes.ToHexString()} {Next}";
     }
 }

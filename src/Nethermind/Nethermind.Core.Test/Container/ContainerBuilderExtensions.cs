@@ -4,6 +4,9 @@
 using System;
 using Autofac;
 using Autofac.Core;
+using Nethermind.Blockchain;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Core.Test.Container;
 
@@ -19,16 +22,13 @@ public static class ContainerBuilderExtensions
     /// <param name="configurer"></param>
     /// <typeparam name="T"></typeparam>
     /// <returns></returns>
-    public static ContainerBuilder UpdateSingleton<T>(this ContainerBuilder builder, Action<ContainerBuilder> configurer) where T : class
+    public static ContainerBuilder UpdateSingleton<T>(this ContainerBuilder builder, Action<ContainerBuilder> configurer) where T : class => builder.AddSingletonWithAccessToPreviousRegistration<T>((ctx, factory) =>
     {
-        return builder.AddSingletonWithAccessToPreviousRegistration<T>((ctx, factory) =>
-        {
-            ILifetimeScope parentLifetime = ctx.Resolve<ILifetimeScope>();
-            ILifetimeScope innerLifetime = parentLifetime.BeginLifetimeScope(configurer);
-            parentLifetime.Disposer.AddInstanceForAsyncDisposal(innerLifetime);
-            return factory(innerLifetime);
-        });
-    }
+        ILifetimeScope parentLifetime = ctx.Resolve<ILifetimeScope>();
+        ILifetimeScope innerLifetime = parentLifetime.BeginLifetimeScope(configurer);
+        parentLifetime.Disposer.AddInstanceForAsyncDisposal(innerLifetime);
+        return factory(innerLifetime);
+    });
 
     /// <summary>
     /// Create another singleton registration for T with access to a factory function for its exact previous registration. Useful as
@@ -53,7 +53,7 @@ public static class ContainerBuilderExtensions
                         break;
                     }
 
-                    if (componentRegistration.Metadata.TryGetValue(metadataName, out var value) &&
+                    if (componentRegistration.Metadata.TryGetValue(metadataName, out object? value) &&
                         value is Guid guidValue && guidValue == regId)
                     {
                         wasFound = true;
@@ -77,4 +77,19 @@ public static class ContainerBuilderExtensions
 
         return builder;
     }
+
+    public static ContainerBuilder WithGenesisPostProcessor(this ContainerBuilder builder,
+        Action<Block, IWorldState> postProcessor) => builder.AddScoped<IGenesisPostProcessor, IWorldState>((worldState) =>
+    {
+        return new FunctionalGenesisPostProcessor((block) =>
+        {
+            postProcessor(block, worldState);
+        });
+    });
+
+    public static ContainerBuilder WithGenesisPostProcessor(this ContainerBuilder builder,
+        Action<Block, IWorldState, ISpecProvider> postProcessor) => builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) => new FunctionalGenesisPostProcessor((block) =>
+    {
+        postProcessor(block, worldState, specProvider);
+    }));
 }

@@ -19,7 +19,7 @@ public class GethTxMemoryTraceEntry : GethTxTraceEntry
 
         if (missingChunks > 0)
         {
-            var memory = Memory;
+            string[] memory = Memory;
             Array.Resize(ref memory, memory.Length + missingChunks);
             for (int i = Memory.Length; i < memory.Length; i++)
             {

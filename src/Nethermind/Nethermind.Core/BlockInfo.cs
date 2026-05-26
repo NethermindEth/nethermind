@@ -18,20 +18,13 @@ namespace Nethermind.Core
         BeaconMainChain = 16
     }
 
-    public class BlockInfo : IEquatable<BlockInfo>
+    public class BlockInfo(Hash256 blockHash, in UInt256 totalDifficulty, BlockMetadata metadata = BlockMetadata.None) : IEquatable<BlockInfo>
     {
-        public BlockInfo(Hash256 blockHash, in UInt256 totalDifficulty, BlockMetadata metadata = BlockMetadata.None)
-        {
-            BlockHash = blockHash;
-            TotalDifficulty = totalDifficulty;
-            Metadata = metadata;
-        }
-
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256 TotalDifficulty { get; set; } = totalDifficulty;
 
         public bool WasProcessed { get; set; }
 
-        public Hash256 BlockHash { get; }
+        public Hash256 BlockHash { get; } = blockHash;
 
         public bool IsFinalized
         {
@@ -70,7 +63,7 @@ namespace Nethermind.Core
             get => (Metadata & (BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader)) != 0;
         }
 
-        public BlockMetadata Metadata { get; set; }
+        public BlockMetadata Metadata { get; set; } = metadata;
 
         /// <summary>
         /// This property is not serialized

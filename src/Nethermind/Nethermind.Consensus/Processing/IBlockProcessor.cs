@@ -19,6 +19,14 @@ namespace Nethermind.Consensus.Processing
     /// </summary>
     public interface IBlockProcessor
     {
+        /// <summary>
+        /// Raised after all transactions in a block have been executed,
+        /// before blooms, receipts root, and state root are computed.
+        /// Subscribers can use this to cancel background work (e.g. prewarmer)
+        /// so the thread pool is free for the parallel post-tx computations.
+        /// </summary>
+        event Action? TransactionsExecuted;
+
         public (Block Block, TxReceipt[] Receipts) ProcessOne(
             Block suggestedBlock,
             ProcessingOptions options,
@@ -28,18 +36,19 @@ namespace Nethermind.Consensus.Processing
 
         bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options);
 
-        /// <summary>
-        /// Fired after a transaction has been processed (even if inside the block).
-        /// </summary>
-        event EventHandler<TxProcessedEventArgs> TransactionProcessed;
 
         public interface IBlockTransactionsExecutor
         {
             bool IsTransactionInBlock(Transaction tx);
             // TxReceipt[] ProcessTransactions(Block block, in BlockExecutionContext blkCtx, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default);
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);
-            event EventHandler<TxProcessedEventArgs> TransactionProcessed;
             void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
+
+            // Optional per-tx timing instrumentation. Default no-op implementations let executors that
+            // don't capture per-tx timing (block production, simulation, invalid-tx) ignore these.
+            void SetupTxTimingMetrics(Block block) { }
+            long StartTxTimer() => 0;
+            void StopTxTimer(int i, long txStart) { }
         }
     }
 }

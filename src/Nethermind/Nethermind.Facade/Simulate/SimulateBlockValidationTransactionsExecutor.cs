@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -16,37 +15,47 @@ public class SimulateBlockValidationTransactionsExecutor(
     SimulateRequestState simulateState)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
-    private IReleaseSpec _spec;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
-        _spec = blockExecutionContext.Spec;
-        baseTransactionExecutor.SetBlockExecutionContext(in blockExecutionContext);
+        if (simulateState.BlobBaseFeeOverride is null)
+        {
+            baseTransactionExecutor.SetBlockExecutionContext(in blockExecutionContext);
+            return;
+        }
+
+        baseTransactionExecutor.SetBlockExecutionContext(
+            new BlockExecutionContext(blockExecutionContext.Header,
+                blockExecutionContext.Spec,
+                simulateState.BlobBaseFeeOverride.Value)
+        );
     }
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
         CancellationToken token = default)
     {
+        long startingGasLeft = simulateState.TotalGasLeft;
         if (!simulateState.Validate)
         {
-            processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
+            processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation;
         }
 
-        if (simulateState.BlobBaseFeeOverride is not null)
+        TxReceipt[] result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+
+        // Many gas calculation not done with skip validation, but needed for response
+        long currentGasUsedTotal = 0;
+        foreach (TxReceipt txReceipt in result)
         {
-            SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec, simulateState.BlobBaseFeeOverride.Value));
+            currentGasUsedTotal += txReceipt.GasUsed;
+            txReceipt.GasUsedTotal = currentGasUsedTotal;
         }
 
-        return baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+        block.Header.GasUsed = startingGasLeft - simulateState.TotalGasLeft;
+
+        // SimulateTransactionProcessorAdapter change gas limit as block is processed. So need to recalculate.
+        block.Header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
+
+        return result;
     }
 
-    public bool IsTransactionInBlock(Transaction tx)
-    {
-        throw new NotImplementedException();
-    }
-
-    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
-    {
-        add => baseTransactionExecutor.TransactionProcessed += value;
-        remove => baseTransactionExecutor.TransactionProcessed -= value;
-    }
+    public bool IsTransactionInBlock(Transaction tx) => baseTransactionExecutor.IsTransactionInBlock(tx);
 }

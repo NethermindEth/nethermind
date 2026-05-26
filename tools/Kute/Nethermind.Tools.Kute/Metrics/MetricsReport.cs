@@ -5,7 +5,7 @@ namespace Nethermind.Tools.Kute.Metrics;
 
 public enum MetricsReportFormat
 {
-    Pretty, Json,
+    Pretty, Json, Html
 }
 
 public sealed record TimeMetrics
@@ -40,7 +40,7 @@ public sealed record TimeMetrics
         {
             double average = times.Average(t => t.Ticks);
             double sumOfSquares = times.Sum(t => Math.Pow(t.Ticks - average, 2));
-            var stdDev = Math.Sqrt(sumOfSquares / times.Count);
+            double stdDev = Math.Sqrt(sumOfSquares / times.Count);
             return TimeSpan.FromTicks((long)stdDev);
         }
     }
@@ -54,14 +54,14 @@ public sealed record MetricsReport
     public required long Ignored { get; init; }
     public required long Responses { get; init; }
     public required TimeSpan TotalTime { get; init; }
-    public required IReadOnlyDictionary<int, TimeSpan> Singles { get; init; }
-    public required IReadOnlyDictionary<int, TimeSpan> Batches { get; init; }
+    public required IReadOnlyDictionary<string, IReadOnlyDictionary<string, TimeSpan>> Singles { get; init; }
+    public required IReadOnlyDictionary<string, TimeSpan> Batches { get; init; }
 
-    // Computed properties
-    private TimeMetrics? _singlesMetrics;
+    private Dictionary<string, TimeMetrics>? _singlesMetrics;
+    public Dictionary<string, TimeMetrics> SinglesMetrics => _singlesMetrics ??= Singles.ToDictionary(kvp => kvp.Key, kvp => TimeMetrics.From([.. kvp.Value.Values]));
+
     private TimeMetrics? _batchesMetrics;
-    public TimeMetrics SinglesMetrics => _singlesMetrics ??= TimeMetrics.From(Singles.Values.ToList());
-    public TimeMetrics BatchesMetrics => _batchesMetrics ??= TimeMetrics.From(Batches.Values.ToList());
+    public TimeMetrics BatchesMetrics => _batchesMetrics ??= TimeMetrics.From([.. Batches.Values]);
 }
 
 public interface IMetricsReportProvider

@@ -100,7 +100,7 @@ public static class BlobTransactionForRpcTests
         json.GetProperty("maxPriorityFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("maxFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("maxFeePerBlobGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        var accessList = json.GetProperty("accessList").EnumerateArray();
+        JsonElement.ArrayEnumerator accessList = json.GetProperty("accessList").EnumerateArray();
         if (accessList.Any())
         {
             accessList.Should().AllSatisfy(static item =>
@@ -111,7 +111,7 @@ public static class BlobTransactionForRpcTests
                 );
             });
         }
-        var blobVersionedHashes = json.GetProperty("blobVersionedHashes").EnumerateArray();
+        JsonElement.ArrayEnumerator blobVersionedHashes = json.GetProperty("blobVersionedHashes").EnumerateArray();
         if (blobVersionedHashes.Any())
         {
             blobVersionedHashes.Should().AllSatisfy(static hash =>

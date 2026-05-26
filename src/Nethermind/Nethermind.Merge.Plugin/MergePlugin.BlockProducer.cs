@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.BlockProduction;
 
@@ -32,9 +31,8 @@ namespace Nethermind.Merge.Plugin
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
 
-                // todo: pass in IL tx source
-                // BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create(txSource.Then(_inclusionListTxSource));
-                IBlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
+                // TODO: wire IL tx source via BlockProducerEnvFactory once FOCIL ILs are sourced from DI.
+                IBlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.CreatePersistent();
 
                 PostMergeBlockProducer postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, postMergeBlockProducer, _poSSwitcher);
@@ -55,7 +53,7 @@ namespace Nethermind.Merge.Plugin
                     ? baseRunnerFactory.InitBlockProducerRunner(preMergeBlockProducer)
                     : null;
 
-                StandardBlockProducerRunner postMergeRunner = new StandardBlockProducerRunner(
+                StandardBlockProducerRunner postMergeRunner = new(
                     _api.ManualBlockProductionTrigger, _api.BlockTree!, mergeBlockProducer);
 
                 return new MergeBlockProducerRunner(preMergeRunner, postMergeRunner, _poSSwitcher);

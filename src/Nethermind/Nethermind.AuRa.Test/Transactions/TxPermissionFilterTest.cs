@@ -24,6 +24,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -48,13 +49,13 @@ public class TxPermissionFilterTest
 
     public static IEnumerable<TestCaseData> V1Tests()
     {
-        IList<Test> tests = new List<Test>()
-        {
+        IList<Test> tests =
+        [
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All},
             new() {SenderKey = GetPrivateKey(2), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call},
             new() {SenderKey = GetPrivateKey(3), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic, To = _contractAddress},
             new() {SenderKey = GetPrivateKey(4), ContractPermissions = ITransactionPermissionContract.TxPermissions.None},
-        };
+        ];
 
         return GetTestCases(tests, nameof(V1), CreateV1Transaction);
     }
@@ -83,8 +84,8 @@ public class TxPermissionFilterTest
 
     public static IEnumerable<TestCaseData> V2Tests()
     {
-        IList<Test> tests = new List<Test>()
-        {
+        IList<Test> tests =
+        [
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = true},
             new() {SenderKey = GetPrivateKey(2), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call, Cache = true},
             new() {SenderKey = GetPrivateKey(3), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic, Cache = true, To = _contractAddress},
@@ -100,7 +101,7 @@ public class TxPermissionFilterTest
             new() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true, Value = 0},
             new() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true, ToKey = GetPrivateKey(6)},
             new() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call, Cache = false, ToKey = GetPrivateKey(6), Value = 0},
-        };
+        ];
 
         return GetTestCases(tests, nameof(V2), CreateV2Transaction);
     }
@@ -149,13 +150,13 @@ public class TxPermissionFilterTest
 
     public static IEnumerable<TestCaseData> V3Tests()
     {
-        IList<Test> tests = new List<Test>()
-        {
+        IList<Test> tests =
+        [
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = false},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, Data = new byte[]{0, 2, 3}},
-        };
+        ];
 
         return GetTestCases(tests, nameof(V3), CreateV3Transaction);
     }
@@ -185,15 +186,15 @@ public class TxPermissionFilterTest
     }
     public static IEnumerable<TestCaseData> V4Tests()
     {
-        IList<Test> tests = new List<Test>()
-        {
+        IList<Test> tests =
+        [
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = false},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, FeeCap = 1, TxType = TxType.EIP1559},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1, TxType = TxType.Legacy},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, FeeCap = 5, TxType = TxType.EIP1559, Data = new byte[]{0, 2, 3}},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, TxType = TxType.Legacy, Data = new byte[]{0, 2, 3}},
-        };
+        ];
 
         return GetTestCases(tests, nameof(V4), CreateV4Transaction);
     }
@@ -254,7 +255,7 @@ public class TxPermissionFilterTest
             Substitute.For<ISpecProvider>());
 
         PermissionBasedTxFilter filter = new(transactionPermissionContract, new PermissionBasedTxFilter.Cache(), LimboLogs.Instance);
-        return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject, Substitute.For<IReleaseSpec>());
+        return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject, ReleaseSpecSubstitute.Create());
     }
 
     public class TestTxPermissionsBlockchain : TestContractBlockchain
@@ -274,15 +275,15 @@ public class TxPermissionFilterTest
 
                     return new PermissionBasedTxFilter(transactionPermissionContract, txFilterCache, LimboLogs.Instance);
                 })
-                .AddSingleton<IBlockValidationModule, TestValidationModule>();
+                .AddSingleton<IBlockValidationModule, TestValidationModule>()
+                .AddScoped<IBlockProcessor, BlockProcessor>()
+            ;
 
         private class TestValidationModule(PermissionBasedTxFilter permissionBasedFilter) : Module, IBlockValidationModule
         {
-            protected override void Load(ContainerBuilder builder)
-            {
-                // Override default tx filter
+            // Override default tx filter
+            protected override void Load(ContainerBuilder builder) =>
                 builder.AddSingleton<ITxFilter>(permissionBasedFilter);
-            }
         }
 
         protected override async Task AddBlocksOnStart()

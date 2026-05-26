@@ -8,12 +8,6 @@ namespace Nethermind.JsonRpc;
 public class NullJsonRpcLocalStats : IJsonRpcLocalStats
 {
 
-    public Task ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
-    {
-        return Task.CompletedTask;
-    }
-    public MethodStats GetMethodStats(string methodName)
-    {
-        return new MethodStats();
-    }
+    public Task ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null) => Task.CompletedTask;
+    public MethodStats GetMethodStats(string methodName) => new();
 }

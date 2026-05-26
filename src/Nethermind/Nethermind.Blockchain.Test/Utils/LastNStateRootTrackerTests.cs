@@ -11,12 +11,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Utils;
 
+[Parallelizable(ParallelScope.All)]
 public class LastNStateRootTrackerTests
 {
     [Test]
     public void Test_trackLastN()
     {
-        System.Collections.Generic.List<Block> blocks = new();
+        System.Collections.Generic.List<Block> blocks = [];
         Block currentBlock = Build.A.Block.Genesis.TestObject;
         blocks.Add(currentBlock);
         for (int i = 0; i < 20; i++)
@@ -30,7 +31,7 @@ public class LastNStateRootTrackerTests
 
         BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
 
-        LastNStateRootTracker tracker = new LastNStateRootTracker(tree, 10);
+        LastNStateRootTracker tracker = new(tree, 10);
 
         for (int i = 0; i < 30; i++)
         {
@@ -42,7 +43,7 @@ public class LastNStateRootTrackerTests
     [Test]
     public void Test_ContinueTrackingAsWeGetNewHead()
     {
-        System.Collections.Generic.List<Block> blocks = new();
+        System.Collections.Generic.List<Block> blocks = [];
         Block currentBlock = Build.A.Block.Genesis.TestObject;
         blocks.Add(currentBlock);
         for (int i = 0; i < 20; i++)
@@ -56,7 +57,7 @@ public class LastNStateRootTrackerTests
 
         BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
 
-        LastNStateRootTracker tracker = new LastNStateRootTracker(tree, 10);
+        LastNStateRootTracker tracker = new(tree, 10);
 
         currentBlock = Build.A.Block
             .WithParent(currentBlock)
@@ -75,7 +76,7 @@ public class LastNStateRootTrackerTests
     [Test]
     public void Test_OnReorg_RebuildSet()
     {
-        System.Collections.Generic.List<Block> blocks = new();
+        System.Collections.Generic.List<Block> blocks = [];
         Block currentBlock = Build.A.Block.Genesis.TestObject;
         blocks.Add(currentBlock);
         for (int i = 0; i < 20; i++)
@@ -89,7 +90,7 @@ public class LastNStateRootTrackerTests
 
         BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
 
-        LastNStateRootTracker tracker = new LastNStateRootTracker(tree, 10);
+        LastNStateRootTracker tracker = new(tree, 10);
 
         currentBlock = Build.A.Block
             .WithParent(tree.FindBlock(15, BlockTreeLookupOptions.All)!)
@@ -105,5 +106,32 @@ public class LastNStateRootTrackerTests
         }
 
         tracker.HasStateRoot(Keccak.Compute(100.ToBigEndianByteArray())).Should().BeTrue();
+    }
+
+    [Test]
+    public void Test_TrackLastN_WithCustomDepth()
+    {
+        System.Collections.Generic.List<Block> blocks = [];
+        Block currentBlock = Build.A.Block.Genesis.TestObject;
+        blocks.Add(currentBlock);
+        for (int i = 0; i < 300; i++)
+        {
+            currentBlock = Build.A.Block
+                .WithParent(currentBlock)
+                .WithStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
+                .TestObject;
+            blocks.Add(currentBlock);
+        }
+
+        BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
+
+        // Test with a custom depth of 256 blocks (useful for networks with fast block times like Arbitrum)
+        LastNStateRootTracker tracker = new(tree, 256);
+
+        for (int i = 0; i < 320; i++)
+        {
+            tracker.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
+                .Should().Be(i is >= 44 and < 300);
+        }
     }
 }

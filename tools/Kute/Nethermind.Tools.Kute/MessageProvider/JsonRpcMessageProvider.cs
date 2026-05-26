@@ -2,42 +2,37 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Nethermind.Tools.Kute.MessageProvider;
 
-public sealed class JsonRpcMessageProvider : IMessageProvider<JsonRpc>
+public sealed class JsonRpcMessageProvider(IMessageProvider<string> provider) : IMessageProvider<JsonRpc>
 {
-    private readonly IMessageProvider<string> _provider;
-
-    public JsonRpcMessageProvider(IMessageProvider<string> provider)
-    {
-        _provider = provider;
-    }
+    private readonly IMessageProvider<string> _provider = provider;
 
     public async IAsyncEnumerable<JsonRpc> Messages([EnumeratorCancellation] CancellationToken token = default)
     {
-        await foreach (var msg in _provider.Messages(token))
+        await foreach (string msg in _provider.Messages(token))
         {
-            var jsonDoc = JsonSerializer.Deserialize<JsonDocument>(msg);
+            JsonNode? node = JsonNode.Parse(msg);
 
-            switch (jsonDoc?.RootElement.ValueKind)
+            switch (node)
             {
-                case JsonValueKind.Object:
+                case JsonObject obj:
                     {
-                        var isResponse = jsonDoc.RootElement.TryGetProperty("response", out _);
+                        bool isResponse = obj["response"] is not null;
                         if (isResponse)
                         {
-                            yield return new JsonRpc.Response(jsonDoc);
+                            yield return new JsonRpc.Response(node);
                         }
                         else
                         {
-                            yield return new JsonRpc.Request.Single(jsonDoc);
+                            yield return new JsonRpc.Request.Single(node);
                         }
                     }
                     break;
-                case JsonValueKind.Array:
-                    yield return new JsonRpc.Request.Batch(jsonDoc);
+                case JsonArray:
+                    yield return new JsonRpc.Request.Batch(node);
                     break;
                 default:
                     // TODO: Log potential error

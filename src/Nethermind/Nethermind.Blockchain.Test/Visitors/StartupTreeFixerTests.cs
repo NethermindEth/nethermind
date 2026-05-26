@@ -17,6 +17,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Visitors;
 
+[Parallelizable(ParallelScope.All)]
 public class StartupTreeFixerTests
 {
     [Test, MaxTime(Timeout.MaxTestTime), Ignore("Not implemented")]
@@ -77,8 +78,8 @@ public class StartupTreeFixerTests
         Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        tree.Head!.Header.Should().BeEquivalentTo(block2.Header, static options => options.Excluding(static t => t.MaybeParent));
-        tree.BestSuggestedHeader.Should().BeEquivalentTo(block2.Header, static options => options.Excluding(static t => t.MaybeParent));
+        tree.Head!.Header.Should().BeEquivalentTo(block2.Header);
+        tree.BestSuggestedHeader.Should().BeEquivalentTo(block2.Header);
         tree.BestSuggestedBody?.Body.Should().BeEquivalentTo(block2.Body);
         tree.BestKnownNumber.Should().Be(2);
     }

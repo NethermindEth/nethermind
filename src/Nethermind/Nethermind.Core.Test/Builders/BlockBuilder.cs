@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
@@ -16,6 +16,8 @@ namespace Nethermind.Core.Test.Builders
 {
     public class BlockBuilder : BuilderBase<Block>
     {
+        private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
+
         public BlockBuilder()
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
@@ -98,7 +100,7 @@ namespace Nethermind.Core.Test.Builders
             }
 
             BlockBuilder result = WithTransactions(txs);
-            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, Rlp.GetStreamDecoder<TxReceipt>()!);
+            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, ReceiptDecoder);
             TestObjectInternal.Header.ReceiptsRoot = receiptHash;
             return result;
         }
@@ -165,14 +167,10 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Number = blockHeader?.Number + 1 ?? 0;
             TestObjectInternal.Header.Timestamp = blockHeader?.Timestamp + 1 ?? 0;
             TestObjectInternal.Header.ParentHash = blockHeader is null ? Keccak.Zero : blockHeader.Hash;
-            TestObjectInternal.Header.MaybeParent = blockHeader is null ? null : new WeakReference<BlockHeader>(blockHeader);
             return this;
         }
 
-        public BlockBuilder WithParent(Block block)
-        {
-            return WithParent(block.Header);
-        }
+        public BlockBuilder WithParent(Block block) => WithParent(block.Header);
 
         public BlockBuilder WithPostMergeRules()
         {
@@ -250,6 +248,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithRequestsHash(Hash256 hash)
+        {
+            TestObjectInternal.Header.RequestsHash = hash;
+            return this;
+        }
+
         public BlockBuilder WithEmptyRequestsHash()
         {
             TestObjectInternal.Header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
@@ -265,9 +269,9 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithWithdrawals(int count)
         {
-            var withdrawals = new Withdrawal[count];
+            Withdrawal[] withdrawals = new Withdrawal[count];
 
-            for (var i = 0; i < count; i++)
+            for (int i = 0; i < count; i++)
                 withdrawals[i] = new();
 
             return WithWithdrawals(withdrawals);
@@ -300,6 +304,30 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithEncodedSize(int? encodedSize)
         {
             TestObjectInternal.EncodedSize = encodedSize;
+            return this;
+        }
+
+        public BlockBuilder WithBlockAccessListHash(Hash256? hash)
+        {
+            TestObjectInternal.Header.BlockAccessListHash = hash;
+            return this;
+        }
+
+        public BlockBuilder WithSlotNumber(ulong? slotNumber)
+        {
+            TestObjectInternal.Header.SlotNumber = slotNumber;
+            return this;
+        }
+
+        public BlockBuilder WithBlockAccessList(ReadOnlyBlockAccessList? bal)
+        {
+            TestObjectInternal.BlockAccessList = bal;
+            return this;
+        }
+
+        public BlockBuilder WithEncodedBlockAccessList(byte[]? bal)
+        {
+            TestObjectInternal.EncodedBlockAccessList = bal;
             return this;
         }
     }

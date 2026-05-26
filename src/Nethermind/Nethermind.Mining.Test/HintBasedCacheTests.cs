@@ -20,10 +20,7 @@ public class HintBasedCacheTests
 
         public uint Size => 0;
 
-        public uint[] CalcDataSetItem(uint i)
-        {
-            return [];
-        }
+        public uint[] CalcDataSetItem(uint i) => [];
     }
 
     [Test]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -33,7 +34,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Access_beneficiary_address_before_eip_3651()
         {
-            TestState.CreateAccount(TestItem.AddressF, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressF, 100.Ether);
             byte[] code = Prepare.EvmCode
                 .PushData(MinerKey.Address)
                 .Op(Instruction.BALANCE)

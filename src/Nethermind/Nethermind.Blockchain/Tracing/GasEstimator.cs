@@ -1,10 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -14,161 +15,226 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class GasEstimator
+public class GasEstimator(
+    ITransactionProcessor transactionProcessor,
+    IReadOnlyStateProvider stateProvider,
+    ISpecProvider specProvider,
+    IBlocksConfig blocksConfig)
 {
-    /// <summary>
-    /// Error margin used if none other is specified expressed in basis points.
-    /// </summary>
+    /// <summary>Error margin used if none other is specified, expressed in basis points.</summary>
     public const int DefaultErrorMargin = 150;
 
+    /// <summary>Prefix of the error message emitted when the required gas exceeds what the sender can afford.</summary>
+    public const string GasExceedsAllowanceMsgPrefix = "gas required exceeds allowance";
+
+    /// <summary>Message emitted when the sender has insufficient balance.</summary>
+    public const string InsufficientBalance = "insufficient sender balance for transfer";
+
+    /// <summary>Message emitted when the sender cannot cover gas * price + value.</summary>
+    public const string InsufficientFundsForGas = "insufficient sender balance for gas * price + value";
+
     private const int MaxErrorMargin = 10000;
+    private const double BasisPointsDivisor = 10000d;
 
-    private readonly ITransactionProcessor _transactionProcessor;
-    private readonly IReadOnlyStateProvider _stateProvider;
-    private readonly ISpecProvider _specProvider;
-    private readonly IBlocksConfig _blocksConfig;
+    private const string InvalidErrorMarginNegative = "Invalid error margin, cannot be negative.";
+    private static readonly string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
+    private const string GasEstimationOutOfGas = "Gas estimation failed due to out of gas";
+    private const string TransactionExecutionFails = "Transaction execution fails";
+    private const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
+    private const string ExecutionReverted = "execution reverted";
 
-    public GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider,
-        ISpecProvider specProvider, IBlocksConfig blocksConfig)
+    public long Estimate(
+        Transaction tx,
+        BlockHeader header,
+        EstimateGasTracer gasTracer,
+        out string? err,
+        int errorMargin = DefaultErrorMargin,
+        CancellationToken token = default)
     {
-        _transactionProcessor = transactionProcessor;
-        _stateProvider = stateProvider;
-        _specProvider = specProvider;
-        _blocksConfig = blocksConfig;
+        EstimationResult result = EstimateInternal(tx, header, gasTracer, errorMargin, token);
+        err = result.Error;
+        return result.GasEstimate;
     }
 
-    public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, out string? err,
-        int errorMargin = DefaultErrorMargin, CancellationToken token = new())
-    {
-        err = null;
-
-        if (errorMargin < 0)
-        {
-            err = "Invalid error margin, cannot be negative.";
-            return 0;
-        }
-        else if (errorMargin >= MaxErrorMargin)
-        {
-            err = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
-            return 0;
-        }
-
-        IReleaseSpec releaseSpec =
-            _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
-
-        tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
-
-        // Calculate and return additional gas required in case of insufficient funds.
-        UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
-        if (tx.ValueRef != UInt256.Zero && tx.ValueRef > senderBalance && !tx.IsSystem())
-        {
-            return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
-        }
-
-        var lowerBound = IntrinsicGasCalculator.Calculate(tx, releaseSpec).MinimalGas;
-
-        // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
-        long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= lowerBound)
-            ? gasTracer.GasSpent - 1
-            : lowerBound - 1;
-        long rightBound = (tx.GasLimit != 0 && tx.GasLimit >= lowerBound)
-            ? tx.GasLimit
-            : header.GasLimit;
-
-        if (leftBound > rightBound)
-        {
-            err = "Cannot estimate gas, gas spent exceeded transaction and block gas limit";
-            return 0;
-        }
-
-        // Execute binary search to find the optimal gas estimation.
-        return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token);
-    }
-
-    private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header,
-        EstimateGasTracer gasTracer, int errorMargin, CancellationToken token)
-    {
-        double marginWithDecimals = errorMargin == 0 ? 1 : errorMargin / 10000d + 1;
-        //This approach is similar to Geth, by starting from an optimistic guess the number of iterations is greatly reduced in most cases
-        long optimisticGasEstimate =
-            (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginWithDecimals);
-        if (optimisticGasEstimate > leftBound && optimisticGasEstimate < rightBound)
-        {
-            if (TryExecutableTransaction(tx, header, optimisticGasEstimate, token))
-                rightBound = optimisticGasEstimate;
-            else
-                leftBound = optimisticGasEstimate;
-        }
-
-        long cap = rightBound;
-        //This is similar to Geth's approach by stopping, when the estimation is within a certain margin of error
-        while ((rightBound - leftBound) / (double)leftBound > (marginWithDecimals - 1)
-               && leftBound + 1 < rightBound)
-        {
-            long mid = (leftBound + rightBound) / 2;
-            if (!TryExecutableTransaction(tx, header, mid, token))
-            {
-                leftBound = mid;
-            }
-            else
-            {
-                rightBound = mid;
-            }
-        }
-
-        if (rightBound == cap && !TryExecutableTransaction(tx, header, rightBound, token))
-        {
-            return 0;
-        }
-
-        return rightBound;
-    }
-
-    private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit,
+    private EstimationResult EstimateInternal(
+        Transaction tx,
+        BlockHeader header,
+        EstimateGasTracer gasTracer,
+        int errorMargin,
         CancellationToken token)
     {
-        OutOfGasTracer tracer = new();
+        if (ValidateErrorMargin(errorMargin) is { } validationError)
+            return validationError;
 
-        Transaction txClone = new Transaction();
+        IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
+        tx.SenderAddress ??= Address.Zero;
+
+        UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress!);
+
+        if (CheckFunds(tx, spec, gasTracer, senderBalance, out UInt256 available) is { } fundsResult)
+            return fundsResult;
+
+        long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, header.GasLimit).MinimalGas;
+        long leftBound = Math.Max(gasTracer.GasSpent - 1, intrinsicGas - 1);
+        long rightBound = Math.Min(
+            tx.GasLimit != 0 && tx.GasLimit >= intrinsicGas ? tx.GasLimit : header.GasLimit,
+            spec.GetTxGasLimitCap());
+
+        if (leftBound > rightBound)
+            return EstimationResult.Failure(CannotEstimateGasExceeded);
+
+        UInt256 feeCap = tx.CalculateFeeCap();
+        EstimationBounds bounds = CapByAllowance(new EstimationBounds(leftBound, rightBound, intrinsicGas), available, feeCap);
+
+        return BinarySearchEstimate(tx, header, gasTracer, bounds, errorMargin, token);
+    }
+
+    private static EstimationResult? ValidateErrorMargin(int errorMargin) =>
+        errorMargin switch
+        {
+            < 0 => EstimationResult.Failure(InvalidErrorMarginNegative),
+            >= MaxErrorMargin => EstimationResult.Failure(InvalidErrorMarginTooHigh),
+            _ => null
+        };
+
+    // Returns null if funds are sufficient (estimation continues), or a terminal result to return immediately.
+    // On success, `available` holds the sender's balance after deducting value and blob fees.
+    private static EstimationResult? CheckFunds(Transaction tx, IReleaseSpec spec, EstimateGasTracer gasTracer, UInt256 senderBalance, out UInt256 available)
+    {
+        available = UInt256.Zero;
+
+        if (tx.ValueRef > senderBalance)
+        {
+            long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, spec);
+            return additionalGas > 0
+                ? EstimationResult.Success(additionalGas)
+                : EstimationResult.Failure(GetError(gasTracer, InsufficientBalance));
+        }
+
+        available = senderBalance - tx.ValueRef;
+
+        if (!BlobGasCalculator.TrySubtractBlobFee(spec, tx, ref available))
+            return EstimationResult.Failure(GetError(gasTracer, InsufficientFundsForGas));
+
+        return null;
+    }
+
+    private static EstimationBounds CapByAllowance(EstimationBounds bounds, UInt256 available, UInt256 feeCap = default)
+    {
+        if (feeCap == UInt256.Zero)
+            return bounds;
+
+        long allowance = (long)UInt256.Min(available / feeCap, (UInt256)long.MaxValue);
+        return bounds with { RightBound = Math.Min(bounds.RightBound, allowance) };
+    }
+
+    private EstimationResult BinarySearchEstimate(
+        Transaction tx, BlockHeader header, EstimateGasTracer gasTracer,
+        EstimationBounds bounds, int errorMargin, CancellationToken token)
+    {
+        // Short-circuit: simple ETH transfers need exactly the intrinsic gas.
+        if (IsSimpleTransfer(tx) && TryExecute(tx, header, bounds.IntrinsicGas, gasTracer, token, out _))
+            return EstimationResult.Success(bounds.IntrinsicGas);
+
+        // Execute at maximum gas first (Geth parity): gas-related failure → allowance error; other → surface directly.
+        if (!TryExecute(tx, header, bounds.RightBound, gasTracer, token, out bool isGasRelatedFailure))
+        {
+            string error = (gasTracer.OutOfGas || isGasRelatedFailure)
+                ? $"{GasExceedsAllowanceMsgPrefix} ({bounds.RightBound})"
+                : GetError(gasTracer);
+            return EstimationResult.Failure(error);
+        }
+
+        double marginMultiplier = errorMargin == 0 ? 1d : errorMargin / BasisPointsDivisor + 1d;
+        long cap = bounds.RightBound;
+        (long leftBound, long rightBound) = TryOptimisticEstimate(tx, header, gasTracer, bounds, marginMultiplier, token);
+
+        // Narrow bounds until within the error margin (Geth approach).
+        while (ShouldContinueSearch(leftBound, rightBound, marginMultiplier - 1d))
+        {
+            long mid = leftBound + (rightBound - leftBound) / 2;
+            if (TryExecute(tx, header, mid, gasTracer, token, out _))
+                rightBound = mid;
+            else
+                leftBound = mid;
+        }
+
+        if (rightBound == cap && !TryExecute(tx, header, rightBound, gasTracer, token, out _))
+            return EstimationResult.Failure(GetError(gasTracer));
+
+        return EstimationResult.Success(rightBound);
+    }
+
+    private (long Left, long Right) TryOptimisticEstimate(
+        Transaction tx, BlockHeader header, EstimateGasTracer gasTracer,
+        EstimationBounds bounds, double marginMultiplier, CancellationToken token)
+    {
+        long leftBound = bounds.LeftBound;
+        long rightBound = bounds.RightBound;
+
+        // Optimistic first guess (Geth approach): reduces binary search iterations in most cases.
+        long optimistic = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginMultiplier);
+        if (optimistic > leftBound && optimistic < rightBound)
+        {
+            if (TryExecute(tx, header, optimistic, gasTracer, token, out _))
+                rightBound = optimistic;
+            else
+                leftBound = optimistic;
+        }
+
+        return (leftBound, rightBound);
+    }
+
+    private bool TryExecute(Transaction transaction, BlockHeader header, long gasLimit,
+                             EstimateGasTracer gasTracer, CancellationToken token, out bool isGasRelatedFailure)
+    {
+        Transaction txClone = new();
         transaction.CopyTo(txClone);
         txClone.GasLimit = gasLimit;
 
-        _transactionProcessor.SetBlockExecutionContext(new(block, _specProvider.GetSpec(block)));
-        _transactionProcessor.CallAndRestore(txClone, tracer.WithCancellation(token));
+        transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, specProvider.GetSpec(header)));
+        TransactionResult callResult = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
 
-        return !tracer.OutOfGas;
+        if (IsGasRelatedFailure(callResult))
+        {
+            isGasRelatedFailure = true;
+            return false;
+        }
+
+        isGasRelatedFailure = false;
+        return callResult.TransactionExecuted && gasTracer.StatusCode == StatusCode.Success &&
+               !gasTracer.OutOfGas && !gasTracer.TopLevelRevert;
     }
 
-    private class OutOfGasTracer : TxTracer
+    private static bool IsGasRelatedFailure(TransactionResult result) =>
+        result.Error is TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
+            or TransactionResult.ErrorType.BlockGasLimitExceeded;
+
+    private static bool ShouldContinueSearch(long leftBound, long rightBound, double threshold) =>
+        (rightBound - leftBound) / (double)leftBound > threshold && leftBound + 1 < rightBound;
+
+    private static bool IsSimpleTransfer(Transaction tx) =>
+        tx.To is not null && tx.Data.IsEmpty;
+
+    private static string GetError(EstimateGasTracer gasTracer, string defaultError = TransactionExecutionFails) =>
+        gasTracer switch
+        {
+            { TopLevelRevert: true } => GetRevertError(gasTracer),
+            { OutOfGas: true } => GasEstimationOutOfGas,
+            { StatusCode: StatusCode.Failure } => gasTracer.Error ?? defaultError,
+            _ => defaultError
+        };
+
+    private static string GetRevertError(EstimateGasTracer gasTracer) =>
+        gasTracer.Error ?? (gasTracer.ReturnValue?.Length > 0
+            ? $"{ExecutionReverted}: {gasTracer.ReturnValue.ToHexString(true)}"
+            : ExecutionReverted);
+
+    private readonly record struct EstimationBounds(long LeftBound, long RightBound, long IntrinsicGas);
+
+    private readonly record struct EstimationResult(long GasEstimate, string? Error)
     {
-        public OutOfGasTracer()
-        {
-            OutOfGas = false;
-        }
-
-        public override bool IsTracingReceipt => true;
-        public override bool IsTracingInstructions => true;
-        public override bool IsTracingActions => true;
-        public bool OutOfGas { get; private set; }
-
-        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
-            Hash256? stateRoot = null)
-        {
-        }
-
-        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-            Hash256? stateRoot = null)
-        {
-        }
-
-        public override void ReportActionError(EvmExceptionType error)
-        {
-            OutOfGas |= error == EvmExceptionType.OutOfGas;
-        }
-
-        public override void ReportOperationError(EvmExceptionType error)
-        {
-            OutOfGas |= error == EvmExceptionType.OutOfGas;
-        }
+        public static EstimationResult Success(long gasEstimate) => new(gasEstimate, null);
+        public static EstimationResult Failure(string error) => new(0, error);
     }
 }

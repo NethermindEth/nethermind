@@ -16,10 +16,10 @@ public class NodeRecordTests
     {
         NodeRecord nodeRecord = new();
         nodeRecord.SetEntry(new UdpEntry(12345));
-        nodeRecord.SetEntry(new Secp256K1Entry(
+        nodeRecord.SetEntry(new SecP256k1Entry(
             new CompressedPublicKey(new byte[33])));
         nodeRecord.GetValue<int>(EnrContentKey.Udp).Should().Be(12345);
-        nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1).Should().Be(
+        nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1).Should().Be(
             new CompressedPublicKey(new byte[33]));
     }
 
@@ -28,7 +28,7 @@ public class NodeRecordTests
     {
         NodeRecord nodeRecord = new();
         nodeRecord.GetValue<int>(EnrContentKey.Udp).Should().BeNull();
-        nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1).Should().BeNull();
+        nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1).Should().BeNull();
     }
 
     [Test]

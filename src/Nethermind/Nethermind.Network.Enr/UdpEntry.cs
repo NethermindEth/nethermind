@@ -8,19 +8,11 @@ namespace Nethermind.Network.Enr;
 /// <summary>
 /// An entry storing UDP IPv4 port number.
 /// </summary>
-public class UdpEntry : EnrContentEntry<int>
+public class UdpEntry(int portNumber) : EnrContentEntry<int>(portNumber)
 {
-    public UdpEntry(int portNumber) : base(portNumber) { }
-
     public override string Key => EnrContentKey.Udp;
 
-    protected override int GetRlpLengthOfValue()
-    {
-        return Rlp.LengthOf(Value);
-    }
+    protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
 
-    protected override void EncodeValue(RlpStream rlpStream)
-    {
-        rlpStream.Encode(Value);
-    }
+    protected override void EncodeValue(RlpStream rlpStream) => rlpStream.Encode(Value);
 }

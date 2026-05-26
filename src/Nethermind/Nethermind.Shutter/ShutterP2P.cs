@@ -46,7 +46,7 @@ public class ShutterP2P : IShutterP2P
 
     public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IPAddress ip)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ShutterP2P>();
         _cfg = shutterConfig;
         _address = $"/ip4/{ip}/tcp/{_cfg.P2PPort}";
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
@@ -118,8 +118,8 @@ public class ShutterP2P : IShutterP2P
         {
             try
             {
-                using var timeoutSource = new CancellationTokenSource(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
-                using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+                using CancellationTokenSource timeoutSource = new(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
+                using CancellationTokenSource source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
 
                 byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
                 lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
@@ -194,7 +194,7 @@ public class ShutterP2P : IShutterP2P
         }
         catch (InvalidProtocolBufferException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not parse Shutter decryption keys: {e}");
+            _logger.DebugWarn($"Could not parse Shutter decryption keys: {e}");
         }
     }
 }

@@ -10,9 +10,6 @@ namespace Nethermind.Core.Test
     public class NetworkDiagTracerTests
     {
         [Test]
-        public void Test()
-        {
-            NetworkDiagTracer.NetworkDiagTracerPath.Should().NotStartWith("C:");
-        }
+        public void Test() => NetworkDiagTracer.NetworkDiagTracerPath.Should().NotStartWith("C:");
     }
 }

@@ -18,13 +18,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// List of trie nodes proving the account range
         /// </summary>
-        public IOwnedReadOnlyList<byte[]> Proofs { get; set; }
+        public IByteArrayList Proofs { get; set; }
 
         public override void Dispose()
         {
             base.Dispose();
-            PathsWithAccounts.Dispose();
-            Proofs.Dispose();
+            PathsWithAccounts?.Dispose();
+            Proofs?.Dispose();
         }
     }
 }

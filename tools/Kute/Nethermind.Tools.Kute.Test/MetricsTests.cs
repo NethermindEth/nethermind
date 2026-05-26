@@ -5,53 +5,82 @@ using FluentAssertions;
 using NUnit.Framework;
 using Nethermind.Tools.Kute.Metrics;
 using NSubstitute;
+using System.Text.Json.Nodes;
 
 namespace Nethermind.Tools.Kute.Test;
 
 public class MetricsTests
 {
+    private static JsonRpc.Request.Single Single(int id, string method = "test")
+    {
+        string json = $$"""{ "id": {{id}}, "method": "{{method}}", "params": [] }""";
+        return new JsonRpc.Request.Single(JsonNode.Parse(json)!);
+    }
+
+    private static JsonRpc.Request.Batch Batch(params JsonRpc.Request.Single[] singles)
+    {
+        string json = $$"""[{{string.Join(", ", singles.Select(s => s.ToJsonString()))}}]""";
+        return new JsonRpc.Request.Batch(JsonNode.Parse(json)!);
+    }
+
     [Test]
     public async Task MemoryMetricsReporter_GeneratesValidReport()
     {
-        var reporter = new MemoryMetricsReporter();
+        MemoryMetricsReporter reporter = new();
 
-        var totalTimer = new Timer();
+        Timer totalTimer = new();
         using (totalTimer.Time())
         {
-            var id = 42;
-            var requestTimer = new Timer();
+            JsonRpc.Request.Single single = Single(42, "method1");
+            JsonRpc.Request.Batch batch = Batch(Single(43), Single(44), Single(45));
 
-            using (requestTimer.Time())
+            Timer singleTimer = new();
+            using (singleTimer.Time())
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(100));
+                await Task.Delay(TimeSpan.FromMilliseconds(50));
             }
+            await reporter.Single(single, singleTimer.Elapsed);
 
-            await reporter.Single(id, requestTimer.Elapsed);
+            Timer batchTimer = new();
+            using (batchTimer.Time())
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50));
+            }
+            await reporter.Batch(batch, batchTimer.Elapsed);
         }
 
         await reporter.Total(totalTimer.Elapsed);
 
-        var report = reporter.Report();
+        MetricsReport report = reporter.Report();
 
         report.TotalTime.Should().BeGreaterThan(TimeSpan.FromMilliseconds(90));
         report.TotalTime.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
+
         report.Singles.Should().HaveCount(1);
+        report.Singles.Should().ContainKey("method1");
+        report.Singles["method1"].Should().HaveCount(1);
+        report.Singles["method1"].Should().ContainKey("42");
+
+        report.Batches.Should().HaveCount(1);
+        report.Batches.Should().ContainKey("43:45");
     }
 
     [Test]
     public async Task ComposedMetricsReporter_DelegatesToAllReporters()
     {
-        var A = Substitute.For<IMetricsReporter>();
-        var B = Substitute.For<IMetricsReporter>();
-        var reporter = new ComposedMetricsReporter(A, B);
+        IMetricsReporter A = Substitute.For<IMetricsReporter>();
+        IMetricsReporter B = Substitute.For<IMetricsReporter>();
+        JsonRpc.Request.Single single = Single(1);
+        JsonRpc.Request.Batch batch = Batch(Single(2), Single(3));
+        ComposedMetricsReporter reporter = new(A, B);
 
         await reporter.Message();
         await reporter.Response();
         await reporter.Succeeded();
         await reporter.Failed();
         await reporter.Ignored();
-        await reporter.Batch(1, TimeSpan.FromMilliseconds(100));
-        await reporter.Single(2, TimeSpan.FromMilliseconds(200));
+        await reporter.Single(single, TimeSpan.FromMilliseconds(100));
+        await reporter.Batch(batch, TimeSpan.FromMilliseconds(200));
         await reporter.Total(TimeSpan.FromMilliseconds(300));
 
         await A.Received().Message();
@@ -69,11 +98,11 @@ public class MetricsTests
         await A.Received().Ignored();
         await B.Received().Ignored();
 
-        await A.Received().Batch(1, Arg.Any<TimeSpan>());
-        await B.Received().Batch(1, Arg.Any<TimeSpan>());
+        await A.Received().Single(single, Arg.Any<TimeSpan>());
+        await B.Received().Single(single, Arg.Any<TimeSpan>());
 
-        await A.Received().Single(2, Arg.Any<TimeSpan>());
-        await B.Received().Single(2, Arg.Any<TimeSpan>());
+        await A.Received().Batch(batch, Arg.Any<TimeSpan>());
+        await B.Received().Batch(batch, Arg.Any<TimeSpan>());
 
         await A.Received().Total(Arg.Any<TimeSpan>());
         await B.Received().Total(Arg.Any<TimeSpan>());

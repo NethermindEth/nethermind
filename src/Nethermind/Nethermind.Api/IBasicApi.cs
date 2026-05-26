@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -33,8 +32,8 @@ namespace Nethermind.Api
         IDbProvider DbProvider { get; }
         IEthereumEcdsa EthereumEcdsa { get; }
         [SkipServiceCollection]
-        IJsonSerializer EthereumJsonSerializer { get; }
-        IFileSystem FileSystem { get; set; }
+        EthereumJsonSerializer EthereumJsonSerializer { get; }
+        IFileSystem FileSystem { get; }
         IKeyStore? KeyStore { get; set; }
         [SkipServiceCollection]
         ILogManager LogManager { get; }

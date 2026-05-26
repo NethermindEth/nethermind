@@ -81,11 +81,6 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
         return Task.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
-    {
-        return default;
-    }
-
     public IModule Module => new TracerStorePluginModule();
 
     private class TracerStorePluginModule : Module

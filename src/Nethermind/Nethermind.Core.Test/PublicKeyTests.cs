@@ -87,7 +87,7 @@ namespace Nethermind.Core.Test
         [Explicit]
         public void Generate_Keys()
         {
-            var key = new PrivateKey(new CryptoRandom().GenerateRandomBytes(32));
+            PrivateKey key = new(new CryptoRandom().GenerateRandomBytes(32));
             TestContext.Out.WriteLine(key);
             TestContext.Out.WriteLine(key.PublicKey);
             TestContext.Out.WriteLine(key.Address);

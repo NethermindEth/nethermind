@@ -8,8 +8,7 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class BlockTreeTests
 {
     [Test]
-    public void Can_sync_using_chain_levels()
-    {
+    public void Can_sync_using_chain_levels() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -19,11 +18,9 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
             .AssertBestSuggestedBody(9);
-    }
 
     [Test]
-    public void Can_sync_using_chain_levels_with_restart()
-    {
+    public void Can_sync_using_chain_levels_with_restart() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -34,11 +31,9 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
             .AssertBestSuggestedBody(9);
-    }
 
     [Test]
-    public void Correct_levels_after_chain_level_sync()
-    {
+    public void Correct_levels_after_chain_level_sync() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -50,11 +45,9 @@ public partial class BlockTreeTests
             .AssertBestSuggestedBody(9, 10000000)
             .AssertChainLevel(0, 9)
             .AssertNotForceNewBeaconSync();
-    }
 
     [Test]
-    public void Correct_levels_after_chain_level_sync_with_nullable_td()
-    {
+    public void Correct_levels_after_chain_level_sync_with_nullable_td() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -65,11 +58,9 @@ public partial class BlockTreeTests
             .AssertBestSuggestedHeader(9)
             .AssertBestSuggestedBody(9, 10000000)
             .AssertChainLevel(0, 9);
-    }
 
     [Test]
-    public void Correct_levels_after_chain_level_sync_with_zero_td()
-    {
+    public void Correct_levels_after_chain_level_sync_with_zero_td() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -80,11 +71,9 @@ public partial class BlockTreeTests
             .AssertBestSuggestedHeader(9)
             .AssertBestSuggestedBody(9, 10000000)
             .AssertChainLevel(0, 9);
-    }
 
     [Test]
-    public void Correct_levels_with_chain_fork()
-    {
+    public void Correct_levels_with_chain_fork() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -95,11 +84,9 @@ public partial class BlockTreeTests
             .SuggestBlocksUsingChainLevels()
             .AssertBestSuggestedBody(9)
             .AssertChainLevel(0, 9);
-    }
 
     [Test]
-    public void Correct_levels_after_chain_level_sync_with_disconnected_beacon_chain()
-    {
+    public void Correct_levels_after_chain_level_sync_with_disconnected_beacon_chain() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 15)
             .InsertBeaconPivot(11)
@@ -109,5 +96,4 @@ public partial class BlockTreeTests
             .SuggestBlocksUsingChainLevels(20)
             .AssertChainLevel(0, 4)
             .AssertForceNewBeaconSync();
-    }
 }

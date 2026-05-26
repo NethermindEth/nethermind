@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -16,6 +17,9 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 {
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MaxTimeout = TimeSpan.FromMinutes(2);
+
     private readonly dynamic _tracer;
     private readonly Log _log = new();
     private readonly IDisposable _blockTracer;
@@ -23,6 +27,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
+    private readonly CancellationTokenSource _cts;
+    private readonly IDisposable _ctsRegistration;
     private bool _resultConstructed;
     private Stack<long>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -55,6 +61,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         {
             _tracer.setup(options.TracerConfig?.ToString() ?? "{}");
         }
+
+        TimeSpan timeout = options.Timeout ?? DefaultTimeout;
+        if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
+            throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
+        _cts = new CancellationTokenSource(timeout);
+        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
     }
 
     protected override GethLikeTxTrace CreateTrace() => new(_engine);
@@ -65,7 +77,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
         result.TxHash = _ctx.TxHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
-
+        _ctsRegistration.Dispose();
         _resultConstructed = true;
 
         return result;
@@ -106,16 +118,14 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             : new Log.Contract(from, to, value, isAnyCreate ? null : input);
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
-        _log.pc = pc + env.CodeInfo.PcOffset();
+        _log.pc = pc;
         _log.op = new Log.Opcode(opcode);
         _log.gas = gas;
         _log.depth = env.GetGethTraceDepth();
         _log.error = null;
         _log.gasCost = null;
-        // skip codeSection
-        // skip functionDepth
     }
 
     public override void ReportOperationRemainingGas(long gas)
@@ -178,7 +188,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _depth--;
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
@@ -186,7 +196,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _ctx.error = error;
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
@@ -252,6 +262,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     public override void Dispose()
     {
         base.Dispose();
+        _ctsRegistration.Dispose();
+        _cts.Dispose();
 
         if (!_resultConstructed)
         {

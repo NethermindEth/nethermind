@@ -14,4 +14,6 @@ public class SnapshotConfig : ISnapshotConfig
     public string SnapshotDirectory { get; set; } = "snapshot";
 
     public string SnapshotFileName { get; set; } = "snapshot.zip";
+
+    public int StripComponents { get; set; } = 1;
 }

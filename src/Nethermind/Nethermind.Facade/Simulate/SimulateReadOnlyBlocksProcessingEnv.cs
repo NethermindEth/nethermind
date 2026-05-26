@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -15,7 +14,7 @@ using Nethermind.State.OverridableEnv;
 namespace Nethermind.Facade.Simulate;
 
 /// <summary>
-/// This is an env for eth simulater. It is constructed by <see cref="SimulateReadOnlyBlocksProcessingEnvFactory"/>.
+/// This is an env for eth simulator. It is constructed by <see cref="SimulateReadOnlyBlocksProcessingEnvFactory"/>.
 /// It is not thread safe and is meant to be reused. <see cref="Begin"/> must be called and the returned
 /// <see cref="SimulateReadOnlyBlocksProcessingScope"/> must be disposed once done or there may be some memory leak.
 /// </summary>
@@ -25,7 +24,7 @@ public class SimulateReadOnlyBlocksProcessingEnv(
     IBlockTree blockTree,
     IOverridableCodeInfoRepository codeInfoRepository,
     SimulateRequestState simulateState,
-    IBranchProcessor branchProcessor,
+    IBlockProcessor blockProcessor,
     BlockTreeOverlay blockTreeOverlay,
     IOverridableEnv overridableEnv,
     IReadOnlyDbProvider readOnlyDbProvider
@@ -34,9 +33,9 @@ public class SimulateReadOnlyBlocksProcessingEnv(
     public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
     {
         blockTreeOverlay.ResetMainChain();
-        IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock, null);
+        IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock);
         return new SimulateReadOnlyBlocksProcessingScope(
-            worldState, specProvider, blockTree, codeInfoRepository, simulateState, branchProcessor, readOnlyDbProvider, envDisposer
+            worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer
         );
     }
 }
@@ -47,7 +46,7 @@ public class SimulateReadOnlyBlocksProcessingScope(
     IBlockTree blockTree,
     IOverridableCodeInfoRepository codeInfoRepository,
     SimulateRequestState simulateState,
-    IBranchProcessor branchProcessor,
+    IBlockProcessor blockProcessor,
     IReadOnlyDbProvider readOnlyDbProvider,
     IDisposable overridableWorldStateCloser
 ) : IDisposable
@@ -57,11 +56,11 @@ public class SimulateReadOnlyBlocksProcessingScope(
     public IBlockTree BlockTree => blockTree;
     public IOverridableCodeInfoRepository CodeInfoRepository => codeInfoRepository;
     public SimulateRequestState SimulateRequestState => simulateState;
-    public IBranchProcessor BranchProcessor => branchProcessor;
+    public IBlockProcessor BlockProcessor => blockProcessor;
 
     public void Dispose()
     {
         overridableWorldStateCloser.Dispose();
-        readOnlyDbProvider.Dispose(); // For blocktree. The read only db has a buffer that need to be cleared.
+        readOnlyDbProvider.ClearTempChanges(); // For blocktree. The read only db has a buffer that need to be cleared.
     }
 }

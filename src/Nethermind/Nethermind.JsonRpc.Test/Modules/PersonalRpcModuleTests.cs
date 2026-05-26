@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string passphrase = "testPass";
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
             string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_newAccount", passphrase);
-            var accountsNow = _wallet.GetAccounts();
+            Address[] accountsNow = _wallet.GetAccounts();
             Assert.That(accountsNow.Length, Is.EqualTo(accountsBefore + 1), "length");
             Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{accountsNow.Last()}\",\"id\":67}}"));
         }
@@ -80,6 +80,16 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
             string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_ecRecover", "0xdeadbeaf", "0xa3f20717a250c2b0b729b7e5becbff67fdaef7e0699da4de7ca5895b02a170a12d887fd3b17bfdce3481f10bea41f45ba9f709d39ce8325427b57afcfc994cee1b");
             Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x9b2055d370f73ec7d8a03e965129118dc8f5bf83\"}}"));
+        }
+
+        [TestCase("0x00", Description = "Too short (1 byte)")]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001b00", Description = "Too long (66 bytes)")]
+        public async Task Personal_ecRecover_rejects_invalid_signature_length(string signature)
+        {
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
+            string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_ecRecover", "0xdeadbeaf", signature);
+            Assert.That(serialized, Does.Contain("\"error\""));
+            Assert.That(serialized, Does.Contain("Invalid signature length"));
         }
     }
 }

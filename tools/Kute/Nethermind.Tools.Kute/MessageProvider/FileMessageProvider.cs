@@ -3,19 +3,13 @@
 
 namespace Nethermind.Tools.Kute.MessageProvider;
 
-public sealed class FileMessageProvider : IMessageProvider<string>
+public sealed class FileMessageProvider(string filePath) : IMessageProvider<string>
 {
-    private readonly string _filePath;
-
-    public FileMessageProvider(string filePath)
-    {
-        _filePath = filePath;
-    }
-
+    private readonly string _filePath = filePath;
 
     public IAsyncEnumerable<string> Messages(CancellationToken token = default)
     {
-        var pathInfo = new FileInfo(_filePath);
+        FileInfo pathInfo = new(_filePath);
         if (pathInfo.Attributes.HasFlag(FileAttributes.Directory))
         {
             return Directory.GetFiles(_filePath)
@@ -24,12 +18,9 @@ public sealed class FileMessageProvider : IMessageProvider<string>
                 .ToAsyncEnumerable()
                 .SelectMany(info => File.ReadLinesAsync(info.FullName, token));
         }
-
-        if (pathInfo.Attributes.HasFlag(FileAttributes.Normal))
+        else
         {
             return File.ReadLinesAsync(_filePath, token);
         }
-
-        throw new ArgumentException("Path is neither a Folder or a File", nameof(_filePath));
     }
 }

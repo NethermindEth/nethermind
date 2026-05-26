@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Tools.Kute.Extensions;
 using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
@@ -12,51 +11,39 @@ using Nethermind.Tools.Kute.AsyncProcessor;
 
 namespace Nethermind.Tools.Kute;
 
-public sealed class Application
-{
-    private readonly IAsyncProcessor _processor;
-    private readonly IMessageProvider<JsonRpc> _msgProvider;
-    private readonly IJsonRpcSubmitter _submitter;
-    private readonly IJsonRpcValidator _validator;
-    private readonly IResponseTracer _responseTracer;
-    private readonly IMetricsReporter _reporter;
-    private readonly IJsonRpcMethodFilter _methodFilter;
-
-    public Application(
-        IAsyncProcessor processor,
-        IMessageProvider<JsonRpc> msgProvider,
-        IJsonRpcSubmitter submitter,
-        IJsonRpcValidator validator,
-        IResponseTracer responseTracer,
-        IMetricsReporter reporter,
-        IJsonRpcMethodFilter methodFilter
+public sealed class Application(
+    IAsyncProcessor processor,
+    IMessageProvider<JsonRpc> msgProvider,
+    IJsonRpcSubmitter submitter,
+    IJsonRpcValidator validator,
+    IResponseTracer responseTracer,
+    IMetricsReporter reporter,
+    IJsonRpcMethodFilter methodFilter
     )
-    {
-        _processor = processor;
-        _msgProvider = msgProvider;
-        _submitter = submitter;
-        _validator = validator;
-        _responseTracer = responseTracer;
-        _reporter = reporter;
-        _methodFilter = methodFilter;
-    }
+{
+    private readonly IAsyncProcessor _processor = processor;
+    private readonly IMessageProvider<JsonRpc> _msgProvider = msgProvider;
+    private readonly IJsonRpcSubmitter _submitter = submitter;
+    private readonly IJsonRpcValidator _validator = validator;
+    private readonly IResponseTracer _responseTracer = responseTracer;
+    private readonly IMetricsReporter _reporter = reporter;
+    private readonly IJsonRpcMethodFilter _methodFilter = methodFilter;
 
     public async Task Run(CancellationToken token = default)
     {
-        var totalTimer = new Timer();
+        Timer totalTimer = new();
         using (totalTimer.Time())
         {
-            await _processor.Process(_msgProvider.Messages(token).Indexed(startingFrom: 1), async (args) =>
+            await _processor.Process(_msgProvider.Messages(token), async jsonRpc =>
             {
-                var (jsonRpc, n) = args;
-                await ProcessRpc(jsonRpc, n, token);
+                await ProcessRpc(jsonRpc, token);
             }, token);
         }
 
         await _reporter.Total(totalTimer.Elapsed, token);
     }
 
-    private async Task ProcessRpc(JsonRpc jsonRpc, int n, CancellationToken token)
+    private async Task ProcessRpc(JsonRpc jsonRpc, CancellationToken token)
     {
         await _reporter.Message(token);
 
@@ -71,7 +58,7 @@ public sealed class Application
                 {
                     JsonRpc.Response response;
 
-                    var timer = new Timer();
+                    Timer timer = new();
                     using (timer.Time())
                     {
                         response = await _submitter.Submit(batch, token);
@@ -85,7 +72,7 @@ public sealed class Application
                     {
                         await _reporter.Succeeded(token);
                     }
-                    await _reporter.Batch(n, timer.Elapsed, token);
+                    await _reporter.Batch(batch, timer.Elapsed, token);
                     await _responseTracer.TraceResponse(response, token);
 
                     break;
@@ -106,7 +93,7 @@ public sealed class Application
 
                     JsonRpc.Response response;
 
-                    var timer = new Timer();
+                    Timer timer = new();
                     using (timer.Time())
                     {
                         response = await _submitter.Submit(single, token);
@@ -121,7 +108,7 @@ public sealed class Application
                         await _reporter.Succeeded(token);
                     }
 
-                    await _reporter.Single(n, timer.Elapsed, token);
+                    await _reporter.Single(single, timer.Elapsed, token);
                     await _responseTracer.TraceResponse(response, token);
 
                     break;

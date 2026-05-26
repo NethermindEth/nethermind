@@ -18,7 +18,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// List of trie nodes proving the slot range
         /// </summary>
-        public IOwnedReadOnlyList<byte[]> Proofs { get; set; }
+        public IByteArrayList Proofs { get; set; }
 
         public override void Dispose()
         {

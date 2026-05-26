@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             blockTracer.StartNewBlockTrace(block);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(null);
-            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether());
+            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether);
             blockTracer.EndTxTrace();
             blockTracer.ReportReward(TestItem.AddressA, "block", UInt256.One);
 
@@ -160,7 +160,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.StateDiff);
             blockTracer.StartNewBlockTrace(block);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(null);
-            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether());
+            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether);
             blockTracer.EndTxTrace();
             blockTracer.ReportReward(TestItem.AddressA, "block", UInt256.One);
 

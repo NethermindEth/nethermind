@@ -7,14 +7,9 @@ using System.Security.Cryptography;
 namespace Nethermind.Crypto
 {
     // based on https://github.com/integrativesoft/CrossProtectedData
-    public abstract partial class ProtectedData
+    public abstract partial class ProtectedData(string keyStoreDir)
     {
-        private readonly IProtector _protector;
-
-        protected ProtectedData(string keyStoreDir)
-        {
-            _protector = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : new AspNetWrapper(keyStoreDir);
-        }
+        private readonly IProtector _protector = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : new AspNetWrapper(keyStoreDir);
 
         private interface IProtector
         {

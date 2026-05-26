@@ -7,27 +7,22 @@ namespace Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 
 public sealed class NewPayloadJsonRpcValidator : IJsonRpcValidator
 {
-    private readonly Regex _pattern = new Regex("engine_newPayload", RegexOptions.Compiled);
+    private readonly Regex _pattern = new("engine_newPayload", RegexOptions.Compiled);
 
     public bool IsValid(JsonRpc.Request request, JsonRpc.Response response)
     {
         // If preconditions are not met, then mark it as Valid.
-        if (!ShouldValidateRequest(request) || response is null)
+        if (!ShouldValidateRequest(request))
         {
             return true;
         }
 
-        if (!response.Json.TryGetProperty("result", out var result))
+        if (response.Json["result"]?["status"] is { } status)
         {
-            return false;
+            return (string?)status == "VALID";
         }
 
-        if (!result.TryGetProperty("status", out var status))
-        {
-            return false;
-        }
-
-        return status.GetString() == "VALID";
+        return false;
     }
 
     private bool ShouldValidateRequest(JsonRpc.Request request)

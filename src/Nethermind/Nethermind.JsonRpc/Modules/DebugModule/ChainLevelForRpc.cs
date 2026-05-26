@@ -6,16 +6,10 @@ using Nethermind.Core;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
-    public class ChainLevelForRpc
+    public class ChainLevelForRpc(ChainLevelInfo chainLevelInfo)
     {
-        public ChainLevelForRpc(ChainLevelInfo chainLevelInfo)
-        {
-            HasBlockOnMainChain = chainLevelInfo.HasBlockOnMainChain;
-            BlockInfos = chainLevelInfo.BlockInfos.Select(static bi => new BlockInfoForRpc(bi)).ToArray();
-        }
+        public BlockInfoForRpc[] BlockInfos { get; set; } = chainLevelInfo.BlockInfos.Select(static bi => new BlockInfoForRpc(bi)).ToArray();
 
-        public BlockInfoForRpc[] BlockInfos { get; set; }
-
-        public bool HasBlockOnMainChain { get; set; }
+        public bool HasBlockOnMainChain { get; set; } = chainLevelInfo.HasBlockOnMainChain;
     }
 }

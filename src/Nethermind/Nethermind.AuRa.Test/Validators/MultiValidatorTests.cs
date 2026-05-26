@@ -140,7 +140,7 @@ namespace Nethermind.AuRa.Test.Validators
         }
 
         [Test]
-        public void doesnt_call_inner_validators_before_start_block()
+        public void does_not_call_inner_validators_before_start_block()
         {
             // Arrange
             _validator.Validators.Remove(0);
@@ -211,14 +211,12 @@ namespace Nethermind.AuRa.Test.Validators
             }
         }
 
-        private Dictionary<AuRaParameters.Validator, long> GetInnerValidatorsFirstBlockCalls(AuRaParameters.Validator validator)
-        {
-            return validator.Validators.ToDictionary(static x => x.Value, static x => Math.Max(x.Key + 1, 1));
-        }
+        private Dictionary<AuRaParameters.Validator, long> GetInnerValidatorsFirstBlockCalls(
+            AuRaParameters.Validator validator) =>
+            validator.Validators.ToDictionary(static x => x.Value, static x => Math.Max(x.Key + 1, 1));
 
-        private static AuRaParameters.Validator GetValidator(AuRaParameters.ValidatorType validatorType)
-        {
-            return new()
+        private static AuRaParameters.Validator GetValidator(AuRaParameters.ValidatorType validatorType) =>
+            new()
             {
                 ValidatorType = AuRaParameters.ValidatorType.Multi,
                 Validators = new SortedList<long, AuRaParameters.Validator>()
@@ -249,6 +247,5 @@ namespace Nethermind.AuRa.Test.Validators
                     },
                 }
             };
-        }
     }
 }

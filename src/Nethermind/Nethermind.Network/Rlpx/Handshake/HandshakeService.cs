@@ -245,13 +245,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 #if DEBUG
             if (_logger.IsTrace)
             {
-                _logger.Trace($"{handshake.RemoteNodeId} ephemeral private key {handshake.EphemeralPrivateKey}");
-                _logger.Trace($"{handshake.RemoteNodeId} initiator nonce {handshake.InitiatorNonce.ToHexString()}");
-                _logger.Trace($"{handshake.RemoteNodeId} recipient nonce {handshake.RecipientNonce.ToHexString()}");
-                _logger.Trace($"{handshake.RemoteNodeId} remote ephemeral public key {handshake.RemoteEphemeralPublicKey}");
-                _logger.Trace($"{handshake.RemoteNodeId} remote public key {handshake.RemoteNodeId}");
-                _logger.Trace($"{handshake.RemoteNodeId} auth packet {handshake.AuthPacket.Data.ToHexString()}");
-                _logger.Trace($"{handshake.RemoteNodeId} ack packet {handshake.AckPacket.Data.ToHexString()}");
+                _logger.Trace($"{handshake.RemoteNodeId} handshake secrets established (auth: {handshake.AuthPacket.Data.Length} bytes, ack: {handshake.AckPacket.Data.Length} bytes)");
             }
 #endif
         }

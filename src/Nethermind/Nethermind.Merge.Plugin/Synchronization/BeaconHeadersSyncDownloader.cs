@@ -6,9 +6,6 @@ using Nethermind.Synchronization.FastBlocks;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class BeaconHeadersSyncDownloader : HeadersSyncDownloader
+public class BeaconHeadersSyncDownloader(ILogManager logManager) : HeadersSyncDownloader(logManager)
 {
-    public BeaconHeadersSyncDownloader(ILogManager logManager) : base(logManager)
-    {
-    }
 }

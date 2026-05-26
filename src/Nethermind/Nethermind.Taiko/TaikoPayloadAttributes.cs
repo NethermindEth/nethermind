@@ -14,12 +14,9 @@ public class TaikoPayloadAttributes : PayloadAttributes
     public BlockMetadata? BlockMetadata { get; set; }
     public L1Origin? L1Origin { get; set; }
 
-    public override long? GetGasLimit()
-    {
-        return BlockMetadata!.GasLimit;
-    }
+    public override long? GetGasLimit() => BlockMetadata!.GasLimit;
 
-    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int apiVersion,
+    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,
         [NotNullWhen(false)] out string? error)
     {
         if (L1Origin is null)
@@ -55,7 +52,11 @@ public class TaikoPayloadAttributes : PayloadAttributes
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
-        return base.Validate(specProvider, apiVersion, out error);
+        // Taiko always uses V2 engine API payloads regardless of the active EVM fork
+        // (Cancun/Prague/Osaka). Skip the base fork-version check which would reject
+        // V2 attributes once EIP-4844 is active and demand V3.
+        error = null;
+        return PayloadAttributesValidationResult.Success;
     }
 
 }

@@ -14,7 +14,7 @@ namespace Nethermind.Core.Cpu;
 /// </summary>
 internal static class SysctlCpuInfoProvider
 {
-    internal static readonly Lazy<CpuInfo?> SysctlCpuInfo = new Lazy<CpuInfo?>(Load);
+    internal static readonly Lazy<CpuInfo?> SysctlCpuInfo = new(Load);
 
     private static CpuInfo? Load()
     {

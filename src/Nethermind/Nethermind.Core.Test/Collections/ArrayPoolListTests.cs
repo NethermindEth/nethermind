@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -74,6 +75,14 @@ public class ArrayPoolListTests
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
         return list.Contains(item);
+    }
+
+    [Test]
+    public void Can_enumerate()
+    {
+        using ArrayPoolList<int> list = new(4);
+        list.AddRange(Enumerable.Range(0, 50));
+        list.ToArray().Should().BeEquivalentTo(Enumerable.Range(0, 50));
     }
 
     [TestCase(0, new[] { -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })]
@@ -206,8 +215,8 @@ public class ArrayPoolListTests
     [Test]
     public void Should_implement_IList_the_same_as_IListT()
     {
-        using var listT = new ArrayPoolList<int>(1024);
-        var list = (IList)listT;
+        using ArrayPoolList<int> listT = new(1024);
+        IList list = (IList)listT;
 
         list.Add(1);
         list[0].Should().Be(1);
@@ -220,7 +229,7 @@ public class ArrayPoolListTests
         list.Count.Should().Be(2);
         list.Count.Should().Be(listT.Count);
 
-        var a = new int[3];
+        int[] a = new int[3];
 
         list.CopyTo(a, 1);
         a[2].Should().Be(2);
@@ -240,8 +249,8 @@ public class ArrayPoolListTests
     [Test]
     public void Should_throw_on_null_insertion_if_null_illegal()
     {
-        using var arrayPoolList = new ArrayPoolList<int>(1024);
-        var list = (IList)arrayPoolList;
+        using ArrayPoolList<int> arrayPoolList = new(1024);
+        IList list = (IList)arrayPoolList;
 
         Action action = () => list.Add(null);
         action.Should().Throw<ArgumentNullException>();
@@ -256,8 +265,8 @@ public class ArrayPoolListTests
     [Test]
     public void Should_throw_on_invalid_type_insertion()
     {
-        using var arrayPoolList = new ArrayPoolList<int>(1024);
-        var list = (IList)arrayPoolList;
+        using ArrayPoolList<int> arrayPoolList = new(1024);
+        IList list = (IList)arrayPoolList;
 
         Action action = () => list.Add(string.Empty);
         action.Should().Throw<InvalidCastException>();
@@ -273,8 +282,8 @@ public class ArrayPoolListTests
     [TestCase(null)]
     public void Should_not_throw_on_invalid_type_lookup(object? value)
     {
-        using var arrayPoolList = new ArrayPoolList<int>(1024);
-        var list = (IList)arrayPoolList;
+        using ArrayPoolList<int> arrayPoolList = new(1024);
+        IList list = (IList)arrayPoolList;
         list.Add(1);
 
         list.Contains(value).Should().BeFalse();
@@ -287,7 +296,7 @@ public class ArrayPoolListTests
     [Test]
     public void Should_implement_basic_properties_as_expected()
     {
-        using var list = new ArrayPoolList<int>(1024);
+        using ArrayPoolList<int> list = new(1024);
 
         ((ICollection<int>)list).IsReadOnly.Should().BeFalse();
         ((IList)list).IsReadOnly.Should().BeFalse();
@@ -299,7 +308,7 @@ public class ArrayPoolListTests
     [Test]
     public void Dispose_ShouldNotHaveAnEffect_OnEmptyPool()
     {
-        var list = new ArrayPoolList<int>(0);
+        ArrayPoolList<int> list = new(0);
         list.Dispose();
 
         Action act = () => _ = list.Count;
@@ -328,15 +337,38 @@ public class ArrayPoolListTests
         list.DisposeRecursive();
     }
 
+    [Test]
+    public void RemoveAt_should_not_throw_when_capacity_equals_count()
+    {
+        ArrayPool<int> pool = new ExactSizeArrayPool<int>();
+        using ArrayPoolList<int> list = new(pool, 8, 8);
+
+        for (int i = 0; i < list.Count; i++)
+        {
+            list[i] = i;
+        }
+
+        Action act = () => list.RemoveAt(2);
+
+        act.Should().NotThrow();
+        list.Should().BeEquivalentTo(new[] { 0, 1, 3, 4, 5, 6, 7 });
+    }
+
+    private sealed class ExactSizeArrayPool<T> : ArrayPool<T>
+    {
+        public override T[] Rent(int minimumLength) => new T[minimumLength];
+
+        public override void Return(T[] array, bool clearArray = false)
+        {
+        }
+    }
+
 #if DEBUG
     [Test]
     [Explicit("Crashes the test runner")]
     public void Finalizer_throws_if_not_disposed()
     {
-        static void CreateAndDrop()
-        {
-            ArrayPoolList<int> list = new(1);
-        }
+        static void CreateAndDrop() => _ = new ArrayPoolList<int>(1);
 
         bool exception = false;
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>

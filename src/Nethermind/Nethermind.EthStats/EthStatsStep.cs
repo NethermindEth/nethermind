@@ -4,15 +4,14 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EthStats.Clients;
-using Nethermind.EthStats.Configs;
 using Nethermind.EthStats.Integrations;
 using Nethermind.EthStats.Senders;
 using Nethermind.Facade.Eth;
@@ -37,7 +36,7 @@ public class EthStatsStep(
     IEnode enode,
     IEthStatsConfig ethStatsConfig,
     INetworkConfig networkConfig,
-    IInitConfig initConfig,
+    IMiningConfig miningConfig,
     ILogManager logManager
 ) : IStep, IAsyncDisposable
 {
@@ -46,15 +45,6 @@ public class EthStatsStep(
     private IEthStatsIntegration _ethStatsIntegration = null!;
     public async Task Execute(CancellationToken cancellationToken)
     {
-        if (!initConfig.WebSocketsEnabled)
-        {
-            _logger.Warn($"{nameof(EthStatsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
-        }
-        else
-        {
-            if (_logger.IsDebug) _logger.Debug($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
-        }
-
         string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(enode!.Info)}";
         if (_logger.IsInfo)
         {
@@ -64,13 +54,13 @@ public class EthStatsStep(
         const int reconnectionInterval = 5000;
         const string api = "no";
         const string client = "0.1.1";
-        const bool canUpdateHistory = false;
+        const bool canUpdateHistory = true;
         string node = ProductInfo.ClientId;
         int port = networkConfig.P2PPort;
         string network = specProvider!.NetworkId.ToString();
         string protocol = $"{P2PProtocolInfoProvider.DefaultCapabilitiesToString()}";
 
-        IEthStatsClient _ethStatsClient = new EthStatsClient(
+        IEthStatsClient ethStatsClient = new EthStatsClient(
             ethStatsConfig.Server,
             reconnectionInterval,
             sender,
@@ -87,14 +77,14 @@ public class EthStatsStep(
             ethStatsConfig.Contact!,
             canUpdateHistory,
             ethStatsConfig.Secret!,
-            _ethStatsClient,
+            ethStatsClient,
             sender,
             txPool!,
             blockTree!,
             peerManager!,
             gasPriceOracle!,
             ethSyncingInfo!,
-            initConfig.IsMining,
+            miningConfig.Enabled,
             TimeSpan.FromSeconds(ethStatsConfig.SendInterval),
             logManager);
 

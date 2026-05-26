@@ -11,15 +11,15 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Utils;
 
-// TODO: Move responsibility to IWorldStateManager? Could be, but if IWorldStateManager store more than 128 blocks
-// of state, that would be out of spec for snap and it would fail hive test.
+// TODO: Move responsibility to IWorldStateManager? Could be, but if IWorldStateManager stores more blocks
+// of state than configured, that would require updating the snap serving configuration (ISyncConfig.SnapServingMaxDepth).
 public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
 {
     private readonly IBlockTree _blockTree;
     private readonly int _lastN = 0;
 
     private Hash256? _lastQueuedStateRoot = null;
-    private Queue<Hash256> _stateRootQueue = new Queue<Hash256>();
+    private Queue<Hash256> _stateRootQueue = new();
     private NonBlocking.ConcurrentDictionary<Hash256AsKey, int> _availableStateRoots = new();
 
     public LastNStateRootTracker(IBlockTree blockTree, int lastN)
@@ -31,10 +31,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         if (_blockTree.Head is not null) ResetAvailableStateRoots(_blockTree.Head.Header, true);
     }
 
-    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        ResetAvailableStateRoots(e.Block.Header, false);
-    }
+    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e) => ResetAvailableStateRoots(e.Block.Header, false);
 
     private void ResetAvailableStateRoots(BlockHeader? newHead, bool resetQueue)
     {
@@ -84,13 +81,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         _lastQueuedStateRoot = newHead.StateRoot;
     }
 
-    public bool HasStateRoot(Hash256 stateRoot)
-    {
-        return _availableStateRoots.TryGetValue(stateRoot, out int num) && num > 0;
-    }
+    public bool HasStateRoot(Hash256 stateRoot) => _availableStateRoots.TryGetValue(stateRoot, out int num) && num > 0;
 
-    public void Dispose()
-    {
-        _blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
-    }
+    public void Dispose() => _blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
 }

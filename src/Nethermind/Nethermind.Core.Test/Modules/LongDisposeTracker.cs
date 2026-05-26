@@ -22,16 +22,13 @@ public class LongDisposeTracker : IResolveMiddleware
     /// Need to be call earliest as it track the configuration calls..
     /// </summary>
     /// <param name="builder"></param>
-    public static void Configure(ContainerBuilder builder)
+    public static void Configure(ContainerBuilder builder) => builder.ComponentRegistryBuilder.Registered += (sender, args) =>
     {
-        builder.ComponentRegistryBuilder.Registered += (sender, args) =>
+        args.ComponentRegistration.ConfigurePipeline((pipeline) =>
         {
-            args.ComponentRegistration.ConfigurePipeline((pipeline) =>
-            {
-                pipeline.Use(Instance, MiddlewareInsertionMode.EndOfPhase);
-            });
-        };
-    }
+            pipeline.Use(Instance, MiddlewareInsertionMode.EndOfPhase);
+        });
+    };
 
     private static LongDisposeTracker Instance { get; } = new LongDisposeTracker();
 
@@ -92,14 +89,8 @@ public class LongDisposeTracker : IResolveMiddleware
 
     private class DisposableAndAsyncDisposableTracker(IAsyncDisposable disposable) : IAsyncDisposable, IDisposable
     {
-        public ValueTask DisposeAsync()
-        {
-            return new AsyncDisposableTracker(disposable).DisposeAsync();
-        }
+        public ValueTask DisposeAsync() => new AsyncDisposableTracker(disposable).DisposeAsync();
 
-        public void Dispose()
-        {
-            new DisposableTracker((disposable as IDisposable)!).Dispose();
-        }
+        public void Dispose() => new DisposableTracker((disposable as IDisposable)!).Dispose();
     }
 }

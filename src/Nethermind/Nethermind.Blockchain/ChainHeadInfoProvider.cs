@@ -3,11 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
-using Nethermind.Core.Container;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -25,18 +21,16 @@ namespace Nethermind.Blockchain
         // For testing
         public bool HasSynced { private get; init; }
 
-        [UseConstructorForDependencyInjection]
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, [KeyFilter(nameof(IWorldStateManager.GlobalWorldState))] ICodeInfoRepository codeInfoRepository)
-            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), codeInfoRepository)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
+            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
         {
         }
 
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, ICodeInfoRepository codeInfoRepository)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider)
         {
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
             HeadNumber = blockTree.BestKnownNumber;
-            CodeInfoRepository = codeInfoRepository;
 
             blockTree.BlockAddedToMain += OnHeadChanged;
             _blockTree = blockTree;
@@ -45,8 +39,6 @@ namespace Nethermind.Blockchain
         public IChainHeadSpecProvider SpecProvider { get; }
 
         public IReadOnlyStateProvider ReadOnlyStateProvider { get; }
-
-        public ICodeInfoRepository CodeInfoRepository { get; }
 
         public long HeadNumber { get; private set; }
 

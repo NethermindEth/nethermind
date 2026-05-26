@@ -13,6 +13,7 @@
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
+    <ProjectReference Include="..\Nethermind.History\Nethermind.History.csproj" />
   </ItemGroup>
 
 </Project>

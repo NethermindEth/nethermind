@@ -99,6 +99,7 @@ public class AuRaContractGasLimitOverrideTests
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
                 .AddModule(new AuRaModule(CreateChainSpec()))
+                .AddScoped<IBlockProcessor, BlockProcessor>()
                 .AddSingleton<AuRaContractGasLimitOverride, ChainSpec, AuRaContractGasLimitOverride.Cache, ISpecProvider, IReadOnlyTxProcessingEnvFactory>(CreateGasLimitCalculator);
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -109,7 +110,7 @@ public class AuRaContractGasLimitOverrideTests
         protected override ChainSpec CreateChainSpec()
         {
             ChainSpec chainSpec = base.CreateChainSpec();
-            var parameters = chainSpec.EngineChainSpecParametersProvider
+            AuRaChainSpecEngineParameters parameters = chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
             KeyValuePair<long, Address> blockGasLimitContractTransition = parameters.BlockGasLimitContractTransitions.First();
             parameters.BlockGasLimitContractTransitions = new Dictionary<long, Address>() { { 10, blockGasLimitContractTransition.Value } };

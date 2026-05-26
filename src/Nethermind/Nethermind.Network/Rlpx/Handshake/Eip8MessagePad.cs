@@ -9,14 +9,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class Eip8MessagePad : IMessagePad
+    public class Eip8MessagePad(ICryptoRandom cryptoRandom) : IMessagePad
     {
-        readonly ICryptoRandom _cryptoRandom;
-
-        public Eip8MessagePad(ICryptoRandom cryptoRandom)
-        {
-            _cryptoRandom = cryptoRandom;
-        }
+        readonly ICryptoRandom _cryptoRandom = cryptoRandom;
 
         public byte[] Pad(byte[] message)
         {
