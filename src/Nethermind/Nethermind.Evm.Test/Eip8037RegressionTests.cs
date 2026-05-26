@@ -70,15 +70,16 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// When a nested CREATE's child frame has too little regular gas to cover both
-    /// the regular code deposit cost AND the state-gas spill, the CREATE must fail.
+    /// When a nested CREATE/CREATE2 child frame has too little regular gas to cover both
+    /// the regular code deposit cost AND the state-gas spill, the create operation must fail.
     ///
     /// The child ends below the combined regular code-deposit cost and state-gas spill.
     /// Without the fix, the pre-check passes against each component separately and the
     /// charge runs on the merged parent+child pool, silently borrowing parent gas.
     /// </summary>
-    [Test]
-    public void Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas()
+    [TestCase(false, 215187L, TestName = "Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas_CREATE")]
+    [TestCase(true, 215187L + GasCostOf.VeryLow + GasCostOf.Sha3Word, TestName = "Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas_CREATE2")]
+    public void Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas(bool create2, long gasLimit)
     {
         // Init code: deploys 1 byte of zeros from memory
         // PUSH1 1, PUSH1 0, RETURN = 5 bytes, costs 9 gas (3+3+3 memory expansion)
@@ -88,9 +89,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        // Factory code: CREATE(value=0, initCode), then RETURN the result (address or 0)
-        byte[] factoryCode = Prepare.EvmCode
-            .Create(initCode, UInt256.Zero)
+        // Factory code: CREATE/CREATE2(value=0, initCode), then RETURN the result (address or 0)
+        byte[] factoryCode = BuildCreateFactory(initCode, UInt256.Zero, create2)
             // Stack: [address or 0]
             .PushData(0)
             .Op(Instruction.MSTORE)
@@ -102,7 +102,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         // Gas calculation:
         //   Intrinsic (CALL to existing account): 21000
         //   Factory pre-CREATE opcodes: 21 gas
-        //   CREATE opcode costs:
+        //   CREATE/CREATE2 opcode costs:
         //     CreateRegular(9000) + InitCodeWord(2) = 9002 regular
         //     CreateState(183600) -> spills entirely to regular (factory has 0 state reservoir)
         //     Total: 192602 regular
@@ -111,24 +111,25 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         //   Child: 1540 gas -> 9 for init code -> 1531 remaining for code deposit
         //   Factory post-CREATE: 12 gas (PUSH, MSTORE, PUSH, PUSH, RETURN)
         //   Total: 21000 + 21 + 192602 + 1564 = 215187
-        long gasLimit = 215187;
+        //   CREATE2 adds salt PUSH(3) + Sha3Word(6), so it uses 215196 for the same child frame gas.
 
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
-        // Transaction succeeds (factory runs fine), but the nested CREATE must fail
+        // Transaction succeeds (factory runs fine), but the nested CREATE/CREATE2 must fail
         // because the child can't afford the code deposit from its own gas alone.
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "Factory execution should succeed");
 
-        // CREATE result: 0 = failure (returned in the 32-byte output)
+        // CREATE/CREATE2 result: 0 = failure (returned in the 32-byte output)
         byte[] returnData = tracer.ReturnValue;
         Assert.That(returnData.IsZero(), Is.True,
-            "Nested CREATE should fail: child has 1531 gas but needs 1536 for code deposit (6 regular + 1530 state spill)");
+            "Nested CREATE/CREATE2 should fail: child has 1531 gas but needs 1536 for code deposit (6 regular + 1530 state spill)");
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.GreaterThan(0));
     }
 
-    [Test]
-    public void Eip8037_nested_create_code_deposit_failure_must_refund_parent_create_state()
+    [TestCase(false, TestName = "Eip8037_nested_create_code_deposit_failure_must_refund_parent_create_state_CREATE")]
+    [TestCase(true, TestName = "Eip8037_nested_create_code_deposit_failure_must_refund_parent_create_state_CREATE2")]
+    public void Eip8037_nested_create_code_deposit_failure_must_refund_parent_create_state(bool create2)
     {
         byte[] childInitCode = Prepare.EvmCode
             .PushData(33_000)
@@ -136,8 +137,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        byte[] code = Prepare.EvmCode
-            .Create(childInitCode, UInt256.Zero)
+        byte[] code = BuildCreateFactory(childInitCode, UInt256.Zero, create2)
             .Op(Instruction.POP)
             .Op(Instruction.STOP)
             .Done;
