@@ -150,20 +150,16 @@ public static class PersistedSnapshotMerger
 
         try
         {
+            using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(n, n);
+            WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
             for (int i = 0; i < n; i++)
             {
                 WholeReadSessionReader r = Reader(views[i]);
                 HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
                 (long Offset, long Length) cb = hsst.TrySeek(tag, out Bound cbOut) ? (cbOut.Offset, cbOut.Length) : (0, 0);
                 enums[i] = new HsstEnumerator(in r, new Bound(cb.Offset, cb.Length));
-                state.HasMore[i] = enums[i].MoveNext(in r);
-                if (state.HasMore[i])
-                    enums[i].CopyCurrentLogicalKey(in r, state.KeyBuf.Slice(i * keyStride, keySize));
+                sources[i] = new(enums[i], views[i].Ptr, views[i].Len);
             }
-
-            using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(n, n);
-            WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
-            for (int i = 0; i < n; i++) sources[i] = new(enums[i], views[i].Ptr, views[i].Len);
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
                 sources.AsSpan(0, n), state, keySize);
 
@@ -209,20 +205,16 @@ public static class PersistedSnapshotMerger
 
         try
         {
+            using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(n, n);
+            WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
             for (int i = 0; i < n; i++)
             {
                 WholeReadSessionReader r = Reader(views[i]);
                 HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
                 (long Offset, long Length) cb = hsst.TrySeek(tag, out Bound cbOut) ? (cbOut.Offset, cbOut.Length) : (0, 0);
                 enums[i] = new HsstEnumerator(in r, new Bound(cb.Offset, cb.Length));
-                state.HasMore[i] = enums[i].MoveNext(in r);
-                if (state.HasMore[i])
-                    enums[i].CopyCurrentLogicalKey(in r, state.KeyBuf.Slice(i * KeyStride, AddrKeyLen));
+                sources[i] = new(enums[i], views[i].Ptr, views[i].Len);
             }
-
-            using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(n, n);
-            WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
-            for (int i = 0; i < n; i++) sources[i] = new(enums[i], views[i].Ptr, views[i].Len);
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
                 sources.AsSpan(0, n), state, AddrKeyLen);
 
@@ -344,20 +336,16 @@ public static class PersistedSnapshotMerger
 
         try
         {
+            using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(n, n);
+            WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
             for (int i = 0; i < n; i++)
             {
                 WholeReadSessionReader r = Reader(views[i]);
                 HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
                 (long Offset, long Length) cb = hsst.TrySeek(tag, out Bound cbOut) ? (cbOut.Offset, cbOut.Length) : (0, 0);
                 enums[i] = new HsstEnumerator(in r, new Bound(cb.Offset, cb.Length));
-                state.HasMore[i] = enums[i].MoveNext(in r);
-                if (state.HasMore[i])
-                    enums[i].CopyCurrentLogicalKey(in r, state.KeyBuf.Slice(i * KeyStride, AddrKeyLen));
+                sources[i] = new(enums[i], views[i].Ptr, views[i].Len);
             }
-
-            using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(n, n);
-            WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
-            for (int i = 0; i < n; i++) sources[i] = new(enums[i], views[i].Ptr, views[i].Len);
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
                 sources.AsSpan(0, n), state, AddrKeyLen);
 
@@ -530,10 +518,8 @@ public static class PersistedSnapshotMerger
                 if (slotSourceCount > 0)
                 {
                     using ArrayPoolList<HsstEnumerator> slotEnumsList = new(slotSourceCount, slotSourceCount);
-                    using NativeMemoryListRef<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
                     using NativeMemoryListRef<(IntPtr Ptr, long Len)> slotViewsList = new(slotSourceCount, slotSourceCount);
                     HsstEnumerator[] slotEnums = slotEnumsList.UnsafeGetInternalArray();
-                    Span<bool> slotHasMore = slotHasMoreList.AsSpan();
                     Span<(IntPtr Ptr, long Len)> slotViews = slotViewsList.AsSpan();
                     try
                     {
@@ -541,13 +527,14 @@ public static class PersistedSnapshotMerger
                         {
                             slotViews[j] = views[slotSources[j]];
                             WholeReadSessionReader slotReader = Reader(slotViews[j]);
+                            // Construct each enumerator un-seeded; NWayNestedStreamingSlotMerge's
+                            // outer cursor ctor calls MoveNext on each via the source struct.
                             slotEnums[j] = new HsstEnumerator(in slotReader, new Bound(slotBounds[j].Offset, slotBounds[j].Length));
-                            slotHasMore[j] = slotEnums[j].MoveNext(in slotReader);
                         }
 
                         ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
                         NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
-                            slotEnums, slotHasMore, slotSourceCount, slotViews,
+                            slotEnums, slotSourceCount, slotViews,
                             ref slotWriter,
                             ref slotPrefixBuffers,
                             bloom, addrBloomKey);
@@ -640,7 +627,7 @@ public static class PersistedSnapshotMerger
     /// wrapping this call in BeginValueWrite/FinishValueWrite on its outer builder.
     /// </summary>
     private static void NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, Span<bool> outerHasMore, int n,
+        HsstEnumerator[] outerEnums, int n,
         ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
         scoped ref HsstBTreeBuilderBuffers slotPrefixBuffers,
@@ -656,20 +643,10 @@ public static class PersistedSnapshotMerger
         // across prefix iterations via Reset() to amortize the backing allocation.
         using PooledByteBufferWriter innerStaging = new(4096);
 
-        // Prime the outer cursor's state from the pre-seeded outerHasMore the caller
-        // supplied + copy each live source's first key into state.KeyBuf. Inner cursors
-        // get their own LoserTreeState per outer iteration (created+disposed inside
-        // the loop below).
-        using LoserTreeState outerState = new(n, OuterStride);
-        for (int i = 0; i < n; i++)
-        {
-            outerState.HasMore[i] = outerHasMore[i];
-            if (!outerHasMore[i]) continue;
-            WholeReadSessionReader r = Reader(views[i]);
-            outerEnums[i].CopyCurrentLogicalKey(in r, outerState.KeyBuf.Slice(i * OuterStride, OuterKeyLen));
-        }
-
         // Outer + inner source arrays for the merge cursors. Both rented once for the column.
+        // Outer cursor's ctor seeds each source via MoveNext; inner cursors get their own
+        // LoserTreeState per outer iteration (created+disposed inside the loop below).
+        using LoserTreeState outerState = new(n, OuterStride);
         using ArrayPoolList<WholeReadSessionMergeSource> outerSourcesList = new(n, n);
         using ArrayPoolList<WholeReadSessionMergeSource> innerSourcesList = new(n, n);
         WholeReadSessionMergeSource[] outerSources = outerSourcesList.UnsafeGetInternalArray();
@@ -740,22 +717,15 @@ public static class PersistedSnapshotMerger
                 using LoserTreeState innerState = new(innerN, InnerKeyLen);
                 try
                 {
+                    // Build inner sources from outerMatches: inner cursor slot k → views[outerMatches[k]].
+                    // Outer entry value is a keys-first TwoByteSlotValue / -Large blob; the cursor
+                    // ctor seeds each one by calling MoveNext through the source.
                     for (int k = 0; k < innerN; k++)
                     {
                         int srcIdx = outerMatches[k];
                         Bound vb = outerEnums[srcIdx].CurrentValue;
                         WholeReadSessionReader r = Reader(views[srcIdx]);
-                        // Outer entry value is a keys-first TwoByteSlotValue / -Large blob.
                         innerEnums[k] = HsstEnumerator.CreateTwoByteSlot(in r, new Bound(vb.Offset, vb.Length));
-                        innerState.HasMore[k] = innerEnums[k].MoveNext(in r);
-                        if (innerState.HasMore[k])
-                            innerEnums[k].CopyCurrentLogicalKey(in r, innerState.KeyBuf.Slice(k * InnerKeyLen, InnerKeyLen));
-                    }
-
-                    // Build inner sources from outerMatches: inner cursor slot k → views[outerMatches[k]].
-                    for (int k = 0; k < innerN; k++)
-                    {
-                        int srcIdx = outerMatches[k];
                         innerSources[k] = new(innerEnums[k], views[srcIdx].Ptr, views[srcIdx].Len);
                     }
                     NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor = new(
@@ -889,21 +859,15 @@ public static class PersistedSnapshotMerger
 
         try
         {
-            for (int j = 0; j < active; j++)
-            {
-                WholeReadSessionReader r = Reader(views[matchingSources[srcs[j]]]);
-                innerEnums[j] = new HsstEnumerator(in r, new Bound(subBounds[j].Offset, subBounds[j].Length));
-                state.HasMore[j] = innerEnums[j].MoveNext(in r);
-                if (state.HasMore[j])
-                    innerEnums[j].CopyCurrentLogicalKey(in r, state.KeyBuf.Slice(j * innerKeySize, innerKeySize));
-            }
-
-            // Build sources: cursor slot j → views[matchingSources[srcs[j]]].
+            // Build sources: cursor slot j → views[matchingSources[srcs[j]]]. The cursor
+            // ctor seeds each one by calling MoveNext through the source.
             using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(active, active);
             WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
             for (int j = 0; j < active; j++)
             {
                 (IntPtr Ptr, long Len) v = views[matchingSources[srcs[j]]];
+                WholeReadSessionReader r = Reader(v);
+                innerEnums[j] = new HsstEnumerator(in r, new Bound(subBounds[j].Offset, subBounds[j].Length));
                 sources[j] = new(innerEnums[j], v.Ptr, v.Len);
             }
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(

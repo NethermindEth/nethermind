@@ -80,9 +80,9 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
     /// responsible for its lifetime (typically a single <c>PinBuffer</c> + <c>using</c>).</summary>
     public readonly TReader CreateMinReader() => _sources[_minIdx].CreateReader();
 
-    /// <param name="sources">N source structs, one per cursor slot, already primed
-    /// (each source's enumerator <c>MoveNext</c>'d once, key copied into <c>state.KeyBuf</c>,
-    /// <c>state.HasMore[i]</c> set accordingly).</param>
+    /// <param name="sources">N source structs, one per cursor slot. Each source's
+    /// enumerator must be positioned at the start of its scope but NOT yet advanced;
+    /// the ctor calls <c>MoveNext</c> on each source to prime the loser tree.</param>
     /// <param name="state">Caller-allocated scratch (hasMore + keyBuf + matchingBuf + tree + keyStride).</param>
     /// <param name="keyLen">Logical key length in bytes (≤ <c>state.KeyStride</c>).</param>
     public NWayMergeCursor(
@@ -101,6 +101,18 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
         _pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, _n));
         _minIdx = 0;
         _matchCount = 0;
+        // Seed each source: MoveNext once on its enumerator, cache the first key into
+        // _keyBuf for the tree compare. Sources that don't have any entries leave
+        // _hasMore[i]=false (LoserTreeState's ctor pre-cleared the array) so the tree
+        // treats them as +∞ losers.
+        for (int i = 0; i < _n; i++)
+        {
+            TReader r = sources[i].CreateReader();
+            HsstEnumerator<TReader, TPin> e = sources[i].GetEnumerator();
+            _hasMore[i] = e.MoveNext(in r);
+            if (_hasMore[i])
+                e.CopyCurrentLogicalKey(in r, _keyBuf.Slice(i * _keyStride, _keyLen));
+        }
         Build();
     }
 
