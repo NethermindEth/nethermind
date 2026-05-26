@@ -55,6 +55,11 @@ public class WitnessGeneratingWorldState(
 
     private readonly HashSet<Address> _deployedAddresses = [];
 
+    // Hashes of bytecodes deployed within this block. These must not appear in the witness
+    // codes section: a stateless verifier only needs pre-existing code to validate the
+    // pre-state; newly-deployed code is self-evident from the block transactions.
+    private readonly HashSet<ValueHash256> _deployedCodeHashes = [];
+
     /// <summary>
     /// Projects the recorded addresses/slots/bytecodes (and trie-touched nodes, when a capturing trie store
     /// was supplied) into a <see cref="Witness"/> rooted at <paramref name="parentHeader"/>.
@@ -292,7 +297,16 @@ public class WitnessGeneratingWorldState(
 
     public void WarmUp(AccessList? accessList) => inner.WarmUp(accessList);
 
-    public void WarmUp(Address address) => inner.WarmUp(address);
+    public void WarmUp(Address address)
+    {
+        // Record the address so its state proof is included in the witness even when
+        // execution reverts before any read (e.g. EXTCODECOPY OOG at cold access).
+        RecordEmptySlots(address);
+        // Also record the code so a stateless verifier can validate the code hash of
+        // any account that incurred a cold-access charge (EIP-7928 requirement).
+        RecordBytecode(inner.GetCode(address));
+        inner.WarmUp(address);
+    }
 
     public void ClearStorage(Address address)
     {
@@ -326,6 +340,10 @@ public class WitnessGeneratingWorldState(
         if (!isGenesis)
         {
             _deployedAddresses.Add(address);
+            // Track the hash so RecordBytecode/RecordCodeBytes can exclude newly-deployed
+            // code from the witness codes section (EIP-7928: only pre-state code is needed).
+            if (code.Length > 0)
+                _deployedCodeHashes.Add(codeHash);
         }
         return inner.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
@@ -407,14 +425,18 @@ public class WitnessGeneratingWorldState(
         if (code is { Length: > 0 })
         {
             Hash256 codeHash = Keccak.Compute(code);
-            _bytecodes.TryAdd(codeHash, code);
+            // Skip bytecodes deployed in this block — a stateless verifier only needs
+            // pre-existing code to validate the pre-state (EIP-7928).
+            if (!_deployedCodeHashes.Contains(codeHash))
+                _bytecodes.TryAdd(codeHash, code);
         }
     }
 
     private void RecordBytecode(in ValueHash256 codeHash, byte[]? code)
     {
         // Fast path: hash already known.
-        if (code is { Length: > 0 })
+        // Skip bytecodes deployed in this block (EIP-7928: only pre-state code is needed).
+        if (code is { Length: > 0 } && !_deployedCodeHashes.Contains(codeHash))
             _bytecodes.TryAdd(codeHash, code);
     }
 
@@ -440,7 +462,9 @@ public class WitnessGeneratingWorldState(
         {
             byte[] codeBytes = code.ToArray();
             Hash256 codeHash = Keccak.Compute(codeBytes);
-            _bytecodes.TryAdd(codeHash, codeBytes);
+            // Skip bytecodes deployed in this block (EIP-7928: only pre-state code is needed).
+            if (!_deployedCodeHashes.Contains(codeHash))
+                _bytecodes.TryAdd(codeHash, codeBytes);
         }
     }
 
@@ -455,4 +479,6 @@ public class WitnessGeneratingWorldState(
         RecordEmptySlots(address);
         RecordBytecode(code);
     }
+
+    internal void RecordAccountAccess(Address address) => RecordEmptySlots(address);
 }

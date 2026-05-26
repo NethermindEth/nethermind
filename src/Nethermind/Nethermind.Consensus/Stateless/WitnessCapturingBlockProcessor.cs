@@ -11,6 +11,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -88,6 +89,12 @@ public sealed class WitnessCapturingBlockProcessor(
                 proxy.RecordBlockAccessList(blockAccessList);
             }
 
+            if (blockAccessList is not null && spec.IsEip7002Enabled)
+            {
+                RecordSystemContractCode(proxy, proxy.InnerState,
+                    Eip7002Constants.WithdrawalRequestPredeployAddress);
+            }
+
             if (!rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
                 return result; // request was cancelled while we were processing — nothing to publish.
 
@@ -117,6 +124,19 @@ public sealed class WitnessCapturingBlockProcessor(
         finally
         {
             proxy.Deactivate(recorder);
+        }
+    }
+
+    private static void RecordSystemContractCode(
+        WitnessCapturingWorldStateProxy proxy,
+        IWorldState worldState,
+        Address address)
+    {
+        byte[]? code = worldState.GetCode(address);
+        if (code is { Length: > 0 })
+        {
+            proxy.RecordCodeBytes(code);
+            proxy.RecordAccountAccess(address);
         }
     }
 }

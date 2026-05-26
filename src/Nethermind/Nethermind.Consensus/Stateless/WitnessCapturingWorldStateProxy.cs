@@ -130,4 +130,7 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
 
     internal void RecordBlockAccessList(ReadOnlyBlockAccessList bal)
         => _active?.RecordBlockAccessList(bal);
+
+    internal void RecordAccountAccess(Address address)
+        => _active?.RecordAccountAccess(address);
 }

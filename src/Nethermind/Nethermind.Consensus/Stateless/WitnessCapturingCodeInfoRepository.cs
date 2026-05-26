@@ -27,9 +27,22 @@ public sealed class WitnessCapturingCodeInfoRepository(
     {
         CodeInfo codeInfo = inner.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
 
-        if (proxy.IsActive && codeInfo.Code.Length > 0)
+        if (proxy.IsActive)
         {
-            proxy.RecordCodeBytes(codeInfo.Code);
+            // Record the resolved bytecode (delegate target's code when following delegation,
+            // or the account's own code when not).
+            if (codeInfo.Code.Length > 0)
+            {
+                proxy.RecordCodeBytes(codeInfo.Code);
+            }
+
+            // EIP-7702: ensure the delegation target address contributes a state proof,
+            // and ensure the codeSource (delegator) address is also tracked.
+            if (followDelegation && delegationAddress is not null)
+            {
+                proxy.RecordAccountAccess(delegationAddress);
+                proxy.RecordAccountAccess(codeSource);
+            }
         }
         return codeInfo;
     }
