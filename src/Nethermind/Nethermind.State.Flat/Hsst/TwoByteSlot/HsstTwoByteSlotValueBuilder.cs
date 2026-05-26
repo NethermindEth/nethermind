@@ -3,33 +3,43 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
+using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.Hsst;
+namespace Nethermind.State.Flat.Hsst.TwoByteSlot;
 
 /// <summary>
-/// Builds a <see cref="IndexType.TwoByteSlotValueLarge"/> HSST: wider sibling of
-/// <see cref="HsstTwoByteSlotValueBuilder{TWriter}"/>. Same keys-first wire shape but
-/// u24 LE start offsets, raising the values-section cap from 64 KiB to ~16 MiB. Keys
-/// are added in strictly ascending byte order.
+/// Builds a <see cref="IndexType.TwoByteSlotValue"/> HSST: fixed 2-byte keys, variable
+/// values, packed start-offset section, with a keys-first wire shape that lets the
+/// reader prefetch keys/offsets ahead of the bulk values.
 ///
 /// Output:
-/// <c>[IndexType: u8 = 0x06][KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u24 LE]…[Offset_{N-1}: u24 LE][Value_0]…[Value_{N-1}]</c>.
+/// <c>[IndexType: u8 = 0x05][KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u16 LE]…[Offset_{N-1}: u16 LE][Value_0]…[Value_{N-1}]</c>.
 ///
-/// The <see cref="IndexType"/> byte leads the blob (not a trailer); see
-/// <see cref="HsstTwoByteSlotValueBuilder{TWriter}"/> for the rationale.
+/// The <see cref="IndexType"/> byte leads the blob (not a trailer) so a reader that
+/// already knows it is descending into a keys-first sub-slot dispatches on byte 0 and
+/// then reads <c>KeyCount</c>, keys and offsets in the same forward pass — no tail seek.
 ///
-/// <c>Offset_0</c> is omitted (always 0); <c>Offset_N</c> (one-past-end of the values
-/// section) is derived by the reader as the blob's end.
+/// <c>Offset_i</c> is the exclusive start offset of <c>Value_i</c> measured from the
+/// start of the values section (= byte after the offsets array). <c>Offset_0</c> is
+/// omitted because it is always 0; <c>Offset_N</c> (one-past-end of the values section)
+/// is derived by the reader as the blob's end. Hence per-entry value bounds are
+/// <c>[Offset_i, Offset_{i+1})</c> within the values section.
+///
+/// Fixed u16 offsets cap the cumulative value bytes at <c>ushort.MaxValue</c>
+/// (65,535 bytes). <see cref="Build"/> throws when the cap is exceeded — the caller
+/// is expected to gate on <see cref="FitsInOffsetWidth"/> before choosing this format.
+///
+/// Unlike the previous tail-metadata variant, values must be known up-front because
+/// the offset section is emitted ahead of them. The builder buffers value bytes into
+/// pooled scratch during <see cref="Add"/> and flushes them in <see cref="Build"/>.
 /// </summary>
-public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
+public ref struct HsstTwoByteSlotValueBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
     /// <summary>Fixed key length for this format. Single 2-byte slot suffix.</summary>
     public const int KeyLength = 2;
-    /// <summary>Width on disk of each start offset (low 3 bytes of a u32, LE).</summary>
-    public const int OffsetSize = 3;
-    /// <summary>Maximum addressable cumulative value bytes with u24 offsets.</summary>
-    public const int MaxDataBytes = (1 << 24) - 1;
+    /// <summary>Maximum addressable cumulative value bytes with u16 offsets.</summary>
+    public const int MaxDataBytes = ushort.MaxValue;
     /// <summary>Maximum number of entries (<c>KeyCount</c> stores <c>N − 1</c> in a u16).</summary>
     public const int MaxEntries = 65536;
 
@@ -39,11 +49,11 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
     private ref TWriter _writer;
     private int _count;
     private int _valueBytes;
-    private uint[]? _starts;
+    private ushort[]? _starts;
     private byte[]? _keys;
     private byte[]? _values;
 
-    public HsstTwoByteSlotValueLargeBuilder(ref TWriter writer)
+    public HsstTwoByteSlotValueBuilder(ref TWriter writer)
     {
         _writer = ref writer;
         _count = 0;
@@ -52,27 +62,29 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
 
     public void Dispose()
     {
-        if (_starts is not null) { ArrayPool<uint>.Shared.Return(_starts); _starts = null; }
+        if (_starts is not null) { ArrayPool<ushort>.Shared.Return(_starts); _starts = null; }
         if (_keys is not null) { ArrayPool<byte>.Shared.Return(_keys); _keys = null; }
         if (_values is not null) { ArrayPool<byte>.Shared.Return(_values); _values = null; }
     }
 
     /// <summary>
-    /// Pre-check whether a planned cumulative value size fits this format's u24 offset cap.
+    /// Pre-check whether a planned cumulative value size fits this format's u16 offset cap.
+    /// Callers use this to decide between <see cref="HsstTwoByteSlotValueBuilder{TWriter}"/>
+    /// and a wider-offset fallback (e.g. <see cref="HsstTwoByteSlotValueLargeBuilder{TWriter}"/>).
     /// </summary>
     public static bool FitsInOffsetWidth(long totalValueBytes)
-        => (ulong)totalValueBytes <= MaxDataBytes;
+        => (ulong)totalValueBytes <= ushort.MaxValue;
 
     /// <summary>
     /// Append a key/value entry. <paramref name="key"/> must be exactly 2 bytes and
     /// strictly greater (byte-lex) than every previously added key. The value bytes
     /// are copied into pooled scratch and flushed to the underlying writer in
-    /// <see cref="Build"/>.
+    /// <see cref="Build"/>; callers may reuse the source span after the call returns.
     /// </summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
         if (key.Length != KeyLength)
-            throw new ArgumentException($"TwoByteSlotValueLarge requires {KeyLength}-byte keys; got length {key.Length}", nameof(key));
+            throw new ArgumentException($"TwoByteSlotValue requires {KeyLength}-byte keys; got length {key.Length}", nameof(key));
 
         EnsureKeysCapacity(_count + 1);
 
@@ -84,15 +96,15 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
         }
 
         long newTotal = (long)_valueBytes + value.Length;
-        if ((ulong)newTotal > (ulong)MaxDataBytes)
-            throw new InvalidOperationException($"TwoByteSlotValueLarge values would exceed {MaxDataBytes} bytes at entry {_count}");
+        if ((ulong)newTotal > ushort.MaxValue)
+            throw new InvalidOperationException($"TwoByteSlotValue values would exceed {MaxDataBytes} bytes at entry {_count}");
 
-        _starts![_count] = (uint)_valueBytes;
+        _starts![_count] = (ushort)_valueBytes;
         key.CopyTo(_keys.AsSpan(_count * KeyLength, KeyLength));
 
         if (value.Length > 0)
         {
-            EnsureValuesCapacity((int)newTotal);
+            EnsureValuesCapacity(_valueBytes + value.Length);
             value.CopyTo(_values.AsSpan(_valueBytes, value.Length));
         }
 
@@ -109,15 +121,15 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
         if (newCap < needed) newCap = needed;
         if (newCap > MaxEntries) newCap = MaxEntries;
         if (needed > newCap)
-            throw new InvalidOperationException($"TwoByteSlotValueLarge entry count exceeded {MaxEntries}");
+            throw new InvalidOperationException($"TwoByteSlotValue entry count exceeded {MaxEntries}");
 
-        uint[] newStarts = ArrayPool<uint>.Shared.Rent(newCap);
+        ushort[] newStarts = ArrayPool<ushort>.Shared.Rent(newCap);
         byte[] newKeys = ArrayPool<byte>.Shared.Rent(newCap * KeyLength);
         if (_starts is not null)
         {
             Array.Copy(_starts, newStarts, _count);
             Array.Copy(_keys!, newKeys, _count * KeyLength);
-            ArrayPool<uint>.Shared.Return(_starts);
+            ArrayPool<ushort>.Shared.Return(_starts);
             ArrayPool<byte>.Shared.Return(_keys!);
         }
         _starts = newStarts;
@@ -149,15 +161,15 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
     {
         int n = _count;
         if (n == 0)
-            throw new InvalidOperationException("TwoByteSlotValueLarge cannot encode an empty map; the caller must omit Build for zero-entry maps");
+            throw new InvalidOperationException("TwoByteSlotValue cannot encode an empty map; the caller must omit Build for zero-entry maps");
 
-        if ((ulong)_valueBytes > (ulong)MaxDataBytes)
-            throw new InvalidOperationException($"TwoByteSlotValueLarge values {_valueBytes} bytes exceeds {MaxDataBytes}");
+        if ((ulong)_valueBytes > ushort.MaxValue)
+            throw new InvalidOperationException($"TwoByteSlotValue values {_valueBytes} bytes exceeds {MaxDataBytes}");
 
         // IndexType byte at byte 0 — leads the blob so a nested-slot reader dispatches
         // on the first byte and reads the rest of the metadata forward without a tail seek.
         Span<byte> indexType = _writer.GetSpan(1);
-        indexType[0] = (byte)IndexType.TwoByteSlotValueLarge;
+        indexType[0] = (byte)IndexType.TwoByteSlotValue;
         _writer.Advance(1);
 
         // Header: KeyCount (N − 1) u16 LE.
@@ -165,7 +177,10 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
         BinaryPrimitives.WriteUInt16LittleEndian(header, (ushort)(n - 1));
         _writer.Advance(2);
 
-        // Keys: N · 2 bytes, byte-reversed on the way out (LE-stored).
+        // Keys: N · 2 bytes, byte-reversed on the way out (LE-stored convention — a native
+        // u16 load over a stored key now recovers the BE numeric value, letting SIMD
+        // scans compare numerically; see UniformKeySearch.LowerBound2LE). _keys is logical
+        // (BE) during build for the strict-ascending compare in Add().
         int keysBytes = n * KeyLength;
         Span<byte> keysSpan = _writer.GetSpan(keysBytes);
         ReadOnlySpan<byte> logicalKeys = _keys.AsSpan(0, keysBytes);
@@ -176,17 +191,13 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
         }
         _writer.Advance(keysBytes);
 
-        // Offsets: N − 1 u24 LE values (Offset_1..Offset_{N-1}); Offset_0 is omitted.
-        int offsetsBytes = (n - 1) * OffsetSize;
+        // Offsets: N − 1 u16 LE values (Offset_1..Offset_{N-1}); Offset_0 is omitted.
+        int offsetsBytes = (n - 1) * 2;
         if (offsetsBytes > 0)
         {
             Span<byte> offsetsSpan = _writer.GetSpan(offsetsBytes);
-            Span<byte> scratch = stackalloc byte[4];
             for (int i = 1; i < n; i++)
-            {
-                BinaryPrimitives.WriteUInt32LittleEndian(scratch, _starts![i]);
-                scratch[..OffsetSize].CopyTo(offsetsSpan[((i - 1) * OffsetSize)..]);
-            }
+                BinaryPrimitives.WriteUInt16LittleEndian(offsetsSpan[((i - 1) * 2)..], _starts![i]);
             _writer.Advance(offsetsBytes);
         }
 

@@ -9,6 +9,7 @@ using Nethermind.Core.Utils;
 using Nethermind.State.Flat.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
+using Nethermind.State.Flat.Hsst.BTree;
 
 namespace Nethermind.State.Flat.Test;
 

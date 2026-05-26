@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.State.Flat.Hsst.BTree;
+using Nethermind.State.Flat.Hsst.PackedArray;
+using Nethermind.State.Flat.Hsst.DenseByteIndex;
+using Nethermind.State.Flat.Hsst.TwoByteSlot;
 
 namespace Nethermind.State.Flat.Hsst;
 

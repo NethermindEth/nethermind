@@ -3,8 +3,9 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
+using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.Hsst;
+namespace Nethermind.State.Flat.Hsst.DenseByteIndex;
 
 /// <summary>
 /// Builds a byte-addressed HSST: the tag byte is itself the array index. Tags are

@@ -4,8 +4,9 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.Hsst;
+namespace Nethermind.State.Flat.Hsst.DenseByteIndex;
 
 /// <summary>
 /// Read-side helpers for the <see cref="IndexType.DenseByteIndex"/> layout. Stateless

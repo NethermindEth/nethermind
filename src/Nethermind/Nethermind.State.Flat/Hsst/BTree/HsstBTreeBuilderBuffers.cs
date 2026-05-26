@@ -3,8 +3,9 @@
 
 using System.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.Hsst;
+namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
 /// Reusable working buffers for <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}"/> and

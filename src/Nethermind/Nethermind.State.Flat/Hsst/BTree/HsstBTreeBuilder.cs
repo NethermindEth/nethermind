@@ -8,8 +8,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.BSearchIndex;
 using Nethermind.State.Flat.Storage;
+using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.Hsst;
+namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
 /// Builds an HSST (Hierarchical Static Sorted Table) from key-value entries.

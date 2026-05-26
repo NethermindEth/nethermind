@@ -10,6 +10,10 @@ using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
 using HsstEnumerator = Nethermind.State.Flat.Hsst.HsstEnumerator<Nethermind.State.Flat.Storage.WholeReadSessionReader, Nethermind.State.Flat.Hsst.NoOpPin>;
+using Nethermind.State.Flat.Hsst.BTree;
+using Nethermind.State.Flat.Hsst.PackedArray;
+using Nethermind.State.Flat.Hsst.DenseByteIndex;
+using Nethermind.State.Flat.Hsst.TwoByteSlot;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 

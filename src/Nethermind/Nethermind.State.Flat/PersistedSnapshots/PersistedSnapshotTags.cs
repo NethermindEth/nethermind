@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.State.Flat.Hsst.DenseByteIndex;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 

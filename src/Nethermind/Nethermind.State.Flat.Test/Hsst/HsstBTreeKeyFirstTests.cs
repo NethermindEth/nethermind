@@ -4,6 +4,8 @@
 using System;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
+using Nethermind.State.Flat.Hsst.BTree;
+using Nethermind.State.Flat.Hsst.TwoByteSlot;
 
 namespace Nethermind.State.Flat.Test;
 

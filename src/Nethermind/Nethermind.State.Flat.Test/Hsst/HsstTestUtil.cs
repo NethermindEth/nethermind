@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Hsst.BTree;
 
 namespace Nethermind.State.Flat.Test;
 

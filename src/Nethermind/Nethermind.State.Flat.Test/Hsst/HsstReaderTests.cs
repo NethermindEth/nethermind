@@ -5,6 +5,7 @@ using System;
 using System.Text;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
+using Nethermind.State.Flat.Hsst.BTree;
 
 namespace Nethermind.State.Flat.Test;
 

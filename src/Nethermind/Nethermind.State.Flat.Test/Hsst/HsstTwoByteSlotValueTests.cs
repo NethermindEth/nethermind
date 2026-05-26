@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core.Extensions;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
+using Nethermind.State.Flat.Hsst.TwoByteSlot;
 
 namespace Nethermind.State.Flat.Test;
 

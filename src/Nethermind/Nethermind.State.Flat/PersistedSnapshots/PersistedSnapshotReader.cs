@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.Trie;
+using Nethermind.State.Flat.Hsst.DenseByteIndex;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 

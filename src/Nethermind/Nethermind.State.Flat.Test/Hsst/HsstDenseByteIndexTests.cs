@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
+using Nethermind.State.Flat.Hsst.DenseByteIndex;
 
 namespace Nethermind.State.Flat.Test;
 

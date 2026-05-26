@@ -14,6 +14,9 @@ using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
+using Nethermind.State.Flat.Hsst.BTree;
+using Nethermind.State.Flat.Hsst.DenseByteIndex;
+using Nethermind.State.Flat.Hsst.TwoByteSlot;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 

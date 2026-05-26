@@ -3,8 +3,9 @@
 
 using System.Buffers.Binary;
 using Nethermind.State.Flat.BSearchIndex;
+using Nethermind.State.Flat.Hsst;
 
-namespace Nethermind.State.Flat.Hsst;
+namespace Nethermind.State.Flat.Hsst.PackedArray;
 
 /// <summary>
 /// Read-side helpers for the <see cref="IndexType.PackedArray"/> layout. Stateless static

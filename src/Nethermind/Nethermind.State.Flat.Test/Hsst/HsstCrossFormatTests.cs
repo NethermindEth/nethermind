@@ -6,6 +6,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
+using Nethermind.State.Flat.Hsst.BTree;
+using Nethermind.State.Flat.Hsst.PackedArray;
+using Nethermind.State.Flat.Hsst.DenseByteIndex;
+using Nethermind.State.Flat.Hsst.TwoByteSlot;
 
 namespace Nethermind.State.Flat.Test;
 

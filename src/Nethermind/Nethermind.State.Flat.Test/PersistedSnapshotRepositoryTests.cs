@@ -12,6 +12,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
 using NUnit.Framework;
+using Nethermind.State.Flat.Hsst.BTree;
 
 namespace Nethermind.State.Flat.Test;
 

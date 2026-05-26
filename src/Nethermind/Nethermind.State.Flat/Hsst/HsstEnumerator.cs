@@ -4,6 +4,9 @@
 using System.Buffers.Binary;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.BSearchIndex;
+using Nethermind.State.Flat.Hsst.BTree;
+using Nethermind.State.Flat.Hsst.PackedArray;
+using Nethermind.State.Flat.Hsst.TwoByteSlot;
 
 namespace Nethermind.State.Flat.Hsst;
 

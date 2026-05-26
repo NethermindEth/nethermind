@@ -3,6 +3,7 @@
 
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.State.Flat.Hsst.BTree;
 
 namespace Nethermind.State.Flat.Hsst;
 

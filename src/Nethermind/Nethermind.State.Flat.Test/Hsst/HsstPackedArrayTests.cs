@@ -8,6 +8,7 @@ using System.Linq;
 using Nethermind.State.Flat.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
+using Nethermind.State.Flat.Hsst.PackedArray;
 
 namespace Nethermind.State.Flat.Test;
 

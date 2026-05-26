@@ -9,6 +9,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
+using Nethermind.State.Flat.Hsst.DenseByteIndex;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
