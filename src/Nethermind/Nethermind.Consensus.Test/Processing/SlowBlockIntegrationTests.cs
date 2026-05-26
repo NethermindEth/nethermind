@@ -8,16 +8,13 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.Test.Helpers;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
@@ -34,28 +31,14 @@ namespace Nethermind.Consensus.Test.Processing;
 [TestFixture]
 public class SlowBlockIntegrationTests
 {
-    private ISpecProvider _specProvider = null!;
-    private IEthereumEcdsa _ecdsa = null!;
-    private ITransactionProcessor _txProcessor = null!;
-    private IWorldState _worldState = null!;
-    private IDisposable _scope = null!;
+    private EvmTestHarness _harness = null!;
     private WaitableTestLogger _slowBlockLogger = null!;
     private ProcessingStats _stats = null!;
 
     [SetUp]
     public void Setup()
     {
-        // Mark the test thread as the block-processing thread so EVM Increment* calls
-        // route to _main, matching MainThread* deltas read by ProcessingStats.
-        ProcessingThread.IsBlockProcessingThread = true;
-
-        _specProvider = new TestSpecProvider(Prague.Instance);
-        _worldState = TestWorldStateFactory.CreateForTest();
-        _scope = _worldState.BeginScope(IWorldState.PreGenesis);
-        EthereumCodeInfoRepository codeInfoRepo = new(_worldState);
-        EthereumVirtualMachine vm = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _txProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _worldState, vm, codeInfoRepo, LimboLogs.Instance);
-        _ecdsa = new EthereumEcdsa(_specProvider.ChainId);
+        _harness = new EvmTestHarness();
 
         IStateReader stateReader = Substitute.For<IStateReader>();
         stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
@@ -64,27 +47,13 @@ public class SlowBlockIntegrationTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _scope.Dispose();
-        ProcessingThread.IsBlockProcessingThread = false;
-    }
-
-    private Block CreateBlock(params Transaction[] txs) =>
-        Build.A.Block.WithNumber(long.MaxValue).WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
-            .WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
-
-    private void DeployCode(Address address, byte[] code)
-    {
-        _worldState.CreateAccountIfNotExists(address, 0);
-        _worldState.InsertCode(address, code, Prague.Instance);
-    }
+    public void TearDown() => _harness.Dispose();
 
     private SlowBlockLogEntry Execute(Transaction tx, Block block)
     {
         _stats.Start();
         _stats.CaptureStartStats();
-        _txProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), Evm.Tracing.NullTxTracer.Instance);
+        _harness.ExecuteTx(tx, block);
         _stats.UpdateStats(new[] { block }, Build.A.BlockHeader.TestObject, blockProcessingTimeInMicros: 100_000);
 
         // Report is queued to ThreadPool — wait deterministically on the logger's MRES.
@@ -99,12 +68,12 @@ public class SlowBlockIntegrationTests
     public void ETH_transfer_tracks_account_reads_and_writes()
     {
         PrivateKey sender = TestItem.PrivateKeyA;
-        _worldState.CreateAccount(sender.Address, 10.Ether);
+        _harness.WorldState.CreateAccount(sender.Address, 10.Ether);
 
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(1.Ether)
-            .WithGasLimit(21_000).SignedAndResolved(_ecdsa, sender, true).TestObject;
+            .WithGasLimit(21_000).SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
 
-        SlowBlockLogEntry log = Execute(tx, CreateBlock(tx));
+        SlowBlockLogEntry log = Execute(tx, _harness.CreateBlock(tx));
 
         Assert.That(log.StateReads.Accounts, Is.GreaterThan(0));
         Assert.That(log.StateWrites.Accounts, Is.GreaterThan(0));
@@ -115,17 +84,17 @@ public class SlowBlockIntegrationTests
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         Address contract = TestItem.AddressC;
-        _worldState.CreateAccount(sender.Address, 10.Ether);
+        _harness.WorldState.CreateAccount(sender.Address, 10.Ether);
 
         byte[] code = Prepare.EvmCode.Op(Instruction.PUSH0).Op(Instruction.SLOAD).Op(Instruction.POP).Op(Instruction.STOP).Done;
-        DeployCode(contract, code);
-        _worldState.Set(new StorageCell(contract, 0), new byte[] { 0x42 });
-        _worldState.Commit(Prague.Instance);
+        _harness.DeployCode(contract, code);
+        _harness.WorldState.Set(new StorageCell(contract, 0), new byte[] { 0x42 });
+        _harness.WorldState.Commit(Prague.Instance);
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(100_000)
-            .SignedAndResolved(_ecdsa, sender, true).TestObject;
+            .SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
 
-        SlowBlockLogEntry log = Execute(tx, CreateBlock(tx));
+        SlowBlockLogEntry log = Execute(tx, _harness.CreateBlock(tx));
 
         Assert.That(log.StateReads.StorageSlots, Is.GreaterThan(0));
         Assert.That(log.Evm.Sload, Is.GreaterThan(0));
@@ -136,21 +105,21 @@ public class SlowBlockIntegrationTests
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         Address contract = TestItem.AddressC;
-        _worldState.CreateAccount(sender.Address, 10.Ether);
+        _harness.WorldState.CreateAccount(sender.Address, 10.Ether);
 
         // Write 0x42 to slot 0, then delete slot 1 (pre-populated)
         byte[] code = Prepare.EvmCode
             .PushData(0x42).Op(Instruction.PUSH0).Op(Instruction.SSTORE)
             .Op(Instruction.PUSH0).PushData(1).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done;
-        DeployCode(contract, code);
-        _worldState.Set(new StorageCell(contract, 1), new byte[] { 0xFF });
-        _worldState.Commit(Prague.Instance);
+        _harness.DeployCode(contract, code);
+        _harness.WorldState.Set(new StorageCell(contract, 1), new byte[] { 0xFF });
+        _harness.WorldState.Commit(Prague.Instance);
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(200_000)
-            .SignedAndResolved(_ecdsa, sender, true).TestObject;
+            .SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
 
-        SlowBlockLogEntry log = Execute(tx, CreateBlock(tx));
+        SlowBlockLogEntry log = Execute(tx, _harness.CreateBlock(tx));
 
         Assert.That(log.StateWrites.StorageSlots, Is.GreaterThan(0));
         Assert.That(log.StateWrites.StorageSlotsDeleted, Is.GreaterThanOrEqualTo(1));
@@ -163,15 +132,15 @@ public class SlowBlockIntegrationTests
         PrivateKey sender = TestItem.PrivateKeyA;
         Address caller = TestItem.AddressC;
         Address callee = TestItem.AddressD;
-        _worldState.CreateAccount(sender.Address, 10.Ether);
+        _harness.WorldState.CreateAccount(sender.Address, 10.Ether);
 
-        DeployCode(callee, Prepare.EvmCode.Op(Instruction.STOP).Done);
-        DeployCode(caller, Prepare.EvmCode.Call(callee, 50_000).Op(Instruction.STOP).Done);
+        _harness.DeployCode(callee, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        _harness.DeployCode(caller, Prepare.EvmCode.Call(callee, 50_000).Op(Instruction.STOP).Done);
 
         Transaction tx = Build.A.Transaction.WithTo(caller).WithGasLimit(200_000)
-            .SignedAndResolved(_ecdsa, sender, true).TestObject;
+            .SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
 
-        SlowBlockLogEntry log = Execute(tx, CreateBlock(tx));
+        SlowBlockLogEntry log = Execute(tx, _harness.CreateBlock(tx));
 
         Assert.That(log.StateReads.Code, Is.GreaterThan(0));
         Assert.That(log.Evm.Calls, Is.GreaterThan(0));
@@ -183,14 +152,14 @@ public class SlowBlockIntegrationTests
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        _worldState.CreateAccount(sender.Address, 1.Ether);
-        DeployCode(codeSource, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        _harness.WorldState.CreateAccount(sender.Address, 1.Ether);
+        _harness.DeployCode(codeSource, Prepare.EvmCode.Op(Instruction.STOP).Done);
 
         Transaction setTx = Build.A.Transaction.WithType(TxType.SetCode).WithTo(signer.Address).WithGasLimit(100_000)
-            .WithAuthorizationCode(_ecdsa.Sign(signer, _specProvider.ChainId, codeSource, 0))
-            .SignedAndResolved(_ecdsa, sender, true).TestObject;
+            .WithAuthorizationCode(_harness.Ecdsa.Sign(signer, _harness.SpecProvider.ChainId, codeSource, 0))
+            .SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
 
-        SlowBlockLogEntry setLog = Execute(setTx, CreateBlock(setTx));
+        SlowBlockLogEntry setLog = Execute(setTx, _harness.CreateBlock(setTx));
         Assert.That(setLog.StateWrites.Eip7702DelegationsSet, Is.EqualTo(1));
     }
 
@@ -200,21 +169,21 @@ public class SlowBlockIntegrationTests
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        _worldState.CreateAccount(sender.Address, 1.Ether);
+        _harness.WorldState.CreateAccount(sender.Address, 1.Ether);
 
         // Pre-set delegation on signer
         byte[] existingDelegation = new byte[23];
         Eip7702Constants.DelegationHeader.CopyTo(existingDelegation);
         codeSource.Bytes.CopyTo(existingDelegation.AsSpan(3));
-        _worldState.CreateAccount(signer.Address, 0);
-        _worldState.InsertCode(signer.Address, existingDelegation, Prague.Instance);
-        _worldState.IncrementNonce(signer.Address);
+        _harness.WorldState.CreateAccount(signer.Address, 0);
+        _harness.WorldState.InsertCode(signer.Address, existingDelegation, Prague.Instance);
+        _harness.WorldState.IncrementNonce(signer.Address);
 
         Transaction clearTx = Build.A.Transaction.WithType(TxType.SetCode).WithTo(signer.Address).WithGasLimit(100_000)
-            .WithAuthorizationCode(_ecdsa.Sign(signer, _specProvider.ChainId, Address.Zero, 1))
-            .SignedAndResolved(_ecdsa, sender, true).TestObject;
+            .WithAuthorizationCode(_harness.Ecdsa.Sign(signer, _harness.SpecProvider.ChainId, Address.Zero, 1))
+            .SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
 
-        SlowBlockLogEntry clearLog = Execute(clearTx, CreateBlock(clearTx));
+        SlowBlockLogEntry clearLog = Execute(clearTx, _harness.CreateBlock(clearTx));
         Assert.That(clearLog.StateWrites.Eip7702DelegationsCleared, Is.EqualTo(1));
     }
 
@@ -222,12 +191,12 @@ public class SlowBlockIntegrationTests
     public void Block_identification_matches_block_data()
     {
         PrivateKey sender = TestItem.PrivateKeyA;
-        _worldState.CreateAccount(sender.Address, 10.Ether);
+        _harness.WorldState.CreateAccount(sender.Address, 10.Ether);
 
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(1.Ether)
-            .WithGasLimit(21_000).SignedAndResolved(_ecdsa, sender, true).TestObject;
+            .WithGasLimit(21_000).SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
 
-        Block block = Build.A.Block.WithNumber(12345).WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+        Block block = Build.A.Block.WithNumber(12345).WithTimestamp(Nethermind.Specs.MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
 
         SlowBlockLogEntry log = Execute(tx, block);
