@@ -59,7 +59,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             NetworkDiagTracer.IsEnabled = true;
 
-            _disposables = new();
+            _disposables = [];
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
@@ -402,7 +402,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [TestCase(50)]
         public void Should_truncate_array_when_too_many_body(int availableBody)
         {
-            List<Block> blocks = new();
+            List<Block> blocks = [];
             Transaction[] transactions = Build.A.Transaction.TestObjectNTimes(1000);
             for (int i = 0; i < availableBody; i++)
             {
@@ -510,7 +510,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
         private sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
-            public List<Type> RequestTypes { get; } = new();
+            public List<Type> RequestTypes { get; } = [];
 
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
                 TimeSpan? timeout = null, string? source = null)
@@ -809,6 +809,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
             statusPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        }
+
+        [Test]
+        public void Should_disconnect_on_unknown_message_type()
+        {
+            HandleIncomingStatusMessage();
+
+            using StatusMessage filler = new() { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+            using DisposableByteBuffer packet = _svc.ZeroSerialize(filler).AsDisposable();
+            packet.ReadByte();
+            _handler.HandleMessage(new ZeroPacket(packet) { PacketType = 99 });
+
+            _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
         }
     }
 }

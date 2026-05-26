@@ -25,7 +25,7 @@ public class ParityLikeTxTracer : TxTracer
     private ParityTraceAction? _currentAction;
 
     private ParityVmOperationTrace? _currentOperation;
-    private readonly List<byte[]> _currentPushList = new();
+    private readonly List<byte[]> _currentPushList = [];
 
     private readonly Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new();
     private (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) _currentVmTrace;
@@ -50,7 +50,7 @@ public class ParityLikeTxTracer : TxTracer
         {
             IsTracingState = true;
             IsTracingStorage = true;
-            _trace.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
+            _trace.StateChanges = [];
         }
 
         if ((_parityTraceTypes & ParityTraceTypes.Trace) != 0)

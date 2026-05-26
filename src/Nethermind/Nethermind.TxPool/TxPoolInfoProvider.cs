@@ -102,8 +102,8 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     private static (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued)
         SplitByNonce(Transaction[]? standard, Transaction[]? blobs, UInt256 accountNonce)
     {
-        Dictionary<ulong, Transaction> pending = new();
-        Dictionary<ulong, Transaction> queued = new();
+        Dictionary<ulong, Transaction> pending = [];
+        Dictionary<ulong, Transaction> queued = [];
         UInt256 expectedNonce = accountNonce;
 
         int i = 0;

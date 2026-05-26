@@ -16,5 +16,5 @@ public class CallAnalyzerTxTrace
 
 
     [JsonPropertyName("stats")]
-    public List<CallAnalyzerTraceEntry> Entries { get; set; } = new();
+    public List<CallAnalyzerTraceEntry> Entries { get; set; } = [];
 }

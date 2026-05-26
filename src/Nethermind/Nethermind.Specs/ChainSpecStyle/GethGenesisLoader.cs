@@ -157,7 +157,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             // the side-effects that don't fit the bulk-label pattern stay here as conditional gates.
             Eip4788ContractAddress = config.CancunTime is null ? null : Eip4788Constants.BeaconRootsAddress,
             Eip2935ContractAddress = config.PragueTime is null ? null : Eip2935Constants.BlockHashHistoryAddress,
-            DepositContractAddress = config.PragueTime is null ? null : config.DepositContractAddress ?? Eip6110Constants.MainnetDepositContractAddress,
+            DepositContractAddress = config.PragueTime is null ? null : config.DepositContractAddress ?? Address.Zero,
             Eip7002ContractAddress = config.PragueTime is null ? null : Eip7002Constants.WithdrawalRequestPredeployAddress,
             Eip7251ContractAddress = config.PragueTime is null ? null : Eip7251Constants.ConsolidationRequestPredeployAddress,
             Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize,

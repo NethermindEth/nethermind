@@ -14,7 +14,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
@@ -95,25 +94,28 @@ public class Eth67ProtocolHandlerTests
     }
 
     [Test]
-    public void Can_ignore_get_node_data()
+    public void Should_disconnect_on_get_node_data()
     {
         using GetNodeDataMessage msg63 = new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
         using Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage msg66 = new(1111, msg63);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth66MessageCode.GetNodeData);
+
         _session.DidNotReceive().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>());
+        _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 
     [Test]
-    public void Can_ignore_node_data_and_not_throw_when_receiving_unrequested_node_data()
+    public void Should_disconnect_on_node_data()
     {
         using NodeDataMessage msg63 = new(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
         using Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage msg66 = new(1111, msg63);
 
         HandleIncomingStatusMessage();
-        System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-        act.Should().NotThrow<SubprotocolException>();
+        HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 
     [Test]

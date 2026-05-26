@@ -488,7 +488,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             state.Set(TestItem.KeccakB, Build.An.Account.WithNonce(2).TestObject);
             state.Commit();
 
-            List<Hash256> clearedAddresses = new();
+            List<Hash256> clearedAddresses = [];
 
             await using IContainer container = PrepareDownloader(remote, configureBuilder: builder =>
             {
@@ -526,7 +526,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             state.Set(TestItem.KeccakB, Build.An.Account.WithNonce(2).TestObject);
             state.Commit();
 
-            List<Hash256> clearedAddresses = new();
+            List<Hash256> clearedAddresses = [];
 
             await using IContainer container = PrepareDownloader(remote, configureBuilder: builder =>
             {

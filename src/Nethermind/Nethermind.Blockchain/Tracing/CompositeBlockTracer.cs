@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Tracing;
 
 public class CompositeBlockTracer : IBlockTracer, ITracerBag
 {
-    private readonly List<IBlockTracer> _childTracers = new();
+    private readonly List<IBlockTracer> _childTracers = [];
     private IBlockTracer? _parallelSafeTracerCache;
     private int _parallelSafeTracerCacheVersion = -1;
     private int _parallelSafeTracerNestedFingerprint;
