@@ -159,10 +159,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (!_config.Enabled)
             return;
 
-        await _cancellationSource.CancelAsync();
-
-        _pivotSource.TrySetCanceled(CancellationToken);
-        _progressLoggerTimer?.Stop();
+        await SignalStop();
 
         foreach (Task task in _tasks)
         {
@@ -177,7 +174,13 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         }
 
         await _logIndexStorage.StopAsync();
+    }
 
+    private async Task SignalStop()
+    {
+        await _cancellationSource.CancelAsync();
+        _pivotSource.TrySetCanceled(CancellationToken);
+        _progressLoggerTimer?.Stop();
         IsRunning = false;
     }
 
@@ -305,10 +308,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         if (!isStopping)
         {
-            await _cancellationSource.CancelAsync();
-            _pivotSource.TrySetCanceled(CancellationToken);
-            _progressLoggerTimer?.Stop();
-            IsRunning = false;
+            await SignalStop();
         }
     }
 
