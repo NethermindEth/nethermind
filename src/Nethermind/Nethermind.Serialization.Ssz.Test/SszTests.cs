@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -81,7 +82,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_uin256_0()
         {
             Span<byte> output = stackalloc byte[32];
-            Ssz.Encode(output, UInt256.Zero);
+            UInt256SszVectorConverter.ToSpan(output, UInt256.Zero);
             Assert.That(output.ToHexString(), Is.EqualTo("0000000000000000000000000000000000000000000000000000000000000000"));
         }
 
@@ -89,7 +90,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_uin256_1()
         {
             Span<byte> output = stackalloc byte[32];
-            Ssz.Encode(output, UInt256.One);
+            UInt256SszVectorConverter.ToSpan(output, UInt256.One);
             Assert.That(output.ToHexString(), Is.EqualTo("0100000000000000000000000000000000000000000000000000000000000000"));
         }
 
@@ -97,7 +98,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_uin256_max()
         {
             Span<byte> output = stackalloc byte[32];
-            Ssz.Encode(output, UInt256.MaxValue);
+            UInt256SszVectorConverter.ToSpan(output, UInt256.MaxValue);
             Assert.That(output.ToHexString(), Is.EqualTo("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"));
         }
 

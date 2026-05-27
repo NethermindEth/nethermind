@@ -3,9 +3,9 @@
 
 using System;
 
-namespace Nethermind.Serialization.Ssz;
+namespace Nethermind.Serialization.Ssz.SszVectorConverters;
 
-public sealed class UInt64SszVectorConverter : SszVectorConverter<ulong>
+public sealed class UInt64SszVectorConverter : ISszVectorConverter<ulong>
 {
     public const int Length = sizeof(ulong);
 

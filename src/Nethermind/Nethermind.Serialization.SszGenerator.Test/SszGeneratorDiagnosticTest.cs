@@ -30,7 +30,7 @@ public class SszGeneratorDiagnosticTest
             {
             }
 
-            public sealed class BadFixedBytesConverter : SszVectorConverter<BadFixedBytes>
+            public sealed class BadFixedBytesConverter : ISszVectorConverter<BadFixedBytes>
             {
                 public static int Length => 4;
 
@@ -64,7 +64,7 @@ public class SszGeneratorDiagnosticTest
             {
             }
 
-            public sealed class BadFixedBytesConverter : SszVectorConverter<BadFixedBytes>
+            public sealed class BadFixedBytesConverter : ISszVectorConverter<BadFixedBytes>
             {
                 public const int Length = 4;
 
@@ -96,7 +96,7 @@ public class SszGeneratorDiagnosticTest
             {
             }
 
-            public sealed class FirstDuplicateFixedBytesConverter : SszVectorConverter<DuplicateFixedBytes>
+            public sealed class FirstDuplicateFixedBytesConverter : ISszVectorConverter<DuplicateFixedBytes>
             {
                 public const int Length = 4;
 
@@ -107,7 +107,7 @@ public class SszGeneratorDiagnosticTest
                 }
             }
 
-            public sealed class SecondDuplicateFixedBytesConverter : SszVectorConverter<DuplicateFixedBytes>
+            public sealed class SecondDuplicateFixedBytesConverter : ISszVectorConverter<DuplicateFixedBytes>
             {
                 public const int Length = 4;
 
@@ -171,13 +171,14 @@ public class SszGeneratorDiagnosticTest
         Assert.That(trustedPlatformAssemblies, Is.Not.Null);
 
         string[] platformAssemblyPaths = trustedPlatformAssemblies!.Split(Path.PathSeparator);
-        MetadataReference[] references = new MetadataReference[platformAssemblyPaths.Length + 1];
+        MetadataReference[] references = new MetadataReference[platformAssemblyPaths.Length + 2];
         for (int i = 0; i < platformAssemblyPaths.Length; i++)
         {
             references[i] = MetadataReference.CreateFromFile(platformAssemblyPaths[i]);
         }
 
-        references[^1] = MetadataReference.CreateFromFile(typeof(SszContainerAttribute).Assembly.Location);
+        references[^2] = MetadataReference.CreateFromFile(typeof(SszContainerAttribute).Assembly.Location);
+        references[^1] = MetadataReference.CreateFromFile(typeof(ISszVectorConverter<>).Assembly.Location);
         return references;
     }
 }

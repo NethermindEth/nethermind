@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Merkleization;
 using NUnit.Framework;
@@ -180,11 +181,11 @@ public class SszBasicTypeTests
         UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         UInt256 expected = UInt256.Parse(yamlValue);
-        UInt256 decoded = SszEncoder.DecodeUInt256(ssz.AsSpan());
+        UInt256 decoded = DecodeUInt256(ssz.AsSpan());
         Assert.That(decoded, Is.EqualTo(expected));
 
         byte[] reencoded = new byte[32];
-        SszEncoder.Encode(reencoded.AsSpan(), decoded);
+        UInt256SszVectorConverter.ToSpan(reencoded.AsSpan(), decoded);
         Assert.That(reencoded, Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
@@ -195,7 +196,18 @@ public class SszBasicTypeTests
     public void Uint256_invalid(string casePath)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
-        Assert.That(() => SszEncoder.DecodeUInt256(ssz.AsSpan()), Throws.InstanceOf<Exception>());
+        Assert.That(() => DecodeUInt256(ssz.AsSpan()), Throws.InstanceOf<Exception>());
+    }
+
+    private static UInt256 DecodeUInt256(ReadOnlySpan<byte> span)
+    {
+        if (span.Length != UInt256SszVectorConverter.Length)
+        {
+            throw new InvalidDataException(
+                $"uint256 expects input of length {UInt256SszVectorConverter.Length} and received {span.Length}");
+        }
+
+        return UInt256SszVectorConverter.FromSpan(span);
     }
 
     private static string ReadYamlValue(string filePath)

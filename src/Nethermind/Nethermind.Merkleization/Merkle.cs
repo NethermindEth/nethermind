@@ -4,8 +4,6 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Merkleization;
@@ -139,34 +137,6 @@ public static partial class Merkle
     public static void Merkleize(out UInt256 root, UInt128 value) => root = new UInt256((ulong)(value & ulong.MaxValue), (ulong)(value >> 64));
 
     public static void Merkleize(out UInt256 root, UInt256 value) => root = value;
-
-    public static void Merkleize(out UInt256 root, Bytes32 value)
-    {
-        ReadOnlySpan<byte> readOnlyBytes = value.AsSpan();
-        unsafe
-        {
-            fixed (byte* buffer = &readOnlyBytes.GetPinnableReference())
-            {
-                Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new(buffer, readOnlyBytes.Length);
-
-                root = new UInt256(apiNeedsWriteableEvenThoughOnlyReading);
-            }
-        }
-    }
-
-    public static void Merkleize(out UInt256 root, Root value)
-    {
-        ReadOnlySpan<byte> readOnlyBytes = value.AsSpan();
-        unsafe
-        {
-            fixed (byte* buffer = &readOnlyBytes.GetPinnableReference())
-            {
-                Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new(buffer, readOnlyBytes.Length);
-
-                root = new UInt256(apiNeedsWriteableEvenThoughOnlyReading);
-            }
-        }
-    }
 
     public static void Merkleize(out UInt256 root, ReadOnlySpan<bool> value)
     {

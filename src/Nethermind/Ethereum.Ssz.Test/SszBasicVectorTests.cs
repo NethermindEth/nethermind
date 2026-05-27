@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Merkleization;
 using NUnit.Framework;
@@ -161,8 +162,13 @@ public class SszBasicVectorTests
                 SszEncoder.Encode(reEncoded.AsSpan(), decodedUint128S);
                 break;
             case TypeUint256:
-                UInt256[] decodedUint256S = SszEncoder.DecodeUInts256(ssz);
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUint256S);
+                int itemCount = ssz.Length / UInt256SszVectorConverter.Length;
+                for (int i = 0; i < itemCount; i++)
+                {
+                    ReadOnlySpan<byte> source = ssz.AsSpan(i * UInt256SszVectorConverter.Length, UInt256SszVectorConverter.Length);
+                    Span<byte> target = reEncoded.AsSpan(i * UInt256SszVectorConverter.Length, UInt256SszVectorConverter.Length);
+                    UInt256SszVectorConverter.ToSpan(target, UInt256SszVectorConverter.FromSpan(source));
+                }
                 break;
             default:
                 Assert.Fail($"Unsupported element type: {elementType}");

@@ -6,7 +6,7 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Core;
 
-public sealed class AddressSszVectorConverter : SszVectorConverter<Address>
+public sealed class AddressSszVectorConverter : ISszVectorConverter<Address>
 {
     public const int Length = Address.Size;
 

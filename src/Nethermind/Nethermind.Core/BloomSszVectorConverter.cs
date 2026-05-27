@@ -6,7 +6,7 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Core;
 
-public sealed class BloomSszVectorConverter : SszVectorConverter<Bloom>
+public sealed class BloomSszVectorConverter : ISszVectorConverter<Bloom>
 {
     public const int Length = Bloom.ByteLength;
 

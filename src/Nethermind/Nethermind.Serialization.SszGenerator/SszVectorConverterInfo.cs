@@ -15,7 +15,7 @@ internal sealed class SszVectorConverterInfo
 
     public static IEnumerable<SszVectorConverterInfo> Find(Compilation compilation)
     {
-        INamedTypeSymbol? converterInterface = compilation.GetTypeByMetadataName("Nethermind.Serialization.Ssz.SszVectorConverter`1");
+        INamedTypeSymbol? converterInterface = compilation.GetTypeByMetadataName("Nethermind.Serialization.Ssz.ISszVectorConverter`1");
         if (converterInterface is null)
         {
             return [];
@@ -180,6 +180,5 @@ internal sealed class SszVectorConverterInfo
             or SpecialType.System_UInt32
             or SpecialType.System_Int64
             or SpecialType.System_UInt64
-            or SpecialType.System_Boolean
-        || type is { Name: "UInt256", ContainingNamespace.Name: "Int256", ContainingNamespace.ContainingNamespace.Name: "Nethermind" };
+            or SpecialType.System_Boolean;
 }

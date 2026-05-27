@@ -4,9 +4,9 @@
 using System;
 using System.Buffers.Binary;
 
-namespace Nethermind.Serialization.Ssz;
+namespace Nethermind.Serialization.Ssz.SszVectorConverters;
 
-public sealed class Int64SszVectorConverter : SszVectorConverter<long>
+public sealed class Int64SszVectorConverter : ISszVectorConverter<long>
 {
     public const int Length = sizeof(long);
 

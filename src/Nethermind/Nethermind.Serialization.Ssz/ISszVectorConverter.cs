@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.Ssz;
 /// Implementations must also expose a public constant <c>Length</c> member so
 /// the SSZ source generator can calculate fixed offsets at generation time.
 /// </remarks>
-public interface SszVectorConverter<T>
+public interface ISszVectorConverter<T>
 {
     /// <summary>Decodes a value from its fixed-length SSZ byte vector representation.</summary>
     static abstract T FromSpan(ReadOnlySpan<byte> span);

@@ -6,9 +6,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Merkleization;
@@ -197,7 +194,7 @@ public ref struct Merkleizer
             return;
         }
 
-        using ArrayPoolSpan<UInt256> subRoots = new(value.Count);
+        using PooledSpan<UInt256> subRoots = new(value.Count);
 
         for (int i = 0; i < value.Count; i++)
         {
@@ -216,7 +213,7 @@ public ref struct Merkleizer
             return;
         }
 
-        using ArrayPoolSpan<UInt256> subRoots = new(value.Count());
+        using PooledSpan<UInt256> subRoots = new(value.Count());
         int i = 0;
 
         foreach (ReadOnlyMemory<byte> memory in value)
@@ -230,72 +227,11 @@ public ref struct Merkleizer
         Feed(_chunks[^1]);
     }
 
-    public void Feed(Bytes32 value) =>
-        // TODO: Is this going to have correct endianness? (the ulongs inside UInt256 are the correct order,
-        // and if only used as memory to store bytes, the native order of a ulong (bit or little) shouldn't matter)
-        Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
-
-    public void Feed(Root value) => Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
-
-    public void Feed(IReadOnlyList<Bytes32> value)
-    {
-        // TODO: If the above MemoryMarshal.Cast of a single Bytes32, we could use that here
-        // (rather than the CreateFromLittleEndian() that wants an (unnecessarily) writeable Span.)
-        // Better yet, just MemoryMarshal.Cast the entire span and pass directly to Merkle.Merkleize ?
-        using ArrayPoolSpan<UInt256> input = new(value.Count);
-        for (int i = 0; i < value.Count; i++)
-        {
-            Merkle.Merkleize(out input[i], value[i]);
-        }
-
-        Merkle.Merkleize(out _chunks[^1], input);
-        Feed(_chunks[^1]);
-    }
-
-    public void Feed(IReadOnlyList<Bytes32> value, ulong maxLength)
-    {
-        using ArrayPoolSpan<UInt256> subRoots = new(value.Count);
-
-        for (int i = 0; i < value.Count; i++)
-        {
-            Merkle.Merkleize(out subRoots[i], value[i]);
-        }
-
-        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
-        Merkle.MixIn(ref _chunks[^1], value.Count);
-        Feed(_chunks[^1]);
-    }
-
     public void Feed(IReadOnlyList<ulong> value, ulong maxLength)
     {
         // TODO: If UInt256 is the correct memory layout
-        using ArrayPoolSpan<UInt256> subRoots = new(value.Count);
+        using PooledSpan<UInt256> subRoots = new(value.Count);
 
-        for (int i = 0; i < value.Count; i++)
-        {
-            Merkle.Merkleize(out subRoots[i], value[i]);
-        }
-
-        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
-        Merkle.MixIn(ref _chunks[^1], value.Count);
-        Feed(_chunks[^1]);
-    }
-
-    public void Feed(IReadOnlyList<Root> value)
-    {
-        using ArrayPoolSpan<UInt256> input = new(value.Count);
-        for (int i = 0; i < value.Count; i++)
-        {
-            Merkle.Merkleize(out input[i], value[i]);
-        }
-
-        Merkle.Merkleize(out _chunks[^1], input);
-        Feed(_chunks[^1]);
-    }
-
-    public void Feed(IReadOnlyList<Root> value, ulong maxLength)
-    {
-        using ArrayPoolSpan<UInt256> subRoots = new(value.Count);
         for (int i = 0; i < value.Count; i++)
         {
             Merkle.Merkleize(out subRoots[i], value[i]);

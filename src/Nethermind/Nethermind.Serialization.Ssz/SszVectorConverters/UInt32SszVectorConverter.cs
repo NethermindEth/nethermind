@@ -3,9 +3,9 @@
 
 using System;
 
-namespace Nethermind.Serialization.Ssz;
+namespace Nethermind.Serialization.Ssz.SszVectorConverters;
 
-public sealed class UInt32SszVectorConverter : SszVectorConverter<uint>
+public sealed class UInt32SszVectorConverter : ISszVectorConverter<uint>
 {
     public const int Length = sizeof(uint);
 

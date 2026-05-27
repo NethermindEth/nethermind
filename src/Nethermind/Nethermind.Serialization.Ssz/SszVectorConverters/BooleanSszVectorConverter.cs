@@ -4,9 +4,9 @@
 using System;
 using System.IO;
 
-namespace Nethermind.Serialization.Ssz;
+namespace Nethermind.Serialization.Ssz.SszVectorConverters;
 
-public sealed class BooleanSszVectorConverter : SszVectorConverter<bool>
+public sealed class BooleanSszVectorConverter : ISszVectorConverter<bool>
 {
     public const int Length = sizeof(byte);
 

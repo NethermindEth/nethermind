@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
-public sealed class SszKzgCommitmentVectorConverter : SszVectorConverter<SszKzgCommitment>
+public sealed class SszKzgCommitmentVectorConverter : ISszVectorConverter<SszKzgCommitment>
 {
     public const int Length = SszKzgCommitment.KzgCommitmentLength;
 

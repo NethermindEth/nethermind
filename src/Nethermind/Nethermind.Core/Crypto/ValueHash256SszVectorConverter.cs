@@ -6,7 +6,7 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Core.Crypto;
 
-public sealed class ValueHash256SszVectorConverter : SszVectorConverter<ValueHash256>
+public sealed class ValueHash256SszVectorConverter : ISszVectorConverter<ValueHash256>
 {
     public const int Length = ValueHash256.MemorySize;
 

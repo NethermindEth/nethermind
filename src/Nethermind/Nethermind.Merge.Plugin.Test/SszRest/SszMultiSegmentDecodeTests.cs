@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -181,6 +182,13 @@ public class SszMultiSegmentDecodeTests
         byte[] data = new byte[32];
         expected.ToLittleEndian(data);
 
-        AssertDecodesAcrossSegmentBoundary<UInt256>(data, splitAt: 1, expected, SszLib.Decode);
+        AssertDecodesAcrossSegmentBoundary<UInt256>(data, splitAt: 1, expected, DecodeUInt256);
+    }
+
+    private static void DecodeUInt256(ReadOnlySequence<byte> data, out UInt256 value)
+    {
+        Span<byte> buffer = stackalloc byte[UInt256SszVectorConverter.Length];
+        data.CopyTo(buffer);
+        value = UInt256SszVectorConverter.FromSpan(buffer);
     }
 }

@@ -325,7 +325,7 @@ class SszType
 
         if (!isContainer)
         {
-            throw new InvalidOperationException($"Type {type.ToDisplayString()} is not SSZ serializable. Mark it with SszContainer or SszCompatibleUnion, or provide a SszVectorConverter<{type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}>.");
+            throw new InvalidOperationException($"Type {type.ToDisplayString()} is not SSZ serializable. Mark it with SszContainer or SszCompatibleUnion, or provide an ISszVectorConverter<{type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}>.");
         }
 
         return isProgressiveContainer ? Kind.ProgressiveContainer : Kind.Container;
