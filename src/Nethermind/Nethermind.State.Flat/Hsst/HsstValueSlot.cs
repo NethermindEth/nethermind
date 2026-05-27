@@ -8,9 +8,9 @@ using Nethermind.State.Flat.Hsst.BTree;
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
-/// Shared helpers for BSearchIndex value-slot encoding.
+/// Shared helpers for BTreeNode value-slot encoding.
 ///
-/// The BSearchIndex header packs the value-slot width into 2 bits of the Flags byte
+/// The BTreeNode header packs the value-slot width into 2 bits of the Flags byte
 /// (bits 3-4), so the format only encodes the four widths <c>{2, 3, 4, 6}</c>. The
 /// <see cref="MinBytesFor"/> helper rounds an arbitrary natural width up to the next
 /// supported value. Lives in its own non-generic class so callers outside

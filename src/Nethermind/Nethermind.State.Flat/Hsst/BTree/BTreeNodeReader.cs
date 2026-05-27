@@ -5,7 +5,7 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Nethermind.State.Flat.Hsst.BSearchIndex;
+namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
 /// Reads a B-tree index block. An index block stores sorted key-value pairs with a
@@ -20,10 +20,10 @@ namespace Nethermind.State.Flat.Hsst.BSearchIndex;
 /// CommonPrefixLen) group into the first 6 bytes; BaseOffset is only consumed by
 /// <see cref="GetUInt64Value"/> after a successful floor match.
 ///
-/// Flags: bits 0-1 = <see cref="BSearchNodeKind"/> (00=Entry, 01=Leaf, 10=Intermediate, 11=reserved),
+/// Flags: bits 0-1 = <see cref="BTreeNodeKind"/> (00=Entry, 01=Leaf, 10=Intermediate, 11=reserved),
 /// bits 2-3 = KeyType, bits 4-5 = ValueSizeCode, bit 6 = IsKeyLittleEndian. Bit 7 is reserved.
 /// The same Flags byte appears at the front of every addressable thing — data-region entries
-/// (NodeKind = Entry, bits 2-7 = 0) and BSearchIndex nodes (NodeKind = Leaf | Intermediate) —
+/// (NodeKind = Entry, bits 2-7 = 0) and BTreeNode nodes (NodeKind = Leaf | Intermediate) —
 /// so the BTree reader can dispatch on a single byte read without consulting the parent.
 ///
 /// ValueSizeCode (bits 4-5) packs the per-entry value width into 2 bits: 00→2, 01→3,
@@ -63,15 +63,15 @@ namespace Nethermind.State.Flat.Hsst.BSearchIndex;
 /// so the first <c>CommonPrefixLen</c> bytes of the parent's full separator are the child's
 /// prefix bytes.
 /// </summary>
-public readonly ref struct BSearchIndexReader
+public readonly ref struct BTreeNodeReader
 {
-    private readonly IndexMetadata _metadata;
+    private readonly NodeMetadata _metadata;
     private readonly ReadOnlySpan<byte> _values;
     private readonly ReadOnlySpan<byte> _keys;
     private readonly ReadOnlySpan<byte> _commonKeyPrefix;
     private readonly int _totalSize;
 
-    private BSearchIndexReader(IndexMetadata metadata, ReadOnlySpan<byte> values, ReadOnlySpan<byte> keys, ReadOnlySpan<byte> commonKeyPrefix, int totalSize)
+    private BTreeNodeReader(NodeMetadata metadata, ReadOnlySpan<byte> values, ReadOnlySpan<byte> keys, ReadOnlySpan<byte> commonKeyPrefix, int totalSize)
     {
         _metadata = metadata;
         _values = values;
@@ -81,8 +81,8 @@ public readonly ref struct BSearchIndexReader
     }
 
     public int EntryCount => _metadata.KeyCount;
-    public BSearchNodeKind NodeKind => _metadata.NodeKind;
-    public IndexMetadata Metadata => _metadata;
+    public BTreeNodeKind NodeKind => _metadata.NodeKind;
+    public NodeMetadata Metadata => _metadata;
     /// <summary>Total bytes occupied by this index node, including header.</summary>
     public int TotalSize => _totalSize;
 
@@ -105,7 +105,7 @@ public readonly ref struct BSearchIndexReader
     /// <see cref="EntryCount"/>, and friends still work.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static BSearchIndexReader ReadFromStart(ReadOnlySpan<byte> data, int nodeStart, ReadOnlySpan<byte> parentSeparator = default)
+    public static BTreeNodeReader ReadFromStart(ReadOnlySpan<byte> data, int nodeStart, ReadOnlySpan<byte> parentSeparator = default)
     {
         // 12-byte fixed header minimum.
         if (data.Length - nodeStart < 12)
@@ -133,7 +133,7 @@ public readonly ref struct BSearchIndexReader
             ? parentSeparator[..prefixLen]
             : default;
 
-        IndexMetadata metadata = new()
+        NodeMetadata metadata = new()
         {
             Flags = flags,
             KeyCount = keyCount,
@@ -147,7 +147,7 @@ public readonly ref struct BSearchIndexReader
         int valueSectionSize = metadata.ValueSectionSize;
         int totalSize = (valuesStart + valueSectionSize) - nodeStart;
 
-        return new BSearchIndexReader(
+        return new BTreeNodeReader(
             metadata,
             data.Slice(valuesStart, valueSectionSize),
             data.Slice(keysStart, keySectionSize),
@@ -174,7 +174,7 @@ public readonly ref struct BSearchIndexReader
 
     /// <summary>
     /// Get the value at the given entry index (raw bytes, no BaseOffset adjustment).
-    /// Values are always Uniform: fixed-width <see cref="IndexMetadata.ValueSize"/> bytes per entry.
+    /// Values are always Uniform: fixed-width <see cref="NodeMetadata.ValueSize"/> bytes per entry.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ReadOnlySpan<byte> GetValue(int index) =>
@@ -183,7 +183,7 @@ public readonly ref struct BSearchIndexReader
     /// <summary>
     /// Get the unsigned integer value at the given entry index with BaseOffset applied.
     /// Reads the entry's value slot (1..8 byte LE Uniform width given by
-    /// <see cref="IndexMetadata.ValueSize"/>) as a ulong and adds <see cref="IndexMetadata.BaseOffset"/>.
+    /// <see cref="NodeMetadata.ValueSize"/>) as a ulong and adds <see cref="NodeMetadata.BaseOffset"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong GetUInt64Value(int index)
@@ -405,7 +405,7 @@ public readonly ref struct BSearchIndexReader
     /// <summary>
     /// Copy the full key (common prefix + per-entry suffix) for entry <paramref name="index"/>
     /// into <paramref name="dest"/>. Always emits bytes in original (lex) order, byte-swapping
-    /// the per-entry suffix when <see cref="IndexMetadata.IsKeyLittleEndian"/> is set.
+    /// the per-entry suffix when <see cref="NodeMetadata.IsKeyLittleEndian"/> is set.
     /// Returns the total number of bytes written.
     /// </summary>
     public int GetFullKey(int index, Span<byte> dest)
@@ -466,10 +466,10 @@ public readonly ref struct BSearchIndexReader
 
     public ref struct Enumerator
     {
-        private readonly BSearchIndexReader _index;
+        private readonly BTreeNodeReader _index;
         private int _current;
 
-        public Enumerator(BSearchIndexReader index)
+        public Enumerator(BTreeNodeReader index)
         {
             _index = index;
             _current = -1;
@@ -502,7 +502,7 @@ public readonly ref struct BSearchIndexReader
     /// <summary>
     /// Metadata for a B-tree index block, parsed from the Metadata section.
     /// </summary>
-    public readonly struct IndexMetadata
+    public readonly struct NodeMetadata
     {
         public byte Flags { get; init; }
         public int KeyCount { get; init; }
@@ -512,13 +512,13 @@ public readonly ref struct BSearchIndexReader
         public ulong BaseOffset { get; init; }
 
         /// <summary>
-        /// The <see cref="BSearchNodeKind"/> packed into Flags bits 0-1. For BSearchIndex
-        /// nodes parsed by this reader, this is always <see cref="BSearchNodeKind.Intermediate"/>;
-        /// <see cref="BSearchNodeKind.Entry"/> sits on data-region entries which the BTree
+        /// The <see cref="BTreeNodeKind"/> packed into Flags bits 0-1. For BTreeNode
+        /// nodes parsed by this reader, this is always <see cref="BTreeNodeKind.Intermediate"/>;
+        /// <see cref="BTreeNodeKind.Entry"/> sits on data-region entries which the BTree
         /// reader recognizes from a single flag-byte read before deciding whether to call
         /// <see cref="ReadFromStart"/> at all.
         /// </summary>
-        public BSearchNodeKind NodeKind => (BSearchNodeKind)(Flags & 0x03);
+        public BTreeNodeKind NodeKind => (BTreeNodeKind)(Flags & 0x03);
         public int KeyType => (Flags >> 2) & 0x03;
         /// <summary>
         /// Fixed value width in bytes (one of {2, 3, 4, 6}). Decoded from Flags bits 4-5.
@@ -529,7 +529,7 @@ public readonly ref struct BSearchIndexReader
         /// True when fixed-width key slots are stored byte-reversed (Flags bit 6). Honored by
         /// readers for Uniform with <see cref="KeySize"/> ∈ {2,4,8}, and unconditionally for
         /// Variable (<see cref="KeyType"/>=0) where the prefixArr slot is uniformly 2 bytes.
-        /// See <see cref="BSearchIndexReader"/> docs for details.
+        /// See <see cref="BTreeNodeReader"/> docs for details.
         /// </summary>
         public bool IsKeyLittleEndian => (Flags & 0x40) != 0;
 

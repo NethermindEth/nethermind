@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Utils;
-using Nethermind.State.Flat.Hsst.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst.BTree;
@@ -14,15 +13,15 @@ using Nethermind.State.Flat.Hsst.BTree;
 namespace Nethermind.State.Flat.Test;
 
 /// <summary>
-/// Unit tests for BSearchIndexReader (B-tree navigation) and BSearchIndexWriter (B-tree construction).
+/// Unit tests for BTreeNodeReader (B-tree navigation) and BTreeNodeWriter (B-tree construction).
 /// Hex fixture tests document the exact binary format of each node type.
 /// </summary>
 [TestFixture]
-public class BSearchIndexTests
+public class BTreeNodeTests
 {
     // Read the root node from a full-HSST byte array.
     // Trailer is [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
-    private static BSearchIndexReader ReadHsstRoot(byte[] data)
+    private static BTreeNodeReader ReadHsstRoot(byte[] data)
     {
         int rootPrefixLen = data[data.Length - 5];
         int rootSize = data[data.Length - 4] | (data[data.Length - 3] << 8);
@@ -30,23 +29,23 @@ public class BSearchIndexTests
         ReadOnlySpan<byte> rootPrefix = rootPrefixLen > 0
             ? data.AsSpan(data.Length - 5 - rootPrefixLen, rootPrefixLen)
             : default;
-        return BSearchIndexReader.ReadFromStart(data, rootStart, rootPrefix);
+        return BTreeNodeReader.ReadFromStart(data, rootStart, rootPrefix);
     }
 
     // ===== METADATA READING TESTS =====
 
     [Test]
-    public void IndexMetadata_ReadFromEnd_MinimalNode()
+    public void NodeMetadata_ReadFromEnd_MinimalNode()
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) => { });
 
-        BSearchIndexReader index = ReadHsstRoot(data);
+        BTreeNodeReader index = ReadHsstRoot(data);
         Assert.That(index.EntryCount, Is.EqualTo(0));
         Assert.That(index.Metadata.KeyCount, Is.EqualTo(0));
     }
 
     [Test]
-    public void IndexMetadata_WithBaseOffset_ParsedCorrectly()
+    public void NodeMetadata_WithBaseOffset_ParsedCorrectly()
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
@@ -58,29 +57,29 @@ public class BSearchIndexTests
             }
         });
 
-        BSearchIndexReader rootIndex = ReadHsstRoot(data);
+        BTreeNodeReader rootIndex = ReadHsstRoot(data);
         Assert.That(rootIndex.EntryCount, Is.EqualTo(10));
     }
 
     [Test]
-    public void BSearchIndex_EmptyIndex_HandlesCorrectly()
+    public void BTreeNode_EmptyIndex_HandlesCorrectly()
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) => { });
 
-        BSearchIndexReader index = ReadHsstRoot(data);
+        BTreeNodeReader index = ReadHsstRoot(data);
         Assert.That(index.EntryCount, Is.EqualTo(0));
         Assert.That(index.TryGetFloor("abc"u8, out _, out _), Is.False);
     }
 
     [Test]
-    public void BSearchIndex_SingleLeafNode_StructureValid()
+    public void BTreeNode_SingleLeafNode_StructureValid()
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add([0x41, 0x42], [0x01, 0x02, 0x03]);
         });
 
-        BSearchIndexReader rootIndex = ReadHsstRoot(data);
+        BTreeNodeReader rootIndex = ReadHsstRoot(data);
         Assert.That(rootIndex.EntryCount, Is.EqualTo(1));
     }
 
@@ -105,7 +104,7 @@ public class BSearchIndexTests
         ).SetName("Uniform_SingleEntry");
 
         // Three entries: separators=[0x41,0x43,0x45], values=[0,100,200], keyLen=1
-        // BaseOffset = 0 here (writer didn't strip it; test exercises the BSearchIndexWriter
+        // BaseOffset = 0 here (writer didn't strip it; test exercises the BTreeNodeWriter
         // with an explicit ValueSlotSize=4, so values stay 4-byte int32 LE).
         //
         //   "25"           - Flags (NodeKind=Intermediate|KeyType=Uniform|ValueSizeCode=10→4 bytes)
@@ -132,7 +131,7 @@ public class BSearchIndexTests
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
         SpanBufferWriter bufWriter = new(output);
         Span<byte> valScratch = stackalloc byte[separatorHexes.Length * (2 + 4)];
-        BSearchIndexWriter<SpanBufferWriter> writer = new(ref bufWriter, new BSearchIndexMetadata { KeyType = 1, KeySlotSize = keyLen }, keyBuf, valScratch);
+        BTreeNodeWriter<SpanBufferWriter> writer = new(ref bufWriter, new BTreeNodeMetadata { KeyType = 1, KeySlotSize = keyLen }, keyBuf, valScratch);
         Span<byte> valBuf = stackalloc byte[4];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
@@ -146,7 +145,7 @@ public class BSearchIndexTests
         Assert.That(Convert.ToHexString(output[..written]), Is.EqualTo(expectedHex));
 
         // Also verify the reader parses the binary correctly
-        BSearchIndexReader index = BSearchIndexReader.ReadFromStart(output, 0);
+        BTreeNodeReader index = BTreeNodeReader.ReadFromStart(output, 0);
         Assert.That(index.EntryCount, Is.EqualTo(separatorHexes.Length));
         Span<byte> keyBufRead = stackalloc byte[64];
         for (int i = 0; i < separatorHexes.Length; i++)
@@ -180,7 +179,7 @@ public class BSearchIndexTests
         Span<byte> keyBuf = stackalloc byte[3 * (2 + 1)]; // 3 entries, each key is 1 byte
         Span<byte> valScratch = stackalloc byte[3 * (2 + 4)];
         SpanBufferWriter bufWriter = new(output);
-        BSearchIndexWriter<SpanBufferWriter> writer = new(ref bufWriter, new BSearchIndexMetadata { KeyType = 1, KeySlotSize = 1, BaseOffset = baseOffset }, keyBuf, valScratch);
+        BTreeNodeWriter<SpanBufferWriter> writer = new(ref bufWriter, new BTreeNodeMetadata { KeyType = 1, KeySlotSize = 1, BaseOffset = baseOffset }, keyBuf, valScratch);
         Span<byte> valBuf = stackalloc byte[4];
         foreach ((string sepHex, int val) in new[] { ("41", 100), ("43", 200), ("45", 300) })
         {
@@ -192,7 +191,7 @@ public class BSearchIndexTests
 
         Assert.That(Convert.ToHexString(output[..written]), Is.EqualTo(expectedHex));
 
-        BSearchIndexReader index = BSearchIndexReader.ReadFromStart(output, 0);
+        BTreeNodeReader index = BTreeNodeReader.ReadFromStart(output, 0);
         Assert.That(index.Metadata.BaseOffset, Is.EqualTo((ulong)100));
         Assert.That(index.GetUInt64Value(0), Is.EqualTo((ulong)100));
         Assert.That(index.GetUInt64Value(1), Is.EqualTo((ulong)200));
@@ -257,7 +256,7 @@ public class BSearchIndexTests
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
         SpanBufferWriter bufWriter = new(output);
         Span<byte> valScratch = stackalloc byte[separatorHexes.Length * (2 + 4)];
-        BSearchIndexWriter<SpanBufferWriter> writer = new(ref bufWriter, new BSearchIndexMetadata { KeyType = 0 }, keyBuf, valScratch);
+        BTreeNodeWriter<SpanBufferWriter> writer = new(ref bufWriter, new BTreeNodeMetadata { KeyType = 0 }, keyBuf, valScratch);
         Span<byte> valBuf = stackalloc byte[4];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
@@ -270,7 +269,7 @@ public class BSearchIndexTests
 
         Assert.That(Convert.ToHexString(output[..written]), Is.EqualTo(expectedHex));
 
-        BSearchIndexReader index = BSearchIndexReader.ReadFromStart(output, 0);
+        BTreeNodeReader index = BTreeNodeReader.ReadFromStart(output, 0);
         Assert.That(index.EntryCount, Is.EqualTo(separatorHexes.Length));
         Span<byte> fullKey = stackalloc byte[256];
         for (int i = 0; i < separatorHexes.Length; i++)
@@ -295,7 +294,7 @@ public class BSearchIndexTests
         byte[] valBufBig = new byte[entries * (2 + 4)];
         byte[] output = new byte[entries * (2 + keyLen) + 1024];
         SpanBufferWriter bufWriter = new(output);
-        BSearchIndexWriter<SpanBufferWriter> writer = new(ref bufWriter, new BSearchIndexMetadata { KeyType = 0 }, keyBuf, valBufBig);
+        BTreeNodeWriter<SpanBufferWriter> writer = new(ref bufWriter, new BTreeNodeMetadata { KeyType = 0 }, keyBuf, valBufBig);
         Span<byte> valBuf = stackalloc byte[4];
         byte[] key = new byte[keyLen];
         for (int i = 0; i < entries; i++)
@@ -338,8 +337,8 @@ public class BSearchIndexTests
         byte[] valScratch = new byte[keys.Length * (2 + 4)];
         byte[] output = new byte[4096];
         SpanBufferWriter bw = new(output);
-        BSearchIndexWriter<SpanBufferWriter> writer = new(ref bw,
-            new BSearchIndexMetadata { KeyType = 0 }, keyBuf, valScratch);
+        BTreeNodeWriter<SpanBufferWriter> writer = new(ref bw,
+            new BTreeNodeMetadata { KeyType = 0 }, keyBuf, valScratch);
         Span<byte> valBuf = stackalloc byte[4];
         for (int i = 0; i < keys.Length; i++)
         {
@@ -348,7 +347,7 @@ public class BSearchIndexTests
         }
         writer.FinalizeNode();
 
-        BSearchIndexReader reader = BSearchIndexReader.ReadFromStart(output, 0);
+        BTreeNodeReader reader = BTreeNodeReader.ReadFromStart(output, 0);
         Assert.That(reader.EntryCount, Is.EqualTo(keys.Length));
         Assert.That(reader.Metadata.KeyType, Is.EqualTo(0));
         Assert.That(reader.Metadata.IsKeyLittleEndian, Is.True, "Variable keys are always LE-stored");
@@ -402,7 +401,7 @@ public class BSearchIndexTests
         // push past a 4 KiB page boundary. With 4-byte keys + 1-byte values
         // (~7 bytes per entry), ~230 entries fit in one page; bump well past that
         // to force multiple page-local nodes and a multi-level tree. The root's
-        // first child is then itself a BSearchIndex node (Intermediate kind),
+        // first child is then itself a BTreeNode node (Intermediate kind),
         // not an Entry — that's the format-level signal of multi-level structure.
         const int count = 500;
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
@@ -416,14 +415,14 @@ public class BSearchIndexTests
             }
         });
 
-        BSearchIndexReader rootIndex = ReadHsstRoot(data);
+        BTreeNodeReader rootIndex = ReadHsstRoot(data);
         // The root's leftmost child's flag byte should mark it as Intermediate
         // (a node), not Entry — proving the tree has multiple levels rather
         // than being a single leaf-level node with K entry children.
         ulong firstChildOffset = rootIndex.GetUInt64Value(0);
         byte firstChildFlag = data[firstChildOffset];
-        BSearchNodeKind firstChildKind = (BSearchNodeKind)(firstChildFlag & 0x03);
-        Assert.That(firstChildKind, Is.EqualTo(BSearchNodeKind.Intermediate));
+        BTreeNodeKind firstChildKind = (BTreeNodeKind)(firstChildFlag & 0x03);
+        Assert.That(firstChildKind, Is.EqualTo(BTreeNodeKind.Intermediate));
     }
 
     [Test]
@@ -464,7 +463,7 @@ public class BSearchIndexTests
     /// Build a Variable-key node manually so we can pin the on-disk effects
     /// of the common-prefix optimization (smaller node, prefix in metadata,
     /// flag bit 6, suffixes in keys section) and exercise the boundary-lookup
-    /// branches in <see cref="BSearchIndexReader.TryGetFloor"/>.
+    /// branches in <see cref="BTreeNodeReader.TryGetFloor"/>.
     /// </summary>
     [TestCase(0, TestName = "CommonPrefix_Variable_NotInline")]
     [TestCase(1, TestName = "CommonPrefix_Uniform_NotInline")]
@@ -495,7 +494,7 @@ public class BSearchIndexTests
         // descending caller's parentSeparator parameter (sourced from the parent's separator
         // at descent, or from the HSST trailer for the root). This test passes commonPrefix
         // directly to ReadFromStart below to simulate that descent supply.
-        BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata
+        BTreeNodeWriter<SpanBufferWriter> writer = new(ref w, new BTreeNodeMetadata
         {
             KeyType = keyType,
             KeySlotSize = slotSize,
@@ -517,7 +516,7 @@ public class BSearchIndexTests
         byte[] controlValScratch = new byte[separatorHexes.Length * (2 + 4)];
         byte[] controlOutput = new byte[1024];
         SpanBufferWriter cw = new(controlOutput);
-        BSearchIndexWriter<SpanBufferWriter> controlWriter = new(ref cw, new BSearchIndexMetadata
+        BTreeNodeWriter<SpanBufferWriter> controlWriter = new(ref cw, new BTreeNodeMetadata
         {
             KeyType = keyType,
             KeySlotSize = controlSlotSize,
@@ -534,7 +533,7 @@ public class BSearchIndexTests
         // Optimization paid off.
         Assert.That(written, Is.LessThan(cw.Written), "Common-prefix optimization should shrink the node");
 
-        BSearchIndexReader reader = BSearchIndexReader.ReadFromStart(output, 0, commonPrefix);
+        BTreeNodeReader reader = BTreeNodeReader.ReadFromStart(output, 0, commonPrefix);
         Assert.That(reader.CommonKeyPrefix.ToArray(), Is.EqualTo(Convert.FromHexString("DEADBEEF")));
 
         // Per-entry decoded suffix matches (suffix only, prefix stripped). GetFullKey
@@ -591,7 +590,7 @@ public class BSearchIndexTests
         ReadOnlySpan<int> offsets = [0, 2];
         ReadOnlySpan<int> lengths = [2, 2];
 
-        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp: 1, keyLength: 2,
+        BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp: 1, keyLength: 2,
             out int prefixLen, out int keyType, out int keySlotSize, out _);
 
         Assert.That(prefixLen, Is.EqualTo(0), "1-byte LCP × 1 saving entry − 1 metadata byte = 0; must not strip");
@@ -604,7 +603,7 @@ public class BSearchIndexTests
         byte[] valScratch = new byte[2 * (2 + 4)];
         byte[] output = new byte[64];
         SpanBufferWriter w = new(output);
-        BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata
+        BTreeNodeWriter<SpanBufferWriter> writer = new(ref w, new BTreeNodeMetadata
         {
             KeyType = keyType,
             KeySlotSize = keySlotSize,
@@ -616,7 +615,7 @@ public class BSearchIndexTests
         writer.AddKey(sepBuffer.AsSpan(2, 2), valBuf);
         writer.FinalizeNode();
 
-        BSearchIndexReader reader = BSearchIndexReader.ReadFromStart(output, 0);
+        BTreeNodeReader reader = BTreeNodeReader.ReadFromStart(output, 0);
         Assert.That(reader.CommonKeyPrefix.Length, Is.EqualTo(0));
     }
 
@@ -653,8 +652,8 @@ public class BSearchIndexTests
         byte[] beOut = WriteUniform(keys, keySize, isLittleEndian: false);
         byte[] leOut = WriteUniform(keys, keySize, isLittleEndian: true);
 
-        BSearchIndexReader beReader = BSearchIndexReader.ReadFromStart(beOut, 0);
-        BSearchIndexReader leReader = BSearchIndexReader.ReadFromStart(leOut, 0);
+        BTreeNodeReader beReader = BTreeNodeReader.ReadFromStart(beOut, 0);
+        BTreeNodeReader leReader = BTreeNodeReader.ReadFromStart(leOut, 0);
 
         // Header flag bit.
         Assert.That(beReader.Metadata.IsKeyLittleEndian, Is.False);
@@ -744,7 +743,7 @@ public class BSearchIndexTests
             // Distinct keys with no common prefix (high byte differs).
             buf[i * keyLen] = (byte)(i + 1);
         }
-        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp: 0, keyLength: keyLen,
+        BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp: 0, keyLength: keyLen,
             out _, out int keyType, out _, out bool keyLittleEndian);
         Assert.That(keyType, Is.EqualTo(expectedKeyType));
         Assert.That(keyLittleEndian, Is.EqualTo(expectedLe));
@@ -778,7 +777,7 @@ public class BSearchIndexTests
         int expectedLcp, int expectedKeyType, int expectedKeySlotSize, bool expectedLe)
     {
         int[] lengths = BuildLengthsProfile(firstLen, otherLen, count);
-        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength,
+        BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength,
             out int lcp, out int keyType, out int keySlotSize, out bool keyLittleEndian);
         Assert.That(lcp, Is.EqualTo(expectedLcp));
         Assert.That(keyType, Is.EqualTo(expectedKeyType));
@@ -808,7 +807,7 @@ public class BSearchIndexTests
         int expectedLcp, int expectedKeyType, int expectedKeySlotSize, bool expectedLe)
     {
         int[] lengths = BuildLengthsProfile(firstLen, otherLen, count);
-        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength,
+        BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength,
             out int lcp, out int keyType, out int keySlotSize, out bool keyLittleEndian);
         Assert.That(lcp, Is.EqualTo(expectedLcp));
         Assert.That(keyType, Is.EqualTo(expectedKeyType));
@@ -834,7 +833,7 @@ public class BSearchIndexTests
         int expectedLcp, int expectedKeySlotSize, bool expectedLe)
     {
         int[] lengths = BuildLengthsProfile(firstLen, otherLen, count);
-        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength,
+        BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength,
             out int lcp, out int keyType, out int keySlotSize, out bool keyLittleEndian);
         Assert.That(keyType, Is.EqualTo(1), "Uniform expected for allSameLen profiles");
         Assert.That(lcp, Is.EqualTo(expectedLcp));
@@ -843,7 +842,7 @@ public class BSearchIndexTests
     }
 
     /// <summary>
-    /// <see cref="BSearchIndexLayoutPlanner.WidenedSlotWidth"/> buckets the longest
+    /// <see cref="BTreeNodeLayoutPlanner.WidenedSlotWidth"/> buckets the longest
     /// separator into a SIMD-eligible {2,4,8} slot when the key-length budget allows,
     /// and returns the length unchanged when no widening applies (longer than 8 bytes,
     /// or the budget is too tight for the matching bucket).
@@ -860,11 +859,11 @@ public class BSearchIndexTests
     [TestCase(6, 7, 6, TestName = "Widen_6_BudgetTooTightFor8")]
     [TestCase(3, 3, 3, TestName = "Widen_3_BudgetTooTightFor4")]
     public void LayoutPlanner_WidenedSlotWidth_BucketsToSimdSlot(int maxLen, int keyLength, int expected)
-        => Assert.That(BSearchIndexLayoutPlanner.WidenedSlotWidth(maxLen, keyLength), Is.EqualTo(expected));
+        => Assert.That(BTreeNodeLayoutPlanner.WidenedSlotWidth(maxLen, keyLength), Is.EqualTo(expected));
 
     /// <summary>
     /// Cap-vs-MaxCommonKeyPrefixLen ordering: when both <c>crossEntryLcp</c> and
-    /// <c>minLen - 1</c> exceed <see cref="BSearchIndexLayoutPlanner.MaxCommonKeyPrefixLen"/>,
+    /// <c>minLen - 1</c> exceed <see cref="BTreeNodeLayoutPlanner.MaxCommonKeyPrefixLen"/>,
     /// the planner clamps to that ceiling (128) and the savings gate keeps the strip.
     /// </summary>
     [Test]
@@ -873,11 +872,11 @@ public class BSearchIndexTests
         const int count = 50;
         const int len = 256;
         int[] lengths = BuildLengthsProfile(len, len, count);
-        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp: 200, keyLength: 256,
+        BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp: 200, keyLength: 256,
             out int lcp, out int keyType, out int keySlotSize, out _);
-        Assert.That(lcp, Is.EqualTo(BSearchIndexLayoutPlanner.MaxCommonKeyPrefixLen));
+        Assert.That(lcp, Is.EqualTo(BTreeNodeLayoutPlanner.MaxCommonKeyPrefixLen));
         Assert.That(keyType, Is.EqualTo(1));
-        Assert.That(keySlotSize, Is.EqualTo(len - BSearchIndexLayoutPlanner.MaxCommonKeyPrefixLen));
+        Assert.That(keySlotSize, Is.EqualTo(len - BTreeNodeLayoutPlanner.MaxCommonKeyPrefixLen));
     }
 
     /// <summary>
@@ -893,13 +892,13 @@ public class BSearchIndexTests
         Array.Sort(keys, (a, b) => a.AsSpan().SequenceCompareTo(b));
 
         byte[] beOut = WriteUniform(keys, 4, isLittleEndian: false);
-        BSearchIndexReader r = BSearchIndexReader.ReadFromStart(beOut, 0);
+        BTreeNodeReader r = BTreeNodeReader.ReadFromStart(beOut, 0);
         Assert.That(r.Metadata.IsKeyLittleEndian, Is.False);
         for (int i = 0; i < n; i++)
             Assert.That(r.FindFloorIndex(keys[i]), Is.EqualTo(i));
     }
 
-    private static int HeaderSize(BSearchIndexReader r)
+    private static int HeaderSize(BTreeNodeReader r)
     {
         // Fixed 12-byte header. ValueSize is packed into Flags bits 3-4 and the prefix
         // bytes themselves are carried out-of-band via parentSeparator, not in the node.
@@ -914,7 +913,7 @@ public class BSearchIndexTests
         byte[] valScratch = new byte[n * (2 + 4)];
         byte[] output = new byte[16 * 1024];
         SpanBufferWriter w = new(output);
-        BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata
+        BTreeNodeWriter<SpanBufferWriter> writer = new(ref w, new BTreeNodeMetadata
         {
             KeyType = 1,
             KeySlotSize = keySize,
