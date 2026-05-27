@@ -468,6 +468,8 @@ public class SparseRevealTests
 
     [TestCase(200, 50)]
     [TestCase(300, 100)]
+    [TestCase(500, 200)]
+    [TestCase(800, 400)]
     public void SparseRootComputer_KeccakKeys_MatchesPatricia(int trieSize, int updateCount)
     {
         MemDb db = new();
@@ -500,5 +502,54 @@ public class SparseRevealTests
         Hash256 sparseRoot = computer.ComputeStateRoot();
         sparseRoot.Should().Be(patriciaNewRoot,
             $"SparseRootComputer with {updateCount}/{trieSize} keccak-key updates must match Patricia");
+    }
+
+    /// <summary>
+    /// Regression test for dangling ref after arena resize in RevealSingleNode.
+    /// Uses a large trie (10K accounts) where proof nodes exceed the initial arena
+    /// capacity of 64, triggering Array.Resize during reveal. Before the fix,
+    /// BlindedMask updates were lost to the old discarded array.
+    /// </summary>
+    [TestCase(10000, 500)]
+    [TestCase(5000, 1000)]
+    public void SparseRootComputer_LargeTrie_ArenaResize_MatchesPatricia(int trieSize, int updateCount)
+    {
+        MemDb db = new();
+        PatriciaTree tree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        Hash256[] keys = new Hash256[trieSize];
+        for (int i = 0; i < trieSize; i++)
+        {
+            keys[i] = Keccak.Compute(System.BitConverter.GetBytes(i));
+            tree.Set(keys[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
+        }
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 originalRoot = tree.RootHash;
+
+        Dictionary<Hash256, LeafUpdate> updates = [];
+        for (int i = 0; i < updateCount; i++)
+        {
+            byte[] newRlp = TestItem.GenerateIndexedAccountRlp(50000 + i);
+            tree.Set(keys[i].Bytes, newRlp);
+            updates[keys[i]] = LeafUpdate.Changed(newRlp);
+        }
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 patriciaNewRoot = tree.RootHash;
+
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        using State.Flat.SparseRootComputer computer = new(reader, originalRoot);
+        computer.SetAccountChanges(updates);
+
+        Hash256 sparseRoot = computer.ComputeStateRoot();
+
+        TestContext.Out.WriteLine($"Trie size: {trieSize}, updates: {updateCount}");
+        TestContext.Out.WriteLine($"Account changes: {computer.AccountChangeCount}, proof nodes: {computer.LastProofNodeCount}");
+        TestContext.Out.WriteLine($"Previous root: {computer.PreviousRoot}");
+        TestContext.Out.WriteLine($"Patricia root: {patriciaNewRoot}");
+        TestContext.Out.WriteLine($"Sparse root:   {sparseRoot}");
+
+        sparseRoot.Should().Be(patriciaNewRoot,
+            $"SparseRootComputer with {updateCount}/{trieSize} updates must match Patricia (arena resize regression)");
     }
 }

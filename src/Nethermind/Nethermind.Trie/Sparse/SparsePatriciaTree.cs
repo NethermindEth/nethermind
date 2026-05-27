@@ -56,19 +56,16 @@ public sealed class SparsePatriciaTree : IDisposable
 
         while (nibblePos < targetNibbles.Length)
         {
-            ref SparseTrieNode current = ref _subtrie.NodeAt(currentIdx);
+            // Read node fields by value — do NOT hold a ref across AllocNode/AllocChildren
+            // calls (CreateNodeFromProof triggers Array.Resize, invalidating refs).
+            SparseTrieNode current = _subtrie.NodeAt(currentIdx);
 
             if (current.IsBranch())
             {
                 byte[] shortKey = current.ShortKey ?? [];
-                // Skip past the extension prefix
                 nibblePos += shortKey.Length;
                 if (nibblePos >= targetNibbles.Length)
                 {
-                    // The target path ends exactly at this node. For extension nodes
-                    // created from proofs (empty StateMask), the child proof node's path
-                    // is extPath + extKey. This child IS the branch the extension points
-                    // to — merge the child's structure into this node, preserving ShortKey.
                     if (current.HasShortKey() && current.ChildCount() == 0)
                     {
                         MergeChildIntoBranchWithExtension(currentIdx, proofNode);
@@ -81,28 +78,28 @@ public sealed class SparsePatriciaTree : IDisposable
                 if (!current.StateMask.IsBitSet(nibble)) break;
 
                 int denseIdx = current.DenseChildIndex(nibble);
-                ref SparseChildEntry childEntry = ref _subtrie.ChildAt(denseIdx);
+                SparseChildEntry childEntry = _subtrie.ChildAt(denseIdx);
 
                 nibblePos++;
                 if (nibblePos >= targetNibbles.Length || nibblePos == targetPath.Length)
                 {
-                    // This child is the position where the proof node goes
                     if (childEntry.IsBlinded)
                     {
                         int newNodeIdx = CreateNodeFromProof(_subtrie, proofNode);
+                        // Re-compute denseIdx: _children may have been resized by CreateNodeFromProof
+                        denseIdx = _subtrie.NodeAt(currentIdx).DenseChildIndex(nibble);
                         _subtrie.ChildAt(denseIdx) = SparseChildEntry.Revealed(newNodeIdx);
-                        current.BlindedMask = current.BlindedMask.ClearBit(nibble);
+                        _subtrie.NodeAt(currentIdx).BlindedMask = _subtrie.NodeAt(currentIdx).BlindedMask.ClearBit(nibble);
                     }
                     return;
                 }
 
                 if (childEntry.IsBlinded)
                 {
-                    // Need to reveal this child first before we can descend
-                    // The proof should contain this node too — it will be revealed in order
                     int newNodeIdx = CreateNodeFromProof(_subtrie, proofNode);
+                    denseIdx = _subtrie.NodeAt(currentIdx).DenseChildIndex(nibble);
                     _subtrie.ChildAt(denseIdx) = SparseChildEntry.Revealed(newNodeIdx);
-                    current.BlindedMask = current.BlindedMask.ClearBit(nibble);
+                    _subtrie.NodeAt(currentIdx).BlindedMask = _subtrie.NodeAt(currentIdx).BlindedMask.ClearBit(nibble);
                     return;
                 }
 
