@@ -330,40 +330,40 @@ public static partial class EvmInstructions
             long gasLimitUl,
             in Snapshot snapshot)
         {
-        // Load call data from memory.
-        if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
-            return EvmExceptionType.OutOfGas;
-        // Construct the execution environment for the call.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
-            codeInfo: codeInfo,
-            executingAccount: target,
-            caller: caller,
-            codeSource: codeSource,
-            callDepth: env.CallDepth + 1,
-            value: in callValue,
-            inputData: in callData);
+            // Load call data from memory.
+            if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
+                return EvmExceptionType.OutOfGas;
+            // Construct the execution environment for the call.
+            ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
+                codeInfo: codeInfo,
+                executingAccount: target,
+                caller: caller,
+                codeSource: codeSource,
+                callDepth: env.CallDepth + 1,
+                value: in callValue,
+                inputData: in callData);
 
-        // Normalize output offset if output length is zero.
-        UInt256 normalizedOutputOffset = outputOffset;
-        if (outputLength == 0)
-        {
-            // Output offset is inconsequential when output length is 0.
-            normalizedOutputOffset = 0;
-        }
+            // Normalize output offset if output length is zero.
+            UInt256 normalizedOutputOffset = outputOffset;
+            if (outputLength == 0)
+            {
+                // Output offset is inconsequential when output length is 0.
+                normalizedOutputOffset = 0;
+            }
 
-        // Rent a new call frame for executing the call.
-        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
-            outputDestination: normalizedOutputOffset.ToLong(),
-            outputLength: outputLength.ToLong(),
-            executionType: TOpCall.ExecutionType,
-            isStatic: TOpCall.IsStatic || vm.VmState.IsStatic,
-            isCreateOnPreExistingAccount: false,
-            env: callEnv,
-            stateForAccessLists: in vm.VmState.AccessTracker,
-            snapshot: in snapshot);
+            // Rent a new call frame for executing the call.
+            vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+                gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
+                outputDestination: normalizedOutputOffset.ToLong(),
+                outputLength: outputLength.ToLong(),
+                executionType: TOpCall.ExecutionType,
+                isStatic: TOpCall.IsStatic || vm.VmState.IsStatic,
+                isCreateOnPreExistingAccount: false,
+                env: callEnv,
+                stateForAccessLists: in vm.VmState.AccessTracker,
+                snapshot: in snapshot);
 
-        return EvmExceptionType.None;
+            return EvmExceptionType.None;
         }
 
         // Jump forward to be unpredicted by the branch predictor.
