@@ -125,7 +125,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            Func<BlockParameter?> action = () => serializer.Deserialize<BlockParameter>(
+            Action action = () => serializer.Deserialize<BlockParameter>(
                 """{ "blockNumber": "0xa", "blockHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3" }""");
 
             action.Should()
