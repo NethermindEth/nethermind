@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
@@ -19,7 +18,10 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 [JsonConverter(typeof(ParityTxTraceFromReplayStreamingResultConverter))]
 public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromReplay, IStreamableResult, IDisposable
 {
-    private readonly DelegatingStreamingResult _inner;
+    private readonly Action<Utf8JsonWriter, PipeWriter?, CancellationToken> _runExecution;
+    private readonly CancellationTokenSource _timeoutCts;
+    private readonly CancellationToken _timeoutToken;
+    private readonly ILogger _logger;
 
     public Func<ParityTxTraceFromReplay?>? MaterializeForInProcess { get; init; }
 
@@ -29,15 +31,20 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
         ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(runExecution);
-        _inner = new DelegatingStreamingResult(runExecution, timeoutCts, logger);
+        ArgumentNullException.ThrowIfNull(timeoutCts);
+
+        _runExecution = runExecution;
+        _timeoutCts = timeoutCts;
+        _timeoutToken = timeoutCts.Token;
+        _logger = logger;
     }
 
     public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
-        => _inner.WriteToAsync(writer, cancellationToken);
+        => StreamingResultBase.WriteJsonToAsync(_timeoutToken, _logger, writer, _runExecution, cancellationToken);
 
-    internal void WriteAsJson(Utf8JsonWriter writer) => _inner.WriteAsJsonExternal(writer);
+    internal void WriteAsJson(Utf8JsonWriter writer) => _runExecution(writer, null, _timeoutToken);
 
-    public void Dispose() => _inner.Dispose();
+    public void Dispose() => _timeoutCts.Dispose();
 
     private bool _materialized;
 
@@ -65,16 +72,6 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
     public override ParityTraceAction? Action { get { EnsureMaterialized(); return base.Action; } set => base.Action = value; }
     public override Dictionary<Address, ParityAccountStateChange>? StateChanges { get { EnsureMaterialized(); return base.StateChanges; } set => base.StateChanges = value; }
 
-    private sealed class DelegatingStreamingResult(
-        Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runExecution,
-        CancellationTokenSource timeoutCts,
-        ILogger logger) : StreamingResultBase(timeoutCts, logger)
-    {
-        protected override void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
-            => runExecution(writer, pipeWriter, cancellationToken);
-
-        internal void WriteAsJsonExternal(Utf8JsonWriter writer) => WriteAsJson(writer);
-    }
 }
 
 internal sealed class ParityTxTraceFromReplayStreamingResultConverter : JsonConverter<ParityTxTraceFromReplayStreamingResult>
