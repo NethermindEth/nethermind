@@ -94,7 +94,7 @@ namespace Nethermind.Init.Steps
             blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
         }
 
-        private readonly TaskCompletionSource _blocksProcessedTaskSource = new();
+        private readonly TaskCompletionSource _blocksProcessedTaskSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         private void OnProcessingQueueEmpty(object? sender, EventArgs e) => _blocksProcessedTaskSource.SetResult();
     }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -25,7 +24,7 @@ public class DoubleConverterTests
     public void Write_PreservesFullIeee754Precision(double value, string expected)
     {
         string json = JsonSerializer.Serialize(value, Options);
-        json.Should().Be(expected, "double serialization must preserve full IEEE 754 round-trip precision");
+        Assert.That(json, Is.EqualTo(expected), "double serialization must preserve full IEEE 754 round-trip precision");
     }
 
     [TestCase(0.678584082336891)]
@@ -36,6 +35,6 @@ public class DoubleConverterTests
     {
         string json = JsonSerializer.Serialize(value, Options);
         double deserialized = JsonSerializer.Deserialize<double>(json, Options);
-        deserialized.Should().Be(value, "deserialization must recover the original double value exactly");
+        Assert.That(deserialized, Is.EqualTo(value), "deserialization must recover the original double value exactly");
     }
 }

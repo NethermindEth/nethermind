@@ -7,8 +7,10 @@ using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
+using Nethermind.Core.Validation;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Validators;
@@ -132,9 +134,15 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit)
     {
-        // This is unnecessarily calculated twice - at validation and execution times.
-        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec, blockGasLimit);
-        return transaction.GasLimit < intrinsicGas.MinimalGas
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
+        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out long regular, out long floor))
+        {
+            return TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap);
+        }
+
+        // Implicit conversion combines Standard + StateReservoir (EIP-8037) before max'ing with FloorGas.
+        EthereumIntrinsicGas combined = intrinsicGas;
+        return transaction.GasLimit < combined.MinimalGas
             ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
     }
@@ -374,7 +382,7 @@ public sealed class NoContractCreationTxValidator : ITxValidator
     public static readonly NoContractCreationTxValidator Instance = new();
     private NoContractCreationTxValidator() { }
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.IsContractCreation ? TxErrorMessages.NotAllowedCreateTransaction : ValidationResult.Success;
+        SetCodeTxValidation.ValidateNoContractCreation(transaction);
 }
 
 public sealed class AuthorizationListTxValidator : ITxValidator
@@ -383,11 +391,7 @@ public sealed class AuthorizationListTxValidator : ITxValidator
     private AuthorizationListTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.AuthorizationList switch
-        {
-            null or { Length: 0 } => TxErrorMessages.MissingAuthorizationList,
-            _ => ValidationResult.Success
-        };
+        SetCodeTxValidation.ValidateAuthorizationList(transaction);
 }
 
 public sealed class GasLimitCapTxValidator : ITxValidator

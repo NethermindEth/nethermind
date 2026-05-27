@@ -11,34 +11,28 @@ namespace Nethermind.EraE.Proofs;
 [SszContainer]
 partial struct HistoricalBatch
 {
-    [SszVector(8192)] // SLOTS_PER_HISTORICAL_ROOT
+    [SszVector(HistoricalRootConstants.SlotsPerHistoricalRoot)]
     public SszBytes32[] BlockRoots { get; set; }
 
-    [SszVector(8192)] // SLOTS_PER_HISTORICAL_ROOT
+    [SszVector(HistoricalRootConstants.SlotsPerHistoricalRoot)]
     public SszBytes32[] StateRoots { get; set; }
 
     public static HistoricalBatch From(ReadOnlySpan<ValueHash256> blockRoots, ReadOnlySpan<ValueHash256> stateRoots)
-    {
-        SszBytes32[] blockRootsData = new SszBytes32[blockRoots.Length];
-        for (int i = 0; i < blockRoots.Length; i++) blockRootsData[i] = SszBytes32.From(blockRoots[i]);
-        SszBytes32[] stateRootsData = new SszBytes32[stateRoots.Length];
-        for (int i = 0; i < stateRoots.Length; i++) stateRootsData[i] = SszBytes32.From(stateRoots[i]);
-        return new() { BlockRoots = blockRootsData, StateRoots = stateRootsData };
-    }
+        => new()
+        {
+            BlockRoots = HistoricalRootConstants.ToSszVector(blockRoots, nameof(blockRoots)),
+            StateRoots = HistoricalRootConstants.ToSszVector(stateRoots, nameof(stateRoots))
+        };
 }
 
 [SszContainer]
 partial struct ValueHash256Vector
 {
-    [SszVector(8192)] // SLOTS_PER_HISTORICAL_ROOT
+    [SszVector(HistoricalRootConstants.SlotsPerHistoricalRoot)]
     public SszBytes32[] Data { get; set; }
 
     public static ValueHash256Vector From(ReadOnlySpan<ValueHash256> hashesAccumulator)
-    {
-        SszBytes32[] data = new SszBytes32[hashesAccumulator.Length];
-        for (int i = 0; i < hashesAccumulator.Length; i++) data[i] = SszBytes32.From(hashesAccumulator[i]);
-        return new() { Data = data };
-    }
+        => new() { Data = HistoricalRootConstants.ToSszVector(hashesAccumulator, nameof(hashesAccumulator)) };
 
     public readonly ValueHash256[] Hashes()
     {
@@ -48,3 +42,19 @@ partial struct ValueHash256Vector
     }
 }
 
+internal static class HistoricalRootConstants
+{
+    public const int SlotsPerHistoricalRoot = 8192;
+
+    public static SszBytes32[] ToSszVector(ReadOnlySpan<ValueHash256> hashes, string argumentName)
+    {
+        if (hashes.Length > SlotsPerHistoricalRoot)
+            throw new ArgumentException($"Historical root vectors cannot contain more than {SlotsPerHistoricalRoot} hashes.", argumentName);
+
+        SszBytes32[] data = new SszBytes32[SlotsPerHistoricalRoot];
+        for (int i = 0; i < hashes.Length; i++)
+            data[i] = SszBytes32.From(hashes[i]);
+
+        return data;
+    }
+}

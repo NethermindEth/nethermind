@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
@@ -25,8 +25,8 @@ public class ShareableOverridableEnvSourceTests
         List<Scope<Marker>> rented = RentMany(source, held);
 
         Action overflow = () => source.BuildAndOverride(null);
-        overflow.Should().Throw<ConcurrencyLimitReachedException>();
-        factory.Created.Should().Be(held, "factory must not run when the cap is already reached");
+        Assert.That(overflow, Throws.TypeOf<ConcurrencyLimitReachedException>());
+        Assert.That(factory.Created, Is.EqualTo(held), "factory must not run when the cap is already reached");
 
         foreach (Scope<Marker> scope in rented) scope.Dispose();
     }
@@ -45,12 +45,12 @@ public class ShareableOverridableEnvSourceTests
         else
         {
             Action poisoned = () => source.BuildAndOverride(null);
-            poisoned.Should().Throw<InvalidOperationException>();
+            Assert.That(poisoned, Throws.TypeOf<InvalidOperationException>());
             factory.SetThrowOnBuild(false);
         }
 
         Action retry = () => source.BuildAndOverride(null).Dispose();
-        retry.Should().NotThrow();
+        Assert.That(retry, Throws.Nothing);
     }
 
     [TestCase(ShutdownState.IdleOnly)]
@@ -65,13 +65,13 @@ public class ShareableOverridableEnvSourceTests
 
         source.Dispose();
 
-        factory.DisposedCount.Should().Be(1);
+        Assert.That(factory.DisposedCount, Is.EqualTo(1));
 
         if (state == ShutdownState.StillRented)
         {
             Action returnAfterShutdown = scope.Dispose;
-            returnAfterShutdown.Should().NotThrow();
-            factory.DisposedCount.Should().Be(1, "double dispose is a no-op via the tracking dictionary");
+            Assert.That(returnAfterShutdown, Throws.Nothing);
+            Assert.That(factory.DisposedCount, Is.EqualTo(1), "double dispose is a no-op via the tracking dictionary");
         }
     }
 
@@ -90,7 +90,7 @@ public class ShareableOverridableEnvSourceTests
     private sealed class FakeEnvFactory(bool throwOnBuild = false)
     {
         private bool _throwOnBuild = throwOnBuild;
-        private readonly List<FakeEnv> _envs = new();
+        private readonly List<FakeEnv> _envs = [];
 
         public int Created => _envs.Count;
         public int DisposedCount
@@ -117,7 +117,7 @@ public class ShareableOverridableEnvSourceTests
     {
         public bool IsDisposed { get; private set; }
 
-        public Scope<Marker> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null)
+        public Scope<Marker> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null)
         {
             if (throwOnBuild) throw new InvalidOperationException("simulated build failure");
             return new Scope<Marker>(new Marker(), new NoopDisposable());

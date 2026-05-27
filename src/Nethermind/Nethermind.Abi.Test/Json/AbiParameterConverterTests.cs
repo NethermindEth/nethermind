@@ -6,7 +6,6 @@ using System.Collections;
 using System.Text;
 using System.Text.Json;
 
-using FluentAssertions;
 using Nethermind.Blockchain.Contracts.Json;
 
 using NUnit.Framework;
@@ -56,6 +55,19 @@ namespace Nethermind.Abi.Test.Json
 
                 yield return new TestCaseData(GetTestData("tuple", new AbiTuple<CustomAbiType>(),
                     new { name = "c", type = "int32" }));
+
+                // Tuple array tests
+                yield return new TestCaseData(GetTestData("tuple[]", new AbiArray(new AbiTuple([]))));
+                yield return new TestCaseData(GetTestData("tuple[3]", new AbiFixedLengthArray(new AbiTuple([]), 3)));
+                yield return new TestCaseData(GetTestData("tuple[]",
+                    new AbiArray(new AbiTuple(new AbiType[] { new AbiUInt(8), new AbiUInt(64) })),
+                    new { name = "resource", type = "uint8" },
+                    new { name = "weight", type = "uint64" }));
+                yield return new TestCaseData(GetTestData("tuple[2]",
+                    new AbiFixedLengthArray(new AbiTuple(new AbiType[] { AbiType.Address, AbiType.UInt256 }), 2),
+                    new { name = "addr", type = "address" },
+                    new { name = "amount", type = "uint256" }));
+
                 yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentOutOfRangeException()));
                 yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentOutOfRangeException()));
                 yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentOutOfRangeException()));
@@ -78,9 +90,9 @@ namespace Nethermind.Abi.Test.Json
             try
             {
                 AbiParameter result = converter.Read(ref jsonReader, typeof(AbiParameter), JsonSerializerOptions.Default);
-                AbiParameter expectation = new() { Name = "theName", Type = expectedType };
-                expectedException.Should().BeNull();
-                result.Should().BeEquivalentTo(expectation);
+                Assert.That(expectedException, Is.Null);
+                Assert.That(result.Name, Is.EqualTo("theName"));
+                Assert.That(result.Type, Is.EqualTo(expectedType));
             }
             catch (Exception e)
             {

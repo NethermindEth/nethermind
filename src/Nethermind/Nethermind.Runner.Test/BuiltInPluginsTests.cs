@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using NUnit.Framework;
@@ -23,7 +22,7 @@ public class BuiltInPluginsTests
         HashSet<Type> builtInPlugins = NethermindPlugins.EmbeddedPlugins.ToHashSet();
         foreach (Type type in pluginInAssembly)
         {
-            builtInPlugins.Should().Contain(type);
+            Assert.That(builtInPlugins, Does.Contain(type));
         }
     }
 }

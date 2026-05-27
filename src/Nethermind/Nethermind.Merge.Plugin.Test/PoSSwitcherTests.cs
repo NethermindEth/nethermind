@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -248,9 +247,9 @@ namespace Nethermind.Merge.Plugin.Test
                 syncConfig = new SyncConfig() { PivotTotalDifficulty = $"{(UInt256)pivotTotalDifficulty}" };
             PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, new MemDb(), blockTree, specProvider, new ChainSpec() { Genesis = genesisBlock }, LimboLogs.Instance);
             if (expectedFinalTotalDifficulty is not null)
-                poSSwitcher.FinalTotalDifficulty.Should().Be((UInt256)expectedFinalTotalDifficulty);
+                Assert.That(poSSwitcher.FinalTotalDifficulty, Is.EqualTo((UInt256?)(UInt256)expectedFinalTotalDifficulty));
             else
-                poSSwitcher.FinalTotalDifficulty.Should().BeNull();
+                Assert.That(poSSwitcher.FinalTotalDifficulty, Is.Null);
         }
 
 

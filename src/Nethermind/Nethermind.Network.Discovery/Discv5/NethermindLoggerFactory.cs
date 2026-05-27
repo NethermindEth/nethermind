@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using Nethermind.Logging;
 using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
 
-namespace Nethermind.Network.Discovery;
+namespace Nethermind.Network.Discovery.Discv5;
 
 public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel = false, MsLogLevel? maxLogLevel = null) : ILoggerFactory
 {

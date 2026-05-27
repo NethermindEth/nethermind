@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Blockchain;
@@ -97,8 +96,43 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             long storedPivotBlockNumber = ctx.DecodeLong();
             Hash256 storedFinalizedHash = ctx.DecodeKeccak()!;
 
-            storedFinalizedHash.Should().Be(expectedFinalizedHash);
-            storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
+            Assert.That(storedFinalizedHash, Is.EqualTo(expectedFinalizedHash));
+            Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
+        }
+
+        [TestCase(2, true, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
+        [TestCase(ISyncConfig.InfiniteAttempts, false, ISyncConfig.InfiniteAttempts, TestName = "Infinite_attempts_never_fall_back_to_static_pivot")]
+        public void TrySetFreshPivot_fallback_respects_MaxAttemptsToUpdatePivot(int maxAttempts, bool expectFallback, int expectedFinalConfigValue)
+        {
+            _syncConfig!.MaxAttemptsToUpdatePivot = maxAttempts;
+            // Finalized hash unset → TrySetFreshPivot returns null → counts as a failed attempt.
+            _beaconSyncStrategy!.GetFinalizedHash().Returns((Hash256?)null);
+
+            _ = new StartingSyncPivotUpdater(
+                _blockTree!,
+                _syncModeSelector!,
+                _syncPeerPool!,
+                _syncConfig!,
+                _blockCacheService!,
+                _beaconSyncStrategy!,
+                LimboLogs.Instance
+            );
+
+            SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
+            for (int i = 0; i < 100; i++)
+            {
+                _syncModeSelector!.Changed += Raise.EventWith(args);
+            }
+
+            if (expectFallback)
+            {
+                _beaconSyncStrategy.Received().AllowBeaconHeaderSync();
+            }
+            else
+            {
+                _beaconSyncStrategy.DidNotReceive().AllowBeaconHeaderSync();
+            }
+            Assert.That(_syncConfig.MaxAttemptsToUpdatePivot, Is.EqualTo(expectedFinalConfigValue));
         }
 
         [Test]
@@ -127,8 +161,8 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             long storedPivotBlockNumber = ctx.DecodeLong();
             Hash256 storedPivotBlockHash = ctx.DecodeKeccak()!;
 
-            storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
-            storedPivotBlockHash.Should().Be(expectedPivotBlockHash);
+            Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(storedPivotBlockHash, Is.EqualTo(expectedPivotBlockHash));
         }
     }
 }

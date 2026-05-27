@@ -9,7 +9,6 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -66,8 +65,7 @@ public class PeerManagerFilteringIntegrationTests
                 Is.GreaterThanOrEqualTo(1).After(2000, 50),
                 "PeerManager should trigger ConnectAsync for the discovered peer");
 
-            trackingMock.CallsToShouldContact.Should().NotBeEmpty(
-                "ShouldContact should have been called before ConnectAsync");
+            Assert.That(trackingMock.CallsToShouldContact, Is.Not.Empty, "ShouldContact should have been called before ConnectAsync");
         }
         finally
         {
@@ -113,8 +111,7 @@ public class PeerManagerFilteringIntegrationTests
         // Give it time — the peer should NOT be connected
         await Task.Delay(1000);
 
-        ctx.RlpxMock.ConnectedNodeIds.Should().BeEmpty(
-            "Regular peer should be blocked by the IP filter");
+        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Is.Empty, "Regular peer should be blocked by the IP filter");
     }
 
     [Test, Retry(3)]
@@ -137,8 +134,7 @@ public class PeerManagerFilteringIntegrationTests
             Has.Member(staticNode.Id).After(2000, 50),
             "Static peer should be connected");
 
-        ctx.RlpxMock.ConnectedNodeIds.Should().NotContain(regularNode.Id,
-            "Regular peer should be blocked by the IP filter");
+        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(regularNode.Id), "Regular peer should be blocked by the IP filter");
     }
 
     private class Context : IAsyncDisposable
@@ -186,7 +182,7 @@ public class PeerManagerFilteringIntegrationTests
     /// </summary>
     private class FilterRejectingRlpxMock : IRlpxHost
     {
-        public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = new();
+        public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = [];
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false) => exactOnly;
 
@@ -204,13 +200,14 @@ public class PeerManagerFilteringIntegrationTests
         public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated;
+        public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }
         public ISessionMonitor SessionMonitor => Substitute.For<ISessionMonitor>();
     }
 
     private class CallOrderTrackingMock : IRlpxHost
     {
-        public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = new();
-        public ConcurrentBag<Node> CallsToConnectAsync { get; } = new();
+        public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = [];
+        public ConcurrentBag<Node> CallsToConnectAsync { get; } = [];
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false)
         {
@@ -229,6 +226,7 @@ public class PeerManagerFilteringIntegrationTests
         public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated { add { } remove { } }
+        public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }
         public ISessionMonitor SessionMonitor => Substitute.For<ISessionMonitor>();
     }
 

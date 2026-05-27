@@ -71,6 +71,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<UInt256?> eth_blobBaseFee();
 
         [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns the base fee of the next block in wei",
+            IsSharable = true,
+            ExampleResponse = "0x3b9aca00")]
+        ResultWrapper<UInt256?> eth_baseFee();
+
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Returns a list of addresses owned by the client",
             IsSharable = true,
             ExampleResponse = "[\"0x9b96a7841d6e0b76872c85c86082959189a27342\"]")]
@@ -173,7 +179,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Executes a tx call (does not create a transaction)",
             IsSharable = true,
             ExampleResponse = "0x")]
-        ResultWrapper<string> eth_call([JsonRpcParameter(ExampleValue = "[{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}]")] TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
+        ResultWrapper<HexBytes> eth_call([JsonRpcParameter(ExampleValue = "[{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}]")] TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Executes a simulation across multiple blocks (does not create a transaction or block)",
@@ -347,9 +353,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<JsonNode> eth_config();
 
         [JsonRpcMethod(Description = "Retrieves block access list for a block by hash.")]
-        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
+        ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
 
         [JsonRpcMethod(Description = "Retrieves block access list for a block by number.")]
-        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByNumber(long number);
+        ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(long number);
     }
 }

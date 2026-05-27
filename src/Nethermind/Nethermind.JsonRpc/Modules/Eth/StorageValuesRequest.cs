@@ -13,7 +13,7 @@ public sealed class StorageValuesRequest : IJsonRpcParam
 {
     public const int MaxSlots = 1024;
 
-    public Dictionary<Address, UInt256[]> Entries { get; } = new();
+    public Dictionary<Address, UInt256[]> Entries { get; } = [];
     public bool TooManySlots { get; private set; }
     public int TotalSlots { get; private set; }
 

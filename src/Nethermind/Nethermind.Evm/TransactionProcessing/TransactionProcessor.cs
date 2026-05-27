@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -12,6 +13,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Validation;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
@@ -54,9 +56,16 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         public static BlobBaseFeeCalculator Instance { get; } = new BlobBaseFeeCalculator();
 
-        public bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction,
-            UInt256 blobGasPriceUpdateFraction, out UInt256 blobBaseFee) =>
-            BlobGasCalculator.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
+        public bool TryCalculateBlobFees(BlockHeader header, Transaction transaction,
+            UInt256 blobGasPriceUpdateFraction, out UInt256 feePerBlobGas, out UInt256 totalBlobBaseFee)
+        {
+            if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header, blobGasPriceUpdateFraction, out feePerBlobGas))
+            {
+                totalBlobBaseFee = UInt256.Zero;
+                return false;
+            }
+            return BlobGasCalculator.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out totalBlobBaseFee);
+        }
     }
 
     public abstract class TransactionProcessorBase<TGasPolicy> : ITransactionProcessor
@@ -247,13 +256,22 @@ namespace Nethermind.Evm.TransactionProcessing
             if (spec.IsEip8037Enabled && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
             {
                 JournalSet<Address> destroyList = substate.DestroyList;
-                if (destroyList.Count > 1)
+                int count = destroyList.Count;
+                if (count > 1)
                 {
-                    Address[] orderedDestroyList = [.. destroyList];
-                    Array.Sort(orderedDestroyList, GenericComparer.GetOptimized<Address>());
-                    for (int i = 0; i < orderedDestroyList.Length; i++)
+                    Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
+                    try
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, orderedDestroyList[i]);
+                        destroyList.CopyTo(buffer, 0);
+                        buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
+                        for (int i = 0; i < count; i++)
+                        {
+                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i]);
+                        }
+                    }
+                    finally
+                    {
+                        SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                 }
                 else
@@ -465,6 +483,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     bool accountExists = WorldState.AccountExists(authority);
                     bool hasDelegation = accountExists && _codeInfoRepository.TryGetDelegation(authority, spec, out _);
+                    bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
 
                     if (!accountExists)
                     {
@@ -476,7 +495,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    if (hasDelegation)
+                    if (hasDelegation || clearsDelegation)
                     {
                         authBaseRefunds++;
                     }
@@ -607,6 +626,30 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.TransactionSizeOverMaxInitCodeSize;
             }
 
+            if (tx.SupportsAuthorizationList)
+            {
+                ValidationResult noCreation = SetCodeTxValidation.ValidateNoContractCreation(tx);
+                if (!noCreation)
+                {
+                    TraceLogInvalidTx(tx, "SETCODE_TX_CREATE");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{noCreation.Error} (sender {tx.SenderAddress})");
+                }
+
+                ValidationResult authList = SetCodeTxValidation.ValidateAuthorizationList(tx);
+                if (!authList)
+                {
+                    TraceLogInvalidTx(tx, "EMPTY_AUTHORIZATION_LIST");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{authList.Error} (sender {tx.SenderAddress})");
+                }
+            }
+
+            if (spec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out long regular, out long floor))
+            {
+                TraceLogInvalidTx(tx, $"TX_INTRINSIC_GAS_EXCEEDS_CAP regular={regular} floor={floor} > {Eip7825Constants.DefaultTxGasLimitCap}");
+                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
+                    TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap));
+            }
+
             TGasPolicy standard = intrinsicGas.Standard;
             TGasPolicy minimal = intrinsicGas.MinimalGas;
             long minGasRequired = spec.IsEip8037Enabled
@@ -621,8 +664,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.GasLimit < minGasRequired)
             {
                 TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
-                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
-                    $"intrinsic gas too low: have {tx.GasLimit}, want {minGasRequired}");
+                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail($"intrinsic gas too low: have {tx.GasLimit}, want {minGasRequired}");
             }
 
             if (validate)
@@ -777,26 +819,15 @@ namespace Nethermind.Evm.TransactionProcessing
             overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
             if (!overflows && tx.SupportsBlobs)
             {
-                if (validate)
+                overflows = !_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee);
+                if (!overflows)
                 {
-                    if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
-                    {
-                        overflows = true;
-                    }
-                    else if (tx.MaxFeePerBlobGas < feePerBlobGas)
+                    if (validate && tx.MaxFeePerBlobGas < feePerBlobGas)
                     {
                         TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
                         return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance, BlockErrorMessages.InsufficientMaxFeePerBlobGas);
                     }
-                }
-
-                if (!overflows)
-                {
-                    overflows = !_blobBaseFeeCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
-                    if (!overflows)
-                    {
-                        overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
-                    }
+                    overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
                 }
             }
 
@@ -1127,6 +1158,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
 
+        // Keep available for override for Arbitrum plugin needs
         protected virtual GasConsumed RefundOnContractCollision(
             Transaction tx,
             IReleaseSpec spec,
@@ -1153,7 +1185,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, spentGas, blockStateGas);
         }
 
-        private GasConsumed RefundOnTopLevelHalt(
+        protected virtual GasConsumed RefundOnTopLevelHalt(
             Transaction tx,
             IReleaseSpec spec,
             ExecutionOptions opts,
@@ -1434,6 +1466,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
+
+        // Devirtualised wrapper over Address.CompareTo (sealed -> already devirt'd inside) so the EIP-7708
+        // destroy-list sort goes through Sort<TComparer> instead of Comparer<Address>.Default's virtual call.
+        // The IComparer<Address> contract declares nullable parameters; the destroy-list source
+        // (JournalSet<Address>) never contains null entries, so the `!` dereference is safe here.
+        private readonly struct AddressByBytesComparer : IComparer<Address>
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public int Compare(Address? x, Address? y) => x!.CompareTo(y);
+        }
     }
 
     /// <summary>

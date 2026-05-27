@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -54,8 +53,8 @@ public class TestBlockchainUtil(
         bool mayMissTx = (flags & AddBlockFlags.MayMissTx) != 0;
         bool mayHaveExtraTx = (flags & AddBlockFlags.MayHaveExtraTx) != 0;
 
-        _previousAddBlock.IsCompleted.Should().BeTrue("Multiple block produced at once. Please make sure this does not happen for test consistency.");
-        TaskCompletionSource tcs = new();
+        Assert.That(_previousAddBlock.IsCompleted, Is.True, "Multiple block produced at once. Please make sure this does not happen for test consistency.");
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _previousAddBlock = tcs.Task;
 
         AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
@@ -100,7 +99,7 @@ public class TestBlockchainUtil(
             }
             iteration++;
         }
-        blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
+        Assert.That(blockTree.SuggestBlock(block!), Is.EqualTo(AddBlockResult.Added));
 
         tcs.TrySetResult();
 

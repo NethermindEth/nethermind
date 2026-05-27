@@ -26,6 +26,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -139,7 +140,7 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_return_empty_receipts_block_when_local_block_has_no_receipts()
+    public void Should_return_empty_receipts_block_when_local_block_has_no_transactions()
     {
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
@@ -149,6 +150,19 @@ public class Eth70ProtocolHandlerTests
 
         _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
             m.TxReceipts.Count == 1 && m.TxReceipts[0].Length == 0 && !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_stop_response_when_receipts_are_not_known_locally()
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns((TxReceipt[]?)null);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.TxReceipts.Count == 0 && !m.LastBlockIncomplete));
     }
 
     [Test]
@@ -696,6 +710,18 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_reject_null_receipt_payload_during_deserialization()
+    {
+        TxReceipt[] receipts = [null!];
+        using ReceiptsMessage70 response = new(1111, new[] { receipts }.ToPooledList(), false);
+
+        HandleIncomingStatusMessage();
+        RlpException? exception = Assert.Throws<RlpException>(() => HandleZeroMessage(response, Eth70MessageCode.Receipts));
+
+        Assert.That(exception?.Message, Is.EqualTo("Unexpected null receipt payload"));
+    }
+
+    [Test]
     public async Task Should_return_immediately_when_peer_returns_fewer_blocks_than_requested()
     {
         // Scenario: Handler requests N blocks, peer returns fewer with LastBlockIncomplete = false
@@ -798,9 +824,8 @@ public class Eth70ProtocolHandlerTests
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
         ];
 
-        _syncManager.FindHeader(TestItem.KeccakA).Returns((BlockHeader?)null);
         _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
-        _syncManager.GetReceipts(TestItem.KeccakA).Returns([]);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns((TxReceipt[]?)null);
         _syncManager.GetReceipts(TestItem.KeccakB).Returns(
         [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
@@ -817,11 +842,7 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_return_empty_receipts_response_when_first_hash_is_unknown()
     {
-        _syncManager.FindHeader(Keccak.Zero).Returns((BlockHeader?)null);
-        _syncManager.GetReceipts(Keccak.Zero).Returns(
-        [
-            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
-        ]);
+        _syncManager.GetReceipts(Keccak.Zero).Returns((TxReceipt[]?)null);
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
 
