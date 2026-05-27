@@ -13,6 +13,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;

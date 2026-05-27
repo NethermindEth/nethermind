@@ -84,7 +84,7 @@ public class ExecutionPayloadParams(
 
 public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     TVersionedExecutionPayload executionPayload,
-    byte[]?[] blobVersionedHashes,
+    Hash256?[] blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
     byte[][]? executionRequests = null,
     byte[][]? inclusionListTransactions = null)
@@ -166,7 +166,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         return ValidationResult.Success;
     }
 
-    private static bool FlattenedHashesEqual(Transaction[] transactions, ReadOnlySpan<byte[]?> expected)
+    private static bool FlattenedHashesEqual(Transaction[] transactions, ReadOnlySpan<Hash256?> expected)
     {
         int expectedIndex = 0;
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
@@ -177,7 +177,8 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             for (int hashIndex = 0; hashIndex < hashes.Length; hashIndex++)
             {
                 if (expectedIndex >= expected.Length) return false;
-                if (!hashes[hashIndex].AsSpan().SequenceEqual(expected[expectedIndex]))
+                ReadOnlySpan<byte> expectedBytes = expected[expectedIndex] is { } expectedHash ? expectedHash.Bytes : default;
+                if (!hashes[hashIndex].AsSpan().SequenceEqual(expectedBytes))
                 {
                     return false;
                 }

@@ -6,6 +6,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;

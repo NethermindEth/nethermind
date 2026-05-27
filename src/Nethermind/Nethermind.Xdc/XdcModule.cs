@@ -34,6 +34,7 @@ using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Discovery;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 

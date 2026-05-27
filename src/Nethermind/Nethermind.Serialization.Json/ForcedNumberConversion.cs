@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Text.Json;
 
 namespace Nethermind.Serialization.Json;
 
@@ -15,21 +14,5 @@ public static class ForcedNumberConversion
     {
         get => _threadCache;
         set => _threadCache = value;
-    }
-
-    public static void WriteRawLong(Utf8JsonWriter writer, ReadOnlySpan<byte> name, long value)
-    {
-        writer.WritePropertyName(name);
-
-        NumberConversion previous = Value;
-        Value = NumberConversion.Raw;
-        try
-        {
-            JsonSerializer.Serialize(writer, value, EthereumJsonSerializer.JsonOptions);
-        }
-        finally
-        {
-            Value = previous;
-        }
     }
 }

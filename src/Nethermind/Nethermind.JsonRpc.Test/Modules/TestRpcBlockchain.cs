@@ -48,6 +48,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
+        private bool? _previousStrictHexFormat;
+
         public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig();
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
         public IDebugRpcModule DebugRpcModule => Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
@@ -189,6 +191,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
+            _previousStrictHexFormat ??= EthereumJsonSerializer.StrictHexFormat;
             EthereumJsonSerializer.StrictHexFormat = RpcConfig.StrictHexFormat;
             await base.Build(builder =>
             {
@@ -219,6 +222,22 @@ namespace Nethermind.JsonRpc.Test.Modules
             EthRpcModule = _ethRpcModuleBuilder(this);
 
             return this;
+        }
+
+        public override void Dispose()
+        {
+            try
+            {
+                base.Dispose();
+            }
+            finally
+            {
+                if (_previousStrictHexFormat is bool previousStrictHexFormat)
+                {
+                    EthereumJsonSerializer.StrictHexFormat = previousStrictHexFormat;
+                    _previousStrictHexFormat = null;
+                }
+            }
         }
 
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>

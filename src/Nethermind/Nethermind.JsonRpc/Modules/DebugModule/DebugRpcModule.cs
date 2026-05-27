@@ -538,7 +538,7 @@ public class DebugRpcModule(
             return ResultWrapper<OwnedByteMemory>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
         }
 
-        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Hash);
+        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Number, block.Hash);
 
         return balRlp is null
             ? ResultWrapper<OwnedByteMemory>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)

@@ -116,6 +116,26 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public void GethLikeBlockEnvelopeStreamingTracer_WhenDisposeFailsToCloseEnvelope_DoesNotRetryOnSecondDispose()
+    {
+        Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+
+        ArrayBufferWriter<byte> outerBuffer = new();
+        using Utf8JsonWriter jsonWriter = new(outerBuffer);
+        GethLikeBlockEnvelopeStreamingTracer tracer = new(GethTraceOptions.Default, jsonWriter, pipeWriter: null, CancellationToken.None);
+
+        jsonWriter.WriteStartArray();
+        ((Evm.Tracing.IBlockTracer)tracer).StartNewTxTrace(tx);
+        jsonWriter.WriteStartObject();
+
+        Action firstDispose = tracer.Dispose;
+        firstDispose.Should().Throw<InvalidOperationException>();
+
+        Action secondDispose = tracer.Dispose;
+        secondDispose.Should().NotThrow("Dispose should not attempt to close the same malformed envelope twice");
+    }
+
+    [Test]
     public async Task GethLikeTxTraceStreamingBlockResult_WhenCancelledMidBlock_ClosesOuterArray()
     {
         using CancellationTokenSource requestCts = new();

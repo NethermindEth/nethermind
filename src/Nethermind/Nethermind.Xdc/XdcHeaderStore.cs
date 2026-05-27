@@ -4,6 +4,7 @@
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Db;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 

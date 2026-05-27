@@ -26,6 +26,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
     private bool _innerEnvelopeOpen;
+    private bool _isDisposed;
     private Hash256? _currentTxHash;
     private GethLikeTxDirectStreamingTracer? _reusableTxTracer;
 
@@ -69,15 +70,15 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         GethLikeTxTrace trace = txTracer.BuildResult();
 
         _writer.WriteEndArray();
-        ForcedNumberConversion.WriteRawLong(_writer, "gas"u8, trace.Gas);
+        _writer.WriteNumber("gas"u8, trace.Gas);
         _writer.WritePropertyName("failed"u8);
         _writer.WriteBooleanValue(trace.Failed);
         _writer.WritePropertyName("returnValue"u8);
-        JsonSerializer.Serialize(_writer, trace.ReturnValue, EthereumJsonSerializer.JsonOptions);
+        ByteArrayConverter.Convert(_writer, trace.ReturnValue, skipLeadingZeros: false);
         _writer.WriteEndObject();
 
         _writer.WritePropertyName("txHash"u8);
-        JsonSerializer.Serialize(_writer, trace.TxHash, EthereumJsonSerializer.JsonOptions);
+        WriteTxHashOrNull(trace.TxHash);
         _writer.WriteEndObject();
         _innerEnvelopeOpen = false;
         _currentTxHash = null;
@@ -95,23 +96,34 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
 
     public void Dispose()
     {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
         _reusableTxTracer?.ReleaseResources();
         DisposableExtensions.DisposeAndNull(ref _reusableTxTracer);
 
         if (!_innerEnvelopeOpen) return;
 
+        Hash256? currentTxHash = _currentTxHash;
+        _innerEnvelopeOpen = false;
+        _currentTxHash = null;
+
         _writer.WriteEndArray();
-        ForcedNumberConversion.WriteRawLong(_writer, "gas"u8, 0L);
+        _writer.WriteNumber("gas"u8, 0L);
         _writer.WritePropertyName("failed"u8);
         _writer.WriteBooleanValue(true);
         _writer.WritePropertyName("returnValue"u8);
-        JsonSerializer.Serialize(_writer, Array.Empty<byte>(), EthereumJsonSerializer.JsonOptions);
+        ByteArrayConverter.Convert(_writer, [], skipLeadingZeros: false);
         _writer.WriteEndObject();
 
         _writer.WritePropertyName("txHash"u8);
-        JsonSerializer.Serialize(_writer, _currentTxHash, EthereumJsonSerializer.JsonOptions);
+        WriteTxHashOrNull(currentTxHash);
         _writer.WriteEndObject();
-        _innerEnvelopeOpen = false;
-        _currentTxHash = null;
+    }
+
+    private void WriteTxHashOrNull(Hash256? hash)
+    {
+        if (hash is null) _writer.WriteNullValue();
+        else HexWriter.WriteFixed32HexRawValue(_writer, hash.ValueHash256.Bytes);
     }
 }

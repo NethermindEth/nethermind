@@ -33,7 +33,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     /// <see cref="PayloadStatus.InvalidInclusionList"/> when any IL tx is valid but missing.
     /// <see href="https://github.com/ethereum/execution-apis/pull/609">execution-apis#609</see>.
     /// </summary>
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
         => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions), EngineApiVersions.NewPayload.V6);
 
     /// <summary>

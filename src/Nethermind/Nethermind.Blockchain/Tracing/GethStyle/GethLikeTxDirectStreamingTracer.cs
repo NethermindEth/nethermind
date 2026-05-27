@@ -11,11 +11,11 @@ using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
@@ -272,11 +272,10 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private void WriteStackArrayIfPresent()
     {
         _writer.WriteStartArray("stack"u8);
-        Span<byte> hexBuffer = stackalloc byte[2 + EvmWordSize * 2];
         for (int offset = 0; offset < _stackByteCount; offset += EvmWordSize)
         {
-            int written = FormatHexAscii(_stackBuffer!.AsSpan(offset, EvmWordSize), hexBuffer, withPrefix: true, trimLeadingZeros: true);
-            _writer.WriteStringValue(hexBuffer[..written]);
+            ReadOnlySpan<byte> word = _stackBuffer!.AsSpan(offset, EvmWordSize);
+            HexWriter.WriteUInt256HexRawValue(_writer, new UInt256(word, isBigEndian: true));
         }
         _writer.WriteEndArray();
     }
@@ -284,7 +283,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private void WriteMemoryArrayIfPresent()
     {
         _writer.WriteStartArray("memory"u8);
-        Span<byte> hexBuffer = stackalloc byte[EvmWordSize * 2];
         for (int offset = 0; offset < _memoryByteCount; offset += EvmWordSize)
         {
             ReadOnlySpan<byte> slot = _memoryBuffer!.AsSpan(offset, EvmWordSize);
@@ -294,8 +292,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
             }
             else
             {
-                slot.OutputBytesToByteHex(hexBuffer, extraNibble: false);
-                _writer.WriteStringValue(hexBuffer);
+                HexWriter.WriteFixed32HexRawValue(_writer, slot, addHexPrefix: false);
             }
         }
         _writer.WriteEndArray();
@@ -307,19 +304,10 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         PooledDictionary<UInt256, UInt256> top = _storageByDepth![_activeStorageDepth - 1];
 
         _writer.WriteStartObject("storage"u8);
-        Span<byte> keyBytes = stackalloc byte[EvmWordSize];
-        Span<byte> valueBytes = stackalloc byte[EvmWordSize];
-        Span<byte> keyHex = stackalloc byte[EvmWordSize * 2];
-        Span<byte> valueHex = stackalloc byte[EvmWordSize * 2];
         foreach (KeyValuePair<UInt256, UInt256> kv in top)
         {
-            kv.Key.ToBigEndian(keyBytes);
-            ((ReadOnlySpan<byte>)keyBytes).OutputBytesToByteHex(keyHex, extraNibble: false);
-            _writer.WritePropertyName(keyHex);
-
-            kv.Value.ToBigEndian(valueBytes);
-            ((ReadOnlySpan<byte>)valueBytes).OutputBytesToByteHex(valueHex, extraNibble: false);
-            _writer.WriteStringValue(valueHex);
+            HexWriter.WriteUInt256HexPropertyName(_writer, kv.Key, zeroPadded: true, addHexPrefix: false);
+            HexWriter.WriteUInt256HexRawValue(_writer, kv.Value, zeroPadded: true, addHexPrefix: false);
         }
         _writer.WriteEndObject();
     }
@@ -333,49 +321,4 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _entriesSinceLastFlush = 0;
     }
 
-    internal static int FormatHexAscii(ReadOnlySpan<byte> source, Span<byte> destination, bool withPrefix, bool trimLeadingZeros)
-    {
-        int outIdx = 0;
-        int start = 0;
-        bool emittedAny = false;
-
-        if (withPrefix)
-        {
-            destination[outIdx++] = (byte)'0';
-            destination[outIdx++] = (byte)'x';
-        }
-
-        if (trimLeadingZeros)
-        {
-            while (start < source.Length && source[start] == 0) start++;
-            if (start < source.Length)
-            {
-                byte first = source[start];
-                if (first <= 0xF)
-                {
-                    destination[outIdx++] = NibbleAscii(first);
-                    emittedAny = true;
-                    start++;
-                }
-            }
-        }
-
-        for (int i = start; i < source.Length; i++)
-        {
-            byte b = source[i];
-            destination[outIdx++] = NibbleAscii((b >> 4) & 0xF);
-            destination[outIdx++] = NibbleAscii(b & 0xF);
-            emittedAny = true;
-        }
-
-        if (trimLeadingZeros && !emittedAny)
-        {
-            destination[outIdx++] = (byte)'0';
-        }
-
-        return outIdx;
-    }
-
-    private static byte NibbleAscii(int nibble) =>
-        nibble < 10 ? (byte)('0' + nibble) : (byte)('a' + (nibble - 10));
 }

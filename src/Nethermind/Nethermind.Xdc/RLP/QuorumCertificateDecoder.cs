@@ -3,12 +3,11 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 using System;
 using BlockRoundInfo = Nethermind.Xdc.Types.BlockRoundInfo;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RLP;
 
 internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
 {

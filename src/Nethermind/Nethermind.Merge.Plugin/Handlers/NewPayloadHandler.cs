@@ -14,6 +14,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
