@@ -33,7 +33,7 @@ public class StartingSyncPivotUpdater : IDisposable
 
     private CancellationTokenSource? _cancellation = new();
 
-    private static int _maxAttempts;
+    private int _maxAttempts;
     private int _attemptsLeft;
     private int _updateInProgress;
     private Hash256 _alreadyAnnouncedNewPivotHash = Keccak.Zero;
@@ -69,32 +69,50 @@ public class StartingSyncPivotUpdater : IDisposable
 
     private async void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs syncMode)
     {
-        if ((syncMode.Current & SyncMode.UpdatingPivot) != 0 && Interlocked.CompareExchange(ref _updateInProgress, 1, 0) == 0)
+        CancellationTokenSource? cancellation = _cancellation;
+        if (cancellation is null)
         {
-            if (await TrySetFreshPivot(_cancellation!.Token))
+            return;
+        }
+
+        try
+        {
+            CancellationToken token = cancellation.Token;
+
+            if ((syncMode.Current & SyncMode.UpdatingPivot) != 0 && Interlocked.CompareExchange(ref _updateInProgress, 1, 0) == 0)
             {
-                _syncModeSelector.Changed -= OnSyncModeChanged;
+                if (await TrySetFreshPivot(token))
+                {
+                    _syncModeSelector.Changed -= OnSyncModeChanged;
+                }
+                else if (_attemptsLeft-- > 0 || _maxAttempts == ISyncConfig.InfiniteAttempts)
+                {
+                    Interlocked.CompareExchange(ref _updateInProgress, 0, 1);
+                }
+                else
+                {
+                    _syncModeSelector.Changed -= OnSyncModeChanged;
+                    _syncConfig.MaxAttemptsToUpdatePivot = 0;
+                    _beaconSyncStrategy.AllowBeaconHeaderSync();
+                    if (_logger.IsInfo) _logger.Info("Failed to update pivot block, skipping it and using pivot from config file.");
+                }
             }
-            else if (_attemptsLeft-- > 0 || _maxAttempts == ISyncConfig.InfiniteAttempts)
-            {
-                Interlocked.CompareExchange(ref _updateInProgress, 0, 1);
-            }
-            else
+
+            // if sync mode is different than UpdatePivot, it means it will never be in UpdatePivot
+            if ((syncMode.Current & SyncMode.UpdatingPivot) == 0)
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
                 _syncConfig.MaxAttemptsToUpdatePivot = 0;
                 _beaconSyncStrategy.AllowBeaconHeaderSync();
-                if (_logger.IsInfo) _logger.Info("Failed to update pivot block, skipping it and using pivot from config file.");
+                if (_logger.IsInfo) _logger.Info("Skipping pivot update");
             }
         }
-
-        // if sync mode is different than UpdatePivot, it means it will never be in UpdatePivot
-        if ((syncMode.Current & SyncMode.UpdatingPivot) == 0)
+        catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException)
         {
-            _syncModeSelector.Changed -= OnSyncModeChanged;
-            _syncConfig.MaxAttemptsToUpdatePivot = 0;
-            _beaconSyncStrategy.AllowBeaconHeaderSync();
-            if (_logger.IsInfo) _logger.Info("Skipping pivot update");
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Unexpected error while updating the starting sync pivot.", e);
         }
     }
 

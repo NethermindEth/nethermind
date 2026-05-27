@@ -25,10 +25,10 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     private readonly IPeerDifficultyRefreshPool _syncPeerPool;
     private static readonly TimeSpan _minRefreshDelay = TimeSpan.FromSeconds(10);
     private DateTime _lastRefresh = DateTime.MinValue;
-    private (Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
+    private volatile Blockhashes _lastBlockhashes = new(Keccak.Zero, Keccak.Zero, Keccak.Zero);
     private readonly ITimer _refreshTimer;
     private readonly ILogger _logger;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public PeerRefresher(IPeerDifficultyRefreshPool syncPeerPool, ITimerFactory timerFactory, ILogManager logManager)
     {
@@ -42,7 +42,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     public void RefreshPeers(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {
         if (_disposed) return;
-        _lastBlockhashes = (headBlockhash, headParentBlockhash, finalizedBlockhash);
+        _lastBlockhashes = new Blockhashes(headBlockhash, headParentBlockhash, finalizedBlockhash);
         TimeSpan timePassed = DateTime.UtcNow - _lastRefresh;
         if (timePassed > _minRefreshDelay)
         {
@@ -55,7 +55,11 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         }
     }
 
-    private void TimerOnElapsed(object? sender, EventArgs e) => Refresh(_lastBlockhashes.headBlockhash, _lastBlockhashes.headParentBlockhash, _lastBlockhashes.finalizedBlockhash);
+    private void TimerOnElapsed(object? sender, EventArgs e)
+    {
+        Blockhashes last = _lastBlockhashes;
+        Refresh(last.HeadBlockhash, last.HeadParentBlockhash, last.FinalizedBlockhash);
+    }
 
     private void Refresh(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {
@@ -217,6 +221,8 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         }
         return default;
     }
+
+    private sealed record Blockhashes(Hash256 HeadBlockhash, Hash256 HeadParentBlockhash, Hash256 FinalizedBlockhash);
 }
 
 public interface IPeerRefresher
