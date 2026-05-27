@@ -25,7 +25,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
     [TestFixture]
     public class KademliaNodeSourceTests
     {
-        private IKademlia<PublicKey, Node> _kademlia = null!;
+        private TestKademlia _kademlia = null!;
         private IIteratorNodeLookup<PublicKey, Node> _lookup = null!;
         private IKademliaDiscv4Adapter _discv4Adapter = null!;
         private KademliaNodeSource _nodeSource = null!;
@@ -33,17 +33,23 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         private INodeStats _nodeStats = null!;
         private ManualTimestamper _timestamper = null!;
         private DiscoveryConfig _discoveryConfig = null!;
+        private KademliaConfig<Node> _kademliaConfig = null!;
 
         [SetUp]
         public void Setup()
         {
-            _kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+            _kademlia = new();
             _lookup = Substitute.For<IIteratorNodeLookup<PublicKey, Node>>();
             _discv4Adapter = Substitute.For<IKademliaDiscv4Adapter>();
 
             _discoveryConfig = new DiscoveryConfig
             {
                 ConcurrentDiscoveryJob = 2
+            };
+            _kademliaConfig = new()
+            {
+                CurrentNodeId = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303),
+                KSize = 1
             };
 
             _nodeStats = Substitute.For<INodeStats>();
@@ -58,6 +64,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 _lookup,
                 _discv4Adapter,
                 _discoveryConfig,
+                _kademliaConfig,
                 LimboLogs.Instance);
         }
 
@@ -181,8 +188,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
 
-            // Simulate node added event
-            _kademlia.OnNodeAdded += Raise.Event<EventHandler<Node>>(null, node2);
+            _kademlia.RaiseNodeAdded(node2);
 
             // Continue iterating
             await enumerator.MoveNextAsync();
@@ -257,6 +263,41 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Assert.That(nodes, Is.EqualTo(new[] { node }));
         }
 
+        [Test]
+        [CancelAfter(10000)]
+        public async Task DiscoverNodes_should_release_event_reservation_when_channel_is_full(CancellationToken token)
+        {
+            _discoveryConfig.ConcurrentDiscoveryJob = 0;
+            Node starterNode = CreateNode(1000);
+            Node[] queuedNodes = Enumerable.Range(0, 65).Select(CreateNode).ToArray();
+
+            await using IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
+            ValueTask<bool> firstMove = enumerator.MoveNextAsync();
+            await Task.Yield();
+            _kademlia.RaiseNodeAdded(starterNode);
+
+            Assert.That(await firstMove.AsTask(), Is.True);
+            Assert.That(enumerator.Current, Is.EqualTo(starterNode));
+
+            foreach (Node node in queuedNodes)
+            {
+                _kademlia.RaiseNodeAdded(node);
+            }
+
+            for (int i = 0; i < 64; i++)
+            {
+                Assert.That(await enumerator.MoveNextAsync(), Is.True);
+                Assert.That(enumerator.Current, Is.EqualTo(queuedNodes[i]));
+            }
+
+            ValueTask<bool> retryMove = enumerator.MoveNextAsync();
+            await Task.Yield();
+            _kademlia.RaiseNodeAdded(queuedNodes[64]);
+
+            Assert.That(await retryMove.AsTask(), Is.True);
+            Assert.That(enumerator.Current, Is.EqualTo(queuedNodes[64]));
+        }
+
         private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(params IEnumerable<T> items)
         {
             foreach (T item in items)
@@ -264,6 +305,41 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 await Task.Yield(); // Add an await to make the method truly async
                 yield return item;
             }
+        }
+
+        private static Node CreateNode(int index)
+        {
+            byte[] publicKey = new byte[PublicKey.LengthInBytes];
+            publicKey[60] = (byte)(index >> 24);
+            publicKey[61] = (byte)(index >> 16);
+            publicKey[62] = (byte)(index >> 8);
+            publicKey[63] = (byte)index;
+            return new Node(new PublicKey(publicKey), $"192.168.{index / 256}.{index % 256}", 30303);
+        }
+
+        private sealed class TestKademlia : IKademlia<PublicKey, Node>
+        {
+            public event EventHandler<Node>? OnNodeAdded;
+            public event EventHandler<Node>? OnNodeRemoved { add { } remove { } }
+
+            public void RaiseNodeAdded(Node node) => OnNodeAdded?.Invoke(this, node);
+
+            public void AddOrRefresh(Node node) => throw new NotSupportedException();
+
+            public void Remove(Node node) => throw new NotSupportedException();
+
+            public Task Run(CancellationToken token) => Task.CompletedTask;
+
+            public Task Bootstrap(CancellationToken token) => Task.CompletedTask;
+
+            public Task<Node[]> LookupNodesClosest(PublicKey key, CancellationToken token, int? k = null) =>
+                Task.FromResult(Array.Empty<Node>());
+
+            public Node[] GetKNeighbour(PublicKey target, Node? excluding = null, bool excludeSelf = false) => [];
+
+            public Node[] GetAllAtDistance(int distance) => [];
+
+            public IEnumerable<Node> IterateNodes() => [];
         }
     }
 }

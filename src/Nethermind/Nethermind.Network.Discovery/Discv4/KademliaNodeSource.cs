@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
@@ -17,18 +17,24 @@ public class KademliaNodeSource(
     IIteratorNodeLookup<PublicKey, Node> lookup,
     IKademliaDiscv4Adapter discv4Adapter,
     IDiscoveryConfig discoveryConfig,
+    KademliaConfig<Node> kademliaConfig,
     ILogManager logManager)
     : IKademliaNodeSource
 {
+    private const int ChannelCapacity = 64;
+
     private readonly ILogger _logger = logManager.GetClassLogger<KademliaNodeSource>();
+    private readonly int _recentNodeLimit = Math.Max(ChannelCapacity, kademliaConfig.KSize * Hash256XorUtils.MaxDistance);
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
         if (_logger.IsDebug) _logger.Debug($"Starting discover nodes");
         using CancellationTokenSource disposeCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         CancellationToken discoveryToken = disposeCts.Token;
-        Channel<Node> ch = Channel.CreateBounded<Node>(64);
-        ConcurrentDictionary<ValueHash256, ValueHash256> writtenNodes = new();
+        Channel<Node> ch = Channel.CreateBounded<Node>(ChannelCapacity);
+        LinkedList<ValueHash256> recentlyWrittenNodes = [];
+        Dictionary<ValueHash256, LinkedListNode<ValueHash256>> writtenNodes = [];
+        object writtenNodesLock = new();
         int duplicated = 0;
         int total = 0;
 
@@ -60,12 +66,21 @@ public class KademliaNodeSource(
                 anyFound = true;
                 count++;
                 total++;
-                if (!writtenNodes.TryAdd(node.IdHash, node.IdHash))
+                if (!TryReserveNode(node.IdHash))
                 {
                     duplicated++;
                     continue;
                 }
-                await ch.Writer.WriteAsync(node, discoveryToken);
+
+                try
+                {
+                    await ch.Writer.WriteAsync(node, discoveryToken);
+                }
+                catch
+                {
+                    ReleaseReservedNode(node.IdHash);
+                    throw;
+                }
             }
 
             if (!anyFound)
@@ -135,8 +150,50 @@ public class KademliaNodeSource(
 
         void Handler(object? _, Node addedNode)
         {
-            writtenNodes.TryAdd(addedNode.IdHash, addedNode.IdHash);
-            ch.Writer.TryWrite(addedNode); // Ignore if channel full
+            if (!TryReserveNode(addedNode.IdHash))
+            {
+                return;
+            }
+
+            if (ch.Writer.TryWrite(addedNode))
+            {
+                return;
+            }
+
+            ReleaseReservedNode(addedNode.IdHash);
+        }
+
+        bool TryReserveNode(ValueHash256 nodeId)
+        {
+            lock (writtenNodesLock)
+            {
+                if (writtenNodes.ContainsKey(nodeId))
+                {
+                    return false;
+                }
+
+                LinkedListNode<ValueHash256> listNode = recentlyWrittenNodes.AddLast(nodeId);
+                writtenNodes.Add(nodeId, listNode);
+                while (writtenNodes.Count > _recentNodeLimit)
+                {
+                    LinkedListNode<ValueHash256> oldestNode = recentlyWrittenNodes.First!;
+                    recentlyWrittenNodes.RemoveFirst();
+                    writtenNodes.Remove(oldestNode.Value);
+                }
+
+                return true;
+            }
+        }
+
+        void ReleaseReservedNode(ValueHash256 nodeId)
+        {
+            lock (writtenNodesLock)
+            {
+                if (writtenNodes.Remove(nodeId, out LinkedListNode<ValueHash256>? listNode))
+                {
+                    recentlyWrittenNodes.Remove(listNode);
+                }
+            }
         }
     }
 }

@@ -153,6 +153,33 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
         [Test]
         [CancelAfter(10000)]
+        public async Task Lookup_should_not_cache_node_as_unreachable_when_lookup_is_cancelled(CancellationToken token)
+        {
+            RoutingTableReturns(InitialNode);
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+
+            _msgSender.FindNeighbours(InitialNode, _targetKey, Arg.Any<CancellationToken>())
+                .Returns(call =>
+                {
+                    cts.Cancel();
+                    return Task.FromException<Node[]>(new OperationCanceledException((CancellationToken)call[2]));
+                });
+
+            Assert.ThrowsAsync<OperationCanceledException>(async () => await _lookup.Lookup(_targetKey, cts.Token).ToListAsync());
+
+            FindNeighboursReturns(InitialNode, NeighbourNode);
+
+            List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync(token);
+
+            Assert.That(result, Is.EquivalentTo(new[] { InitialNode, NeighbourNode }));
+            await _msgSender.Received(2).FindNeighbours(
+                Arg.Is<Node>(n => n == InitialNode),
+                Arg.Is<PublicKey>(k => k == _targetKey),
+                Arg.Any<CancellationToken>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task Lookup_should_not_query_same_node_twice(CancellationToken token)
         {
             RoutingTableReturns(InitialNode);

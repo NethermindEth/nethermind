@@ -182,6 +182,11 @@ public class IteratorNodeLookup<TKey, TNode>(
                 : await msgSender.FindNeighbours(node, target, token);
         }
         catch (OperationCanceledException)
+            when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             _unreachableNodes.Set(keyOperator.GetNodeHash(node), timestamper.UtcNowOffset);
             return null;
