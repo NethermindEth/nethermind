@@ -103,8 +103,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
 
-            // Each of the concurrent discovery jobs pings the node once. The node can be yielded before
-            // the other job has pinged it, so poll for the count instead of asserting it immediately.
             Assert.That(() => Volatile.Read(ref pingCount), Is.GreaterThanOrEqualTo(2).After(5000, 50));
         }
 
@@ -163,9 +161,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await enumerator.MoveNextAsync();
             Assert.That(enumerator.Current, Is.EqualTo(node2));
 
-            // Each of the concurrent discovery jobs pings node1 once; the ping timeout must not stop
-            // discovery. node2 can be yielded before the other job has pinged node1, so poll for the
-            // count instead of asserting it immediately (the immediate check is racy).
             Assert.That(() => Volatile.Read(ref node1PingCount), Is.GreaterThanOrEqualTo(2).After(5000, 50));
         }
 
