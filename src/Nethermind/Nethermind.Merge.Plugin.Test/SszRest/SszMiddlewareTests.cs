@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
@@ -182,8 +181,8 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        ctx.Response.ContentType.Should().Contain(OctetStream);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
         await _engineModule.Received(version == 1 ? 1 : 0).engine_newPayloadV1(Arg.Any<ExecutionPayload>());
         await _engineModule.Received(version == 2 ? 1 : 0).engine_newPayloadV2(Arg.Any<ExecutionPayload>());
     }
@@ -201,8 +200,8 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        ctx.Response.Headers["Cache-Control"].ToString().Should().Contain("no-store");
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.Headers["Cache-Control"].ToString(), Does.Contain("no-store"));
         await _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadV1(Arg.Any<byte[]>());
         await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadV2(Arg.Any<byte[]>());
     }
@@ -231,7 +230,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
 
         int v1Calls = version == 1 ? 1 : 0;
         int v2Calls = version == 2 ? 1 : 0;
@@ -257,7 +256,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         await _engineModule.Received(1).engine_getBlobsV1(Arg.Any<byte[][]>());
         await _engineModule.DidNotReceive().engine_getBlobsV2(Arg.Any<byte[][]>());
         await _engineModule.DidNotReceive().engine_getBlobsV3(Arg.Any<byte[][]>());
@@ -276,7 +275,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
         await _engineModule.Received(isV3 ? 0 : 1).engine_getBlobsV2(Arg.Any<byte[][]>());
         await _engineModule.Received(isV3 ? 1 : 0).engine_getBlobsV3(Arg.Any<byte[][]>());
     }
@@ -297,7 +296,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadBodiesByHashV1(Arg.Any<IReadOnlyList<Hash256>>());
         await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadBodiesByHashV2(Arg.Any<IReadOnlyList<Hash256>>());
     }
@@ -328,8 +327,8 @@ public class SszMiddlewareTests
 
         long capturedStart = version == 1 ? v1Start : v2Start;
         long capturedCount = version == 1 ? v1Count : v2Count;
-        capturedStart.Should().Be(expectedStart);
-        capturedCount.Should().Be(expectedCount);
+        Assert.That(capturedStart, Is.EqualTo(expectedStart));
+        Assert.That(capturedCount, Is.EqualTo(expectedCount));
     }
 
     [Test]
@@ -344,8 +343,8 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        ctx.Response.ContentType.Should().Contain(OctetStream);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
     }
 
     [Test]
@@ -360,9 +359,9 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        ctx.Response.ContentType.Should().Contain(OctetStream);
-        ResponseBytes(ctx).Length.Should().BeGreaterThan(0);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        Assert.That(ResponseBytes(ctx).Length, Is.GreaterThan(0));
     }
 
     [Test]
@@ -375,7 +374,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status401Unauthorized));
         await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
@@ -388,7 +387,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
         await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
@@ -401,8 +400,8 @@ public class SszMiddlewareTests
 
         await mw.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
-        nextInvoked.Should().BeFalse("SSZ middleware should reply 404 itself, not delegate to JSON-RPC");
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+        Assert.That(nextInvoked, Is.False, "SSZ middleware should reply 404 itself, not delegate to JSON-RPC");
     }
 
     [Test]
@@ -412,7 +411,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
         await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
@@ -425,7 +424,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
         await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
@@ -439,9 +438,9 @@ public class SszMiddlewareTests
 
         Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
-        await act.Should().NotThrowAsync();
+        Assert.That(async () => await act(), Throws.Nothing);
         // Per execution-apis #764: malformed SSZ encoding maps to 400 Bad Request.
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
     }
 
     [Test]
@@ -454,8 +453,8 @@ public class SszMiddlewareTests
 
         Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
-        await act.Should().NotThrowAsync();
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+        Assert.That(async () => await act(), Throws.Nothing);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
     }
 
     [Test]
@@ -469,8 +468,8 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status204NoContent);
-        ResponseBytes(ctx).Should().BeEmpty("204 responses must have no body");
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
+        Assert.That(ResponseBytes(ctx), Is.Empty, "204 responses must have no body");
     }
 
     [Test]
@@ -480,7 +479,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
     }
 
     [Test]
@@ -508,8 +507,8 @@ public class SszMiddlewareTests
         // With the fix: the outer catch sees RequestAborted is cancelled and does NOT
         // call WriteErrorAsync. StatusCode remains the DefaultHttpContext default (200);
         // crucially it must NOT be 500.
-        ctx.Response.StatusCode.Should().NotBe(StatusCodes.Status500InternalServerError);
-        ResponseBytes(ctx).Should().BeEmpty("aborted request must not have an error body written");
+        Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status500InternalServerError));
+        Assert.That(ResponseBytes(ctx), Is.Empty, "aborted request must not have an error body written");
     }
 
     [Test]
@@ -526,8 +525,8 @@ public class SszMiddlewareTests
 
         await middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status204NoContent);
-        ResponseBytes(ctx).Should().BeEmpty();
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
+        Assert.That(ResponseBytes(ctx), Is.Empty);
     }
 
     private sealed class ZeroLengthEncodeHandler : SszEndpointHandlerBase
@@ -637,13 +636,13 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(expectedStatus);
-        ctx.Response.ContentType.Should().Contain("application/json");
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
         string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
-        body.Should().Contain("\"code\"");
-        body.Should().Contain("\"message\"");
+        Assert.That(body, Does.Contain("\"code\""));
+        Assert.That(body, Does.Contain("\"message\""));
         Action parse = () => System.Text.Json.JsonDocument.Parse(body);
-        parse.Should().NotThrow("error body must be valid JSON");
+        Assert.That(parse, Throws.Nothing, "error body must be valid JSON");
     }
 
     [Test]
@@ -672,20 +671,20 @@ public class SszMiddlewareTests
 
         await _engineModule.Received(1).engine_newPayloadWithWitness(
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK,
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
             "VALID with a successfully generated witness must return 200 OK");
-        ctx.Response.ContentType.Should().Contain(OctetStream,
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream),
             "successful SSZ responses must use application/octet-stream");
 
         byte[] responseBody = ResponseBytes(ctx);
-        responseBody.Should().NotBeEmpty("the SSZ body must contain the encoded response");
+        Assert.That(responseBody, Is.Not.Empty, "the SSZ body must contain the encoded response");
 
         (byte decodedStatus, Hash256? decodedLvh, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(responseBody);
-        decodedStatus.Should().Be(0,
+        Assert.That(decodedStatus, Is.EqualTo(0),
             "decoded status byte must match VALID");
-        decodedLvh.Should().Be(TestItem.KeccakA,
+        Assert.That(decodedLvh, Is.EqualTo(TestItem.KeccakA),
             "latest_valid_hash Union Some variant must round-trip the hash correctly");
-        witnessPresent.Should().BeTrue(
+        Assert.That(witnessPresent, Is.True,
             "a VALID response with a generated witness must encode the witness as Union Some (selector 0x01)");
     }
 
@@ -705,15 +704,15 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK,
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
             "the block is accepted even when witness generation fails; CL must not see 500");
-        ctx.Response.ContentType.Should().Contain(OctetStream);
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
 
         byte[] responseBody = ResponseBytes(ctx);
-        responseBody.Should().NotBeEmpty();
+        Assert.That(responseBody, Is.Not.Empty);
         (byte decodedStatus, _, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(responseBody);
-        decodedStatus.Should().Be(0);
-        witnessPresent.Should().BeFalse(
+        Assert.That(decodedStatus, Is.EqualTo(0));
+        Assert.That(witnessPresent, Is.False,
             "when witness generation fails the witness Union field must be None (selector 0x00)");
     }
 
@@ -727,9 +726,9 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status415UnsupportedMediaType,
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status415UnsupportedMediaType),
             "a POST with wrong Content-Type must receive 415, not fall through to 404");
-        ctx.Response.ContentType.Should().Contain("application/json");
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
     }
 
     [Test]
@@ -747,10 +746,10 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK,
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
             "SYNCING is a normal processing outcome and must return 200, not an HTTP error");
-        ctx.Response.ContentType.Should().Contain(OctetStream);
-        ResponseBytes(ctx).Should().NotBeEmpty("the SSZ body must contain the status fields");
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        Assert.That(ResponseBytes(ctx), Is.Not.Empty, "the SSZ body must contain the status fields");
     }
 
     [Test]
@@ -761,11 +760,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
-        ctx.Response.ContentType.Should().Contain("application/json",
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"),
             "error responses must be application/json per spec");
         string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
-        responseBody.Should().Contain("\"code\"");
+        Assert.That(responseBody, Does.Contain("\"code\""));
     }
 
     [Test]
@@ -775,9 +774,9 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status405MethodNotAllowed,
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status405MethodNotAllowed),
             "spec mandates 405 for any method other than POST on this endpoint");
-        ctx.Response.ContentType.Should().Contain("application/json");
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
     }
 
     [Test]
@@ -792,10 +791,10 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
-        ctx.Response.ContentType.Should().Contain("application/json");
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
         string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
-        responseBody.Should().Contain(MergeErrorCodes.UnsupportedFork.ToString(),
+        Assert.That(responseBody, Does.Contain(MergeErrorCodes.UnsupportedFork.ToString()),
             "the JSON-RPC error code -38005 must be present in the error body");
     }
 
@@ -807,9 +806,9 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound,
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound),
             "the witness endpoint has no versioned /engine/vN/ path; the versioned URL must return 404");
-        ctx.Response.ContentType.Should().Contain("application/json",
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"),
             "error responses must always be application/json");
     }
 
@@ -825,12 +824,12 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status500InternalServerError,
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status500InternalServerError),
             "non-UnsupportedFork engine errors must map to 500 Internal Server Error");
-        ctx.Response.ContentType.Should().Contain("application/json");
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
         string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
-        responseBody.Should().Contain("\"code\"");
-        responseBody.Should().Contain(ErrorCodes.InternalError.ToString());
+        Assert.That(responseBody, Does.Contain("\"code\""));
+        Assert.That(responseBody, Does.Contain(ErrorCodes.InternalError.ToString()));
     }
 
     private static byte[] BuildMinimalWitnessRequestBody()

@@ -15,7 +15,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Autofac.Core.Lifetime;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
@@ -230,7 +229,7 @@ public class EthereumRunnerTests
             }
 
             // Many components are not part of the step constructor param, so we have resolve them manually here
-            foreach (PropertyInfo? propertyInfo in api.GetType().Properties())
+            foreach (PropertyInfo? propertyInfo in api.GetType().GetProperties())
             {
                 // Property with `SkipServiceCollection` make property from container.
                 if (propertyInfo.GetCustomAttribute<SkipServiceCollectionAttribute>() is not null)

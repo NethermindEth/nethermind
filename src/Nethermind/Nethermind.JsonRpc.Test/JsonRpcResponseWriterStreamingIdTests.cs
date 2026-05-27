@@ -9,7 +9,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
@@ -55,7 +54,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         string envelope = Encoding.UTF8.GetString(read.Buffer.ToArray());
         await pipe.Reader.CompleteAsync();
 
-        envelope.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":\"ok\",\"id\":{serializedId}}}");
+        Assert.That(envelope, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"ok\",\"id\":{serializedId}}}"));
     }
 
     [Test]
@@ -63,6 +62,6 @@ public class JsonRpcResponseWriterStreamingIdTests
     {
         Action act = () => new JsonRpcId(1.5m);
 
-        act.Should().Throw<NotSupportedException>();
+        Assert.That(act, Throws.TypeOf<NotSupportedException>());
     }
 }

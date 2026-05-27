@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
@@ -76,7 +75,7 @@ public class Eip7981Tests
             + FloorPerToken * expectedTokens;
         long expectedFloor = GasCostOf.Transaction + FloorPerToken * expectedTokens;
 
-        cost.Should().Be(new EthereumIntrinsicGas(Standard: expectedStandard, FloorGas: expectedFloor));
+        Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: expectedStandard, FloorGas: expectedFloor)));
     }
 
     [Test]
@@ -84,9 +83,9 @@ public class Eip7981Tests
     {
         Transaction transaction = new() { To = Address.Zero, AccessList = null };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-        cost.Should().Be(new EthereumIntrinsicGas(
+        Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(
             Standard: GasCostOf.Transaction,
-            FloorGas: GasCostOf.Transaction));
+            FloorGas: GasCostOf.Transaction)));
     }
 
     [Test]
@@ -95,9 +94,9 @@ public class Eip7981Tests
         AccessList accessList = new AccessList.Builder().AddAddress(Address.Zero).Build();
         Transaction transaction = new() { To = Address.Zero, AccessList = accessList };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Prague.Instance);
-        cost.Should().Be(new EthereumIntrinsicGas(
+        Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(
             Standard: GasCostOf.Transaction + GasCostOf.AccessAccountListEntry,
-            FloorGas: GasCostOf.Transaction));
+            FloorGas: GasCostOf.Transaction)));
     }
 
     private static IEnumerable<TestCaseData> CalldataWithAccessListCases()
@@ -143,6 +142,6 @@ public class Eip7981Tests
         AccessList accessList = builder.Build();
         Transaction transaction = new() { To = Address.Zero, Data = data, AccessList = accessList };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-        cost.Should().Be(new EthereumIntrinsicGas(Standard: expectedStandard, FloorGas: expectedFloor));
+        Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: expectedStandard, FloorGas: expectedFloor)));
     }
 }

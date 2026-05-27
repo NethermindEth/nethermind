@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
@@ -73,7 +72,7 @@ public partial class EngineModuleTests
 
         Task<Witness?> task = rendezvous.RequestWitness(TestItem.KeccakA);
 
-        task.IsCompleted.Should().BeFalse(
+        Assert.That(task.IsCompleted, Is.False,
             "the task must remain pending until the block-processor decorator publishes a result");
     }
 
@@ -85,13 +84,13 @@ public partial class EngineModuleTests
         Hash256 hash = TestItem.KeccakD;
 
         Task<Witness?> captureTask = rendezvous.RequestWitness(hash);
-        rendezvous.HasPendingRequest(hash).Should().BeTrue();
+        Assert.That(rendezvous.HasPendingRequest(hash), Is.True);
 
         rendezvous.CancelWitnessRequest(hash);
 
-        rendezvous.HasPendingRequest(hash).Should().BeFalse(
+        Assert.That(rendezvous.HasPendingRequest(hash), Is.False,
             "CancelWitnessRequest must remove the entry");
-        captureTask.IsCanceled.Should().BeTrue(
+        Assert.That(captureTask.IsCanceled, Is.True,
             "CancelWitnessRequest must cancel the TCS so any awaiter gets OperationCanceledException");
     }
 
@@ -101,7 +100,7 @@ public partial class EngineModuleTests
     {
         WitnessRendezvous rendezvous = new();
         Action cancel = () => rendezvous.CancelWitnessRequest(Keccak.Zero);
-        cancel.Should().NotThrow("cancelling a non-existent request is a valid no-op");
+        Assert.That(cancel, Throws.Nothing, "cancelling a non-existent request is a valid no-op");
     }
 
     [Test]
@@ -114,9 +113,9 @@ public partial class EngineModuleTests
         Task<Witness?> first = rendezvous.RequestWitness(hash);
         Task<Witness?> second = rendezvous.RequestWitness(hash);
 
-        first.IsCanceled.Should().BeTrue(
+        Assert.That(first.IsCanceled, Is.True,
             "the orphaned TCS must be cancelled so any awaiter gets OperationCanceledException rather than hanging forever");
-        second.IsCompleted.Should().BeFalse("the replacement TCS is still pending");
+        Assert.That(second.IsCompleted, Is.False, "the replacement TCS is still pending");
     }
 
     [Test]
@@ -133,12 +132,12 @@ public partial class EngineModuleTests
 
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
-        captureTask.IsCompleted.Should().BeTrue(
+        Assert.That(captureTask.IsCompleted, Is.True,
             "the block-processor decorator must complete the TCS synchronously inside ProcessOne, " +
             "before engine_newPayloadV5 returns, so the handler's await is a non-blocking retrieval");
 
         using Witness? witness = await captureTask;
-        witness.Should().NotBeNull("a VALID block must produce a non-null witness");
+        Assert.That(witness, Is.Not.Null, "a VALID block must produce a non-null witness");
     }
 
     [Test]
@@ -152,7 +151,7 @@ public partial class EngineModuleTests
 
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
-        rendezvous.HasPendingRequest(payload.BlockHash!).Should().BeFalse(
+        Assert.That(rendezvous.HasPendingRequest(payload.BlockHash!), Is.False,
             "no entry should appear in the rendezvous for a plain engine_newPayloadV5 call");
     }
 
@@ -175,11 +174,11 @@ public partial class EngineModuleTests
         Task<Witness?> t2 = rendezvous.RequestWitness(p2.BlockHash!);
         await rpc.engine_newPayloadV5(p2, [], TestItem.KeccakE, r2 ?? []);
 
-        t1.IsCompletedSuccessfully.Should().BeTrue("block-1 task was completed during block-1");
-        t2.IsCompletedSuccessfully.Should().BeTrue("block-2 task must be completed during block-2");
+        Assert.That(t1.IsCompletedSuccessfully, Is.True, "block-1 task was completed during block-1");
+        Assert.That(t2.IsCompletedSuccessfully, Is.True, "block-2 task must be completed during block-2");
 
         using Witness? w2 = await t2;
-        w2.Should().NotBeNull("block 2 must produce a valid witness");
+        Assert.That(w2, Is.Not.Null, "block 2 must produce a valid witness");
     }
 
     [Test]
@@ -204,10 +203,10 @@ public partial class EngineModuleTests
         Task<Witness?> t3 = rendezvous.RequestWitness(p3.BlockHash!);
         await rpc.engine_newPayloadV5(p3, [], TestItem.KeccakE, r3 ?? []);
 
-        t3.IsCompletedSuccessfully.Should().BeTrue(
+        Assert.That(t3.IsCompletedSuccessfully, Is.True,
             "an armed capture for block 3 must succeed even after an uncaptured block 2");
         using Witness? w3 = await t3;
-        w3.Should().NotBeNull("block 3 must produce a valid witness");
+        Assert.That(w3, Is.Not.Null, "block 3 must produce a valid witness");
     }
 
     /// <summary>
@@ -247,9 +246,9 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Status.Should().Be(PayloadStatus.Valid);
-        result.Data.ExecutionWitness.Should().BeSameAs(expectedWitness);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(result.Data.ExecutionWitness, Is.SameAs(expectedWitness));
     }
 
     [Test]
@@ -268,9 +267,9 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Status.Should().Be(PayloadStatus.Valid);
-        result.Data.ExecutionWitness.Should().BeNull();
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(result.Data.ExecutionWitness, Is.Null);
     }
 
     private static IEnumerable<TestCaseData> NonValidOutcomes()
@@ -296,7 +295,7 @@ public partial class EngineModuleTests
 
         await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
 
-        rendezvous.HasPendingRequest(TestItem.KeccakA).Should().BeFalse(
+        Assert.That(rendezvous.HasPendingRequest(TestItem.KeccakA), Is.False,
             "the handler must cancel the rendezvous entry on every non-VALID outcome");
     }
 
@@ -318,9 +317,9 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await handler.HandleAsync(payload, [], TestItem.KeccakA, []);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure,
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure),
             "a null blockHash is a malformed payload — return InvalidParams instead of forwarding");
-        result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     [Test]
@@ -335,12 +334,12 @@ public partial class EngineModuleTests
             await chain.EngineRpcModule.engine_newPayloadWithWitness(
                 payload, [], TestItem.KeccakE, requests ?? []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         using Witness? witness = result.Data.ExecutionWitness;
-        witness.Should().NotBeNull("VALID block must include a witness");
-        witness!.State.Count.Should().BeGreaterThan(0,
+        Assert.That(witness, Is.Not.Null, "VALID block must include a witness");
+        Assert.That(witness!.State.Count, Is.GreaterThan(0),
             "witness State must contain at least the state root proof node");
     }
 
@@ -366,10 +365,10 @@ public partial class EngineModuleTests
             await chain.EngineRpcModule.engine_newPayloadWithWitness(
                 payload, [], TestItem.KeccakE, requests ?? []);
 
-        result.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         using Witness? witness = result.Data.ExecutionWitness;
-        witness.Should().NotBeNull();
-        witness!.State.Count.Should().BeGreaterThan(1,
+        Assert.That(witness, Is.Not.Null);
+        Assert.That(witness!.State.Count, Is.GreaterThan(1),
             "a transfer touches sender, recipient and fee-recipient: at least 2 proof paths");
     }
 
@@ -386,16 +385,16 @@ public partial class EngineModuleTests
                 payload, [], TestItem.KeccakE, requests ?? []);
 
         using Witness? witness = result.Data.ExecutionWitness;
-        witness.Should().NotBeNull();
+        Assert.That(witness, Is.Not.Null);
 
         foreach (byte[] node in witness!.State)
         {
-            node.Should().NotBeEmpty("every state node must be a non-empty RLP blob");
-            node.Length.Should().BeLessOrEqualTo(1_048_576,
+            Assert.That(node, Is.Not.Empty, "every state node must be a non-empty RLP blob");
+            Assert.That(node.Length, Is.LessThanOrEqualTo(1_048_576),
                 "each state element must not exceed MAX_WITNESS_ITEM_BYTES");
         }
 
-        witness.State.Count.Should().BeLessOrEqualTo(1_048_576,
+        Assert.That(witness.State.Count, Is.LessThanOrEqualTo(1_048_576),
             "State list must not exceed MAX_WITNESS_ITEMS");
     }
 
@@ -416,15 +415,15 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> res2 =
             await rpc.engine_newPayloadWithWitness(p2, [], TestItem.KeccakE, r2 ?? []);
 
-        res1.Data.Status.Should().Be(PayloadStatus.Valid);
-        res2.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(res1.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(res2.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         using Witness? w1 = res1.Data.ExecutionWitness;
         using Witness? w2 = res2.Data.ExecutionWitness;
 
-        w1.Should().NotBeNull();
-        w2.Should().NotBeNull();
-        w1.Should().NotBeSameAs(w2,
+        Assert.That(w1, Is.Not.Null);
+        Assert.That(w2, Is.Not.Null);
+        Assert.That(w1, Is.Not.SameAs(w2),
             "each block produces its own Witness instance; shared reference indicates a tracking bug");
     }
 
@@ -464,13 +463,13 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await chain.EngineRpcModule.engine_newPayloadWithWitness(bad, [], TestItem.KeccakE, requests ?? []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success,
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
             "non-VALID status must still yield HTTP 200 / RPC success per the spec");
-        result.Data.Status.Should().NotBe(PayloadStatus.Valid);
-        result.Data.ExecutionWitness.Should().BeNull(
+        Assert.That(result.Data.Status, Is.Not.EqualTo(PayloadStatus.Valid));
+        Assert.That(result.Data.ExecutionWitness, Is.Null,
             "spec: witness must be None when status is not VALID");
 
-        rendezvous.HasPendingRequest(Keccak.Zero).Should().BeFalse(
+        Assert.That(rendezvous.HasPendingRequest(Keccak.Zero), Is.False,
             "the handler must cancel the rendezvous entry on non-VALID outcomes");
     }
 
@@ -493,10 +492,10 @@ public partial class EngineModuleTests
             await chain.EngineRpcModule.engine_newPayloadWithWitness(
                 payload, [], TestItem.KeccakE, requests ?? []);
 
-        result.Data.Status.Should().Be(PayloadStatus.Valid);
-        result.Data.ExecutionWitness.Should().NotBeNull();
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(result.Data.ExecutionWitness, Is.Not.Null);
 
-        processCount.Should().Be(1,
+        Assert.That(processCount, Is.EqualTo(1),
             "Option A must execute the block exactly once; " +
             "a count of 2 means the old double-execution bug has regressed");
     }
@@ -514,9 +513,9 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> result =
             await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
-        result.Data.Status.Should().Be(PayloadStatus.Valid,
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid),
             "the witness infrastructure must be completely transparent to the normal path");
-        rendezvous.HasPendingRequest(hash).Should().BeFalse(
+        Assert.That(rendezvous.HasPendingRequest(hash), Is.False,
             "no rendezvous entry should exist for a plain engine_newPayloadV5 call");
     }
 
@@ -541,13 +540,13 @@ public partial class EngineModuleTests
             await chain.EngineRpcModule.engine_newPayloadWithWitness(
                 payload, [], TestItem.KeccakE, requests ?? []);
 
-        result.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         using Witness? witness = result.Data.ExecutionWitness;
-        witness.Should().NotBeNull();
+        Assert.That(witness, Is.Not.Null);
 
         foreach (byte[] node in witness!.State)
         {
-            node.Length.Should().BeGreaterThanOrEqualTo(1,
+            Assert.That(node.Length, Is.GreaterThanOrEqualTo(1),
                 "an empty node indicates drain ran before CommitTree populated the trie cache");
         }
     }
@@ -563,11 +562,11 @@ public partial class EngineModuleTests
             await chain.EngineRpcModule.engine_newPayloadWithWitness(
                 payload, [], TestItem.KeccakE, requests ?? []);
 
-        result.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         using Witness? witness = result.Data.ExecutionWitness;
-        witness.Should().NotBeNull();
+        Assert.That(witness, Is.Not.Null);
 
-        witness!.Headers.Count.Should().BeGreaterThanOrEqualTo(1,
+        Assert.That(witness!.Headers.Count, Is.GreaterThanOrEqualTo(1),
             "Witness.Headers must contain at least the parent block header " +
             "(WitnessGeneratingHeaderFinder.GetWitnessHeaders always includes parentHash).");
     }
@@ -584,12 +583,12 @@ public partial class EngineModuleTests
                 payload, [], TestItem.KeccakE, requests ?? []);
 
         using Witness? witness = result.Data.ExecutionWitness;
-        witness.Should().NotBeNull();
+        Assert.That(witness, Is.Not.Null);
 
         foreach (byte[] header in witness!.Headers)
         {
-            header.Should().NotBeEmpty("each header entry must be an RLP-encoded block header");
-            header.Length.Should().BeLessOrEqualTo(1_048_576,
+            Assert.That(header, Is.Not.Empty, "each header entry must be an RLP-encoded block header");
+            Assert.That(header.Length, Is.LessThanOrEqualTo(1_048_576),
                 "each header must fit within MAX_WITNESS_ITEM_BYTES per execution-apis#773");
         }
     }
@@ -616,13 +615,13 @@ public partial class EngineModuleTests
         Task improvementWait = chain.WaitForImprovedBlock(headHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult =
             await rpc.engine_forkchoiceUpdatedV4(fcu, attributes);
-        fcuResult.Result.ResultType.Should().Be(ResultType.Success);
+        Assert.That(fcuResult.Result.ResultType, Is.EqualTo(ResultType.Success));
 
         await improvementWait;
 
         byte[] payloadIdBytes = Nethermind.Core.Extensions.Bytes.FromHexString(fcuResult.Data.PayloadId!);
         ResultWrapper<GetPayloadV6Result?> getPayload = await rpc.engine_getPayloadV6(payloadIdBytes);
-        getPayload.Data.Should().NotBeNull();
+        Assert.That(getPayload.Data, Is.Not.Null);
 
         return (getPayload.Data!.ExecutionPayload, getPayload.Data!.ExecutionRequests);
     }

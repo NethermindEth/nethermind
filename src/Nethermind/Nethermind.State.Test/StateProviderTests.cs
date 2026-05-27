@@ -5,7 +5,6 @@
 
 using System;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -95,7 +94,7 @@ public class StateProviderTests(bool useFlat)
         provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
         provider.Commit(releaseSpec);
 
-        provider.AccountExists(systemUser).Should().BeTrue();
+        Assert.That(provider.AccountExists(systemUser), Is.True);
     }
 
     [Test]
@@ -126,7 +125,7 @@ public class StateProviderTests(bool useFlat)
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
         bool isEmpty = !provider.TryGetAccount(_address1, out AccountStruct account) || account.IsEmpty;
-        isEmpty.Should().BeTrue();
+        Assert.That(isEmpty, Is.True);
     }
 
     [Test]
@@ -136,7 +135,7 @@ public class StateProviderTests(bool useFlat)
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         byte[] code = provider.GetCode(TestItem.AddressA)!;
-        code.Should().BeEmpty();
+        Assert.That(code, Is.Empty);
     }
 
     [Test]
@@ -253,10 +252,10 @@ public class StateProviderTests(bool useFlat)
             provider.CreateAccount(TestItem.AddressA, 5);
             provider.CommitTree(0);
 
-            action.Should().NotThrow<InvalidOperationException>();
+            Assert.That(action, Throws.Nothing);
         }
 
-        action.Should().Throw<InvalidOperationException>();
+        Assert.That(action, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -293,7 +292,7 @@ public class StateProviderTests(bool useFlat)
                 worldState.InsertCode(addr, code, spec);
                 worldState.Commit(spec);
 
-                worldState.GetCode(addr).Should().BeEquivalentTo(code);
+                Assert.That(worldState.GetCode(addr), Is.EqualTo(code));
             }
 
             // End of scope #1 — overlay's temp KV is discarded.
@@ -308,8 +307,8 @@ public class StateProviderTests(bool useFlat)
                 worldState.InsertCode(addr, code, spec);
 
                 Action getCode = () => worldState.GetCode(addr);
-                getCode.Should().NotThrow();
-                worldState.GetCode(addr).Should().BeEquivalentTo(code);
+                Assert.That(getCode, Throws.Nothing);
+                Assert.That(worldState.GetCode(addr), Is.EqualTo(code));
             }
         }
         finally
@@ -333,6 +332,6 @@ public class CodeDbTests
 
         codeDb.MarkCodePersisted(hash);
 
-        codeDb.ContainsCode(hash).Should().Be(expectedContains);
+        Assert.That(codeDb.ContainsCode(hash), Is.EqualTo(expectedContains));
     }
 }
