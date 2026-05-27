@@ -8,7 +8,6 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
-using FluentAssertions;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -81,7 +80,7 @@ public class ChainSpecHardforkLabelTests
         foreach (string propName in label.EipPropertyNames)
         {
             object? actual = typeof(ChainParameters).GetProperty(propName)!.GetValue(spec.Parameters);
-            Convert.ToUInt64(actual).Should().Be(ActivationValue, $"{propName} should match the {label.LabelName} label");
+            Assert.That(Convert.ToUInt64(actual), Is.EqualTo(ActivationValue), $"{propName} should match the {label.LabelName} label");
         }
     }
 
@@ -100,8 +99,8 @@ public class ChainSpecHardforkLabelTests
         {
             string releaseProperty = $"IsEip{eip}Enabled";
             PropertyInfo? prop = typeof(ReleaseSpec).GetProperty(releaseProperty);
-            prop.Should().NotBeNull($"ReleaseSpec should expose {releaseProperty} for label '{label.LabelName}'");
-            ((bool)prop!.GetValue(fork)!).Should().Be(!isDisableLabel,
+            Assert.That(prop, Is.Not.Null, $"ReleaseSpec should expose {releaseProperty} for label '{label.LabelName}'");
+            Assert.That((bool)prop!.GetValue(fork)!, Is.EqualTo(!isDisableLabel),
                 $"label '{label.LabelName}' covers EIP-{eip}, but {fork.Name}.{releaseProperty} is {prop.GetValue(fork)}");
         }
     }
@@ -130,7 +129,7 @@ public class ChainSpecHardforkLabelTests
             // Skip EIPs that don't have a regular Eip{N}TransitionTimestamp counterpart on the JSON side.
             if (typeof(ChainSpecParamsJson).GetProperty($"Eip{eip}TransitionTimestamp") is null) continue;
 
-            labelEips.Should().Contain(eip,
+            Assert.That(labelEips, Does.Contain(eip),
                 $"{fork.Name} introduces EIP-{eip} over {parent.Name} — label '{label.LabelName}' should expand it");
         }
     }
@@ -140,8 +139,8 @@ public class ChainSpecHardforkLabelTests
     {
         ChainSpec spec = Load("\"cancun\": \"0x100\", \"eip4844TransitionTimestamp\": \"0x100\"");
 
-        spec.Parameters.Eip4844TransitionTimestamp.Should().Be(0x100);
-        spec.Parameters.Eip1153TransitionTimestamp.Should().Be(0x100);
+        Assert.That(spec.Parameters.Eip4844TransitionTimestamp, Is.EqualTo(0x100));
+        Assert.That(spec.Parameters.Eip1153TransitionTimestamp, Is.EqualTo(0x100));
     }
 
     // NamedForks is initialized with StringComparer.OrdinalIgnoreCase — these all resolve to the same label.
@@ -152,19 +151,18 @@ public class ChainSpecHardforkLabelTests
     {
         ChainSpec spec = Load(paramsJson);
 
-        spec.Parameters.Eip4844TransitionTimestamp.Should().Be(0x100);
-        spec.Parameters.Eip1153TransitionTimestamp.Should().Be(0x100);
+        Assert.That(spec.Parameters.Eip4844TransitionTimestamp, Is.EqualTo(0x100));
+        Assert.That(spec.Parameters.Eip1153TransitionTimestamp, Is.EqualTo(0x100));
     }
 
     [Test]
     public void Label_conflicting_with_explicit_eip_throws()
     {
-        Action act = () => Load("\"cancun\": \"0x100\", \"eip4844TransitionTimestamp\": \"0x200\"");
-
         // ChainSpecLoader.Load wraps the inner config exception in InvalidDataException.
-        act.Should().Throw<InvalidDataException>()
-            .WithInnerException<InvalidConfigurationException>()
-            .WithMessage("*Cancun*Eip4844TransitionTimestamp*");
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(
+            () => Load("\"cancun\": \"0x100\", \"eip4844TransitionTimestamp\": \"0x200\""))!;
+        Assert.That(exception.InnerException, Is.TypeOf<InvalidConfigurationException>());
+        Assert.That(exception.InnerException!.Message, Does.Contain("Cancun").And.Contain("Eip4844TransitionTimestamp"));
     }
 
     [Test]
@@ -172,9 +170,9 @@ public class ChainSpecHardforkLabelTests
     {
         ChainSpec spec = Load("\"shanghai\": \"0x0\", \"cancun\": \"0x0\", \"prague\": \"0x0\"");
 
-        spec.Genesis.Header.WithdrawalsRoot.Should().NotBeNull();
-        spec.Genesis.Header.ParentBeaconBlockRoot.Should().NotBeNull();
-        spec.Genesis.Header.RequestsHash.Should().NotBeNull();
+        Assert.That(spec.Genesis.Header.WithdrawalsRoot, Is.Not.Null);
+        Assert.That(spec.Genesis.Header.ParentBeaconBlockRoot, Is.Not.Null);
+        Assert.That(spec.Genesis.Header.RequestsHash, Is.Not.Null);
     }
 
     [Test]
@@ -182,10 +180,10 @@ public class ChainSpecHardforkLabelTests
     {
         ChainSpec spec = Load("\"eip4844TransitionTimestamp\": \"0x55\", \"eip4788TransitionTimestamp\": \"0x55\"");
 
-        spec.Parameters.Eip4844TransitionTimestamp.Should().Be(0x55);
-        spec.Parameters.Eip4788TransitionTimestamp.Should().Be(0x55);
+        Assert.That(spec.Parameters.Eip4844TransitionTimestamp, Is.EqualTo(0x55));
+        Assert.That(spec.Parameters.Eip4788TransitionTimestamp, Is.EqualTo(0x55));
         // Sibling EIPs not part of this declaration stay null.
-        spec.Parameters.Eip1153TransitionTimestamp.Should().BeNull();
+        Assert.That(spec.Parameters.Eip1153TransitionTimestamp, Is.Null);
     }
 
     private static string ToCamelCase(string name) =>

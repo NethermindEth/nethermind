@@ -16,9 +16,9 @@ public class SnapshotDecoderTests
 {
     private static readonly IRlpDecoder<Snapshot> Decoder = new SnapshotDecoder();
 
-    private static IEnumerable<Snapshot> Snapshots => [
-        new Snapshot(1, Keccak.EmptyTreeHash, []),
-        new Snapshot(3, Keccak.EmptyTreeHash, [Address.FromNumber(1), Address.FromNumber(2)]),
+    private static IEnumerable<TestCaseData> Snapshots => [
+        new TestCaseData(new Snapshot(1, Keccak.EmptyTreeHash, [])).SetName("EmptySigners"),
+        new TestCaseData(new Snapshot(3, Keccak.EmptyTreeHash, [Address.FromNumber(1), Address.FromNumber(2)])).SetName("WithSigners"),
     ];
 
     [Test, TestCaseSource(nameof(Snapshots))]

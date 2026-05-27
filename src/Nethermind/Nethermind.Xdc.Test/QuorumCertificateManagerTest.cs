@@ -61,31 +61,39 @@ public class QuorumCertificateManagerTest
         int quorumCount = (int)Math.Ceiling(keys.Length * 0.667);
 
         //Base valid control case
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Select(k => k.Address), true);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Select(k => k.Address), true)
+            .SetName("BaseValidControlCase");
 
         //Not enough signatures
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, [.. keys.Take(quorumCount - 1)]), headerBuilder, keys.Select(k => k.Address), false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, [.. keys.Take(quorumCount - 1)]), headerBuilder, keys.Select(k => k.Address), false)
+            .SetName("NotEnoughSignatures");
 
         //1 Vote is not master node
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Skip(1).Select(k => k.Address), false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Skip(1).Select(k => k.Address), false)
+            .SetName("VoteIsNotMasterNode");
 
         //Wrong gap number
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 1, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 1, keys), headerBuilder, masterNodes, false)
+            .SetName("WrongGapNumber");
 
         //Wrong block number in QC
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 2), 0, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 2), 0, keys), headerBuilder, masterNodes, false)
+            .SetName("WrongBlockNumber");
 
         //Wrong hash in QC
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), 0, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), 0, keys), headerBuilder, masterNodes, false)
+            .SetName("WrongHash");
 
         //Wrong round number in QC
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 0, 1), 0, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 0, 1), 0, keys), headerBuilder, masterNodes, false)
+            .SetName("WrongRoundNumber");
 
         //N byte-distinct signatures but only N-1 unique signer addresses (keys[0] signs twice via ECDSA malleability)
         BlockRoundInfo roundInfo = new(headerBuilder.TestObject.Hash!, 1, 1);
         Signature[] sigs = XdcTestHelper.CreateVoteSignatures(roundInfo, 0, [.. keys.Take(quorumCount - 1)]);
         Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
-        yield return new TestCaseData(new QuorumCertificate(roundInfo, [.. sigs, malleable], 0), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(new QuorumCertificate(roundInfo, [.. sigs, malleable], 0), headerBuilder, masterNodes, false)
+            .SetName("MalleableDuplicateSigner");
     }
 
     [TestCaseSource(nameof(QcCases))]

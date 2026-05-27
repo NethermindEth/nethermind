@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -45,8 +44,7 @@ public class EraImporterTests
 
         for (long i = 1; i < chainLength; i++)
         {
-            env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None).Should().NotBeNull(
-                $"block {i} should have been imported");
+            Assert.That(env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None), Is.Not.Null, $"block {i} should have been imported");
         }
     }
 
@@ -104,9 +102,9 @@ public class EraImporterTests
         await env.Sut.Import(env.ExportPath, 0, 15, null);
 
         for (long i = 1; i <= 15; i++)
-            env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None).Should().NotBeNull($"block {i} should have been imported");
+            Assert.That(env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None), Is.Not.Null, $"block {i} should have been imported");
 
-        env.TargetTree.FindBlock(16, BlockTreeLookupOptions.None).Should().BeNull("block 16 is outside the requested range");
+        Assert.That(env.TargetTree.FindBlock(16, BlockTreeLookupOptions.None), Is.Null, "block 16 is outside the requested range");
     }
 
     [Test]
@@ -140,13 +138,13 @@ public class EraImporterTests
             Block? original = sourceTree.FindBlock(i, BlockTreeLookupOptions.None);
             Block? imported = env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None);
 
-            imported.Should().NotBeNull($"block {i} should exist after import");
-            imported!.Hash.Should().Be(original!.Hash!, $"block {i} hash must match");
+            Assert.That(imported, Is.Not.Null, $"block {i} should exist after import");
+            Assert.That(imported!.Hash, Is.EqualTo(original!.Hash!), $"block {i} hash must match");
 
             TxReceipt[] originalReceipts = sourceReceipts.Get(original!);
             bool hasReceipts = targetReceipts.HasBlock(imported.Number, imported.Hash!);
             if (originalReceipts.Length > 0)
-                hasReceipts.Should().BeTrue($"receipts for block {i} should have been imported");
+                Assert.That(hasReceipts, Is.True, $"receipts for block {i} should have been imported");
         }
     }
 
@@ -177,13 +175,13 @@ public class EraImporterTests
             Block? original = sourceTree.FindBlock(i, BlockTreeLookupOptions.None);
             Block? imported = targetTree.FindBlock(i, BlockTreeLookupOptions.None);
 
-            imported.Should().NotBeNull($"post-merge block {i} should exist after import");
-            imported!.Hash.Should().Be(original!.Hash!, $"post-merge block {i} hash must match");
+            Assert.That(imported, Is.Not.Null, $"post-merge block {i} should exist after import");
+            Assert.That(imported!.Hash, Is.EqualTo(original!.Hash!), $"post-merge block {i} hash must match");
 
             TxReceipt[] originalReceipts = sourceReceipts.Get(original!);
             bool hasReceipts = targetReceipts.HasBlock(imported.Number, imported.Hash!);
             if (originalReceipts.Length > 0)
-                hasReceipts.Should().BeTrue($"receipts for post-merge block {i} should have been imported");
+                Assert.That(hasReceipts, Is.True, $"receipts for post-merge block {i} should have been imported");
         }
     }
 
@@ -219,8 +217,8 @@ public class EraImporterTests
         for (long i = 1; i < chainLength; i++)
         {
             Block? imported = targetTree.FindBlock(i, BlockTreeLookupOptions.None);
-            imported.Should().NotBeNull($"block {i} should exist");
-            imported!.TotalDifficulty.Should().NotBeNull($"block {i} should have TotalDifficulty after import");
+            Assert.That(imported, Is.Not.Null, $"block {i} should exist");
+            Assert.That(imported!.TotalDifficulty, Is.Not.Null, $"block {i} should have TotalDifficulty after import");
         }
     }
 

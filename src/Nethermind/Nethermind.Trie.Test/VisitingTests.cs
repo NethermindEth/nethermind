@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -51,14 +50,13 @@ public class VisitingTests
 
         foreach (byte[] path in visitor.LeafPaths)
         {
-            path.Length.Should().Be(64);
+            Assert.That(path.Length, Is.EqualTo(64));
 
             int index = path.AsSpan().IndexOfAnyExcept((byte)0);
 
-            path.AsSpan(index + 1).IndexOfAnyExcept((byte)0).Should()
-                .Be(-1, "Shall not found other values than the one nibble set");
-            path[index].Should().Be(1, "The given set should be 1 as this is the only nibble");
-            setNibbles.Remove(index).Should().BeTrue("The nibble should not have been removed before");
+            Assert.That(path.AsSpan(index + 1).IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Shall not found other values than the one nibble set");
+            Assert.That(path[index], Is.EqualTo(1), "The given set should be 1 as this is the only nibble");
+            Assert.That(setNibbles.Remove(index), Is.True, "The nibble should not have been removed before");
         }
     }
 
@@ -121,7 +119,7 @@ public class VisitingTests
             }
             else
             {
-                path.Length.Should().Be(128);
+                Assert.That(path.Length, Is.EqualTo(128));
 
                 byte[] accountPart = path.Slice(0, 64);
                 byte[] storagePart = path.Slice(64);
@@ -131,16 +129,15 @@ public class VisitingTests
             }
         }
 
-        totalPath.Should().Be(4160);
+        Assert.That(totalPath, Is.EqualTo(4160));
 
         return;
 
         static void AssertPath(ReadOnlySpan<byte> path)
         {
             int index = path.IndexOfAnyExcept((byte)0);
-            path[(index + 1)..].IndexOfAnyExcept((byte)0).Should()
-                .Be(-1, "Shall not found other values than the one nibble set");
-            path[index].Should().Be(1, "The given set should be 1 as this is the only nibble");
+            Assert.That(path[(index + 1)..].IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Shall not found other values than the one nibble set");
+            Assert.That(path[index], Is.EqualTo(1), "The given set should be 1 as this is the only nibble");
         }
     }
 

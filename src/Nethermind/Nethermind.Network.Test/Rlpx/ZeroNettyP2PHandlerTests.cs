@@ -5,7 +5,6 @@ using System;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -61,7 +60,7 @@ public class ZeroNettyP2PHandlerTests
             .Do(c =>
             {
                 ZeroPacket packet = (ZeroPacket)c[0];
-                packet.Content.ReadAllBytesAsArray().Should().BeEquivalentTo(msg);
+                Assert.That(packet.Content.ReadAllBytesAsArray(), Is.EqualTo(msg));
             });
 
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);

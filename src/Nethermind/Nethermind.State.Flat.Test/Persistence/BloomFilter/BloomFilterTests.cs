@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 using Bloom = Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter;
 
@@ -28,7 +27,7 @@ public class BloomFilterTests
 
         foreach (ulong hash in hashes)
         {
-            bloom.MightContain(hash).Should().BeTrue($"hash {hash} should be found");
+            Assert.That(bloom.MightContain(hash), Is.True, $"hash {hash} should be found");
         }
     }
 
@@ -56,7 +55,7 @@ public class BloomFilterTests
 
         foreach (ulong hash in addedHashes)
         {
-            bloom.MightContain(hash).Should().BeTrue($"hash {hash} should be found");
+            Assert.That(bloom.MightContain(hash), Is.True, $"hash {hash} should be found");
         }
     }
 
@@ -102,7 +101,7 @@ public class BloomFilterTests
     public void MightContain_BeforeAnyAdds_ShouldReturnFalse()
     {
         using Bloom bloom = NewBloom();
-        bloom.MightContain(99999).Should().BeFalse("empty bloom filter should return false for items not added");
+        Assert.That(bloom.MightContain(99999), Is.False, "empty bloom filter should return false for items not added");
     }
 
     [Test]
@@ -113,10 +112,10 @@ public class BloomFilterTests
 
         for (ulong i = 0; i < (ulong)totalItems; i++) bloom.Add(i);
 
-        bloom.Count.Should().Be(totalItems);
+        Assert.That(bloom.Count, Is.EqualTo(totalItems));
         for (ulong i = 0; i < 50; i++)
         {
-            bloom.MightContain(i).Should().BeTrue($"hash {i} should be found");
+            Assert.That(bloom.MightContain(i), Is.True, $"hash {i} should be found");
         }
     }
 
@@ -138,6 +137,6 @@ public class BloomFilterTests
     public void Constructor_AcceptsInitialCount()
     {
         using Bloom bloom = NewBloom(initialCount: 42);
-        bloom.Count.Should().Be(42);
+        Assert.That(bloom.Count, Is.EqualTo(42));
     }
 }
