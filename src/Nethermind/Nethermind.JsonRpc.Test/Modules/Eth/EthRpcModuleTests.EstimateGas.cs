@@ -544,6 +544,25 @@ public partial class EthRpcModuleTests
         JToken.Parse(serialized).Should().BeEquivalentTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x"},"id":67}""");
     }
 
+    [Test]
+    public async Task Eth_estimateGas_returns_execution_reverted_when_explicit_gas_is_below_intrinsic_but_target_reverts()
+    {
+        // Regression for #11768: Geth does not keep the initial low-gas intrinsic failure if the
+        // max-gas estimation probe reaches a real contract revert. Nethermind previously preserved
+        // the early "intrinsic gas too low" error from the first probe.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700","to":"0x252568abdeb9de59fd8963dfcd87be2db65f1ce1","gas":"0x3e8","gasPrice":"0xBA43B7400","data":"0xa9059cbb0000000000000000000000004debb0df4da8d1f51ef67b727c3f1c0ecc7ed00900000000000000000000000000000000000000000000000000000000000f4240"}""",
+            JsonSerializerOptions.Default)!;
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700":{"balance":"0x56bc75e2d63100000"},"0x252568abdeb9de59fd8963dfcd87be2db65f1ce1":{"code":"0x60006000fd"}}""",
+            JsonSerializerOptions.Default)!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+        JToken.Parse(serialized).Should().BeEquivalentTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x"},"id":67}""");
+    }
+
     private static readonly OverridableReleaseSpec Eip7976Spec = new(Prague.Instance) { IsEip7976Enabled = true };
     private static readonly OverridableReleaseSpec Eip7981Spec = new(Amsterdam.Instance) { IsEip7976Enabled = true, IsEip7981Enabled = true };
 

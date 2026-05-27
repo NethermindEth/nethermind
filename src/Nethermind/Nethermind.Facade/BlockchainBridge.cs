@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
@@ -251,19 +252,25 @@ namespace Nethermind.Facade
             {
                 null => error,
                 _ when error is null => err,
+                _ when error.StartsWith(TxErrorMessages.IntrinsicGasTooLow, StringComparison.Ordinal)
+                    && estimateGasTracer.TopLevelRevert => err,
                 _ when err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) => err,
                 GasEstimator.InsufficientBalance => err,
                 GasEstimator.InsufficientFundsForGas => err,
                 _ => error
             };
 
+            bool executionReverted = err is not null
+                ? estimateGasTracer.TopLevelRevert
+                : tryCallResult.EvmExceptionType == EvmExceptionType.Revert;
+
             return new CallOutput
             {
                 Error = error,
                 GasSpent = estimate,
                 OutputData = estimateGasTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted || err is not null,
-                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert
+                InputError = !executionReverted && (!tryCallResult.TransactionExecuted || err is not null),
+                ExecutionReverted = executionReverted
             };
         }
 
