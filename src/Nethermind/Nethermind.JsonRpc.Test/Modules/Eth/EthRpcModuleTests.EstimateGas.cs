@@ -560,7 +560,7 @@ public partial class EthRpcModuleTests
             JsonSerializerOptions.Default)!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
-        JToken.Parse(serialized).Should().BeEquivalentTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x"},"id":67}""");
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x"},"id":67}"""));
     }
 
     [Test]
@@ -578,7 +578,7 @@ public partial class EthRpcModuleTests
             JsonSerializerOptions.Default)!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
-        JToken.Parse(serialized).Should().BeEquivalentTo("""{"jsonrpc":"2.0","result":"0x5208","id":67}""");
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":"0x5208","id":67}"""));
     }
 
     [Test]
@@ -597,7 +597,7 @@ public partial class EthRpcModuleTests
             JsonSerializerOptions.Default)!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
-        JToken.Parse(serialized).Should().BeEquivalentTo("""{"jsonrpc":"2.0","error":{"code":-32000,"message":"gas required exceeds allowance (0)"},"id":67}""");
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32000,"message":"gas required exceeds allowance (0)"},"id":67}"""));
     }
 
     private static readonly OverridableReleaseSpec Eip7976Spec = new(Prague.Instance) { IsEip7976Enabled = true };
