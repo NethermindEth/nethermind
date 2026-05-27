@@ -31,12 +31,7 @@ public static class WorldStateExtensions
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void AddToBalanceAndCreateIfNotExists(this IWorldState worldState, Address address, ExecutionType executionType, in UInt256 balanceChange, IReleaseSpec spec)
-    {
-        if (executionType.CreditsBalance())
-        {
-            worldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _);
-        }
-    }
+        => worldState.AddToBalanceAndCreateIfNotExists(address, executionType.GetBalanceCredit(in balanceChange), spec, out _);
 
     public static void SubtractFromBalance(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => worldState.SubtractFromBalance(address, balanceChange, spec, out _);

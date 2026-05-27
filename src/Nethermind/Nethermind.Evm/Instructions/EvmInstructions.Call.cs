@@ -280,8 +280,8 @@ public static partial class EvmInstructions
             {
                 state.SubtractFromBalance(caller, in transferValue, spec);
                 vm.AddTransferLog<TEip7708>(caller, target, transferValue);
-                state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
             }
+            state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
             Metrics.IncrementEmptyCalls();
             vm.ReturnData = null;
             return EvmExceptionType.None;

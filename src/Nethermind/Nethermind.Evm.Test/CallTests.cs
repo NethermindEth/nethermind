@@ -81,6 +81,23 @@ namespace Nethermind.Evm.Test
             Assert.That(TestState.GetBalance(target), Is.EqualTo((UInt256)expectedTargetBalance * 1.Ether));
         }
 
+        [Test]
+        public void Empty_code_staticcall_touches_existing_empty_account()
+        {
+            Address target = TestItem.AddressC;
+            TestState.CreateAccount(target, UInt256.Zero);
+            byte[] code = BuildEmptyCodeCall(Instruction.STATICCALL, target);
+            (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, code, value: 0);
+
+            TransactionResult result = _processor.Execute(
+                transaction,
+                new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+                NullTxTracer.Instance);
+
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(TestState.AccountExists(target), Is.False);
+        }
+
         private static byte[] BuildEmptyCodeCall(Instruction instruction, Address target) =>
             instruction switch
             {
