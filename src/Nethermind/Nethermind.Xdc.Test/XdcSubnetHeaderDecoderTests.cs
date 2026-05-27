@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Test
 {

@@ -12,7 +12,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
 internal class ProposedBlockTests
 {

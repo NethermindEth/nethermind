@@ -325,9 +325,9 @@ namespace Nethermind.Synchronization.Test
             Block? block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
             Block? block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
-            Assert.That(SyncServer.GetReceipts(block0!.Hash!).Length, Is.EqualTo(0));
-            Assert.That(SyncServer.GetReceipts(block1!.Hash!).Length, Is.EqualTo(0));
-            Assert.That(SyncServer.GetReceipts(TestItem.KeccakA).Length, Is.EqualTo(0));
+            Assert.That(SyncServer.GetReceipts(block0!.Hash!), Is.Empty);
+            Assert.That(SyncServer.GetReceipts(block1!.Hash!), Is.Null);
+            Assert.That(SyncServer.GetReceipts(TestItem.KeccakA), Is.Null);
         }
     }
 }

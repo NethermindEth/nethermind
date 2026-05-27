@@ -9,7 +9,9 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
+#pragma warning disable IDE0130 // CodeFix provider shares namespace with the analyzer it fixes
 namespace Nethermind.Test.Analyzers;
+#pragma warning restore IDE0130
 
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(UseReleaseSpecSubstituteCodeFixProvider)), Shared]
 public sealed class UseReleaseSpecSubstituteCodeFixProvider : CodeFixProvider

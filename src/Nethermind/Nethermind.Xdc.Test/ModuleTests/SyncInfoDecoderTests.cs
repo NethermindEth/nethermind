@@ -6,8 +6,9 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System.Collections;
+using Nethermind.Xdc.RLP;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class SyncInfoDecoderTests

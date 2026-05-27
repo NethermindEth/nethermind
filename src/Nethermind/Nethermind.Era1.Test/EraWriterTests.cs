@@ -7,6 +7,7 @@ using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.IO;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
 

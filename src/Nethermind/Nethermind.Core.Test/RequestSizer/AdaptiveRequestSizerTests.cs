@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using NUnit.Framework;
+using Nethermind.Core.RequestSizer;
 
 namespace Nethermind.Core.Test.RequestSizer;
 

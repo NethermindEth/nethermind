@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Network.Discovery.Discv5;
 
 namespace Nethermind.Network.Discovery.Test
 {

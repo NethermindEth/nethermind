@@ -10,7 +10,7 @@ using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using Nethermind.EraE.Config;
 using Nethermind.EraE.E2Store;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.EraE.Export;
 using NUnit.Framework;
 

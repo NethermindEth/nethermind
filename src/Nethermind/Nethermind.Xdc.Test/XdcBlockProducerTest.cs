@@ -20,6 +20,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Xdc.Test.Helpers;
 
 namespace Nethermind.Xdc.Test;
 

@@ -24,7 +24,7 @@ using Nethermind.Specs.Test;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
-namespace Nethermind.JsonRpc.Test.Modules.Eth;
+namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 public class EthSimulateTestsBlocksAndTransactions
 {

@@ -7,6 +7,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
+using Nethermind.Xdc.Test.Helpers;
 
 namespace Nethermind.Xdc.Test;
 

@@ -11,7 +11,7 @@ using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 
-namespace Nethermind.Blockchain.Headers;
+namespace Nethermind.Blockchain.BlockAccessLists;
 
 public class BlockAccessListStore(
     [KeyFilter(DbNames.BlockAccessLists)] IDb balDb,

@@ -5,7 +5,7 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.EraE.Config;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Store;
 using NUnit.Framework;

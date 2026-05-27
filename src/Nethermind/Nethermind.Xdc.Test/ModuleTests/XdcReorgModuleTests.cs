@@ -7,7 +7,7 @@ using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Core;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
 internal class XdcReorgModuleTests
 {

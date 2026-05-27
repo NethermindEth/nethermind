@@ -4,11 +4,10 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Test;
-using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test;
+namespace Nethermind.Db.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class CompressingStoreTests

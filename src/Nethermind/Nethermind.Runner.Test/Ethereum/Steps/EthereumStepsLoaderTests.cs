@@ -13,6 +13,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Grpc;
 using Nethermind.Init;
+using Nethermind.Init.Modules;
 using Nethermind.Init.Snapshot;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa;

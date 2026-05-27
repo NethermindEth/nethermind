@@ -11,7 +11,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test;
+namespace Ethereum.Transaction.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]

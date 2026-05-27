@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -17,7 +18,7 @@ using Nethermind.Serialization.Json;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
 
-namespace Nethermind.JsonRpc.TraceStore.Tests;
+namespace Nethermind.JsonRpc.TraceStore.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class DbPersistingBlockTracerTests
@@ -79,7 +80,7 @@ public class DbPersistingBlockTracerTests
                     Input = TestItem.RandomDataA,
                     Result = new ParityTraceResult { GasUsed = 50, Output = TestItem.RandomDataB },
                     To = TestItem.AddressB,
-                    TraceAddress = [],
+                    TraceAddress = CappedArray<int>.Empty,
                     Type = "call",
                     Value = 50,
                     Subtraces =
@@ -94,7 +95,7 @@ public class DbPersistingBlockTracerTests
                             Result = new ParityTraceResult { GasUsed = 20, Output = TestItem.RandomDataD },
                             Subtraces = [],
                             To = TestItem.AddressC,
-                            TraceAddress = [0],
+                            TraceAddress = new int[] { 0 },
                             CreationMethod = "create",
                             Type = "create",
                             Value = 20
