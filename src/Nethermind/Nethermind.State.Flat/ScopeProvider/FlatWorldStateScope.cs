@@ -174,7 +174,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
                             if (logger.IsInfo) logger.Info(
                                 $"SPARSE ROOT MATCH #{matchCount}! Root={_sparseComputedRoot}, " +
-                                $"SparseTime={sw.ElapsedMilliseconds}ms, Consecutive={consecutive}, " +
+                                $"SparseTime={sw.ElapsedMilliseconds}ms (proof={_sparseRootComputer.LastProofReadMs}ms " +
+                                $"reveal={_sparseRootComputer.LastRevealMs}ms update={_sparseRootComputer.LastUpdateLeavesMs}ms " +
+                                $"compute={_sparseRootComputer.LastComputeRootMs}ms, retries={_sparseRootComputer.LastRetryCount}, " +
+                                $"proofNodes={_sparseRootComputer.LastProofNodeCount}, accounts={_sparseRootComputer.AccountChangeCount}), " +
+                                $"Consecutive={consecutive}, " +
                                 $"Totals: match={matchCount} mismatch={_sparseMismatchCount} fail={_sparseFailCount}");
                         }
                     }

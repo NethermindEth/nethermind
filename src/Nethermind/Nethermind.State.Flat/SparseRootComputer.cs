@@ -89,6 +89,11 @@ public sealed class SparseRootComputer : IDisposable
     public Hash256 PreviousRoot => _previousStateRoot;
     public int AccountChangeCount => _accountChanges?.Count ?? 0;
     public int LastProofNodeCount { get; private set; }
+    public long LastProofReadMs { get; private set; }
+    public long LastRevealMs { get; private set; }
+    public long LastUpdateLeavesMs { get; private set; }
+    public long LastComputeRootMs { get; private set; }
+    public int LastRetryCount { get; private set; }
     internal Dictionary<Hash256, LeafUpdate>? LastAccountChanges => _accountChanges;
 
     /// <summary>The underlying trie for persistence and cross-block storage.</summary>
@@ -100,18 +105,28 @@ public sealed class SparseRootComputer : IDisposable
             return _previousStateRoot;
 
         Hash256[] targetKeys = _accountChanges.Keys.ToArray();
+
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         DecodedMultiProof initialProof = MultiProofReader.ReadAccountProofs(
             _reader, _previousStateRoot, targetKeys);
+        long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+        LastProofReadMs = (t1 - t0) * 1000 / System.Diagnostics.Stopwatch.Frequency;
         LastProofNodeCount = initialProof.AccountNodes.Count;
 
         _trie.AccountTrie.RevealNodes(initialProof.AccountNodes);
+        long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
+        LastRevealMs = (t2 - t1) * 1000 / System.Diagnostics.Stopwatch.Frequency;
 
+        long updateMsAccum = 0;
         Hash256? lastTarget = null;
         int sameTargetCount = 0;
         for (int retry = 0; retry < MaxRetries; retry++)
         {
+            long ts = System.Diagnostics.Stopwatch.GetTimestamp();
             List<Hash256> targets = [];
             _trie.UpdateAccountLeaves(_accountChanges, (key, _) => targets.Add(key));
+            updateMsAccum += (System.Diagnostics.Stopwatch.GetTimestamp() - ts) * 1000 / System.Diagnostics.Stopwatch.Frequency;
+            LastRetryCount = retry;
             if (targets.Count == 0) break;
 
             // Detect stuck-on-same-target case: track if the same target keeps coming back
@@ -175,7 +190,11 @@ public sealed class SparseRootComputer : IDisposable
             _trie.AccountTrie.RevealNodes(proof.AccountNodes);
         }
 
-        return _trie.ComputeRoot();
+        LastUpdateLeavesMs = updateMsAccum;
+        long tc = System.Diagnostics.Stopwatch.GetTimestamp();
+        Hash256 root = _trie.ComputeRoot();
+        LastComputeRootMs = (System.Diagnostics.Stopwatch.GetTimestamp() - tc) * 1000 / System.Diagnostics.Stopwatch.Frequency;
+        return root;
     }
 
     public void Dispose()
