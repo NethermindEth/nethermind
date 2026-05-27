@@ -34,6 +34,15 @@ public readonly struct RlpNode : IEquatable<RlpNode>
         return new(data, isHash: true);
     }
 
+    /// <summary>Computes keccak of the RLP bytes and stores as a hash RlpNode (no Hash256 class alloc).</summary>
+    public static RlpNode FromRlpHashed(ReadOnlySpan<byte> rlp)
+    {
+        byte[] data = new byte[32];
+        Nethermind.Core.Crypto.ValueHash256 hash = Nethermind.Core.Crypto.ValueKeccak.Compute(rlp);
+        hash.Bytes.CopyTo(data);
+        return new(data, isHash: true);
+    }
+
     public ReadOnlySpan<byte> AsSpan() => _data;
     public int Length => _data?.Length ?? 0;
     public bool IsNull => _data is null;
