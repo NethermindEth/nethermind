@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.State.Repositories;
 using NSubstitute;
@@ -18,12 +17,11 @@ public class BatchWriteTests
     {
         (BatchWrite batch, _, object writeLock, Exception failure) = CreateFailingBatch();
 
-        Action dispose = () => batch.Dispose();
-        dispose.Should().Throw<Exception>().Which.Should().BeSameAs(failure, "the original commit failure must propagate");
-        batch.Disposed.Should().BeTrue("a failed commit must still mark the batch disposed");
+        Exception thrown = Assert.Throws<Exception>(() => batch.Dispose())!;
+        Assert.That(thrown, Is.SameAs(failure), "the original commit failure must propagate");
+        Assert.That(batch.Disposed, Is.True, "a failed commit must still mark the batch disposed");
 
-        Action exitOnceMore = () => Monitor.Exit(writeLock);
-        exitOnceMore.Should().Throw<SynchronizationLockException>(
+        Assert.That(() => Monitor.Exit(writeLock), Throws.TypeOf<SynchronizationLockException>(),
             "the write lock must be released, so this thread no longer owns it after a failed commit");
     }
 
@@ -32,11 +30,8 @@ public class BatchWriteTests
     {
         (BatchWrite batch, IWriteBatch writeBatch, _, _) = CreateFailingBatch();
 
-        Action firstDispose = () => batch.Dispose();
-        firstDispose.Should().Throw<Exception>("the failed commit must surface on first dispose");
-
-        Action secondDispose = () => batch.Dispose();
-        secondDispose.Should().NotThrow("a disposed batch must not re-enter the failed commit");
+        Assert.That(() => batch.Dispose(), Throws.TypeOf<Exception>(), "the failed commit must surface on first dispose");
+        Assert.That(() => batch.Dispose(), Throws.Nothing, "a disposed batch must not re-enter the failed commit");
         writeBatch.Received(1).Dispose();
     }
 
