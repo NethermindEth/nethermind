@@ -12,13 +12,14 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Find
 {
     using Nethermind.JsonRpc.Data;
 
-    public sealed class BlockParameterParseException(string message) : FormatException(message);
+    public sealed class BlockParameterParseException(string message) : FormatException(message), IExceptionWithSafePublicMessage;
 
     [JsonConverter(typeof(BlockParameterConverter))]
     public class BlockParameter : IEquatable<BlockParameter>

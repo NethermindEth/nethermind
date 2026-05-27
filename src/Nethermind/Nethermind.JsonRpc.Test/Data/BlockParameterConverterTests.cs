@@ -128,9 +128,10 @@ namespace Nethermind.JsonRpc.Test.Data
             Action action = () => serializer.Deserialize<BlockParameter>(
                 """{ "blockNumber": "0xa", "blockHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3" }""");
 
-            action.Should()
-                .Throw<FormatException>()
-                .WithMessage("cannot specify both BlockHash and BlockNumber, choose one or the other");
+            Assert.That(
+                action,
+                Throws.InstanceOf<FormatException>()
+                    .With.Message.EqualTo("cannot specify both BlockHash and BlockNumber, choose one or the other"));
         }
 
         [TestCase("\"latest\"", BlockParameterType.Latest)]

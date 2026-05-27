@@ -279,7 +279,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             ReturnParameters(parameters, returnParametersToPool);
             if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
-            string message = e is BlockParameterParseException
+            string message = e is IExceptionWithSafePublicMessage
                 ? e.Message
                 : "Invalid params";
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
