@@ -252,6 +252,7 @@ namespace Nethermind.Facade
             {
                 null => error,
                 _ when error is null => err,
+                // The gas=1 probe never executed the EVM, so a later top-level revert from estimation is more informative.
                 _ when error.StartsWith(TxErrorMessages.IntrinsicGasTooLow, StringComparison.Ordinal)
                     && estimateGasTracer.TopLevelRevert => err,
                 _ when err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) => err,
@@ -261,7 +262,7 @@ namespace Nethermind.Facade
             };
 
             bool executionReverted = err is not null
-                ? estimateGasTracer.TopLevelRevert
+                ? estimateGasTracer.TopLevelRevert // err comes from GasEstimator; TopLevelRevert is authoritative for revert detection here.
                 : tryCallResult.EvmExceptionType == EvmExceptionType.Revert;
 
             return new CallOutput

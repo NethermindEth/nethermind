@@ -725,7 +725,7 @@ public class BlockchainBridgeTests
                 Transaction currentTx = callInfo.ArgAt<Transaction>(0);
                 ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
 
-                if (currentTx.GasLimit == 1)
+                if (currentTx.GasLimit < Transaction.BaseTxGasCost)
                 {
                     return TransactionResult.GasLimitBelowIntrinsicGas;
                 }
@@ -743,6 +743,7 @@ public class BlockchainBridgeTests
             Assert.That(callOutput.Error, Is.EqualTo("execution reverted"));
             Assert.That(callOutput.ExecutionReverted, Is.True);
             Assert.That(callOutput.InputError, Is.False);
+            Assert.That(callOutput.OutputData, Is.EqualTo(Array.Empty<byte>()));
         }
     }
 
