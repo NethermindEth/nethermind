@@ -415,20 +415,17 @@ public class JsonRpcServiceTests
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         AssertInvalidParamsWithoutData(TestRawRequest(ethRpcModule, method, rawParameters), expectedMessage);
 
-        if (method == nameof(IEthRpcModule.eth_getBlockByNumber))
+        switch (method)
         {
-            ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
-        }
-        else
-        {
-            if (method == nameof(IEthRpcModule.eth_feeHistory))
-            {
+            case nameof(IEthRpcModule.eth_getBlockByNumber):
+                ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
+                break;
+            case nameof(IEthRpcModule.eth_feeHistory):
                 ethRpcModule.DidNotReceive().eth_feeHistory(Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<double[]>());
-            }
-            else if (method == nameof(IEthRpcModule.eth_getBalance))
-            {
+                break;
+            case nameof(IEthRpcModule.eth_getBalance):
                 ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
-            }
+                break;
         }
     }
 

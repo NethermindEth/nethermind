@@ -21,6 +21,8 @@ namespace Nethermind.Blockchain.Find
     [JsonConverter(typeof(BlockParameterConverter))]
     public class BlockParameter : IEquatable<BlockParameter>
     {
+        public const string BlockHashAndBlockNumberError = "cannot specify both BlockHash and BlockNumber, choose one or the other";
+
         public static BlockParameter Earliest = new(BlockParameterType.Earliest);
 
         public static BlockParameter Pending = new(BlockParameterType.Pending);
@@ -180,12 +182,12 @@ namespace Nethermind.JsonRpc.Data
 
             if (blockHash is not null && blockNumberParam is not null)
             {
-                throw new FormatException("cannot specify both BlockHash and BlockNumber, choose one or the other");
+                throw new FormatException(BlockParameter.BlockHashAndBlockNumberError);
             }
 
             return (blockHash, blockNumberParam) switch
             {
-                (blockHash: not null, blockNumberParam: _) => new BlockParameter(blockHash, requireCanonical),
+                (blockHash: not null, blockNumberParam: null) => new BlockParameter(blockHash, requireCanonical),
                 (blockHash: null, blockNumberParam: not null) => blockNumberParam,
                 _ => throw new FormatException("unknown block parameter type")
             };
