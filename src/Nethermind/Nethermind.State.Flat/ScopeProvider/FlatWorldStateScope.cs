@@ -273,6 +273,28 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 reader, prevRoot, [Keccak.Zero]);
             logger.Warn($"  DIAG: test proof read returned {diagnosticProof.AccountNodes.Count} nodes (no exception = reader works)");
 
+            // Dump Patricia root RLP for child-by-child comparison with sparse
+            try
+            {
+                TrieNode? patriciaRootRef = _stateTree.RootRef;
+                if (patriciaRootRef is not null && patriciaRootRef.FullRlp.Length > 0)
+                {
+                    ReadOnlySpan<byte> patSpan = patriciaRootRef.FullRlp.AsSpan();
+                    logger.Warn($"  DIAG: PATRICIA root NodeType={patriciaRootRef.NodeType}, FullRlp.Length={patSpan.Length}");
+                    logger.Warn($"  DIAG: PATRICIA root FullRlp[0..min(64,len)]={Convert.ToHexString(patSpan[..Math.Min(64, patSpan.Length)])}");
+                    Hash256 patriciaRootHash = Keccak.Compute(patSpan);
+                    logger.Warn($"  DIAG: PATRICIA keccak(rootRlp)={patriciaRootHash}, expected={_stateTree.RootHash}, match={patriciaRootHash == _stateTree.RootHash}");
+                }
+                else
+                {
+                    logger.Warn($"  DIAG: PATRICIA root inspection: RootRef={(patriciaRootRef is null ? "null" : "non-null")}, FullRlp.Length={patriciaRootRef?.FullRlp.Length ?? -1}");
+                }
+            }
+            catch (Exception patEx)
+            {
+                logger.Warn($"  DIAG: PATRICIA root inspection failed: {patEx.GetType().Name}: {patEx.Message}");
+            }
+
             // Re-do from scratch with a FRESH trie to confirm cross-block isn't the issue
             if (computer.AccountChangeCount > 0 && computer.AccountChangeCount < 10000)
             {
@@ -288,6 +310,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 {
                     logger.Warn($"  DIAG: fresh recompute failed: {freshEx.GetType().Name}: {freshEx.Message}");
                 }
+
+                // Dump account changes for replay reproduction
+                Dictionary<Hash256, LeafUpdate> changes = computer.LastAccountChanges!;
+                int dumped = 0;
+                int deletions = 0;
+                int totalRlpBytes = 0;
+                foreach (KeyValuePair<Hash256, LeafUpdate> kv in changes)
+                {
+                    if (kv.Value.IsDelete) deletions++;
+                    else if (kv.Value.Value is not null) totalRlpBytes += kv.Value.Value.Length;
+                    if (dumped++ < 5)
+                    {
+                        if (kv.Value.IsDelete)
+                            logger.Warn($"  DIAG: change[{dumped - 1}] keccak={kv.Key} DELETED");
+                        else
+                            logger.Warn($"  DIAG: change[{dumped - 1}] keccak={kv.Key} rlp.Length={kv.Value.Value!.Length} rlp[0..min(64,len)]={Convert.ToHexString(kv.Value.Value.AsSpan(0, Math.Min(64, kv.Value.Value.Length)))}");
+                    }
+                }
+                logger.Warn($"  DIAG: total changes={changes.Count}, deletions={deletions}, total rlp bytes={totalRlpBytes}");
             }
         }
         catch (Exception ex)

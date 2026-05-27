@@ -157,6 +157,8 @@ public class SparseRootComputerFlatDbTests
     [TestCase(500, 15, 50)]
     [TestCase(1000, 20, 100)]
     [TestCase(200, 10, 30)]
+    [TestCase(10000, 5, 400)]
+    [TestCase(20000, 10, 500)]
     public void MultiBlock_SnapshotBundleReader_MatchesPatricia(int trieSize, int numBlocks, int changesPerBlock)
     {
         ResourcePool pool = new(new FlatDbConfig { CompactSize = 32 });
@@ -265,4 +267,114 @@ public class SparseRootComputerFlatDbTests
     }
 
     private static string Shorten(Hash256 h) => h.ToString()[..10] + "...";
+
+    /// <summary>
+    /// Same as MultiBlock_SnapshotBundleReader_MatchesPatricia but uses accounts with
+    /// non-empty storageRoot and codeHash — closer to real Ethereum state where most
+    /// touched accounts are contracts with code and storage.
+    /// </summary>
+    [TestCase(5000, 10, 350)]
+    [TestCase(20000, 10, 400)]
+    public void MultiBlock_WithStorageRootAndCode_MatchesPatricia(int trieSize, int numBlocks, int changesPerBlock)
+    {
+        ResourcePool pool = new(new FlatDbConfig { CompactSize = 32 });
+        IPersistence.IPersistenceReader mockPersistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
+        ITrieNodeCache noopCache = Substitute.For<ITrieNodeCache>();
+
+        SnapshotPooledList initialSnapshots = new(1);
+        ReadOnlySnapshotBundle roBundle = new(initialSnapshots, mockPersistenceReader, false);
+        SnapshotBundle snapshotBundle = new(roBundle, noopCache, pool, ResourcePool.Usage.MainBlockProcessing);
+
+        ConcurrencyController concurrencyQuota = new(Environment.ProcessorCount);
+        StateTrieStoreAdapter storeAdapter = new(snapshotBundle, concurrencyQuota);
+        StateTree stateTree = new(storeAdapter, LimboLogs.Instance)
+        {
+            RootHash = Keccak.EmptyTreeHash
+        };
+
+        Nethermind.Serialization.Rlp.AccountDecoder decoder = new();
+
+        // Build a mix of: half are simple EOAs, half are contracts with codeHash + storageRoot
+        Hash256[] keys = new Hash256[trieSize];
+        Account[] accounts = new Account[trieSize];
+        for (int i = 0; i < trieSize; i++)
+        {
+            keys[i] = Keccak.Compute(System.BitConverter.GetBytes(i));
+            if (i % 2 == 0)
+            {
+                accounts[i] = new Account((Nethermind.Int256.UInt256)i, (Nethermind.Int256.UInt256)(i + 1000));
+            }
+            else
+            {
+                Hash256 fakeStorageRoot = Keccak.Compute(System.BitConverter.GetBytes(i * 2 + 1));
+                Hash256 fakeCodeHash = Keccak.Compute(System.BitConverter.GetBytes(i * 3 + 7));
+                accounts[i] = new Account((Nethermind.Int256.UInt256)i, (Nethermind.Int256.UInt256)(i + 1000),
+                    fakeStorageRoot, fakeCodeHash);
+            }
+            byte[] rlp = decoder.Encode(accounts[i]).Bytes;
+            stateTree.Set(keys[i].Bytes, rlp);
+        }
+        stateTree.UpdateRootHash();
+        stateTree.Commit();
+        Hash256 prevRoot = stateTree.RootHash;
+
+        StateId genesisStateId = new(0, prevRoot.ValueHash256);
+        (Snapshot? genSnap, TransientResource? genRes) =
+            snapshotBundle.CollectAndApplySnapshot(StateId.PreGenesis, genesisStateId);
+        genRes?.Dispose();
+
+        Random rng = new(42);
+        for (int block = 1; block <= numBlocks; block++)
+        {
+            int startIdx = rng.Next(0, trieSize - changesPerBlock);
+            Dictionary<Hash256, LeafUpdate> sparseUpdates = new(changesPerBlock);
+
+            for (int i = startIdx; i < startIdx + changesPerBlock; i++)
+            {
+                // Update account — bump nonce, change storage root if contract
+                Account newAccount;
+                if (i % 2 == 0)
+                {
+                    newAccount = new Account((Nethermind.Int256.UInt256)(i + block * 100), (Nethermind.Int256.UInt256)(i + 1000));
+                }
+                else
+                {
+                    Hash256 newStorageRoot = Keccak.Compute(System.BitConverter.GetBytes(i * 2 + 1 + block));
+                    Hash256 codeHash = accounts[i].CodeHash;
+                    newAccount = new Account((Nethermind.Int256.UInt256)(i + block * 100), (Nethermind.Int256.UInt256)(i + 1000),
+                        newStorageRoot, codeHash);
+                }
+                byte[] newRlp = decoder.Encode(newAccount).Bytes;
+                stateTree.Set(keys[i].Bytes, newRlp);
+                sparseUpdates[keys[i]] = LeafUpdate.Changed(newRlp);
+            }
+
+            stateTree.UpdateRootHash();
+            Hash256 patriciaRoot = stateTree.RootHash;
+
+            ParentStateTrieNodeReader proofReader = new(snapshotBundle);
+            using SparseRootComputer computer = new(proofReader, prevRoot);
+            computer.SetAccountChanges(sparseUpdates);
+            Hash256 sparseRoot = computer.ComputeStateRoot();
+
+            TestContext.Out.WriteLine(
+                $"Block {block}: prev={Shorten(prevRoot)}, patricia={Shorten(patriciaRoot)}, " +
+                $"sparse={Shorten(sparseRoot)}, accounts={computer.AccountChangeCount}, " +
+                $"proofNodes={computer.LastProofNodeCount}");
+
+            sparseRoot.Should().Be(patriciaRoot,
+                $"Block {block}: sparse root must match Patricia with contract accounts ({changesPerBlock}/{trieSize} changes)");
+
+            stateTree.Commit();
+            StateId newStateId = new(block, patriciaRoot.ValueHash256);
+            (Snapshot? snap, TransientResource? res) =
+                snapshotBundle.CollectAndApplySnapshot(
+                    new StateId(block - 1, prevRoot.ValueHash256), newStateId);
+            res?.Dispose();
+            stateTree.RootHash = patriciaRoot;
+            prevRoot = patriciaRoot;
+        }
+
+        snapshotBundle.Dispose();
+    }
 }
