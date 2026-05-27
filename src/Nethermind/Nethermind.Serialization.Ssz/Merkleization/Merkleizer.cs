@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Int256;
 
@@ -12,11 +12,11 @@ namespace Nethermind.Merkleization;
 
 public ref struct Merkleizer
 {
-    public readonly bool IsKthBitSet(int k) => (_filled & ((ulong)1 << k)) != 0;
+    private readonly bool IsKthBitSet(int k) => (_filled & ((ulong)1 << k)) != 0;
 
-    public void SetKthBit(int k) => _filled |= (ulong)1 << k;
+    private void SetKthBit(int k) => _filled |= (ulong)1 << k;
 
-    public void UnsetKthBit(int k) => _filled &= ~((ulong)1 << k);
+    private void UnsetKthBit(int k) => _filled &= ~((ulong)1 << k);
 
     private readonly Span<UInt256> _chunks;
     private ulong _filled;
@@ -194,16 +194,23 @@ public ref struct Merkleizer
             return;
         }
 
-        using PooledSpan<UInt256> subRoots = new(value.Count);
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(value.Count);
 
-        for (int i = 0; i < value.Count; i++)
+        try
         {
-            Merkle.Merkleize(out subRoots[i], value[i]);
-        }
+            for (int i = 0; i < value.Count; i++)
+            {
+                Merkle.Merkleize(out subRoots[i], value[i]);
+            }
 
-        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
-        Merkle.MixIn(ref _chunks[^1], value.Count);
-        Feed(_chunks[^1]);
+            Merkle.Merkleize(out _chunks[^1], subRoots.AsSpan(0, value.Count), maxLength);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
+            Feed(_chunks[^1]);
+        }
+        finally
+        {
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }
     }
 
     public void Feed(IEnumerable<ReadOnlyMemory<byte>>? value, ulong maxLength)
@@ -213,33 +220,54 @@ public ref struct Merkleizer
             return;
         }
 
-        using PooledSpan<UInt256> subRoots = new(value.Count());
-        int i = 0;
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(4);
+        int count = 0;
 
-        foreach (ReadOnlyMemory<byte> memory in value)
+        try
         {
-            Merkle.Merkleize(out UInt256 root, memory.Span);
-            subRoots[i++] = root;
-        }
+            foreach (ReadOnlyMemory<byte> memory in value)
+            {
+                if (count == subRoots.Length)
+                {
+                    UInt256[] previous = subRoots;
+                    subRoots = ArrayPool<UInt256>.Shared.Rent(count * 2);
+                    previous.AsSpan(0, count).CopyTo(subRoots);
+                    ArrayPool<UInt256>.Shared.Return(previous);
+                }
 
-        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
-        Merkle.MixIn(ref _chunks[^1], subRoots.Length);
-        Feed(_chunks[^1]);
+                Merkle.Merkleize(out subRoots[count++], memory.Span);
+            }
+
+            Merkle.Merkleize(out _chunks[^1], subRoots.AsSpan(0, count), maxLength);
+            Merkle.MixIn(ref _chunks[^1], count);
+            Feed(_chunks[^1]);
+        }
+        finally
+        {
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }
     }
 
     public void Feed(IReadOnlyList<ulong> value, ulong maxLength)
     {
         // TODO: If UInt256 is the correct memory layout
-        using PooledSpan<UInt256> subRoots = new(value.Count);
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(value.Count);
 
-        for (int i = 0; i < value.Count; i++)
+        try
         {
-            Merkle.Merkleize(out subRoots[i], value[i]);
-        }
+            for (int i = 0; i < value.Count; i++)
+            {
+                Merkle.Merkleize(out subRoots[i], value[i]);
+            }
 
-        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
-        Merkle.MixIn(ref _chunks[^1], value.Count);
-        Feed(_chunks[^1]);
+            Merkle.Merkleize(out _chunks[^1], subRoots.AsSpan(0, value.Count), maxLength);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
+            Feed(_chunks[^1]);
+        }
+        finally
+        {
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }
     }
 
     private void FeedAtLevel(UInt256 chunk, int level)

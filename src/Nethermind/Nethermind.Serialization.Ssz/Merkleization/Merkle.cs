@@ -34,26 +34,7 @@ public static partial class Merkle
 
     static Merkle() => BuildZeroHashes();
 
-    public static ulong NextPowerOfTwo(uint v)
-    {
-        if (v == 0) return 1;
-        return BitOperations.RoundUpToPowerOf2(v);
-    }
-    public static ulong NextPowerOfTwo(ulong v)
-    {
-        if (v == 0) return 1;
-        return BitOperations.RoundUpToPowerOf2(v);
-    }
-
     public static int NextPowerOfTwoExponent(ulong v) => BitOperations.Log2(BitOperations.RoundUpToPowerOf2(v));
-
-    public static int CountLeadingZeros(ulong x)
-    {
-        if (x == 0) return 0;
-        if (x == 1) return 64;
-
-        return BitOperations.LeadingZeroCount(x) + (BitOperations.IsPow2(x) ? 1 : 0);
-    }
 
     private static UInt256 Compute(Span<UInt256> span) => MemoryMarshal.Cast<byte, UInt256>(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(span)))[0];
 

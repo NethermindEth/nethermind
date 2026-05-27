@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using Nethermind.Int256;
+using Nethermind.Merkleization;
 
 namespace Nethermind.Serialization.Ssz.SszVectorConverters;
 
@@ -11,7 +14,9 @@ public sealed class UInt32SszVectorConverter : ISszVectorConverter<uint>
 
     private UInt32SszVectorConverter() { }
 
-    public static uint FromSpan(ReadOnlySpan<byte> span) => Ssz.DecodeUInt(span);
+    public static uint FromSpan(ReadOnlySpan<byte> span) => BinaryPrimitives.ReadUInt32LittleEndian(span);
 
-    public static void ToSpan(Span<byte> span, uint value) => Ssz.Encode(span, value);
+    public static void ToSpan(Span<byte> span, uint value) => BinaryPrimitives.WriteUInt32LittleEndian(span, value);
+
+    public static void Merkleize(uint value, out UInt256 root) => Merkle.Merkleize(out root, value);
 }

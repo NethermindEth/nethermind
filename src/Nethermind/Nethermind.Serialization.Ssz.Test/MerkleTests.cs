@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Merkleization;
@@ -22,24 +24,6 @@ public static class UInt256Extensions
 [TestFixture]
 public class MerkleTests
 {
-    [TestCase(uint.MinValue, 1U)]
-    [TestCase(1U, 1U)]
-    [TestCase(2U, 2U)]
-    [TestCase(3U, 4U)]
-    [TestCase(4U, 4U)]
-    [TestCase(uint.MaxValue / 2, 2147483648U)]
-    [TestCase(uint.MaxValue / 2 + 1, 2147483648U)]
-    public void Can_get_the_next_power_of_two_32(uint value, uint expectedResult) => Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
-
-    [TestCase(ulong.MinValue, 1UL)]
-    [TestCase(1UL, 1UL)]
-    [TestCase(2UL, 2UL)]
-    [TestCase(3UL, 4UL)]
-    [TestCase(4UL, 4UL)]
-    [TestCase(ulong.MaxValue / 2, 9223372036854775808UL)]
-    [TestCase(ulong.MaxValue / 2 + 1, 9223372036854775808UL)]
-    public void Can_get_the_next_power_of_two_64(ulong value, ulong expectedResult) => Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
-
     [TestCase(ulong.MinValue, 0UL)]
     [TestCase(1UL, 0UL)]
     [TestCase(2UL, 1UL)]
@@ -233,33 +217,27 @@ public class MerkleTests
     }
 
     [Test]
+    public void Feed_memory_enumerable_is_single_pass()
+    {
+        SinglePassReadOnlyMemoryEnumerable items = new(
+        [
+            new byte[] { 1 },
+            new byte[] { 2 },
+            new byte[] { 3 },
+        ]);
+
+        Merkleizer merkleizer = new(3);
+
+        merkleizer.Feed(items, 4);
+
+        Assert.That(items.EnumerationCount, Is.EqualTo(1));
+    }
+
+    [Test]
     public void Can_merkleize_bitvector()
     {
         Merkle.Merkleize(out UInt256 root, new byte[] { 123 });
         Assert.That(root.ToHexString(true), Is.EqualTo("0x7b00000000000000000000000000000000000000000000000000000000000000"));
-    }
-
-    [Test]
-    public void Set_check()
-    {
-        Merkleizer context = new(1);
-        for (int i = 0; i < 64; i++)
-        {
-            context.SetKthBit(i);
-            Assert.That(context.IsKthBitSet(i), Is.True, i.ToString());
-            context.UnsetKthBit(i);
-            Assert.That(context.IsKthBitSet(i), Is.False, i.ToString());
-        }
-    }
-
-    [Test]
-    public void Check_false()
-    {
-        Merkleizer context = new(1);
-        for (int i = 0; i < 64; i++)
-        {
-            Assert.That(context.IsKthBitSet(i), Is.False, i.ToString());
-        }
     }
 
     [TestCase(2, 1)]
@@ -314,5 +292,23 @@ public class MerkleTests
         UInt256 result = merkleizer.CalculateRoot();
 
         Assert.That(result, Is.EqualTo(Merkle.ZeroHashes[6]));
+    }
+
+    private sealed class SinglePassReadOnlyMemoryEnumerable(byte[][] items) : IEnumerable<ReadOnlyMemory<byte>>
+    {
+        public int EnumerationCount { get; private set; }
+
+        public IEnumerator<ReadOnlyMemory<byte>> GetEnumerator()
+        {
+            EnumerationCount++;
+            Assert.That(EnumerationCount, Is.EqualTo(1));
+
+            foreach (byte[] item in items)
+            {
+                yield return item;
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

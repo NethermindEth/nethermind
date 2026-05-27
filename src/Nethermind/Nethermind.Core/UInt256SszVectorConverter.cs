@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Int256;
+using Nethermind.Merkleization;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Core;
@@ -16,4 +17,6 @@ public sealed class UInt256SszVectorConverter : ISszVectorConverter<UInt256>
     public static UInt256 FromSpan(ReadOnlySpan<byte> span) => new(span);
 
     public static void ToSpan(Span<byte> span, UInt256 value) => value.ToLittleEndian(span);
+
+    public static void Merkleize(UInt256 value, out UInt256 root) => Merkle.Merkleize(out root, value);
 }

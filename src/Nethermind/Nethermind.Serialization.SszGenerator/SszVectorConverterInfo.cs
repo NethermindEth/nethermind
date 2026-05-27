@@ -115,6 +115,11 @@ internal sealed class SszVectorConverterInfo
             throw new InvalidOperationException($"SSZ converter {converterType.ToDisplayString()} must declare public static void ToSpan(Span<byte> span, {targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} value).");
         }
 
+        if (!HasMerkleizeMethod(converterType, targetType))
+        {
+            throw new InvalidOperationException($"SSZ converter {converterType.ToDisplayString()} must declare public static void Merkleize({targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} value, out UInt256 root).");
+        }
+
         return new()
         {
             TargetName = GetTypeName(targetType),
@@ -150,16 +155,24 @@ internal sealed class SszVectorConverterInfo
     private static bool HasFromSpanMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
         converterType.GetMembers("FromSpan")
             .OfType<IMethodSymbol>()
-            .Any(m => m is { IsStatic: true, Parameters.Length: 1 }
+            .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, Parameters.Length: 1 }
                 && SymbolEqualityComparer.Default.Equals(m.ReturnType, targetType)
                 && IsSpanOfByte(m.Parameters[0].Type, nameof(ReadOnlySpan<byte>)));
 
     private static bool HasToSpanMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
         converterType.GetMembers("ToSpan")
             .OfType<IMethodSymbol>()
-            .Any(m => m is { IsStatic: true, ReturnsVoid: true, Parameters.Length: 2 }
+            .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 2 }
                 && IsSpanOfByte(m.Parameters[0].Type, nameof(Span<byte>))
                 && SymbolEqualityComparer.Default.Equals(m.Parameters[1].Type, targetType));
+
+    private static bool HasMerkleizeMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
+        converterType.GetMembers("Merkleize")
+            .OfType<IMethodSymbol>()
+            .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 2 }
+                && SymbolEqualityComparer.Default.Equals(m.Parameters[0].Type, targetType)
+                && m.Parameters[1].RefKind == RefKind.Out
+                && m.Parameters[1].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::Nethermind.Int256.UInt256");
 
     private static bool IsSpanOfByte(ITypeSymbol type, string name) =>
         type is INamedTypeSymbol { IsGenericType: true, ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true }, TypeArguments.Length: 1 } named

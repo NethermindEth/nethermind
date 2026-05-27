@@ -7,6 +7,7 @@ using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Ssz.SszVectorConverters;
 using NUnit.Framework;
 
 namespace Nethermind.Serialization.Ssz.Test
@@ -20,7 +21,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_uin8(byte uint8, string expectedOutput)
         {
             Span<byte> output = stackalloc byte[1];
-            Ssz.Encode(output, uint8);
+            ByteSszVectorConverter.ToSpan(output, uint8);
             Assert.That(output.ToArray(), Is.EqualTo(Bytes.FromHexString(expectedOutput)));
         }
 
@@ -30,7 +31,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_uin16(ushort uint16, string expectedOutput)
         {
             Span<byte> output = stackalloc byte[2];
-            Ssz.Encode(output, uint16);
+            UInt16SszVectorConverter.ToSpan(output, uint16);
             Assert.That(output.ToArray(), Is.EqualTo(Bytes.FromHexString(expectedOutput)));
         }
 
@@ -40,7 +41,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_uin32(uint uint32, string expectedOutput)
         {
             Span<byte> output = stackalloc byte[4];
-            Ssz.Encode(output, uint32);
+            UInt32SszVectorConverter.ToSpan(output, uint32);
             Assert.That(output.ToArray(), Is.EqualTo(Bytes.FromHexString(expectedOutput)));
         }
 
@@ -50,7 +51,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_uin64(ulong uint64, string expectedOutput)
         {
             Span<byte> output = stackalloc byte[8];
-            Ssz.Encode(output, uint64);
+            UInt64SszVectorConverter.ToSpan(output, uint64);
             Assert.That(output.ToArray(), Is.EqualTo(Bytes.FromHexString(expectedOutput)));
         }
 
@@ -117,8 +118,9 @@ namespace Nethermind.Serialization.Ssz.Test
         [TestCase(false, "0x00")]
         public void Can_serialize_bool(bool value, string expectedValue)
         {
-            byte output = Ssz.Encode(value);
-            Assert.That(new[] { output }, Is.EqualTo(Bytes.FromHexString(expectedValue)));
+            Span<byte> output = stackalloc byte[1];
+            BooleanSszVectorConverter.ToSpan(output, value);
+            Assert.That(output.ToArray(), Is.EqualTo(Bytes.FromHexString(expectedValue)));
         }
 
         [Test]

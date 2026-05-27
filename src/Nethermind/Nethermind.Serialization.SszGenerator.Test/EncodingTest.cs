@@ -138,6 +138,20 @@ public class EncodingTest
     }
 
     [Test]
+    public void Merkleize_nullable_list_matches_empty_decoded_list()
+    {
+        SingleListContainer container = new() { Items = null };
+
+        byte[] encoded = Encode(container);
+        Merkleize(container, out UInt256 root);
+        Decode(encoded, out SingleListContainer decoded);
+        Merkleize(decoded, out UInt256 decodedRoot);
+
+        Assert.That(decoded.Items, Is.Empty);
+        Assert.That(root, Is.EqualTo(decodedRoot));
+    }
+
+    [Test]
     public void Merkleize_compatible_union_matches_the_selected_value_root()
     {
         CompatibleNumberUnion container = new() { Selector = CompatibleNumberUnionSelector.PreviousValue, PreviousValue = 123UL };
@@ -314,6 +328,8 @@ public class EncodingTest
 
         byte[] encoded = Encode(original);
         Decode(encoded, out ConverterContainer decoded);
+        TestBytes4SszVectorConverter.MerkleizeCallCount = 0;
+        Merkleize(original, out UInt256 _);
 
         Assert.That(encoded.Length, Is.EqualTo(108));
         Assert.That(encoded.AsSpan(0, 4).ToArray(), Is.EqualTo([0x04, 0x03, 0x02, 0x01]));
@@ -321,6 +337,7 @@ public class EncodingTest
         Assert.That(decoded.FixedBytesVector!.Select(x => x.Value), Is.EqualTo(original.FixedBytesVector!.Select(x => x.Value)));
         Assert.That(decoded.Hash, Is.EqualTo(original.Hash));
         Assert.That(decoded.HashVector, Is.EqualTo(original.HashVector));
+        Assert.That(TestBytes4SszVectorConverter.MerkleizeCallCount, Is.EqualTo(3));
     }
 
     [TestCaseSource(nameof(InvalidInputCases))]

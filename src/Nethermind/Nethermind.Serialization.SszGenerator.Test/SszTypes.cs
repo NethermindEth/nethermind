@@ -3,6 +3,8 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Nethermind.Merkleization;
 using Nethermind.Serialization.Ssz;
 using System;
 using System.Buffers.Binary;
@@ -140,11 +142,19 @@ namespace Nethermind.Serialization.SszGenerator.Test
 
         private TestBytes4SszVectorConverter() { }
 
+        public static int MerkleizeCallCount { get; set; }
+
         public static TestBytes4 FromSpan(ReadOnlySpan<byte> span) =>
             new(BinaryPrimitives.ReadUInt32LittleEndian(span));
 
         public static void ToSpan(Span<byte> span, TestBytes4 value) =>
             BinaryPrimitives.WriteUInt32LittleEndian(span, value.Value);
+
+        public static void Merkleize(TestBytes4 value, out UInt256 root)
+        {
+            MerkleizeCallCount++;
+            Merkle.Merkleize(out root, value.Value);
+        }
     }
 
     //// Does not compile

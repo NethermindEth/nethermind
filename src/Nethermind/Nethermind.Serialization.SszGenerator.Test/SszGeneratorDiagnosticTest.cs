@@ -3,6 +3,7 @@
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 using NUnit.Framework;
 using System;
@@ -18,6 +19,7 @@ public class SszGeneratorDiagnosticTest
     {
         const string source = """
             using System;
+            using Nethermind.Int256;
             using Nethermind.Serialization.Ssz;
 
             [SszContainer]
@@ -39,6 +41,8 @@ public class SszGeneratorDiagnosticTest
                 public static void ToSpan(Span<byte> span, BadFixedBytes value)
                 {
                 }
+
+                public static void Merkleize(BadFixedBytes value, out UInt256 root) => root = default;
             }
             """;
 
@@ -52,6 +56,7 @@ public class SszGeneratorDiagnosticTest
     {
         const string source = """
             using System;
+            using Nethermind.Int256;
             using Nethermind.Serialization.Ssz;
 
             [SszContainer]
@@ -71,6 +76,8 @@ public class SszGeneratorDiagnosticTest
                 public static void ToSpan(Span<byte> span, BadFixedBytes value)
                 {
                 }
+
+                public static void Merkleize(BadFixedBytes value, out UInt256 root) => root = default;
             }
             """;
 
@@ -80,10 +87,46 @@ public class SszGeneratorDiagnosticTest
     }
 
     [Test]
+    public void Converter_without_merkleize_reports_diagnostic()
+    {
+        const string source = """
+            using System;
+            using Nethermind.Int256;
+            using Nethermind.Serialization.Ssz;
+
+            [SszContainer]
+            public partial struct BadContainer
+            {
+                public BadFixedBytes Value { get; set; }
+            }
+
+            public readonly struct BadFixedBytes
+            {
+            }
+
+            public sealed class BadFixedBytesConverter : ISszVectorConverter<BadFixedBytes>
+            {
+                public const int Length = 4;
+
+                public static BadFixedBytes FromSpan(ReadOnlySpan<byte> span) => default;
+
+                public static void ToSpan(Span<byte> span, BadFixedBytes value)
+                {
+                }
+            }
+            """;
+
+        CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        Diagnostic diagnostic = GetSsz003Diagnostic(source, parseOptions, nameof(Converter_without_merkleize_reports_diagnostic));
+        Assert.That(diagnostic.GetMessage(), Does.Contain("Merkleize"));
+    }
+
+    [Test]
     public void Duplicate_converters_for_same_type_report_diagnostic()
     {
         const string source = """
             using System;
+            using Nethermind.Int256;
             using Nethermind.Serialization.Ssz;
 
             [SszContainer]
@@ -105,6 +148,8 @@ public class SszGeneratorDiagnosticTest
                 public static void ToSpan(Span<byte> span, DuplicateFixedBytes value)
                 {
                 }
+
+                public static void Merkleize(DuplicateFixedBytes value, out UInt256 root) => root = default;
             }
 
             public sealed class SecondDuplicateFixedBytesConverter : ISszVectorConverter<DuplicateFixedBytes>
@@ -116,6 +161,8 @@ public class SszGeneratorDiagnosticTest
                 public static void ToSpan(Span<byte> span, DuplicateFixedBytes value)
                 {
                 }
+
+                public static void Merkleize(DuplicateFixedBytes value, out UInt256 root) => root = default;
             }
             """;
 
@@ -171,14 +218,15 @@ public class SszGeneratorDiagnosticTest
         Assert.That(trustedPlatformAssemblies, Is.Not.Null);
 
         string[] platformAssemblyPaths = trustedPlatformAssemblies!.Split(Path.PathSeparator);
-        MetadataReference[] references = new MetadataReference[platformAssemblyPaths.Length + 2];
+        MetadataReference[] references = new MetadataReference[platformAssemblyPaths.Length + 3];
         for (int i = 0; i < platformAssemblyPaths.Length; i++)
         {
             references[i] = MetadataReference.CreateFromFile(platformAssemblyPaths[i]);
         }
 
-        references[^2] = MetadataReference.CreateFromFile(typeof(SszContainerAttribute).Assembly.Location);
-        references[^1] = MetadataReference.CreateFromFile(typeof(ISszVectorConverter<>).Assembly.Location);
+        references[^3] = MetadataReference.CreateFromFile(typeof(SszContainerAttribute).Assembly.Location);
+        references[^2] = MetadataReference.CreateFromFile(typeof(ISszVectorConverter<>).Assembly.Location);
+        references[^1] = MetadataReference.CreateFromFile(typeof(UInt256).Assembly.Location);
         return references;
     }
 }
