@@ -15,7 +15,6 @@ internal class TalkReqAndRespHandler : ITalkReqAndRespHandler
         //We currently don't advertise any supported protocols
         EmptyProtocolResponse;
 
-    public byte[]? HandleResponse(byte[] response) =>
-        //We don't care about anything returned here at the moment
-        Array.Empty<byte>();
+    // We don't care about anything returned here at the moment
+    public byte[]? HandleResponse(byte[] response) => [];
 }

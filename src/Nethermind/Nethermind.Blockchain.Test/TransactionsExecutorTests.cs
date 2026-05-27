@@ -322,7 +322,9 @@ namespace Nethermind.Blockchain.Test
                 specProvider,
                 blockToProduce,
                 spec);
-            Assert.That(selectedTransactions, Is.EquivalentTo(testCase.ExpectedSelectedTransactions));
+            Assert.That(
+                selectedTransactions.Select(static transaction => transaction.Hash),
+                Is.EquivalentTo(testCase.ExpectedSelectedTransactions.Select(static transaction => transaction.Hash)));
         }
 
         [Test]

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -11,10 +10,23 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
 {
-    [Parallelizable(ParallelScope.Self)]
+    [NonParallelizable]
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
+        private bool _previousStrictHexFormat;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
+            EthereumJsonSerializer.StrictHexFormat = false;
+        }
+
+        [TearDown]
+        public void TearDown() =>
+            EthereumJsonSerializer.StrictHexFormat = _previousStrictHexFormat;
+
         [TestCase("0", 0)]
         [TestCase("100", 100)]
         [TestCase("\"0x0\"", 0)]
@@ -53,9 +65,9 @@ namespace Nethermind.JsonRpc.Test.Data
                 Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
 
                 if (throws)
-                    action.Should().Throw<FormatException>();
+                    Assert.That(action, Throws.TypeOf<FormatException>());
                 else
-                    action.Should().NotThrow();
+                    Assert.That(action, Throws.Nothing);
             }
             finally
             {

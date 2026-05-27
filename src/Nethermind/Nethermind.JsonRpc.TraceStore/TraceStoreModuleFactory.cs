@@ -16,6 +16,7 @@ public class TraceStoreModuleFactory(IRpcModuleFactory<ITraceRpcModule> innerFac
     IBlockFinder blockFinder,
     IReceiptFinder receiptFinder,
     ITraceSerializer<ParityLikeTxTrace> traceSerializer,
+    IJsonRpcConfig jsonRpcConfig,
     ILogManager logManager,
     int parallelization = 0) : ModuleFactoryBase<ITraceRpcModule>
 {
@@ -24,8 +25,9 @@ public class TraceStoreModuleFactory(IRpcModuleFactory<ITraceRpcModule> innerFac
     private readonly IBlockFinder _blockFinder = blockFinder;
     private readonly IReceiptFinder _receiptFinder = receiptFinder;
     private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer = traceSerializer;
+    private readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig;
     private readonly ILogManager _logManager = logManager;
     private readonly int _parallelization = parallelization;
 
-    public override ITraceRpcModule Create() => new TraceStoreRpcModule(_innerFactory.Create(), _traceStore, _blockFinder, _receiptFinder, _traceSerializer, _logManager, _parallelization);
+    public override ITraceRpcModule Create() => new TraceStoreRpcModule(_innerFactory.Create(), _traceStore, _blockFinder, _receiptFinder, _traceSerializer, _jsonRpcConfig, _logManager, _parallelization);
 }

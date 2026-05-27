@@ -6,6 +6,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 

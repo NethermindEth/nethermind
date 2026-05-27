@@ -3,7 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -84,7 +84,7 @@ public class BlockAccessListsSyncFeedTests
         SyncResponseHandlingResult result = _feed.HandleResponse(batch);
 
         Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.NoProgress));
-        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<Hash256>(), Arg.Any<byte[]>());
+        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
         _syncPeerPool.Received(1).ReportBreachOfProtocol(
             peerInfo,
             DisconnectReason.InvalidTxOrUncle,
@@ -107,7 +107,7 @@ public class BlockAccessListsSyncFeedTests
 
         long barrier = _metadataDb.Get(MetadataDbKeys.BlockAccessListsBarrierWhenStarted).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
         Assert.That(barrier, Is.EqualTo(previousBarrier));
-        _blockAccessListStore.DidNotReceive().Exists(TestItem.KeccakB);
+        _blockAccessListStore.DidNotReceive().Exists(Arg.Any<long>(), TestItem.KeccakB);
     }
 
     [Test]
@@ -125,7 +125,7 @@ public class BlockAccessListsSyncFeedTests
         SyncResponseHandlingResult result = _feed.HandleResponse(batch);
 
         Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.NoProgress));
-        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<Hash256>(), Arg.Any<byte[]>());
+        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
         _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
             Arg.Any<PeerInfo>(),
             Arg.Any<DisconnectReason>(),

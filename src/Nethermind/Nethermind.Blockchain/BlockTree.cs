@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -1725,7 +1726,7 @@ namespace Nethermind.Blockchain
                         _blockInfoDb.Delete(blockHash);
                         _blockStore.Delete(i, blockHash);
                         _headerStore.Delete(blockHash);
-                        _balStore.Delete(blockHash);
+                        _balStore.Delete(i, blockHash);
                     }
                 }
             }
@@ -1742,7 +1743,7 @@ namespace Nethermind.Blockchain
         {
             if (CanAcceptNewBlocks)
             {
-                Interlocked.CompareExchange(ref _taskCompletionSource, new TaskCompletionSource(), null);
+                Interlocked.CompareExchange(ref _taskCompletionSource, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously), null);
             }
 
             Interlocked.Increment(ref _canAcceptNewBlocksCounter);

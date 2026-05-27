@@ -30,6 +30,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
@@ -118,6 +119,10 @@ public class XdcTestBlockchain : TestBlockchain
 
         Container = builder.Build();
 
+        if (!_useHotStuffModule)
+            // HotStuff is not running; unsubscribe SignTransactionManager so sign txs are not auto-submitted.
+            ((IDisposable)Container.Resolve<ISignTransactionManager>()).Dispose();
+
         RandomSigner = new TestRandomSigner(MasterNodeCandidates, Container.Resolve<IBlockTree>(), Container.Resolve<IEpochSwitchManager>());
 
         _fromXdcContainer = Container.Resolve<FromXdcContainer>();
@@ -176,9 +181,9 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ITxPoolConfig>(),
                     ctx.Resolve<ITxValidator>(),
                     ctx.Resolve<ILogManager>(),
-                    new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
+                    new XdcTransactionComparerProvider(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockTree>()).GetDefaultComparer(),
                     ctx.Resolve<ITxGossipPolicy>(),
-                    new SignTransactionFilter(SnapshotManager, BlockTree, SpecProvider),
+                    new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>()),
                     ctx.Resolve<ITxValidator>()
                 );
 
@@ -453,7 +458,7 @@ public class XdcTestBlockchain : TestBlockchain
 
     public override async Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
     {
-        Block b = await base.AddBlockFromParent(parent, transactions);
+        Block b = await _fromContainer.TestBlockchainUtil.AddBlock(parent, TestBlockchainUtil.AddBlockFlags.DoNotWaitForHead | TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, CreateCancellationSource().Token, transactions);
         CreateAndCommitQC((XdcBlockHeader)b.Header);
 
         return b;
@@ -461,7 +466,7 @@ public class XdcTestBlockchain : TestBlockchain
 
     public async Task<Block> AddBlockWithoutCommitQc(params Transaction[] txs)
     {
-        await base.AddBlock(txs);
+        await base.AddBlockMayHaveExtraTx(txs);
         return BlockTree.Head!;
     }
 
@@ -543,6 +548,7 @@ public class XdcTestBlockchain : TestBlockchain
             //by setting the correct signer the block producer runner should trigger trying to propose a block
             Address leader = ConsensusModule.GetLeaderAddress(head, XdcContext.CurrentRound, spec);
             Signer.SetSigner(MasterNodeCandidates.First(k => k.Address == leader));
+            ConsensusModule.StartRoundTask(head, XdcContext.CurrentRound);
 
             Task waitingForHead = await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
             if (waitingForHead != newHeadWaitHandle.Task)

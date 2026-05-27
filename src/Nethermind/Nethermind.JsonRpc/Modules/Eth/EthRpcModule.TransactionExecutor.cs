@@ -118,7 +118,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         return ResultWrapper<TResult, string?>.Fail(revertMessage, ErrorCodes.ExecutionReverted, null);
                     }
 
-                    return ResultWrapper<TResult>.Fail(errorMessage ?? "", ErrorCodes.InvalidInput, bodyData);
+                    return bodyData is null
+                        ? ResultWrapper<TResult>.Fail(errorMessage ?? "", ErrorCodes.InvalidInput)
+                        : ResultWrapper<TResult>.Fail(errorMessage ?? "", ErrorCodes.InvalidInput, bodyData);
                 }
 
                 return ResultWrapper<TResult>.Success(bodyData);
@@ -126,9 +128,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
         private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
-            : TxExecutor<string>(blockchainBridge, blockFinder, rpcConfig, specProvider)
+            : TxExecutor<HexBytes>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
-            protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
+            protected override ResultWrapper<HexBytes> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, token);
 
@@ -137,10 +139,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     string message = result.InputError
                         ? ErrorWrapper.EthCall(result.Error, tx.GasLimit)
                         : result.Error;
-                    return ResultWrapper<string>.Fail(message, ErrorCodes.ExecutionError);
+                    return ResultWrapper<HexBytes>.Fail(message, ErrorCodes.ExecutionError);
                 }
 
-                return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);
+                HexBytes outputData = result.OutputData is null ? default : new HexBytes(result.OutputData);
+                return CreateResultWrapper(result.InputError, result.Error, outputData, result.ExecutionReverted, result.OutputData);
             }
         }
 

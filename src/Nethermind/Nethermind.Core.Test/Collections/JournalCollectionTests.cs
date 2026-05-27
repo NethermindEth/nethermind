@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
 
@@ -18,7 +17,7 @@ namespace Nethermind.Core.Test.Collections
             int snapshot = journal.TakeSnapshot();
             journal.AddRange(Enumerable.Range(10, 10));
             journal.Restore(snapshot);
-            journal.Should().BeEquivalentTo(Enumerable.Range(0, 10));
+            Assert.That(journal, Is.EqualTo(Enumerable.Range(0, 10)));
         }
 
         [Test]
@@ -28,7 +27,7 @@ namespace Nethermind.Core.Test.Collections
             int snapshot = journal.TakeSnapshot();
             journal.Restore(snapshot);
             journal.Restore(snapshot);
-            journal.Should().BeEquivalentTo(Enumerable.Empty<int>());
+            Assert.That(journal, Is.EqualTo(Enumerable.Empty<int>()));
         }
     }
 }

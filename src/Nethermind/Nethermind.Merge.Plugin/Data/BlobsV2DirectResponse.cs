@@ -14,11 +14,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-/// <summary>
-/// Wraps parallel arrays of blobs and proofs and writes JSON directly into a
-/// <see cref="PipeWriter"/>, bypassing <see cref="System.Text.Json.Utf8JsonWriter"/>
-/// to avoid extra buffer copies for large blob payloads.
-/// </summary>
+/// <summary>Writes blob/proof V2 results directly into a <see cref="PipeWriter"/>.</summary>
 public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<BlobAndProofV2?>
 {
     private readonly byte[]?[] _blobs;
@@ -39,53 +35,14 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
     {
         get
         {
-            if ((uint)index >= (uint)_count) throw new ArgumentOutOfRangeException(nameof(index));
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)_count, nameof(index));
             return BuildBlobAndProofV2(index);
         }
     }
 
-    public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
-    {
-        writer.Write("["u8);
+    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
+        StreamableResultWriter.WriteArrayAsync(writer, _count, new ItemWriter(_blobs, _proofs), cancellationToken);
 
-        for (int i = 0; i < _count; i++)
-        {
-            if (i > 0) writer.Write(","u8);
-
-            byte[]? blob = _blobs[i];
-            if (blob is null)
-            {
-                writer.Write("null"u8);
-            }
-            else
-            {
-                writer.Write("{\"blob\":\"0x"u8);
-                HexWriter.WriteHexChunked(writer, blob);
-                writer.Write("\",\"proofs\":["u8);
-
-                ReadOnlySpan<byte[]> proofs = _proofs[i].Span;
-                for (int p = 0; p < proofs.Length; p++)
-                {
-                    if (p > 0) writer.Write(","u8);
-                    writer.Write("\"0x"u8);
-                    HexWriter.WriteHexSmall(writer, proofs[p]);
-                    writer.Write("\""u8);
-                }
-
-                writer.Write("]}"u8);
-            }
-
-            // Flush after each entry for backpressure
-            FlushResult flushResult = await writer.FlushAsync(cancellationToken);
-            if (flushResult.IsCompleted || flushResult.IsCanceled)
-                return;
-        }
-
-        writer.Write("]"u8);
-    }
-
-    // Explicit interface implementation: only used by tests via IEnumerable<T> cast.
-    // Production serialization goes through IStreamableResult.WriteToAsync.
     IEnumerator<BlobAndProofV2?> IEnumerable<BlobAndProofV2?>.GetEnumerator()
     {
         for (int i = 0; i < _count; i++)
@@ -94,11 +51,34 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
         }
     }
 
-    private BlobAndProofV2? BuildBlobAndProofV2(int i)
-    {
-        byte[]? blob = _blobs[i];
-        return blob is null ? null : new BlobAndProofV2(blob, _proofs[i].ToArray());
-    }
+    private BlobAndProofV2? BuildBlobAndProofV2(int i) =>
+        _blobs[i] is { } blob ? new BlobAndProofV2(blob, _proofs[i].ToArray()) : null;
 
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<BlobAndProofV2?>)this).GetEnumerator();
+
+    private readonly struct ItemWriter(byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofsByBlob) : IJsonArrayItemWriter
+    {
+        public void WriteItem(PipeWriter writer, int index)
+        {
+            byte[]? blob = blobs[index];
+            if (blob is null)
+            {
+                writer.Write("null"u8);
+                return;
+            }
+
+            writer.Write("{\"blob\":"u8);
+            HexWriter.WriteHexString(writer, blob, chunked: true);
+            writer.Write(",\"proofs\":["u8);
+
+            ReadOnlySpan<byte[]> proofs = proofsByBlob[index].Span;
+            for (int p = 0; p < proofs.Length; p++)
+            {
+                if (p > 0) writer.Write(","u8);
+                HexWriter.WriteHexString(writer, proofs[p], chunked: false);
+            }
+
+            writer.Write("]}"u8);
+        }
+    }
 }

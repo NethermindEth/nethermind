@@ -12,7 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.Helpers;
 
 internal static class XdcTestHelper
 {
