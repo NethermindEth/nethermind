@@ -226,6 +226,28 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
+    /// <summary>Returns the total byte length of the RLP-encoded item starting at <paramref name="offset"/>.</summary>
+    private static int RlpItemLength(ReadOnlySpan<byte> rlp, int offset)
+    {
+        byte first = rlp[offset];
+        if (first < 0x80) return 1;
+        if (first < 0xb8) return 1 + (first - 0x80);
+        if (first < 0xc0)
+        {
+            int lenOfLen = first - 0xb7;
+            int len = 0;
+            for (int i = 0; i < lenOfLen; i++) len = (len << 8) | rlp[offset + 1 + i];
+            return 1 + lenOfLen + len;
+        }
+        if (first < 0xf8) return 1 + (first - 0xc0);
+        {
+            int lenOfLen = first - 0xf7;
+            int len = 0;
+            for (int i = 0; i < lenOfLen; i++) len = (len << 8) | rlp[offset + 1 + i];
+            return 1 + lenOfLen + len;
+        }
+    }
+
     /// <summary>
     /// Walks down sparse and Patricia tries in parallel, comparing Branch RLPs at each level
     /// until divergence reduces to a single child path or hits a leaf.
@@ -268,10 +290,37 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             return;
         }
 
-        int relOff = diff - 3;
-        int childIdx = relOff / 33;
-        int byteInChild = relOff % 33;
-        logger.Warn($"  DIAG[d{depth}] divergence in child #{childIdx} byte={byteInChild}");
+        // For branches NOT all-hash-children (RLP != 532), child slot sizes vary.
+        // Parse RLP slot-by-slot to find the actual diverging child index.
+        int childIdx = -1;
+        try
+        {
+            int sCur = 3, pCur = 3;
+            for (int n = 0; n < 16; n++)
+            {
+                int sItemLen = RlpItemLength(sFull, sCur);
+                int pItemLen = RlpItemLength(pFull, pCur);
+                if (diff >= sCur && diff < sCur + sItemLen) { childIdx = n; break; }
+                if (sItemLen != pItemLen || !sFull.Slice(sCur, sItemLen).SequenceEqual(pFull.Slice(pCur, pItemLen)))
+                {
+                    childIdx = n; break;
+                }
+                sCur += sItemLen;
+                pCur += pItemLen;
+            }
+        }
+        catch (Exception parseEx)
+        {
+            logger.Warn($"  DIAG[d{depth}] slot parse failed: {parseEx.GetType().Name}");
+        }
+        if (childIdx < 0)
+        {
+            logger.Warn($"  DIAG[d{depth}] could not identify diverging slot, dumping full hex");
+            logger.Warn($"  DIAG[d{depth}] sparseFull={Convert.ToHexString(sFull[..Math.Min(sFull.Length, 600)])}");
+            logger.Warn($"  DIAG[d{depth}] patFull   ={Convert.ToHexString(pFull[..Math.Min(pFull.Length, 600)])}");
+            return;
+        }
+        logger.Warn($"  DIAG[d{depth}] divergence in child #{childIdx}");
 
         if (childIdx > 15) return;
 
