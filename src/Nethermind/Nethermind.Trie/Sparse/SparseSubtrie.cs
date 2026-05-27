@@ -653,6 +653,74 @@ public sealed class SparseSubtrie : IDisposable
 
     #endregion
 
+    /// <summary>
+    /// Walks the trie along the target's nibble path. If the target's path reaches a Branch
+    /// with exactly 2 children where one is the target's path and the OTHER is blinded,
+    /// returns the blinded sibling's path and RlpNode (hash or inline). This is the structure
+    /// needed when a deletion would collapse the parent and we need the sibling's content.
+    /// Returns false if no such blinded sibling exists or path can't be walked.
+    /// </summary>
+    public bool TryFindBlindedSiblingForDeletion(
+        ReadOnlySpan<byte> targetNibbles,
+        out TreePath siblingPath,
+        out RlpNode siblingRlp)
+    {
+        siblingPath = default;
+        siblingRlp = default;
+        if (Root < 0) return false;
+
+        TreePath currentPath = TreePath.Empty;
+        int nodeIdx = Root;
+        int nibblePos = 0;
+        int safety = 0;
+        while (safety++ < 100 && nibblePos < targetNibbles.Length)
+        {
+            ref SparseTrieNode node = ref _arena[nodeIdx];
+            if (!node.IsBranch()) return false;
+
+            byte[] shortKey = node.ShortKey ?? [];
+            if (shortKey.Length > 0)
+            {
+                int sharedLen = 0;
+                int limit = Math.Min(shortKey.Length, targetNibbles.Length - nibblePos);
+                while (sharedLen < limit && targetNibbles[nibblePos + sharedLen] == shortKey[sharedLen]) sharedLen++;
+                if (sharedLen < shortKey.Length) return false; // path diverges within shortKey
+                currentPath = currentPath.Append(shortKey);
+                nibblePos += shortKey.Length;
+            }
+            if (nibblePos >= targetNibbles.Length) return false;
+
+            byte targetNibble = targetNibbles[nibblePos];
+            if (!node.StateMask.IsBitSet(targetNibble)) return false;
+
+            // If this branch has exactly 2 children and the OTHER is blinded, that's our sibling
+            if (node.ChildCount() == 2)
+            {
+                for (int sibNibble = 0; sibNibble < 16; sibNibble++)
+                {
+                    if (sibNibble == targetNibble || !node.StateMask.IsBitSet(sibNibble)) continue;
+                    int sibDense = node.DenseChildIndex(sibNibble);
+                    SparseChildEntry sibEntry = _children[sibDense];
+                    if (sibEntry.IsBlinded)
+                    {
+                        siblingPath = currentPath.Append((byte)sibNibble);
+                        siblingRlp = sibEntry.BlindedRlp;
+                        return true;
+                    }
+                }
+            }
+
+            // Descend further (only if target's child is revealed; if blinded, normal flow handles it)
+            int denseIdx = node.DenseChildIndex(targetNibble);
+            SparseChildEntry childEntry = _children[denseIdx];
+            if (childEntry.IsBlinded) return false; // normal NeedsProof path handles this
+            currentPath = currentPath.Append(targetNibble);
+            nodeIdx = childEntry.ArenaIndex;
+            nibblePos++;
+        }
+        return false;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int CommonPrefixLength(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {

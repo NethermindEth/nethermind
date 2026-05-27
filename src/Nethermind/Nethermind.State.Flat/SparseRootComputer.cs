@@ -120,6 +120,12 @@ public sealed class SparseRootComputer : IDisposable
             else sameTargetCount = 0;
             lastTarget = firstTarget;
 
+            // For deletion-with-blinded-sibling: the proof reader doesn't fetch the sibling
+            // (no target walks through that nibble). Resolve the sibling directly from the
+            // sparse trie's known blinded hashes and inject it as a ProofNode.
+            if (sameTargetCount >= 1)
+                TryResolveBlindedSiblings(targets);
+
             if (retry == MaxRetries - 1)
             {
                 // Walk the sparse trie along the stuck target's nibble path and
@@ -175,6 +181,39 @@ public sealed class SparseRootComputer : IDisposable
     public void Dispose()
     {
         if (_ownsTrie) _trie.Dispose();
+    }
+
+    /// <summary>
+    /// For deletion targets whose collapse would need a blinded sibling, fetch the sibling
+    /// directly via the reader (using the hash stored as the blinded child's RlpNode) and
+    /// reveal it. This unsticks the retry loop for blinded-sibling-deletion cases.
+    /// </summary>
+    private void TryResolveBlindedSiblings(List<Hash256> targets)
+    {
+        foreach (Hash256 target in targets)
+        {
+            if (!_accountChanges!.TryGetValue(target, out LeafUpdate upd) || !upd.IsDelete)
+                continue;
+
+            byte[] nibbles = Nibbles.BytesToNibbleBytes(target.Bytes);
+            if (!_trie.AccountTrie.Subtrie.TryFindBlindedSiblingForDeletion(nibbles, out TreePath siblingPath, out RlpNode siblingRlpNode))
+                continue;
+
+            if (!siblingRlpNode.IsHash())
+                continue; // inline siblings are already known via the parent's RLP
+
+            try
+            {
+                Hash256 siblingHash = siblingRlpNode.AsHash();
+                byte[] siblingRlp = _reader.LoadStateRlp(siblingPath, siblingHash);
+                ProofNode siblingProof = MultiProofReader.DecodeProofNode(siblingRlp, siblingPath);
+                _trie.AccountTrie.RevealNodes([siblingProof]);
+            }
+            catch
+            {
+                // Failure here is non-fatal; the outer retry will throw with diagnostics.
+            }
+        }
     }
 
     /// <summary>
