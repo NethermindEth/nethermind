@@ -17,9 +17,13 @@ internal readonly struct HsstIndexNodeInfo(long childOffset, int firstEntry, int
 {
     /// <summary>Absolute first-byte position of this node (or entry) in the HSST (= the flag byte).</summary>
     public readonly long ChildOffset = childOffset;
-    /// <summary>Index (into <c>EntryPositions</c> / <c>PendingKeys</c>) of the first leaf entry under this subtree.</summary>
+    /// <summary>Global, build-wide entry index of the first leaf entry under this subtree.
+    /// Used by the index-build phase to look up per-entry common-prefix length in
+    /// <see cref="HsstBTreeBuilderBuffers.CommonPrefixArr"/>.</summary>
     public readonly int FirstEntry = firstEntry;
-    /// <summary>Index (into <c>EntryPositions</c> / <c>PendingKeys</c>) of the last leaf entry under this subtree.</summary>
+    /// <summary>Global, build-wide entry index of the last leaf entry under this subtree.
+    /// Used by the index-build phase to look up per-entry common-prefix length in
+    /// <see cref="HsstBTreeBuilderBuffers.CommonPrefixArr"/>.</summary>
     public readonly int LastEntry = lastEntry;
     /// <summary>Common-key-prefix length the BTreeNode planner picked for this node.
     /// Read at the level above when computing each separator length: the parent must extend
