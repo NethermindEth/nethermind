@@ -9,6 +9,7 @@ using Nethermind.Int256;
 using Nethermind.Merkleization;
 using NUnit.Framework;
 using SszEncoder = Nethermind.Serialization.Ssz.Ssz;
+using Nethermind.Serialization.Ssz.SszVectorConverters;
 using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.Ssz.Test;
@@ -24,11 +25,11 @@ public class SszBasicTypeTests
         UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         bool expected = yamlValue == "true";
-        bool decoded = SszEncoder.DecodeBool(ssz.AsSpan());
+        bool decoded = DecodeBool(ssz.AsSpan());
         Assert.That(decoded, Is.EqualTo(expected));
 
         Span<byte> reencoded = stackalloc byte[1];
-        SszEncoder.Encode(reencoded, decoded);
+        BooleanSszVectorConverter.ToSpan(reencoded, decoded);
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
@@ -40,7 +41,7 @@ public class SszBasicTypeTests
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
 
-        Assert.That(() => SszEncoder.DecodeBool(ssz.AsSpan()), Throws.InstanceOf<Exception>());
+        Assert.That(() => DecodeBool(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
 
     [TestCaseSource(nameof(Uint8ValidCases))]
@@ -51,11 +52,11 @@ public class SszBasicTypeTests
         UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         byte expected = byte.Parse(yamlValue);
-        byte decoded = SszEncoder.DecodeByte(ssz.AsSpan());
+        byte decoded = DecodeByte(ssz.AsSpan());
         Assert.That(decoded, Is.EqualTo(expected));
 
         Span<byte> reencoded = stackalloc byte[1];
-        SszEncoder.Encode(reencoded, decoded);
+        ByteSszVectorConverter.ToSpan(reencoded, decoded);
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
@@ -66,7 +67,7 @@ public class SszBasicTypeTests
     public void Uint8_invalid(string casePath)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
-        Assert.That(() => SszEncoder.DecodeByte(ssz.AsSpan()), Throws.InstanceOf<Exception>());
+        Assert.That(() => DecodeByte(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
 
     [TestCaseSource(nameof(Uint16ValidCases))]
@@ -77,11 +78,11 @@ public class SszBasicTypeTests
         UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         ushort expected = ushort.Parse(yamlValue);
-        ushort decoded = SszEncoder.DecodeUShort(ssz.AsSpan());
+        ushort decoded = DecodeUShort(ssz.AsSpan());
         Assert.That(decoded, Is.EqualTo(expected));
 
         Span<byte> reencoded = stackalloc byte[2];
-        SszEncoder.Encode(reencoded, decoded);
+        UInt16SszVectorConverter.ToSpan(reencoded, decoded);
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
@@ -92,7 +93,7 @@ public class SszBasicTypeTests
     public void Uint16_invalid(string casePath)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
-        Assert.That(() => SszEncoder.DecodeUShort(ssz.AsSpan()), Throws.InstanceOf<Exception>());
+        Assert.That(() => DecodeUShort(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
 
     [TestCaseSource(nameof(Uint32ValidCases))]
@@ -103,11 +104,11 @@ public class SszBasicTypeTests
         UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         uint expected = uint.Parse(yamlValue);
-        uint decoded = SszEncoder.DecodeUInt(ssz.AsSpan());
+        uint decoded = DecodeUInt(ssz.AsSpan());
         Assert.That(decoded, Is.EqualTo(expected));
 
         Span<byte> reencoded = stackalloc byte[4];
-        SszEncoder.Encode(reencoded, decoded);
+        UInt32SszVectorConverter.ToSpan(reencoded, decoded);
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
@@ -118,7 +119,7 @@ public class SszBasicTypeTests
     public void Uint32_invalid(string casePath)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
-        Assert.That(() => SszEncoder.DecodeUInt(ssz.AsSpan()), Throws.InstanceOf<Exception>());
+        Assert.That(() => DecodeUInt(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
 
     [TestCaseSource(nameof(Uint64ValidCases))]
@@ -129,11 +130,11 @@ public class SszBasicTypeTests
         UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         ulong expected = ulong.Parse(yamlValue);
-        ulong decoded = SszEncoder.DecodeULong(ssz.AsSpan());
+        ulong decoded = DecodeULong(ssz.AsSpan());
         Assert.That(decoded, Is.EqualTo(expected));
 
         Span<byte> reencoded = stackalloc byte[8];
-        SszEncoder.Encode(reencoded, decoded);
+        UInt64SszVectorConverter.ToSpan(reencoded, decoded);
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
         Merkle.Merkleize(out UInt256 root, decoded);
@@ -144,7 +145,7 @@ public class SszBasicTypeTests
     public void Uint64_invalid(string casePath)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
-        Assert.That(() => SszEncoder.DecodeULong(ssz.AsSpan()), Throws.InstanceOf<Exception>());
+        Assert.That(() => DecodeULong(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
 
     [TestCaseSource(nameof(Uint128ValidCases))]
@@ -155,7 +156,7 @@ public class SszBasicTypeTests
         UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
         UInt128 expected = UInt128.Parse(yamlValue);
-        UInt128 decoded = SszEncoder.DecodeUInt128(ssz.AsSpan());
+        UInt128 decoded = DecodeUInt128(ssz.AsSpan());
         Assert.That(decoded, Is.EqualTo(expected));
 
         Span<byte> reencoded = stackalloc byte[16];
@@ -170,7 +171,7 @@ public class SszBasicTypeTests
     public void Uint128_invalid(string casePath)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
-        Assert.That(() => SszEncoder.DecodeUInt128(ssz.AsSpan()), Throws.InstanceOf<Exception>());
+        Assert.That(() => DecodeUInt128(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
 
     [TestCaseSource(nameof(Uint256ValidCases))]
@@ -208,6 +209,52 @@ public class SszBasicTypeTests
         }
 
         return UInt256SszVectorConverter.FromSpan(span);
+    }
+
+    private static bool DecodeBool(ReadOnlySpan<byte> span)
+    {
+        ValidateLength(span, BooleanSszVectorConverter.Length);
+        return BooleanSszVectorConverter.FromSpan(span);
+    }
+
+    private static byte DecodeByte(ReadOnlySpan<byte> span)
+    {
+        ValidateLength(span, ByteSszVectorConverter.Length);
+        return ByteSszVectorConverter.FromSpan(span);
+    }
+
+    private static ushort DecodeUShort(ReadOnlySpan<byte> span)
+    {
+        ValidateLength(span, UInt16SszVectorConverter.Length);
+        return UInt16SszVectorConverter.FromSpan(span);
+    }
+
+    private static uint DecodeUInt(ReadOnlySpan<byte> span)
+    {
+        ValidateLength(span, UInt32SszVectorConverter.Length);
+        return UInt32SszVectorConverter.FromSpan(span);
+    }
+
+    private static ulong DecodeULong(ReadOnlySpan<byte> span)
+    {
+        ValidateLength(span, UInt64SszVectorConverter.Length);
+        return UInt64SszVectorConverter.FromSpan(span);
+    }
+
+    private static UInt128 DecodeUInt128(ReadOnlySpan<byte> span)
+    {
+        ValidateLength(span, 16);
+        SszEncoder.Decode(span, out UInt128 result);
+        return result;
+    }
+
+    private static void ValidateLength(ReadOnlySpan<byte> span, int expectedLength)
+    {
+        if (span.Length != expectedLength)
+        {
+            throw new InvalidDataException(
+                $"SSZ decode expects input of length {expectedLength} and received {span.Length}");
+        }
     }
 
     private static string ReadYamlValue(string filePath)

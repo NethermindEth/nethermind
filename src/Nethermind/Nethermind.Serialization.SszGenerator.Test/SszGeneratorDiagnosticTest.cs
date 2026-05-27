@@ -19,7 +19,7 @@ public class SszGeneratorDiagnosticTest
     {
         const string source = """
             using System;
-            using Nethermind.Int256;
+            using Nethermind.Merkleization;
             using Nethermind.Serialization.Ssz;
 
             [SszContainer]
@@ -42,7 +42,9 @@ public class SszGeneratorDiagnosticTest
                 {
                 }
 
-                public static void Merkleize(BadFixedBytes value, out UInt256 root) => root = default;
+                public static void Feed(ref Merkleizer merkleizer, BadFixedBytes value)
+                {
+                }
             }
             """;
 
@@ -56,7 +58,7 @@ public class SszGeneratorDiagnosticTest
     {
         const string source = """
             using System;
-            using Nethermind.Int256;
+            using Nethermind.Merkleization;
             using Nethermind.Serialization.Ssz;
 
             [SszContainer]
@@ -77,7 +79,9 @@ public class SszGeneratorDiagnosticTest
                 {
                 }
 
-                public static void Merkleize(BadFixedBytes value, out UInt256 root) => root = default;
+                public static void Feed(ref Merkleizer merkleizer, BadFixedBytes value)
+                {
+                }
             }
             """;
 
@@ -87,11 +91,10 @@ public class SszGeneratorDiagnosticTest
     }
 
     [Test]
-    public void Converter_without_merkleize_reports_diagnostic()
+    public void Converter_without_feed_reports_diagnostic()
     {
         const string source = """
             using System;
-            using Nethermind.Int256;
             using Nethermind.Serialization.Ssz;
 
             [SszContainer]
@@ -117,8 +120,8 @@ public class SszGeneratorDiagnosticTest
             """;
 
         CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
-        Diagnostic diagnostic = GetSsz003Diagnostic(source, parseOptions, nameof(Converter_without_merkleize_reports_diagnostic));
-        Assert.That(diagnostic.GetMessage(), Does.Contain("Merkleize"));
+        Diagnostic diagnostic = GetSsz003Diagnostic(source, parseOptions, nameof(Converter_without_feed_reports_diagnostic));
+        Assert.That(diagnostic.GetMessage(), Does.Contain("Feed"));
     }
 
     [Test]
@@ -126,7 +129,7 @@ public class SszGeneratorDiagnosticTest
     {
         const string source = """
             using System;
-            using Nethermind.Int256;
+            using Nethermind.Merkleization;
             using Nethermind.Serialization.Ssz;
 
             [SszContainer]
@@ -149,7 +152,9 @@ public class SszGeneratorDiagnosticTest
                 {
                 }
 
-                public static void Merkleize(DuplicateFixedBytes value, out UInt256 root) => root = default;
+                public static void Feed(ref Merkleizer merkleizer, DuplicateFixedBytes value)
+                {
+                }
             }
 
             public sealed class SecondDuplicateFixedBytesConverter : ISszVectorConverter<DuplicateFixedBytes>
@@ -162,7 +167,9 @@ public class SszGeneratorDiagnosticTest
                 {
                 }
 
-                public static void Merkleize(DuplicateFixedBytes value, out UInt256 root) => root = default;
+                public static void Feed(ref Merkleizer merkleizer, DuplicateFixedBytes value)
+                {
+                }
             }
             """;
 

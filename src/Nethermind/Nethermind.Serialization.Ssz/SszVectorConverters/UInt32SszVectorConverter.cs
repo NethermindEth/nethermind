@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using Nethermind.Int256;
 using Nethermind.Merkleization;
 
 namespace Nethermind.Serialization.Ssz.SszVectorConverters;
@@ -18,5 +17,5 @@ public sealed class UInt32SszVectorConverter : ISszVectorConverter<uint>
 
     public static void ToSpan(Span<byte> span, uint value) => BinaryPrimitives.WriteUInt32LittleEndian(span, value);
 
-    public static void Merkleize(uint value, out UInt256 root) => Merkle.Merkleize(out root, value);
+    public static void Feed(ref Merkleizer merkleizer, uint value) => merkleizer.Feed(value);
 }

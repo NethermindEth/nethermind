@@ -66,6 +66,7 @@ public static partial class Merkle
         ArgumentOutOfRangeException.ThrowIfGreaterThan(activeFields.Length, 32, nameof(activeFields));
 
         Span<byte> chunk = stackalloc byte[32];
+        chunk.Clear();
         activeFields.CopyTo(chunk);
         root = HashConcatenation(root, new UInt256(chunk), 0);
     }
@@ -119,23 +120,6 @@ public static partial class Merkle
 
     public static void Merkleize(out UInt256 root, UInt256 value) => root = value;
 
-    public static void Merkleize(out UInt256 root, ReadOnlySpan<bool> value)
-    {
-        const int typeSize = 1;
-        int partialChunkLength = value.Length % (32 / typeSize);
-        if (partialChunkLength > 0)
-        {
-            ReadOnlySpan<bool> fullChunks = value[..^partialChunkLength];
-            Span<bool> lastChunk = stackalloc bool[32 / typeSize];
-            value[^partialChunkLength..].CopyTo(lastChunk);
-            Merkleize(out root, MemoryMarshal.Cast<bool, UInt256>(fullChunks), MemoryMarshal.Cast<bool, UInt256>(lastChunk));
-        }
-        else
-        {
-            Merkleize(out root, MemoryMarshal.Cast<bool, UInt256>(value));
-        }
-    }
-
     public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value)
     {
         const int typeSize = 1;
@@ -144,6 +128,7 @@ public static partial class Merkle
         {
             ReadOnlySpan<byte> fullChunks = value[..^partialChunkLength];
             Span<byte> lastChunk = stackalloc byte[32 / typeSize];
+            lastChunk.Clear();
             value[^partialChunkLength..].CopyTo(lastChunk);
             Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk));
         }
@@ -161,6 +146,7 @@ public static partial class Merkle
         {
             ReadOnlySpan<byte> fullChunks = value[..^partialChunkLength];
             Span<byte> lastChunk = stackalloc byte[32 / typeSize];
+            lastChunk.Clear();
             value[^partialChunkLength..].CopyTo(lastChunk);
             Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk), chunkCount);
         }
@@ -170,156 +156,7 @@ public static partial class Merkle
         }
     }
 
-    public static void MerkleizeBits(out UInt256 root, Span<byte> value, uint limit)
-    {
-        // reset lowest bit perf
-        int lastBitPosition = ResetLastBit(ref value[^1]);
-        int length = value.Length * 8 - (8 - lastBitPosition);
-        if (value[^1] == 0)
-        {
-            value = value[..^1];
-        }
-
-        const int typeSize = 1;
-        int partialChunkLength = value.Length % (32 / typeSize);
-        if (partialChunkLength > 0)
-        {
-            Span<byte> fullChunks = value[..^partialChunkLength];
-            Span<byte> lastChunk = stackalloc byte[32 / typeSize];
-            value[^partialChunkLength..].CopyTo(lastChunk);
-            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk), limit);
-        }
-        else
-        {
-            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(value), default, limit);
-        }
-
-        MixIn(ref root, length);
-    }
-
-    private static int ResetLastBit(ref byte lastByte)
-    {
-        if ((lastByte >> 7) % 2 == 1)
-        {
-            lastByte -= 128;
-            return 7;
-        }
-
-        if ((lastByte >> 6) % 2 == 1)
-        {
-            lastByte -= 64;
-            return 6;
-        }
-
-        if ((lastByte >> 5) % 2 == 1)
-        {
-            lastByte -= 32;
-            return 5;
-        }
-
-        if ((lastByte >> 4) % 2 == 1)
-        {
-            lastByte -= 16;
-            return 4;
-        }
-
-        if ((lastByte >> 3) % 2 == 1)
-        {
-            lastByte -= 8;
-            return 3;
-        }
-
-        if ((lastByte >> 2) % 2 == 1)
-        {
-            lastByte -= 4;
-            return 2;
-        }
-
-        if ((lastByte >> 1) % 2 == 1)
-        {
-            lastByte -= 2;
-            return 1;
-        }
-
-        if (lastByte % 2 == 1)
-        {
-            lastByte -= 1;
-            return 0;
-        }
-
-        return 8;
-    }
-
-    public static void Merkleize(out UInt256 root, ReadOnlySpan<ushort> value)
-    {
-        const int typeSize = 2;
-        int partialChunkLength = value.Length % (32 / typeSize);
-        if (partialChunkLength > 0)
-        {
-            ReadOnlySpan<ushort> fullChunks = value[..^partialChunkLength];
-            Span<ushort> lastChunk = stackalloc ushort[32 / typeSize];
-            value[^partialChunkLength..].CopyTo(lastChunk);
-            Merkleize(out root, MemoryMarshal.Cast<ushort, UInt256>(fullChunks), MemoryMarshal.Cast<ushort, UInt256>(lastChunk));
-        }
-        else
-        {
-            Merkleize(out root, MemoryMarshal.Cast<ushort, UInt256>(value));
-        }
-    }
-
-    public static void Merkleize(out UInt256 root, ReadOnlySpan<uint> value)
-    {
-        const int typeSize = 4;
-        int partialChunkLength = value.Length % (32 / typeSize);
-        if (partialChunkLength > 0)
-        {
-            ReadOnlySpan<uint> fullChunks = value[..^partialChunkLength];
-            Span<uint> lastChunk = stackalloc uint[32 / typeSize];
-            value[^partialChunkLength..].CopyTo(lastChunk);
-            Merkleize(out root, MemoryMarshal.Cast<uint, UInt256>(fullChunks), MemoryMarshal.Cast<uint, UInt256>(lastChunk));
-        }
-        else
-        {
-            Merkleize(out root, MemoryMarshal.Cast<uint, UInt256>(value));
-        }
-    }
-
-    public static void Merkleize(out UInt256 root, ReadOnlySpan<ulong> value, ulong maxLength = 0U)
-    {
-        const int typeSize = sizeof(ulong);
-        ulong limit = (maxLength * typeSize + 31) / 32;
-        int partialChunkLength = value.Length % (32 / typeSize);
-        if (partialChunkLength > 0)
-        {
-            ReadOnlySpan<ulong> fullChunks = value[..^partialChunkLength];
-            Span<ulong> lastChunk = stackalloc ulong[32 / typeSize];
-            value[^partialChunkLength..].CopyTo(lastChunk);
-            Merkleize(out root, MemoryMarshal.Cast<ulong, UInt256>(fullChunks), MemoryMarshal.Cast<ulong, UInt256>(lastChunk), limit);
-        }
-        else
-        {
-            Merkleize(out root, MemoryMarshal.Cast<ulong, UInt256>(value), limit);
-        }
-    }
-
-    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt128> value)
-    {
-        const int typeSize = 16;
-        int partialChunkLength = value.Length % (32 / typeSize);
-        if (partialChunkLength > 0)
-        {
-            ReadOnlySpan<UInt128> fullChunks = value[..^partialChunkLength];
-            Span<UInt128> lastChunk = stackalloc UInt128[32 / typeSize];
-            value[^partialChunkLength..].CopyTo(lastChunk);
-            Merkleize(out root, MemoryMarshal.Cast<UInt128, UInt256>(fullChunks), MemoryMarshal.Cast<UInt128, UInt256>(lastChunk));
-        }
-        else
-        {
-            Merkleize(out root, MemoryMarshal.Cast<UInt128, UInt256>(value));
-        }
-    }
-
-    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
+    private static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
     {
         if (limit == 0 && (value.Length + lastChunk.Length == 1))
         {

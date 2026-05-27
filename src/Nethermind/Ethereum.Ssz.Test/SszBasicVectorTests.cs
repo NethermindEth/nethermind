@@ -7,6 +7,7 @@ using System.IO;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.SszVectorConverters;
 using NUnit.Framework;
 using SszEncoder = Nethermind.Serialization.Ssz.Ssz;
 
@@ -139,26 +140,43 @@ public class SszBasicVectorTests
         switch (elementType)
         {
             case TypeBool:
-                Span<bool> decodedBools = SszEncoder.DecodeBools(ssz);
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedBools);
+                bool[] decodedBools = new bool[ssz.Length];
+                for (int i = 0; i < decodedBools.Length; i++)
+                {
+                    decodedBools[i] = BooleanSszVectorConverter.FromSpan(ssz.AsSpan(i, 1));
+                }
+                SszEncoder.Encode(reEncoded.AsSpan(), decodedBools.AsSpan());
                 break;
             case TypeUint8:
                 SszEncoder.Encode(reEncoded.AsSpan(), (ReadOnlySpan<byte>)ssz);
                 break;
             case TypeUint16:
-                Span<ushort> decodedUshorts = SszEncoder.DecodeUShorts(ssz);
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUshorts);
+                ushort[] decodedUshorts = new ushort[ssz.Length / UInt16SszVectorConverter.Length];
+                for (int i = 0; i < decodedUshorts.Length; i++)
+                {
+                    decodedUshorts[i] = UInt16SszVectorConverter.FromSpan(ssz.AsSpan(i * UInt16SszVectorConverter.Length, UInt16SszVectorConverter.Length));
+                }
+                SszEncoder.Encode(reEncoded.AsSpan(), decodedUshorts.AsSpan());
                 break;
             case TypeUint32:
-                Span<uint> decodedUints = SszEncoder.DecodeUInts(ssz);
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUints);
+                uint[] decodedUints = new uint[ssz.Length / UInt32SszVectorConverter.Length];
+                for (int i = 0; i < decodedUints.Length; i++)
+                {
+                    decodedUints[i] = UInt32SszVectorConverter.FromSpan(ssz.AsSpan(i * UInt32SszVectorConverter.Length, UInt32SszVectorConverter.Length));
+                }
+                SszEncoder.Encode(reEncoded.AsSpan(), decodedUints.AsSpan());
                 break;
             case TypeUint64:
-                Span<ulong> decodedUlongs = SszEncoder.DecodeULongs(ssz);
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUlongs);
+                ulong[] decodedUlongs = new ulong[ssz.Length / UInt64SszVectorConverter.Length];
+                for (int i = 0; i < decodedUlongs.Length; i++)
+                {
+                    decodedUlongs[i] = UInt64SszVectorConverter.FromSpan(ssz.AsSpan(i * UInt64SszVectorConverter.Length, UInt64SszVectorConverter.Length));
+                }
+                SszEncoder.Encode(reEncoded.AsSpan(), decodedUlongs.AsSpan());
                 break;
             case TypeUint128:
-                UInt128[] decodedUint128S = SszEncoder.DecodeUInts128(ssz);
+                SszEncoder.Decode(ssz, out ReadOnlySpan<UInt128> decodedUint128Span);
+                UInt128[] decodedUint128S = decodedUint128Span.ToArray();
                 SszEncoder.Encode(reEncoded.AsSpan(), decodedUint128S);
                 break;
             case TypeUint256:

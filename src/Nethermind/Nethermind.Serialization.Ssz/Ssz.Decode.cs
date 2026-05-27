@@ -24,6 +24,13 @@ public static partial class Ssz
 
     public static void Decode(ReadOnlySpan<byte> span, out ReadOnlySpan<byte> result) => result = span;
 
+    public static void Decode(ReadOnlySpan<byte> span, out ReadOnlySpan<bool> result)
+    {
+        ValidateBooleans(span);
+
+        result = MemoryMarshal.Cast<byte, bool>(span);
+    }
+
     public static void Decode(ReadOnlySpan<byte> span, out ReadOnlySpan<ushort> result)
     {
         ValidateArrayLength(span, sizeof(ushort));
@@ -147,6 +154,8 @@ public static partial class Ssz
 
     public static void Decode(ReadOnlySequence<byte> data, out UInt128 result)
     {
+        ValidateSequenceLength<UInt128>(data, 16);
+
         Span<byte> stack = stackalloc byte[16];
         Decode(ToContiguous(data, stack), out result);
     }
@@ -160,7 +169,15 @@ public static partial class Ssz
 
     public static void Decode(ReadOnlySequence<byte> data, int vectorLength, out BitArray vector)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(vectorLength, nameof(vectorLength));
+
         int byteLength = (vectorLength + 7) / 8;
+        if (data.Length != byteLength)
+        {
+            throw new InvalidDataException(
+                $"Invalid bitvector: expected {byteLength} bytes for Bitvector[{vectorLength}] but got {data.Length}");
+        }
+
         if (data.IsSingleSegment)
         {
             vector = DecodeBitvector(data.FirstSpan, vectorLength);
@@ -198,6 +215,16 @@ public static partial class Ssz
         }
     }
 
+    private static void ValidateSequenceLength<T>(ReadOnlySequence<byte> data, int expectedLength)
+    {
+        if (data.Length != expectedLength)
+        {
+            Type type = typeof(T);
+            throw new InvalidDataException(
+                $"Invalid source length in SSZ decoding of {type.Name}. Source length is {data.Length} and expected length is {expectedLength}.");
+        }
+    }
+
     private static void ValidateLength(ReadOnlySpan<byte> span, int expectedLength)
     {
         if (span.Length != expectedLength)
@@ -213,6 +240,17 @@ public static partial class Ssz
         {
             throw new InvalidDataException(
                  $"SSZ decode expects input in multiples of {itemLength} and received {span.Length}");
+        }
+    }
+
+    private static void ValidateBooleans(ReadOnlySpan<byte> span)
+    {
+        foreach (byte value in span)
+        {
+            if (value > 1)
+            {
+                throw new InvalidDataException("SSZ boolean value must be 0 or 1.");
+            }
         }
     }
 

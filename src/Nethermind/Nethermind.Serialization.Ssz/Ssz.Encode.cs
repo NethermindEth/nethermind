@@ -22,7 +22,7 @@ public static partial class Ssz
         BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(8, 8), (ulong)(value >> 64));
     }
 
-    public static void Encode(Span<byte> span, Span<bool> value)
+    public static void Encode(Span<byte> span, ReadOnlySpan<bool> value)
     {
         if (span.Length != value.Length)
         {
@@ -35,7 +35,7 @@ public static partial class Ssz
         }
     }
 
-    public static void Encode(Span<byte> span, UInt128[] value)
+    public static void Encode(Span<byte> span, ReadOnlySpan<UInt128> value)
     {
         const int typeSize = 16;
         if (span.Length != value.Length * typeSize)
@@ -49,7 +49,18 @@ public static partial class Ssz
         }
     }
 
-    public static void Encode(Span<byte> span, Span<ulong> value)
+    public static void Encode(Span<byte> span, ReadOnlySpan<long> value)
+    {
+        const int typeSize = 8;
+        if (span.Length != value.Length * typeSize)
+        {
+            ThrowTargetLength<long[]>(span.Length, value.Length);
+        }
+
+        MemoryMarshal.Cast<long, byte>(value).CopyTo(span);
+    }
+
+    public static void Encode(Span<byte> span, ReadOnlySpan<ulong> value)
     {
         const int typeSize = 8;
         if (span.Length != value.Length * typeSize)
@@ -60,7 +71,18 @@ public static partial class Ssz
         MemoryMarshal.Cast<ulong, byte>(value).CopyTo(span);
     }
 
-    public static void Encode(Span<byte> span, Span<uint> value)
+    public static void Encode(Span<byte> span, ReadOnlySpan<int> value)
+    {
+        const int typeSize = 4;
+        if (span.Length != value.Length * typeSize)
+        {
+            ThrowTargetLength<int[]>(span.Length, value.Length);
+        }
+
+        MemoryMarshal.Cast<int, byte>(value).CopyTo(span);
+    }
+
+    public static void Encode(Span<byte> span, ReadOnlySpan<uint> value)
     {
         const int typeSize = 4;
         if (span.Length != value.Length * typeSize)
@@ -71,7 +93,7 @@ public static partial class Ssz
         MemoryMarshal.Cast<uint, byte>(value).CopyTo(span);
     }
 
-    public static void Encode(Span<byte> span, Span<ushort> value)
+    public static void Encode(Span<byte> span, ReadOnlySpan<ushort> value)
     {
         const int typeSize = 2;
         if (span.Length != value.Length * typeSize)

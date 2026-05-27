@@ -18,5 +18,5 @@ public sealed class UInt256SszVectorConverter : ISszVectorConverter<UInt256>
 
     public static void ToSpan(Span<byte> span, UInt256 value) => value.ToLittleEndian(span);
 
-    public static void Merkleize(UInt256 value, out UInt256 root) => Merkle.Merkleize(out root, value);
+    public static void Feed(ref Merkleizer merkleizer, UInt256 value) => merkleizer.Feed(value);
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Int256;
+using Nethermind.Merkleization;
 
 namespace Nethermind.Serialization.Ssz;
 
@@ -21,6 +21,6 @@ public interface ISszVectorConverter<T>
     /// <summary>Encodes a value into its fixed-length SSZ byte vector representation.</summary>
     static abstract void ToSpan(Span<byte> span, T value);
 
-    /// <summary>Computes the SSZ Merkle root for the fixed-length vector value.</summary>
-    static abstract void Merkleize(T value, out UInt256 root);
+    /// <summary>Feeds the fixed-length vector value into an SSZ Merkleizer.</summary>
+    static abstract void Feed(ref Merkleizer merkleizer, T value);
 }

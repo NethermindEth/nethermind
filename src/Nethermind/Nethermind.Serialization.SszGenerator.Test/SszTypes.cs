@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Merkleization;
 using Nethermind.Serialization.Ssz;
 using System;
@@ -97,6 +96,26 @@ namespace Nethermind.Serialization.SszGenerator.Test
     }
 
     [SszContainer]
+    public partial struct BoolVectorContainer
+    {
+        [SszVector(3)]
+        public bool[]? Items { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct SignedPrimitiveCollectionContainer
+    {
+        [SszVector(3)]
+        public bool[]? Bools { get; set; }
+
+        [SszVector(2)]
+        public int[]? Ints { get; set; }
+
+        [SszList(2)]
+        public long[]? Longs { get; set; }
+    }
+
+    [SszContainer]
     public partial struct FixedVectorContainer
     {
         [SszVector(2)]
@@ -131,6 +150,12 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ValueHash256[]? HashVector { get; set; }
     }
 
+    [SszContainer]
+    public partial struct ConverterNameShadowContainer
+    {
+        public TestBytes4 TestBytes4SszVectorConverter { get; set; }
+    }
+
     public readonly struct TestBytes4(uint value)
     {
         public uint Value { get; } = value;
@@ -142,7 +167,7 @@ namespace Nethermind.Serialization.SszGenerator.Test
 
         private TestBytes4SszVectorConverter() { }
 
-        public static int MerkleizeCallCount { get; set; }
+        public static int FeedCallCount { get; set; }
 
         public static TestBytes4 FromSpan(ReadOnlySpan<byte> span) =>
             new(BinaryPrimitives.ReadUInt32LittleEndian(span));
@@ -150,10 +175,10 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public static void ToSpan(Span<byte> span, TestBytes4 value) =>
             BinaryPrimitives.WriteUInt32LittleEndian(span, value.Value);
 
-        public static void Merkleize(TestBytes4 value, out UInt256 root)
+        public static void Feed(ref Merkleizer merkleizer, TestBytes4 value)
         {
-            MerkleizeCallCount++;
-            Merkle.Merkleize(out root, value.Value);
+            FeedCallCount++;
+            merkleizer.Feed(value.Value);
         }
     }
 

@@ -88,6 +88,39 @@ public class EncodingTest
     }
 
     [Test]
+    public void Encode_and_decode_signed_primitive_collections_round_trip()
+    {
+        SignedPrimitiveCollectionContainer container = new()
+        {
+            Bools = [true, false, true],
+            Ints = [-1, int.MaxValue],
+            Longs = [long.MinValue, 7],
+        };
+
+        byte[] encoded = Encode(container);
+        Decode(encoded, out SignedPrimitiveCollectionContainer decoded);
+
+        Assert.That(decoded.Bools, Is.EqualTo(container.Bools));
+        Assert.That(decoded.Ints, Is.EqualTo(container.Ints));
+        Assert.That(decoded.Longs, Is.EqualTo(container.Longs));
+    }
+
+    [Test]
+    public void Decode_bool_vector_rejects_non_boolean_values() =>
+        Assert.That(() => Decode([0, 2, 1], out BoolVectorContainer _), Throws.InstanceOf<InvalidDataException>());
+
+    [Test]
+    public void Converter_static_calls_ignore_member_name_shadowing()
+    {
+        ConverterNameShadowContainer container = new() { TestBytes4SszVectorConverter = new TestBytes4(42) };
+
+        byte[] encoded = Encode(container);
+        Decode(encoded, out ConverterNameShadowContainer decoded);
+
+        Assert.That(decoded.TestBytes4SszVectorConverter.Value, Is.EqualTo(container.TestBytes4SszVectorConverter.Value));
+    }
+
+    [Test]
     public void Encode_and_decode_nested_progressive_list_round_trip()
     {
         NestedProgressiveListContainer container = new()
@@ -131,7 +164,7 @@ public class EncodingTest
         Merkleize(container, out UInt256 actual);
 
         ulong[] items = [1UL, 2UL];
-        Merkle.Merkleize(out UInt256 expected, items, 4);
+        Merkle.Merkleize(out UInt256 expected, MemoryMarshal.AsBytes(items.AsSpan()), 1);
         Merkle.MixIn(ref expected, items.Length);
 
         Assert.That(actual, Is.EqualTo(expected));
@@ -328,7 +361,7 @@ public class EncodingTest
 
         byte[] encoded = Encode(original);
         Decode(encoded, out ConverterContainer decoded);
-        TestBytes4SszVectorConverter.MerkleizeCallCount = 0;
+        TestBytes4SszVectorConverter.FeedCallCount = 0;
         Merkleize(original, out UInt256 _);
 
         Assert.That(encoded.Length, Is.EqualTo(108));
@@ -337,7 +370,7 @@ public class EncodingTest
         Assert.That(decoded.FixedBytesVector!.Select(x => x.Value), Is.EqualTo(original.FixedBytesVector!.Select(x => x.Value)));
         Assert.That(decoded.Hash, Is.EqualTo(original.Hash));
         Assert.That(decoded.HashVector, Is.EqualTo(original.HashVector));
-        Assert.That(TestBytes4SszVectorConverter.MerkleizeCallCount, Is.EqualTo(3));
+        Assert.That(TestBytes4SszVectorConverter.FeedCallCount, Is.EqualTo(3));
     }
 
     [TestCaseSource(nameof(InvalidInputCases))]
@@ -400,6 +433,7 @@ public class EncodingTest
     private static UInt256 MixInActiveFieldsSpec(UInt256 root, byte activeFields)
     {
         Span<byte> chunk = stackalloc byte[32];
+        chunk.Clear();
         chunk[0] = activeFields;
         return HashConcat(root, new UInt256(chunk));
     }
@@ -428,6 +462,7 @@ public class EncodingTest
         if (fullByteLength != bytes.Length)
         {
             Span<byte> lastChunk = stackalloc byte[32];
+            lastChunk.Clear();
             bytes[fullByteLength..].CopyTo(lastChunk);
             chunks[^1] = new UInt256(lastChunk);
         }

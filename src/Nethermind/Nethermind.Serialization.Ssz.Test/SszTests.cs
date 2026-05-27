@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections;
 using System.IO;
 using Nethermind.Core;
@@ -114,6 +115,16 @@ namespace Nethermind.Serialization.Ssz.Test
             Assert.That(decoded, Is.EqualTo(value));
         }
 
+        [Test]
+        public void Decode_uint128_multisegment_rejects_short_input()
+        {
+            ReadOnlySequence<byte> sequence = CreateSequence(
+                new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },
+                new byte[] { 9, 10, 11, 12, 13, 14, 15 });
+
+            Assert.Throws<InvalidDataException>(() => Ssz.Decode(sequence, out UInt128 _));
+        }
+
         [TestCase(true, "0x01")]
         [TestCase(false, "0x00")]
         public void Can_serialize_bool(bool value, string expectedValue)
@@ -167,6 +178,14 @@ namespace Nethermind.Serialization.Ssz.Test
         }
 
         [Test]
+        public void DecodeBitvector_multisegment_rejects_short_input()
+        {
+            ReadOnlySequence<byte> sequence = CreateSequence(new byte[] { 0x1F }, new byte[] { 0x00 });
+
+            Assert.Throws<InvalidDataException>(() => Ssz.Decode(sequence, 17, out BitArray _));
+        }
+
+        [Test]
         public void DecodeBitlist_accepts_valid_input()
         {
             // Bitlist with 3 data bits [true, false, true] + sentinel
@@ -191,6 +210,28 @@ namespace Nethermind.Serialization.Ssz.Test
             // Last byte must contain the sentinel 1-bit; 0x00 has none
             byte[] data = [0x00];
             Assert.Throws<InvalidDataException>(() => Ssz.DecodeBitlist(data));
+        }
+
+        private static ReadOnlySequence<byte> CreateSequence(ReadOnlyMemory<byte> first, ReadOnlyMemory<byte> second)
+        {
+            SequenceSegment firstSegment = new(first);
+            SequenceSegment secondSegment = firstSegment.Append(second);
+            return new ReadOnlySequence<byte>(firstSegment, 0, secondSegment, second.Length);
+        }
+
+        private sealed class SequenceSegment : ReadOnlySequenceSegment<byte>
+        {
+            public SequenceSegment(ReadOnlyMemory<byte> memory) => Memory = memory;
+
+            public SequenceSegment Append(ReadOnlyMemory<byte> memory)
+            {
+                SequenceSegment segment = new(memory)
+                {
+                    RunningIndex = RunningIndex + Memory.Length
+                };
+                Next = segment;
+                return segment;
+            }
         }
     }
 }

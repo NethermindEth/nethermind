@@ -25,8 +25,8 @@ class SszType
                 AdditionalNamespaces = { converter.ConverterNamespace },
                 CustomEncodeTemplate = $"{converter.ConverterStaticMemberAccess}.ToSpan({{0}}, {{1}});",
                 CustomDecodeTemplate = $"{{1}} = {converter.ConverterStaticMemberAccess}.FromSpan({{0}});",
-                CustomMerkleizeMethod = $"{converter.ConverterStaticMemberAccess}.Merkleize",
-                CustomMerkleizeTemplate = $"{converter.ConverterStaticMemberAccess}.Merkleize({{0}}, out {{1}});",
+                CustomFeedMethod = $"{converter.ConverterStaticMemberAccess}.Feed",
+                CustomFeedTemplate = $"{converter.ConverterStaticMemberAccess}.Feed(ref {{0}}, {{1}});",
             });
         }
 
@@ -102,8 +102,8 @@ class SszType
 
     public string? CustomEncodeTemplate { get; init; }
     public string? CustomDecodeTemplate { get; init; }
-    public string? CustomMerkleizeMethod { get; init; }
-    public string? CustomMerkleizeTemplate { get; init; }
+    public string? CustomFeedMethod { get; init; }
+    public string? CustomFeedTemplate { get; init; }
     public bool HasCustomInlineCodec => CustomEncodeTemplate is not null;
     public IEnumerable<SszProperty>? CompatibleUnionMembers => Kind == Kind.CompatibleUnion ? Members?.Where(x => x.Name != SelectorPropertyName) : null;
     public SszProperty? Selector => Members?.FirstOrDefault(x => x.Name == SelectorPropertyName);

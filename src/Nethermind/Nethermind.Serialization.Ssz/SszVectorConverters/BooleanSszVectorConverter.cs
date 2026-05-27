@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using Nethermind.Int256;
 using Nethermind.Merkleization;
 
 namespace Nethermind.Serialization.Ssz.SszVectorConverters;
@@ -24,5 +23,5 @@ public sealed class BooleanSszVectorConverter : ISszVectorConverter<bool>
 
     public static void ToSpan(Span<byte> span, bool value) => span[0] = value ? (byte)1 : (byte)0;
 
-    public static void Merkleize(bool value, out UInt256 root) => Merkle.Merkleize(out root, value);
+    public static void Feed(ref Merkleizer merkleizer, bool value) => merkleizer.Feed(value);
 }

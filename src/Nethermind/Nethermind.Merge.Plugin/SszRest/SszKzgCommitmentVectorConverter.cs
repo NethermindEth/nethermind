@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.Merkleization;
 using Nethermind.Serialization.Ssz;
 
@@ -19,5 +18,5 @@ public sealed class SszKzgCommitmentVectorConverter : ISszVectorConverter<SszKzg
 
     public static void ToSpan(Span<byte> span, SszKzgCommitment value) => value.AsSpan().CopyTo(span);
 
-    public static void Merkleize(SszKzgCommitment value, out UInt256 root) => Merkle.Merkleize(out root, value.AsSpan());
+    public static void Feed(ref Merkleizer merkleizer, SszKzgCommitment value) => merkleizer.Feed(value.AsSpan());
 }

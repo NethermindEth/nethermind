@@ -58,9 +58,7 @@ public class SszBitTests
         SszEncoder.EncodeList(reEncoded, decoded);
         Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded bitlist does not match original SSZ bytes");
 
-        uint chunkLimit = (uint)((maxBitLength + 255) / 256);
-        byte[] sszCopy = (byte[])ssz.Clone();
-        Merkle.MerkleizeBits(out UInt256 actualRoot, sszCopy, chunkLimit);
+        Merkle.Merkleize(out UInt256 actualRoot, decoded, (ulong)maxBitLength);
         Assert.That(actualRoot, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
     }
 
