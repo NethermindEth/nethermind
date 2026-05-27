@@ -3,7 +3,7 @@
 
 using Nethermind.State.Flat.Hsst.BSearchIndex;
 
-namespace Nethermind.State.Flat.Hsst;
+namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
 /// Thin wrapper around <see cref="BSearchIndexReader"/> that preserves the HsstIndex public API.
