@@ -456,3 +456,8 @@ keystore/
 # Worktrees
 .worktrees/
 /.dotnet-cli
+
+# Nix
+result
+result-*
+.direnv/
