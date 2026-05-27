@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.State.Flat.Hsst.BSearchIndex;
+namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
 /// What kind of addressable thing the reader is sitting on. Encoded in the low 2 bits of

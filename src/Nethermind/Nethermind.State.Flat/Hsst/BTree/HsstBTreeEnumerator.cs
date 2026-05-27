@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.Hsst;
-using Nethermind.State.Flat.Hsst.BSearchIndex;
 
 namespace Nethermind.State.Flat.Hsst.BTree;
 

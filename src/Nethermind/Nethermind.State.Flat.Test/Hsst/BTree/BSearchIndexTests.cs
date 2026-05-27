@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Utils;
-using Nethermind.State.Flat.Hsst.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst.BTree;
