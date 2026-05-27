@@ -40,7 +40,7 @@ internal sealed class LogsStreamableResult(
     public ValueTask<StreamableResultStatus> WriteToWithStatusAsync(PipeWriter writer, bool isBatch, CancellationToken cancellationToken) =>
         WriteToWithStatusAsync(
             TimeoutToken,
-            Logger, 
+            Logger,
             combinedToken => EmitContentAsync(writer, isBatch, combinedToken),
             cancellationToken,
             TimeoutLogMessage,
