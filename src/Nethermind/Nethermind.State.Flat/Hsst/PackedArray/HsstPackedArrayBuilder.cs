@@ -25,7 +25,7 @@ namespace Nethermind.State.Flat.Hsst.PackedArray;
 ///              Flags (u8): bit 0 = IsLittleEndian, other bits reserved=0]
 /// When <c>IsLittleEndian</c> is set (only allowed for <c>KeySize ∈ {2,4,8}</c>), every stored
 /// key — both data and summary — is byte-reversed at write time so a native LE int load
-/// recovers the lex value, matching the BSearchIndex LE-stored convention. This unlocks
+/// recovers the lex value, matching the BTreeNode LE-stored convention. This unlocks
 /// the AVX-512 floor-scan fast path in <c>UniformKeySearch</c>.
 /// Per-level record counts are derivable: Count_0 = ceil(EntryCount / 1<<L0),
 /// Count_{k+1} = ceil(Count_k / 1<<Lh) — the reader recomputes them on parse.
@@ -314,7 +314,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
 
     // Lex-keyed input arrives big-endian. When IsLittleEndian is set (KeySize ∈ {2,4,8}),
     // emit byte-reversed bytes so a native LE int load over the slot recovers the lex value.
-    // Mirrors the BSearchIndex LE-stored convention (see UniformKeySearch.Pack24LeMask512).
+    // Mirrors the BTreeNode LE-stored convention (see UniformKeySearch.Pack24LeMask512).
     private void WriteStorageKey(ref TWriter writer, scoped ReadOnlySpan<byte> key)
     {
         if (!_isLittleEndian)

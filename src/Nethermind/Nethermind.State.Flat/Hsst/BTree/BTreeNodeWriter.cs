@@ -9,15 +9,15 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// <summary>
 /// Metadata describing the format of an index node to build.
 /// </summary>
-internal struct BSearchIndexMetadata
+internal struct BTreeNodeMetadata
 {
     /// <summary>Which kind of addressable thing this is.</summary>
     /// <remarks>
     /// Encoded in the low 2 bits of the on-disk <c>Flags</c> byte. The writer emits only
-    /// <see cref="BSearchNodeKind.Intermediate"/>; <see cref="BSearchNodeKind.Entry"/> is the
+    /// <see cref="BTreeNodeKind.Intermediate"/>; <see cref="BTreeNodeKind.Entry"/> is the
     /// kind used by data-region entry records and is not written here.
     /// </remarks>
-    public BSearchNodeKind NodeKind;
+    public BTreeNodeKind NodeKind;
 
     /// <summary>0=Variable, 1=Uniform.</summary>
     public int KeyType;
@@ -48,7 +48,7 @@ internal struct BSearchIndexMetadata
     /// </summary>
     public bool IsKeyLittleEndian = false;
 
-    public BSearchIndexMetadata() => NodeKind = BSearchNodeKind.Intermediate;
+    public BTreeNodeMetadata() => NodeKind = BTreeNodeKind.Intermediate;
 }
 
 /// <summary>
@@ -72,11 +72,11 @@ internal struct BSearchIndexMetadata
 /// code is still parsing the header.
 ///
 /// The <c>Flags</c> byte is shared with the data-region's per-entry flag byte; bits 0-1 carry a
-/// <see cref="BSearchNodeKind"/> (Entry or Intermediate) so the BTree reader's dispatch loop
+/// <see cref="BTreeNodeKind"/> (Entry or Intermediate) so the BTree reader's dispatch loop
 /// can recognize what kind of thing it is sitting on from a single byte read. For
-/// <see cref="BSearchNodeKind.Intermediate"/>, bits 2-3 carry <c>KeyType</c>, bits 4-5
+/// <see cref="BTreeNodeKind.Intermediate"/>, bits 2-3 carry <c>KeyType</c>, bits 4-5
 /// <c>ValueSizeCode</c>, bit 6 <c>IsKeyLittleEndian</c>, and bit 7 is reserved.
-/// <see cref="BSearchNodeKind.Entry"/> uses bits 2-7 as reserved zero.
+/// <see cref="BTreeNodeKind.Entry"/> uses bits 2-7 as reserved zero.
 ///
 /// Values are always Uniform: each entry's value slot is a fixed-width LE integer whose
 /// width is one of <c>{2, 3, 4, 6}</c> — encoded as the 2-bit field at Flags bits 4-5
@@ -104,11 +104,11 @@ internal struct BSearchIndexMetadata
 /// values: sum of (2 + value.Length). Both are sized by the caller from the known per-node
 /// upper bound and reused across nodes.
 /// </summary>
-internal ref struct BSearchIndexWriter<TWriter>
+internal ref struct BTreeNodeWriter<TWriter>
     where TWriter : IByteBufferWriter
 {
     private ref TWriter _writer;
-    private readonly BSearchIndexMetadata _metadata;
+    private readonly BTreeNodeMetadata _metadata;
     private readonly Span<byte> _keyBuf;
     private readonly Span<byte> _valueBuf;
     private readonly ReadOnlySpan<byte> _commonKeyPrefix;
@@ -116,9 +116,9 @@ internal ref struct BSearchIndexWriter<TWriter>
     private int _keyPos;    // grows forward from 0 in _keyBuf
     private int _valuePos;  // grows forward from 0 in _valueBuf
 
-    public BSearchIndexWriter(
+    public BTreeNodeWriter(
         ref TWriter writer,
-        BSearchIndexMetadata metadata,
+        BTreeNodeMetadata metadata,
         Span<byte> keyBuffer,
         Span<byte> valueBuffer,
         ReadOnlySpan<byte> commonKeyPrefix = default)
@@ -135,7 +135,7 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     /// <summary>
     /// Add a key-value pair. Must be called in sorted key order.
-    /// If <see cref="BSearchIndexMetadata.BaseOffset"/> is non-zero, value bytes must already
+    /// If <see cref="BTreeNodeMetadata.BaseOffset"/> is non-zero, value bytes must already
     /// have the base offset subtracted before calling AddKey.
     /// </summary>
     public void AddKey(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
@@ -158,10 +158,10 @@ internal ref struct BSearchIndexWriter<TWriter>
     /// <summary>
     /// Write the final binary layout. The ref writer is already advanced.
     ///
-    /// <see cref="BSearchIndexMetadata.KeyType"/>, <see cref="BSearchIndexMetadata.KeySlotSize"/>,
+    /// <see cref="BTreeNodeMetadata.KeyType"/>, <see cref="BTreeNodeMetadata.KeySlotSize"/>,
     /// and the common-key-prefix passed at construction are taken as-is — the writer does
     /// not auto-detect or adjust. Callers (e.g. <c>HsstBTreeBuilder</c>) decide both jointly
-    /// via <see cref="BSearchIndexLayoutPlanner.Plan"/> and pre-strip prefix bytes from
+    /// via <see cref="BTreeNodeLayoutPlanner.Plan"/> and pre-strip prefix bytes from
     /// each <see cref="AddKey"/> call so that <see cref="_keyBuf"/> already holds suffixes.
     /// </summary>
     public void FinalizeNode()
@@ -212,7 +212,7 @@ internal ref struct BSearchIndexWriter<TWriter>
     private int HeaderSize() => 12;
 
     /// <summary>
-    /// Map a <see cref="BSearchIndexMetadata.ValueSlotSize"/> to its 2-bit Flags encoding
+    /// Map a <see cref="BTreeNodeMetadata.ValueSlotSize"/> to its 2-bit Flags encoding
     /// (bits 4-5): 2→00, 3→01, 4→10, 6→11. Throws if <paramref name="slot"/> is anything
     /// else — values must already be quantized by the caller (see
     /// <c>HsstValueSlot.MinBytesFor</c>).
@@ -228,11 +228,11 @@ internal ref struct BSearchIndexWriter<TWriter>
     };
 
     /// <summary>
-    /// Pack the on-disk <c>Flags</c> byte. Bits 0-1 carry the <see cref="BSearchNodeKind"/>, bits
+    /// Pack the on-disk <c>Flags</c> byte. Bits 0-1 carry the <see cref="BTreeNodeKind"/>, bits
     /// 2-3 <c>KeyType</c>, bits 4-5 <c>ValueSizeCode</c>, bit 6 <c>IsKeyLittleEndian</c>; bit 7 is
     /// reserved (always 0).
     /// </summary>
-    private static byte EncodeFlags(BSearchNodeKind kind, int keyType, byte valueSizeCode, bool keyLe) => (byte)(
+    private static byte EncodeFlags(BTreeNodeKind kind, int keyType, byte valueSizeCode, bool keyLe) => (byte)(
         ((byte)kind & 0x03) |
         ((keyType & 0x03) << 2) |
         ((valueSizeCode & 0x03) << 4) |

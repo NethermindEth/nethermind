@@ -59,7 +59,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     // Root prefix bytes parsed from the HSST trailer at construction. Seeded as
     // parentSeparator when DescendToLeaf loads the root; non-root descents pass
     // `default` and rely on the value-only fast path in the reader (the enumerator
-    // never touches prefix-dependent BSearchIndex APIs — only GetUInt64Value /
+    // never touches prefix-dependent BTreeNode APIs — only GetUInt64Value /
     // EntryCount / BaseOffset).
     private readonly byte[] _rootPrefix;
     private readonly long _trailerLen;
@@ -161,7 +161,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             // Entries have no header, so we can't pass them to TryLoadNode — treat the
             // record as a single-entry virtual leaf at this depth.
             if (!reader.TryRead(currentStart, flagBuf)) return false;
-            if ((BSearchNodeKind)(flagBuf[0] & 0x03) == BSearchNodeKind.Entry)
+            if ((BTreeNodeKind)(flagBuf[0] & 0x03) == BTreeNodeKind.Entry)
             {
                 _depth = depth;
                 if (_leafMetaStarts.Length < 1)
@@ -173,7 +173,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             }
 
             ReadOnlySpan<byte> parentSeparator = depth == 0 ? _rootPrefix : default;
-            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, scopeEndMinusTrailer, parentSeparator, out BSearchIndexReader node, out TPin pin))
+            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, scopeEndMinusTrailer, parentSeparator, out BTreeNodeReader node, out TPin pin))
                 return false;
 
             using (pin)
@@ -193,7 +193,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
                 // "buffer entries vs descend further" by inspecting children's kinds.
                 long firstChildAbs = _scopeStart + (long)node.GetUInt64Value(0);
                 if (!reader.TryRead(firstChildAbs, flagBuf)) return false;
-                bool firstIsEntry = (BSearchNodeKind)(flagBuf[0] & 0x03) == BSearchNodeKind.Entry;
+                bool firstIsEntry = (BTreeNodeKind)(flagBuf[0] & 0x03) == BTreeNodeKind.Entry;
                 if (firstIsEntry)
                 {
                     // Verify ALL children are Entry-kind before treating the node as
@@ -208,7 +208,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
                     {
                         long childAbs = _scopeStart + (long)node.GetUInt64Value(i);
                         if (!reader.TryRead(childAbs, flagBuf)) return false;
-                        if ((BSearchNodeKind)(flagBuf[0] & 0x03) != BSearchNodeKind.Entry)
+                        if ((BTreeNodeKind)(flagBuf[0] & 0x03) != BTreeNodeKind.Entry)
                         {
                             allEntry = false;
                             break;
@@ -241,7 +241,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     /// transition while the leaf pin is still live; subsequent in-leaf MoveNext
     /// calls index the array directly with no further node pinning.
     /// </summary>
-    private void BufferLeaf(BSearchIndexReader leaf)
+    private void BufferLeaf(BTreeNodeReader leaf)
     {
         int n = leaf.EntryCount;
         if (_leafMetaStarts.Length < n)
@@ -272,7 +272,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             anc.LastIdx++;
 
             ReadOnlySpan<byte> parentSeparator = _depth == 0 ? _rootPrefix : default;
-            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, scopeEndMinusTrailer, parentSeparator, out BSearchIndexReader parent, out TPin parentPin))
+            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, scopeEndMinusTrailer, parentSeparator, out BTreeNodeReader parent, out TPin parentPin))
             {
                 _depth = -2;
                 return false;

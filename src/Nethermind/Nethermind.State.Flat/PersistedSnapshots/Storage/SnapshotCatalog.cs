@@ -43,7 +43,7 @@ public sealed class SnapshotCatalog(IDb db)
     // v3: blob arena ids are now per-file (was per-slice); NodeRef.RlpDataOffset is now
     // file-absolute (was slice-relative); entries are keyed by StateId.To and the
     // per-entry Id field is gone.
-    // v4: BSearchIndex node Flags byte no longer encodes ValueType in bits 3-4 (those bits
+    // v4: BTreeNode node Flags byte no longer encodes ValueType in bits 3-4 (those bits
     // are now reserved/zero); writers always emit Uniform values for b-tree index nodes.
     // v5: catalog moved out of the flatdb column set into a dedicated RocksDB under
     // persisted_snapshot/catalog/. Old directories must wipe persisted_snapshot/ so the

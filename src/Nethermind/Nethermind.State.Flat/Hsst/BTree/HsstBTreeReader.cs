@@ -28,8 +28,8 @@ internal static class HsstBTreeReader
     /// </summary>
     /// <remarks>
     /// The dispatch loop reads the 1-byte flag at the current cursor and switches on its
-    /// <see cref="BSearchNodeKind"/>: <see cref="BSearchNodeKind.Entry"/> jumps directly to
-    /// entry decode; <see cref="BSearchNodeKind.Intermediate"/> loads the node header, does
+    /// <see cref="BTreeNodeKind"/>: <see cref="BTreeNodeKind.Entry"/> jumps directly to
+    /// entry decode; <see cref="BTreeNodeKind.Intermediate"/> loads the node header, does
     /// a floor lookup, and advances the cursor to the matched child's flag byte. Variable
     /// depth is natural — the loop terminates the moment it lands on an Entry-kind flag,
     /// which can happen at any depth (a "direct-entry" child of an intermediate, a child of
@@ -90,16 +90,16 @@ internal static class HsstBTreeReader
         while (true)
         {
             if (!reader.TryRead(currentAbsStart, flagBuf)) return false;
-            BSearchNodeKind kind = (BSearchNodeKind)(flagBuf[0] & 0x03);
+            BTreeNodeKind kind = (BTreeNodeKind)(flagBuf[0] & 0x03);
 
-            if (kind == BSearchNodeKind.Entry)
+            if (kind == BTreeNodeKind.Entry)
             {
                 return DecodeEntry<TReader, TPin>(in reader, bound, currentAbsStart, key,
                     exactMatch, keyFirst, trailerKeyLength, out resultBound);
             }
 
-            // Leaf or Intermediate — parse as a BSearchIndex node.
-            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, scopeEnd, parentSeparator, out BSearchIndexReader node, out TPin pin))
+            // Leaf or Intermediate — parse as a BTreeNode node.
+            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, scopeEnd, parentSeparator, out BTreeNodeReader node, out TPin pin))
                 return false;
             using (pin)
             {
@@ -198,7 +198,7 @@ internal static class HsstBTreeReader
 
     /// <summary>
     /// Load the index node whose first byte is at <paramref name="absStart"/> via the reader's
-    /// <see cref="IHsstByteReader{TPin}.PinBuffer"/>. On success outs the parsed <see cref="BSearchIndexReader"/>
+    /// <see cref="IHsstByteReader{TPin}.PinBuffer"/>. On success outs the parsed <see cref="BTreeNodeReader"/>
     /// and the pin (whose <see cref="IBufferPin.Buffer"/> backs <paramref name="node"/>). The
     /// caller must dispose the pin once it's done with the node.
     ///
@@ -212,7 +212,7 @@ internal static class HsstBTreeReader
     internal static bool TryLoadNode<TReader, TPin>(
         scoped in TReader reader, long absStart, long scopeEnd,
         ReadOnlySpan<byte> parentSeparator,
-        out BSearchIndexReader node, out TPin pin)
+        out BTreeNodeReader node, out TPin pin)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
@@ -250,7 +250,7 @@ internal static class HsstBTreeReader
             {
                 // Hot path: node fits in the speculative window. ReadFromStart parses the
                 // header at win[0..] and slices keys/values forward within the node range.
-                node = BSearchIndexReader.ReadFromStart(win, 0, parentSeparator);
+                node = BTreeNodeReader.ReadFromStart(win, 0, parentSeparator);
                 pin = speculativePin;
                 keepSpeculative = true;
                 return true;
@@ -263,7 +263,7 @@ internal static class HsstBTreeReader
 
         // Cold path: node larger than the speculative window. Pin precisely.
         pin = reader.PinBuffer(absStart, totalNodeSize);
-        node = BSearchIndexReader.ReadFromStart(pin.Buffer, 0, parentSeparator);
+        node = BTreeNodeReader.ReadFromStart(pin.Buffer, 0, parentSeparator);
         return true;
     }
 }

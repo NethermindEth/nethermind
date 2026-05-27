@@ -11,12 +11,12 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// Used by callers (e.g. <c>HsstBTreeBuilder</c>) that already know each
 /// separator's length and have the leaf-wide LCP available from their own state
 /// (no byte content needed). The resulting prefix length and key-type are then
-/// passed to <see cref="BSearchIndexWriter{TWriter}"/> as construction options,
+/// passed to <see cref="BTreeNodeWriter{TWriter}"/> as construction options,
 /// with the layout chosen against post-strip (effective) lengths so a node whose
 /// mixed-length keys collapse to fixed-width suffixes after stripping gets the
 /// tightest layout the data supports.
 /// </summary>
-internal static class BSearchIndexLayoutPlanner
+internal static class BTreeNodeLayoutPlanner
 {
     /// <summary>
     /// Cap on the common-key-prefix length stored in node metadata. Bounded by
@@ -48,7 +48,7 @@ internal static class BSearchIndexLayoutPlanner
     /// <param name="keyType">Out: 0=Variable, 1=Uniform.</param>
     /// <param name="keySlotSize">Out: post-strip slot size for Uniform; 0 for Variable.</param>
     /// <param name="keyLittleEndian">
-    /// Out: when true, callers should set <c>BSearchIndexMetadata.IsKeyLittleEndian</c> so each
+    /// Out: when true, callers should set <c>BTreeNodeMetadata.IsKeyLittleEndian</c> so each
     /// fixed-width key slot is byte-reversed on disk (Flags bit 5). Set for the SIMD-eligible
     /// shapes: Uniform with <paramref name="keySlotSize"/> ∈ {2,4,8} and Variable (whose 2-byte
     /// prefixArr is uniformly LE-encoded).
@@ -137,7 +137,7 @@ internal static class BSearchIndexLayoutPlanner
             allSameLenExceptFirst = count >= 2;
         }
 
-        // BSearchIndexWriter takes `keySlotSize` bytes per entry from
+        // BTreeNodeWriter takes `keySlotSize` bytes per entry from
         // currKey.Slice(prefixLen, slot) for Uniform layouts, padding from key data
         // past each entry's natural separator length when the slot exceeds it. For
         // Variable layouts the writer instead slices `currKey.Slice(prefixLen,

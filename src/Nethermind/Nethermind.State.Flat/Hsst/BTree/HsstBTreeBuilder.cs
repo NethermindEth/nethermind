@@ -321,7 +321,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         int lebSize = Leb128.EncodedSize(valueLength);
         int trailerLen = 1 + lebSize + key.Length;
         Span<byte> dest = _writer.GetSpan(trailerLen);
-        dest[0] = (byte)BSearchNodeKind.Entry;
+        dest[0] = (byte)BTreeNodeKind.Entry;
         Leb128.Write(dest, 1, valueLength);
         if (key.Length > 0) key.CopyTo(dest.Slice(1 + lebSize, key.Length));
         _writer.Advance(trailerLen);
@@ -446,7 +446,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             // Entry layout: [FlagByte=Entry][FullKey][LEB128 ValueLength][Value]. EntryStart =
             // FlagByte position; the BTree reader's dispatch loop reads the flag byte first
             // to recognize the entry, then walks forward past the key + LEB128 to the value.
-            dest[0] = (byte)BSearchNodeKind.Entry;
+            dest[0] = (byte)BTreeNodeKind.Entry;
             int off = 1;
             if (key.Length > 0) key.CopyTo(dest.Slice(off, key.Length));
             off += key.Length;
@@ -465,7 +465,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             if (value.Length > 0) value.CopyTo(dest.Slice(off, value.Length));
             off += value.Length;
             long metadataPos = entryStart + value.Length;
-            dest[off] = (byte)BSearchNodeKind.Entry;
+            dest[off] = (byte)BTreeNodeKind.Entry;
             off++;
             Leb128.Write(dest, off, (long)value.Length);
             off += lebSize;
@@ -498,7 +498,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <c>[RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8]</c>
     /// (5 + RootPrefixLen bytes). Reader locates the root via
     /// <c>HSST end − 5 − RootPrefixLen − RootSize</c> and supplies the trailer's
-    /// <c>RootPrefix</c> bytes to the root node's <c>BSearchIndexReader.ReadFromStart</c>
+    /// <c>RootPrefix</c> bytes to the root node's <c>BTreeNodeReader.ReadFromStart</c>
     /// — non-root nodes get their prefix bytes from the parent's separator, but the root
     /// has no parent so the bytes ride the trailer instead. A node is capped at 64 KiB
     /// so RootSize fits in u16. KeyLength is the fixed key length for every entry in this
@@ -712,7 +712,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         int maxSepWithNew = Math.Max(maxSepLen, newSepLen);
 
         // Leaf-size upper bound matching the Variable-key layout written by
-        // BSearchIndexWriter: 12-byte header + 4 bytes/entry (u16 prefixArr +
+        // BTreeNodeWriter: 12-byte header + 4 bytes/entry (u16 prefixArr +
         // u16 offsetArr) + 2 bytes/entry value slot + per-entry tail bytes
         // beyond the 2-byte prefix slot (so max(0, sepLen - 2)). Safe upper
         // bound; tighter than the legacy formula that double-counted the
@@ -767,7 +767,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// Singleton fast path: when exactly one entry is pending, the leaf wrap is pure
     /// overhead (12-byte header + per-entry slot + tail key bytes) — the lone entry
     /// is instead pushed onto <c>CurrentLevel</c> as an
-    /// <see cref="BSearchNodeKind.Entry"/>-kind descriptor via
+    /// <see cref="BTreeNodeKind.Entry"/>-kind descriptor via
     /// <see cref="FlushPendingAsEntries"/>. The intermediate node above dispatches
     /// on the flag byte and handles Entry / Leaf / Intermediate children uniformly.
     /// Callers that need the leaf wrap even for a singleton (i.e. the lone entry
@@ -828,7 +828,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
     /// <summary>
     /// Push each pending entry directly onto <c>Buffers.CurrentLevel</c> as an
-    /// <see cref="BSearchNodeKind.Entry"/>-kind descriptor, skipping the leaf
+    /// <see cref="BTreeNodeKind.Entry"/>-kind descriptor, skipping the leaf
     /// node entirely. Used by <see cref="MaybeFlushBeforeEntry"/> when the
     /// would-be leaf for the pending entries wouldn't fit on the current page:
     /// rather than write a cross-page leaf that loses its locality benefit,
@@ -868,7 +868,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// Direct-flush any pending entry whose flag byte (= the key region) is
     /// stranded on a page prior to the writer's current page. These entries
     /// can't share a page-local leaf with anything on the writer's current
-    /// page, so push them as <see cref="BSearchNodeKind.Entry"/>-kind
+    /// page, so push them as <see cref="BTreeNodeKind.Entry"/>-kind
     /// descriptors onto <c>Buffers.CurrentLevel</c>; the intermediate node
     /// above will point at them directly via the reader's uniform flag-byte
     /// dispatch.
@@ -1172,9 +1172,9 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private int WriteEmptyIndexNode()
     {
         long nodeStart = _writer.Written;
-        scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
+        scoped BTreeNodeWriter<TWriter> indexWriter = new(ref _writer, new BTreeNodeMetadata
         {
-            NodeKind = BSearchNodeKind.Intermediate,
+            NodeKind = BTreeNodeKind.Intermediate,
             KeyType = 0,
             BaseOffset = 0,
             KeySlotSize = 1,
@@ -1188,7 +1188,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Unified node writer: emit a <see cref="BSearchNodeKind.Intermediate"/> BSearchIndex
+    /// Unified node writer: emit a <see cref="BTreeNodeKind.Intermediate"/> BTreeNode
     /// node covering the given <paramref name="children"/>. Used for both inline page-local
     /// nodes (each child wraps a single entry; pushed from
     /// <see cref="EmitInlineLeaf"/>) and inner nodes (each child is a previously-emitted
@@ -1227,7 +1227,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // cross-entry LCP the planner needs.
         int crossEntryLcp = ComputeCrossEntryLcp(children, commonPrefixArr);
 
-        BSearchIndexLayoutPlanner.Plan(sepLengths, crossEntryLcp, _keyLength,
+        BTreeNodeLayoutPlanner.Plan(sepLengths, crossEntryLcp, _keyLength,
             out int prefixLen, out int keyType, out int keySlotSize, out bool keyLittleEndian);
 
         // BaseOffset + per-entry value-slot width from child offsets.
@@ -1256,9 +1256,9 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         Span<byte> keyBuf = bufs.IndexKeyBufScratch.AsSpan(0, keyBufSize);
         Span<byte> valueScratchSlice = valueScratch[..(count * (2 + valueSlotSize))];
 
-        scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
+        scoped BTreeNodeWriter<TWriter> indexWriter = new(ref _writer, new BTreeNodeMetadata
         {
-            NodeKind = BSearchNodeKind.Intermediate,
+            NodeKind = BTreeNodeKind.Intermediate,
             KeyType = keyType,
             BaseOffset = (ulong)baseOffset,
             KeySlotSize = keySlotSize,
@@ -1400,7 +1400,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             int newCount = childCount + 1;
             // Keys-section size as the writer emits it: a Uniform node packs newCount
             // fixed-width slots, each widened to the planner's {2,4,8} SIMD slot.
-            int newKeysBytes = newCount * BSearchIndexLayoutPlanner.WidenedSlotWidth(newMaxSepLen, _keyLength);
+            int newKeysBytes = newCount * BTreeNodeLayoutPlanner.WidenedSlotWidth(newMaxSepLen, _keyLength);
             // Phantom slot 0 restored: keys array carries newCount real separators
             // (one per child) and values array carries newCount deltas.
             int estimated = newCount * valueSlotSize + newKeysBytes;
@@ -1447,7 +1447,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             int candidateSize = IntermediateNodeSizeUpperBound(newCount, newKeysBytes, valueSlotSize);
             int committedSize = IntermediateNodeSizeUpperBound(
                 childCount,
-                childCount * BSearchIndexLayoutPlanner.WidenedSlotWidth(maxSepLen, _keyLength),
+                childCount * BTreeNodeLayoutPlanner.WidenedSlotWidth(maxSepLen, _keyLength),
                 committedValueSlot);
             if (childCount >= minChildren &&
                 committedSize >= minBytes &&
@@ -1464,7 +1464,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         return childCount;
     }
 
-    // Conservative upper bound on BSearchIndexWriter header bytes: 12 base
+    // Conservative upper bound on BTreeNodeWriter header bytes: 12 base
     // (Flags + KeyCount u16 + KeySize u16 + ValueSize u8 + BaseOffset 6) + 1
     // optional CommonPrefixLen byte + a small slack.
     private const int NodeHeaderUpperBound = 16;
