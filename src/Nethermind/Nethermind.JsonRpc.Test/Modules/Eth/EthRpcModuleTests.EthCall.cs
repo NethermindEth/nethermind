@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -763,6 +764,41 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"{expectedError}\"}},\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task Eth_call_rejects_blob_transaction_with_too_many_blob_hashes()
+    {
+        using Context ctx = await Context.Create(new SingleReleaseSpecProvider(Cancun.Instance, BlockchainIds.Mainnet, BlockchainIds.Mainnet));
+
+        byte[][] hashes = Enumerable.Range(0, 7)
+            .Select(static i =>
+            {
+                byte[] hash = new byte[32];
+                hash[0] = 0x01;
+                hash[31] = (byte)i;
+                return hash;
+            })
+            .ToArray();
+
+        Transaction tx = Build.A.Transaction
+            .WithGasLimit(100000)
+            .WithMaxFeePerBlobGas(1)
+            .WithBlobVersionedHashes(hashes)
+            .To(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet))
+        {
+            GasPrice = null
+        };
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            serialized,
+            Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"BlockBlobGasExceeded: A block cannot have more than 786432 blob gas, blobs count 7, blobs gas used: 917504.\"},\"id\":67}"));
     }
 
     [Test]
