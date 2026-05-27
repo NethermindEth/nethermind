@@ -61,7 +61,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
 
         if (Withdrawals is not null)
         {
-            hasher.AppendData(EncodeWithdrawals(Withdrawals));
+            AppendWithdrawals(hasher, Withdrawals);
         }
 
         if (ParentBeaconBlockRoot is not null)
@@ -78,23 +78,25 @@ public class TaikoPayloadAttributes : PayloadAttributes
         return digest[..8].ToHexString(true);
     }
 
-    private static byte[] EncodeWithdrawals(Withdrawal[] withdrawals)
+    // RLP-encodes the withdrawals as a list (empty list -> 0xc0), matching alloy's
+    // Withdrawals::encode, and feeds the bytes into the running digest.
+    private static void AppendWithdrawals(IncrementalHash hasher, Withdrawal[] withdrawals)
     {
-        WithdrawalDecoder decoder = new();
+        WithdrawalDecoder codec = new();
         int contentLength = 0;
         foreach (Withdrawal withdrawal in withdrawals)
         {
-            contentLength += decoder.GetLength(withdrawal, RlpBehaviors.None);
+            contentLength += codec.GetLength(withdrawal, RlpBehaviors.None);
         }
 
         RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
         stream.StartSequence(contentLength);
         foreach (Withdrawal withdrawal in withdrawals)
         {
-            decoder.Encode(stream, withdrawal);
+            codec.Encode(stream, withdrawal);
         }
 
-        return stream.Data.ToArray() ?? [];
+        hasher.AppendData(stream.Data.AsSpan());
     }
 
     public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,

@@ -120,4 +120,41 @@ public class TaikoPayloadAttributesTests
 
         Assert.That(empty, Is.Not.EqualTo(withOne));
     }
+
+    [Test]
+    public void GetPayloadId_matches_reference_with_non_empty_withdrawals()
+    {
+        BlockHeader parent = Parent();
+        TaikoPayloadAttributes attrs = BuildAttributes(
+            withdrawals: [new Withdrawal { Index = 1, ValidatorIndex = 2, Address = Address.Zero, AmountInGwei = 3 }]);
+
+        // Hand-encoded EIP-4895 RLP of the single withdrawal, independent of the production
+        // encoder: outer list (0xd9) -> withdrawal seq (0xd8) -> index, validatorIndex,
+        // 20-byte zero address (0x94 prefix), amount.
+        byte[] withdrawalsRlp = [0xd9, 0xd8, 0x01, 0x02, 0x94, .. new byte[20], 0x03];
+
+        List<byte> input = [.. parent.Hash!.Bytes];
+        Span<byte> timestamp = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(timestamp, attrs.Timestamp);
+        input.AddRange(timestamp);
+        input.AddRange((attrs.PrevRandao ?? Keccak.Zero).Bytes);
+        input.AddRange((attrs.SuggestedFeeRecipient ?? Address.Zero).Bytes);
+        input.AddRange(withdrawalsRlp);
+        input.AddRange(Keccak.Compute(attrs.BlockMetadata!.TxList).Bytes);
+        input.AddRange(attrs.BlockMetadata.ExtraData);
+
+        byte[] digest = SHA256.HashData(input.ToArray());
+        digest[0] = VersionV2;
+        Assert.That(attrs.GetPayloadId(parent), Is.EqualTo(digest.AsSpan(0, 8).ToHexString(true)));
+    }
+
+    [Test]
+    public void GetPayloadId_matches_reference_with_parent_beacon_block_root()
+    {
+        BlockHeader parent = Parent();
+        TaikoPayloadAttributes attrs = BuildAttributes();
+        attrs.ParentBeaconBlockRoot = TestItem.KeccakC;
+
+        Assert.That(attrs.GetPayloadId(parent), Is.EqualTo(ExpectedId(parent, attrs)));
+    }
 }
