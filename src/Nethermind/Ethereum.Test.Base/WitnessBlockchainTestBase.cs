@@ -20,18 +20,11 @@ namespace Ethereum.Test.Base;
 /// payloads that carry an <c>executionWitness</c> field, and asserts that the returned
 /// <see cref="NewPayloadWithWitnessV1Result.ExecutionWitness"/> matches the fixture's expected
 /// witness byte-for-byte in order.
-///
-/// <para>
-/// Payloads with <c>executionWitnessMutated = true</c> are silently skipped — those are authored
-/// for stateless validators and the witness they contain is intentionally corrupt.
-/// </para>
 /// </summary>
 public abstract class WitnessBlockchainTestBase : BlockchainTestBase
 {
-    // -----------------------------------------------------------------------------------------
     // Override: for payloads with an executionWitness, use engine_newPayloadWithWitness instead
     // of engine_newPayloadVN so we can capture and validate the witness.
-    // -----------------------------------------------------------------------------------------
 
     protected override async Task<JsonRpcResponse> SendPayloadAsync(
         IJsonRpcService rpcService,
@@ -50,20 +43,18 @@ public abstract class WitnessBlockchainTestBase : BlockchainTestBase
         JsonRpcResponse witnessResponse = await SendRpc(
             rpcService, rpcContext, "engine_newPayloadWithWitness", paramsJson);
 
-        // If the server returned an RPC error we pass it back unmodified — the base class
-        // will assert on it as a validation-error expectation (negative test path).
-        // IDE0019: use pattern matching to combine the null check and cast.
-        if (witnessResponse is not JsonRpcSuccessResponse successResponse)
+        NewPayloadWithWitnessV1Result? witnessResult = witnessResponse switch
         {
-            return witnessResponse;
-        }
+            ResultWrapper<NewPayloadWithWitnessV1Result> { Result.ResultType: Nethermind.Core.ResultType.Success } rw => rw.Data,
+            ResultWrapper<NewPayloadWithWitnessV1Result> => null, // failure — pass through
+            JsonRpcSuccessResponse { Result: NewPayloadWithWitnessV1Result wr } => wr,
+            _ => null
+        };
 
-        // Unwrap the full result (status + witness) using pattern matching (IDE0019).
-        if (successResponse.Result is not NewPayloadWithWitnessV1Result witnessResult)
+        if (witnessResult is null)
         {
-            Assert.Fail(
-                "engine_newPayloadWithWitness returned a success response but the result " +
-                "could not be cast to NewPayloadWithWitnessV1Result.");
+            // Either an RPC error, a ResultWrapper failure, or an unexpected type.
+            // Return as-is so TryGetRpcError / GetPayloadStatus in the base class handles it.
             return witnessResponse;
         }
 
@@ -108,13 +99,9 @@ public abstract class WitnessBlockchainTestBase : BlockchainTestBase
         return new JsonRpcSuccessResponse
         {
             Result = syntheticStatus,
-            Id = successResponse.Id,
+            Id = witnessResponse.Id,
         };
     }
-
-    // -----------------------------------------------------------------------------------------
-    // Witness comparison helpers
-    // -----------------------------------------------------------------------------------------
 
     private static void AssertWitnessMatchesFixture(
         JsonElement fixtureWitness,
