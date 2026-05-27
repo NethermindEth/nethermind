@@ -27,6 +27,17 @@ public sealed class SparseTrieTask(
     private readonly TaskCompletionSource<Hash256> _rootResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly ILogger _logger = logManager.GetClassLogger<SparseTrieTask>();
 
+    /// <summary>
+    /// Accumulator for account updates across multiple batches. SparseRootComputer.SetAccountChanges
+    /// REPLACES its internal dict, so we must merge multiple per-tx batches here and pass the final
+    /// merged dict once at end-of-block. Last-writer-wins per account is correct (matches block semantics).
+    /// </summary>
+    private readonly Dictionary<Hash256, LeafUpdate> _accountAccumulator = [];
+
+    /// <summary>Accumulator for per-contract storage updates. Same semantics as account accumulator.</summary>
+    private readonly Dictionary<Hash256, Dictionary<Hash256, LeafUpdate>> _storageAccumulator = [];
+    private readonly Dictionary<Hash256, Hash256> _prevStorageRoots = [];
+
     public Task<Hash256> RootTask => _rootResult.Task;
 
     public async Task RunAsync()
@@ -68,6 +79,11 @@ public sealed class SparseTrieTask(
                 if (finished) break;
             }
 
+            // Flush accumulated updates into the computer ONCE before computing root.
+            computer.SetAccountChanges(_accountAccumulator);
+            foreach (KeyValuePair<Hash256, Dictionary<Hash256, LeafUpdate>> kvp in _storageAccumulator)
+                computer.AddStorageChanges(kvp.Key, _prevStorageRoots[kvp.Key], kvp.Value);
+
             Hash256 root = computer.ComputeStateRoot();
             _rootResult.TrySetResult(root);
         }
@@ -84,12 +100,40 @@ public sealed class SparseTrieTask(
 
     private void AccumulateUpdate(HashedStateUpdate update)
     {
-        computer.SetAccountChanges(update.AccountUpdates);
+        // Merge account updates — last-writer-wins per key (matches block semantics for
+        // multiple Commit(commitRoots:false) calls touching the same account in a block).
+        foreach (KeyValuePair<Hash256, LeafUpdate> kvp in update.AccountUpdates)
+            _accountAccumulator[kvp.Key] = kvp.Value;
+
+        // Merge storage updates per-contract — last-writer-wins per slot.
         foreach (KeyValuePair<Hash256, Dictionary<Hash256, LeafUpdate>> kvp in update.StorageUpdates)
-            computer.AddStorageChanges(kvp.Key, update.PreviousStorageRoots[kvp.Key], kvp.Value);
+        {
+            if (!_storageAccumulator.TryGetValue(kvp.Key, out Dictionary<Hash256, LeafUpdate>? slots))
+            {
+                slots = [];
+                _storageAccumulator[kvp.Key] = slots;
+            }
+            foreach (KeyValuePair<Hash256, LeafUpdate> slot in kvp.Value)
+                slots[slot.Key] = slot.Value;
+
+            // First-seen prevRoot wins (it's the parent block's value, doesn't change mid-block).
+            if (!_prevStorageRoots.ContainsKey(kvp.Key))
+                _prevStorageRoots[kvp.Key] = update.PreviousStorageRoots[kvp.Key];
+        }
     }
 
-    private void ProcessProofResult(ProofResult result) { }
+    /// <summary>
+    /// Reveals proof nodes returned by an out-of-band proof worker (M4 ProofWorkerPool).
+    /// Without this, proof workers' results are silently discarded and the sparse trie
+    /// keeps hitting blinded nodes on the retry loop.
+    /// </summary>
+    private void ProcessProofResult(ProofResult result)
+    {
+        if (result.Proof.AccountNodes.Count > 0)
+            computer.Trie.AccountTrie.RevealNodes(result.Proof.AccountNodes);
+        foreach (KeyValuePair<Hash256, List<ProofNode>> kvp in result.Proof.StorageNodes)
+            computer.Trie.GetOrCreateStorageTrie(kvp.Key).RevealNodes(kvp.Value);
+    }
 }
 
 public sealed class HashedStateUpdate
