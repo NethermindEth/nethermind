@@ -55,11 +55,12 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
     {
         int startPosition = ctx.Position;
         int recordRlpLength = ctx.ReadSequenceLength();
-        if (recordRlpLength > 300)
-            throw new RlpException("RLP received for ENR is bigger than 300 bytes");
         int checkPosition = ctx.Position + recordRlpLength;
+        if (checkPosition - startPosition > 300)
+            throw new RlpException("RLP received for ENR is bigger than 300 bytes");
         NodeRecord nodeRecord = new();
         byte[]? originalContent = null;
+        byte[] previousKey = [];
 
         ReadOnlySpan<byte> sigBytes = ctx.DecodeByteArraySpan(RlpLimit.L65);
         Signature signature = new(sigBytes, 0);
@@ -69,6 +70,12 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         while (ctx.Position < checkPosition)
         {
             ReadOnlySpan<byte> key = ctx.DecodeByteArraySpan();
+            if (previousKey.Length != 0 && key.SequenceCompareTo(previousKey) <= 0)
+            {
+                throw new RlpException("ENR keys must be sorted and unique.");
+            }
+            previousKey = key.ToArray();
+
             switch (key.Length)
             {
                 case 2 when key.SequenceEqual(EnrContentKey.IdU8):
