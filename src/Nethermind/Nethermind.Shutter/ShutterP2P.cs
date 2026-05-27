@@ -7,7 +7,6 @@ using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
-using Nethermind.Network.Discovery;
 using System;
 using System.Threading.Tasks;
 using System.Threading;

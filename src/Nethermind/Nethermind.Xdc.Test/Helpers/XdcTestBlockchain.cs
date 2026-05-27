@@ -31,7 +31,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Xdc.RLP;
-using Nethermind.Xdc.Test.Helpers;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
