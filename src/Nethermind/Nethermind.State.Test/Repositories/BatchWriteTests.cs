@@ -13,29 +13,16 @@ namespace Nethermind.Store.Test.Repositories;
 
 public class BatchWriteTests
 {
-    private object _writeLock = null!;
-    private Exception _commitFailure = null!;
-    private IWriteBatch _writeBatch = null!;
-    private BatchWrite _batch = null!;
-
-    [SetUp]
-    public void SetUp()
-    {
-        _writeLock = new object();
-        _commitFailure = new Exception("commit failed");
-        _writeBatch = Substitute.For<IWriteBatch>();
-        _writeBatch.When(static b => b.Dispose()).Do(_ => throw _commitFailure);
-        _batch = new BatchWrite(_writeLock, _writeBatch);
-    }
-
     [Test]
     public void Dispose_WhenWriteBatchThrows_ReleasesLockAndMarksDisposed()
     {
-        Assert.Throws<Exception>(() => _batch.Dispose())
-            .Should().BeSameAs(_commitFailure, "the original commit failure must propagate");
-        _batch.Disposed.Should().BeTrue("a failed commit must still mark the batch disposed");
+        (BatchWrite batch, _, object writeLock, Exception failure) = CreateFailingBatch();
 
-        Action exitOnceMore = () => Monitor.Exit(_writeLock);
+        Assert.Throws<Exception>(() => batch.Dispose())
+            .Should().BeSameAs(failure, "the original commit failure must propagate");
+        batch.Disposed.Should().BeTrue("a failed commit must still mark the batch disposed");
+
+        Action exitOnceMore = () => Monitor.Exit(writeLock);
         exitOnceMore.Should().Throw<SynchronizationLockException>(
             "the write lock must be released, so this thread no longer owns it after a failed commit");
     }
@@ -43,10 +30,21 @@ public class BatchWriteTests
     [Test]
     public void Dispose_WhenCalledAgainAfterFailure_DoesNotReuseFailedBatch()
     {
-        Assert.Throws<Exception>(() => _batch.Dispose());
+        (BatchWrite batch, IWriteBatch writeBatch, _, _) = CreateFailingBatch();
 
-        Action secondDispose = () => _batch.Dispose();
+        Assert.Throws<Exception>(() => batch.Dispose());
+
+        Action secondDispose = () => batch.Dispose();
         secondDispose.Should().NotThrow("a disposed batch must not re-enter the failed commit");
-        _writeBatch.Received(1).Dispose();
+        writeBatch.Received(1).Dispose();
+    }
+
+    private static (BatchWrite Batch, IWriteBatch WriteBatch, object WriteLock, Exception Failure) CreateFailingBatch()
+    {
+        object writeLock = new();
+        Exception failure = new("commit failed");
+        IWriteBatch writeBatch = Substitute.For<IWriteBatch>();
+        writeBatch.When(static b => b.Dispose()).Do(_ => throw failure);
+        return (new BatchWrite(writeLock, writeBatch), writeBatch, writeLock, failure);
     }
 }
