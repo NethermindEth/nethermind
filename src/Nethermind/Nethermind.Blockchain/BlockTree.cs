@@ -1752,6 +1752,11 @@ namespace Nethermind.Blockchain
                 ? FindHeader(finalizedBlockHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
                 : null;
 
+            // FinalizedHash is set unconditionally to preserve the blind-storage contract used by
+            // beacon sync (CL can hand us a finalized hash before the corresponding block body is
+            // downloaded). LastFinalizedBlockLevel only advances when the header is locally known,
+            // so the two fields can describe different blocks during a sync window — readers that
+            // require both to be in sync should gate on header availability themselves.
             FinalizedHash = finalizedBlockHash;
             SafeHash = safeBlockHash;
             if (finalizedHeader is not null) LastFinalizedBlockLevel = finalizedHeader.Number;

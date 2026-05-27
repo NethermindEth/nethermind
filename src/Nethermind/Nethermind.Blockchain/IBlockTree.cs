@@ -185,6 +185,11 @@ namespace Nethermind.Blockchain
         /// Fires when <see cref="ForkChoiceUpdated"/> advances <see cref="IBlockFinder.FinalizedHash"/>
         /// to a new block (and the corresponding header is locally available).
         /// </summary>
+        /// <remarks>
+        /// Read-only wrappers (e.g. <see cref="ReadOnlyBlockTree"/>) and stateless impls cannot fire
+        /// this event — subscriptions are silently dropped or throw. Subscribe via the underlying
+        /// writable <see cref="IBlockTree"/> instance.
+        /// </remarks>
         event EventHandler<FinalizeEventArgs> BlocksFinalized;
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;

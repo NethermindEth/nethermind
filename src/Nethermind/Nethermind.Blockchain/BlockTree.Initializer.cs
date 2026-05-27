@@ -160,7 +160,11 @@ public partial class BlockTree
         Logger.Info("Loading fork choice info");
         FinalizedHash ??= _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpValueContext().DecodeKeccak();
         SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpValueContext().DecodeKeccak();
-        if (FinalizedHash is not null && LastFinalizedBlockLevel == 0)
+        // Re-derive the level from the persisted hash. Stays at 0 if (a) nothing was finalized,
+        // (b) finalized is genesis, or (c) we know the finalized hash but the header isn't local
+        // yet (beacon sync) — all three collapse to the same observable state for downstream
+        // consumers (MultiValidator/IsFinalized), so a sentinel isn't necessary.
+        if (FinalizedHash is not null)
         {
             LastFinalizedBlockLevel = _headerStore.GetBlockNumber(FinalizedHash) ?? 0;
         }

@@ -50,6 +50,11 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     public long LastFinalizedBlockLevel =>
         _overlayTree.LastFinalizedBlockLevel != 0 ? _overlayTree.LastFinalizedBlockLevel : _baseTree.LastFinalizedBlockLevel;
 
+    // Fan-out: subscribers are attached to both trees because ForkChoiceUpdated can be invoked on
+    // either independently (callers are not restricted to a single instance). Same pattern as
+    // OnForkChoiceUpdated below. Note that this means a subscriber will receive duplicate events
+    // if both trees are ever poked with the same forkchoice — current routing only fires the
+    // overlay tree, but the contract guarantees neither leg is silently dropped.
     public event EventHandler<FinalizeEventArgs> BlocksFinalized
     {
         add

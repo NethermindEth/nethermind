@@ -44,6 +44,7 @@ public sealed class AuRaTerminalBlockDisposer : IDisposable
 
     private void OnTerminalBlock(object? sender, EventArgs e)
     {
+        _disposed = true;
         _poSSwitcher.TerminalBlockReached -= OnTerminalBlock;
         _auRaBlockFinalizationManager.Dispose();
     }

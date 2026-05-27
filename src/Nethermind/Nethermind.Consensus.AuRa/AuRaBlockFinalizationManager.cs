@@ -129,7 +129,9 @@ namespace Nethermind.Consensus.AuRa
                         : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[^1].Number} [{string.Join(",", finalizedBlocks.Select(static b => b.Hash))}].");
 
                 LastFinalizedBlockLevel = finalizedBlocks[^1].Number;
-                _blockTree.ForkChoiceUpdated(finalizedBlocks[^1].Hash, null);
+                // AuRa has no authority over the safe block — preserve whatever was set by Engine API
+                // (during the AuRa→PoS transition window) instead of clobbering it with null.
+                _blockTree.ForkChoiceUpdated(finalizedBlocks[^1].Hash, _blockTree.SafeHash);
                 BlocksFinalized?.Invoke(this, new AuRaFinalizeEventArgs(finalizingBlock, finalizedBlocks));
             }
         }
