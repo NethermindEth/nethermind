@@ -142,48 +142,10 @@ public sealed class SparseRootComputer : IDisposable
                 TryResolveBlindedSiblings(targets);
 
             if (retry == MaxRetries - 1)
-            {
-                // Walk the sparse trie along the stuck target's nibble path and
-                // find the FIRST blinded node — that's what's not being revealed.
-                string stuckTrace = WalkSparsePath(firstTarget);
-                int singleTargetProofCount = -1;
-                try
-                {
-                    DecodedMultiProof singleProof = MultiProofReader.ReadAccountProofs(
-                        _reader, _previousStateRoot, [firstTarget]);
-                    singleTargetProofCount = singleProof.AccountNodes.Count;
-                }
-                catch { /* swallow */ }
-
-                // Re-invoke UpdateLeaves for just the stuck target to capture the exact proofTarget
-                string singleUpdateResult = "?";
-                try
-                {
-                    byte[] nibbles = Nibbles.BytesToNibbleBytes(firstTarget.Bytes);
-                    Dictionary<Hash256, LeafUpdate> single = new() { [firstTarget] = _accountChanges[firstTarget] };
-                    TreePath capturedTarget = default;
-                    string capturedKey = "?";
-                    _trie.AccountTrie.UpdateLeaves(single, (k, _) =>
-                    {
-                        capturedKey = k.ToString();
-                        capturedTarget = TreePath.FromNibble(Nibbles.BytesToNibbleBytes(k.Bytes));
-                    });
-                    LeafUpdate upd = _accountChanges[firstTarget];
-                    singleUpdateResult = $"updateKind={upd.Kind},capturedKey={capturedKey}";
-                }
-                catch (Exception singleEx)
-                {
-                    singleUpdateResult = $"single-exception:{singleEx.GetType().Name}:{singleEx.Message}";
-                }
-
                 throw new TrieException(
                     $"Sparse trie account retry loop exceeded {MaxRetries} iterations. " +
-                    $"{targets.Count} blinded targets remain. " +
-                    $"firstTarget={firstTarget}, sameTargetForLast={sameTargetCount} retries, prevRoot={_previousStateRoot}, " +
-                    $"totalChanges={_accountChanges.Count}, lastProofNodeCount={LastProofNodeCount}, " +
-                    $"singleTargetProofNodes={singleTargetProofCount}, sparseTrieWalk=[{stuckTrace}], " +
-                    $"singleUpdate=[{singleUpdateResult}]");
-            }
+                    $"{targets.Count} blinded targets remain. firstTarget={firstTarget}, " +
+                    $"prevRoot={_previousStateRoot}, totalChanges={_accountChanges.Count}");
 
             DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
                 _reader, _previousStateRoot, targets.ToArray());
@@ -235,69 +197,4 @@ public sealed class SparseRootComputer : IDisposable
         }
     }
 
-    /// <summary>
-    /// Diagnostic helper: walks the sparse account trie along the given target's nibble path,
-    /// returning a short trace describing the structure at each level. Stops at the first
-    /// blinded node (which is the source of the retry-fail) or when the target's path ends.
-    /// </summary>
-    private string WalkSparsePath(Hash256 target)
-    {
-        try
-        {
-            SparseSubtrie sub = _trie.AccountTrie.Subtrie;
-            if (sub.Root < 0) return "EMPTY";
-
-            byte[] nibbles = Nibbles.BytesToNibbleBytes(target.Bytes);
-            int nibblePos = 0;
-            int nodeIdx = sub.Root;
-            System.Text.StringBuilder sb = new();
-            int safety = 0;
-            while (safety++ < 100 && nibblePos < nibbles.Length)
-            {
-                SparseTrieNode node = sub.NodeAt(nodeIdx);
-                if (node.IsBlinded()) { sb.Append($"[d{nibblePos}:BLINDED]"); break; }
-                if (node.IsEmpty()) { sb.Append($"[d{nibblePos}:Empty]"); break; }
-                if (node.IsLeaf()) { sb.Append($"[d{nibblePos}:Leaf,shortKey.len={node.ShortKey?.Length ?? 0}]"); break; }
-                if (!node.IsBranch()) { sb.Append($"[d{nibblePos}:UnknownKind={node.Kind}]"); break; }
-
-                byte[] shortKey = node.ShortKey ?? [];
-                sb.Append($"[d{nibblePos}:Branch,sk={shortKey.Length},mask={node.StateMask},bMask={node.BlindedMask}]");
-
-                if (shortKey.Length > 0)
-                {
-                    int sharedLen = 0;
-                    int limit = Math.Min(shortKey.Length, nibbles.Length - nibblePos);
-                    while (sharedLen < limit && nibbles[nibblePos + sharedLen] == shortKey[sharedLen]) sharedLen++;
-                    if (sharedLen < shortKey.Length)
-                    {
-                        sb.Append($"[shortKeyDiverge@{sharedLen}of{shortKey.Length}]");
-                        break;
-                    }
-                    nibblePos += shortKey.Length;
-                }
-                if (nibblePos >= nibbles.Length) { sb.Append("[pathEnd]"); break; }
-
-                byte nibble = nibbles[nibblePos];
-                if (!node.StateMask.IsBitSet(nibble))
-                {
-                    sb.Append($"[nibble{nibble}:notInMask]");
-                    break;
-                }
-                int denseIdx = sub.NodeAt(nodeIdx).DenseChildIndex(nibble);
-                SparseChildEntry entry = sub.ChildAt(denseIdx);
-                if (entry.IsBlinded)
-                {
-                    sb.Append($"[nibble{nibble}:BLINDED]");
-                    break;
-                }
-                nodeIdx = entry.ArenaIndex;
-                nibblePos++;
-            }
-            return sb.ToString();
-        }
-        catch (Exception ex)
-        {
-            return $"walk-exception:{ex.GetType().Name}:{ex.Message}";
-        }
-    }
 }
