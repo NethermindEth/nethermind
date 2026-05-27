@@ -104,7 +104,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         public void Deserialize_EnforcesProofsCountLimit(int proofCount, bool shouldThrow)
         {
             ArrayPoolList<byte[]> proofs = new(proofCount, Enumerable.Repeat(new byte[] { 0x42 }, proofCount));
-            AccountRangeMessage msg = new()
+            using AccountRangeMessage msg = new()
             {
                 RequestId = 1,
                 PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
