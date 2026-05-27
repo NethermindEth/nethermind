@@ -547,8 +547,8 @@ public static class PersistedSnapshotMerger
     /// three storage-trie sub-tags (top / compact / fallback) for per-node bloom adds. On a
     /// multi-source (or oversized single-source) rebuild assembles a fresh per-addressHash
     /// DenseByteIndex with the three sub-tag merges emitted in descending tag order via
-    /// dedicated per-sub-tag methods (<see cref="MergeStorageFallback"/>,
-    /// <see cref="MergeStorageCompact"/>, <see cref="MergeStorageTop"/>).</summary>
+    /// <see cref="MergeStorageSubTag"/> (one call per sub-tag with the matching
+    /// <c>subTag</c> + <c>innerKeySize</c> pair).</summary>
     /// <remarks>Cursor-side reader/pin are pinned to (<see cref="WholeReadSessionReader"/>,
     /// <see cref="NoOpPin"/>); the three generic parameters are the WRITER-side trio
     /// threaded through to the inner PackedArray builder per sub-tag. Per-source reader
@@ -598,9 +598,12 @@ public static class PersistedSnapshotMerger
             try
             {
                 // Emit descending 0x02 (Fallback) → 0x01 (Compact) → 0x00 (Top).
-                MergeStorageFallback(cursor.Sources, matchingSources, matchCount, subTagBounds, ref perAddrBuilder, addrKey);
-                MergeStorageCompact(cursor.Sources, matchingSources, matchCount, subTagBounds, ref perAddrBuilder, addrKey);
-                MergeStorageTop(cursor.Sources, matchingSources, matchCount, subTagBounds, ref perAddrBuilder, addrKey);
+                MergeStorageSubTag(cursor.Sources, matchingSources, matchCount, subTagBounds,
+                    ref perAddrBuilder, PersistedSnapshotTags.StorageFallbackSubTag, innerKeySize: 33, addrKey);
+                MergeStorageSubTag(cursor.Sources, matchingSources, matchCount, subTagBounds,
+                    ref perAddrBuilder, PersistedSnapshotTags.StorageCompactSubTag, innerKeySize: 8, addrKey);
+                MergeStorageSubTag(cursor.Sources, matchingSources, matchCount, subTagBounds,
+                    ref perAddrBuilder, PersistedSnapshotTags.StorageTopSubTag, innerKeySize: 4, addrKey);
                 perAddrBuilder.Build();
             }
             finally
@@ -609,22 +612,24 @@ public static class PersistedSnapshotMerger
             }
         }
 
-        /// <summary>Sub-tag 0x02 (Fallback): inner TreePath keys are 33 bytes (full
-        /// nibble path). Single-source: byte-copy the source's sub-tag blob through
-        /// <paramref name="perAddrBuilder"/>. Multi-source: streaming N-way merge into a
-        /// fixed-size PackedArray (NodeRef.Size value, 33-byte key); newest wins on key
-        /// collision (storage trie nodes are content-addressable so duplicate keys carry
-        /// identical NodeRefs in practice).</summary>
-        private void MergeStorageFallback(
+        /// <summary>Merges one storage-trie sub-tag (top / compact / fallback) into
+        /// <paramref name="perAddrBuilder"/>. Single-source: byte-copy the source's sub-tag
+        /// blob verbatim and walk it for bloom adds. Multi-source: streaming N-way merge
+        /// into a fixed-size PackedArray (NodeRef.Size value, <paramref name="innerKeySize"/>
+        /// key); newest wins on key collision (storage trie nodes are content-addressable
+        /// so duplicate keys carry identical NodeRefs in practice).
+        /// <paramref name="subTag"/> selects the column (and its index byte) and
+        /// <paramref name="innerKeySize"/> selects the inner key width (33 / 8 / 4 for
+        /// Fallback / Compact / Top).</summary>
+        private void MergeStorageSubTag(
             ReadOnlySpan<WholeReadSessionMergeSource> sources,
             ReadOnlySpan<int> matchingSources, int matchCount,
             ReadOnlySpan<Bound> subTagBounds,
             scoped ref HsstDenseByteIndexBuilder<TWriter> perAddrBuilder,
+            byte[] subTag, int innerKeySize,
             ulong addrKey)
         {
-            const int InnerKeySize = 33;
-            byte[] subTag = PersistedSnapshotTags.StorageFallbackSubTag;
-            int subTagIdx = PersistedSnapshotTags.StorageFallbackSubTag[0];
+            int subTagIdx = subTag[0];
             const int PerSourceStride = PersistedSnapshotTags.StorageTrieSubTagCount;
 
             using NativeMemoryListRef<int> srcsList = new(matchCount, matchCount);
@@ -656,7 +661,7 @@ public static class PersistedSnapshotMerger
                 return;
             }
 
-            using LoserTreeState state = new(active, InnerKeySize);
+            using LoserTreeState state = new(active, innerKeySize);
             using ArrayPoolList<WholeReadSessionMergeSource> innerSourcesList = new(active, active);
             Span<WholeReadSessionMergeSource> innerSources = innerSourcesList.AsSpan();
             try
@@ -664,138 +669,7 @@ public static class PersistedSnapshotMerger
                 Span<int> outerIndices = stackalloc int[active];
                 for (int j = 0; j < active; j++) outerIndices[j] = matchingSources[srcs[j]];
                 NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor =
-                    BuildMergeCursor(sources, outerIndices, subBounds[..active], innerSources, state, InnerKeySize,
-                        default(TailDispatchEnumeratorFactory));
-
-                ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
-                HsstPackedArrayMerger.NWayMerge<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, AddrXorStatePathBloomCallback>(
-                    ref subWriter, NodeRef.Size, ref innerCursor, new AddrXorStatePathBloomCallback(bloom, addrKey));
-                perAddrBuilder.FinishValueWrite(subTag);
-            }
-            finally
-            {
-                for (int j = 0; j < active; j++) innerSources[j].Dispose();
-            }
-        }
-
-        /// <summary>Sub-tag 0x01 (Compact): inner TreePath keys are 8 bytes (packed prefix
-        /// encoding). Same merge shape as <see cref="MergeStorageFallback"/>.</summary>
-        private void MergeStorageCompact(
-            ReadOnlySpan<WholeReadSessionMergeSource> sources,
-            ReadOnlySpan<int> matchingSources, int matchCount,
-            ReadOnlySpan<Bound> subTagBounds,
-            scoped ref HsstDenseByteIndexBuilder<TWriter> perAddrBuilder,
-            ulong addrKey)
-        {
-            const int InnerKeySize = 8;
-            byte[] subTag = PersistedSnapshotTags.StorageCompactSubTag;
-            int subTagIdx = PersistedSnapshotTags.StorageCompactSubTag[0];
-            const int PerSourceStride = PersistedSnapshotTags.StorageTrieSubTagCount;
-
-            using NativeMemoryListRef<int> srcsList = new(matchCount, matchCount);
-            using NativeMemoryListRef<Bound> boundsList = new(matchCount, matchCount);
-            Span<int> srcs = srcsList.AsSpan();
-            Span<Bound> subBounds = boundsList.AsSpan();
-
-            int active = 0;
-            for (int j = 0; j < matchCount; j++)
-            {
-                Bound sb = subTagBounds[j * PerSourceStride + subTagIdx];
-                if (sb.Length > 0)
-                {
-                    srcs[active] = j;
-                    subBounds[active] = sb;
-                    active++;
-                }
-            }
-
-            if (active == 0) return;
-
-            if (active == 1)
-            {
-                int j = srcs[0];
-                WholeReadSessionReader r = sources[matchingSources[j]].CreateReader();
-                using NoOpPin pin = r.PinBuffer(subBounds[0].Offset, subBounds[0].Length);
-                perAddrBuilder.Add(subTag, pin.Buffer);
-                AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in r, subBounds[0], addrKey, bloom);
-                return;
-            }
-
-            using LoserTreeState state = new(active, InnerKeySize);
-            using ArrayPoolList<WholeReadSessionMergeSource> innerSourcesList = new(active, active);
-            Span<WholeReadSessionMergeSource> innerSources = innerSourcesList.AsSpan();
-            try
-            {
-                Span<int> outerIndices = stackalloc int[active];
-                for (int j = 0; j < active; j++) outerIndices[j] = matchingSources[srcs[j]];
-                NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor =
-                    BuildMergeCursor(sources, outerIndices, subBounds[..active], innerSources, state, InnerKeySize,
-                        default(TailDispatchEnumeratorFactory));
-
-                ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
-                HsstPackedArrayMerger.NWayMerge<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, AddrXorStatePathBloomCallback>(
-                    ref subWriter, NodeRef.Size, ref innerCursor, new AddrXorStatePathBloomCallback(bloom, addrKey));
-                perAddrBuilder.FinishValueWrite(subTag);
-            }
-            finally
-            {
-                for (int j = 0; j < active; j++) innerSources[j].Dispose();
-            }
-        }
-
-        /// <summary>Sub-tag 0x00 (Top): inner TreePath keys are 4 bytes (top-of-trie prefix).
-        /// Same merge shape as <see cref="MergeStorageFallback"/>. Emitted last so the
-        /// top-of-trie blob lands adjacent to the DenseByteIndex Ends[] trailer.</summary>
-        private void MergeStorageTop(
-            ReadOnlySpan<WholeReadSessionMergeSource> sources,
-            ReadOnlySpan<int> matchingSources, int matchCount,
-            ReadOnlySpan<Bound> subTagBounds,
-            scoped ref HsstDenseByteIndexBuilder<TWriter> perAddrBuilder,
-            ulong addrKey)
-        {
-            const int InnerKeySize = 4;
-            byte[] subTag = PersistedSnapshotTags.StorageTopSubTag;
-            int subTagIdx = PersistedSnapshotTags.StorageTopSubTag[0];
-            const int PerSourceStride = PersistedSnapshotTags.StorageTrieSubTagCount;
-
-            using NativeMemoryListRef<int> srcsList = new(matchCount, matchCount);
-            using NativeMemoryListRef<Bound> boundsList = new(matchCount, matchCount);
-            Span<int> srcs = srcsList.AsSpan();
-            Span<Bound> subBounds = boundsList.AsSpan();
-
-            int active = 0;
-            for (int j = 0; j < matchCount; j++)
-            {
-                Bound sb = subTagBounds[j * PerSourceStride + subTagIdx];
-                if (sb.Length > 0)
-                {
-                    srcs[active] = j;
-                    subBounds[active] = sb;
-                    active++;
-                }
-            }
-
-            if (active == 0) return;
-
-            if (active == 1)
-            {
-                int j = srcs[0];
-                WholeReadSessionReader r = sources[matchingSources[j]].CreateReader();
-                using NoOpPin pin = r.PinBuffer(subBounds[0].Offset, subBounds[0].Length);
-                perAddrBuilder.Add(subTag, pin.Buffer);
-                AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in r, subBounds[0], addrKey, bloom);
-                return;
-            }
-
-            using LoserTreeState state = new(active, InnerKeySize);
-            using ArrayPoolList<WholeReadSessionMergeSource> innerSourcesList = new(active, active);
-            Span<WholeReadSessionMergeSource> innerSources = innerSourcesList.AsSpan();
-            try
-            {
-                Span<int> outerIndices = stackalloc int[active];
-                for (int j = 0; j < active; j++) outerIndices[j] = matchingSources[srcs[j]];
-                NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor =
-                    BuildMergeCursor(sources, outerIndices, subBounds[..active], innerSources, state, InnerKeySize,
+                    BuildMergeCursor(sources, outerIndices, subBounds[..active], innerSources, state, innerKeySize,
                         default(TailDispatchEnumeratorFactory));
 
                 ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
