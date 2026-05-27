@@ -42,15 +42,8 @@ public static class PersistedSnapshotMerger
         public Bound Bound => bound;
 
         /// <summary>Re-seed at a different bound (same view). Used by
-        /// <see cref="MapCursorSource"/> in nested-merge re-seeds.</summary>
+        /// <see cref="BuildMergeCursor{TFactory}"/> in nested-merge re-seeds.</summary>
         public WholeReadSessionMergeSource WithBound(Bound newBound) => new(view, newBound);
-
-        /// <summary>Build a source over the entirety of <paramref name="view"/>. Callers
-        /// that want to position the source at a sub-bound (e.g. a column tag's scope)
-        /// call <see cref="WithBound"/> after, or construct the source directly with the
-        /// pre-resolved bound via the primary constructor.</summary>
-        public static WholeReadSessionMergeSource FromView(WholeReadSessionView view)
-            => new(view, new Bound(0, view.Length));
     }
 
     /// <summary>Open a fresh reader on <paramref name="view"/>, seek the root HSST for
@@ -97,23 +90,10 @@ public static class PersistedSnapshotMerger
             TFactory factory = default)
         where TFactory : struct, IHsstEnumeratorFactory<WholeReadSessionReader, NoOpPin>
     {
-        MapCursorSource(outerSources, indices, innerBounds, sourcesBuf);
-        return new NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TFactory>(
-            sourcesBuf[..indices.Length], enumeratorsBuf[..indices.Length], state, keyLen, factory);
-    }
-
-    /// <summary>Re-seed <paramref name="indices"/>.Length sources at new bounds, writing into
-    /// <paramref name="sourcesBuf"/>. Each output source shares the original view but uses
-    /// the bound from <paramref name="innerBounds"/>. Enumerator construction happens later,
-    /// inside the cursor.</summary>
-    private static void MapCursorSource(
-        ReadOnlySpan<WholeReadSessionMergeSource> outerSources,
-        ReadOnlySpan<int> indices,
-        ReadOnlySpan<Bound> innerBounds,
-        Span<WholeReadSessionMergeSource> sourcesBuf)
-    {
         for (int j = 0; j < indices.Length; j++)
             sourcesBuf[j] = outerSources[indices[j]].WithBound(innerBounds[j]);
+        return new NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TFactory>(
+            sourcesBuf[..indices.Length], enumeratorsBuf[..indices.Length], state, keyLen, factory);
     }
 
     /// <summary>For each matching source in <paramref name="cursor"/>'s <c>MatchingSources</c>,
