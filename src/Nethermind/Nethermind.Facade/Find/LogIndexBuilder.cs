@@ -304,7 +304,10 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         Direction(isForward: true).Completion.TrySetException(exception!);
 
         if (!isStopping)
-            await StopAsync();
+        {
+            await _cancellationSource.CancelAsync();
+            _pivotSource.TrySetCanceled(CancellationToken);
+        }
     }
 
     private LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isForward) => _logIndexStorage.Aggregate(batch, !isForward, _stats);

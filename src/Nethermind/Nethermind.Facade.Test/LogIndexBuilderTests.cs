@@ -190,22 +190,47 @@ public class LogIndexBuilderTests
         }
     }
 
-    [Test]
-    public async Task Should_ForwardError(
-        [Values(0, 1, 4)] int failAfter
-    )
+    // failAfter < 0 fails inside the queueing loop (FindBlock throws in DoQueueBlocks); failAfter >= 0
+    // fails in the storage/dataflow path after N batches. Both must forward the error and stop without
+    // the self-await deadlock.
+    [TestCase(-1, TestName = "Should_ForwardError_FromQueueing")]
+    [TestCase(0, TestName = "Should_ForwardError_FromStorage_Immediately")]
+    [TestCase(1, TestName = "Should_ForwardError_FromStorage_AfterOneBatch")]
+    [TestCase(4, TestName = "Should_ForwardError_FromStorage_AfterFourBatches")]
+    [CancelAfter(60_000)]
+    public async Task Should_ForwardErrorAndStopWithoutDeadlock(int failAfter)
     {
-        Exception exception = new(nameof(Should_ForwardError));
-        LogIndexBuilder builder = GetService(new FailingLogIndexStorage(failAfter, exception));
+        Exception exception = new(nameof(Should_ForwardErrorAndStopWithoutDeadlock));
+
+        ILogIndexStorage storage;
+        if (failAfter < 0)
+        {
+            Block head = _blockTree.Head!;
+            IBlockTree throwingTree = Substitute.For<IBlockTree>();
+            throwingTree.SyncPivot.Returns((head.Number, head.Hash));
+            throwingTree.BestKnownNumber.Returns(head.Number);
+            throwingTree.FindBlock(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
+                .Returns<Block?>(_ => throw exception);
+            _blockTree = throwingTree;
+            storage = new TestLogIndexStorage();
+        }
+        else
+        {
+            storage = new FailingLogIndexStorage(failAfter, exception);
+        }
+
+        LogIndexBuilder builder = GetService(storage);
 
         await builder.StartAsync();
 
         using (Assert.EnterMultipleScope())
         {
-            Exception thrown = Assert.ThrowsAsync<Exception>(() => builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(999)));
+            Exception thrown = Assert.ThrowsAsync<Exception>(() => builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(10)));
             Assert.That(thrown, Is.EqualTo(exception));
             Assert.That(builder.LastError, Is.EqualTo(exception));
         }
+
+        await builder.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     [Test]
