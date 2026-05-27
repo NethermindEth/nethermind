@@ -19,15 +19,6 @@ public class CancunBlockchainTests : PyspecBlockchainTestFixture<CancunBlockchai
 public class PragueBlockchainTests : PyspecBlockchainTestFixture<PragueBlockchainTests>;
 public class OsakaBlockchainTests : PyspecBlockchainTestFixture<OsakaBlockchainTests>;
 public class AmsterdamBlockchainTests : PyspecBlockchainTestFixture<AmsterdamBlockchainTests>;
-// Bogota (EIP-7805 FOCIL). Loads from fixtures/blockchain_tests/for_bogota.
-// Currently empty: EELS keeps FOCIL under tests/amsterdam/eip7805_focil/ with
-// pytest.mark.valid_from("Amsterdam") because there is no "bogota" fork class in
-// src/ethereum/forks. Our impl enables EIP-7805 only in Bogota (post-Amsterdam),
-// so we deliberately do not surface those Amsterdam-targeted FOCIL fixtures via
-// AmsterdamBlockchainTests — they'd fail against our Amsterdam spec which has no
-// IL validation. FOCIL coverage runs through unit tests + the Hive simulator
-// (felix314159/hive#3) until EELS adopts a real Bogota fork class.
-public class BogotaBlockchainTests : PyspecBlockchainTestFixture<BogotaBlockchainTests>;
 public class ParisToShanghaiAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ParisToShanghaiAtTime15kBlockchainTests>;
 public class ShanghaiToCancunAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ShanghaiToCancunAtTime15kBlockchainTests>;
 public class CancunToPragueAtTime15kBlockchainTests : PyspecBlockchainTestFixture<CancunToPragueAtTime15kBlockchainTests>;
@@ -43,8 +34,6 @@ public class CancunEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Can
 public class PragueEngineBlockchainTests : PyspecEngineBlockchainTestFixture<PragueEngineBlockchainTests>;
 public class OsakaEngineBlockchainTests : PyspecEngineBlockchainTestFixture<OsakaEngineBlockchainTests>;
 public class AmsterdamEngineBlockchainTests : PyspecEngineBlockchainTestFixture<AmsterdamEngineBlockchainTests>;
-// Bogota (EIP-7805 FOCIL) engine variant — see BogotaBlockchainTests above.
-public class BogotaEngineBlockchainTests : PyspecEngineBlockchainTestFixture<BogotaEngineBlockchainTests>;
 public class ParisToShanghaiAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ParisToShanghaiAtTime15kEngineBlockchainTests>;
 public class ShanghaiToCancunAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ShanghaiToCancunAtTime15kEngineBlockchainTests>;
 public class CancunToPragueAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<CancunToPragueAtTime15kEngineBlockchainTests>;
@@ -81,12 +70,10 @@ public class CancunStateTests : PyspecStateTestFixture<CancunStateTests>;
 public class PragueStateTests : PyspecStateTestFixture<PragueStateTests>;
 public class OsakaStateTests : PyspecStateTestFixture<OsakaStateTests>;
 public class AmsterdamStateTests : PyspecStateTestFixture<AmsterdamStateTests>;
-public class BogotaStateTests : PyspecStateTestFixture<BogotaStateTests>;
 public class ShanghaiToCancunAtTime15kStateTests : PyspecStateTestFixture<ShanghaiToCancunAtTime15kStateTests>;
 public class CancunToPragueAtTime15kStateTests : PyspecStateTestFixture<CancunToPragueAtTime15kStateTests>;
 
 // Transaction tests - validate raw tx decoding + validation against per-fork expected exceptions.
 public class AmsterdamTransactionTests : PyspecTransactionTestFixture<AmsterdamTransactionTests>;
-public class BogotaTransactionTests : PyspecTransactionTestFixture<BogotaTransactionTests>;
 public class OsakaTransactionTests : PyspecTransactionTestFixture<OsakaTransactionTests>;
 public class PragueTransactionTests : PyspecTransactionTestFixture<PragueTransactionTests>;

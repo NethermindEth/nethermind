@@ -28,21 +28,9 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             }
         }
 
-        string resolvedDir = !string.IsNullOrEmpty(testsDir)
-            ? ResolveTestsDirectory(testsDirectoryName, testsDir)
-            : testsDirectoryName;
-
-        // Upcoming-fork fixtures (e.g. for_bogota before execution-specs#2643 lands
-        // in a release archive) live in test classes that exist in tree before the
-        // archive does. Returning an empty test set lets the NUnit fixture report
-        // zero cases instead of crashing the whole test project with a
-        // DirectoryNotFoundException.
-        if (!Directory.Exists(resolvedDir))
-        {
-            return [];
-        }
-
-        IEnumerable<string> directories = Directory.EnumerateDirectories(resolvedDir, "*", new EnumerationOptions { RecurseSubdirectories = true });
+        IEnumerable<string> directories = !string.IsNullOrEmpty(testsDir)
+            ? Directory.EnumerateDirectories(ResolveTestsDirectory(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
+            : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
         List<string> testDirs = [];
         foreach (string testDir in directories)
         {
