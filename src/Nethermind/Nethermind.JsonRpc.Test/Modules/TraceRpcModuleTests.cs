@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -22,6 +24,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Blockchain.Find;
@@ -57,7 +60,7 @@ public class TraceRpcModuleTests
             Hash256 stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
             for (int i = 1; i < 10; i++)
             {
-                List<Transaction> transactions = new();
+                List<Transaction> transactions = [];
                 for (int j = 0; j < i; j++)
                 {
                     transactions.Add(Core.Test.Builders.Build.A.Transaction
@@ -478,7 +481,7 @@ public class TraceRpcModuleTests
         long[] positions = { 0 };
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> tracesGet = context.TraceRpcModule.trace_get(transaction2.Hash!, positions);
         traces.Data.ElementAt(0).TransactionHash.Should().BeEquivalentTo(transaction2.Hash);
-        traces.Data.ElementAt(1).Should().BeEquivalentTo(tracesGet.Data.ElementAt(0));
+        new EthereumJsonSerializer().Serialize(traces.Data.ElementAt(1)).Should().Be(new EthereumJsonSerializer().Serialize(tracesGet.Data.ElementAt(0)));
     }
 
     [Test]
@@ -782,7 +785,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_call", transaction, traceTypes, blockParameter);
 
-        Assert.That(serialized, Is.EqualTo(expectedResult), serialized.Replace("\"", "\\\""));
+        JToken.Parse(serialized).Should().BeEquivalentTo(JToken.Parse(expectedResult));
     }
 
     private static readonly IEnumerable<(object, string[], string)> Trace_call_without_blockParameter_test_cases = [
@@ -798,7 +801,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_call", testCase.transaction, testCase.traceTypes);
 
-        Assert.That(serialized, Is.EqualTo(testCase.expectedResult), serialized.Replace("\"", "\\\""));
+        JToken.Parse(serialized).Should().BeEquivalentTo(JToken.Parse(testCase.expectedResult));
     }
 
     [Test]
@@ -849,8 +852,8 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_callMany", calls);
 
-        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}],\"vmTrace\":null}},{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressB}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}],\"vmTrace\":null}}],\"id\":67}}"), serialized.Replace("\"", "\\\""));
-        Assert.That(serialized_without_blockParameter_param, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}],\"vmTrace\":null}},{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressB}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}],\"vmTrace\":null}}],\"id\":67}}"), serialized_without_blockParameter_param.Replace("\"", "\\\""));
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}},{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressB}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}}],\"id\":67}}"), serialized.Replace("\"", "\\\""));
+        Assert.That(serialized_without_blockParameter_param, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}},{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressB}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}}],\"id\":67}}"), serialized_without_blockParameter_param.Replace("\"", "\\\""));
     }
 
     [Test]
@@ -866,7 +869,7 @@ public class TraceRpcModuleTests
             "trace_callMany", calls);
 
         string expected =
-            "{\"jsonrpc\":\"2.0\",\"result\":[{\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2d\",\"to\":\"0x2e\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e5\",\"to\":\"0x3635c9adc5de9f09e4\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x3\",\"to\":\"0x4\"}},\"storage\":{}}},\"trace\":[],\"vmTrace\":null},{\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2e\",\"to\":\"0x2f\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e4\",\"to\":\"0x3635c9adc5de9f09e3\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x4\",\"to\":\"0x5\"}},\"storage\":{}}},\"trace\":[],\"vmTrace\":null}],\"id\":67}";
+            "{\"jsonrpc\":\"2.0\",\"result\":[{\"vmTrace\":null,\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2d\",\"to\":\"0x2e\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e5\",\"to\":\"0x3635c9adc5de9f09e4\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x3\",\"to\":\"0x4\"}},\"storage\":{}}},\"trace\":[]},{\"vmTrace\":null,\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2e\",\"to\":\"0x2f\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e4\",\"to\":\"0x3635c9adc5de9f09e3\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x4\",\"to\":\"0x5\"}},\"storage\":{}}},\"trace\":[]}],\"id\":67}";
 
         Assert.That(serialized, Is.EqualTo(expected), serialized.Replace("\"", "\\\""));
     }
@@ -1173,6 +1176,137 @@ public class TraceRpcModuleTests
         result.Result.Error.Should().NotContain("not canonical", "traceNonCanonical=true must bypass the canonical block check");
     }
 
+    private static IEnumerable<TestCaseData> StreamingEquivalenceCases()
+    {
+        string callManyParams = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\",\"gas\":\"0xf4240\"}},[\"statediff\"]],[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\",\"gas\":\"0xf4240\"}},[\"statediff\"]]]";
+
+        yield return new TestCaseData(
+                "trace_replayBlockTransactions",
+                new object?[] { "latest", new[] { "trace", "stateDiff" } },
+                /*byteIdentical:*/ false)
+            .SetName("trace_replayBlockTransactions (Replay, vmTrace field reorder OK)");
+
+        yield return new TestCaseData(
+                "trace_callMany",
+                new object?[] { callManyParams },
+                /*byteIdentical:*/ false)
+            .SetName("trace_callMany (Replay, vmTrace field reorder OK)");
+
+        yield return new TestCaseData(
+                "trace_block",
+                new object?[] { "latest" },
+                /*byteIdentical:*/ true)
+            .SetName("trace_block (Store, byte-identical)");
+
+        yield return new TestCaseData(
+                "trace_filter",
+                new object?[] { "{\"fromBlock\":\"0x3\",\"toBlock\":\"0x5\"}" },
+                /*byteIdentical:*/ true)
+            .SetName("trace_filter (Store, byte-identical)");
+    }
+
+    [TestCaseSource(nameof(StreamingEquivalenceCases))]
+    public async Task Streaming_matches_buffered(string method, object?[] parameters, bool byteIdentical)
+    {
+        Context context = new();
+        await context.Build();
+        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+
+        config.EnableTracingStreamMode = false;
+        string buffered = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+
+        config.EnableTracingStreamMode = true;
+        string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+
+        if (byteIdentical)
+        {
+            streamed.Should().Be(buffered);
+        }
+        else
+        {
+            JToken.Parse(streamed).Should().BeEquivalentTo(JToken.Parse(buffered));
+        }
+    }
+
+    [Test]
+    public async Task Streaming_vmTrace_matches_buffered_with_real_opcodes()
+    {
+        Context context = new();
+        await context.Build();
+        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+
+        // Contract creation with init code that exercises PUSH1, PUSH1, SSTORE, PUSH1, MSTORE, RETURN.
+        // Produces 6 opcodes in the vmTrace + 1 storage write + memory write.
+        string bytecode = "0x60016000556020600060f3";
+        string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":null,\"data\":\"{bytecode}\",\"gas\":\"0xf4240\"}},[\"vmTrace\",\"trace\",\"stateDiff\"]]]";
+
+        config.EnableTracingStreamMode = false;
+        string buffered = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+
+        config.EnableTracingStreamMode = true;
+        string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+
+        JToken.Parse(streamed).Should().BeEquivalentTo(JToken.Parse(buffered));
+    }
+
+    [Test]
+    public async Task Streaming_vmTrace_matches_buffered_across_nested_call_frame()
+    {
+        Context context = new();
+        await context.Build();
+        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+
+        // PUSH1 0 ×5, PUSH1 0x04, PUSH2 0x5000, CALL, STOP — CALL to identity precompile.
+        string bytecode = "0x600060006000600060006004615000f100";
+        string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":null,\"data\":\"{bytecode}\",\"gas\":\"0xf4240\"}},[\"vmTrace\",\"trace\"]]]";
+
+        config.EnableTracingStreamMode = false;
+        string buffered = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+
+        config.EnableTracingStreamMode = true;
+        string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+
+        JToken.Parse(streamed).Should().BeEquivalentTo(JToken.Parse(buffered));
+    }
+
+    private static IEnumerable<TestCaseData> StreamingResourceSafetyCases()
+    {
+        yield return new TestCaseData((Func<Task>)(async () =>
+        {
+            Context context = new();
+            await context.Build();
+            IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+            config.EnableTracingStreamMode = true;
+
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_block(BlockParameter.Latest);
+            result.Data.Should().BeAssignableTo<IStreamableResult>();
+            IStreamableResult streaming = (IStreamableResult)result.Data;
+            using CancellationTokenSource cts = new();
+            cts.Cancel();
+            System.IO.Pipelines.Pipe pipe = new();
+            await streaming.WriteToAsync(pipe.Writer, cts.Token);
+        })).SetName("Pre-cancelled token: WriteToAsync swallows OperationCanceledException");
+
+        yield return new TestCaseData((Func<Task>)(() =>
+        {
+            Block block = Build.A.Block.TestObject;
+            Transaction tx = Build.A.Transaction.TestObject;
+            ArrayBufferWriter<byte> sink = new();
+            using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+            StreamingParityLikeTxTracer tracer = new(
+                block, tx, ParityTraceTypes.Trace,
+                writer, pipeWriter: null, CancellationToken.None,
+                fillVmTraceSlot: false);
+            tracer.ReleaseResources();
+            tracer.ReleaseResources();
+            return Task.CompletedTask;
+        })).SetName("ReleaseResources: idempotent across repeated calls");
+    }
+
+    [TestCaseSource(nameof(StreamingResourceSafetyCases))]
+    public async Task Streaming_resource_safety(Func<Task> scenario) =>
+        await scenario.Should().NotThrowAsync();
+
     private static TraceRpcModule BuildModuleWithNonCanonicalReceipt(Hash256 txHash, Hash256 nonCanonicalBlockHash, bool traceNonCanonical = false)
     {
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
@@ -1192,7 +1326,8 @@ public class TraceRpcModuleTests
             new JsonRpcConfig(),
             Substitute.For<IBlockchainBridge>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IBlocksConfig>());
+            Substitute.For<IBlocksConfig>(),
+            LimboLogs.Instance);
     }
 
     // AllowTestChainOverride=false prevents TestBlockchain from wrapping this instance and stripping IForkAwareSpecProvider.

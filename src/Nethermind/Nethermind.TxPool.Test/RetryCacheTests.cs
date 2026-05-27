@@ -283,7 +283,7 @@ public class RetryCacheTests
 
     private static List<IMessageHandler<ResourceRequestMessage>> DrainToList(HandlerBag<ResourceRequestMessage> bag)
     {
-        List<IMessageHandler<ResourceRequestMessage>> handlers = new();
+        List<IMessageHandler<ResourceRequestMessage>> handlers = [];
         HandlerCollector collector = new(handlers);
         bag.Drain(ref collector);
         return handlers;

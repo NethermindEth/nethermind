@@ -11,12 +11,12 @@ namespace Nethermind.Flashbots.Data;
 /// </summary>
 public class FlashbotsResult
 {
-
-    public static ResultWrapper<FlashbotsResult> Invalid(string error) => ResultWrapper<FlashbotsResult>.Fail(error, new FlashbotsResult
-    {
-        Status = FlashbotsStatus.Invalid,
-        ValidationError = error
-    });
+    public static ResultWrapper<FlashbotsResult> Invalid(string error) =>
+        ResultWrapper<FlashbotsResult>.Fail(error, errorCode: 0, outputData: new FlashbotsResult
+        {
+            Status = FlashbotsStatus.Invalid,
+            ValidationError = error
+        });
 
     public static ResultWrapper<FlashbotsResult> Valid() => ResultWrapper<FlashbotsResult>.Success(new FlashbotsResult
     {

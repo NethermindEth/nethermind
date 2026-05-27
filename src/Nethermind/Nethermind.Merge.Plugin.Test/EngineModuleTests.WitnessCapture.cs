@@ -50,7 +50,7 @@ public partial class EngineModuleTests
         {
             IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
             module
-                .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+                .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
                 .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
             return module;
         }
@@ -59,7 +59,7 @@ public partial class EngineModuleTests
         {
             IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
             module
-                .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+                .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
                 .Returns(ResultWrapper<PayloadStatusV1>.Fail(error, errorCode));
             return module;
         }
@@ -219,7 +219,7 @@ public partial class EngineModuleTests
     {
         IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
         module
-            .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(call =>
             {
                 ExecutionPayloadV4 payload = call.Arg<ExecutionPayloadV4>();

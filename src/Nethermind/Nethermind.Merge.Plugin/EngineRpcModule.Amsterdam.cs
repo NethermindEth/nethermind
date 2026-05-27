@@ -22,18 +22,12 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId)
         => _getPayloadHandlerV6.HandleAsync(payloadId);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(
-        ExecutionPayloadV4 executionPayload,
-        byte[]?[] blobVersionedHashes,
-        Hash256? parentBeaconBlockRoot,
-        byte[][]? executionRequests)
-        => NewPayload(
-            new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests),
-            EngineApiVersions.NewPayload.V5);
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
+        => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests), EngineApiVersions.NewPayload.V5);
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitness(
         ExecutionPayloadV4 executionPayload,
-        byte[]?[] blobVersionedHashes,
+        Hash256?[] blobVersionedHashes,
         Hash256? parentBeaconBlockRoot,
         byte[][]? executionRequests)
         => _newPayloadWithWitnessHandler.HandleAsync(

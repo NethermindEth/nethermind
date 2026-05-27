@@ -9,7 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
@@ -115,7 +115,7 @@ public class BlockTreeTests
             .TestObject;
 
         blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
-        using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Hash!);
+        using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Number, block.Hash!);
         missingBal.Should().BeNull();
 
         byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
@@ -125,7 +125,7 @@ public class BlockTreeTests
 
         blockTree.UpdateMainChain([block], true);
 
-        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block.Hash!);
+        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block.Number, block.Hash!);
         persistedBal.Should().NotBeNull();
         persistedBal!.Memory.ToArray().Should().Equal(encodedBal);
     }
@@ -235,7 +235,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block1);
         blockTree.SuggestBlock(block2);
 
-        List<bool> blockAddedDbObservations = new();
+        List<bool> blockAddedDbObservations = [];
         bool newHeadDbObserved = false;
         bool onUpdateDbObserved = false;
 
@@ -1437,7 +1437,7 @@ public class BlockTreeTests
         tree.SuggestBlock(genesis);
         Block parent = genesis;
 
-        List<Block> blocks = new() { genesis };
+        List<Block> blocks = [genesis];
 
         for (long i = 1; i < 100; i++)
         {

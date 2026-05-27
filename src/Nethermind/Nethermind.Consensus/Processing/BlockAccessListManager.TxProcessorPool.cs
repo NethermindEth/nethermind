@@ -205,10 +205,16 @@ public partial class BlockAccessListManager
             BlockAccessListAtIndex? source = _perTxBal[idx];
             if (source is null) return;
 
-            target?.Merge(source);
-            onSlice?.Invoke(source);
             _perTxBal[idx] = null;
-            StaticPool<BlockAccessListAtIndex>.Return(source);
+            try
+            {
+                target?.Merge(source);
+                onSlice?.Invoke(source);
+            }
+            finally
+            {
+                StaticPool<BlockAccessListAtIndex>.Return(source);
+            }
         }
 
         public void NextTransaction() { }

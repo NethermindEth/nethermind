@@ -662,7 +662,7 @@ public class SszMiddlewareTests
             stubWitness);
 
         _engineModule.engine_newPayloadWithWitness(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
 
         byte[] body = BuildMinimalWitnessRequestBody();
@@ -671,7 +671,7 @@ public class SszMiddlewareTests
         await _middleware.InvokeAsync(ctx);
 
         await _engineModule.Received(1).engine_newPayloadWithWitness(
-            Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK,
             "VALID with a successfully generated witness must return 200 OK");
         ctx.Response.ContentType.Should().Contain(OctetStream,
@@ -697,7 +697,7 @@ public class SszMiddlewareTests
             witness: null);
 
         _engineModule.engine_newPayloadWithWitness(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
 
         byte[] body = BuildMinimalWitnessRequestBody();
@@ -739,7 +739,7 @@ public class SszMiddlewareTests
             new PayloadStatusV1 { Status = PayloadStatus.Syncing });
 
         _engineModule.engine_newPayloadWithWitness(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
 
         byte[] body = BuildMinimalWitnessRequestBody();
@@ -784,7 +784,7 @@ public class SszMiddlewareTests
     public async Task NewPayloadWithWitness_unsupported_fork_returns_400_with_correct_code()
     {
         _engineModule.engine_newPayloadWithWitness(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Fail("Unsupported fork", MergeErrorCodes.UnsupportedFork));
 
         byte[] body = BuildMinimalWitnessRequestBody();
@@ -817,7 +817,7 @@ public class SszMiddlewareTests
     public async Task NewPayloadWithWitness_non_UnsupportedFork_engine_error_returns_500()
     {
         _engineModule.engine_newPayloadWithWitness(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Fail("Something exploded", ErrorCodes.InternalError));
 
         byte[] body = BuildMinimalWitnessRequestBody();

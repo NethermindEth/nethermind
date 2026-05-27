@@ -6,14 +6,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -351,8 +350,8 @@ public class FilterManagerTests
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
         Action<IEnumerable<FilterLog>> logsAssertion)
     {
-        List<FilterBase> filters = new();
-        List<TxReceipt> receipts = new();
+        List<FilterBase> filters = [];
+        List<TxReceipt> receipts = [];
         foreach (Action<FilterBuilder> filterBuilder in filterBuilders)
         {
             filters.Add(BuildFilter(filterBuilder));

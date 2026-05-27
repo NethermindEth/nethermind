@@ -18,6 +18,22 @@ public static class DictionaryExtensions
         res++;
     }
 
+    extension<TKey, TValue>(Dictionary<TKey, TValue>? dictionary) where TKey : notnull
+    {
+        /// <summary>Null-safe <see cref="Dictionary{TKey,TValue}.TryGetValue"/>: returns
+        /// <see langword="false"/> with a default <paramref name="value"/> when the dictionary
+        /// itself is <see langword="null"/>.</summary>
+        public bool TryGetValueOrNull(TKey key, [MaybeNullWhen(false)] out TValue value)
+        {
+            if (dictionary is null)
+            {
+                value = default;
+                return false;
+            }
+            return dictionary.TryGetValue(key, out value);
+        }
+    }
+
     extension<TKey, TValue>(Dictionary<TKey, TValue> dictionary) where TKey : notnull
     {
         /// <summary>

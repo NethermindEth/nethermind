@@ -7,6 +7,7 @@ using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
 

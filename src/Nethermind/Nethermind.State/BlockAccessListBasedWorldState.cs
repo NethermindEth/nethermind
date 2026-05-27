@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -310,8 +311,9 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         CheckInitialized();
 
-        ArrayPoolList<AddressAsKey> result = new(_suggestedBlockAccessList.AccountChanges.Count);
-        foreach (ReadOnlyAccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
+        ReadOnlySpan<ReadOnlyAccountChanges> accounts = _suggestedBlockAccessList.AccountChanges.AsSpan();
+        ArrayPoolList<AddressAsKey> result = new(accounts.Length);
+        foreach (ReadOnlyAccountChanges accountChanges in accounts)
         {
             if (accountChanges.HasStateChanges)
             {
@@ -393,11 +395,16 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         }
 
         // Built once per block; entries are immutable across the block. TryGetCodeByHash filters
-        // by Index < _blockAccessIndex at lookup time so future-tx code stays invisible.
-        Dictionary<ValueHash256, (uint Index, byte[] Code)> codeChangesByHash = [];
+        // by Index < _blockAccessIndex at lookup time so future-tx code stays invisible. The
+        // dictionary itself is only allocated when at least one account declares a code change,
+        // so most blocks (which rarely contain deployments) skip the per-block allocation.
+        Dictionary<ValueHash256, (uint Index, byte[] Code)>? codeChangesByHash = null;
         foreach (ReadOnlyAccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
-            foreach (CodeChange codeChange in accountChanges.CodeChanges)
+            ReadOnlySpan<CodeChange> codeChanges = accountChanges.CodeChanges;
+            if (codeChanges.Length == 0) continue;
+            codeChangesByHash ??= [];
+            foreach (CodeChange codeChange in codeChanges)
             {
                 if (!codeChangesByHash.TryGetValue(codeChange.CodeHash, out (uint Index, byte[] Code) existing)
                     || codeChange.Index < existing.Index)

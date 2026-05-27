@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -74,7 +74,7 @@ public class AddressFilterTests
     [Test]
     public void Accepts_any_address_when_set_is_empty()
     {
-        HashSet<AddressAsKey> addresses = new();
+        HashSet<AddressAsKey> addresses = [];
         AddressFilter filter = new(addresses);
 
         filter.Accepts(TestItem.AddressA).Should().BeTrue();
@@ -85,7 +85,7 @@ public class AddressFilterTests
     [Test]
     public void Accepts_any_address_when_set_is_empty_by_ref()
     {
-        HashSet<AddressAsKey> addresses = new();
+        HashSet<AddressAsKey> addresses = [];
         AddressFilter filter = new(addresses);
 
         AddressStructRef addressARef = TestItem.AddressA.ToStructRef();
@@ -182,7 +182,7 @@ public class AddressFilterTests
     [Test]
     public void Matches_any_bloom_when_set_is_empty()
     {
-        HashSet<AddressAsKey> addresses = new();
+        HashSet<AddressAsKey> addresses = [];
         AddressFilter filter = new(addresses);
 
         filter.Matches(BloomFromAddress(TestItem.AddressA)).Should().BeTrue();
@@ -193,7 +193,7 @@ public class AddressFilterTests
     [Test]
     public void Matches_any_bloom_when_set_is_empty_by_ref()
     {
-        HashSet<AddressAsKey> addresses = new();
+        HashSet<AddressAsKey> addresses = [];
         AddressFilter filter = new(addresses);
 
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();

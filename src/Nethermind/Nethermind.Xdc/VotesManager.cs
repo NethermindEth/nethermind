@@ -22,6 +22,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -258,8 +259,8 @@ internal class VotesManager(
 
     private static Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
     {
-        HashSet<Address> masternodeSet = new(masternodes);
-        List<Signature> signatures = new();
+        HashSet<Address> masternodeSet = [.. masternodes];
+        List<Signature> signatures = [];
         foreach (Vote vote in votes)
         {
             vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);

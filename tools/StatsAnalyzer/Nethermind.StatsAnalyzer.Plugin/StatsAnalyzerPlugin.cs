@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm;
 using Nethermind.Logging;
+using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer.Call;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
 using Nethermind.StatsAnalyzer.Plugin.Types;
@@ -78,7 +79,7 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
 
         CallStatsAnalyzer analyzer = new(callAnalyzerConfig.TopN);
         CallAnalyzerFileTracer callAnalyzerFileTracer = new(
-            new ResettableList<Address>(),
+            [],
             callAnalyzerConfig.ProcessingQueueSize,
             analyzer,
             _api.FileSystem,
@@ -98,7 +99,7 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
 
         PatternStatsAnalyzer analyzer = new(patternAnalyzerConfig.GetStatsAnalyzerConfig());
         PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(
-            new ResettableList<Instruction>(),
+            [],
             patternAnalyzerConfig.ProcessingQueueSize,
             patternAnalyzerConfig.InstructionsQueueSize,
             analyzer,

@@ -113,56 +113,61 @@ public sealed class SszMiddleware
         }
     }
 
-    public async Task InvokeAsync(HttpContext ctx)
+    public Task InvokeAsync(HttpContext ctx)
     {
         if (!IsSszRequest(ctx))
         {
-            await _next(ctx);
+            return _next(ctx);
         }
-        else if (_processExitToken.IsCancellationRequested)
+
+        if (_processExitToken.IsCancellationRequested)
         {
             ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            return Task.CompletedTask;
         }
-        else if (!_urlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) || !url.IsAuthenticated || !url.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+
+        if (!_urlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) || !url.IsAuthenticated || !url.RpcEndpoint.HasFlag(RpcEndpoint.Http))
         {
-            await _next(ctx);
+            return _next(ctx);
+        }
+
+        Metrics.SszRestRequestsTotal++;
+        return ProcessSszRequestAsync(ctx);
+    }
+
+    private async Task ProcessSszRequestAsync(HttpContext ctx)
+    {
+        string? authHeader = ctx.Request.Headers.Authorization;
+        if (authHeader is null || !await _auth.Authenticate(authHeader))
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized,
+                "Authentication error", ErrorCodes.InvalidRequest);
+        }
+        else if (IsWitnessPath(ctx.Request.Path.Value ?? string.Empty))
+        {
+            await DispatchWitnessAsync(ctx);
+        }
+        else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out ReadOnlyMemory<char> pathSegment))
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
+                "Unknown SSZ endpoint", ErrorCodes.MethodNotFound);
+        }
+        else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            // .Span avoids the extra ROM<char>.ToString() allocation in the interpolation.
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
+                $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}", ErrorCodes.MethodNotFound);
         }
         else
         {
-            Metrics.SszRestRequestsTotal++;
+            if (_logger.IsTrace) _logger.Trace(extra.IsEmpty
+                ? $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}"
+                : $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}/{extra.Span}");
 
-            string? authHeader = ctx.Request.Headers.Authorization;
-            if (authHeader is null || !await _auth.Authenticate(authHeader))
-            {
-                Metrics.SszRestRequestsClientErrorTotal++;
-                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized,
-                    "Authentication error", ErrorCodes.InvalidRequest);
-            }
-            else if (IsWitnessPath(ctx.Request.Path.Value ?? string.Empty))
-            {
-                await DispatchWitnessAsync(ctx);
-            }
-            else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out ReadOnlyMemory<char> pathSegment))
-            {
-                Metrics.SszRestRequestsClientErrorTotal++;
-                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                    "Unknown SSZ endpoint", ErrorCodes.MethodNotFound);
-            }
-            else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
-            {
-                Metrics.SszRestRequestsClientErrorTotal++;
-                // .Span avoids the extra ROM<char>.ToString() allocation in the interpolation.
-                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                    $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}", ErrorCodes.MethodNotFound);
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace(extra.IsEmpty
-                    ? $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}"
-                    : $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}/{extra.Span}");
-
-                await DispatchAsync(ctx, handler!, version, extra);
-            }
+            await DispatchAsync(ctx, handler!, version, extra);
         }
     }
 

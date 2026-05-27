@@ -549,7 +549,7 @@ public class AbiTests
     {
         AbiArray abi = new(AbiType.UInt256);
         UInt256[] array = new UInt256[] { 1, 2, 3, UInt256.MaxValue };
-        List<UInt256> list = new() { 1, 2, 3, UInt256.MaxValue };
+        List<UInt256> list = [1, 2, 3, UInt256.MaxValue];
         using ArrayPoolList<UInt256> pool = new(4);
 
         pool.AddRange(array);

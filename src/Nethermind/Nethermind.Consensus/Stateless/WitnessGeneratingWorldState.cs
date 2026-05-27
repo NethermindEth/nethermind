@@ -49,9 +49,9 @@ public class WitnessGeneratingWorldState(
     WitnessGeneratingHeaderFinder headerFinder,
     WitnessCapturingTrieStore? trieStore = null) : IWorldState
 {
-    private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
+    private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = [];
 
-    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new();
+    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = [];
 
     private readonly HashSet<Address> _deployedAddresses = [];
 
@@ -415,7 +415,7 @@ public class WitnessGeneratingWorldState(
     private HashSet<UInt256> RecordEmptySlots(Address address)
     {
         ref HashSet<UInt256>? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, address, out _);
-        slot ??= new HashSet<UInt256>();
+        slot ??= [];
         return slot;
     }
 

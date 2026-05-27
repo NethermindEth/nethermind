@@ -5,14 +5,13 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
-using Nethermind.Facade.Filters;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -384,7 +383,7 @@ public class LogIndexFilterVisitorTests
     {
         Random random = new(42);
 
-        Dictionary<Address, List<int>> addressRanges = new();
+        Dictionary<Address, List<int>> addressRanges = [];
         foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE })
         {
             List<int> range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1)).Where(_ => random.NextDouble() < 0.3).ToList();

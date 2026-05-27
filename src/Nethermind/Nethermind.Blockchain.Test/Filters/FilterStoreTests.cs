@@ -7,8 +7,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -157,7 +157,7 @@ public class FilterStoreTests
     [Parallelizable(ParallelScope.None)]
     public async Task CleanUps_filters()
     {
-        List<int> removedFilterIds = new();
+        List<int> removedFilterIds = [];
         FilterStore store = new(new TimerFactory(), 500, 100);
         store.FilterRemoved += (_, e) => removedFilterIds.Add(e.FilterId);
         store.SaveFilter(store.CreateBlockFilter());

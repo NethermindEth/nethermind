@@ -101,7 +101,7 @@ public class EthereumRunnerTests
         });
 
         // Sort so that is is consistent so that its easy to run via Rider.
-        List<(string, ConfigProvider)> result = new(resultQueue);
+        List<(string, ConfigProvider)> result = [.. resultQueue];
         result.Sort();
 
         {
@@ -305,6 +305,8 @@ public class EthereumRunnerTests
                 typeof(IProtectedPrivateKey),
                 typeof(PublicKey),
                 typeof(IPrivateKeyGenerator),
+                typeof(INetworkStorage),
+                typeof(NetworkStorage),
                 typeof(ITracer), // Completely different construction on every case
                 typeof(IReadOnlyStateProvider), // For which block? Use IChainHeadInfoProvider, or preferably, IStateReader instead
                 typeof(string),

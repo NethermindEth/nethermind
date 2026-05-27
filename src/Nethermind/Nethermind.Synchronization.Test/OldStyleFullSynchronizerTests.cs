@@ -326,9 +326,9 @@ namespace Nethermind.Synchronization.Test
             Block? block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
             Block? block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
-            SyncServer.GetReceipts(block0!.Hash!).Should().HaveCount(0);
-            SyncServer.GetReceipts(block1!.Hash!).Should().HaveCount(0);
-            SyncServer.GetReceipts(TestItem.KeccakA).Should().HaveCount(0);
+            SyncServer.GetReceipts(block0!.Hash!).Should().BeEmpty();
+            SyncServer.GetReceipts(block1!.Hash!).Should().BeNull();
+            SyncServer.GetReceipts(TestItem.KeccakA).Should().BeNull();
         }
     }
 }

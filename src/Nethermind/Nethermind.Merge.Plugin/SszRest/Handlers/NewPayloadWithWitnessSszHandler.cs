@@ -121,7 +121,7 @@ public sealed class NewPayloadWithWitnessSszHandler(
             if (payload is null) return null;
 
             if (!reader.Read()) return null;
-            byte[]?[]? blobHashes = JsonSerializer.Deserialize<byte[]?[]>(
+            Hash256?[]? blobHashes = JsonSerializer.Deserialize<Hash256?[]>(
                 ref reader, EthereumJsonSerializer.JsonOptions);
 
             if (!reader.Read()) return null;
@@ -144,7 +144,7 @@ public sealed class NewPayloadWithWitnessSszHandler(
 
     private sealed record NewPayloadV5Params(
         ExecutionPayloadV4 ExecutionPayload,
-        byte[]?[] ExpectedBlobVersionedHashes,
+        Hash256?[] ExpectedBlobVersionedHashes,
         Hash256? ParentBeaconBlockRoot,
         byte[][]? ExecutionRequests);
 }

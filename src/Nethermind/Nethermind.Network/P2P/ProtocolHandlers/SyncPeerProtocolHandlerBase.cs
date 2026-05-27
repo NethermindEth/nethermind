@@ -382,12 +382,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 }
 
                 Hash256 blockHash = hashes[i];
-                if (SyncServer.FindHeader(blockHash) is null)
+                TxReceipt[]? blockTxReceipts = SyncServer.GetReceipts(blockHash);
+                if (blockTxReceipts is null)
                 {
                     break;
                 }
-
-                TxReceipt[] blockTxReceipts = SyncServer.GetReceipts(blockHash);
                 sizeEstimate += MessageSizeEstimator.EstimateSize(blockTxReceipts);
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)
@@ -473,7 +472,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         #region IPeerWithSatelliteProtocol
 
         private Dictionary<string, object>? _protocolHandlers;
-        private Dictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
+        private Dictionary<string, object> ProtocolHandlers => _protocolHandlers ??= [];
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class => ProtocolHandlers[protocol] = protocolHandler;
 

@@ -5,8 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Linq;
-using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -21,7 +19,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -69,12 +66,12 @@ public partial class EngineModuleTests
 
         buildResult.Result.Should().Be(Result.Success);
         buildResult.Data.Should().NotBeNull();
-        buildResult.Data.Should().BeOfType<GetPayloadV5Result>();
+        buildResult.Data.Should().BeAssignableTo<GetPayloadV5Result>();
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)buildResult.Data!;
 
         ExecutionPayloadV3 executionPayload = payloadResult.ExecutionPayload;
         executionPayload.ExecutionRequests = payloadResult.ExecutionRequests;
-        executionPayload.TryGetBlock().Block!.CalculateHash().Should().Be(executionPayload.BlockHash);
+        executionPayload.TryGetBlock().Data!.CalculateHash().Should().Be(executionPayload.BlockHash);
 
         ResultWrapper<PayloadStatusV1> newPayloadResult = await chain.EngineRpcModule.engine_newPayloadV4(
             executionPayload,
@@ -325,32 +322,11 @@ public partial class EngineModuleTests
     [Test]
     public async Task BlobsV2DirectResponse_WriteToAsync_produces_valid_json()
     {
-        // Build a small list with one real entry and one null
-        byte[] blob = new byte[16];
-        Random.Shared.NextBytes(blob);
-        byte[] proof1 = new byte[48];
-        Random.Shared.NextBytes(proof1);
-        byte[] proof2 = new byte[48];
-        Random.Shared.NextBytes(proof2);
-
-        byte[]?[] blobs = [blob, null];
-        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([proof1, proof2]), default];
+        byte[]?[] blobs = [RandomBytes(16), null];
+        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([RandomBytes(48), RandomBytes(48)]), default];
 
         BlobsV2DirectResponse response = new(blobs, proofs, 2);
-
-        // Write via streaming path
-        Pipe pipe = new();
-        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
-        await pipe.Writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
-        // Write via STJ for comparison
-        string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
-
-        streamedJson.Should().Be(stjJson);
+        await AssertStreamedJsonMatchesSerializer(response);
     }
 
     [Test]
@@ -358,14 +334,7 @@ public partial class EngineModuleTests
     {
         BlobsV2DirectResponse response = new([], [], 0);
 
-        Pipe pipe = new();
-        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
-        await pipe.Writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        string json = Encoding.UTF8.GetString(readResult.Buffer);
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
+        string json = await AssertStreamedJsonMatchesSerializer(response);
         json.Should().Be("[]");
     }
 

@@ -31,6 +31,66 @@ namespace Nethermind.JsonRpc.Test;
 [Parallelizable(ParallelScope.Children)]
 public class JsonRpcSocketsClientTests
 {
+    [TestCase(false, TestName = "Single response")]
+    [TestCase(true, TestName = "Batch response")]
+    public async Task Socket_sink_writes_response_with_one_message_boundary(bool isBatch)
+    {
+        using SocketSinkFixture fixture = CreateSocketSink();
+
+        if (isBatch)
+        {
+            await fixture.Sink.BeginBatchAsync(CancellationToken.None);
+            await fixture.Sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
+            await fixture.Sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 2, Result = "0x2" }, new RpcReport("eth_chainId", 1, true), CancellationToken.None);
+            await fixture.Sink.EndBatchAsync(CancellationToken.None);
+        }
+        else
+        {
+            await fixture.Sink.WriteSingleAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
+        }
+
+        byte[] response = fixture.Stream.ToArray();
+        if (isBatch)
+        {
+            response[0].Should().Be((byte)'[');
+        }
+
+        response.AsSpan().Count((byte)'\n').Should().Be(1);
+        fixture.Sink.BytesWritten.Should().Be(response.Length);
+    }
+
+    [TestCase(RpcEndpoint.Ws, true)]
+    [TestCase(RpcEndpoint.IPC, false)]
+    public async Task Socket_sink_response_limit_stop_depends_on_authentication(RpcEndpoint endpoint, bool expectedStopRequested)
+    {
+        using SocketSinkFixture fixture = CreateSocketSink(endpoint, maxBatchResponseBodySize: 1);
+
+        await fixture.Sink.BeginBatchAsync(CancellationToken.None);
+        await fixture.Sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
+
+        fixture.Sink.StopRequested.Should().Be(expectedStopRequested);
+
+        await fixture.Sink.EndBatchAsync(CancellationToken.None);
+    }
+
+    private static SocketSinkFixture CreateSocketSink(RpcEndpoint endpoint = RpcEndpoint.Ws, long maxBatchResponseBodySize = 10_000)
+    {
+        MemoryMessageStream stream = new();
+        SemaphoreSlim sendSemaphore = new(1, 1);
+        SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, new NullJsonRpcLocalStats(), maxBatchResponseBodySize, sendSemaphore, new JsonRpcContext(endpoint));
+        return new SocketSinkFixture(stream, sendSemaphore, sink);
+    }
+
+    private readonly record struct SocketSinkFixture(MemoryMessageStream Stream, SemaphoreSlim SendSemaphore, SocketJsonRpcResponseSink<MemoryMessageStream> Sink) : IDisposable
+    {
+        public void Dispose()
+        {
+            Sink.Dispose();
+            SendSemaphore.Dispose();
+            Stream.Dispose();
+        }
+    }
+
     public class UsingIpc
     {
         [Test]
@@ -39,10 +99,7 @@ public class JsonRpcSocketsClientTests
         {
             IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
 
-            Task<int> receiveBytes = OneShotServer(
-                ipEndPoint,
-                CountNumberOfBytes
-            );
+            Task<int> receiveBytes = OneShotServer(ipEndPoint, CountNumberOfBytes);
 
             JsonRpcSuccessResponse bigObject = RandomSuccessResponse(200_000);
             Task<int> sendJsonRpcResult = Task.Run(async () =>
@@ -99,10 +156,7 @@ public class JsonRpcSocketsClientTests
 
             IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
 
-            Task<int> receiveMessages = OneShotServer(
-                ipEndPoint,
-                CountNumberOfMessages
-            );
+            Task<int> receiveMessages = OneShotServer(ipEndPoint, CountNumberOfMessages);
 
             Task<int> sendMessages = Task.Run(async () =>
             {
@@ -140,16 +194,22 @@ public class JsonRpcSocketsClientTests
             await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
 
             int concurrentCall = 0;
-            TaskCompletionSource completeSource = new();
-            async IAsyncEnumerable<JsonRpcResult> ResponseFunc(CallInfo c)
+            TaskCompletionSource completeSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            async ValueTask ResponseFunc(CallInfo c)
             {
                 Interlocked.Increment(ref concurrentCall);
                 await completeSource.Task;
-                yield return JsonRpcResult.Single(new JsonRpcSuccessResponse(null), new RpcReport());
+                IJsonRpcResponseSink sink = c.Arg<IJsonRpcResponseSink>();
+                await sink.WriteSingleAsync(new JsonRpcSuccessResponse(null), new RpcReport(), c.Arg<CancellationToken>());
             }
 
             jsonRpcProcessor
-                .ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>())
+                .ProcessAsync(
+                    Arg.Any<PipeReader>(),
+                    Arg.Any<JsonRpcContext>(),
+                    Arg.Any<IJsonRpcResponseSink>(),
+                    Arg.Any<JsonRpcProcessingOptions>(),
+                    Arg.Any<CancellationToken>())
                 .Returns(ResponseFunc);
 
             for (int i = 0; i < concurrencyLevel; i++)
@@ -199,97 +259,36 @@ public class JsonRpcSocketsClientTests
             await ShutdownAndWait(pair.SendSocket, receiver);
         }
 
-        [TestCase(1)]
-        [TestCase(2)]
-        public async Task Can_process_complete_messages_without_delimiter(int messageCount)
+        private static IEnumerable<TestCaseData> CompleteJsonMessageCases()
         {
-            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
+            string blockNumber = CreateJsonRequest(1, "eth_blockNumber");
+            string chainId = CreateJsonRequest(2, "eth_chainId");
+            yield return CompleteJsonMessageCase([blockNumber], "Single_json_without_delimiter");
+            yield return CompleteJsonMessageCase([blockNumber, chainId], "Two_json_documents_without_delimiter");
 
-            int processedRequests = 0;
-            List<string> processedPayloads = [];
-            IJsonRpcProcessor jsonRpcProcessor = CreateCapturingProcessor(buf =>
-            {
-                processedPayloads.Add(Encoding.UTF8.GetString(buf.ToArray()));
-                Interlocked.Increment(ref processedRequests);
-            });
-
-            Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
-
-            await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
-            List<string> expectedPayloads = [];
-            string[] requests =
-            {
-                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}",
-                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_chainId\",\"params\":[]}"
-            };
-
-            for (int i = 0; i < messageCount; i++)
-            {
-                expectedPayloads.Add(requests[i]);
-            }
-            byte[] combinedRequests = Encoding.UTF8.GetBytes(string.Concat(expectedPayloads));
-
-            await sendStream.WriteAsync(combinedRequests, pair.Cts.Token);
-
-            Assert.That(() => processedRequests, Is.EqualTo(messageCount).After(5000, 10));
-            processedPayloads.Should().Equal(expectedPayloads);
-
-            await ShutdownAndWait(pair.SendSocket, receiver);
-        }
-
-        [Test]
-        public async Task Json_parse_state_resets_between_consecutive_messages()
-        {
             // Both messages >4KB to span multiple SocketClient buffer reads, triggering incremental JSON state
-            string payload1 = new('x', 5000);
-            string payload2 = new('y', 5000);
-            string request1 = $"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[\"{payload1}\"]}}";
-            string request2 = $"{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_call\",\"params\":[\"{payload2}\"]}}";
+            string request1 = CreateJsonRequest(1, "eth_call", $"[\"{new string('x', 5000)}\"]");
+            string request2 = CreateJsonRequest(2, "eth_call", $"[\"{new string('y', 5000)}\"]");
+            yield return CompleteJsonMessageCase([request1, request2], "Json_parse_state_resets_between_consecutive_messages");
 
-            await SendAndAssertPayloads(request1 + request2, [request1, request2]);
+            yield return LargeChunkedJsonMessageCase(5);
+            yield return LargeChunkedJsonMessageCase(10);
         }
 
-        [TestCase(5)]
-        [TestCase(10)]
-        public async Task Can_process_large_chunked_json_without_delimiter(int messageCount)
+        [TestCaseSource(nameof(CompleteJsonMessageCases))]
+        public async Task Can_process_complete_json_messages_without_delimiter(string wireData, string[] expectedPayloads, int timeout, int chunkSize) =>
+            await SendAndAssertPayloads(wireData, expectedPayloads, timeout, chunkSize);
+
+        private static TestCaseData LargeChunkedJsonMessageCase(int messageCount)
         {
-            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
-
-            int processedRequests = 0;
-            List<string> processedPayloads = [];
-            IJsonRpcProcessor jsonRpcProcessor = CreateCapturingProcessor(buf =>
-            {
-                processedPayloads.Add(Encoding.UTF8.GetString(buf.ToArray()));
-                Interlocked.Increment(ref processedRequests);
-            });
-
-            Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
-
-            await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
-
-            // Build large JSON messages (~10KB each) to exercise incremental parsing across many 4KB chunks
-            List<string> expectedPayloads = [];
+            string[] expectedPayloads = new string[messageCount];
             for (int i = 0; i < messageCount; i++)
             {
                 string payload = new((char)('a' + i % 26), 10_000);
-                string request = $"{{\"jsonrpc\":\"2.0\",\"id\":{i},\"method\":\"eth_call\",\"params\":[\"{payload}\"]}}";
-                expectedPayloads.Add(request);
-
-                // Send each message in small pieces to force multi-chunk parsing
-                byte[] requestBytes = Encoding.UTF8.GetBytes(request);
-                int chunkSize = 4096;
-                for (int offset = 0; offset < requestBytes.Length; offset += chunkSize)
-                {
-                    int len = Math.Min(chunkSize, requestBytes.Length - offset);
-                    await sendStream.WriteAsync(requestBytes.AsMemory(offset, len), pair.Cts.Token);
-                    await Task.Delay(1);
-                }
+                expectedPayloads[i] = CreateJsonRequest(i, "eth_call", $"[\"{payload}\"]");
             }
 
-            Assert.That(() => processedRequests, Is.EqualTo(messageCount).After(10000, 10));
-            processedPayloads.Should().Equal(expectedPayloads);
-
-            await ShutdownAndWait(pair.SendSocket, receiver);
+            return CompleteJsonMessageCase(expectedPayloads, $"Large_chunked_json_without_delimiter_{messageCount}", timeout: 10000, chunkSize: 4096);
         }
 
         [Test]
@@ -305,16 +304,16 @@ public class JsonRpcSocketsClientTests
             // drains part of the overflow. If a boundary is found, the tail must be
             // correctly ordered before the undrained remainder.
             string large2 = new('M', 5000);
-            string msg2 = $"{{\"id\":2,\"method\":\"eth_call\",\"params\":[\"{large2}\"]}}";
-            string msg3 = "{\"id\":3,\"method\":\"eth_call\",\"params\":[]}";
+            string msg2 = CreateJsonRequestWithoutVersion(2, "eth_call", $"[\"{large2}\"]");
+            string msg3 = CreateJsonRequestWithoutVersion(3, "eth_call");
 
             await SendAndAssertPayloads(msg1 + "\n" + msg2 + msg3, [msg1, msg2, msg3], timeout: 10000);
         }
 
         private static IEnumerable<TestCaseData> JsonBoundaryDetectionCases()
         {
-            string json1 = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}";
-            string json2 = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_chainId\",\"params\":[]}";
+            string json1 = CreateJsonRequest(1, "eth_blockNumber");
+            string json2 = CreateJsonRequest(2, "eth_chainId");
 
             // JSON without trailing \n followed by newline-delimited message
             yield return new TestCaseData(
@@ -343,6 +342,15 @@ public class JsonRpcSocketsClientTests
         [TestCaseSource(nameof(JsonBoundaryDetectionCases))]
         public async Task Json_boundary_detection(string wireData, string[] expectedPayloads) =>
             await SendAndAssertPayloads(wireData, expectedPayloads);
+
+        private static TestCaseData CompleteJsonMessageCase(string[] expectedPayloads, string name, int timeout = 5000, int chunkSize = 0) =>
+            new TestCaseData(string.Concat(expectedPayloads), expectedPayloads, timeout, chunkSize).SetName(name);
+
+        private static string CreateJsonRequest(int id, string method, string paramsJson = "[]") =>
+            $"{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"{method}\",\"params\":{paramsJson}}}";
+
+        private static string CreateJsonRequestWithoutVersion(int id, string method, string paramsJson = "[]") =>
+            $"{{\"id\":{id},\"method\":\"{method}\",\"params\":{paramsJson}}}";
 
         [TestCase(10)]
         [TestCase(63)]
@@ -391,10 +399,7 @@ public class JsonRpcSocketsClientTests
             List<byte[]> sentMessages = [];
             List<byte[]> receivedMessages = [];
 
-            Task<int> receiveMessages = OneShotServer(
-                ipEndPoint,
-                async socket => await ReadMessages(socket, receivedMessages)
-            );
+            Task<int> receiveMessages = OneShotServer(ipEndPoint, socket => ReadMessages(socket, receivedMessages));
 
             Task<int> sendMessages = Task.Run(async () =>
             {
@@ -432,7 +437,7 @@ public class JsonRpcSocketsClientTests
             Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
         }
 
-        private static async Task SendAndAssertPayloads(string wireData, IReadOnlyList<string> expectedPayloads, int timeout = 5000)
+        private static async Task SendAndAssertPayloads(string wireData, IReadOnlyList<string> expectedPayloads, int timeout = 5000, int chunkSize = 0)
         {
             using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
 
@@ -447,7 +452,20 @@ public class JsonRpcSocketsClientTests
             Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
 
             await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
-            await sendStream.WriteAsync(Encoding.UTF8.GetBytes(wireData), pair.Cts.Token);
+            byte[] wireBytes = Encoding.UTF8.GetBytes(wireData);
+            if (chunkSize <= 0)
+            {
+                await sendStream.WriteAsync(wireBytes, pair.Cts.Token);
+            }
+            else
+            {
+                for (int offset = 0; offset < wireBytes.Length; offset += chunkSize)
+                {
+                    int length = Math.Min(chunkSize, wireBytes.Length - offset);
+                    await sendStream.WriteAsync(wireBytes.AsMemory(offset, length), pair.Cts.Token);
+                    await Task.Delay(1, pair.Cts.Token);
+                }
+            }
 
             Assert.That(() => processedRequests, Is.EqualTo(expectedPayloads.Count).After(timeout, 10));
             processedPayloads.Should().Equal(expectedPayloads);
@@ -478,16 +496,24 @@ public class JsonRpcSocketsClientTests
         private static IJsonRpcProcessor CreateCapturingProcessor(Action<ReadOnlySequence<byte>> onRequest)
         {
             IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
-            async IAsyncEnumerable<JsonRpcResult> ResponseFunc(CallInfo callInfo)
+            async ValueTask ResponseFunc(CallInfo callInfo)
             {
                 PipeReader reader = callInfo.ArgAt<PipeReader>(0);
                 ReadResult readResult = await reader.ReadToEndAsync();
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
                 onRequest(buffer);
                 reader.AdvanceTo(buffer.End);
-                yield return JsonRpcResult.Single(new JsonRpcSuccessResponse(null), new RpcReport());
+                IJsonRpcResponseSink sink = callInfo.Arg<IJsonRpcResponseSink>();
+                await sink.WriteSingleAsync(new JsonRpcSuccessResponse(null), new RpcReport(), callInfo.Arg<CancellationToken>());
             }
-            processor.ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>()).Returns(ResponseFunc);
+            processor
+                .ProcessAsync(
+                    Arg.Any<PipeReader>(),
+                    Arg.Any<JsonRpcContext>(),
+                    Arg.Any<IJsonRpcResponseSink>(),
+                    Arg.Any<JsonRpcProcessingOptions>(),
+                    Arg.Any<CancellationToken>())
+                .Returns(ResponseFunc);
             return processor;
         }
 
@@ -525,12 +551,9 @@ public class JsonRpcSocketsClientTests
         [TestCase(50)]
         public async Task Can_send_multiple_messages(int messageCount)
         {
-            CancellationTokenSource cts = new();
+            using CancellationTokenSource cts = new();
 
-            Task<int> receiveMessages = OneShotServer(
-                "http://localhost:1337/",
-                async webSocket => await CountMessages(webSocket, cts.Token)
-            );
+            Task<int> receiveMessages = OneShotServer("http://localhost:1337/", webSocket => CountMessages(webSocket, cts.Token));
 
             Task<int> sendMessages = Task.Run(async () =>
             {
@@ -558,18 +581,14 @@ public class JsonRpcSocketsClientTests
         [TestCase(50)]
         public async Task Can_send_collections(int elements)
         {
-            CancellationTokenSource cts = new();
+            using CancellationTokenSource cts = new();
 
-            Task<int> server = OneShotServer(
-                "http://localhost:1337/",
-                async webSocket => await CountMessages(webSocket, cts.Token)
-            );
+            Task<int> server = OneShotServer("http://localhost:1337/", webSocket => CountMessages(webSocket, cts.Token));
 
             Task sendCollection = Task.Run(async () =>
             {
                 using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync();
-                using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
-                await ws.Client.SendJsonRpcResult(result);
+                await SendRandomBatchAsync(ws.Stream, RpcEndpoint.Ws, maxBatchResponseBodySize: null, elements, 100);
                 await Task.Delay(100);
                 await cts.CancelAsync();
             });
@@ -584,18 +603,14 @@ public class JsonRpcSocketsClientTests
         [Ignore("Feature does not work correctly")]
         public async Task Stops_on_limited_body_size(int maxByteCount)
         {
-            CancellationTokenSource cts = new();
+            using CancellationTokenSource cts = new();
 
-            Task<long> receiveBytes = OneShotServer(
-                "http://localhost:1337/",
-                async webSocket => await CountBytes(webSocket, cts.Token)
-            );
+            Task<long> receiveBytes = OneShotServer("http://localhost:1337/", webSocket => CountBytes(webSocket, cts.Token));
 
             Task<int> sendCollection = Task.Run(async () =>
             {
                 using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync(maxBatchResponseBodySize: maxByteCount);
-                using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
-                int sent = await ws.Client.SendJsonRpcResult(result);
+                int sent = (int)await SendRandomBatchAsync(ws.Stream, RpcEndpoint.Ws, maxByteCount, 10, 100);
                 await Task.Delay(100);
                 await cts.CancelAsync();
                 return sent;
@@ -612,8 +627,7 @@ public class JsonRpcSocketsClientTests
         {
             MemoryMessageStream stream = new();
             using TestClient<MemoryMessageStream> tc = new(stream, RpcEndpoint.Ws, maxBatchResponseBodySize: 10_000);
-            using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
-            await tc.Client.SendJsonRpcResult(result);
+            await SendRandomBatchAsync(tc.Stream, RpcEndpoint.Ws, maxBatchResponseBodySize: 10_000, 10, 100);
             stream.Seek(0, SeekOrigin.Begin);
             JsonRpcSuccessResponse[]? response = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse[]>(stream);
             response.Should().NotContainNulls();
@@ -659,29 +673,39 @@ public class JsonRpcSocketsClientTests
         }
     }
 
-    private static JsonRpcBatchResult RandomBatchResult(int items, int size) => new((_, token) =>
-        RandomAsyncEnumerable(
-            items,
-            () => Task.FromResult(new JsonRpcResult.Entry(RandomSuccessResponse(size), default))
-        ).GetAsyncEnumerator(token)
-    );
+    private static async ValueTask<long> SendRandomBatchAsync<TStream>(
+        TStream stream,
+        RpcEndpoint endpoint,
+        long? maxBatchResponseBodySize,
+        int items,
+        int size,
+        CancellationToken cancellationToken = default)
+        where TStream : Stream, IMessageBorderPreservingStream
+    {
+        using SemaphoreSlim sendSemaphore = new(1, 1);
+        using SocketJsonRpcResponseSink<TStream> sink = new(
+            stream,
+            new NullJsonRpcLocalStats(),
+            maxBatchResponseBodySize,
+            sendSemaphore,
+            new JsonRpcContext(endpoint));
+
+        await sink.BeginBatchAsync(cancellationToken);
+        for (int index = 0; index < items; index++)
+        {
+            await sink.WriteBatchItemAsync(RandomSuccessResponse(size), default, cancellationToken);
+        }
+        await sink.EndBatchAsync(cancellationToken);
+
+        return sink.BytesWritten;
+    }
 
     private static JsonRpcSuccessResponse RandomSuccessResponse(int size, Action? disposeAction = null) =>
         new(disposeAction)
         {
-            MethodName = "mock",
             Id = "42",
             Result = RandomObject(size)
         };
-
-    private static async IAsyncEnumerable<T> RandomAsyncEnumerable<T>(int items, Func<Task<T>> factory)
-    {
-        for (int i = 0; i < items; i++)
-        {
-            T value = await factory();
-            yield return value;
-        }
-    }
 
     private static object RandomObject(int size)
     {
@@ -761,6 +785,8 @@ public class JsonRpcSocketsClientTests
         : IDisposable
         where TStream : Stream, IMessageBorderPreservingStream
     {
+        public TStream Stream { get; } = stream;
+
         public JsonRpcSocketsClient<TStream> Client { get; } = new(
             clientName: "TestClient",
             stream: stream,

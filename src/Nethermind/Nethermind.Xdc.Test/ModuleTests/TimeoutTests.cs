@@ -13,7 +13,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
 public class TimeoutTests
 {
@@ -56,7 +56,7 @@ public class TimeoutTests
         PrivateKey[] signers = blockchain.TakeRandomMasterNodes(spec, epoch);
         ulong round = ctx.CurrentRound;
         const ulong gap = 450;
-        List<Signature> signatures = new();
+        List<Signature> signatures = [];
 
         // Send N-1 timeouts -> should NOT reach threshold
         for (int i = 0; i < signers.Length - 1; i++)

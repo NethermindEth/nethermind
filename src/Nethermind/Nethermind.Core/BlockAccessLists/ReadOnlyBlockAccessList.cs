@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -38,15 +38,19 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     [JsonIgnore]
     public int TotalStorageChangeEvents { get; }
 
-    public EnumerableWithCount<ReadOnlyAccountChanges> AccountChanges
-        => new(_accountChanges.Values, _accountChanges.Count);
-
     /// <summary>
-    /// Span over the address-sorted accounts (same data as <see cref="AccountChanges"/>, but
-    /// skips the dictionary's enumerator for hot walks).
+    /// Keccak of the BAL's wire (RLP) encoding, cached by the decoder so the consensus-side hash
+    /// check avoids re-hashing per block. <c>null</c> for BALs synthesised in-process.
     /// </summary>
     [JsonIgnore]
-    public ReadOnlySpan<ReadOnlyAccountChanges> AccountChangesAsSpan => _orderedAccounts;
+    public Hash256? WireHash { get; }
+
+    /// <summary>
+    /// Address-sorted view over the BAL's accounts. <c>foreach</c> walks the underlying array
+    /// via <see cref="ReadOnlySpan{T}"/> with no enumerator allocation; <see cref="ReadOnlyAccountChangesView.AsSpan"/>
+    /// exposes the raw span for span-only call sites.
+    /// </summary>
+    public ReadOnlyAccountChangesView AccountChanges => new(_orderedAccounts);
 
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
@@ -62,6 +66,9 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     /// loading, which only mutates per-account fields, so the sorted iteration is preserved.
     /// </summary>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount)
+        : this(orderedAccounts, itemCount, wireHash: null) { }
+
+    public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount, Hash256? wireHash)
     {
         _orderedAccounts = orderedAccounts;
         _accountChanges = new Dictionary<Address, ReadOnlyAccountChanges>(orderedAccounts.Length);
@@ -76,6 +83,7 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
         ItemCount = itemCount;
         TotalStorageReads = totalReads;
         TotalStorageChangeEvents = totalChangeEvents;
+        WireHash = wireHash;
     }
 
     public bool Equals(ReadOnlyBlockAccessList? other)

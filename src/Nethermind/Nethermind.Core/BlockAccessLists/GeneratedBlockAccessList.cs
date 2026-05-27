@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Core.Collections;
@@ -9,15 +10,31 @@ namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
 /// Block-level access list assembled by merging <see cref="BlockAccessListAtIndex"/> contributions
-/// (one per transaction) into per-account, append-only collections. Ready for RLP encoding.
+/// (one per transaction). Ready for RLP encoding.
 /// </summary>
+/// <remarks>
+/// Address ordering is deferred to the encoder boundary, not paid on every per-tx merge.
+/// </remarks>
 public class GeneratedBlockAccessList
 {
-    private readonly SortedDictionary<Address, GeneratedAccountChanges> _accountChanges
-        = new(GenericComparer.GetOptimized<Address>());
+    private readonly Dictionary<Address, GeneratedAccountChanges> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
 
-    public EnumerableWithCount<GeneratedAccountChanges> AccountChanges
-        => new(_accountChanges.Values, _accountChanges.Values.Count);
+    /// <summary>
+    /// Insertion-ordered view over the BAL's accounts.
+    /// struct enumerator; <c>.Count</c> exposes the underlying dictionary size.
+    /// </summary>
+    public GeneratedAccountChangesView AccountChanges => new(_accountChanges);
+
+    /// <summary>
+    /// Address-sorted snapshot; pooled, dispose after use.
+    /// </summary>
+    public ArrayPoolListRef<GeneratedAccountChanges> GetSortedAccountChanges()
+    {
+        ArrayPoolListRef<GeneratedAccountChanges> result = new(_accountChanges.Count);
+        foreach (GeneratedAccountChanges ac in _accountChanges.Values) result.Add(ac);
+        result.AsSpan().Sort(GenericComparer.GetOptimized<GeneratedAccountChanges>());
+        return result;
+    }
 
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
@@ -73,7 +90,8 @@ public class GeneratedBlockAccessList
     {
         StringBuilder sb = new();
         sb.AppendLine($"GeneratedBlockAccessList (Accounts={_accountChanges.Count})");
-        foreach (GeneratedAccountChanges ac in _accountChanges.Values)
+        using ArrayPoolListRef<GeneratedAccountChanges> sorted = GetSortedAccountChanges();
+        foreach (GeneratedAccountChanges ac in sorted)
         {
             sb.Append("  ").AppendLine(ac.ToString());
         }

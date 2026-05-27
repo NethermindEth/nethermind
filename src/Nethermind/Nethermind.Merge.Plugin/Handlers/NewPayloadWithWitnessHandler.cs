@@ -28,7 +28,7 @@ public sealed class NewPayloadWithWitnessHandler(
 
     public async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(
         ExecutionPayloadV4 executionPayload,
-        byte[]?[] blobVersionedHashes,
+        Hash256?[] blobVersionedHashes,
         Hash256? parentBeaconBlockRoot,
         byte[][]? executionRequests)
     {

@@ -13,6 +13,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -54,13 +55,13 @@ public class BlockchainProcessorTests
         {
             private readonly ILogger _logger;
 
-            private readonly ConcurrentHashSet<Hash256> _allowed = new();
+            private readonly ConcurrentHashSet<Hash256> _allowed = [];
 
-            internal readonly HashSet<Hash256> Processed = new();
+            internal readonly HashSet<Hash256> Processed = [];
 
-            private readonly ConcurrentHashSet<Hash256> _allowedToFail = new();
+            private readonly ConcurrentHashSet<Hash256> _allowedToFail = [];
 
-            private readonly HashSet<Hash256> _rootProcessed = new();
+            private readonly HashSet<Hash256> _rootProcessed = [];
 
             private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
 
