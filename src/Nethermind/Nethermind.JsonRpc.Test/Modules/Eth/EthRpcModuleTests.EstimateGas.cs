@@ -724,7 +724,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
         JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
-            .Should().StartWith("intrinsic gas too low");
+            .Should().StartWith("Cannot estimate gas");
     }
 
     [TestCase(
