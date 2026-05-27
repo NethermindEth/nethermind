@@ -226,6 +226,87 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
+    /// <summary>
+    /// Walks down sparse and Patricia tries in parallel, comparing Branch RLPs at each level
+    /// until divergence reduces to a single child path or hits a leaf.
+    /// </summary>
+    private void DrillDivergence(ILogger logger, SparseSubtrie sub, int sparseNodeIdx, TrieNode? patriciaNode, TreePath path, int depth)
+    {
+        if (depth > 8 || patriciaNode is null) return;
+
+        SparseTrieNode sparseNode = sub.NodeAt(sparseNodeIdx);
+
+        if (!sparseNode.IsBranch())
+        {
+            logger.Warn($"  DIAG[d{depth}] path={path} sparse kind={sparseNode.Kind}, patricia NodeType={patriciaNode.NodeType}, sparse.shortKey.len={sparseNode.ShortKey?.Length ?? -1}");
+            return;
+        }
+
+        if (patriciaNode.NodeType != NodeType.Branch)
+        {
+            logger.Warn($"  DIAG[d{depth}] path={path} STRUCTURAL: sparse=Branch, patricia={patriciaNode.NodeType} — sparse over-revealed");
+            return;
+        }
+
+        // Both are branches — diff their RLPs
+        if (sparseNode.FullRlp is null || patriciaNode.FullRlp.Length == 0) return;
+        ReadOnlySpan<byte> sFull = sparseNode.FullRlp;
+        ReadOnlySpan<byte> pFull = patriciaNode.FullRlp.AsSpan();
+
+        int diff = -1;
+        int minLen = Math.Min(sFull.Length, pFull.Length);
+        for (int i = 0; i < minLen; i++)
+        {
+            if (sFull[i] != pFull[i]) { diff = i; break; }
+        }
+        if (diff < 0 && sFull.Length == pFull.Length) return; // identical
+        logger.Warn($"  DIAG[d{depth}] path={path} sparseLen={sFull.Length} patLen={pFull.Length} firstDiff={diff}");
+
+        if (diff < 3)
+        {
+            logger.Warn($"  DIAG[d{depth}] header-level diff");
+            return;
+        }
+
+        int relOff = diff - 3;
+        int childIdx = relOff / 33;
+        int byteInChild = relOff % 33;
+        logger.Warn($"  DIAG[d{depth}] divergence in child #{childIdx} byte={byteInChild}");
+
+        if (childIdx > 15) return;
+
+        try
+        {
+            TreePath nextPath = path.Append(childIdx);
+
+            if (!sparseNode.StateMask.IsBitSet(childIdx))
+            {
+                logger.Warn($"  DIAG[d{depth}] sparse has NO child at #{childIdx} but Patricia might — structural mismatch");
+                return;
+            }
+
+            int denseIdx = sparseNode.DenseChildIndex(childIdx);
+            SparseChildEntry entry = sub.ChildAt(denseIdx);
+
+            TrieNode? patChild = patriciaNode.GetChild(_stateTree.TrieStore, ref Unsafe.AsRef(in nextPath), childIdx);
+
+            if (entry.IsBlinded)
+            {
+                logger.Warn($"  DIAG[d{depth}] sparse child #{childIdx} BLINDED (proof did not reveal). patricia keccak={patChild?.Keccak}");
+                return;
+            }
+
+            SparseTrieNode childNode = sub.NodeAt(entry.ArenaIndex);
+            Hash256? sparseKeccak = childNode.FullRlp is not null ? Keccak.Compute(childNode.FullRlp) : null;
+            logger.Warn($"  DIAG[d{depth}] child #{childIdx} sparse kind={childNode.Kind} keccak={sparseKeccak} patricia keccak={patChild?.Keccak}");
+            DrillDivergence(logger, sub, entry.ArenaIndex, patChild, nextPath, depth + 1);
+        }
+        catch (Exception ex)
+        {
+            logger.Warn($"  DIAG[d{depth}] drill exception: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
     private void DiagnoseMismatch(ILogger logger, SparseRootComputer computer)
     {
         try
@@ -359,6 +440,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                                         if (patChild is not null)
                                         {
                                             logger.Warn($"  DIAG: patricia child #{childIdx} NodeType={patChild.NodeType}, Keccak={patChild.Keccak}, FullRlp.Length={patChild.FullRlp.Length}");
+
+                                            // Recurse down to find where the trees actually differ
+                                            SparseTrieNode rootNode2 = sub.NodeAt(sub.Root);
+                                            if (rootNode2.IsBranch() && rootNode2.StateMask.IsBitSet(childIdx))
+                                            {
+                                                int denseIdx2 = rootNode2.DenseChildIndex(childIdx);
+                                                SparseChildEntry entry2 = sub.ChildAt(denseIdx2);
+                                                if (!entry2.IsBlinded)
+                                                {
+                                                    TreePath childPath = TreePath.Empty.Append(childIdx);
+                                                    DrillDivergence(logger, sub, entry2.ArenaIndex, patChild, childPath, 1);
+                                                }
+                                            }
                                         }
                                         else
                                         {
