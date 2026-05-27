@@ -9,8 +9,10 @@ namespace RpcTestsMon;
 internal static class JsonExtensions
 {
     private static readonly JsonSerializerOptions _compactOptions = new() { WriteIndented = false };
+    private static readonly JsonSerializerOptions _prettyOptions = new() { WriteIndented = true };
 
     public static string ToCompactString(this JsonNode node) => node.ToJsonString(_compactOptions);
+    public static string ToPrettyString(this JsonNode node) => node.ToJsonString(_prettyOptions);
 
     extension(JsonNode request)
     {
