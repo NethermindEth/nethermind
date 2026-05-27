@@ -45,13 +45,16 @@ public partial class EngineRpcModule : IEngineRpcModule
         PayloadAttributes? payloadAttributes = null,
         byte[]? custodyColumns = null)
     {
-        if (payloadAttributes?.InclusionListTransactions is { Length: > 0 } ilTxs)
+        // Set on every V5 FCU, INCLUDING an empty IL, so the previous slot's IL is overwritten
+        // (drained) rather than leaking into the next production cycle. The previous gate
+        // `{ Length: > 0 }` skipped Set() for empty arrays, leaving stale IL in the source.
+        if (payloadAttributes?.InclusionListTransactions is { } ilTxs)
         {
             IReleaseSpec spec = _specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp));
-            // Malformed entries (garbage bytes, truncated RLP, empty arrays) must not abort
-            // the FCU — EIP-7805 §"Validation" treats unparsable IL items as a no-op rather
-            // than a protocol error. The decoder already skips entries it can't read, but a
-            // single bad item early in the array can still surface as e.g. an
+            // Malformed entries (garbage bytes, truncated RLP) must not abort the FCU —
+            // EIP-7805 §"Validation" treats unparsable IL items as a no-op rather than a
+            // protocol error. The decoder already skips entries it can't read, but a single
+            // bad item early in the array can still surface as e.g. an
             // IndexOutOfRangeException from the RLP context. Swallow it: the IL store ends
             // up with whatever subset decoded cleanly (possibly empty), and the FCU
             // proceeds. The CL retries with a different builder if the resulting block fails

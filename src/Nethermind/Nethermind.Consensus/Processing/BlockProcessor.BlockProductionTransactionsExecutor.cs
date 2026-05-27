@@ -55,7 +55,14 @@ namespace Nethermind.Consensus.Processing
             // {
             // }
 
-            public bool IsTransactionInBlock(Transaction tx) => throw new NotImplementedException();
+            // The production executor doesn't track which txs ended up in the block — the
+            // EIP-7805 IL validator only consults this method when validating an incoming
+            // block (ProcessingOptions.NoValidation is set during production, gating the
+            // call out). Returning false rather than throwing keeps the contract well-defined
+            // if a future refactor reaches this code path: a "not in block" answer at worst
+            // makes the validator do redundant CouldIncludeTx work, never produces an
+            // incorrect verdict.
+            public bool IsTransactionInBlock(Transaction tx) => false;
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
