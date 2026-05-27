@@ -191,7 +191,7 @@ public class StartingSyncPivotUpdater : IDisposable
                         if (_logger.IsInfo) _logger.Info($"Received header of {type} block from peer {peer.SyncPeer.Node.ClientId}");
                         return finalizedHeader;
                     }
-                    if (_logger.IsInfo) _logger.Info($"Hash of header received from peer {peer.SyncPeer.Node.ClientId} is {finalizedHeader.Hash} when expecting {id}");
+                    if (_logger.IsInfo) _logger.Info($"Header of {type} block {id} from peer {peer.SyncPeer.Node.ClientId} failed hash validation");
                 }
             }
             catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
