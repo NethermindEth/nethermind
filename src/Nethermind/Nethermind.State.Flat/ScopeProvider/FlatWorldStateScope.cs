@@ -286,7 +286,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (diff < 3)
         {
-            logger.Warn($"  DIAG[d{depth}] header-level diff");
+            logger.Warn($"  DIAG[d{depth}] header-level diff — dumping full hex");
+            logger.Warn($"  DIAG[d{depth}] sparseFull={Convert.ToHexString(sFull[..Math.Min(sFull.Length, 600)])}");
+            logger.Warn($"  DIAG[d{depth}] patFull   ={Convert.ToHexString(pFull[..Math.Min(pFull.Length, 600)])}");
+            // Show sparse's StateMask and child entries for direct inspection
+            logger.Warn($"  DIAG[d{depth}] sparse stateMask={sparseNode.StateMask}, blindedMask={sparseNode.BlindedMask}, childCount={sparseNode.ChildCount()}");
             return;
         }
 
