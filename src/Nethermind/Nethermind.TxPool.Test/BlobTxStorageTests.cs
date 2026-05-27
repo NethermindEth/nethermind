@@ -74,7 +74,14 @@ public class BlobTxStorageTests
         Assert.That(found, Is.EqualTo(3));
         for (int i = 0; i < 3; i++)
         {
-            TransactionAssertions.AssertEquivalent(results[i], txs[i], nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+            Assert.That(results[i], Is.Not.Null);
+            Transaction result = results[i]!;
+            Assert.Multiple(() =>
+            {
+                Assert.That(result, Is.EqualTo(txs[i]));
+                Assert.That(result.SenderAddress, Is.EqualTo(txs[i].SenderAddress));
+                Assert.That(result.Timestamp, Is.EqualTo(txs[i].Timestamp));
+            });
         }
     }
 

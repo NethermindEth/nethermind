@@ -2360,9 +2360,9 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.TryGetPendingTransaction(txsA[0].Hash!, out Transaction tx1), Is.True);
             Assert.That(_txPool.TryGetPendingTransaction(txsA[1].Hash!, out Transaction tx2), Is.True);
 
-            AssertTransactionsEquivalent(tx1, txsA[0], nameof(Transaction.PoolIndex));
+            Assert.That(tx1, Is.EqualTo(txsA[0]));
 
-            AssertTransactionsEquivalent(tx2, txsA[1], nameof(Transaction.PoolIndex));
+            Assert.That(tx2, Is.EqualTo(txsA[1]));
         }
 
         [Test]
@@ -2460,18 +2460,6 @@ namespace Nethermind.TxPool.Test
                 Setup();
             }
         }
-
-        private static void AssertTransactionsEquivalent(
-            IEnumerable<Transaction> actual,
-            IEnumerable<Transaction> expected,
-            params string[] excludedProperties)
-            => TransactionAssertions.AssertEquivalent(actual, expected, excludedProperties);
-
-        private static void AssertTransactionsEquivalent(
-            Transaction actual,
-            Transaction expected,
-            params string[] excludedProperties)
-            => TransactionAssertions.AssertEquivalent(actual, expected, excludedProperties);
 
         private Transaction GetTx(PrivateKey sender) => Build.A.Transaction
                 .WithMaxFeePerGas(1.GWei)
