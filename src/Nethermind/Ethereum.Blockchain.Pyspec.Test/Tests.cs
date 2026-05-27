@@ -19,10 +19,14 @@ public class CancunBlockchainTests : PyspecBlockchainTestFixture<CancunBlockchai
 public class PragueBlockchainTests : PyspecBlockchainTestFixture<PragueBlockchainTests>;
 public class OsakaBlockchainTests : PyspecBlockchainTestFixture<OsakaBlockchainTests>;
 public class AmsterdamBlockchainTests : PyspecBlockchainTestFixture<AmsterdamBlockchainTests>;
-// Bogota (EIP-7805 FOCIL). Auto-loads from fixtures/blockchain_tests/for_bogota once
-// the execution-specs release archive contains it (execution-specs#2643 stages the
-// tests; their final fork target may end up under amsterdam or bogota — both are
-// handled because AmsterdamBlockchainTests above already globs for_amsterdam too).
+// Bogota (EIP-7805 FOCIL). Loads from fixtures/blockchain_tests/for_bogota.
+// Currently empty: EELS keeps FOCIL under tests/amsterdam/eip7805_focil/ with
+// pytest.mark.valid_from("Amsterdam") because there is no "bogota" fork class in
+// src/ethereum/forks. Our impl enables EIP-7805 only in Bogota (post-Amsterdam),
+// so we deliberately do not surface those Amsterdam-targeted FOCIL fixtures via
+// AmsterdamBlockchainTests — they'd fail against our Amsterdam spec which has no
+// IL validation. FOCIL coverage runs through unit tests + the Hive simulator
+// (felix314159/hive#3) until EELS adopts a real Bogota fork class.
 public class BogotaBlockchainTests : PyspecBlockchainTestFixture<BogotaBlockchainTests>;
 public class ParisToShanghaiAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ParisToShanghaiAtTime15kBlockchainTests>;
 public class ShanghaiToCancunAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ShanghaiToCancunAtTime15kBlockchainTests>;
