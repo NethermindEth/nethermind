@@ -110,9 +110,6 @@ public class RemoteEraStoreDecoratorTests
         File.Exists(expectedFilePath).Should().BeFalse();
     }
 
-    // ensureValidated (the default) must run EraReader.VerifyContent on the remote path, matching
-    // EraStore: valid content is returned, while invalid content or an untrusted accumulator root
-    // throws and caches nothing — a manifest-matching SHA-256 alone is not enough.
     [TestCase(true, true, TestName = "FindBlockAndReceipts_WhenEnsureValidatedAndContentValid_ValidatesAndReturnsBlock")]
     [TestCase(false, true, TestName = "FindBlockAndReceipts_WhenEnsureValidatedAndContentInvalid_ThrowsAndDoesNotCache")]
     [TestCase(true, false, TestName = "FindBlockAndReceipts_WhenEnsureValidatedAndAccumulatorUntrusted_ThrowsAndDoesNotCache")]
