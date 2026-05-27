@@ -82,15 +82,6 @@ public static class PersistedSnapshotMerger
             => new(in reader, bound);
     }
 
-    /// <summary>Front-byte dispatch for the keys-first two-byte-slot variants, whose
-    /// <see cref="IndexType"/> byte sits at byte 0 of the scope rather than the tail.
-    /// Forwards to <see cref="HsstEnumerator.CreateTwoByteSlot"/>.</summary>
-    private readonly struct TwoByteSlotEnumeratorFactory : IHsstEnumeratorFactory
-    {
-        public HsstEnumerator Create(scoped in WholeReadSessionReader reader, Bound bound)
-            => HsstEnumerator.CreateTwoByteSlot(in reader, bound);
-    }
-
     /// <summary>
     /// Constructs an <see cref="NWayMergeCursor{TReader,TPin,TSource}"/> by cloning
     /// <paramref name="indices"/>.Length entries of <paramref name="outerSources"/>
@@ -130,25 +121,6 @@ public static class PersistedSnapshotMerger
             sourcesBuf[..indices.Length], state, keyLen);
     }
 
-    /// <summary>Constructs an <see cref="NWayMergeCursor{TReader,TPin,TSource}"/> by
-    /// seeding one cursor slot per entry in <paramref name="views"/> at
-    /// <paramref name="columnTag"/>'s bound (via
-    /// <see cref="WholeReadSessionMergeSource.FromView"/>), writing them into
-    /// <paramref name="sourcesBuf"/>, and returning a cursor over the result.</summary>
-    private static NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>
-        BuildMergeCursorFromViews(
-            ReadOnlySpan<WholeReadSessionView> views,
-            byte[] columnTag,
-            Span<WholeReadSessionMergeSource> sourcesBuf,
-            LoserTreeState state,
-            int keyLen)
-    {
-        for (int i = 0; i < views.Length; i++)
-            sourcesBuf[i] = WholeReadSessionMergeSource.FromView(views[i], columnTag);
-        return new NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>(
-            sourcesBuf[..views.Length], state, keyLen);
-    }
-
     /// <summary>For each matching source in <paramref name="cursor"/>'s <c>MatchingSources</c>,
     /// captures the per-source per-address bound from the cursor's current value AND resolves
     /// the per-source sub-tag bounds via <see cref="HsstDenseByteIndexReader.TryResolveAll"/>.
@@ -179,17 +151,6 @@ public static class PersistedSnapshotMerger
     {
         public void OnKey(scoped ReadOnlySpan<byte> key)
             => bloom.Add(PersistedSnapshotBloomBuilder.StatePathKey(key));
-    }
-
-    /// <summary>Per-key bloom callback for storage-trie sub-tag merges: adds
-    /// <c>addrKey ^ StatePathKey(minKey)</c> to <paramref name="bloom"/>, mixing the
-    /// per-addressHash key prefix so colliding TreePath keys in different addresses don't
-    /// alias in the bloom.</summary>
-    private readonly struct AddrXorStatePathBloomCallback(BloomFilter bloom, ulong addrKey)
-        : IHsstPackedArrayMergeCallback
-    {
-        public void OnKey(scoped ReadOnlySpan<byte> key)
-            => bloom.Add(addrKey ^ PersistedSnapshotBloomBuilder.StatePathKey(key));
     }
 
     /// <summary>BTree value merger for the per-address column (tag 0x01). On every emitted
@@ -411,6 +372,172 @@ public static class PersistedSnapshotMerger
                 using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
                 perAddrBuilder.Add(PersistedSnapshotTags.AccountSubTag, acctPin.Buffer);
                 break;
+            }
+        }
+
+        /// <summary>
+        /// Walk the outer 30-byte slot-prefix HSST at <paramref name="slotScope"/> and,
+        /// for every outer entry, walk the inner 2-byte suffix HSST nested in its value
+        /// to compose the full 32-byte slot key. Adds one bloom entry per slot. Used by
+        /// the matchCount==1 / slotSourceCount==1 byte-copy fast paths, called against
+        /// a reader opened on the destination writer's just-written bytes.
+        /// </summary>
+        private static void AddSlotKeysToBloom<TBloomReader, TBloomPin>(
+            scoped in TBloomReader reader, Bound slotScope, ulong addrKey, BloomFilter bloom)
+            where TBloomPin : struct, IBufferPin, allows ref struct
+            where TBloomReader : IHsstByteReader<TBloomPin>, allows ref struct
+        {
+            Span<byte> slotKey = stackalloc byte[32];
+            HsstEnumerator<TBloomReader, TBloomPin> outerEnum = new(in reader, slotScope);
+            while (outerEnum.MoveNext(in reader))
+            {
+                outerEnum.CopyCurrentLogicalKey(in reader, slotKey[..30]);
+                Bound innerScope = outerEnum.CurrentValue;
+                // The outer entry's value is a keys-first TwoByteSlotValue / -Large sub-slot blob.
+                HsstEnumerator<TBloomReader, TBloomPin> innerEnum = HsstEnumerator<TBloomReader, TBloomPin>.CreateTwoByteSlot(in reader, innerScope);
+                while (innerEnum.MoveNext(in reader))
+                {
+                    innerEnum.CopyCurrentLogicalKey(in reader, slotKey.Slice(30, 2));
+                    bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrKey, slotKey));
+                }
+                innerEnum.Dispose();
+            }
+            outerEnum.Dispose();
+        }
+
+        /// <summary>
+        /// Per-call scratch for <see cref="SlotPrefixValueMerger"/>: holds the buffers
+        /// reused across outer keys of a single slot-prefix merge driven from
+        /// <see cref="MergeSlots"/>. One instance per per-address slot-prefix merge;
+        /// held by reference on the value-merger struct so callbacks can reach it
+        /// across method boundaries.
+        /// </summary>
+        private sealed class SlotPrefixValueMergerScratch : IDisposable
+        {
+            public readonly byte[] SlotKeyBuf;
+            public readonly Bound[] InnerBoundsScratch;
+            public readonly ArrayPoolList<WholeReadSessionMergeSource> InnerSources;
+            public readonly ArrayPoolList<byte> ScratchValues;
+            public readonly ArrayPoolList<byte> ScratchKeys;
+            public readonly ArrayPoolList<int> ScratchLens;
+
+            public SlotPrefixValueMergerScratch(int n)
+            {
+                const int InnerKeyLen = 2;
+                SlotKeyBuf = new byte[32];
+                InnerBoundsScratch = new Bound[n];
+                InnerSources = new ArrayPoolList<WholeReadSessionMergeSource>(n, n);
+                ScratchValues = new ArrayPoolList<byte>(512);
+                ScratchKeys = new ArrayPoolList<byte>(Math.Max(1, n) * InnerKeyLen);
+                ScratchLens = new ArrayPoolList<int>(Math.Max(1, n));
+            }
+
+            public void Dispose()
+            {
+                InnerSources.Dispose();
+                ScratchValues.Dispose();
+                ScratchKeys.Dispose();
+                ScratchLens.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// BTree value merger for the per-address slot-prefix column. Outer is a keyFirst
+        /// 30-byte BTree of slot prefixes; each outer entry's value is a keys-first
+        /// TwoByteSlotValue / TwoByteSlotValueLarge HSST of the remaining 2-byte slot
+        /// suffixes. Drives the inner 2-byte merge from the matched outer sources,
+        /// buffers merged keys/values into the scratch, picks the inner format by total
+        /// payload size, and emits the chosen blob into the staging writer that
+        /// <see cref="HsstBTreeMerger.NWayMergeKeyFirst"/> hands in.
+        /// </summary>
+        /// <remarks>
+        /// TWriter is fixed to <see cref="PooledByteBufferWriter.Writer"/> because the
+        /// keyFirst BTree builder needs the value length up front, so
+        /// <see cref="HsstBTreeMerger.NWayMergeKeyFirst"/> stages each value through an
+        /// internal <see cref="PooledByteBufferWriter"/> and then calls
+        /// <c>builder.Add(key, stagedSpan)</c>. The scratch lives on a class so this
+        /// struct can hold it by reference across the
+        /// <see cref="IHsstBTreeValueMerger{TWriter,TReader,TPin,TSource}"/> callbacks.
+        /// </remarks>
+        private readonly struct SlotPrefixValueMerger(
+            BloomFilter bloom, ulong addrBloomKey, SlotPrefixValueMergerScratch scratch)
+            : IHsstBTreeValueMerger<PooledByteBufferWriter.Writer, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>
+        {
+            private const int OuterKeyLen = 30;
+            private const int InnerKeyLen = 2;
+
+            public void OnKey(scoped ReadOnlySpan<byte> key) { }
+
+            public void OnFastCopy(scoped ReadOnlySpan<byte> key,
+                scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor)
+            {
+                Bound vb = cursor.MinValue;
+                WholeReadSessionReader srcReader = cursor.CreateMinReader();
+                Span<byte> slotKeyBuf = scratch.SlotKeyBuf;
+                key.CopyTo(slotKeyBuf[..OuterKeyLen]);
+                HsstEnumerator suffixEnum = HsstEnumerator.CreateTwoByteSlot(in srcReader, vb);
+                while (suffixEnum.MoveNext(in srcReader))
+                {
+                    suffixEnum.CopyCurrentLogicalKey(in srcReader, slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
+                    bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
+                }
+                suffixEnum.Dispose();
+            }
+
+            public void MergeValues(ref PooledByteBufferWriter.Writer writer, scoped ReadOnlySpan<byte> key,
+                scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor)
+            {
+                int matchCount = cursor.MatchCount;
+                ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
+                Span<byte> slotKeyBuf = scratch.SlotKeyBuf;
+                key.CopyTo(slotKeyBuf[..OuterKeyLen]);
+
+                using LoserTreeState innerState = new(matchCount, InnerKeyLen);
+                Span<Bound> innerBounds = scratch.InnerBoundsScratch.AsSpan(0, matchCount);
+                for (int k = 0; k < matchCount; k++)
+                    innerBounds[k] = cursor.ValueAt(matchingSources[k]);
+                Span<WholeReadSessionMergeSource> innerSources = scratch.InnerSources.AsSpan()[..matchCount];
+                NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor =
+                    BuildMergeCursor(cursor.Sources, matchingSources, innerBounds, innerSources, innerState, InnerKeyLen,
+                        default(TwoByteSlotEnumeratorFactory));
+                try
+                {
+                    HsstTwoByteSlotMerger.NWayMerge<
+                        PooledByteBufferWriter.Writer, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
+                        SlotSuffixBloomCallback>(
+                            ref writer, ref innerCursor,
+                            scratch.ScratchKeys, scratch.ScratchValues, scratch.ScratchLens,
+                            new SlotSuffixBloomCallback(bloom, addrBloomKey, scratch.SlotKeyBuf));
+                }
+                finally
+                {
+                    for (int k = 0; k < matchCount; k++) innerSources[k].Dispose();
+                }
+            }
+
+            /// <summary>Per-key bloom callback for the inner 2-byte slot-suffix merge:
+            /// concatenates <c>slotKeyBuf[0..30) | innerKey</c> and adds the slot bloom
+            /// hash. <c>slotKeyBuf[0..30)</c> is populated by <see cref="MergeValues"/>
+            /// from the outer 30-byte key before invoking
+            /// <see cref="HsstTwoByteSlotMerger.NWayMerge"/>.</summary>
+            private readonly struct SlotSuffixBloomCallback(
+                BloomFilter bloom, ulong addrBloomKey, byte[] slotKeyBuf)
+                : IHsstTwoByteSlotMergeCallback
+            {
+                public void OnKey(scoped ReadOnlySpan<byte> key)
+                {
+                    key.CopyTo(slotKeyBuf.AsSpan(30, 2));
+                    bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
+                }
+            }
+
+            /// <summary>Front-byte dispatch for the keys-first two-byte-slot variants, whose
+            /// <see cref="IndexType"/> byte sits at byte 0 of the scope rather than the tail.
+            /// Forwards to <see cref="HsstEnumerator.CreateTwoByteSlot"/>.</summary>
+            private readonly struct TwoByteSlotEnumeratorFactory : IHsstEnumeratorFactory
+            {
+                public HsstEnumerator Create(scoped in WholeReadSessionReader reader, Bound bound)
+                    => HsstEnumerator.CreateTwoByteSlot(in reader, bound);
             }
         }
     }
@@ -681,132 +808,42 @@ public static class PersistedSnapshotMerger
                 for (int j = 0; j < active; j++) innerSources[j].Dispose();
             }
         }
-    }
 
-    /// <summary>
-    /// Per-call scratch for <see cref="SlotPrefixValueMerger"/>: holds the buffers
-    /// reused across outer keys of a single slot-prefix merge driven from
-    /// <see cref="PerAddressColumnValueMerger{TWriter,TReader,TPin}.MergeSlots"/>.
-    /// One instance per per-address slot-prefix merge; held by reference on the
-    /// value-merger struct so callbacks can reach it across method boundaries.
-    /// </summary>
-    private sealed class SlotPrefixValueMergerScratch : IDisposable
-    {
-        public readonly byte[] SlotKeyBuf;
-        public readonly Bound[] InnerBoundsScratch;
-        public readonly ArrayPoolList<WholeReadSessionMergeSource> InnerSources;
-        public readonly ArrayPoolList<byte> ScratchValues;
-        public readonly ArrayPoolList<byte> ScratchKeys;
-        public readonly ArrayPoolList<int> ScratchLens;
-
-        public SlotPrefixValueMergerScratch(int n)
+        /// <summary>Per-key bloom callback for storage-trie sub-tag merges: adds
+        /// <c>addrKey ^ StatePathKey(minKey)</c> to <paramref name="bloom"/>, mixing the
+        /// per-addressHash key prefix so colliding TreePath keys in different addresses don't
+        /// alias in the bloom.</summary>
+        private readonly struct AddrXorStatePathBloomCallback(BloomFilter bloom, ulong addrKey)
+            : IHsstPackedArrayMergeCallback
         {
-            const int InnerKeyLen = 2;
-            SlotKeyBuf = new byte[32];
-            InnerBoundsScratch = new Bound[n];
-            InnerSources = new ArrayPoolList<WholeReadSessionMergeSource>(n, n);
-            ScratchValues = new ArrayPoolList<byte>(512);
-            ScratchKeys = new ArrayPoolList<byte>(Math.Max(1, n) * InnerKeyLen);
-            ScratchLens = new ArrayPoolList<int>(Math.Max(1, n));
+            public void OnKey(scoped ReadOnlySpan<byte> key)
+                => bloom.Add(addrKey ^ PersistedSnapshotBloomBuilder.StatePathKey(key));
         }
 
-        public void Dispose()
+        /// <summary>
+        /// Walk a storage-trie sub-tag HSST (top / compact / fallback — keys are 4 / 8 /
+        /// 33 bytes respectively) and add <c>StorageNodeKey(addressHash, path)</c> to
+        /// <paramref name="bloom"/> for each entry. Mirrors
+        /// <see cref="PerAddressColumnValueMerger{TWriter,TReader,TPin}.AddSlotKeysToBloom"/>
+        /// for the byte-copy fast paths in this merger's per-sub-tag methods and
+        /// <see cref="NWayMergeStorageTrieColumn"/> where the sub-tag bytes are copied
+        /// verbatim and the cursor loop does not run.
+        /// </summary>
+        private static void AddStorageTrieKeysToBloom<TBloomReader, TBloomPin>(
+            scoped in TBloomReader reader, Bound subTagScope, ulong addrKey, BloomFilter bloom)
+            where TBloomPin : struct, IBufferPin, allows ref struct
+            where TBloomReader : IHsstByteReader<TBloomPin>, allows ref struct
         {
-            InnerSources.Dispose();
-            ScratchValues.Dispose();
-            ScratchKeys.Dispose();
-            ScratchLens.Dispose();
-        }
-    }
-
-    /// <summary>Per-key bloom callback for the inner 2-byte slot-suffix merge:
-    /// concatenates <c>slotKeyBuf[0..30) | innerKey</c> and adds the slot bloom
-    /// hash. <c>slotKeyBuf[0..30)</c> is populated by
-    /// <see cref="SlotPrefixValueMerger.MergeValues"/> from the outer 30-byte key
-    /// before invoking <see cref="HsstTwoByteSlotMerger.NWayMerge"/>.</summary>
-    private readonly struct SlotSuffixBloomCallback(
-        BloomFilter bloom, ulong addrBloomKey, byte[] slotKeyBuf)
-        : IHsstTwoByteSlotMergeCallback
-    {
-        public void OnKey(scoped ReadOnlySpan<byte> key)
-        {
-            key.CopyTo(slotKeyBuf.AsSpan(30, 2));
-            bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
-        }
-    }
-
-    /// <summary>
-    /// BTree value merger for the per-address slot-prefix column. Outer is a keyFirst
-    /// 30-byte BTree of slot prefixes; each outer entry's value is a keys-first
-    /// TwoByteSlotValue / TwoByteSlotValueLarge HSST of the remaining 2-byte slot
-    /// suffixes. Drives the inner 2-byte merge from the matched outer sources,
-    /// buffers merged keys/values into the scratch, picks the inner format by total
-    /// payload size, and emits the chosen blob into the staging writer that
-    /// <see cref="HsstBTreeMerger.NWayMergeKeyFirst"/> hands in.
-    /// </summary>
-    /// <remarks>
-    /// TWriter is fixed to <see cref="PooledByteBufferWriter.Writer"/> because the
-    /// keyFirst BTree builder needs the value length up front, so
-    /// <see cref="HsstBTreeMerger.NWayMergeKeyFirst"/> stages each value through an
-    /// internal <see cref="PooledByteBufferWriter"/> and then calls
-    /// <c>builder.Add(key, stagedSpan)</c>. The scratch lives on a class so this
-    /// struct can hold it by reference across the
-    /// <see cref="IHsstBTreeValueMerger{TWriter,TReader,TPin,TSource}"/> callbacks.
-    /// </remarks>
-    private readonly struct SlotPrefixValueMerger(
-        BloomFilter bloom, ulong addrBloomKey, SlotPrefixValueMergerScratch scratch)
-        : IHsstBTreeValueMerger<PooledByteBufferWriter.Writer, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>
-    {
-        private const int OuterKeyLen = 30;
-        private const int InnerKeyLen = 2;
-
-        public void OnKey(scoped ReadOnlySpan<byte> key) { }
-
-        public void OnFastCopy(scoped ReadOnlySpan<byte> key,
-            scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor)
-        {
-            Bound vb = cursor.MinValue;
-            WholeReadSessionReader srcReader = cursor.CreateMinReader();
-            Span<byte> slotKeyBuf = scratch.SlotKeyBuf;
-            key.CopyTo(slotKeyBuf[..OuterKeyLen]);
-            HsstEnumerator suffixEnum = HsstEnumerator.CreateTwoByteSlot(in srcReader, vb);
-            while (suffixEnum.MoveNext(in srcReader))
+            Span<byte> keyBuf = stackalloc byte[33];
+            HsstEnumerator<TBloomReader, TBloomPin> e = new(in reader, subTagScope);
+            while (e.MoveNext(in reader))
             {
-                suffixEnum.CopyCurrentLogicalKey(in srcReader, slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
-                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
+                keyBuf.Clear();
+                int keyLen = checked((int)e.CurrentKeyLength);
+                e.CopyCurrentLogicalKey(in reader, keyBuf[..keyLen]);
+                bloom.Add(addrKey ^ PersistedSnapshotBloomBuilder.StatePathKey(keyBuf[..keyLen]));
             }
-            suffixEnum.Dispose();
-        }
-
-        public void MergeValues(ref PooledByteBufferWriter.Writer writer, scoped ReadOnlySpan<byte> key,
-            scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor)
-        {
-            int matchCount = cursor.MatchCount;
-            ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
-            Span<byte> slotKeyBuf = scratch.SlotKeyBuf;
-            key.CopyTo(slotKeyBuf[..OuterKeyLen]);
-
-            using LoserTreeState innerState = new(matchCount, InnerKeyLen);
-            Span<Bound> innerBounds = scratch.InnerBoundsScratch.AsSpan(0, matchCount);
-            for (int k = 0; k < matchCount; k++)
-                innerBounds[k] = cursor.ValueAt(matchingSources[k]);
-            Span<WholeReadSessionMergeSource> innerSources = scratch.InnerSources.AsSpan()[..matchCount];
-            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor =
-                BuildMergeCursor(cursor.Sources, matchingSources, innerBounds, innerSources, innerState, InnerKeyLen,
-                    default(TwoByteSlotEnumeratorFactory));
-            try
-            {
-                HsstTwoByteSlotMerger.NWayMerge<
-                    PooledByteBufferWriter.Writer, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
-                    SlotSuffixBloomCallback>(
-                        ref writer, ref innerCursor,
-                        scratch.ScratchKeys, scratch.ScratchValues, scratch.ScratchLens,
-                        new SlotSuffixBloomCallback(bloom, addrBloomKey, scratch.SlotKeyBuf));
-            }
-            finally
-            {
-                for (int k = 0; k < matchCount; k++) innerSources[k].Dispose();
-            }
+            e.Dispose();
         }
     }
 
@@ -1127,59 +1164,4 @@ public static class PersistedSnapshotMerger
         builder.Build();
     }
 
-    /// <summary>
-    /// Walk the outer 30-byte slot-prefix HSST at <paramref name="slotScope"/> and,
-    /// for every outer entry, walk the inner 2-byte suffix HSST nested in its value
-    /// to compose the full 32-byte slot key. Adds one bloom entry per slot. Used by
-    /// the matchCount==1 / slotSourceCount==1 byte-copy fast paths, called against
-    /// a reader opened on the destination writer's just-written bytes.
-    /// </summary>
-    private static void AddSlotKeysToBloom<TReader, TPin>(
-        scoped in TReader reader, Bound slotScope, ulong addrKey, BloomFilter bloom)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        Span<byte> slotKey = stackalloc byte[32];
-        HsstEnumerator<TReader, TPin> outerEnum = new(in reader, slotScope);
-        while (outerEnum.MoveNext(in reader))
-        {
-            outerEnum.CopyCurrentLogicalKey(in reader, slotKey[..30]);
-            Bound innerScope = outerEnum.CurrentValue;
-            // The outer entry's value is a keys-first TwoByteSlotValue / -Large sub-slot blob.
-            HsstEnumerator<TReader, TPin> innerEnum = HsstEnumerator<TReader, TPin>.CreateTwoByteSlot(in reader, innerScope);
-            while (innerEnum.MoveNext(in reader))
-            {
-                innerEnum.CopyCurrentLogicalKey(in reader, slotKey.Slice(30, 2));
-                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrKey, slotKey));
-            }
-            innerEnum.Dispose();
-        }
-        outerEnum.Dispose();
-    }
-
-    /// <summary>
-    /// Walk a storage-trie sub-tag HSST (top / compact / fallback — keys are 4 / 8 /
-    /// 33 bytes respectively) and add <c>StorageNodeKey(addressHash, path)</c> to
-    /// <paramref name="bloom"/> for each entry. Mirrors <see cref="AddSlotKeysToBloom"/>
-    /// for the byte-copy fast paths in
-    /// <see cref="StorageTrieColumnValueMerger{TWriter,TReader,TPin}"/>'s per-sub-tag
-    /// methods and <see cref="NWayMergeStorageTrieColumn"/> where the sub-tag bytes
-    /// are copied verbatim and the cursor loop does not run.
-    /// </summary>
-    private static void AddStorageTrieKeysToBloom<TReader, TPin>(
-        scoped in TReader reader, Bound subTagScope, ulong addrKey, BloomFilter bloom)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        Span<byte> keyBuf = stackalloc byte[33];
-        HsstEnumerator<TReader, TPin> e = new(in reader, subTagScope);
-        while (e.MoveNext(in reader))
-        {
-            keyBuf.Clear();
-            int keyLen = checked((int)e.CurrentKeyLength);
-            e.CopyCurrentLogicalKey(in reader, keyBuf[..keyLen]);
-            bloom.Add(addrKey ^ PersistedSnapshotBloomBuilder.StatePathKey(keyBuf[..keyLen]));
-        }
-        e.Dispose();
-    }
 }
