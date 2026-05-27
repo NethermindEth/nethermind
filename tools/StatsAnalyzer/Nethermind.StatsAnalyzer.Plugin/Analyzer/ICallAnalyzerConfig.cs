@@ -1,6 +1,6 @@
 using Nethermind.Config;
 
-namespace Nethermind.StatsAnalyzer.Plugin;
+namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 public interface ICallAnalyzerConfig : IConfig
 {

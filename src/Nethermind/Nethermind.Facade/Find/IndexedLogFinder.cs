@@ -4,13 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
-using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 
 namespace Nethermind.Facade.Find;

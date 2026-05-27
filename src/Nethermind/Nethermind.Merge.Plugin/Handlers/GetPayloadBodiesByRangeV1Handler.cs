@@ -35,10 +35,12 @@ public abstract class GetPayloadBodiesByRangeHandler<TResult>(IBlockTree blockTr
             return ResultWrapper<IReadOnlyList<TResult?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        return ResultWrapper<IReadOnlyList<TResult?>>.Success(GetRequests(start, count));
+        return ResultWrapper<IReadOnlyList<TResult?>>.Success(CreateResponse(GetRequests(start, count)));
     }
 
     protected abstract TResult? CreateResult(Block block);
+
+    protected virtual IReadOnlyList<TResult?> CreateResponse(TResult?[] results) => results;
 
     private TResult?[] GetRequests(long start, long count)
     {
@@ -61,4 +63,7 @@ public class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, ILogManager 
 {
     protected override ExecutionPayloadBodyV1Result CreateResult(Block block) =>
         new(block.Transactions, block.Withdrawals);
+
+    protected override IReadOnlyList<ExecutionPayloadBodyV1Result?> CreateResponse(ExecutionPayloadBodyV1Result?[] results) =>
+        new PayloadBodiesV1DirectResponse(results);
 }

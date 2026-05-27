@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
-using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -129,13 +129,13 @@ internal static class StructLogEnvelopeWriter
         bool failed = errorMessage is not null || trace is null || trace.Failed;
         byte[] returnValue = trace?.ReturnValue ?? [];
 
-        ForcedNumberConversion.WriteRawLong(writer, "gas"u8, gas);
+        writer.WriteNumber("gas"u8, gas);
 
         writer.WritePropertyName("failed"u8);
         writer.WriteBooleanValue(failed);
 
         writer.WritePropertyName("returnValue"u8);
-        JsonSerializer.Serialize(writer, returnValue, EthereumJsonSerializer.JsonOptions);
+        ByteArrayConverter.Convert(writer, returnValue, skipLeadingZeros: false);
 
         if (errorMessage is not null)
         {
