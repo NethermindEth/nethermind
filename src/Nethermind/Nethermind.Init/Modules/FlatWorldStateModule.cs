@@ -73,10 +73,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // impls of repo/compactor are returned. The ArenaManager / BlobArenaManager
             // singletons are still registered but never actually resolved in that mode
             // (the Null impls don't reach them).
-            .AddSingleton<ArenaManager>((ctx) =>
+            .AddSingleton<ArenaManager, IFlatDbConfig, IInitConfig>((cfg, initConfig) =>
             {
-                IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
-                string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshot");
+                string basePath = Path.Combine(initConfig.BaseDbPath, "persisted_snapshot");
                 return new ArenaManager(
                     Path.Combine(basePath, "arena"),
                     cfg.PersistedSnapshotArenaPageCacheBytes,
@@ -85,10 +84,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     tier: PersistedSnapshotTier.Persisted,
                     punchHoleOnReclaim: cfg.PersistedSnapshotPunchHoleOnReclaim);
             })
-            .AddSingleton<BlobArenaManager>((ctx) =>
+            .AddSingleton<BlobArenaManager, IFlatDbConfig, IInitConfig>((cfg, initConfig) =>
             {
-                IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
-                string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshot");
+                string basePath = Path.Combine(initConfig.BaseDbPath, "persisted_snapshot");
                 return new BlobArenaManager(
                     Path.Combine(basePath, "blob"),
                     cfg.ArenaFileSizeBytes,
