@@ -113,6 +113,7 @@ public class StartingSyncPivotUpdater : IDisposable
         catch (Exception e)
         {
             if (_logger.IsError) _logger.Error("Unexpected error while updating the starting sync pivot.", e);
+            Interlocked.CompareExchange(ref _updateInProgress, 0, 1);
         }
     }
 

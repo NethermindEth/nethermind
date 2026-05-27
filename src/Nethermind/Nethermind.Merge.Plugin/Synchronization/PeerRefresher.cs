@@ -101,9 +101,6 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     {
         // headBlockhash is obtained together with headParentBlockhash
         Task<IOwnedReadOnlyList<BlockHeader>?> getHeadParentHeaderTask = syncPeer.GetBlockHeaders(headParentBlockhash, 2, 0, token);
-        Task<BlockHeader?> getFinalizedHeaderTask = finalizedBlockhash == Keccak.Zero
-            ? Task.FromResult<BlockHeader?>(null)
-            : syncPeer.GetHeadBlockHeader(finalizedBlockhash, token);
 
         BlockHeader? headBlockHeader, headParentBlockHeader, finalizedBlockHeader;
 
@@ -116,7 +113,11 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
                 return;
             }
 
-            finalizedBlockHeader = await getFinalizedHeaderTask;
+            // Requested only after the head/parent response is validated, so an early return cannot
+            // leave a finalized-header request running with no reliable cancellation signal.
+            finalizedBlockHeader = finalizedBlockhash == Keccak.Zero
+                ? null
+                : await syncPeer.GetHeadBlockHeader(finalizedBlockhash, token);
         }
         catch (AggregateException exception) when (exception.InnerException is OperationCanceledException)
         {
