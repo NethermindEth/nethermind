@@ -18,10 +18,7 @@ public class BlockBodiesMessageSerializerTests
     [TestCaseSource(nameof(GetBlockBodyValues))]
     public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.TestZero(
         new BlockBodiesMessageSerializer(),
-        new BlockBodiesMessage(bodies),
-        additionallyExcluding: static (o) =>
-            o.Excluding(static c => c.Name == nameof(Transaction.SenderAddress))
-                .Excluding(static c => c.Name == nameof(Transaction.NetworkWrapper)));
+        new BlockBodiesMessage(bodies));
 
     [TestCaseSource(nameof(GetBlockBodyValues))]
     public void Should_not_contain_network_form_tx_wrapper(BlockBody[] bodies)

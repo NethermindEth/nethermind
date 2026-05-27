@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -316,8 +315,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
-            _signerStore.Address.Should().Be(TestItem.AddressA);
-            _signerStore.CanSign.Should().BeTrue();
+            Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
+            Assert.That(_signerStore.CanSign, Is.True);
         }
 
         [Test]
@@ -326,8 +325,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSignerSecret", TestItem.PrivateKeyA.ToString());
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
-            _signerStore.Address.Should().Be(TestItem.AddressA);
-            _signerStore.CanSign.Should().BeTrue();
+            Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
+            Assert.That(_signerStore.CanSign, Is.True);
         }
 
         [Test]
@@ -336,9 +335,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_clearEngineSigner");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-            serialized.Should().Be(expectedResult);
-            _signerStore.Address.Should().Be(Address.Zero);
-            _signerStore.CanSign.Should().BeFalse();
+            Assert.That(serialized, Is.EqualTo(expectedResult));
+            Assert.That(_signerStore.Address, Is.EqualTo(Address.Zero));
+            Assert.That(_signerStore.CanSign, Is.False);
         }
 
         [Test]
@@ -390,9 +389,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             EthereumJsonSerializer serializer = new();
             ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json);
 
-            tx.PublicKey.Should().NotBeNull();
-            tx.PublicKey.Bytes.Length.Should().Be(64);
-            tx.PublicKey.Bytes.Should().BeEquivalentTo(fullPublicKeyBytes);
+            Assert.That(tx.PublicKey, Is.Not.Null);
+            Assert.That(tx.PublicKey.Bytes.Length, Is.EqualTo(64));
+            Assert.That(tx.PublicKey.Bytes, Is.EqualTo(fullPublicKeyBytes));
         }
     }
 }

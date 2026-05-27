@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -21,7 +20,7 @@ public class KeccaksIteratorTests
     {
         Hash256[] keccaks = new[] { TestItem.KeccakA, Keccak.Zero };
         Hash256[] decoded = EncodeDecode(keccaks);
-        decoded.Should().BeEquivalentTo(keccaks);
+        Assert.That(decoded, Is.EqualTo(keccaks));
     }
 
     [TestCaseSource(nameof(TestKeccaks))]
@@ -29,7 +28,7 @@ public class KeccaksIteratorTests
     {
         Hash256[] keccaks = new[] { TestItem.KeccakA, Keccak.Zero };
         Hash256[] decoded = EncodeDecodeReDecoded(keccaks);
-        decoded.Should().BeEquivalentTo(keccaks);
+        Assert.That(decoded, Is.EqualTo(keccaks));
     }
 
     public static IEnumerable<Hash256[]> TestKeccaks()

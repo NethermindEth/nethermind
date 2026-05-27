@@ -4,7 +4,6 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -22,16 +21,16 @@ public class SpmcRingBufferTests
         jobQueue.TryEnqueue(4);
         jobQueue.TryEnqueue(5);
 
-        jobQueue.TryDequeue(out int j).Should().BeTrue();
-        j.Should().Be(1);
-        jobQueue.TryDequeue(out j).Should().BeTrue();
-        j.Should().Be(2);
-        jobQueue.TryDequeue(out j).Should().BeTrue();
-        j.Should().Be(3);
-        jobQueue.TryDequeue(out j).Should().BeTrue();
-        j.Should().Be(4);
-        jobQueue.TryDequeue(out j).Should().BeTrue();
-        j.Should().Be(5);
+        Assert.That(jobQueue.TryDequeue(out int j), Is.True);
+        Assert.That(j, Is.EqualTo(1));
+        Assert.That(jobQueue.TryDequeue(out j), Is.True);
+        Assert.That(j, Is.EqualTo(2));
+        Assert.That(jobQueue.TryDequeue(out j), Is.True);
+        Assert.That(j, Is.EqualTo(3));
+        Assert.That(jobQueue.TryDequeue(out j), Is.True);
+        Assert.That(j, Is.EqualTo(4));
+        Assert.That(jobQueue.TryDequeue(out j), Is.True);
+        Assert.That(j, Is.EqualTo(5));
     }
 
     [Test]
@@ -48,9 +47,9 @@ public class SpmcRingBufferTests
         int j = 0;
         for (int i = 0; i < 100; i++)
         {
-            jobQueue.TryDequeue(out j).Should().BeTrue();
-            j.Should().Be(i + 1);
-            jobQueue.TryEnqueue(i + 5 + 1).Should().BeTrue();
+            Assert.That(jobQueue.TryDequeue(out j), Is.True);
+            Assert.That(j, Is.EqualTo(i + 1));
+            Assert.That(jobQueue.TryEnqueue(i + 5 + 1), Is.True);
         }
     }
 

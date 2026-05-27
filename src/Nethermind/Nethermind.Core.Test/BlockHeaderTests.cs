@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -122,26 +121,29 @@ public class BlockHeaderTests
 
         BlockHeader child = parent.CreateSimulatedChild(112);
 
-        child.Should().BeOfType<BlockHeader>();
-        child.ParentHash.Should().Be(parent.Hash!);
-        child.UnclesHash.Should().Be(Keccak.OfAnEmptySequenceRlp);
-        child.Beneficiary.Should().Be(parent.Beneficiary!);
-        child.Difficulty.Should().Be(UInt256.Zero);
-        child.Number.Should().Be(parent.Number + 1);
-        child.GasLimit.Should().Be(parent.GasLimit);
-        child.Timestamp.Should().Be(112);
-        child.ExtraData.Should().BeEmpty();
-        child.MixHash.Should().Be(Hash256.Zero);
-        child.RequestsHash.Should().Be(parent.RequestsHash!);
-        child.Hash.Should().BeNull();
-        child.Bloom.Should().BeNull();
-        child.StateRoot.Should().BeNull();
-        child.TxRoot.Should().BeNull();
-        child.ReceiptsRoot.Should().BeNull();
-        child.BlobGasUsed.Should().BeNull();
-        child.ExcessBlobGas.Should().BeNull();
-        child.ParentBeaconBlockRoot.Should().BeNull();
-        child.SlotNumber.Should().BeNull();
+        Assert.Multiple(() =>
+        {
+            Assert.That(child, Is.TypeOf<BlockHeader>());
+            Assert.That(child.ParentHash, Is.EqualTo(parent.Hash!));
+            Assert.That(child.UnclesHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
+            Assert.That(child.Beneficiary, Is.EqualTo(parent.Beneficiary!));
+            Assert.That(child.Difficulty, Is.EqualTo(UInt256.Zero));
+            Assert.That(child.Number, Is.EqualTo(parent.Number + 1));
+            Assert.That(child.GasLimit, Is.EqualTo(parent.GasLimit));
+            Assert.That(child.Timestamp, Is.EqualTo(112));
+            Assert.That(child.ExtraData, Is.Empty);
+            Assert.That(child.MixHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(child.RequestsHash, Is.EqualTo(parent.RequestsHash!));
+            Assert.That(child.Hash, Is.Null);
+            Assert.That(child.Bloom, Is.Null);
+            Assert.That(child.StateRoot, Is.Null);
+            Assert.That(child.TxRoot, Is.Null);
+            Assert.That(child.ReceiptsRoot, Is.Null);
+            Assert.That(child.BlobGasUsed, Is.Null);
+            Assert.That(child.ExcessBlobGas, Is.Null);
+            Assert.That(child.ParentBeaconBlockRoot, Is.Null);
+            Assert.That(child.SlotNumber, Is.Null);
+        });
     }
 
     [Test]
@@ -187,7 +189,7 @@ public class BlockHeaderTests
 
     [TestCaseSource(nameof(HasBodyTestSource))]
     public void Should_have_empty_body_as_expected((BlockHeader Header, bool HasBody) fixture) =>
-        fixture.Header.HasBody.Should().Be(fixture.HasBody);
+        Assert.That(fixture.Header.HasBody, Is.EqualTo(fixture.HasBody));
 
     public class BaseFeeTestCases
     {
