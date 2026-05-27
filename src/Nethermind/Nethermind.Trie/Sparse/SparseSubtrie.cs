@@ -542,7 +542,11 @@ public sealed class SparseSubtrie : IDisposable
                 if (!mask.IsBitSet(n)) continue;
                 int denseIdx = childrenStart + mask.DenseIndex(n);
                 SparseChildEntry entry = _children[denseIdx];
-                if (entry.IsRevealed) HashNode(entry.ArenaIndex);
+                // Dirty-path-only optimization: only recurse into children that need re-encoding.
+                // Cached children already have valid CachedRlp; EncodeBranch will read it directly.
+                // This is what makes cross-block trie reuse a net win (no O(arena size) walking).
+                if (entry.IsRevealed && _arena[entry.ArenaIndex].IsDirty())
+                    HashNode(entry.ArenaIndex);
             }
             EncodeBranch(nodeIdx);
             if (_arena[nodeIdx].HasShortKey()) WrapBranchWithExtension(nodeIdx);
