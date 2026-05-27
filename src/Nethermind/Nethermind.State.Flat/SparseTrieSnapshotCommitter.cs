@@ -35,9 +35,18 @@ public static class SparseTrieSnapshotCommitter
         ref SparseTrieNode node = ref subtrie.NodeAt(nodeIdx);
         if (!node.IsCached()) return;
 
-        // Persist the node's FullRlp if it's large enough for a separate DB entry
+        // CRITICAL with cross-block reuse: only persist nodes whose FullRlp is set AND not already
+        // persisted in a prior block. We CLEAR FullRlp after PersistNode so re-walking doesn't
+        // re-persist. This is safe because parent encoding reads CachedRlp (which keeps the hash),
+        // not FullRlp. Without this, every cross-block walk re-persists ~10K-50K nodes, costing
+        // hundreds of ms per block.
         if (node.FullRlp is { Length: >= 32 })
-            PersistNode(node.FullRlp, path, bundle, address);
+        {
+            // Reuse the hash from CachedRlp if it's already a hash (avoids a second keccak).
+            Hash256 keccak = node.CachedRlp.IsHash() ? node.CachedRlp.AsHash() : Keccak.Compute(node.FullRlp);
+            PersistNodeWithHash(keccak, node.FullRlp, path, bundle, address);
+            node.FullRlp = null; // mark as persisted
+        }
 
         if (node.IsBranch())
         {
@@ -45,10 +54,12 @@ public static class SparseTrieSnapshotCommitter
             if (node.HasShortKey() && node.InnerBranchRlp is { Length: >= 32 })
             {
                 TreePath branchPath = path.Append(node.ShortKey);
-                PersistNode(node.InnerBranchRlp, branchPath, bundle, address);
+                Hash256 innerKeccak = Keccak.Compute(node.InnerBranchRlp);
+                PersistNodeWithHash(innerKeccak, node.InnerBranchRlp, branchPath, bundle, address);
+                node.InnerBranchRlp = null;
             }
 
-            // Recurse into revealed children
+            // Recurse into revealed children. Skip if no descendant could need committing.
             TreePath childBasePath = node.HasShortKey() ? path.Append(node.ShortKey) : path;
             TrieMask mask = node.StateMask;
             int childrenStart = node.ChildrenStart;
@@ -67,9 +78,8 @@ public static class SparseTrieSnapshotCommitter
         }
     }
 
-    private static void PersistNode(byte[] fullRlp, TreePath path, SnapshotBundle bundle, Hash256? address)
+    private static void PersistNodeWithHash(Hash256 keccak, byte[] fullRlp, TreePath path, SnapshotBundle bundle, Hash256? address)
     {
-        Hash256 keccak = Keccak.Compute(fullRlp);
         // TrieNode(NodeType, Hash256, CappedArray<byte>) defaults to isDirty=false, so the node
         // is already sealed at construction. Calling Seal() again would throw "already sealed".
         TrieNode trieNode = new(NodeType.Unknown, keccak, new CappedArray<byte>(fullRlp));
