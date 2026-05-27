@@ -28,6 +28,10 @@ public static partial class EvmInstructions
         /// </summary>
         virtual static bool IsStatic => false;
 
+        virtual static bool IsDelegateCall => false;
+
+        virtual static bool IsCallCode => false;
+
         /// <summary>
         /// Returns the specific execution type of the call.
         /// </summary>
@@ -47,6 +51,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpCallCode : IOpCall
     {
+        public static bool IsCallCode => true;
         public static ExecutionType ExecutionType => ExecutionType.CALLCODE;
     }
 
@@ -55,6 +60,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpDelegateCall : IOpCall
     {
+        public static bool IsDelegateCall => true;
         public static ExecutionType ExecutionType => ExecutionType.DELEGATECALL;
     }
 
@@ -115,12 +121,12 @@ public static partial class EvmInstructions
         ExecutionEnvironment env = vm.VmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
-        if (typeof(TOpCall) == typeof(OpStaticCall))
+        if (TOpCall.IsStatic)
         {
             // Static calls cannot transfer value.
             callValue = UInt256.Zero;
         }
-        else if (typeof(TOpCall) == typeof(OpDelegateCall))
+        else if (TOpCall.IsDelegateCall)
         {
             // Delegate calls use the value from the current execution context.
             callValue = env.Value;
@@ -137,19 +143,20 @@ public static partial class EvmInstructions
         }
 
         // For non-delegate calls, the transfer value is the call value.
-        UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
+        UInt256 transferValue = TOpCall.IsDelegateCall ? UInt256.Zero : callValue;
+        bool hasValueTransfer = !TOpCall.IsDelegateCall && !callValue.IsZero;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
-        if (vm.VmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) != typeof(OpCallCode))
+        if (vm.VmState.IsStatic && hasValueTransfer && !TOpCall.IsCallCode)
             return EvmExceptionType.StaticCallViolation;
 
         // Determine caller and target based on the call type.
-        Address caller = typeof(TOpCall) == typeof(OpDelegateCall) ? env.Caller : env.ExecutingAccount;
-        Address target = (typeof(TOpCall) == typeof(OpCall) || typeof(TOpCall) == typeof(OpStaticCall))
+        Address caller = TOpCall.IsDelegateCall ? env.Caller : env.ExecutingAccount;
+        Address target = !TOpCall.IsDelegateCall && !TOpCall.IsCallCode
             ? codeSource
             : env.ExecutingAccount;
 
         // Add extra gas cost if value is transferred.
-        if (!transferValue.IsZero)
+        if (hasValueTransfer)
         {
             if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
         }
@@ -184,7 +191,7 @@ public static partial class EvmInstructions
         bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {
             false => !state.AccountExists(target),
-            true => transferValue != 0 && state.IsDeadAccount(target),
+            true => hasValueTransfer && state.IsDeadAccount(target),
         };
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
@@ -224,7 +231,7 @@ public static partial class EvmInstructions
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
-        if (!transferValue.IsZero)
+        if (hasValueTransfer)
         {
             if (vm.TxTracer.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
@@ -233,7 +240,7 @@ public static partial class EvmInstructions
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
+            (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < transferValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
@@ -262,25 +269,70 @@ public static partial class EvmInstructions
             return pushResult;
         }
 
-        // Take a snapshot of the state for potential rollback.
-        Snapshot snapshot = state.TakeSnapshot();
-        // Subtract the transfer value from the caller's balance.
-        state.SubtractFromBalance(caller, in transferValue, spec);
-
         // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+        if (HasNoExecutableCode(codeInfo) && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
             EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             if (pushResult != EvmExceptionType.None) return pushResult;
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            vm.AddTransferLog<TEip7708>(caller, target, transferValue);
-            return FastCall(vm, spec, in transferValue, target);
+            if (hasValueTransfer)
+            {
+                state.SubtractFromBalance(caller, in transferValue, spec);
+                vm.AddTransferLog<TEip7708>(caller, target, transferValue);
+                state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
+            }
+            Metrics.IncrementEmptyCalls();
+            vm.ReturnData = null;
+            return EvmExceptionType.None;
         }
 
+        // Take a snapshot of the state for potential rollback.
+        Snapshot snapshot = state.TakeSnapshot();
+        // Subtract the transfer value from the caller's balance.
+        if (hasValueTransfer) state.SubtractFromBalance(caller, in transferValue, spec);
+
+        return SlowCall(
+            vm,
+            ref gas,
+            in dataOffset,
+            dataLength,
+            outputOffset,
+            outputLength,
+            codeInfo,
+            target,
+            caller,
+            codeSource,
+            env,
+            in callValue,
+            in transferValue,
+            gasLimitUl,
+            in snapshot);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static bool HasNoExecutableCode(CodeInfo codeInfo) => codeInfo.IsEmpty || ReferenceEquals(codeInfo, CodeInfo.Empty);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static EvmExceptionType SlowCall(
+            VirtualMachine<TGasPolicy> vm,
+            ref TGasPolicy gas,
+            in UInt256 dataOffset,
+            UInt256 dataLength,
+            UInt256 outputOffset,
+            UInt256 outputLength,
+            CodeInfo codeInfo,
+            Address target,
+            Address caller,
+            Address codeSource,
+            ExecutionEnvironment env,
+            in UInt256 callValue,
+            in UInt256 transferValue,
+            long gasLimitUl,
+            in Snapshot snapshot)
+        {
         // Load call data from memory.
         if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
-            goto OutOfGas;
+            return EvmExceptionType.OutOfGas;
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
@@ -293,16 +345,17 @@ public static partial class EvmInstructions
             inputData: in callData);
 
         // Normalize output offset if output length is zero.
+        UInt256 normalizedOutputOffset = outputOffset;
         if (outputLength == 0)
         {
             // Output offset is inconsequential when output length is 0.
-            outputOffset = 0;
+            normalizedOutputOffset = 0;
         }
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
             gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
-            outputDestination: outputOffset.ToLong(),
+            outputDestination: normalizedOutputOffset.ToLong(),
             outputLength: outputLength.ToLong(),
             executionType: TOpCall.ExecutionType,
             isStatic: TOpCall.IsStatic || vm.VmState.IsStatic,
@@ -312,17 +365,6 @@ public static partial class EvmInstructions
             snapshot: in snapshot);
 
         return EvmExceptionType.None;
-
-        // Fast-call path for non-contract calls:
-        // Directly credit the target account and avoid constructing a full call frame.
-        static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
-        {
-            IWorldState state = vm.WorldState;
-            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
-            Metrics.IncrementEmptyCalls();
-
-            vm.ReturnData = null;
-            return EvmExceptionType.None;
         }
 
         // Jump forward to be unpredicted by the branch predictor.
