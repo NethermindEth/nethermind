@@ -4,12 +4,7 @@
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using RpcTestsMon;
-
-static Uri UriParser(ArgumentResult arg)
-{
-    string str = arg.Tokens.Single().Value;
-    return new Uri(str.Contains("://") ? str : $"http://{str}");
-}
+using RpcTestsMon.Notifiers;
 
 Option<Uri> targetOption = new("--target", "-t")
 {
@@ -56,13 +51,28 @@ rootCommand.SetAction(async (parseResult, ct) =>
         Parallelism = parseResult.GetValue(parallelismOption)
     };
 
-    const string webhookEnvName = "RPC_TESTS_MONITOR_WEBHOOK_URL";
-    string webhookUrl = Environment.GetEnvironmentVariable(webhookEnvName)
-        ?? throw new InvalidOperationException($"Missing {webhookEnvName} environment variable");
-    SlackNotifier notifier = new(webhookUrl);
-
-    MonitorRunner runner = new(notifier);
+    MonitorRunner runner = new(GetNotifier());
     await runner.RunAsync(args, ct);
 });
 
 return await rootCommand.Parse(args).InvokeAsync();
+
+static Uri UriParser(ArgumentResult arg)
+{
+    string str = arg.Tokens.Single().Value;
+    return new Uri(str.Contains("://") ? str : $"http://{str}");
+}
+
+static INotifier GetNotifier()
+{
+    string? botToken = Environment.GetEnvironmentVariable("RPC_MONITOR_BOT_TOKEN");
+    string? channelId = Environment.GetEnvironmentVariable("RPC_MONITOR_CHANNEL_ID");
+
+    if (botToken is not null && channelId is not null)
+        return new BotSlackNotifier(new BotSlackConfig { BotToken = botToken, ChannelId = channelId });
+
+    string webhookUrl = Environment.GetEnvironmentVariable("RPC_MONITOR_WEBHOOK_URL")
+        ?? throw new InvalidOperationException("Missing RPC_MONITOR_WEBHOOK_URL environment variable");
+
+    return new WebhookSlackNotifier(webhookUrl);
+}

@@ -5,10 +5,11 @@ using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Nodes;
+using RpcTestsMon.Notifiers;
 
 namespace RpcTestsMon;
 
-internal record HeadInfo(long Number, string Hash): IFormattable
+internal record HeadInfo(long Number, string Hash) : IFormattable
 {
     public override string ToString() => $"{Number} ({Hash})";
 

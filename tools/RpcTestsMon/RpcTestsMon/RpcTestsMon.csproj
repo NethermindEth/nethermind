@@ -10,6 +10,7 @@
     <ItemGroup>
       <PackageReference Include="DynamicExpresso.Core" />
       <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" />
+      <PackageReference Include="SlackNet" />
       <PackageReference Include="System.CommandLine" />
     </ItemGroup>
 

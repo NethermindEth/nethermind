@@ -3,15 +3,10 @@
 
 using System.Net.Http.Json;
 
-namespace RpcTestsMon;
+namespace RpcTestsMon.Notifiers;
 
-internal interface INotifier
-{
-    Task NotifyMismatchAsync(MismatchInfo info, CancellationToken ct);
-    Task NotifyErrorAsync(string message);
-}
-
-internal class SlackNotifier(string webhookUrl) : INotifier
+// TODO: rate limit a bit
+internal class WebhookSlackNotifier(string webhookUrl) : INotifier
 {
     private readonly HttpClient _client = new();
 
@@ -19,7 +14,7 @@ internal class SlackNotifier(string webhookUrl) : INotifier
     {
         string text =
             $"""
-             *RPC mismatch* at block #{info.Head:#}
+             *RPC response mismatch* at block #{info.Head:#}
              Test: `{info.Test.Definition.FilePath}`
              Method: `{info.Request.MethodOrUnknown}`
              """;
@@ -31,13 +26,11 @@ internal class SlackNotifier(string webhookUrl) : INotifier
             MakeAttachment("reference-response.json", "#36a64f", info.ReferenceResponse.ToPrettyString())
         ];
 
-        return NotifyAsync(new { text, attachments }, ct);
+        return PostAsync(new { text, attachments }, ct);
     }
 
-    public Task NotifyErrorAsync(string message) => NotifyAsync(
-        new {text = $"*RPC monitoring error*:\n```{message}```"},
-        CancellationToken.None
-    );
+    public Task NotifyErrorAsync(string message) =>
+        PostAsync(new { text = $"*RPC monitoring error*:\n```{message}```" }, CancellationToken.None);
 
     private static object MakeAttachment(string title, string color, string json) => new
     {
@@ -47,12 +40,12 @@ internal class SlackNotifier(string webhookUrl) : INotifier
         mrkdwn_in = new[] { "text" }
     };
 
-    private async Task NotifyAsync(object payload, CancellationToken ct)
+    private async Task PostAsync(object payload, CancellationToken ct)
     {
+        using JsonContent content = JsonContent.Create(payload);
         try
         {
-            using JsonContent content = JsonContent.Create(payload);
-            HttpResponseMessage response = await _client.PostAsync(webhookUrl, content, ct);
+            using HttpResponseMessage response = await _client.PostAsync(webhookUrl, content, ct);
             if (!response.IsSuccessStatusCode)
                 Console.Error.WriteLine($"Slack notification failed: {response.StatusCode}");
         }
