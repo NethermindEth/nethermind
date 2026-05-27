@@ -43,8 +43,9 @@ public sealed class SparsePatriciaTree : IDisposable
         TreePath targetPath = proofNode.Path;
         if (targetPath.Length == 0)
         {
-            // Replacing root entirely
-            _subtrie.Root = CreateNodeFromProof(_subtrie, proofNode);
+            // Root already exists from initial reveal — skip.
+            // Retry proofs redundantly include the root node; replacing it here
+            // would destroy all previously revealed children.
             return;
         }
 

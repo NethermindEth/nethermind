@@ -22,4 +22,5 @@ public class FlatDbConfig : IFlatDbConfig
     public long BlockCacheSizeBudget { get; set; } = 1.GiB;
     public long TrieCacheMemoryBudget { get; set; } = 512.MiB;
     public bool UseSparseRootComputation { get; set; } = false;
+    public bool SparseTrieVerificationMode { get; set; } = false;
 }

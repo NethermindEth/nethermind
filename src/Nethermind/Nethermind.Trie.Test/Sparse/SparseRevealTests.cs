@@ -418,6 +418,54 @@ public class SparseRevealTests
         node.InnerBranchRlp.Should().BeNull("InnerBranchRlp must be cleared");
     }
 
+    [Test]
+    public void RetryLoop_DoesNotDestroyRevealedRoot()
+    {
+        // Regression: retry proof includes root again; RevealSingleNode must NOT
+        // replace the already-revealed root, or all previously attached children are lost.
+        MemDb db = new();
+        PatriciaTree tree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        for (int i = 0; i < 20; i++)
+            tree.Set(TestItem.Keccaks[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 originalRoot = tree.RootHash;
+
+        byte[] newRlp = TestItem.GenerateIndexedAccountRlp(999);
+        tree.Set(TestItem.Keccaks[0].Bytes, newRlp);
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 expectedRoot = tree.RootHash;
+
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+
+        // Simulate the SparseRootComputer retry loop at the SparsePatriciaTree level:
+        // 1. Initial proof + reveal
+        Hash256[] targetKeys = [TestItem.Keccaks[0]];
+        DecodedMultiProof initialProof = MultiProofReader.ReadAccountProofs(reader, originalRoot, targetKeys);
+        using SparsePatriciaTree sparse = new();
+        sparse.RevealNodes(initialProof.AccountNodes);
+
+        // 2. Apply update — may hit blinded nodes
+        Dictionary<Hash256, LeafUpdate> updates = new() { [TestItem.Keccaks[0]] = LeafUpdate.Changed(newRlp) };
+        List<Hash256> proofTargets = [];
+        sparse.UpdateLeaves(updates, (key, _) => proofTargets.Add(key));
+
+        // 3. Retry: read new proofs (which include root again) and re-reveal
+        while (proofTargets.Count > 0)
+        {
+            DecodedMultiProof retryProof = MultiProofReader.ReadAccountProofs(
+                reader, originalRoot, proofTargets.ToArray());
+            sparse.RevealNodes(retryProof.AccountNodes);
+            proofTargets.Clear();
+            sparse.UpdateLeaves(updates, (key, _) => proofTargets.Add(key));
+        }
+
+        Hash256 sparseRoot = sparse.ComputeRoot();
+        sparseRoot.Should().Be(expectedRoot,
+            "Retry loop must not destroy revealed root — all children must survive re-reveal");
+    }
+
     [TestCase(200, 50)]
     [TestCase(300, 100)]
     public void SparseRootComputer_KeccakKeys_MatchesPatricia(int trieSize, int updateCount)

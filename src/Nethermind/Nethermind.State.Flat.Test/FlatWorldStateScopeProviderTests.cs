@@ -99,6 +99,7 @@ public class FlatWorldStateScopeProviderTests
         private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
                 .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
+                .WithParameter(TypedParameter.From<PreservedSparseTrie?>(null))
                 ;
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();

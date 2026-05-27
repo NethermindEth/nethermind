@@ -12,19 +12,33 @@ namespace Nethermind.State.Flat;
 
 /// <summary>
 /// Orchestrates proof-based state root computation for a single block using the sparse trie.
-/// M2 hybrid: computes root only — persistence is handled by Patricia tree.
 /// <remarks>
-/// The key insight: before applying leaf updates, we MUST first reveal the existing trie
-/// structure via multiproofs. Without this, the sparse trie treats everything as inserts
-/// into an empty trie and computes a root from only the changed keys — ignoring millions
-/// of existing accounts/slots whose sibling hashes are needed for the correct root.
+/// Before applying leaf updates, existing trie structure is revealed via multiproofs.
+/// Accepts an external <see cref="SparseStateTrie"/> for cross-block reuse (M3).
 /// </remarks>
 /// </summary>
-public sealed class SparseRootComputer(ITrieNodeReader reader, Hash256 previousStateRoot) : IDisposable
+public sealed class SparseRootComputer : IDisposable
 {
-    private readonly SparseStateTrie _trie = new();
+    private readonly SparseStateTrie _trie;
+    private readonly ITrieNodeReader _reader;
+    private readonly Hash256 _previousStateRoot;
+    private readonly bool _ownsTrie;
     private readonly Dictionary<Hash256, (Hash256 PreviousStorageRoot, Dictionary<Hash256, LeafUpdate> Updates)> _storageChanges = [];
     private Dictionary<Hash256, LeafUpdate>? _accountChanges;
+
+    public SparseRootComputer(ITrieNodeReader reader, Hash256 previousStateRoot)
+        : this(new SparseStateTrie(), reader, previousStateRoot, ownsTrie: true) { }
+
+    public SparseRootComputer(SparseStateTrie trie, ITrieNodeReader reader, Hash256 previousStateRoot)
+        : this(trie, reader, previousStateRoot, ownsTrie: false) { }
+
+    private SparseRootComputer(SparseStateTrie trie, ITrieNodeReader reader, Hash256 previousStateRoot, bool ownsTrie)
+    {
+        _trie = trie;
+        _reader = reader;
+        _previousStateRoot = previousStateRoot;
+        _ownsTrie = ownsTrie;
+    }
 
     public void AddStorageChanges(Hash256 accountPathHash, Hash256 previousStorageRoot, Dictionary<Hash256, LeafUpdate> slotUpdates) =>
         _storageChanges[accountPathHash] = (previousStorageRoot, slotUpdates);
@@ -42,17 +56,15 @@ public sealed class SparseRootComputer(ITrieNodeReader reader, Hash256 previousS
 
         SparsePatriciaTree storageTrie = _trie.GetOrCreateStorageTrie(accountPathHash);
 
-        // Step 1: Reveal existing trie structure for ALL changed keys BEFORE any updates
         if (entry.PreviousStorageRoot != Keccak.EmptyTreeHash)
         {
             Hash256[] targetKeys = entry.Updates.Keys.ToArray();
             DecodedMultiProof initialProof = MultiProofReader.ReadStorageProofs(
-                reader, accountPathHash, entry.PreviousStorageRoot, targetKeys);
+                _reader, accountPathHash, entry.PreviousStorageRoot, targetKeys);
             if (initialProof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? initialNodes))
                 storageTrie.RevealNodes(initialNodes);
         }
 
-        // Step 2: Apply updates (may need additional reveals for structural changes)
         Dictionary<Hash256, LeafUpdate> updates = entry.Updates;
         while (true)
         {
@@ -61,7 +73,7 @@ public sealed class SparseRootComputer(ITrieNodeReader reader, Hash256 previousS
             if (targets.Count == 0) break;
 
             DecodedMultiProof proof = MultiProofReader.ReadStorageProofs(
-                reader, accountPathHash, entry.PreviousStorageRoot, targets.ToArray());
+                _reader, accountPathHash, entry.PreviousStorageRoot, targets.ToArray());
             if (proof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? nodes))
                 storageTrie.RevealNodes(nodes);
         }
@@ -69,18 +81,21 @@ public sealed class SparseRootComputer(ITrieNodeReader reader, Hash256 previousS
         return _trie.ComputeStorageRoot(accountPathHash);
     }
 
-    public Hash256 PreviousRoot => previousStateRoot;
+    public Hash256 PreviousRoot => _previousStateRoot;
     public int AccountChangeCount => _accountChanges?.Count ?? 0;
     public int LastProofNodeCount { get; private set; }
+
+    /// <summary>The underlying trie for persistence and cross-block storage.</summary>
+    internal SparseStateTrie Trie => _trie;
 
     public Hash256 ComputeStateRoot()
     {
         if (_accountChanges is null || _accountChanges.Count == 0)
-            return previousStateRoot;
+            return _previousStateRoot;
 
         Hash256[] targetKeys = _accountChanges.Keys.ToArray();
         DecodedMultiProof initialProof = MultiProofReader.ReadAccountProofs(
-            reader, previousStateRoot, targetKeys);
+            _reader, _previousStateRoot, targetKeys);
         LastProofNodeCount = initialProof.AccountNodes.Count;
 
         _trie.AccountTrie.RevealNodes(initialProof.AccountNodes);
@@ -92,12 +107,15 @@ public sealed class SparseRootComputer(ITrieNodeReader reader, Hash256 previousS
             if (targets.Count == 0) break;
 
             DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
-                reader, previousStateRoot, targets.ToArray());
+                _reader, _previousStateRoot, targets.ToArray());
             _trie.AccountTrie.RevealNodes(proof.AccountNodes);
         }
 
         return _trie.ComputeRoot();
     }
 
-    public void Dispose() => _trie.Dispose();
+    public void Dispose()
+    {
+        if (_ownsTrie) _trie.Dispose();
+    }
 }

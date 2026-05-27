@@ -53,4 +53,9 @@ public interface IFlatDbConfig : IConfig
         "Computes the root via proof-based incremental hashing while Patricia tree still handles persistence. " +
         "Milestone M2 hybrid mode.", DefaultValue = "false")]
     bool UseSparseRootComputation { get; set; }
+
+    [ConfigItem(Description = "When enabled alongside UseSparseRootComputation, always compute roots via BOTH Patricia and " +
+        "sparse trie and compare results every block. Prevents the sparse trie from becoming authoritative — " +
+        "Patricia always remains the source of truth for persistence and root hash.", DefaultValue = "false")]
+    bool SparseTrieVerificationMode { get; set; }
 }

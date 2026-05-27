@@ -24,13 +24,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ITrieWarmer _warmer;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
+    private readonly PreservedSparseTrie? _preservedSparseTrie;
 
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private SparseRootComputer? _sparseRootComputer;
+    private SparseStateTrie? _sparseStateTrie;
     private Hash256? _sparseComputedRoot;
+    private bool _sparseIsAuthoritative;
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -40,6 +43,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private StateId _currentStateId;
     internal bool _pausePrewarmer = false;
 
+    private static int _sparseMatchCount;
+    private static int _sparseMismatchCount;
+    private static int _sparseFailCount;
+    private static int _consecutiveMatches;
+
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
@@ -47,6 +55,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatCommitTarget commitTarget,
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
+        PreservedSparseTrie? preservedSparseTrie,
         ILogManager logManager,
         bool isReadOnly = false)
     {
@@ -54,8 +63,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
+        _preservedSparseTrie = preservedSparseTrie;
 
-        _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
+        _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount);
         _stateTree = new(
             new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
             logManager
@@ -78,11 +88,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (configuration.UseSparseRootComputation && !isReadOnly)
         {
+            Hash256 prevRoot = currentStateId.StateRoot.ToCommitment();
             ParentStateTrieNodeReader proofReader = new(snapshotBundle);
-            _sparseRootComputer = new SparseRootComputer(proofReader, currentStateId.StateRoot.ToCommitment());
-            ILogger initLogger = logManager.GetClassLogger<FlatWorldStateScope>();
-            if (initLogger.IsInfo) initLogger.Info(
-                $"SPARSE TRIE ENABLED: SparseRootComputer created with previousStateRoot={currentStateId.StateRoot}");
+
+            if (preservedSparseTrie is not null)
+            {
+                _sparseStateTrie = preservedSparseTrie.Take(prevRoot);
+                _sparseRootComputer = new SparseRootComputer(_sparseStateTrie, proofReader, prevRoot);
+            }
+            else
+            {
+                _sparseRootComputer = new SparseRootComputer(proofReader, prevRoot);
+            }
+
+            // After enough consecutive matches, skip Patricia UpdateRootHash (unless verification mode is on)
+            _sparseIsAuthoritative = !configuration.SparseTrieVerificationMode
+                && Volatile.Read(ref _consecutiveMatches) >= 10;
         }
 
         _warmer.OnEnterScope();
@@ -98,7 +119,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnExitScope();
     }
 
-    // Exposed for tests to observe when the wait loop is entered.
     internal Action? OnWaitingForWarmups;
 
     private void WaitForOutstandingWarmups()
@@ -123,56 +143,79 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => _sparseComputedRoot ?? _stateTree.RootHash;
 
-    private static int _sparseMatchCount;
-    private static int _sparseMismatchCount;
-    private static int _sparseFailCount;
-
     public void UpdateRootHash()
     {
-        // Always run Patricia — needed for Commit() persistence in M2
-        _stateTree.UpdateRootHash();
-
         if (_sparseRootComputer is not null)
         {
             try
             {
-                System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+                Stopwatch sw = Stopwatch.StartNew();
                 _sparseComputedRoot = _sparseRootComputer.ComputeStateRoot();
                 sw.Stop();
 
-                if (_sparseComputedRoot == _stateTree.RootHash)
+                if (!_sparseIsAuthoritative)
                 {
-                    int matchCount = Interlocked.Increment(ref _sparseMatchCount);
-                    if (matchCount % 100 == 1 || matchCount <= 5)
+                    // Validation mode: run Patricia too and compare
+                    _stateTree.UpdateRootHash();
+
+                    if (_sparseComputedRoot == _stateTree.RootHash)
                     {
+                        int matchCount = Interlocked.Increment(ref _sparseMatchCount);
+                        int consecutive = Interlocked.Increment(ref _consecutiveMatches);
+                        if (matchCount % 100 == 1 || matchCount <= 5)
+                        {
+                            ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                            if (logger.IsInfo) logger.Info(
+                                $"SPARSE ROOT MATCH #{matchCount}! Root={_sparseComputedRoot}, " +
+                                $"SparseTime={sw.ElapsedMilliseconds}ms, Consecutive={consecutive}, " +
+                                $"Totals: match={matchCount} mismatch={_sparseMismatchCount} fail={_sparseFailCount}");
+                        }
+                    }
+                    else
+                    {
+                        int mismatchCount = Interlocked.Increment(ref _sparseMismatchCount);
+                        Interlocked.Exchange(ref _consecutiveMatches, 0);
                         ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                        if (logger.IsInfo) logger.Info(
-                            $"SPARSE ROOT MATCH #{matchCount}! Root={_sparseComputedRoot}, " +
-                            $"SparseTime={sw.ElapsedMilliseconds}ms, " +
-                            $"Totals: match={matchCount} mismatch={_sparseMismatchCount} fail={_sparseFailCount}");
+                        if (logger.IsWarn) logger.Warn(
+                            $"SPARSE ROOT MISMATCH #{mismatchCount}! Patricia={_stateTree.RootHash}, Sparse={_sparseComputedRoot}, " +
+                            $"SparseTime={sw.ElapsedMilliseconds}ms, Accounts={_sparseRootComputer.AccountChangeCount}, " +
+                            $"ProofNodes={_sparseRootComputer.LastProofNodeCount}, PrevRoot={_sparseRootComputer.PreviousRoot}. " +
+                            $"Falling back to Patricia.");
+                        _sparseComputedRoot = null;
                     }
                 }
                 else
                 {
-                    int mismatchCount = Interlocked.Increment(ref _sparseMismatchCount);
-                    ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                    if (logger.IsWarn) logger.Warn(
-                        $"SPARSE ROOT MISMATCH #{mismatchCount}! Patricia={_stateTree.RootHash}, Sparse={_sparseComputedRoot}, " +
-                        $"SparseTime={sw.ElapsedMilliseconds}ms, Accounts={_sparseRootComputer.AccountChangeCount}, " +
-                        $"ProofNodes={_sparseRootComputer.LastProofNodeCount}, PrevRoot={_sparseRootComputer.PreviousRoot}. " +
-                        $"Falling back to Patricia.");
-                    _sparseComputedRoot = null;
+                    // Authoritative mode: sparse root is the answer, skip Patricia UpdateRootHash
+                    int matchCount = Interlocked.Increment(ref _sparseMatchCount);
+                    Interlocked.Increment(ref _consecutiveMatches);
+                    if (matchCount % 500 == 1)
+                    {
+                        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                        if (logger.IsInfo) logger.Info(
+                            $"SPARSE ROOT (authoritative) #{matchCount}: Root={_sparseComputedRoot}, " +
+                            $"SparseTime={sw.ElapsedMilliseconds}ms");
+                    }
                 }
             }
             catch (Exception ex)
             {
                 int failCount = Interlocked.Increment(ref _sparseFailCount);
+                Interlocked.Exchange(ref _consecutiveMatches, 0);
                 ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
                 if (logger.IsWarn) logger.Warn(
                     $"SPARSE ROOT FAIL #{failCount}! Exception={ex.GetType().Name}: {ex.Message}, " +
                     $"Totals: match={_sparseMatchCount} mismatch={_sparseMismatchCount} fail={failCount}");
                 _sparseComputedRoot = null;
+                _sparseIsAuthoritative = false;
+
+                // Fallback: run Patricia
+                _stateTree.UpdateRootHash();
             }
+        }
+        else
+        {
+            _stateTree.UpdateRootHash();
         }
     }
 
@@ -206,18 +249,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
 
-    public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
+    public int HintSequenceId => _hintSequenceId;
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
         try
         {
             if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
-
-            // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
-            // this is just for warming up
             _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
-
             return true;
         }
         finally
@@ -258,9 +297,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
 
-        // Storage tree commits already happened during WriteBatch.Dispose() via
-        // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
-        _stateTree.Commit();
+        if (_sparseIsAuthoritative && _sparseComputedRoot is not null && _sparseRootComputer is not null)
+        {
+            // M3: Use SparseTrieSnapshotCommitter for persistence — skip Patricia Commit
+            SparseStateTrie trie = _sparseRootComputer.Trie;
+            SparseTrieSnapshotCommitter.CommitAccountTrie(trie.AccountTrie.Subtrie, _snapshotBundle);
+        }
+        else
+        {
+            // Fallback: Patricia handles persistence
+            _stateTree.Commit();
+        }
 
         _storages.Clear();
 
@@ -283,19 +330,36 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _currentStateId = newStateId;
 
+        // M3: Store sparse trie back for cross-block reuse, then create fresh computer for next block
         if (_sparseRootComputer is not null)
         {
+            Hash256 newRoot = newStateId.StateRoot.ToCommitment();
+
+            if (_preservedSparseTrie is not null && _sparseStateTrie is not null)
+            {
+                if (_sparseComputedRoot is not null)
+                    _preservedSparseTrie.StoreAnchored(_sparseStateTrie, newRoot);
+                else
+                    _preservedSparseTrie.StoreCleared(_sparseStateTrie);
+
+                _sparseStateTrie = _preservedSparseTrie.Take(newRoot);
+            }
+
             _sparseRootComputer.Dispose();
             ParentStateTrieNodeReader proofReader = new(_snapshotBundle);
-            _sparseRootComputer = new SparseRootComputer(proofReader, newStateId.StateRoot.ToCommitment());
+
+            _sparseRootComputer = _sparseStateTrie is not null
+                ? new SparseRootComputer(_sparseStateTrie, proofReader, newRoot)
+                : new SparseRootComputer(proofReader, newRoot);
+
             _sparseComputedRoot = null;
+            _sparseIsAuthoritative = !_configuration.SparseTrieVerificationMode
+                && Volatile.Read(ref _consecutiveMatches) >= 10;
         }
 
         _pausePrewarmer = false;
     }
 
-    // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
-    // So I just leave it here.
     private class WriteBatch(
         FlatWorldStateScope scope,
         int estimatedAccountCount,
@@ -314,8 +378,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             if (account is null)
             {
-                // This may not get called by the storage write batch as the worldstate does not try to update storage
-                // at all if the end account is null. This is not a problem for trie, but is a problem for flat.
                 scope.CreateStorageTreeImpl(key).SelfDestruct();
             }
         }
@@ -355,13 +417,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (logger.IsTrace) Trace(address, storageRoot, account);
                 }
 
-                using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
-                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                // Always feed Patricia for persistence fallback (needed until authoritative)
+                if (!scope._sparseIsAuthoritative)
                 {
-                    stateSetter.Set(kv.Key, kv.Value);
+                    using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                    {
+                        stateSetter.Set(kv.Key, kv.Value);
+                    }
                 }
 
-                // M2: Feed the same account changes to SparseRootComputer (if enabled)
+                // Feed account changes to SparseRootComputer
                 if (scope._sparseRootComputer is not null)
                 {
                     Dictionary<Hash256, LeafUpdate> sparseAccountUpdates = new(_dirtyAccounts.Count);

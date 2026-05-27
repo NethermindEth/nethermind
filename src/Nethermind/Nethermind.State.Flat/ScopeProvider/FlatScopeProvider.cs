@@ -23,6 +23,7 @@ public class FlatScopeProvider(
     // from the cross-block persisted-code hint cache. Read-only paths wrap a ReadOnlyDb temp
     // buffer (writes are transient) and must NOT populate the hint cache — see TrieStoreScopeProvider.
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
+    private readonly PreservedSparseTrie _preservedSparseTrie = new();
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
@@ -38,6 +39,7 @@ public class FlatScopeProvider(
             flatDbManager,
             configuration,
             trieWarmer,
+            _preservedSparseTrie,
             logManager,
             isReadOnly: isReadOnly);
     }
