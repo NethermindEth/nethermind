@@ -424,6 +424,18 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Estimate_gas_with_explicit_zero_gas_limit_simple_transfer()
+    {
+        using Context ctx = await Context.Create();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"{SecondaryTestAddress}\", \"gas\": \"0x0\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
+    }
+
+    [Test]
     public async Task Estimate_gas_not_limited_by_latest_block_gas_used()
     {
         using Context ctx = await Context.Create();

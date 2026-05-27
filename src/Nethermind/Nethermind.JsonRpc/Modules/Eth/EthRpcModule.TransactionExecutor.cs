@@ -160,7 +160,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 // Match Geth: eth_estimateGas treats gas: 0x0 the same as an omitted gas field and
                 // bounds the binary search by blockGasLimit (then caps at gasCap inside ToTransaction).
-                // eth_call intentionally keeps an explicit zero gas limit because it is a pure simulation.
                 if (transactionCall.Gas is null or 0)
                 {
                     if (BlockOverride?.GasLimit is not null)
