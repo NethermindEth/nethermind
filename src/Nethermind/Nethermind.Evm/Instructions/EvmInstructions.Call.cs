@@ -340,7 +340,6 @@ public static partial class EvmInstructions
             caller: caller,
             codeSource: codeSource,
             callDepth: env.CallDepth + 1,
-            transferValue: in transferValue,
             value: in callValue,
             inputData: in callData);
 
