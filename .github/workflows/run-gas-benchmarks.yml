@@ -172,7 +172,9 @@ jobs:
 
   setup:
     needs: [resolve-inputs]
-    if: needs.resolve-inputs.outputs.should-run == 'true'
+    if: >-
+      needs.resolve-inputs.outputs.should-run == 'true'
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-slim
     outputs:
       runner-name: ${{ steps.setup-runner.outputs.runner-name }}
@@ -216,7 +218,9 @@ jobs:
       - resolve-inputs
       - setup
       - publish-docker
-    if: needs.resolve-inputs.outputs.should-run == 'true'
+    if: >-
+      needs.resolve-inputs.outputs.should-run == 'true'
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ needs.setup.outputs.runner-name }}
     timeout-minutes: 360
     env:
