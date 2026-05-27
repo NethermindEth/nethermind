@@ -321,13 +321,13 @@ public static class PersistedSnapshotMerger
         int keyStride = Math.Max(1, keySize);
         using LoserTreeState state = new(n, keyStride);
         using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(n, n);
-        WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
+        Span<WholeReadSessionMergeSource> sources = sourcesList.AsSpan();
 
         try
         {
-            SeedSourcesAtColumn(views, tag, sources.AsSpan(0, n));
+            SeedSourcesAtColumn(views, tag, sources);
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
-                sources.AsSpan(0, n), state, keySize);
+                sources, state, keySize);
 
             HsstPackedArrayMerger.NWayMerge<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, StatePathBloomCallback>(
                 ref writer, NodeRef.Size, ref cursor, new StatePathBloomCallback(bloom));
@@ -359,7 +359,7 @@ public static class PersistedSnapshotMerger
         const int AddrKeyLen = PersistedSnapshotTags.AddressKeyLength;
         using LoserTreeState state = new(n, KeyStride);
         using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(n, n);
-        WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
+        Span<WholeReadSessionMergeSource> sources = sourcesList.AsSpan();
 
         // Reusable work buffers for the per-address slot prefix/suffix HSST builders.
         // The container is a class so the value-merger can hold it as a regular field; the
@@ -370,9 +370,9 @@ public static class PersistedSnapshotMerger
 
         try
         {
-            SeedSourcesAtColumn(views, tag, sources.AsSpan(0, n));
+            SeedSourcesAtColumn(views, tag, sources);
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
-                sources.AsSpan(0, n), state, AddrKeyLen);
+                sources, state, AddrKeyLen);
 
             PerAddressColumnValueMerger<TWriter, TReader, TPin> valueMerger =
                 new(bloom, slotPrefixBuffers);
@@ -407,13 +407,13 @@ public static class PersistedSnapshotMerger
         const int AddrKeyLen = PersistedSnapshotTags.AddressHashPrefixLength;
         using LoserTreeState state = new(n, KeyStride);
         using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(n, n);
-        WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
+        Span<WholeReadSessionMergeSource> sources = sourcesList.AsSpan();
 
         try
         {
-            SeedSourcesAtColumn(views, tag, sources.AsSpan(0, n));
+            SeedSourcesAtColumn(views, tag, sources);
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
-                sources.AsSpan(0, n), state, AddrKeyLen);
+                sources, state, AddrKeyLen);
 
             StorageTrieColumnValueMerger<TWriter, TReader, TPin> valueMerger = new(bloom);
             HsstBTreeMerger.NWayMerge<TWriter, TReader, TPin,
@@ -497,7 +497,7 @@ public static class PersistedSnapshotMerger
                 if (slotSourceCount > 0)
                 {
                     using ArrayPoolList<WholeReadSessionMergeSource> slotMergeSourcesList = new(slotSourceCount, slotSourceCount);
-                    WholeReadSessionMergeSource[] slotSrcArr = slotMergeSourcesList.UnsafeGetInternalArray();
+                    Span<WholeReadSessionMergeSource> slotSrcArr = slotMergeSourcesList.AsSpan();
                     try
                     {
                         for (int j = 0; j < slotSourceCount; j++)
@@ -512,7 +512,7 @@ public static class PersistedSnapshotMerger
 
                         ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
                         NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
-                            slotSrcArr.AsSpan(0, slotSourceCount), slotSourceCount,
+                            slotSrcArr, slotSourceCount,
                             ref slotWriter,
                             ref slotPrefixBuffers,
                             bloom, addrBloomKey);
@@ -625,7 +625,7 @@ public static class PersistedSnapshotMerger
         // outer iteration (created+disposed inside the loop below).
         using LoserTreeState outerState = new(n, OuterStride);
         using ArrayPoolList<WholeReadSessionMergeSource> innerSourcesList = new(n, n);
-        WholeReadSessionMergeSource[] innerSources = innerSourcesList.UnsafeGetInternalArray();
+        Span<WholeReadSessionMergeSource> innerSources = innerSourcesList.AsSpan();
 
         // Reusable 32-byte slot-key scratch for per-slot bloom adds: outerKey (30 bytes)
         // populates [0,30); per-slot innerSuffix (2 bytes) populates [30,32). Allocated once
@@ -702,7 +702,7 @@ public static class PersistedSnapshotMerger
                         innerSources[k] = outer.WithEnumerator(HsstEnumerator.CreateTwoByteSlot(in r, vb));
                     }
                     NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor = new(
-                        innerSources.AsSpan(0, innerN), innerState, InnerKeyLen);
+                        innerSources[..innerN], innerState, InnerKeyLen);
 
                     // Buffer the merged stream so we can size it and pick the inner format
                     // afterward. TwoByteSlotValue caps the data region at ushort.MaxValue;
@@ -826,7 +826,7 @@ public static class PersistedSnapshotMerger
         // keys works at innerKeySize ∈ {2,4,8} BE-stored or auto-LE-stored alike.
         using LoserTreeState state = new(active, innerKeySize);
         using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(active, active);
-        WholeReadSessionMergeSource[] sources = sourcesList.UnsafeGetInternalArray();
+        Span<WholeReadSessionMergeSource> sources = sourcesList.AsSpan();
 
         try
         {
@@ -840,7 +840,7 @@ public static class PersistedSnapshotMerger
                 sources[j] = outer.WithEnumerator(new HsstEnumerator(in r, subBounds[j]));
             }
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
-                sources.AsSpan(0, active), state, innerKeySize);
+                sources, state, innerKeySize);
 
             ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
             HsstPackedArrayMerger.NWayMerge<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, AddrXorStatePathBloomCallback>(
