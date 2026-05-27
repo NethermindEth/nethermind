@@ -55,14 +55,13 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
 
     // Per-Build scratch for HsstBTreeBuilder.ChooseIntermediateChildCount and
     // HsstBTreeBuilder.WriteIndexNode. Previously stackalloc'd per call (255 bytes
-    // each for firstSep / sepBuf, plus variable-sized int[] / byte[] for sepLengths
-    // / keyBuf). Promoted to pooled fields so a hot caller (e.g.
-    // PersistedSnapshotBuilder, which fires many small Builds back-to-back) reuses
-    // the rented buffers across calls. Sized lazily by HsstBTreeBuilder; null until
-    // the first build that needs them.
+    // each for firstSep / sepBuf, plus variable-sized int[] for sepLengths).
+    // Promoted to pooled fields so a hot caller (e.g. PersistedSnapshotBuilder,
+    // which fires many small Builds back-to-back) reuses the rented buffers across
+    // calls. Sized lazily by HsstBTreeBuilder; null until the first build that needs
+    // them.
     internal byte[]? IndexFirstSepScratch = null;
     internal byte[]? IndexSepBufScratch = null;
-    internal byte[]? IndexKeyBufScratch = null;
     internal int[]? IndexSepLengthsScratch = null;
 
     // Root node's first-entry full key, populated by HsstBTreeBuilder.BuildIndex at
@@ -131,7 +130,6 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         if (PrevKeyBuf is not null) { ArrayPool<byte>.Shared.Return(PrevKeyBuf); PrevKeyBuf = null; }
         if (IndexFirstSepScratch is not null) { ArrayPool<byte>.Shared.Return(IndexFirstSepScratch); IndexFirstSepScratch = null; }
         if (IndexSepBufScratch is not null) { ArrayPool<byte>.Shared.Return(IndexSepBufScratch); IndexSepBufScratch = null; }
-        if (IndexKeyBufScratch is not null) { ArrayPool<byte>.Shared.Return(IndexKeyBufScratch); IndexKeyBufScratch = null; }
         if (IndexSepLengthsScratch is not null) { ArrayPool<int>.Shared.Return(IndexSepLengthsScratch); IndexSepLengthsScratch = null; }
     }
 }

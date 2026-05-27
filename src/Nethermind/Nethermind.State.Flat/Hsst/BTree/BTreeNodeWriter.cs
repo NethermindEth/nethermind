@@ -7,7 +7,7 @@ using Nethermind.State.Flat.Hsst;
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// Writes B-tree index nodes using an AddKey/Finalize builder pattern.
+/// Writes a B-tree index node in one call from already-laid-out caller buffers.
 ///
 /// Index node layout (low → high address):
 ///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][CommonPrefixLen: u8][BaseOffset: 6-byte LE]
@@ -51,119 +51,122 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// on the original 2 bytes — feeding the existing 2-byte SIMD floor-scan path.
 /// The 14-bit tailOffset caps remainingkeys at 16 KiB per section.
 ///
-/// Usage: create with writer + metadata + key/value scratch buffers, call AddKey(key, value)
-/// for each entry in sorted key order, call FinalizeNode() to flush the binary layout.
-///
-/// <paramref name="keyBuffer"/> holds intermediate key data during build. Required size:
-/// sum of (2 + key.Length) for each entry. <paramref name="valueBuffer"/> mirrors that for
-/// values: sum of (2 + value.Length). Both are sized by the caller from the known per-node
-/// upper bound and reused across nodes.
+/// Inputs to <see cref="Write{TWriter}"/> are already in their final shape:
+/// <c>fullKeys</c> is a flat <c>count * fullKeyLength</c> buffer (entry i lives at
+/// <c>fullKeys[i * fullKeyLength ..][..fullKeyLength]</c>); each entry's emitted key is
+/// the slice <c>[prefixLen, sepLengths[i])</c> of its full key (Variable) or
+/// <c>[prefixLen, prefixLen + metadata.KeySlotSize)</c> (Uniform). <c>values</c> is a
+/// flat <c>count * metadata.ValueSlotSize</c> buffer, each entry already encoded LE with
+/// any <c>metadata.BaseOffset</c> subtracted.
 /// </summary>
-internal ref struct BTreeNodeWriter<TWriter>
+internal static class BTreeNodeWriter<TWriter>
     where TWriter : IByteBufferWriter
 {
-    private ref TWriter _writer;
-    private readonly BTreeNodeMetadata _metadata;
-    private readonly Span<byte> _keyBuf;
-    private readonly Span<byte> _valueBuf;
-    private readonly ReadOnlySpan<byte> _commonKeyPrefix;
-    private int _count;
-    private int _keyPos;    // grows forward from 0 in _keyBuf
-    private int _valuePos;  // grows forward from 0 in _valueBuf
+    private const int HeaderSize = 12;
 
-    public BTreeNodeWriter(
+    /// <summary>14-bit tailOffset cap for the prefix-inlined Variable key section.</summary>
+    private const int MaxVariableKeyTailBytes = (1 << 14) - 1; // 16383
+
+    /// <summary>
+    /// Write the empty-node form: header only (KeyCount = KeySize = 0, CommonPrefixLen = 0).
+    /// For an empty intermediate node (single-child b-tree intermediate, no separators)
+    /// <see cref="BTreeNodeMetadata.BaseOffset"/> names the lone child's absolute offset
+    /// and the reader's no-floor fallback descends to it.
+    /// </summary>
+    public static void WriteEmpty(ref TWriter writer, in BTreeNodeMetadata metadata)
+    {
+        // [Flags u8][KeyCount=0 u16][KeySize=0 u16][CommonPrefixLen=0 u8][BaseOffset 6 bytes LE]
+        // ValueSlotSize is encoded into the Flags byte but is meaningless when KeyCount = 0;
+        // default to 2 (the smallest supported width).
+        if (metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
+            throw new InvalidOperationException(
+                $"BaseOffset {metadata.BaseOffset} exceeds 6-byte (48-bit) header field");
+        int emptyValueSlot = metadata.ValueSlotSize == 0 ? 2 : metadata.ValueSlotSize;
+        byte flags = EncodeFlags(metadata.NodeKind, keyType: 0, EncodeValueSizeCode(emptyValueSlot), keyLe: false);
+        Span<byte> span = writer.GetSpan(HeaderSize);
+        span[0] = flags;
+        span[1..5].Clear();   // KeyCount(2) + KeySize(2) = 0
+        span[5] = 0;          // CommonPrefixLen
+        ulong v = metadata.BaseOffset;
+        span[6] = (byte)v;
+        span[7] = (byte)(v >> 8);
+        span[8] = (byte)(v >> 16);
+        span[9] = (byte)(v >> 24);
+        span[10] = (byte)(v >> 32);
+        span[11] = (byte)(v >> 40);
+        writer.Advance(HeaderSize);
+    }
+
+    /// <summary>
+    /// Write the full binary layout for an index node with <paramref name="count"/> entries.
+    /// Keys are read from <paramref name="fullKeys"/> using stride <paramref name="fullKeyLength"/>:
+    /// for Uniform (<c>metadata.KeyType == 1</c>) each entry contributes
+    /// <c>metadata.KeySlotSize</c> bytes starting at <paramref name="prefixLen"/>; for
+    /// Variable (<c>metadata.KeyType == 0</c>) entry <c>i</c> contributes
+    /// <c>sepLengths[i] - prefixLen</c> bytes starting at <paramref name="prefixLen"/>.
+    /// Values are read flat from <paramref name="values"/> with stride
+    /// <c>metadata.ValueSlotSize</c>; any <c>metadata.BaseOffset</c> must already have been
+    /// subtracted by the caller.
+    /// </summary>
+    /// <param name="sepLengths">
+    /// Per-entry full slice length (key prefix included), used only when
+    /// <c>metadata.KeyType == 0</c>. May be empty/<c>default</c> for Uniform.
+    /// </param>
+    public static void Write(
         ref TWriter writer,
-        BTreeNodeMetadata metadata,
-        Span<byte> keyBuffer,
-        Span<byte> valueBuffer,
-        ReadOnlySpan<byte> commonKeyPrefix = default)
+        in BTreeNodeMetadata metadata,
+        int count,
+        scoped ReadOnlySpan<byte> fullKeys,
+        int fullKeyLength,
+        int prefixLen,
+        scoped ReadOnlySpan<int> sepLengths,
+        scoped ReadOnlySpan<byte> values,
+        scoped ReadOnlySpan<byte> commonKeyPrefix)
     {
-        _writer = ref writer;
-        _metadata = metadata;
-        _keyBuf = keyBuffer;
-        _valueBuf = valueBuffer;
-        _commonKeyPrefix = commonKeyPrefix;
-        _count = 0;
-        _keyPos = 0;
-        _valuePos = 0;
-    }
-
-    /// <summary>
-    /// Add a key-value pair. Must be called in sorted key order.
-    /// If <see cref="BTreeNodeMetadata.BaseOffset"/> is non-zero, value bytes must already
-    /// have the base offset subtracted before calling AddKey.
-    /// </summary>
-    public void AddKey(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
-    {
-        // Buffer value: [u16 length][value bytes]
-        BinaryPrimitives.WriteUInt16LittleEndian(_valueBuf[_valuePos..], (ushort)value.Length);
-        _valuePos += 2;
-        value.CopyTo(_valueBuf[_valuePos..]);
-        _valuePos += value.Length;
-
-        // Store key in keyBuf: [u16 length][key bytes]
-        BinaryPrimitives.WriteUInt16LittleEndian(_keyBuf[_keyPos..], (ushort)key.Length);
-        _keyPos += 2;
-        key.CopyTo(_keyBuf[_keyPos..]);
-        _keyPos += key.Length;
-
-        _count++;
-    }
-
-    /// <summary>
-    /// Write the final binary layout. The ref writer is already advanced.
-    ///
-    /// <see cref="BTreeNodeMetadata.KeyType"/>, <see cref="BTreeNodeMetadata.KeySlotSize"/>,
-    /// and the common-key-prefix passed at construction are taken as-is — the writer does
-    /// not auto-detect or adjust. Callers (e.g. <c>HsstBTreeBuilder</c>) decide both jointly
-    /// via <see cref="BTreeNodeLayoutPlanner.Plan"/> and pre-strip prefix bytes from
-    /// each <see cref="AddKey"/> call so that <see cref="_keyBuf"/> already holds suffixes.
-    /// </summary>
-    public void FinalizeNode()
-    {
-        if (_count == 0)
+        if (count == 0)
         {
-            WriteEmptyNode();
+            WriteEmpty(ref writer, metadata);
             return;
         }
 
-        // Section sizes are known from the buffered scratches without writing yet.
-        int keySize = _metadata.KeyType switch
+        // KeySize header field: per-entry slot size for Uniform; total section byte
+        // count for Variable.
+        int keySize = metadata.KeyType switch
         {
-            1 => _metadata.KeySlotSize,
-            2 => _metadata.KeySlotSize,
-            _ => ComputeVariableKeySectionSize(),
+            1 => metadata.KeySlotSize,
+            _ => ComputeVariableKeySectionSize(count, sepLengths, prefixLen),
         };
-        int valueSize = _metadata.ValueSlotSize;
 
         // 1) Header.
-        WriteHeader(keySize, valueSize, _commonKeyPrefix);
+        WriteHeader(ref writer, in metadata, count, keySize, commonKeyPrefix);
 
         // 2) Keys section.
-        switch (_metadata.KeyType)
+        switch (metadata.KeyType)
         {
-            case 1: WriteUniformKeys(); break;
-            default: WriteVariableKeys(); break;
+            case 1:
+                WriteUniformKeys(ref writer, in metadata, count, fullKeys, fullKeyLength, prefixLen);
+                break;
+            default:
+                WriteVariableKeys(ref writer, count, fullKeys, fullKeyLength, prefixLen, sepLengths);
+                break;
         }
 
         // 3) Values section — always Uniform (no Variable-value shape for b-tree nodes).
-        WriteUniformValues();
+        WriteUniformValues(ref writer, count, values, metadata.ValueSlotSize);
 
         // When the keys section uses Variable encoding, its u16 offset table cannot
         // address bytes past 64 KiB. We've already enforced that the section alone is
         // below the cap. Cap the *whole* node at 64 KiB so any future Variable-relative
         // offset reasoning stays valid.
-        if (_metadata.KeyType == 0)
+        if (metadata.KeyType == 0)
         {
-            int totalNodeSize = HeaderSize + keySize + valueSize;
+            int totalNodeSize = HeaderSize + keySize + metadata.ValueSlotSize;
             const int MaxVariableNodeSize = 64 * 1024;
             if (totalNodeSize > MaxVariableNodeSize)
                 throw new InvalidOperationException(
                     $"Index node with Variable key section exceeds 64 KiB ({totalNodeSize} bytes); split before finalizing.");
         }
     }
-
-    private const int HeaderSize = 12;
 
     /// <summary>
     /// Map a <see cref="BTreeNodeMetadata.ValueSlotSize"/> to its 2-bit Flags encoding
@@ -192,63 +195,29 @@ internal ref struct BTreeNodeWriter<TWriter>
         ((valueSizeCode & 0x03) << 4) |
         (keyLe ? 0x40 : 0x00));
 
-    private void WriteEmptyNode()
-    {
-        // Empty header: flags only (leaf/intermediate), KeyCount = KeySize = 0,
-        // CommonPrefixLen = 0. BaseOffset is preserved from the caller — for an
-        // empty intermediate node (single-child b-tree intermediate, no separators)
-        // BaseOffset names the lone child's absolute offset and the reader's
-        // no-floor fallback descends to it. ValueSlotSize is encoded into the flags
-        // byte but is meaningless when KeyCount = 0; default to 2 (the smallest
-        // supported width).
-        // [Flags u8][KeyCount=0 u16][KeySize=0 u16][CommonPrefixLen=0 u8][BaseOffset 6 bytes LE]
-        if (_metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
-            throw new InvalidOperationException(
-                $"BaseOffset {_metadata.BaseOffset} exceeds 6-byte (48-bit) header field");
-        int emptyValueSlot = _metadata.ValueSlotSize == 0 ? 2 : _metadata.ValueSlotSize;
-        byte flags = EncodeFlags(_metadata.NodeKind, keyType: 0, EncodeValueSizeCode(emptyValueSlot), keyLe: false);
-        Span<byte> span = _writer.GetSpan(12);
-        span[0] = flags;
-        span[1..5].Clear();   // KeyCount(2) + KeySize(2) = 0
-        span[5] = 0;          // CommonPrefixLen
-        ulong v = _metadata.BaseOffset;
-        span[6] = (byte)v;
-        span[7] = (byte)(v >> 8);
-        span[8] = (byte)(v >> 16);
-        span[9] = (byte)(v >> 24);
-        span[10] = (byte)(v >> 32);
-        span[11] = (byte)(v >> 40);
-        _writer.Advance(12);
-    }
-
-    /// <summary>14-bit tailOffset cap for the prefix-inlined Variable key section.</summary>
-    private const int MaxVariableKeyTailBytes = (1 << 14) - 1; // 16383
-
-    private int ComputeVariableKeySectionSize()
+    private static int ComputeVariableKeySectionSize(int count, scoped ReadOnlySpan<int> sepLengths, int prefixLen)
     {
         // SoA layout: [ prefixArr N×u16 ][ offsetArr N×u16 ][ remainingkeys ].
         // Each key contributes 4 bytes (prefix slot + offset slot) plus max(0, len-2) tail bytes.
         int tailBytes = 0;
-        int keySrc = 0;
-        for (int i = 0; i < _count; i++)
+        for (int i = 0; i < count; i++)
         {
-            int len = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf[keySrc..]);
-            keySrc += 2 + len;
+            int len = sepLengths[i] - prefixLen;
             if (len > 2) tailBytes += len - 2;
         }
         if (tailBytes > MaxVariableKeyTailBytes)
             throw new InvalidOperationException(
                 $"Variable key tail section ({tailBytes} bytes) exceeds 14-bit tailOffset cap (16 KiB); split before finalizing.");
-        return _count * 4 + tailBytes;
+        return count * 4 + tailBytes;
     }
 
-    private void WriteHeader(int keySize, int valueSize, scoped ReadOnlySpan<byte> commonKeyPrefix)
+    private static void WriteHeader(ref TWriter writer, in BTreeNodeMetadata metadata, int count, int keySize, scoped ReadOnlySpan<byte> commonKeyPrefix)
     {
         // Header fields are sized for the 64 KiB per-node cap. ValueSize is encoded as a
         // 2-bit code in Flags bits 3-4 (only {2,3,4,6} are valid); reject anything beyond
         // the encodable range up-front rather than silently truncating.
-        if ((uint)_count > ushort.MaxValue)
-            throw new InvalidOperationException($"Index node entry count {_count} exceeds u16 header field");
+        if ((uint)count > ushort.MaxValue)
+            throw new InvalidOperationException($"Index node entry count {count} exceeds u16 header field");
         if ((uint)keySize > ushort.MaxValue)
             throw new InvalidOperationException($"Index node KeySize {keySize} exceeds u16 header field (node > 64 KiB)");
 
@@ -256,69 +225,72 @@ internal ref struct BTreeNodeWriter<TWriter>
         if ((uint)prefixLen > byte.MaxValue)
             throw new InvalidOperationException($"Common key prefix length {prefixLen} exceeds u8 header field");
 
-        bool keyLe = ShouldEncodeKeyLittleEndian();
-        byte flags = EncodeFlags(_metadata.NodeKind, _metadata.KeyType, EncodeValueSizeCode(valueSize), keyLe);
+        bool keyLe = ShouldEncodeKeyLittleEndian(in metadata);
+        byte flags = EncodeFlags(metadata.NodeKind, metadata.KeyType, EncodeValueSizeCode(metadata.ValueSlotSize), keyLe);
 
-        if (_metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
+        if (metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
             throw new InvalidOperationException(
-                $"BaseOffset {_metadata.BaseOffset} exceeds 6-byte (48-bit) header field");
+                $"BaseOffset {metadata.BaseOffset} exceeds 6-byte (48-bit) header field");
 
         // Fixed 12-byte header:
         //   [Flags u8][KeyCount u16][KeySize u16][CommonPrefixLen u8][BaseOffset 6 bytes LE]
         // BaseOffset sits at the end so the key-parse-critical bytes are grouped first;
         // BaseOffset is only consumed after a successful floor match.
-        Span<byte> head = _writer.GetSpan(12);
+        Span<byte> head = writer.GetSpan(HeaderSize);
         head[0] = flags;
-        BinaryPrimitives.WriteUInt16LittleEndian(head[1..], (ushort)_count);
+        BinaryPrimitives.WriteUInt16LittleEndian(head[1..], (ushort)count);
         BinaryPrimitives.WriteUInt16LittleEndian(head[3..], (ushort)keySize);
         head[5] = (byte)prefixLen;
-        ulong v = _metadata.BaseOffset;
+        ulong v = metadata.BaseOffset;
         head[6] = (byte)v;
         head[7] = (byte)(v >> 8);
         head[8] = (byte)(v >> 16);
         head[9] = (byte)(v >> 24);
         head[10] = (byte)(v >> 32);
         head[11] = (byte)(v >> 40);
-        _writer.Advance(12);
+        writer.Advance(HeaderSize);
     }
 
     /// <summary>
     /// Whether the keys section should be written byte-reversed (Flags bit 5). Honored only
     /// for the slot widths the SIMD/integer-compare reader path supports.
     /// </summary>
-    private bool ShouldEncodeKeyLittleEndian()
+    private static bool ShouldEncodeKeyLittleEndian(in BTreeNodeMetadata metadata)
     {
         // Variable (KeyType=0) is always LE-stored: the prefixArr is unconditionally
         // 2-byte slots and the integer-compare floor-search relies on the byte-reversed
         // encoding regardless of the metadata.IsKeyLittleEndian flag set on the writer.
-        if (_metadata.KeyType == 0) return true;
-        if (!_metadata.IsKeyLittleEndian) return false;
+        if (metadata.KeyType == 0) return true;
+        if (!metadata.IsKeyLittleEndian) return false;
         // Honored only for the shapes the SIMD direct-compare fast path supports: Uniform with
         // KeySlotSize ∈ {2,4,8}. GetKey returns raw stored bytes (LE-reversed) under this flag;
         // GetFullKey reverses back into a caller dest.
-        return _metadata.KeyType == 1 && _metadata.KeySlotSize is 2 or 4 or 8;
+        return metadata.KeyType == 1 && metadata.KeySlotSize is 2 or 4 or 8;
     }
 
-    private void WriteUniformKeys()
+    private static void WriteUniformKeys(
+        ref TWriter writer,
+        in BTreeNodeMetadata metadata,
+        int count,
+        scoped ReadOnlySpan<byte> fullKeys,
+        int fullKeyLength,
+        int prefixLen)
     {
-        int keyLen = _metadata.KeySlotSize;
-        bool reverse = ShouldEncodeKeyLittleEndian();
-        int keySrc = 0;
-        for (int i = 0; i < _count; i++)
+        int keyLen = metadata.KeySlotSize;
+        bool reverse = ShouldEncodeKeyLittleEndian(in metadata);
+        for (int i = 0; i < count; i++)
         {
-            keySrc += 2; // skip u16 length (known from keyLen)
-            ReadOnlySpan<byte> src = _keyBuf.Slice(keySrc, keyLen);
+            ReadOnlySpan<byte> src = fullKeys.Slice(i * fullKeyLength + prefixLen, keyLen);
             if (reverse)
             {
-                Span<byte> slot = _writer.GetSpan(keyLen);
+                Span<byte> slot = writer.GetSpan(keyLen);
                 ReverseInto(src, slot[..keyLen]);
-                _writer.Advance(keyLen);
+                writer.Advance(keyLen);
             }
             else
             {
-                IByteBufferWriter.Copy(ref _writer, src);
+                IByteBufferWriter.Copy(ref writer, src);
             }
-            keySrc += keyLen;
         }
     }
 
@@ -329,7 +301,13 @@ internal ref struct BTreeNodeWriter<TWriter>
         for (int i = 0; i < n; i++) dst[i] = src[n - 1 - i];
     }
 
-    private void WriteVariableKeys()
+    private static void WriteVariableKeys(
+        ref TWriter writer,
+        int count,
+        scoped ReadOnlySpan<byte> fullKeys,
+        int fullKeyLength,
+        int prefixLen,
+        scoped ReadOnlySpan<int> sepLengths)
     {
         // SoA layout: [ prefixArr N×u16 LE ][ offsetArr N×u16 LE ][ remainingkeys ].
         //
@@ -345,22 +323,19 @@ internal ref struct BTreeNodeWriter<TWriter>
         //   Tail length for tag 11 = offsetArr[i+1].tailOffset - offsetArr[i].tailOffset
         //   (sentinel for i=N is remainingkeys.Length).
 
-        int prefixArrSize = _count * 2;
-        int offsetArrSize = _count * 2;
-        Span<byte> prefixArr = _writer.GetSpan(prefixArrSize)[..prefixArrSize];
-        // We need to fill prefixArr while walking _keyBuf, but offsetArr depends on the
+        int prefixArrSize = count * 2;
+        int offsetArrSize = count * 2;
+        Span<byte> prefixArr = writer.GetSpan(prefixArrSize)[..prefixArrSize];
+        // We need to fill prefixArr while walking the keys, but offsetArr depends on the
         // running tail cursor that we also build during the same walk. Compute offsetArr
         // into a temp buffer first, then emit prefix bytes, then offset bytes, then tails.
-        Span<ushort> offsets = stackalloc ushort[_count];
+        Span<ushort> offsets = stackalloc ushort[count];
 
-        int keySrc = 0;
         int tailCursor = 0;
-        for (int i = 0; i < _count; i++)
+        for (int i = 0; i < count; i++)
         {
-            int len = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf[keySrc..]);
-            keySrc += 2;
-            ReadOnlySpan<byte> key = _keyBuf.Slice(keySrc, len);
-            keySrc += len;
+            int len = sepLengths[i] - prefixLen;
+            ReadOnlySpan<byte> key = fullKeys.Slice(i * fullKeyLength + prefixLen, len);
 
             // Prefix slot: LE-stored = byte-reversed original prefix. Original prefix
             // bytes [a, b] → stored [b, a]; LE u16 load of [b, a] = (a<<8)|b.
@@ -377,41 +352,31 @@ internal ref struct BTreeNodeWriter<TWriter>
         if (tailCursor > MaxVariableKeyTailBytes)
             throw new InvalidOperationException(
                 $"Variable key tail section ({tailCursor} bytes) exceeds 14-bit tailOffset cap (16 KiB); split before finalizing.");
-        _writer.Advance(prefixArrSize);
+        writer.Advance(prefixArrSize);
 
         // Offset array.
-        Span<byte> offsetArr = _writer.GetSpan(offsetArrSize)[..offsetArrSize];
-        for (int i = 0; i < _count; i++)
+        Span<byte> offsetArr = writer.GetSpan(offsetArrSize)[..offsetArrSize];
+        for (int i = 0; i < count; i++)
             BinaryPrimitives.WriteUInt16LittleEndian(offsetArr[(i * 2)..], offsets[i]);
-        _writer.Advance(offsetArrSize);
+        writer.Advance(offsetArrSize);
 
         // Tail bytes (only for keys with len > 2; in entry order).
-        keySrc = 0;
-        for (int i = 0; i < _count; i++)
+        for (int i = 0; i < count; i++)
         {
-            int len = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf[keySrc..]);
-            keySrc += 2;
+            int len = sepLengths[i] - prefixLen;
             if (len > 2)
             {
-                IByteBufferWriter.Copy(ref _writer, _keyBuf.Slice(keySrc + 2, len - 2));
+                IByteBufferWriter.Copy(ref writer, fullKeys.Slice(i * fullKeyLength + prefixLen + 2, len - 2));
             }
-            keySrc += len;
         }
     }
 
-    private void WriteUniformValues()
+    private static void WriteUniformValues(ref TWriter writer, int count, scoped ReadOnlySpan<byte> values, int valueSlotSize)
     {
-        int valLen = _metadata.ValueSlotSize;
-        int valSrc = 0;
-        for (int i = 0; i < _count; i++)
+        if (valueSlotSize <= 0) return;
+        for (int i = 0; i < count; i++)
         {
-            valSrc += 2; // skip u16 length
-            if (valLen > 0)
-            {
-                IByteBufferWriter.Copy(ref _writer, _valueBuf.Slice(valSrc, valLen));
-            }
-            valSrc += valLen;
+            IByteBufferWriter.Copy(ref writer, values.Slice(i * valueSlotSize, valueSlotSize));
         }
     }
-
 }

@@ -725,7 +725,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
         ref HsstBTreeBuilderBuffers bufs = ref Buffers;
         int count = _pendingCount;
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, count * (2 + 8)));
+        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, count * 8));
 
         // The pending Entry descriptors are the trailing <c>count</c> slots of
         // CurrentLevel; their first-keys are the trailing <c>count * _keyLength</c>
@@ -774,7 +774,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         Debug.Assert(bufs.CurrentLevel.Count == 1, "WrapLoneEntryAsLeaf expects a single descriptor on CurrentLevel.");
         Debug.Assert(_entryCount == 1, "WrapLoneEntryAsLeaf is only valid for single-entry builds.");
 
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, 2 + 8));
+        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, 8));
 
         long nodeStart = _writer.Written - _baseOffset;
         ReadOnlySpan<HsstIndexNodeInfo> children = bufs.CurrentLevel.AsSpan();
@@ -918,7 +918,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         if (minIntermediateBytes > maxIntermediateBytes) minIntermediateBytes = maxIntermediateBytes;
 
         int valueScratchEntries = Math.Max(maxLeafEntries, maxIntermediateEntries);
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, valueScratchEntries * (2 + 8)));
+        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, valueScratchEntries * 8));
         byte[] valueScratchArr = bufs.ValueScratch!;
         byte[] commonPrefixArr = bufs.CommonPrefixArr!;
 
@@ -1056,7 +1056,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private int WriteEmptyIndexNode()
     {
         long nodeStart = _writer.Written;
-        scoped BTreeNodeWriter<TWriter> indexWriter = new(ref _writer, new BTreeNodeMetadata
+        BTreeNodeWriter<TWriter>.WriteEmpty(ref _writer, new BTreeNodeMetadata
         {
             NodeKind = BTreeNodeKind.Intermediate,
             KeyType = 0,
@@ -1066,8 +1066,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             // and the size that gets encoded into the Flags byte. The values section is
             // 0 bytes either way (KeyCount * ValueSize = 0 * 2 = 0).
             ValueSlotSize = 2,
-        }, default, default);
-        indexWriter.FinalizeNode();
+        });
         return checked((int)(_writer.Written - nodeStart));
     }
 
@@ -1134,39 +1133,37 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             childFirstKeys[..prefixLen].CopyTo(commonPrefixBuf);
         }
 
-        int perEntryKeyBytes = Math.Max(keySlotSize, _keyLength - prefixLen);
-        int keyBufSize = count * (2 + Math.Max(1, perEntryKeyBytes));
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.IndexKeyBufScratch, keyBufSize);
-        Span<byte> keyBuf = bufs.IndexKeyBufScratch.AsSpan(0, keyBufSize);
-        Span<byte> valueScratchSlice = valueScratch[..(count * (2 + valueSlotSize))];
-
-        scoped BTreeNodeWriter<TWriter> indexWriter = new(ref _writer, new BTreeNodeMetadata
-        {
-            NodeKind = BTreeNodeKind.Intermediate,
-            KeyType = keyType,
-            BaseOffset = (ulong)baseOffset,
-            KeySlotSize = keySlotSize,
-            ValueSlotSize = valueSlotSize,
-            IsKeyLittleEndian = keyLittleEndian,
-        }, keyBuf, valueScratchSlice, commonPrefixBuf);
-
-        Span<byte> valueBuf = stackalloc byte[8];
-
+        // Pre-encode all child offsets as a flat values block: count * valueSlotSize bytes,
+        // each entry already delta-adjusted against baseOffset and written LE. BTreeNodeWriter
+        // reads keys in-place from childFirstKeys and values stride-wise from this block,
+        // so no per-entry staging copy is needed.
+        Span<byte> values = valueScratch[..(count * valueSlotSize)];
         for (int i = 0; i < count; i++)
         {
-            // Each child's first-key occupies _keyLength bytes at slot i of childFirstKeys.
-            ReadOnlySpan<byte> currKey = _keyLength == 0
-                ? default
-                : childFirstKeys.Slice(i * _keyLength, _keyLength);
             long delta = children[i].ChildOffset - baseOffset;
+            int off = i * valueSlotSize;
             for (int b = 0; b < valueSlotSize; b++)
-                valueBuf[b] = (byte)(delta >> (b * 8));
-            int sliceLen = keyType == 1 ? keySlotSize : sepLengths[i] - prefixLen;
-            indexWriter.AddKey(
-                currKey.Slice(prefixLen, sliceLen),
-                valueBuf[..valueSlotSize]);
+                values[off + b] = (byte)(delta >> (b * 8));
         }
-        indexWriter.FinalizeNode();
+
+        BTreeNodeWriter<TWriter>.Write(
+            ref _writer,
+            new BTreeNodeMetadata
+            {
+                NodeKind = BTreeNodeKind.Intermediate,
+                KeyType = keyType,
+                BaseOffset = (ulong)baseOffset,
+                KeySlotSize = keySlotSize,
+                ValueSlotSize = valueSlotSize,
+                IsKeyLittleEndian = keyLittleEndian,
+            },
+            count,
+            childFirstKeys,
+            fullKeyLength: _keyLength,
+            prefixLen,
+            sepLengths: keyType == 1 ? default : sepLengths,
+            values,
+            commonPrefixBuf);
         nodePrefixLen = prefixLen;
     }
 

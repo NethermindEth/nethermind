@@ -127,19 +127,10 @@ public class BTreeNodeTests
     {
         using PooledByteBufferWriter pooled = new(1024);
         ref PooledByteBufferWriter.Writer bufWriter = ref pooled.GetWriter();
-        int keyBufSize = 0;
-        for (int i = 0; i < separatorHexes.Length; i++) keyBufSize += 2 + separatorHexes[i].Length / 2;
-        Span<byte> keyBuf = stackalloc byte[keyBufSize];
-        Span<byte> valScratch = stackalloc byte[separatorHexes.Length * (2 + 4)];
-        BTreeNodeWriter<PooledByteBufferWriter.Writer> writer = new(ref bufWriter, new BTreeNodeMetadata { KeyType = 1, KeySlotSize = keyLen }, keyBuf, valScratch);
-        Span<byte> valBuf = stackalloc byte[4];
+        byte[][] keys = new byte[separatorHexes.Length][];
         for (int i = 0; i < separatorHexes.Length; i++)
-        {
-            byte[] key = separatorHexes[i].Length > 0 ? Convert.FromHexString(separatorHexes[i]) : [];
-            BinaryPrimitives.WriteInt32LittleEndian(valBuf, values[i]);
-            writer.AddKey(key, valBuf);
-        }
-        writer.FinalizeNode();
+            keys[i] = separatorHexes[i].Length > 0 ? Convert.FromHexString(separatorHexes[i]) : [];
+        WriteNode(ref bufWriter, new BTreeNodeMetadata { KeyType = 1, KeySlotSize = keyLen }, prefixLen: 0, keys, fullKeyLength: keyLen, values);
 
         ReadOnlySpan<byte> output = pooled.WrittenSpan;
         Assert.That(Convert.ToHexString(output), Is.EqualTo(expectedHex));
@@ -177,16 +168,15 @@ public class BTreeNodeTests
         ulong baseOffset = 100;
         using PooledByteBufferWriter pooled = new(1024);
         ref PooledByteBufferWriter.Writer bufWriter = ref pooled.GetWriter();
-        Span<byte> keyBuf = stackalloc byte[3 * (2 + 1)]; // 3 entries, each key is 1 byte
-        Span<byte> valScratch = stackalloc byte[3 * (2 + 4)];
-        BTreeNodeWriter<PooledByteBufferWriter.Writer> writer = new(ref bufWriter, new BTreeNodeMetadata { KeyType = 1, KeySlotSize = 1, BaseOffset = baseOffset }, keyBuf, valScratch);
-        Span<byte> valBuf = stackalloc byte[4];
-        foreach ((string sepHex, int val) in new[] { ("41", 100), ("43", 200), ("45", 300) })
+        (string sepHex, int val)[] entries = [("41", 100), ("43", 200), ("45", 300)];
+        byte[][] keys = new byte[entries.Length][];
+        int[] adjustedValues = new int[entries.Length];
+        for (int i = 0; i < entries.Length; i++)
         {
-            BinaryPrimitives.WriteInt32LittleEndian(valBuf, val - (int)baseOffset);
-            writer.AddKey(Convert.FromHexString(sepHex), valBuf);
+            keys[i] = Convert.FromHexString(entries[i].sepHex);
+            adjustedValues[i] = entries[i].val - (int)baseOffset;
         }
-        writer.FinalizeNode();
+        WriteNode(ref bufWriter, new BTreeNodeMetadata { KeyType = 1, KeySlotSize = 1, BaseOffset = baseOffset }, prefixLen: 0, keys, fullKeyLength: 1, adjustedValues);
 
         ReadOnlySpan<byte> output = pooled.WrittenSpan;
         Assert.That(Convert.ToHexString(output), Is.EqualTo(expectedHex));
@@ -252,19 +242,14 @@ public class BTreeNodeTests
     {
         using PooledByteBufferWriter pooled = new(1024);
         ref PooledByteBufferWriter.Writer bufWriter = ref pooled.GetWriter();
-        int keyBufSize = 0;
-        for (int i = 0; i < separatorHexes.Length; i++) keyBufSize += 2 + separatorHexes[i].Length / 2;
-        Span<byte> keyBuf = stackalloc byte[keyBufSize];
-        Span<byte> valScratch = stackalloc byte[separatorHexes.Length * (2 + 4)];
-        BTreeNodeWriter<PooledByteBufferWriter.Writer> writer = new(ref bufWriter, new BTreeNodeMetadata { KeyType = 0 }, keyBuf, valScratch);
-        Span<byte> valBuf = stackalloc byte[4];
+        byte[][] keys = new byte[separatorHexes.Length][];
+        int maxLen = 0;
         for (int i = 0; i < separatorHexes.Length; i++)
         {
-            byte[] key = separatorHexes[i].Length > 0 ? Convert.FromHexString(separatorHexes[i]) : [];
-            BinaryPrimitives.WriteInt32LittleEndian(valBuf, values[i]);
-            writer.AddKey(key, valBuf);
+            keys[i] = separatorHexes[i].Length > 0 ? Convert.FromHexString(separatorHexes[i]) : [];
+            if (keys[i].Length > maxLen) maxLen = keys[i].Length;
         }
-        writer.FinalizeNode();
+        WriteNode(ref bufWriter, new BTreeNodeMetadata { KeyType = 0 }, prefixLen: 0, keys, fullKeyLength: Math.Max(1, maxLen), values);
 
         ReadOnlySpan<byte> output = pooled.WrittenSpan;
         Assert.That(Convert.ToHexString(output), Is.EqualTo(expectedHex));
@@ -290,24 +275,22 @@ public class BTreeNodeTests
         const int entries = 80;
         const int keyLen = 256;
 
-        byte[] keyBuf = new byte[entries * (2 + keyLen)];
-        byte[] valBufBig = new byte[entries * (2 + 4)];
-        using PooledByteBufferWriter pooled = new(entries * (2 + keyLen) + 1024);
+        using PooledByteBufferWriter pooled = new(entries * keyLen + 1024);
         ref PooledByteBufferWriter.Writer bufWriter = ref pooled.GetWriter();
-        BTreeNodeWriter<PooledByteBufferWriter.Writer> writer = new(ref bufWriter, new BTreeNodeMetadata { KeyType = 0 }, keyBuf, valBufBig);
-        Span<byte> valBuf = stackalloc byte[4];
-        byte[] key = new byte[keyLen];
+        byte[][] keys = new byte[entries][];
+        int[] values = new int[entries];
         for (int i = 0; i < entries; i++)
         {
             // Sort by varying byte 0 across i. Byte 0 differs between consecutive
             // entries → no common-prefix optimization; full key length is preserved.
-            key[0] = (byte)i;
-            BinaryPrimitives.WriteInt32LittleEndian(valBuf, i);
-            writer.AddKey(key, valBuf);
+            byte[] k = new byte[keyLen];
+            k[0] = (byte)i;
+            keys[i] = k;
+            values[i] = i;
         }
 
         InvalidOperationException? caught = null;
-        try { writer.FinalizeNode(); }
+        try { WriteNode(ref bufWriter, new BTreeNodeMetadata { KeyType = 0 }, prefixLen: 0, keys, fullKeyLength: keyLen, values); }
         catch (InvalidOperationException ex) { caught = ex; }
         Assert.That(caught, Is.Not.Null, "Expected InvalidOperationException for 14-bit tailOffset overflow");
     }
@@ -333,19 +316,12 @@ public class BTreeNodeTests
             BuildKey(255, 0x07),
         ];
 
-        byte[] keyBuf = new byte[keys.Sum(k => 2 + k.Length)];
-        byte[] valScratch = new byte[keys.Length * (2 + 4)];
         using PooledByteBufferWriter pooled = new(4096);
         ref PooledByteBufferWriter.Writer bw = ref pooled.GetWriter();
-        BTreeNodeWriter<PooledByteBufferWriter.Writer> writer = new(ref bw,
-            new BTreeNodeMetadata { KeyType = 0 }, keyBuf, valScratch);
-        Span<byte> valBuf = stackalloc byte[4];
-        for (int i = 0; i < keys.Length; i++)
-        {
-            BinaryPrimitives.WriteInt32LittleEndian(valBuf, i * 11);
-            writer.AddKey(keys[i], valBuf);
-        }
-        writer.FinalizeNode();
+        int maxLen = keys.Max(k => k.Length);
+        int[] values = new int[keys.Length];
+        for (int i = 0; i < keys.Length; i++) values[i] = i * 11;
+        WriteNode(ref bw, new BTreeNodeMetadata { KeyType = 0 }, prefixLen: 0, keys, fullKeyLength: maxLen, values);
 
         BTreeNodeReader reader = BTreeNodeReader.ReadFromStart(pooled.WrittenSpan, 0);
         Assert.That(reader.EntryCount, Is.EqualTo(keys.Length));
@@ -486,49 +462,42 @@ public class BTreeNodeTests
         byte[] commonPrefix = Convert.FromHexString("DEADBEEF");
         int slotSize = keyType == 1 ? 1 : 0;
 
-        byte[] keyBuf = new byte[separatorHexes.Length * (2 + 1)];
-        byte[] valScratch = new byte[separatorHexes.Length * (2 + 4)];
         using PooledByteBufferWriter pooled = new(1024);
         ref PooledByteBufferWriter.Writer w = ref pooled.GetWriter();
         // Production nodes drop the inline prefix bytes — the reader receives them via the
         // descending caller's parentSeparator parameter (sourced from the parent's separator
         // at descent, or from the HSST trailer for the root). This test passes commonPrefix
         // directly to ReadFromStart below to simulate that descent supply.
-        BTreeNodeWriter<PooledByteBufferWriter.Writer> writer = new(ref w, new BTreeNodeMetadata
-        {
-            KeyType = keyType,
-            KeySlotSize = slotSize,
-        }, keyBuf, valScratch, commonPrefix);
-        Span<byte> valBuf = stackalloc byte[4];
+        byte[][] fullKeys = new byte[separatorHexes.Length][];
         for (int i = 0; i < separatorHexes.Length; i++)
-        {
-            BinaryPrimitives.WriteInt32LittleEndian(valBuf, values[i]);
-            byte[] sep = Convert.FromHexString(separatorHexes[i]);
-            writer.AddKey(sep.AsSpan(prefixLen), valBuf);
-        }
-        writer.FinalizeNode();
+            fullKeys[i] = Convert.FromHexString(separatorHexes[i]);
+        WriteNode(ref w,
+            new BTreeNodeMetadata { KeyType = keyType, KeySlotSize = slotSize },
+            prefixLen,
+            fullKeys,
+            fullKeyLength: 5,
+            values,
+            commonPrefix);
         long written = w.Written;
 
         // Control node: same data without the prefix optimization (full-length keys,
         // no commonKeyPrefix passed). Demonstrates the size win.
         int controlSlotSize = keyType == 1 ? 5 : 0;
-        byte[] controlKeyBuf = new byte[separatorHexes.Length * (2 + 5)];
-        byte[] controlValScratch = new byte[separatorHexes.Length * (2 + 4)];
         using PooledByteBufferWriter controlPooled = new(1024);
         ref PooledByteBufferWriter.Writer cw = ref controlPooled.GetWriter();
-        BTreeNodeWriter<PooledByteBufferWriter.Writer> controlWriter = new(ref cw, new BTreeNodeMetadata
-        {
-            KeyType = keyType,
-            KeySlotSize = controlSlotSize,
-        }, controlKeyBuf, controlValScratch);
+        byte[][] controlKeys = new byte[separatorHexes.Length][];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
             byte[] k = Convert.FromHexString(separatorHexes[i]);
             k[0] = (byte)i; // diverge at byte 0 → no shared prefix
-            BinaryPrimitives.WriteInt32LittleEndian(valBuf, values[i]);
-            controlWriter.AddKey(k, valBuf);
+            controlKeys[i] = k;
         }
-        controlWriter.FinalizeNode();
+        WriteNode(ref cw,
+            new BTreeNodeMetadata { KeyType = keyType, KeySlotSize = controlSlotSize },
+            prefixLen: 0,
+            controlKeys,
+            fullKeyLength: 5,
+            values);
 
         // Optimization paid off.
         Assert.That(written, Is.LessThan(cw.Written), "Common-prefix optimization should shrink the node");
@@ -599,21 +568,12 @@ public class BTreeNodeTests
         Assert.That(keySlotSize, Is.EqualTo(2));
 
         // Round-trip through the writer with the planner's decision.
-        byte[] keyBuf = new byte[2 * (2 + 2)];
-        byte[] valScratch = new byte[2 * (2 + 4)];
         using PooledByteBufferWriter pooled = new(64);
         ref PooledByteBufferWriter.Writer w = ref pooled.GetWriter();
-        BTreeNodeWriter<PooledByteBufferWriter.Writer> writer = new(ref w, new BTreeNodeMetadata
-        {
-            KeyType = keyType,
-            KeySlotSize = keySlotSize,
-        }, keyBuf, valScratch);
-        Span<byte> valBuf = stackalloc byte[4];
-        BinaryPrimitives.WriteInt32LittleEndian(valBuf, 1);
-        writer.AddKey(sepBuffer.AsSpan(0, 2), valBuf);
-        BinaryPrimitives.WriteInt32LittleEndian(valBuf, 2);
-        writer.AddKey(sepBuffer.AsSpan(2, 2), valBuf);
-        writer.FinalizeNode();
+        byte[][] keys = [sepBuffer[..2], sepBuffer[2..4]];
+        WriteNode(ref w,
+            new BTreeNodeMetadata { KeyType = keyType, KeySlotSize = keySlotSize },
+            prefixLen: 0, keys, fullKeyLength: 2, [1, 2]);
 
         BTreeNodeReader reader = BTreeNodeReader.ReadFromStart(pooled.WrittenSpan, 0);
         Assert.That(reader.CommonKeyPrefix.Length, Is.EqualTo(0));
@@ -909,23 +869,50 @@ public class BTreeNodeTests
     private static byte[] WriteUniform(byte[][] keys, int keySize, bool isLittleEndian)
     {
         int n = keys.Length;
-        byte[] keyBuf = new byte[n * (2 + keySize)];
-        byte[] valScratch = new byte[n * (2 + 4)];
+        int[] values = new int[n];
+        for (int i = 0; i < n; i++) values[i] = i;
         using PooledByteBufferWriter pooled = new(16 * 1024);
         ref PooledByteBufferWriter.Writer w = ref pooled.GetWriter();
-        BTreeNodeWriter<PooledByteBufferWriter.Writer> writer = new(ref w, new BTreeNodeMetadata
-        {
-            KeyType = 1,
-            KeySlotSize = keySize,
-            IsKeyLittleEndian = isLittleEndian,
-        }, keyBuf, valScratch);
-        Span<byte> valBuf = stackalloc byte[4];
+        WriteNode(ref w,
+            new BTreeNodeMetadata { KeyType = 1, KeySlotSize = keySize, IsKeyLittleEndian = isLittleEndian },
+            prefixLen: 0, keys, fullKeyLength: keySize, values);
+        return pooled.WrittenSpan.ToArray();
+    }
+
+    /// <summary>
+    /// Test helper that adapts the new single-call <see cref="BTreeNodeWriter{TWriter}.Write"/>
+    /// to test inputs given as <c>byte[][]</c> keys plus <c>int[]</c> values. Lays out the
+    /// keys flat with stride <paramref name="fullKeyLength"/> (zero-padded for shorter keys),
+    /// encodes values as little-endian <c>metadata.ValueSlotSize</c>-byte slots, and forwards.
+    /// </summary>
+    private static void WriteNode(
+        ref PooledByteBufferWriter.Writer w,
+        in BTreeNodeMetadata metadata,
+        int prefixLen,
+        byte[][] keys,
+        int fullKeyLength,
+        int[] values,
+        ReadOnlySpan<byte> commonKeyPrefix = default)
+    {
+        int n = keys.Length;
+        byte[] fullKeys = new byte[n * fullKeyLength];
+        int[] sepLengths = new int[n];
         for (int i = 0; i < n; i++)
         {
-            BinaryPrimitives.WriteInt32LittleEndian(valBuf, i);
-            writer.AddKey(keys[i], valBuf);
+            keys[i].CopyTo(fullKeys, i * fullKeyLength);
+            sepLengths[i] = keys[i].Length;
         }
-        writer.FinalizeNode();
-        return pooled.WrittenSpan.ToArray();
+        int valueSlotSize = metadata.ValueSlotSize;
+        byte[] valueBytes = new byte[n * valueSlotSize];
+        for (int i = 0; i < n; i++)
+        {
+            long v = values[i];
+            int off = i * valueSlotSize;
+            for (int b = 0; b < valueSlotSize; b++) valueBytes[off + b] = (byte)(v >> (b * 8));
+        }
+        BTreeNodeWriter<PooledByteBufferWriter.Writer>.Write(
+            ref w, metadata, n, fullKeys, fullKeyLength, prefixLen,
+            sepLengths: metadata.KeyType == 1 ? default : sepLengths.AsSpan(),
+            valueBytes, commonKeyPrefix);
     }
 }
