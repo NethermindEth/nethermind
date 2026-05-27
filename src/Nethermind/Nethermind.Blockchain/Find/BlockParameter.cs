@@ -178,6 +178,11 @@ namespace Nethermind.JsonRpc.Data
                 }
             }
 
+            if (blockHash is not null && blockNumberParam is not null)
+            {
+                throw new FormatException("cannot specify both BlockHash and BlockNumber, choose one or the other");
+            }
+
             return (blockHash, blockNumberParam) switch
             {
                 (blockHash: not null, blockNumberParam: _) => new BlockParameter(blockHash, requireCanonical),
