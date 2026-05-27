@@ -190,10 +190,7 @@ public class LogIndexBuilderTests
         }
     }
 
-    // failAfter < 0 fails inside the queueing loop (FindBlock throws in DoQueueBlocks); failAfter >= 0
-    // fails in the storage/dataflow path after N batches. Both must forward the error and stop without
-    // the self-await deadlock.
-    [TestCase(-1, TestName = "Should_ForwardError_FromQueueing")]
+    [TestCase(-1, TestName = "Should_ForwardError_FromQueueingLoop")]
     [TestCase(0, TestName = "Should_ForwardError_FromStorage_Immediately")]
     [TestCase(1, TestName = "Should_ForwardError_FromStorage_AfterOneBatch")]
     [TestCase(4, TestName = "Should_ForwardError_FromStorage_AfterFourBatches")]
@@ -202,17 +199,21 @@ public class LogIndexBuilderTests
     {
         Exception exception = new(nameof(Should_ForwardErrorAndStopWithoutDeadlock));
 
-        ILogIndexStorage storage;
+        ILogIndexStorage storage = new TestLogIndexStorage();
         if (failAfter < 0)
         {
-            Block head = _blockTree.Head!;
+            // FindBlock must succeed for the single pivot-setup lookup in StartAsync, then throw on
+            // the later lookups issued by DoQueueBlocks — that is the self-await deadlock path.
+            IBlockTree realTree = _blockTree;
+            int findCalls = 0;
             IBlockTree throwingTree = Substitute.For<IBlockTree>();
-            throwingTree.SyncPivot.Returns((head.Number, head.Hash));
-            throwingTree.BestKnownNumber.Returns(head.Number);
+            throwingTree.SyncPivot.Returns(realTree.SyncPivot);
+            throwingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
             throwingTree.FindBlock(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
-                .Returns<Block?>(_ => throw exception);
+                .Returns(ci => Interlocked.Increment(ref findCalls) == 1
+                    ? realTree.FindBlock(ci.ArgAt<long>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
+                    : throw exception);
             _blockTree = throwingTree;
-            storage = new TestLogIndexStorage();
         }
         else
         {
