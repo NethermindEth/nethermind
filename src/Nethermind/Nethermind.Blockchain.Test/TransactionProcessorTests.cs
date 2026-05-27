@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -830,6 +831,58 @@ public class TransactionProcessorTests(bool eip155Enabled)
         _stateProvider.GetBalance(recipient).Should().Be(recipientBalanceBefore + testCase.Value);
     }
 
+    [TestCase(false, 1ul, true, true)]
+    [TestCase(false, 1ul, false, true)]
+    [TestCase(false, 0ul, true, false)]
+    [TestCase(true, 1ul, true, false)]
+    public void Simple_transfer_fast_path_reports_eip7708_log_only_for_non_zero_transfer_to_different_account(
+        bool senderIsRecipient,
+        ulong value,
+        bool isTracingLogs,
+        bool expectTransferLog)
+    {
+        Address recipient = senderIsRecipient ? TestItem.AddressA : Address.FromNumber(1300);
+        IReleaseSpec spec = Amsterdam.Instance;
+        ISpecProvider specProvider = new TestSpecProvider(spec);
+        _stateProvider.Commit(spec);
+        _stateProvider.CommitTree(0);
+
+        CountingVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance,
+            specProvider,
+            _stateProvider,
+            virtualMachine,
+            codeInfoRepository,
+            LimboLogs.Instance);
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(recipient)
+            .WithValue(value)
+            .WithGasPrice(1)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(1_000_000).TestObject;
+        SimpleTransferLogTracer tracer = new(isTracingLogs);
+
+        TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+
+        result.TransactionExecuted.Should().BeTrue();
+        virtualMachine.ExecuteTransactionCalls.Should().Be(0);
+        tracer.ReceiptLogs.Should().HaveCount(expectTransferLog ? 1 : 0);
+        tracer.ReportLogCalls.Should().Be(expectTransferLog && isTracingLogs ? 1 : 0);
+        if (expectTransferLog)
+        {
+            tracer.ReceiptLogs[0].Should().BeEquivalentTo(ExpectedTransferLog(TestItem.AddressA, recipient, value));
+            if (isTracingLogs)
+            {
+                tracer.ReportedLogs[0].Should().BeEquivalentTo(ExpectedTransferLog(TestItem.AddressA, recipient, value));
+            }
+        }
+    }
+
     public static IEnumerable<TestCaseData> SimpleTransferFastPathCases()
     {
         yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.Empty, 1.Wei, false, 0, GasCostOf.Transaction, 1.Wei + GasCostOf.Transaction))
@@ -907,6 +960,23 @@ public class TransactionProcessorTests(bool eip155Enabled)
         Contract,
         Precompile,
         DelegatedToContract
+    }
+
+    private static LogEntry ExpectedTransferLog(Address sender, Address recipient, UInt256 value) =>
+        new(TransferLog.Sender, value.ToBigEndian(), [TransferLog.TransferSignature, sender.ToHash().ToHash256(), recipient.ToHash().ToHash256()]);
+
+    private sealed class SimpleTransferLogTracer(bool isTracingLogs) : TxTracer
+    {
+        public override bool IsTracingReceipt { get; protected set; } = true;
+        public override bool IsTracingLogs { get; protected set; } = isTracingLogs;
+        public LogEntry[] ReceiptLogs { get; private set; } = [];
+        public List<LogEntry> ReportedLogs { get; } = [];
+        public int ReportLogCalls => ReportedLogs.Count;
+
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
+            ReceiptLogs = logs;
+
+        public override void ReportLog(LogEntry log) => ReportedLogs.Add(log);
     }
 
     private sealed class CountingVirtualMachine(
