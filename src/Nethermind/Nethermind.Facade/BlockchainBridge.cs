@@ -13,7 +13,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Messages;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
