@@ -45,17 +45,23 @@ public static class PersistedSnapshotMerger
         /// <see cref="MapCursorSource"/> in nested-merge re-seeds.</summary>
         public WholeReadSessionMergeSource WithBound(Bound newBound) => new(view, newBound);
 
-        /// <summary>Build a source over <paramref name="view"/> positioned at the bound of
-        /// <paramref name="columnTag"/> in the view's root HSST. Returns an empty-bound
-        /// source if the column tag is absent (the loser tree treats such a source as
-        /// exhausted on first MoveNext).</summary>
-        public static WholeReadSessionMergeSource FromView(WholeReadSessionView view, byte[] columnTag)
-        {
-            WholeReadSessionReader r = view.CreateReader();
-            HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
-            Bound cb = hsst.TrySeek(columnTag, out Bound cbOut) ? cbOut : default;
-            return new WholeReadSessionMergeSource(view, cb);
-        }
+        /// <summary>Build a source over the entirety of <paramref name="view"/>. Callers
+        /// that want to position the source at a sub-bound (e.g. a column tag's scope)
+        /// call <see cref="WithBound"/> after, or construct the source directly with the
+        /// pre-resolved bound via the primary constructor.</summary>
+        public static WholeReadSessionMergeSource FromView(WholeReadSessionView view)
+            => new(view, new Bound(0, view.Length));
+    }
+
+    /// <summary>Open a fresh reader on <paramref name="view"/>, seek the root HSST for
+    /// <paramref name="columnTag"/>, and return its bound (or an empty bound if the tag
+    /// is absent — sources at the empty bound are treated as exhausted on first
+    /// MoveNext).</summary>
+    private static Bound ResolveColumnBound(WholeReadSessionView view, byte[] columnTag)
+    {
+        WholeReadSessionReader r = view.CreateReader();
+        HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
+        return hsst.TrySeek(columnTag, out Bound b) ? b : default;
     }
 
     /// <summary>Tail-byte dispatch: <c>new HsstEnumerator(in reader, bound)</c> reads the
@@ -722,9 +728,8 @@ public static class PersistedSnapshotMerger
 
         // Shared sources buffer for every cursor-using column. Rented once and reused
         // across all five columns — each column re-seeds the buffer at its own column
-        // tag (via WholeReadSessionMergeSource.FromView) and disposes the entries
-        // before the next re-seed. NWayMetadataMerge below stays on raw views: it
-        // reads metadata fields directly through readers, no cursor needed.
+        // tag (bound resolved by ResolveColumnBound). NWayMetadataMerge below stays on
+        // raw views: it reads metadata fields directly through readers, no cursor needed.
         int n = views.Length;
         using ArrayPoolList<WholeReadSessionMergeSource> columnSourcesList = new(n, n);
         Span<WholeReadSessionMergeSource> columnSources = columnSourcesList.AsSpan();
@@ -732,35 +737,35 @@ public static class PersistedSnapshotMerger
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
             for (int i = 0; i < n; i++)
-                columnSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.StorageTrieColumnTag);
+                columnSources[i] = new(views[i], ResolveColumnBound(views[i], PersistedSnapshotTags.StorageTrieColumnTag));
             NWayMergeStorageTrieColumn<TWriter, TReader, TPin>(columnSources, ref valueWriter, bloom);
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.StorageTrieColumnTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
             for (int i = 0; i < n; i++)
-                columnSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.StateNodeFallbackTag);
+                columnSources[i] = new(views[i], ResolveColumnBound(views[i], PersistedSnapshotTags.StateNodeFallbackTag));
             NWayPackedArrayMerge<TWriter, TReader, TPin>(columnSources, keySize: 33, ref valueWriter, bloom);
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.StateNodeFallbackTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
             for (int i = 0; i < n; i++)
-                columnSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.StateNodeTag);
+                columnSources[i] = new(views[i], ResolveColumnBound(views[i], PersistedSnapshotTags.StateNodeTag));
             NWayPackedArrayMerge<TWriter, TReader, TPin>(columnSources, keySize: 8, ref valueWriter, bloom);
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.StateNodeTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
             for (int i = 0; i < n; i++)
-                columnSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.StateTopNodesTag);
+                columnSources[i] = new(views[i], ResolveColumnBound(views[i], PersistedSnapshotTags.StateTopNodesTag));
             NWayPackedArrayMerge<TWriter, TReader, TPin>(columnSources, keySize: 4, ref valueWriter, bloom);
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.StateTopNodesTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
             for (int i = 0; i < n; i++)
-                columnSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.AccountColumnTag);
+                columnSources[i] = new(views[i], ResolveColumnBound(views[i], PersistedSnapshotTags.AccountColumnTag));
             NWayMergePerAddressColumn<TWriter, TReader, TPin>(columnSources, ref valueWriter, bloom);
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.AccountColumnTag);
         }
@@ -779,8 +784,8 @@ public static class PersistedSnapshotMerger
     /// N-way streaming merge of a column across N pre-seeded sources into a fixed-key-size
     /// PackedArray HSST. On key collision, newest (highest index) wins. The caller owns
     /// view-seeding and source disposal — pass a <see cref="Span{T}"/> of
-    /// <see cref="WholeReadSessionMergeSource"/> whose enumerators are positioned at the
-    /// column tag's bound (e.g. via <see cref="WholeReadSessionMergeSource.FromView"/>).
+    /// <see cref="WholeReadSessionMergeSource"/> whose bound is the column tag's scope
+    /// (resolved e.g. via <see cref="ResolveColumnBound"/>).
     /// </summary>
     private static void NWayPackedArrayMerge<TWriter, TReader, TPin>(
         Span<WholeReadSessionMergeSource> sources, int keySize,
