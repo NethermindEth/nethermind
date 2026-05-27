@@ -77,8 +77,6 @@ internal static class BTreeNodeLayoutPlanner
         int minLen = firstLen;
         int maxLen = firstLen;
         bool allSameLen = true;
-        int secondLen = -1;
-        bool allSameLenExceptFirst = count >= 2;
 
         for (int i = 1; i < count; i++)
         {
@@ -86,12 +84,10 @@ internal static class BTreeNodeLayoutPlanner
             if (len < minLen) minLen = len;
             if (len > maxLen) maxLen = len;
             if (len != firstLen) allSameLen = false;
-            if (i == 1) secondLen = len;
-            else if (len != secondLen) allSameLenExceptFirst = false;
         }
 
         PlanFromProfile(
-            count, firstLen, secondLen, minLen, maxLen, allSameLen, allSameLenExceptFirst,
+            count, firstLen, minLen, maxLen, allSameLen,
             crossEntryLcp, keyLength,
             out commonKeyPrefixLen, out keyType, out keySlotSize, out keyLittleEndian,
             disablePrefix);
@@ -105,15 +101,13 @@ internal static class BTreeNodeLayoutPlanner
     /// </summary>
     /// <param name="count">Entry count. Must be &gt; 0.</param>
     /// <param name="firstLen">Length of entry 0's separator.</param>
-    /// <param name="secondLen">Length of entry 1's separator, or -1 if <paramref name="count"/> &lt; 2.</param>
     /// <param name="minLen">Minimum length across all entries.</param>
     /// <param name="maxLen">Maximum length across all entries.</param>
     /// <param name="allSameLen">True iff every entry's length equals <paramref name="firstLen"/>.</param>
-    /// <param name="allSameLenExceptFirst">True iff <paramref name="count"/> &gt;= 2 and entries [1..] all equal <paramref name="secondLen"/>.</param>
     internal static void PlanFromProfile(
         int count,
-        int firstLen, int secondLen, int minLen, int maxLen,
-        bool allSameLen, bool allSameLenExceptFirst,
+        int firstLen, int minLen, int maxLen,
+        bool allSameLen,
         int crossEntryLcp, int keyLength,
         out int commonKeyPrefixLen,
         out int keyType,
@@ -129,12 +123,9 @@ internal static class BTreeNodeLayoutPlanner
         int target = firstLen > 0 ? WidenedSlotWidth(maxLen, keyLength) : maxLen;
         if (target > maxLen)
         {
-            firstLen = target;
             minLen = target;
             maxLen = target;
-            if (secondLen >= 0) secondLen = target;
             allSameLen = true;
-            allSameLenExceptFirst = count >= 2;
         }
 
         // BTreeNodeWriter takes `keySlotSize` bytes per entry from
