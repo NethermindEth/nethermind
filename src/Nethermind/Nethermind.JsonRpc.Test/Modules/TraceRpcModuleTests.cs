@@ -789,7 +789,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_call", transaction, traceTypes, blockParameter);
 
-        JToken.Parse(serialized).Should().BeEquivalentTo(JToken.Parse(expectedResult));
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
     }
 
     private static readonly IEnumerable<(object, string[], string)> Trace_call_without_blockParameter_test_cases = [
@@ -805,7 +805,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_call", testCase.transaction, testCase.traceTypes);
 
-        JToken.Parse(serialized).Should().BeEquivalentTo(JToken.Parse(testCase.expectedResult));
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(testCase.expectedResult)).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -1224,11 +1224,11 @@ public class TraceRpcModuleTests
 
         if (byteIdentical)
         {
-            streamed.Should().Be(buffered);
+            Assert.That(streamed, Is.EqualTo(buffered));
         }
         else
         {
-            JToken.Parse(streamed).Should().BeEquivalentTo(JToken.Parse(buffered));
+            Assert.That(JToken.Parse(streamed), Is.EqualTo(JToken.Parse(buffered)).Using(JToken.EqualityComparer));
         }
     }
 
@@ -1250,7 +1250,7 @@ public class TraceRpcModuleTests
         config.EnableTracingStreamMode = true;
         string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
 
-        JToken.Parse(streamed).Should().BeEquivalentTo(JToken.Parse(buffered));
+        Assert.That(JToken.Parse(streamed), Is.EqualTo(JToken.Parse(buffered)).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -1270,7 +1270,7 @@ public class TraceRpcModuleTests
         config.EnableTracingStreamMode = true;
         string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
 
-        JToken.Parse(streamed).Should().BeEquivalentTo(JToken.Parse(buffered));
+        Assert.That(JToken.Parse(streamed), Is.EqualTo(JToken.Parse(buffered)).Using(JToken.EqualityComparer));
     }
 
     private static IEnumerable<TestCaseData> StreamingResourceSafetyCases()
@@ -1283,7 +1283,7 @@ public class TraceRpcModuleTests
             config.EnableTracingStreamMode = true;
 
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_block(BlockParameter.Latest);
-            result.Data.Should().BeAssignableTo<IStreamableResult>();
+            Assert.That(result.Data, Is.AssignableTo<IStreamableResult>());
             IStreamableResult streaming = (IStreamableResult)result.Data;
             using CancellationTokenSource cts = new();
             cts.Cancel();
@@ -1308,8 +1308,8 @@ public class TraceRpcModuleTests
     }
 
     [TestCaseSource(nameof(StreamingResourceSafetyCases))]
-    public async Task Streaming_resource_safety(Func<Task> scenario) =>
-        await scenario.Should().NotThrowAsync();
+    public void Streaming_resource_safety(Func<Task> scenario) =>
+        Assert.DoesNotThrowAsync(() => scenario());
 
     private static TraceRpcModule BuildModuleWithNonCanonicalReceipt(Hash256 txHash, Hash256 nonCanonicalBlockHash, bool traceNonCanonical = false)
     {
