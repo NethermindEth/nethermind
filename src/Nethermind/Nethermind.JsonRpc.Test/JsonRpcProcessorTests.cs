@@ -6,13 +6,13 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
@@ -85,9 +85,9 @@ public class JsonRpcProcessorTests
 
         await ProcessAsync(processor, CreateRequest("1", "engine_newPayloadV4", "[{\"parentHash\":\"0x0\"},[],null,null]"), CreateHttpContext());
 
-        capturedMethod.Should().Be("engine_newPayloadV4");
-        capturedRawParams.Should().BeTrue();
-        capturedParamsKind.Should().Be(JsonValueKind.Array);
+        Assert.That(capturedMethod, Is.EqualTo("engine_newPayloadV4"));
+        Assert.That(capturedRawParams, Is.True);
+        Assert.That(capturedParamsKind, Is.EqualTo(JsonValueKind.Array));
     }
 
     [Test]
@@ -109,17 +109,17 @@ public class JsonRpcProcessorTests
 
         await ProcessAsync(processor, request, CreateHttpContext());
 
-        capturedMethod.Should().Be(methodName);
+        Assert.That(capturedMethod, Is.EqualTo(methodName));
         string? knownMethodName = TryGetKnownMethodName(methodName);
         if (expectedCached)
         {
-            knownMethodName.Should().NotBeNull();
-            capturedMethod.Should().BeSameAs(knownMethodName);
+            Assert.That(knownMethodName, Is.Not.Null);
+            Assert.That(capturedMethod, Is.SameAs(knownMethodName));
         }
         else
         {
-            knownMethodName.Should().BeNull();
-            capturedMethod.Should().NotBeSameAs(methodName);
+            Assert.That(knownMethodName, Is.Null);
+            Assert.That(capturedMethod, Is.Not.SameAs(methodName));
         }
     }
 
@@ -129,14 +129,14 @@ public class JsonRpcProcessorTests
         ReadOnlySequence<byte> methodSequence = CreateSequence("\"engine_", "newPayloadV4\"");
         Utf8JsonReader reader = new(methodSequence);
 
-        reader.Read().Should().BeTrue();
-        reader.TokenType.Should().Be(JsonTokenType.String);
-        reader.HasValueSequence.Should().BeTrue();
+        Assert.That(reader.Read(), Is.True);
+        Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.String));
+        Assert.That(reader.HasValueSequence, Is.True);
 
         string? methodName = KnownRpcMethodNames.Intern(ref reader);
 
-        methodName.Should().Be("engine_newPayloadV4");
-        methodName.Should().BeSameAs(TryGetKnownMethodName("engine_newPayloadV4"));
+        Assert.That(methodName, Is.EqualTo("engine_newPayloadV4"));
+        Assert.That(methodName, Is.SameAs(TryGetKnownMethodName("engine_newPayloadV4")));
     }
 
     [Test]
@@ -161,7 +161,7 @@ public class JsonRpcProcessorTests
                 {
                     if (method.GetCustomAttribute<JsonRpcMethodAttribute>() is not null)
                     {
-                        knownMethods.Should().Contain(method.Name);
+                        Assert.That(knownMethods, Does.Contain(method.Name));
                     }
                 }
             }
@@ -224,12 +224,14 @@ public class JsonRpcProcessorTests
             sink);
 
         List<JsonRpcResponse> batchItems = sink.Responses[0].BatchItems!;
-        batchItems.Should().HaveCount(3);
-        batchItems[0].Should().BeOfType<JsonRpcSuccessResponse>();
-        JsonRpcErrorResponse second = batchItems[1].Should().BeOfType<JsonRpcErrorResponse>().Subject;
-        JsonRpcErrorResponse third = batchItems[2].Should().BeOfType<JsonRpcErrorResponse>().Subject;
-        second.Id.Should().Be(2);
-        third.Id.Should().Be(3);
+        Assert.That(batchItems, Has.Count.EqualTo(3));
+        Assert.That(batchItems[0], Is.TypeOf<JsonRpcSuccessResponse>());
+        Assert.That(batchItems[1], Is.TypeOf<JsonRpcErrorResponse>());
+        Assert.That(batchItems[2], Is.TypeOf<JsonRpcErrorResponse>());
+        JsonRpcErrorResponse second = (JsonRpcErrorResponse)batchItems[1];
+        JsonRpcErrorResponse third = (JsonRpcErrorResponse)batchItems[2];
+        Assert.That(second.Id, Is.EqualTo(new JsonRpcId(2)));
+        Assert.That(third.Id, Is.EqualTo(new JsonRpcId(3)));
         await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
@@ -241,7 +243,7 @@ public class JsonRpcProcessorTests
 
         await ProcessAsync(processor, CreateTransactionCountRequest("67", paramsJson: "[]"), CreateHttpContext(), sink);
 
-        AssertSingleResponse(sink.Responses).Response!.Id.Should().Be(67);
+        Assert.That(AssertSingleResponse(sink.Responses).Response!.Id, Is.EqualTo(new JsonRpcId(67)));
     }
 
     [Test]
@@ -250,8 +252,8 @@ public class JsonRpcProcessorTests
         bool inspected = false;
         IJsonRpcService service = CreateService(request =>
         {
-            request.Params.ValueKind.Should().Be(JsonValueKind.Array);
-            request.Params[0].GetProperty("a").GetInt32().Should().Be(2);
+            Assert.That(request.Params.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(request.Params[0].GetProperty("a").GetInt32(), Is.EqualTo(2));
             inspected = true;
             return new JsonRpcSuccessResponse { Id = request.Id };
         });
@@ -261,8 +263,8 @@ public class JsonRpcProcessorTests
 
         await ProcessAsync(processor, " \r\n" + CreateTransactionCountRequest("67", paramsJson: "[{\"a\":2}]") + "\t ", CreateHttpContext(), sink);
 
-        inspected.Should().BeTrue();
-        AssertSingleResponse(sink.Responses).Response!.Id.Should().Be(67);
+        Assert.That(inspected, Is.True);
+        Assert.That(AssertSingleResponse(sink.Responses).Response!.Id, Is.EqualTo(new JsonRpcId(67)));
     }
 
     private static PipeReader CreateReader(string request) =>
@@ -312,14 +314,14 @@ public class JsonRpcProcessorTests
     {
         JsonRpcEnvelope envelope = ReadEnvelope($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"{methodName}\",\"params\":[1,{{\"a\":2}}],\"extra\":{{\"ignored\":true}}}}", out byte[] body);
 
-        envelope.JsonRpc.Should().Be("2.0");
-        envelope.Id.Should().Be(new JsonRpcId(1));
+        Assert.That(envelope.JsonRpc, Is.EqualTo("2.0"));
+        Assert.That(envelope.Id, Is.EqualTo(new JsonRpcId(1)));
         string? knownMethodName = TryGetKnownMethodName(methodName);
-        knownMethodName.Should().NotBeNull();
-        envelope.Method.Should().BeSameAs(knownMethodName);
-        envelope.HasParams.Should().BeTrue();
-        envelope.ParamsKind.Should().Be(JsonValueKind.Array);
-        Encoding.UTF8.GetString(body, envelope.ParamsStart, envelope.ParamsLength).Should().Be("[1,{\"a\":2}]");
+        Assert.That(knownMethodName, Is.Not.Null);
+        Assert.That(envelope.Method, Is.SameAs(knownMethodName));
+        Assert.That(envelope.HasParams, Is.True);
+        Assert.That(envelope.ParamsKind, Is.EqualTo(JsonValueKind.Array));
+        Assert.That(Encoding.UTF8.GetString(body, envelope.ParamsStart, envelope.ParamsLength), Is.EqualTo("[1,{\"a\":2}]"));
     }
 
     [Test]
@@ -330,12 +332,12 @@ public class JsonRpcProcessorTests
 
         JsonRpcEnvelope elementEnvelope = JsonRpcEnvelopeReader.Read(document.RootElement, out JsonElement paramsElement);
 
-        elementEnvelope.JsonRpc.Should().Be(envelope.JsonRpc);
-        elementEnvelope.Id.Should().Be(envelope.Id);
-        elementEnvelope.Method.Should().BeSameAs(envelope.Method);
-        elementEnvelope.HasParams.Should().Be(envelope.HasParams);
-        elementEnvelope.ParamsKind.Should().Be(envelope.ParamsKind);
-        paramsElement.ValueKind.Should().Be(JsonValueKind.Array);
+        Assert.That(elementEnvelope.JsonRpc, Is.EqualTo(envelope.JsonRpc));
+        Assert.That(elementEnvelope.Id, Is.EqualTo(envelope.Id));
+        Assert.That(elementEnvelope.Method, Is.SameAs(envelope.Method));
+        Assert.That(elementEnvelope.HasParams, Is.EqualTo(envelope.HasParams));
+        Assert.That(elementEnvelope.ParamsKind, Is.EqualTo(envelope.ParamsKind));
+        Assert.That(paramsElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
     }
 
     [Test]
@@ -343,10 +345,10 @@ public class JsonRpcProcessorTests
     {
         JsonRpcEnvelope envelope = ReadEnvelope("{\"id\":12345678901234567890,\"method\":\"eth_unknown\"}", out _);
 
-        envelope.Id.Should().Be(new JsonRpcId(decimal.Parse("12345678901234567890")));
-        envelope.Method.Should().Be("eth_unknown");
-        envelope.HasParams.Should().BeFalse();
-        envelope.ParamsKind.Should().Be(JsonValueKind.Undefined);
+        Assert.That(envelope.Id, Is.EqualTo(new JsonRpcId(decimal.Parse("12345678901234567890"))));
+        Assert.That(envelope.Method, Is.EqualTo("eth_unknown"));
+        Assert.That(envelope.HasParams, Is.False);
+        Assert.That(envelope.ParamsKind, Is.EqualTo(JsonValueKind.Undefined));
     }
 
     [Test]
@@ -355,10 +357,10 @@ public class JsonRpcProcessorTests
         JsonRpcEnvelope envelope = ReadEnvelope("{\"id\":\"\\u0041\\n\",\"method\":\"eth_blockNumber\"}", out _);
 
         JsonRpcId expectedId = new("A\n");
-        envelope.Id.Should().Be(expectedId);
-        envelope.Id.GetHashCode().Should().Be(expectedId.GetHashCode());
+        Assert.That(envelope.Id, Is.EqualTo(expectedId));
+        Assert.That(envelope.Id.GetHashCode(), Is.EqualTo(expectedId.GetHashCode()));
         object? firstObjectId = envelope.Id.ToObject();
-        envelope.Id.ToObject().Should().BeSameAs(firstObjectId);
+        Assert.That(envelope.Id.ToObject(), Is.SameAs(firstObjectId));
 
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
@@ -366,7 +368,7 @@ public class JsonRpcProcessorTests
             envelope.Id.WriteTo(writer);
         }
 
-        Encoding.UTF8.GetString(buffer.WrittenSpan).Should().Be("\"\\u0041\\n\"");
+        Assert.That(Encoding.UTF8.GetString(buffer.WrittenSpan), Is.EqualTo("\"\\u0041\\n\""));
     }
 
     [Test]
@@ -374,23 +376,23 @@ public class JsonRpcProcessorTests
     {
         JsonRpcEnvelope envelope = ReadEnvelope("{\"id\":1e2,\"method\":\"eth_blockNumber\"}", out _);
 
-        envelope.Id.TryGetDecimal(out decimal id).Should().BeTrue();
-        id.Should().Be(100m);
+        Assert.That(envelope.Id.TryGetDecimal(out decimal id), Is.True);
+        Assert.That(id, Is.EqualTo(100m));
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
         {
             envelope.Id.WriteTo(writer);
         }
 
-        Encoding.UTF8.GetString(buffer.WrittenSpan).Should().Be("1e2");
+        Assert.That(Encoding.UTF8.GetString(buffer.WrittenSpan), Is.EqualTo("1e2"));
     }
 
     [Test]
     public void JsonRpcEnvelopeReader_returns_false_for_non_object_root()
     {
         JsonRpcEnvelopeReader reader = new(Encoding.UTF8.GetBytes("[{\"id\":1}]"));
-        reader.TryRead(out JsonRpcEnvelope envelope).Should().BeFalse();
-        envelope.Should().Be(default(JsonRpcEnvelope));
+        Assert.That(reader.TryRead(out JsonRpcEnvelope envelope), Is.False);
+        Assert.That(envelope, Is.EqualTo(default(JsonRpcEnvelope)));
     }
 
     [Test]
@@ -398,14 +400,14 @@ public class JsonRpcProcessorTests
     {
         Action read = () => ReadEnvelope("{\"id\":1.1,\"method\":\"eth_blockNumber\"}", out _);
 
-        read.Should().Throw<JsonException>();
+        Assert.That(read, Throws.TypeOf<JsonException>());
     }
 
     private static JsonRpcEnvelope ReadEnvelope(string request, out byte[] body)
     {
         body = Encoding.UTF8.GetBytes(request);
         JsonRpcEnvelopeReader reader = new(body);
-        reader.TryRead(out JsonRpcEnvelope envelope).Should().BeTrue();
+        Assert.That(reader.TryRead(out JsonRpcEnvelope envelope), Is.True);
         return envelope;
     }
 
@@ -426,10 +428,10 @@ public class JsonRpcProcessorTests
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, new JsonRpcContext(endpoint));
 
-        records.Should().ContainSingle(record => record.Contains("\"method\":\"eth_blockNumber\""));
+        Assert.That(records.Count(static record => record.Contains("\"method\":\"eth_blockNumber\"")), Is.EqualTo(1));
         if (endpoint != RpcEndpoint.Http)
         {
-            records[0].Should().Contain("\"method\":\"net_version\"");
+            Assert.That(records[0], Does.Contain("\"method\":\"net_version\""));
         }
     }
 
@@ -445,11 +447,11 @@ public class JsonRpcProcessorTests
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, CreateHttpContext());
 
-        records.Should().HaveCount(expectedRecordCount);
-        records.Should().Contain(record => record.Contains("eth_blockNumber"));
+        Assert.That(records, Has.Count.EqualTo(expectedRecordCount));
+        Assert.That(records.Any(static record => record.Contains("eth_blockNumber")), Is.True);
         if (isBatch)
         {
-            records.Should().Contain(record => record.Contains("net_version"));
+            Assert.That(records.Any(static record => record.Contains("net_version")), Is.True);
         }
     }
 
@@ -464,8 +466,8 @@ public class JsonRpcProcessorTests
             return new JsonRpcSuccessResponse { Id = capturedRequest.Id };
         });
         CollectingJsonRpcResponseSink sink = isBatch
-            ? new() { OnEndBatch = () => capturedParams.ValueKind.Should().Be(JsonValueKind.Array) }
-            : new() { OnSingleWrite = (_, _) => capturedParams.ValueKind.Should().Be(JsonValueKind.Array) };
+            ? new() { OnEndBatch = () => Assert.That(capturedParams.ValueKind, Is.EqualTo(JsonValueKind.Array)) }
+            : new() { OnSingleWrite = (_, _) => Assert.That(capturedParams.ValueKind, Is.EqualTo(JsonValueKind.Array)) };
         JsonRpcProcessor processor = CreateProcessor(service);
         string request = isBatch
             ? CreateBatchRequest(CreateRequest("1", "eth_blockNumber", "[1]"), CreateRequest("2", "net_version", "[2]"))
@@ -474,7 +476,7 @@ public class JsonRpcProcessorTests
         await ProcessAsync(processor, request, CreateHttpContext(), sink);
 
         Action readAfterProcessing = () => _ = capturedParams.ValueKind;
-        readAfterProcessing.Should().Throw<ObjectDisposedException>();
+        Assert.That(readAfterProcessing, Throws.TypeOf<ObjectDisposedException>());
     }
 
     [Test]
@@ -491,8 +493,8 @@ public class JsonRpcProcessorTests
 
         await ProcessAsync(processor, CreateRequest("1", "eth_blockNumber"), CreateHttpContext(), sink);
 
-        disposedDuringWrite.Should().BeFalse();
-        disposed.Should().BeTrue();
+        Assert.That(disposedDuringWrite, Is.False);
+        Assert.That(disposed, Is.True);
     }
 
     private static IJsonRpcService CreateService(Func<JsonRpcRequest, JsonRpcResponse> responseFactory, JsonRpcErrorResponse? errorResponse = null)
@@ -552,15 +554,18 @@ public class JsonRpcProcessorTests
 
     private CollectedJsonRpcResult AssertBatchResponse(CollectedJsonRpcResult result, int expectedCount, bool returnErrors = false)
     {
-        result.Response.Should().BeNull();
-        result.BatchItems.Should().NotBeNull();
-        result.BatchItems.Should().HaveCount(expectedCount);
+        Assert.That(result.Response, Is.Null);
+        Assert.That(result.BatchItems, Is.Not.Null);
+        Assert.That(result.BatchItems, Has.Count.EqualTo(expectedCount));
         if (expectedCount != 0)
         {
-            result.BatchItems.Should().AllSatisfy(response => AssertResponseTypeMatchesFixtureMode(response, returnErrors));
+            foreach (JsonRpcResponse response in result.BatchItems)
+            {
+                AssertResponseTypeMatchesFixtureMode(response, returnErrors);
+            }
         }
 
-        result.BatchItems.Should().NotContain(_errorResponse);
+        Assert.That(result.BatchItems, Does.Not.Contain(_errorResponse));
         return result;
     }
 
@@ -568,13 +573,13 @@ public class JsonRpcProcessorTests
         AssertBatchResponse(AssertOnlyResult(responses), expectedCount, returnErrors);
 
     private static void AssertResponseTypeMatchesFixtureMode(JsonRpcResponse response, bool returnErrors) =>
-        response.Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
+        Assert.That(response, Is.TypeOf(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse)));
 
     private CollectedJsonRpcResult AssertSingleResponse(CollectedJsonRpcResult result, bool shouldBeParseError = false)
     {
-        result.Response.Should().NotBeNull();
-        result.BatchItems.Should().BeNull();
-        ReferenceEquals(result.Response, _errorResponse).Should().Be(shouldBeParseError);
+        Assert.That(result.Response, Is.Not.Null);
+        Assert.That(result.BatchItems, Is.Null);
+        Assert.That(ReferenceEquals(result.Response, _errorResponse), Is.EqualTo(shouldBeParseError));
         return result;
     }
 
@@ -583,7 +588,7 @@ public class JsonRpcProcessorTests
 
     private static CollectedJsonRpcResult AssertOnlyResult(CollectedJsonRpcResponses responses)
     {
-        responses.Should().HaveCount(1);
+        Assert.That(responses, Has.Count.EqualTo(1));
         return responses[0];
     }
 
@@ -617,7 +622,7 @@ public class JsonRpcProcessorTests
             return;
         }
 
-        AssertOnlyResult(result).Response.Should().BeOfType<JsonRpcErrorResponse>();
+        Assert.That(AssertOnlyResult(result).Response, Is.TypeOf<JsonRpcErrorResponse>());
     }
 
     [TestCase(false, TestName = "All params present")]
@@ -632,7 +637,7 @@ public class JsonRpcProcessorTests
     public async Task Can_process_multiple_document_requests(string request, bool secondIsBatch, bool secondIsParseError)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(request, new JsonRpcContext(RpcEndpoint.Ws));
-        result.Should().HaveCount(2);
+        Assert.That(result, Has.Count.EqualTo(2));
         AssertSingleResponse(result[0]);
         if (secondIsBatch)
         {
@@ -659,18 +664,19 @@ public class JsonRpcProcessorTests
         CollectedJsonRpcResult response = AssertOnlyResult(result);
         if (!isAuthenticated)
         {
-            JsonRpcErrorResponse errorResponse = response.Response.Should().BeOfType<JsonRpcErrorResponse>().Subject;
-            errorResponse.Error!.Code.Should().Be(ErrorCodes.LimitExceeded);
-            response.BatchItems.Should().BeNull();
+            Assert.That(response.Response, Is.TypeOf<JsonRpcErrorResponse>());
+            JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response.Response!;
+            Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+            Assert.That(response.BatchItems, Is.Null);
             await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
             return;
         }
 
-        response.Response.Should().BeNull();
+        Assert.That(response.Response, Is.Null);
         List<JsonRpcResponse> batchItems = response.BatchItems!;
-        batchItems.Should().HaveCount(expectedDispatchCount);
-        batchItems[0].Id.Should().Be(67);
-        batchItems[1].Id.Should().Be(67);
+        Assert.That(batchItems, Has.Count.EqualTo(expectedDispatchCount));
+        Assert.That(batchItems[0].Id, Is.EqualTo(new JsonRpcId(67)));
+        Assert.That(batchItems[1].Id, Is.EqualTo(new JsonRpcId(67)));
         await service.Received(expectedDispatchCount).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
@@ -684,11 +690,11 @@ public class JsonRpcProcessorTests
             CreateHttpContext(),
             sink);
         CollectedJsonRpcResult response = AssertOnlyResult(result);
-        response.IsCollection.Should().BeTrue();
-        response.BatchItems.Should().NotBeNull();
+        Assert.That(response.IsCollection, Is.True);
+        Assert.That(response.BatchItems, Is.Not.Null);
         IReadOnlyList<JsonRpcResponse> batchItems = response.BatchItems!;
-        batchItems[0].Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
-        batchItems[1].Should().BeOfType(limit || returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
+        Assert.That(batchItems[0], Is.TypeOf(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse)));
+        Assert.That(batchItems[1], Is.TypeOf(limit || returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse)));
     }
 
     [TestCase("invalid", true, null, TestName = "Invalid JSON")]
@@ -719,8 +725,8 @@ public class JsonRpcProcessorTests
         using CollectedJsonRpcResponses results = await ProcessAsync(processor, request, CreateHttpContext());
 
         JsonRpcResponse response = AssertSingleResponse(results).Response!;
-        response.Should().BeOfType<JsonRpcErrorResponse>();
-        ((JsonRpcErrorResponse)response).Error!.Code.Should().Be(ErrorCodes.ResourceUnavailable);
+        Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
+        Assert.That(((JsonRpcErrorResponse)response).Error!.Code, Is.EqualTo(ErrorCodes.ResourceUnavailable));
         await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
@@ -733,10 +739,9 @@ public class JsonRpcProcessorTests
 
         using CollectedJsonRpcResponses results = await ProcessAsync(processor, pipe.Reader, CreateHttpContext());
 
-        AssertSingleResponse(results).Response.Should().BeOfType<JsonRpcErrorResponse>();
+        Assert.That(AssertSingleResponse(results).Response, Is.TypeOf<JsonRpcErrorResponse>());
 
-        await FluentActions.Invoking(async () => await pipe.Reader.ReadAsync())
-            .Should().ThrowAsync<InvalidOperationException>();
+        Assert.That(async () => await pipe.Reader.ReadAsync(), Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -766,10 +771,10 @@ public class JsonRpcProcessorTests
         await pipe.Writer.CompleteAsync();
 
         using CollectedJsonRpcResponses results = await processTask;
-        results.Should().HaveCount(5);
+        Assert.That(results, Has.Count.EqualTo(5));
         for (int i = 0; i < 5; i++)
         {
-            results[i].Response.Should().NotBeNull();
+            Assert.That(results[i].Response, Is.Not.Null);
         }
     }
 
@@ -805,9 +810,9 @@ public class JsonRpcProcessorTests
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateRequest("1", methodName), CreateHttpContext());
 
         RpcReport? report = AssertOnlyResult(result).Report;
-        report.Should().NotBeNull();
-        report!.Value.Method.Should().Be(expectedReportMethod);
-        report!.Value.Success.Should().Be(expectedSuccess);
+        Assert.That(report, Is.Not.Null);
+        Assert.That(report!.Value.Method, Is.EqualTo(expectedReportMethod));
+        Assert.That(report!.Value.Success, Is.EqualTo(expectedSuccess));
     }
 
     [TestCase(50, false, TestName = "Input below the 64-depth limit is accepted")]
@@ -823,8 +828,8 @@ public class JsonRpcProcessorTests
             capturedMethod = request.Method;
 
             JsonElement paramsArr = request.Params;
-            paramsArr.ValueKind.Should().Be(JsonValueKind.Array);
-            paramsArr.GetArrayLength().Should().Be(1);
+            Assert.That(paramsArr.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(paramsArr.GetArrayLength(), Is.EqualTo(1));
 
             observedDepth = 1;
             JsonElement node = paramsArr[0];
@@ -833,8 +838,8 @@ public class JsonRpcProcessorTests
                 node = node[0];
                 observedDepth++;
             }
-            node.ValueKind.Should().Be(JsonValueKind.Array);
-            node.GetArrayLength().Should().Be(0, "innermost array of the constructed chain is empty");
+            Assert.That(node.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(node.GetArrayLength(), Is.EqualTo(0), "innermost array of the constructed chain is empty");
 
             return new JsonRpcSuccessResponse { Id = request.Id };
         }, _errorResponse);
@@ -849,15 +854,15 @@ public class JsonRpcProcessorTests
 
         if (expectParseError)
         {
-            requestCaptured.Should().BeFalse("a depth-rejected request must never reach the service");
+            Assert.That(requestCaptured, Is.False, "a depth-rejected request must never reach the service");
             return;
         }
 
-        response.Response.Should().BeOfType<JsonRpcSuccessResponse>();
-        response.Response!.Id.Should().Be(1);
-        requestCaptured.Should().BeTrue();
-        capturedMethod.Should().Be("eth_getTransactionCount");
-        observedDepth.Should().Be(paramNestingDepth);
+        Assert.That(response.Response, Is.TypeOf<JsonRpcSuccessResponse>());
+        Assert.That(response.Response!.Id, Is.EqualTo(new JsonRpcId(1)));
+        Assert.That(requestCaptured, Is.True);
+        Assert.That(capturedMethod, Is.EqualTo("eth_getTransactionCount"));
+        Assert.That(observedDepth, Is.EqualTo(paramNestingDepth));
     }
 
     private static string BuildNestedArrayParams(int depth) => new string('[', depth) + new string(']', depth);

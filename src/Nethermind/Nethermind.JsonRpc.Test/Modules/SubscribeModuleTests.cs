@@ -8,8 +8,6 @@ using System.Linq;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
-using FluentAssertions.Json;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
@@ -121,7 +119,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockReplacementEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
+            Assert.That(manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)), Is.EqualTo(shouldReceiveResult));
 
             subscriptionId = newHeadSubscription.Id;
             return jsonRpcResult;
@@ -231,7 +229,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 manualResetEvent.Set();
             }));
             _peerPool.PeerAdded += Raise.EventWith(new object(), peerEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
+            Assert.That(manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)), Is.EqualTo(shouldReceiveResult));
             subscriptionId = peerEventsSubscription.Id;
             return jsonRpcResult;
         }
@@ -246,7 +244,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 manualResetEvent.Set();
             }));
             _peerPool.PeerRemoved += Raise.EventWith(new object(), peerEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
+            Assert.That(manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)), Is.EqualTo(shouldReceiveResult));
             subscriptionId = peerEventsSubscription.Id;
             return jsonRpcResult;
         }
@@ -256,7 +254,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "wrongSubscriptionType");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Wrong subscription type: wrongSubscriptionType.\"},\"id\":67}";
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -264,7 +262,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 0\"},\"id\":67}";
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -272,7 +270,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads");
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -280,7 +278,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", "{\"includeTransactions\":true}");
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [TestCase("true")]
@@ -289,7 +287,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", boolArg);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -304,10 +302,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out string subscriptionId, option);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"difficulty\":\"0x7c7\",\"extraData\":\"0x030508\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2e3c1c2a507dc3071a16300858d4e75390e5f43561515481719a1e0dadf22585\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x200\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -318,10 +316,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out string subscriptionId);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"difficulty\":\"0x7c7\",\"extraData\":\"0x030508\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2e3c1c2a507dc3071a16300858d4e75390e5f43561515481719a1e0dadf22585\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x200\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -331,7 +329,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out _, shouldReceiveResult: false);
 
-            jsonRpcResult.Response.Should().BeNull();
+            Assert.That(jsonRpcResult.Response, Is.Null);
         }
 
         [Test]
@@ -375,12 +373,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockTree.UpdateMainChain(new Block[] { block1B, block2B }, true);
             manualResetEvent.WaitOne();
 
-            jsonRpcResult.Count.Should().Be(5);
-            blockTree.Head.Should().Be(block2B);
+            Assert.That(jsonRpcResult.Count, Is.EqualTo(5));
+            Assert.That(blockTree.Head, Is.EqualTo(block2B));
 
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Last().Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", newHeadSubscription.Id, "\",\"result\":{\"difficulty\":\"0x5\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x13f51c304a84742a660b0327c003765af51cb255f7cfa8d1d6c41c99c1c3ecd4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0xd07062cc54724bd878b1b826bfa59f24cac986a11a151f2239b16f2a4436f9b2\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x1fe\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x9\",\"timestamp\":\"0xf4242\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
-            serialized.Should().Be(expectedResult);
+            Assert.That(serialized, Is.EqualTo(expectedResult));
         }
 
         [Test]
@@ -426,14 +424,14 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             manualResetEvent.WaitOne();
 
-            jsonRpcResult.Count.Should().Be(21);
-            blockTree.Head.Should().Be(blocks[20]);
+            Assert.That(jsonRpcResult.Count, Is.EqualTo(21));
+            Assert.That(blockTree.Head, Is.EqualTo(blocks[20]));
 
             for (int i = 0; i < 21; i++)
             {
                 jsonRpcResult.TryDequeue(out JsonRpcResult result);
 
-                ((JsonRpcSubscriptionResponse<BlockForRpc>)result.Response!).Params.Result.Difficulty.Should().Be((UInt256)i);
+                Assert.That(((JsonRpcSubscriptionResponse<BlockForRpc>)result.Response!).Params.Result.Difficulty, Is.EqualTo((UInt256)i));
             }
         }
 
@@ -442,7 +440,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs");
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -450,7 +448,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "{\"fromBlock\":\"latest\",\"toBlock\":\"latest\",\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"topics\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"}");
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -458,7 +456,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "{\"address\":[\"0x0000000000000000000000000000000000000314\"],\"fromBlock\":\"0x0\",\"toBlock\":\"latest\",\"topics\":[]}");
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -466,7 +464,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "invalid_param");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -475,7 +473,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string args = new('a', 1_000_001);
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
-            expectedResult.Should().Be(serialized, because: "oversized string args should be rejected before subscription creation");
+            Assert.That(expectedResult, Is.EqualTo(serialized), "oversized string args should be rejected before subscription creation");
         }
 
         [Test]
@@ -494,10 +492,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string? subscriptionId);
 
-            jsonRpcResults.Count.Should().Be(1);
+            Assert.That(jsonRpcResults.Count, Is.EqualTo(1));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -515,7 +513,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string _);
 
-            jsonRpcResults.Count.Should().Be(0);
+            Assert.That(jsonRpcResults.Count, Is.EqualTo(0));
         }
 
         [Test]
@@ -536,18 +534,18 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId);
 
-            jsonRpcResults.Count.Should().Be(3);
+            Assert.That(jsonRpcResults.Count, Is.EqualTo(3));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0x12fd1\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[1].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"blockNumber\":\"0x12fd1\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[2].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0x0000000000000000000000000000000000000000\",\"blockNumber\":\"0x12fd1\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010208090a\",\"logIndex\":\"0x2\",\"removed\":false,\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -574,26 +572,26 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId);
 
-            jsonRpcResults.Count.Should().Be(5);
+            Assert.That(jsonRpcResults.Count, Is.EqualTo(5));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0xb\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[1].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x16\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[2].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x\",\"logIndex\":\"0x2\",\"removed\":false,\"topics\":[\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\"],\"transactionIndex\":\"0x16\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[3].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x\",\"logIndex\":\"0x3\",\"removed\":false,\"topics\":[\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\"],\"transactionIndex\":\"0x21\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[4].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0x0000000000000000000000000000000000000000\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010208090a\",\"logIndex\":\"0x4\",\"removed\":false,\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"],\"transactionIndex\":\"0x21\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -632,15 +630,15 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[1].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0xa\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[2].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0xd\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -676,18 +674,18 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string? subscriptionId);
 
-            jsonRpcResults.Count.Should().Be(3);
+            Assert.That(jsonRpcResults.Count, Is.EqualTo(3));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[1].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0xa\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[2].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0xd\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -729,18 +727,18 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string? subscriptionId);
 
-            jsonRpcResults.Count.Should().Be(3);
+            Assert.That(jsonRpcResults.Count, Is.EqualTo(3));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[1].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x04050607\",\"logIndex\":\"0x7\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\",\"0x434b529473163ef4ed9c9341d9b7250ab9183c27e7add004c3bba38c56274e24\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
 
             serialized = RpcTest.SerializeResponse(jsonRpcResults[2].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0xd\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -769,17 +767,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             _receiptCanonicalityMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
-            jsonRpcResults.Count.Should().Be(0);
+            Assert.That(jsonRpcResults.Count, Is.EqualTo(0));
 
             BlockReplacementEventArgs blockEventArgs = new(block);
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
             _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
-            jsonRpcResults.Count.Should().Be(1);
+            Assert.That(jsonRpcResults.Count, Is.EqualTo(1));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", logsSubscription.Id, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -787,7 +785,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions");
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -795,7 +793,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions", "{\"includeTransactions\":true}");
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [TestCase("true")]
@@ -804,7 +802,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions", boolArg);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -816,10 +814,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out string? subscriptionId);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":\"", TestItem.KeccakA, "\"}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -829,7 +827,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out _);
 
-            jsonRpcResult.Response.Should().BeNull();
+            Assert.That(jsonRpcResult.Response, Is.Null);
         }
 
         [Test]
@@ -841,10 +839,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out string? subscriptionId);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\"}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -861,10 +859,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out string subscriptionId, option);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
 
-            JToken.Parse(serialized).Should().BeEquivalentTo($$$$"""{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"{{{{subscriptionId}}}}","result":{"nonce":"0x0","blockHash":null,"blockNumber":null,"blockTimestamp":null,"transactionIndex":null,"to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","hash":null,"v":"0x0","r":"0x0","s":"0x0","from":null}}}""");
+            Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse($$$$"""{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"{{{{subscriptionId}}}}","result":{"nonce":"0x0","blockHash":null,"blockNumber":null,"blockTimestamp":null,"transactionIndex":null,"to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","hash":null,"v":"0x0","r":"0x0","s":"0x0","from":null}}}""")).Using(JToken.EqualityComparer));
         }
 
         [TestCase(2)]
@@ -975,10 +973,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockReplacementEventArgs blockReplacementEventArgs = new(block);
             JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out string subscriptionId);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x6f38eb4d3ad3beb1f9c6f870b32b55532f2f490bc33dc72696d6bb22dcef5d09\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x204\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"baseFeePerGas\":\"0x2710\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}";
-            serialized.Should().Be(expectedResult);
+            Assert.That(serialized, Is.EqualTo(expectedResult));
 
         }
 
@@ -987,7 +985,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "droppedPendingTransactions");
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -999,10 +997,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out string? subscriptionId);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":\"", TestItem.KeccakA, "\"}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -1012,7 +1010,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out _);
 
-            jsonRpcResult.Response.Should().BeNull();
+            Assert.That(jsonRpcResult.Response, Is.Null);
         }
 
         [Test]
@@ -1024,10 +1022,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out string? subscriptionId);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\"}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -1041,7 +1039,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "syncing");
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -1055,7 +1053,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetSyncingSubscriptionResult(true, syncingSubscription, blockEventArgs);
 
-            jsonRpcResult.Response.Should().BeNull();
+            Assert.That(jsonRpcResult.Response, Is.Null);
         }
 
         [Test]
@@ -1070,7 +1068,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetSyncingSubscriptionResult(false, syncingSubscription, blockEventArgs);
 
-            jsonRpcResult.Response.Should().BeNull();
+            Assert.That(jsonRpcResult.Response, Is.Null);
         }
 
         [Test]
@@ -1084,10 +1082,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetSyncingSubscriptionResult(true, syncingSubscription, blockEventArgs);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":false}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -1102,10 +1100,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetSyncingSubscriptionResult(false, syncingSubscription, blockEventArgs);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":false}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -1119,10 +1117,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetSyncingSubscriptionResult(true, syncingSubscription, blockEventArgs);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2728\",\"highestBlock\":\"0x273a\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -1137,10 +1135,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             JsonRpcResult jsonRpcResult = GetSyncingSubscriptionResult(true, syncingSubscription, blockEventArgs);
 
-            jsonRpcResult.Response.Should().NotBeNull();
+            Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2738\",\"highestBlock\":\"0x2773\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
         [Test]
@@ -1149,12 +1147,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serializedSub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads");
             string subscriptionId = serializedSub.Substring(serializedSub.Length - 44, 34);
             string expectedSub = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", subscriptionId, "\",\"id\":67}");
-            expectedSub.Should().Be(serializedSub);
+            Assert.That(expectedSub, Is.EqualTo(serializedSub));
 
             string serializedUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", subscriptionId);
             string expectedUnsub = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
 
-            expectedUnsub.Should().Be(serializedUnsub);
+            Assert.That(expectedUnsub, Is.EqualTo(serializedUnsub));
         }
 
         [Test]
@@ -1163,14 +1161,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serializedLogs = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs");
             string logsId = serializedLogs.Substring(serializedLogs.Length - 44, 34);
             string expectedLogs = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", logsId, "\",\"id\":67}");
-            expectedLogs.Should().Be(serializedLogs);
+            Assert.That(expectedLogs, Is.EqualTo(serializedLogs));
 
 
             string serializedNewPendingTx = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions");
             string newPendingTxId = serializedNewPendingTx.Substring(serializedNewPendingTx.Length - 44, 34);
             string expectedNewPendingTx =
                 string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", newPendingTxId, "\",\"id\":67}");
-            expectedNewPendingTx.Should().Be(serializedNewPendingTx);
+            Assert.That(expectedNewPendingTx, Is.EqualTo(serializedNewPendingTx));
 
             _jsonRpcDuplexClient.Closed += Raise.Event();
 
@@ -1178,13 +1176,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             string expectedLogsUnsub =
                 string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
                     logsId, ".\"},\"id\":67}");
-            expectedLogsUnsub.Should().Be(serializedLogsUnsub);
+            Assert.That(expectedLogsUnsub, Is.EqualTo(serializedLogsUnsub));
 
             string serializedNewPendingTxUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", newPendingTxId);
             string expectedNewPendingTxUnsub =
                 string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
                     newPendingTxId, ".\"},\"id\":67}");
-            expectedNewPendingTxUnsub.Should().Be(serializedNewPendingTxUnsub);
+            Assert.That(expectedNewPendingTxUnsub, Is.EqualTo(serializedNewPendingTxUnsub));
         }
 
         [Test]
@@ -1215,10 +1213,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
 
-            jsonRpcResults.Count.Should().Be(1);
+            Assert.That(jsonRpcResults.Count, Is.EqualTo(1));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", logsSubscription.Id, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":true,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
+            Assert.That(expectedResult, Is.EqualTo(serialized));
         }
     }
 }

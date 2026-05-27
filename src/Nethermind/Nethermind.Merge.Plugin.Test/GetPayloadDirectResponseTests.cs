@@ -12,7 +12,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
@@ -93,7 +92,7 @@ public class GetPayloadDirectResponseTests
         byte[] expected = JsonSerializer.SerializeToUtf8Bytes(plain, plain.GetType(), EthereumJsonSerializer.JsonOptions);
         byte[] actual = await WriteStreamableAsync(direct);
 
-        JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)).Should().BeTrue();
+        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)), Is.True);
     }
 
     public static IEnumerable<TestCaseData> PayloadBodiesJsonParityCases()
@@ -136,7 +135,7 @@ public class GetPayloadDirectResponseTests
         bool includeNull,
         bool blockAccessList)
     {
-        endpoint.Should().BeOneOf(PayloadBodiesEndpoint.ByHash, PayloadBodiesEndpoint.ByRange);
+        Assert.That(endpoint, Is.AnyOf(PayloadBodiesEndpoint.ByHash, PayloadBodiesEndpoint.ByRange));
 
         Transaction[] transactions = CreateTransactions(txCount);
         Withdrawal[]? withdrawalItems = withdrawals ? CreateWithdrawals(2) : null;
@@ -168,7 +167,7 @@ public class GetPayloadDirectResponseTests
             ? await WriteResponseAsync(ResultWrapper<GetPayloadV5Result?>.Success((GetPayloadV5Result)CreateDirectResult(version, block, blobsBundle, executionRequests)))
             : await WriteResponseAsync(ResultWrapper<GetPayloadV6Result?>.Success((GetPayloadV6Result)CreateDirectResult(version, block, blobsBundle, executionRequests)));
 
-        JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)).Should().BeTrue();
+        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)), Is.True);
     }
 
     [Test]
@@ -185,12 +184,12 @@ public class GetPayloadDirectResponseTests
         {
             Func<Task> act = async () => await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationTokenSource.Token);
 
-            await act.Should().ThrowAsync<OperationCanceledException>();
+            Assert.That(async () => await act(), Throws.TypeOf<OperationCanceledException>());
             await writer.FlushAsync(CancellationToken.None);
 
             string partialResponse = Encoding.UTF8.GetString(stream.ToArray());
-            partialResponse.Should().Contain("\"result\":");
-            partialResponse.Should().NotContain(",\"id\":");
+            Assert.That(partialResponse, Does.Contain("\"result\":"));
+            Assert.That(partialResponse, Does.Not.Contain(",\"id\":"));
         }
         finally
         {
@@ -202,7 +201,7 @@ public class GetPayloadDirectResponseTests
     [TestCase(typeof(GetPayloadV6Result), true)]
     [TestCase(typeof(object), true)]
     public void CanBeStreamable_is_true(Type type, bool expected) =>
-        GetCanBeStreamable(type).Should().Be(expected);
+        Assert.That(GetCanBeStreamable(type), Is.EqualTo(expected));
 
     [TestCase(5)]
     [TestCase(6)]
@@ -223,7 +222,7 @@ public class GetPayloadDirectResponseTests
             SszCodec.EncodeGetPayloadV6Response((GetPayloadV6Result)CreateDirectResult(version, block, blobsBundle, executionRequests), actual);
         }
 
-        actual.WrittenSpan.ToArray().Should().Equal(expected.WrittenSpan.ToArray());
+        Assert.That(actual.WrittenSpan.ToArray(), Is.EqualTo(expected.WrittenSpan.ToArray()));
     }
 
     [TestCase(false)]
@@ -243,7 +242,7 @@ public class GetPayloadDirectResponseTests
             await WriteStreamableAsync(response);
         }
 
-        response.ExecutionPayloadReadCount.Should().Be(sszPath ? 1 : 0);
+        Assert.That(response.ExecutionPayloadReadCount, Is.EqualTo(sszPath ? 1 : 0));
     }
 
     public static IEnumerable<TestCaseData> TransactionCases()
@@ -265,7 +264,7 @@ public class GetPayloadDirectResponseTests
         JsonNode transactionNode = JsonNode.Parse(actualJson)!["executionPayload"]!["transactions"]![0]!;
         byte[] expectedRlp = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
 
-        transactionNode.GetValue<string>().Should().Be(expectedRlp.ToHexString(true));
+        Assert.That(transactionNode.GetValue<string>(), Is.EqualTo(expectedRlp.ToHexString(true)));
     }
 
     [TestCase(false)]
@@ -289,7 +288,7 @@ public class GetPayloadDirectResponseTests
         block.EncodedTransactions = null;
         byte[] reencodingPathJson = await WriteStreamableAsync(CreateDirectResult(version, block, blobsBundle, executionRequests));
 
-        JsonNode.DeepEquals(JsonNode.Parse(fastPathJson), JsonNode.Parse(reencodingPathJson)).Should().BeTrue();
+        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(fastPathJson), JsonNode.Parse(reencodingPathJson)), Is.True);
     }
 
     [TestCase(null, false)]
@@ -303,7 +302,7 @@ public class GetPayloadDirectResponseTests
         byte[] json = await WriteStreamableAsync(direct);
         JsonObject executionPayload = JsonNode.Parse(json)!["executionPayload"]!.AsObject();
 
-        executionPayload.ContainsKey("withdrawals").Should().Be(expectedPresent);
+        Assert.That(executionPayload.ContainsKey("withdrawals"), Is.EqualTo(expectedPresent));
     }
 
     private static object CreatePlainResult(int version, Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) =>
@@ -507,7 +506,7 @@ public class GetPayloadDirectResponseTests
         byte[] expected = JsonSerializer.SerializeToUtf8Bytes(plain, plain.GetType(), EthereumJsonSerializer.JsonOptions);
         byte[] actual = await WriteStreamableAsync(direct);
 
-        JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)).Should().BeTrue();
+        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)), Is.True);
     }
 
     private static async Task<byte[]> WriteResponseAsync(JsonRpcResponse response)

@@ -10,7 +10,6 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -133,7 +132,7 @@ public abstract class ConfigFileTestsBase
         return intersection;
     }
 
-    protected void Test<T, TProperty>(string configWildcard, Expression<Func<T, TProperty>> getter, TProperty expectedValue) where T : IConfig => Test(configWildcard, getter, (s, propertyValue) => propertyValue.Should().Be(expectedValue, s + ": " + typeof(T).Name + "." + getter.GetName()));
+    protected void Test<T, TProperty>(string configWildcard, Expression<Func<T, TProperty>> getter, TProperty expectedValue) where T : IConfig => Test(configWildcard, getter, (s, propertyValue) => Assert.That(propertyValue, Is.EqualTo(expectedValue), s + ": " + typeof(T).Name + "." + getter.GetName()));
 
     protected void Test<T, TProperty>(string configWildcard, Expression<Func<T, TProperty>> getter, Action<string, TProperty> expectedValue) where T : IConfig
     {

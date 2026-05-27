@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -36,8 +35,7 @@ namespace Nethermind.Xdc.Test
 
             XdcSubnetBlockHeader decoded = (XdcSubnetBlockHeader)decodedBase!;
 
-            // Hash is excluded since decoder sets it from RLP, but original is often not set
-            decoded.Should().BeEquivalentTo(original, options => options.Excluding(h => h.Hash));
+            XdcTestAssertions.AssertXdcHeader(decoded, original, compareHash: false);
         }
 
         [Test]

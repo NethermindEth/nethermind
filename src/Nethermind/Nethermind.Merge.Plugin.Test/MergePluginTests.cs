@@ -7,7 +7,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -120,7 +119,7 @@ public class MergePluginTests
     {
         using IContainer container = BuildContainer();
 
-        container.Resolve<IEngineRequestsTracker>().Should().BeOfType<ClHealthRequestsTracker>();
+        Assert.That(container.Resolve<IEngineRequestsTracker>(), Is.TypeOf<ClHealthRequestsTracker>());
     }
 
     [Test]
@@ -173,12 +172,14 @@ public class MergePluginTests
 
         _ = EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(PriorityProbe));
 
-        calls.Should().Equal(
+        Assert.That(calls, Is.EqualTo(new[]
+        {
             "engine-api",
             "facade-first",
             "facade-second",
             "json-rpc-response",
-            "external");
+            "external"
+        }));
     }
 
     [Test]
@@ -274,9 +275,7 @@ public class MergePluginTests
 
         using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
         INethermindApi api = container.Resolve<INethermindApi>();
-        await _plugin.Invoking((plugin) => plugin.Init(api))
-            .Should()
-            .ThrowAsync<InvalidConfigurationException>();
+        Assert.That(async () => await _plugin.Init(api), Throws.TypeOf<InvalidConfigurationException>());
     }
 
     [Test]
@@ -297,9 +296,9 @@ public class MergePluginTests
         INethermindApi api = container.Resolve<INethermindApi>();
         await _plugin.Init(api);
 
-        jsonRpcConfig.Enabled.Should().BeTrue();
-        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo();
-        jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo("http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client");
+        Assert.That(jsonRpcConfig.Enabled, Is.True);
+        Assert.That(jsonRpcConfig.EnabledModules, Is.Empty);
+        Assert.That(jsonRpcConfig.AdditionalRpcUrls, Is.EqualTo(new[] { "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client" }));
     }
 
     [TestCase(true, true, true)]
@@ -316,14 +315,14 @@ public class MergePluginTests
 
         await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, _jsonRpcConfig, syncConfig));
         INethermindApi api = container.Resolve<INethermindApi>();
-        Func<Task>? invocation = _plugin.Invoking((plugin) => plugin.Init(api));
+        Func<Task> invocation = () => _plugin.Init(api);
         if (shouldPass)
         {
-            await invocation.Should().NotThrowAsync();
+            Assert.That(async () => await invocation(), Throws.Nothing);
         }
         else
         {
-            await invocation.Should().ThrowAsync<InvalidConfigurationException>();
+            Assert.That(async () => await invocation(), Throws.TypeOf<InvalidConfigurationException>());
         }
     }
 

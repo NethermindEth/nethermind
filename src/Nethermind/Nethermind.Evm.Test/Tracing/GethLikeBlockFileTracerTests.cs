@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -41,8 +40,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
 
             string fileName = tracer.FileNames.Last();
 
-            fileName.Should().Contain($"block_{block.Hash.Bytes[..4].ToHexString(true)}-{i}-{tx.Hash.Bytes[..4].ToHexString(true)}-");
-            fileName.Should().EndWith(".jsonl");
+            Assert.That(fileName, Does.Contain($"block_{block.Hash.Bytes[..4].ToHexString(true)}-{i}-{tx.Hash.Bytes[..4].ToHexString(true)}-"));
+            Assert.That(fileName, Does.EndWith(".jsonl"));
         }
     }
 }
