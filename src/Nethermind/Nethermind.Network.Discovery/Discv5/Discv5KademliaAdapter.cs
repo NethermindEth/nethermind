@@ -178,9 +178,20 @@ public class Discv5KademliaAdapter(
         SessionKey sessionKey = new(receiver.Id.Hash, receiver.Address);
         if (TryGetSession(sessionKey, out Discv5Session? session))
         {
-            byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, session.WriteKey, message, session.GetNextNonce(cryptoRandom));
-            await discoveryHandler.SendAsync(packet, receiver.Address);
-            return null;
+            byte[] sessionNonce = session.GetNextNonce(cryptoRandom);
+            PendingNonceKey sessionPendingNonceKey = new(receiver.Address, NonceToString(sessionNonce));
+            _pendingByNonce.Set(sessionPendingNonceKey, new PendingRequest(receiver, message));
+            byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, session.WriteKey, message, sessionNonce);
+            try
+            {
+                await discoveryHandler.SendAsync(packet, receiver.Address);
+                return sessionPendingNonceKey;
+            }
+            catch
+            {
+                _pendingByNonce.TryRemove(sessionPendingNonceKey, out _);
+                throw;
+            }
         }
 
         byte[] nonce = cryptoRandom.GenerateRandomBytes(Discv5PacketCodec.NonceSize);

@@ -55,6 +55,43 @@ public class Discv5WireTests
     }
 
     [Test]
+    public async Task Ping_Rehandshakes_After_RemoteSessionLost()
+    {
+        IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
+        IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
+        TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA);
+        TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
+        Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
+        {
+            Enr = peerB.NodeRecordProvider.Current.EnrString
+        };
+
+        using CancellationTokenSource cancellationSourceA = new(10_000);
+        using CancellationTokenSource cancellationSourceB = new(10_000);
+        Task runA = peerA.Adapter.RunAsync(cancellationSourceA.Token);
+        Task runB = peerB.Adapter.RunAsync(cancellationSourceB.Token);
+
+        Task firstPing = peerA.Adapter.Ping(nodeB, cancellationSourceA.Token);
+        await PumpUntilComplete(firstPing, peerA, peerB, cancellationSourceA.Token);
+        await firstPing;
+
+        await cancellationSourceB.CancelAsync();
+        await runB;
+
+        TestPeer restartedPeerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
+        using CancellationTokenSource cancellationSourceRestartedB = new(10_000);
+        Task runRestartedB = restartedPeerB.Adapter.RunAsync(cancellationSourceRestartedB.Token);
+
+        Task secondPing = peerA.Adapter.Ping(nodeB, cancellationSourceA.Token);
+        await PumpUntilComplete(secondPing, peerA, restartedPeerB, cancellationSourceA.Token);
+        await secondPing;
+
+        await cancellationSourceA.CancelAsync();
+        await cancellationSourceRestartedB.CancelAsync();
+        await Task.WhenAll(runA, runRestartedB);
+    }
+
+    [Test]
     public async Task FindNeighbours_Returns_Records_At_Requested_Distance()
     {
         IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
