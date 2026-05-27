@@ -80,11 +80,36 @@ public class JsonRpcServiceTests
 
     private static IEnumerable<TestCaseData> RequiredStateBlockParameterCases()
     {
-        yield return new TestCaseData(nameof(IEthRpcModule.eth_getBalance), new object?[] { "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6" }, "missing value for required argument 1").SetName("Balance");
-        yield return new TestCaseData(nameof(IEthRpcModule.eth_getCode), new object?[] { "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6" }, "missing value for required argument 1").SetName("Code");
-        yield return new TestCaseData(nameof(IEthRpcModule.eth_getStorageAt), new object?[] { "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6", "0x1" }, "missing value for required argument 2").SetName("Storage");
-        yield return new TestCaseData(nameof(IEthRpcModule.eth_getTransactionCount), new object?[] { "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6" }, "missing value for required argument 1").SetName("TransactionCount");
-        yield return new TestCaseData(nameof(IEthRpcModule.eth_getProof), new object?[] { "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6", Array.Empty<string>() }, "missing value for required argument 2").SetName("Proof");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBalance),
+            new object?[] { "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6" },
+            "missing value for required argument 1",
+            new Action<IEthRpcModule>(static ethRpcModule => ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter>())))
+            .SetName("Balance");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getCode),
+            new object?[] { "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6" },
+            "missing value for required argument 1",
+            new Action<IEthRpcModule>(static ethRpcModule => ethRpcModule.DidNotReceive().eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter>())))
+            .SetName("Code");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getStorageAt),
+            new object?[] { "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6", "0x1" },
+            "missing value for required argument 2",
+            new Action<IEthRpcModule>(static ethRpcModule => ethRpcModule.DidNotReceive().eth_getStorageAt(Arg.Any<Address>(), Arg.Any<UInt256>(), Arg.Any<BlockParameter>())))
+            .SetName("Storage");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getTransactionCount),
+            new object?[] { "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6" },
+            "missing value for required argument 1",
+            new Action<IEthRpcModule>(static ethRpcModule => ethRpcModule.DidNotReceive().eth_getTransactionCount(Arg.Any<Address>(), Arg.Any<BlockParameter>())))
+            .SetName("TransactionCount");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getProof),
+            new object?[] { "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6", Array.Empty<string>() },
+            "missing value for required argument 2",
+            new Action<IEthRpcModule>(static ethRpcModule => ethRpcModule.DidNotReceive().eth_getProof(Arg.Any<Address>(), Arg.Any<HashSet<UInt256>>(), Arg.Any<BlockParameter>())))
+            .SetName("Proof");
     }
 
     private static IEnumerable<TestCaseData> RuntimePolymorphicPayloadCases()
@@ -418,32 +443,11 @@ public class JsonRpcServiceTests
     }
 
     [TestCaseSource(nameof(RequiredStateBlockParameterCases))]
-    public void Required_state_block_parameter_methods_reject_missing_block_argument(string method, object?[] parameters, string expectedMessage)
+    public void Required_state_block_parameter_methods_reject_missing_block_argument(string method, object?[] parameters, string expectedMessage, Action<IEthRpcModule> assertNotReceived)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         AssertInvalidParamsWithoutData(TestRequest(ethRpcModule, method, parameters), expectedMessage);
-
-        switch (method)
-        {
-            case nameof(IEthRpcModule.eth_getBalance):
-                ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter>());
-                break;
-            case nameof(IEthRpcModule.eth_getCode):
-                ethRpcModule.DidNotReceive().eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter>());
-                break;
-            case nameof(IEthRpcModule.eth_getStorageAt):
-                ethRpcModule.DidNotReceive().eth_getStorageAt(Arg.Any<Address>(), Arg.Any<UInt256>(), Arg.Any<BlockParameter>());
-                break;
-            case nameof(IEthRpcModule.eth_getTransactionCount):
-                ethRpcModule.DidNotReceive().eth_getTransactionCount(Arg.Any<Address>(), Arg.Any<BlockParameter>());
-                break;
-            case nameof(IEthRpcModule.eth_getProof):
-                ethRpcModule.DidNotReceive().eth_getProof(Arg.Any<Address>(), Arg.Any<HashSet<UInt256>>(), Arg.Any<BlockParameter>());
-                break;
-            default:
-                Assert.Fail($"Unhandled method {method}");
-                break;
-        }
+        assertNotReceived(ethRpcModule);
     }
 
     [TestCase("""["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6",null]""", TestName = "ExplicitNull")]
