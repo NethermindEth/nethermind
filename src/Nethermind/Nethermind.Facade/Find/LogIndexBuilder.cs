@@ -159,7 +159,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (!_config.Enabled)
             return;
 
-        await SignalStop();
+        await SignalStopAsync();
 
         foreach (Task task in _tasks)
         {
@@ -176,7 +176,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         await _logIndexStorage.StopAsync();
     }
 
-    private async Task SignalStop()
+    private async Task SignalStopAsync()
     {
         await _cancellationSource.CancelAsync();
         _pivotSource.TrySetCanceled(CancellationToken);
@@ -308,7 +308,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         if (!isStopping)
         {
-            await SignalStop();
+            await SignalStopAsync();
         }
     }
 
