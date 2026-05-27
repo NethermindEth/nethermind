@@ -297,15 +297,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
 
+        bool usedSparseCommit = false;
         if (_sparseIsAuthoritative && _sparseComputedRoot is not null && _sparseRootComputer is not null)
         {
-            // M3: Use SparseTrieSnapshotCommitter for persistence — skip Patricia Commit
-            SparseStateTrie trie = _sparseRootComputer.Trie;
-            SparseTrieSnapshotCommitter.CommitAccountTrie(trie.AccountTrie.Subtrie, _snapshotBundle);
+            try
+            {
+                SparseStateTrie trie = _sparseRootComputer.Trie;
+                SparseTrieSnapshotCommitter.CommitAccountTrie(trie.AccountTrie.Subtrie, _snapshotBundle);
+                usedSparseCommit = true;
+            }
+            catch (Exception ex)
+            {
+                ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                if (logger.IsWarn) logger.Warn($"SparseTrieSnapshotCommitter failed: {ex.Message}. Falling back to Patricia Commit.");
+                Interlocked.Exchange(ref _consecutiveMatches, 0);
+            }
         }
-        else
+
+        if (!usedSparseCommit)
         {
-            // Fallback: Patricia handles persistence
             _stateTree.Commit();
         }
 
@@ -417,8 +427,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (logger.IsTrace) Trace(address, storageRoot, account);
                 }
 
-                // Always feed Patricia for persistence fallback (needed until authoritative)
-                if (!scope._sparseIsAuthoritative)
+                // Always feed Patricia BulkSet — even in authoritative mode, we need
+                // the Patricia tree populated as a safety net for fallback if the sparse
+                // trie throws during UpdateRootHash or Commit.
                 {
                     using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
                     foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
