@@ -1,0 +1,7 @@
+# zkevm
+
+test_bal_7002_partial_sweep[fork_Amsterdam-blockchain_test_engine]
+test_bal_7702_delegated_storage_access[fork_Amsterdam-blockchain_test_engine]
+test_bal_7702_delegation_clear[fork_Amsterdam-blockchain_test_engine-self_funded]
+test_bal_7702_delegation_update[fork_Amsterdam-blockchain_test_engine-self_funded]
+test_bal_create2_collision[fork_Amsterdam-blockchain_test_engine]

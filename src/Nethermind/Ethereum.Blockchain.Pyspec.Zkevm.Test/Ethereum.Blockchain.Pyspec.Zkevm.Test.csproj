@@ -6,4 +6,10 @@
     <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="../../../scripts/known-failing-zkevm-tests.txt" CopyToOutputDirectory="PreserveNewest">
+      <Link>known-failing-zkevm-tests.txt</Link>
+    </Content>
+  </ItemGroup>
+
 </Project>
