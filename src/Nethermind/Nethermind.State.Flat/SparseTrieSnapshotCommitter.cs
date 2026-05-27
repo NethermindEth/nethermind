@@ -59,7 +59,11 @@ public static class SparseTrieSnapshotCommitter
                 node.InnerBranchRlp = null;
             }
 
-            // Recurse into revealed children. Skip if no descendant could need committing.
+            // Recurse only into children that have FullRlp set (= encoded this block).
+            // Invariant: if a child is "clean" (FullRlp null after the previous commit),
+            // it was either never modified or already persisted; its entire subtree is
+            // clean too thanks to dirty-propagates-upward in MarkDirty + EncodeBranch.
+            // This is the same dirty-path-only optimization HashNode uses.
             TreePath childBasePath = node.HasShortKey() ? path.Append(node.ShortKey) : path;
             TrieMask mask = node.StateMask;
             int childrenStart = node.ChildrenStart;
@@ -69,11 +73,14 @@ public static class SparseTrieSnapshotCommitter
                 if (!mask.IsBitSet(n)) continue;
                 int denseIdx = childrenStart + mask.DenseIndex(n);
                 SparseChildEntry entry = subtrie.ChildAt(denseIdx);
-                if (entry.IsRevealed)
-                {
-                    TreePath childPath = childBasePath.Append(n);
-                    WalkAndCommit(subtrie, entry.ArenaIndex, childPath, bundle, address);
-                }
+                if (!entry.IsRevealed) continue;
+                ref SparseTrieNode child = ref subtrie.NodeAt(entry.ArenaIndex);
+                // Skip clean subtrees: their FullRlp and InnerBranchRlp are null AND they
+                // can't contain dirty descendants because parent encoding only sets FullRlp
+                // when descendants did.
+                if (child.FullRlp is null && child.InnerBranchRlp is null) continue;
+                TreePath childPath = childBasePath.Append(n);
+                WalkAndCommit(subtrie, entry.ArenaIndex, childPath, bundle, address);
             }
         }
     }
