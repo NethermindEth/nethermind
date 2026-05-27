@@ -73,10 +73,30 @@ public class JsonRpcServiceTests
 
     private static IEnumerable<TestCaseData> InvalidRawUtf8ParamCases()
     {
-        yield return new TestCaseData(nameof(IEthRpcModule.eth_getBlockByNumber), """[{"blockNumber":{}},false]""", "unknown block parameter type").SetName("Malformed typed argument");
-        yield return new TestCaseData(nameof(IEthRpcModule.eth_feeHistory), """[{},"latest"]""", "missing value for required argument 2").SetName("Missing required argument");
-        yield return new TestCaseData(nameof(IEthRpcModule.eth_getBlockByNumber), """["0x1",false,"extra"]""", "Invalid params").SetName("Extra argument");
-        yield return new TestCaseData(nameof(IEthRpcModule.eth_getBalance), """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6",{"blockNumber":"0x1036640","blockHash":"0x96cfa0fb5e50b0a3f6cc76f3299cfbf48f17e8b41798d1394474e67ec8a97e9f"}]""", "cannot specify both BlockHash and BlockNumber, choose one or the other").SetName("EIP-1898 mutually exclusive block fields");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """[{"blockNumber":{}},false]""",
+            "unknown block parameter type",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Malformed typed argument");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_feeHistory),
+            """[{},"latest"]""",
+            "missing value for required argument 2",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_feeHistory(Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<double[]>())))
+            .SetName("Missing required argument");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """["0x1",false,"extra"]""",
+            "Invalid params",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Extra argument");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBalance),
+            """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6",{"blockNumber":"0x1036640","blockHash":"0x96cfa0fb5e50b0a3f6cc76f3299cfbf48f17e8b41798d1394474e67ec8a97e9f"}]""",
+            "cannot specify both BlockHash and BlockNumber, choose one or the other",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
+            .SetName("EIP-1898 mutually exclusive block fields");
     }
 
     private static IEnumerable<TestCaseData> RuntimePolymorphicPayloadCases()
@@ -410,23 +430,15 @@ public class JsonRpcServiceTests
     }
 
     [TestCaseSource(nameof(InvalidRawUtf8ParamCases))]
-    public void Raw_utf8_params_invalid_arguments_return_invalid_params_before_invocation(string method, string rawParameters, string expectedMessage)
+    public void Raw_utf8_params_invalid_arguments_return_invalid_params_before_invocation(
+        string method,
+        string rawParameters,
+        string expectedMessage,
+        Action<IEthRpcModule> assertNotInvoked)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         AssertInvalidParamsWithoutData(TestRawRequest(ethRpcModule, method, rawParameters), expectedMessage);
-
-        switch (method)
-        {
-            case nameof(IEthRpcModule.eth_getBlockByNumber):
-                ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
-                break;
-            case nameof(IEthRpcModule.eth_feeHistory):
-                ethRpcModule.DidNotReceive().eth_feeHistory(Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<double[]>());
-                break;
-            case nameof(IEthRpcModule.eth_getBalance):
-                ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
-                break;
-        }
+        assertNotInvoked(ethRpcModule);
     }
 
     [Test]

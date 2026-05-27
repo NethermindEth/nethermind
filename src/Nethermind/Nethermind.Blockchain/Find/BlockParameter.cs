@@ -18,6 +18,8 @@ namespace Nethermind.Blockchain.Find
 {
     using Nethermind.JsonRpc.Data;
 
+    public sealed class BlockParameterParseException(string message) : FormatException(message);
+
     [JsonConverter(typeof(BlockParameterConverter))]
     public class BlockParameter : IEquatable<BlockParameter>
     {
@@ -182,14 +184,14 @@ namespace Nethermind.JsonRpc.Data
 
             if (blockHash is not null && blockNumberParam is not null)
             {
-                throw new FormatException(BlockParameter.BlockHashAndBlockNumberError);
+                throw new BlockParameterParseException(BlockParameter.BlockHashAndBlockNumberError);
             }
 
             return (blockHash, blockNumberParam) switch
             {
                 (blockHash: not null, blockNumberParam: null) => new BlockParameter(blockHash, requireCanonical),
                 (blockHash: null, blockNumberParam: not null) => blockNumberParam,
-                _ => throw new FormatException("unknown block parameter type")
+                _ => throw new BlockParameterParseException("unknown block parameter type")
             };
         }
 
