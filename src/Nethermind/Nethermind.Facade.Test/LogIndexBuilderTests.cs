@@ -144,8 +144,8 @@ public class LogIndexBuilderTests
         }
     }
 
-    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage) => new LogIndexBuilder(
-            logIndexStorage, _config, _blockTree, _syncConfig, _receiptStorage, _logManager
+    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null) => new LogIndexBuilder(
+            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager
         ).AddTo(_testDisposables);
 
     [Test]
@@ -199,28 +199,9 @@ public class LogIndexBuilderTests
     {
         Exception exception = new(nameof(Should_ForwardErrorAndStopWithoutDeadlock));
 
-        ILogIndexStorage storage = new TestLogIndexStorage();
-        if (failAfter < 0)
-        {
-            // FindBlock must succeed for the single pivot-setup lookup in StartAsync, then throw on
-            // the later lookups issued by DoQueueBlocks — that is the self-await deadlock path.
-            IBlockTree realTree = _blockTree;
-            int findCalls = 0;
-            IBlockTree throwingTree = Substitute.For<IBlockTree>();
-            throwingTree.SyncPivot.Returns(realTree.SyncPivot);
-            throwingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
-            throwingTree.FindBlock(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
-                .Returns(ci => Interlocked.Increment(ref findCalls) == 1
-                    ? realTree.FindBlock(ci.ArgAt<long>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
-                    : throw exception);
-            _blockTree = throwingTree;
-        }
-        else
-        {
-            storage = new FailingLogIndexStorage(failAfter, exception);
-        }
-
-        LogIndexBuilder builder = GetService(storage);
+        LogIndexBuilder builder = failAfter < 0
+            ? GetService(new TestLogIndexStorage(), CreateFailingBlockTree(exception))
+            : GetService(new FailingLogIndexStorage(failAfter, exception));
 
         await builder.StartAsync();
 
@@ -258,6 +239,25 @@ public class LogIndexBuilderTests
             Assert.That(builder.LastError, Is.Null);
             Assert.That(builder.LastUpdate, Is.Null);
         }
+    }
+
+    // FindBlock must succeed for the single pivot-setup lookup in StartAsync, then throw on
+    // the later lookups issued by DoQueueBlocks — that is the self-await deadlock path.
+    private IBlockTree CreateFailingBlockTree(Exception exception)
+    {
+        IBlockTree realTree = _blockTree;
+        int findCalls = 0;
+
+        IBlockTree throwingTree = Substitute.For<IBlockTree>();
+        throwingTree.SyncPivot.Returns(realTree.SyncPivot);
+        throwingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        throwingTree
+            .FindBlock(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => Interlocked.Increment(ref findCalls) == 1
+                ? realTree.FindBlock(ci.ArgAt<long>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
+                : throw exception);
+
+        return throwingTree;
     }
 
     private static Task WaitMaxBlockAsync(TestLogIndexStorage storage, int blockNumber, CancellationToken cancellation)
