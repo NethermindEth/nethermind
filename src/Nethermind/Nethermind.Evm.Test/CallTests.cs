@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -77,9 +76,9 @@ namespace Nethermind.Evm.Test
                 new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
                 NullTxTracer.Instance);
 
-            result.TransactionExecuted.Should().BeTrue();
-            TestState.GetBalance(Recipient).Should().Be((UInt256)expectedRecipientBalance * 1.Ether);
-            TestState.GetBalance(target).Should().Be((UInt256)expectedTargetBalance * 1.Ether);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(TestState.GetBalance(Recipient), Is.EqualTo((UInt256)expectedRecipientBalance * 1.Ether));
+            Assert.That(TestState.GetBalance(target), Is.EqualTo((UInt256)expectedTargetBalance * 1.Ether));
         }
 
         private static byte[] BuildEmptyCodeCall(Instruction instruction, Address target) =>
