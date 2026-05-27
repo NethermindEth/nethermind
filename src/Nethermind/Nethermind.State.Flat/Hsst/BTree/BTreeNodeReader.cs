@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.State.Flat.Hsst.BTree;
 
@@ -160,10 +159,7 @@ public readonly ref struct BTreeNodeReader(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ReadOnlySpan<byte> GetRawSlot(int index) => metadata.KeyType switch
     {
-        // Variable: SoA layout, prefix slot is byte-reversed (LE-stored). Returning the raw
-        // 2-byte slot follows the same convention as LE-stored Uniform — callers that need
-        // the full key in lex order use GetFullKey with a destination buffer.
-        0 => keys.Slice(index * 2, 2),
+        0 => new BTreeNodeVariableKeyReader(keys, metadata.KeyCount).GetRawSlot(index),
         1 => keys.Slice(index * metadata.KeySize, metadata.KeySize),
         _ => throw new InvalidDataException($"Unknown KeyType: {metadata.KeyType}")
     };
@@ -199,102 +195,6 @@ public readonly ref struct BTreeNodeReader(
         for (int i = 0; i < len; i++)
             v |= (ulong)src[i] << (i * 8);
         return v;
-    }
-
-    // ---- Variable KEY (SoA) helpers ----
-
-    /// <summary>
-    /// Load entry <paramref name="index"/>'s prefix slot as a u16 (LE). The slot stores the
-    /// original 2-byte prefix byte-reversed, so the unsigned value returned has the same
-    /// ordering as a lex compare on the original prefix bytes.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ushort GetVariableKeyPrefixU16(ReadOnlySpan<byte> keys, int index) =>
-        Unsafe.ReadUnaligned<ushort>(
-            ref Unsafe.Add(ref MemoryMarshal.GetReference(keys), (nint)(index * 2)));
-
-    /// <summary>
-    /// Load entry <paramref name="index"/>'s offset slot. High 2 bits = lenTag (0..3),
-    /// low 14 bits = tailOffset (relative to remainingkeys section start).
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int GetVariableKeyOffsetSlot(ReadOnlySpan<byte> keys, int count, int index)
-    {
-        int offsetArrStart = count * 2;
-        return BinaryPrimitives.ReadUInt16LittleEndian(keys[(offsetArrStart + index * 2)..]);
-    }
-
-    /// <summary>
-    /// Resolve the tail bytes for entry <paramref name="index"/>. Tag &lt; 11 returns an
-    /// empty span. For tag 11 the tail spans <c>[tailOffset, nextTailOffset)</c> with the
-    /// sentinel for the last entry being <c>remainingkeys.Length</c>.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ReadOnlySpan<byte> GetVariableKeyTail(ReadOnlySpan<byte> keys, int count, int index)
-    {
-        int offsetArrStart = count * 2;
-        int tailStart = count * 4;
-        int slot = BinaryPrimitives.ReadUInt16LittleEndian(keys[(offsetArrStart + index * 2)..]);
-        if ((slot >>> 14) != 0b11) return default;
-        int tailOffset = slot & 0x3FFF;
-        int tailEnd;
-        if (index + 1 < count)
-        {
-            int nextSlot = BinaryPrimitives.ReadUInt16LittleEndian(keys[(offsetArrStart + (index + 1) * 2)..]);
-            tailEnd = nextSlot & 0x3FFF;
-        }
-        else
-        {
-            tailEnd = keys.Length - tailStart;
-        }
-        return keys.Slice(tailStart + tailOffset, tailEnd - tailOffset);
-    }
-
-    /// <summary>
-    /// Encode the search key into the byte-reversed u16 form used by Variable prefixArr slots.
-    /// Zero-pads keys shorter than 2 bytes; the caller still has to apply the lenTag-aware
-    /// tie-break on prefix-equal probes (length 0/1/2 ambiguities collapse onto the same u16).
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ushort EncodeVariableSearchPrefix(ReadOnlySpan<byte> q)
-    {
-        if (q.Length >= 2)
-            return BinaryPrimitives.ReverseEndianness(
-                Unsafe.ReadUnaligned<ushort>(ref MemoryMarshal.GetReference(q)));
-        return q.Length == 1 ? (ushort)(q[0] << 8) : (ushort)0;
-    }
-
-    /// <summary>
-    /// Compare query <paramref name="q"/> against entry <paramref name="index"/> using the
-    /// SoA Variable layout. Returns negative, zero, or positive matching <c>SequenceCompareTo</c>.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int CompareVariableEntry(ReadOnlySpan<byte> q, ushort searchPrefix, ReadOnlySpan<byte> keys, int count, int index)
-    {
-        ushort midPrefix = GetVariableKeyPrefixU16(keys, index);
-        if (searchPrefix != midPrefix)
-            return searchPrefix > midPrefix ? 1 : -1;
-
-        int slot = GetVariableKeyOffsetSlot(keys, count, index);
-        int tag = slot >>> 14;
-        if (tag != 0b11)
-        {
-            // Stored key length = tag (0/1/2). Prefix u16 equality (with zero padding) collapses
-            // to a length tie-break: q.Length - storedLen.
-            return q.Length - tag;
-        }
-
-        // Stored key has tail (length ≥ 3). q < stored if q exhausts within the prefix.
-        if (q.Length <= 2) return -1;
-
-        int tailOffset = slot & 0x3FFF;
-        int offsetArrStart = count * 2;
-        int tailStart = count * 4;
-        int tailEnd = index + 1 < count
-            ? BinaryPrimitives.ReadUInt16LittleEndian(keys[(offsetArrStart + (index + 1) * 2)..]) & 0x3FFF
-            : keys.Length - tailStart;
-        ReadOnlySpan<byte> tail = keys.Slice(tailStart + tailOffset, tailEnd - tailOffset);
-        return q[2..].SequenceCompareTo(tail);
     }
 
     /// <summary>
@@ -354,7 +254,7 @@ public readonly ref struct BTreeNodeReader(
                     _ => throw new InvalidDataException($"Invalid LE keySize: {keySize}")
                 }
                 : UniformKeySearch.UniformBE(q, keys, count, keySize),
-            0 => FindFloorIndexVariable(q, keys, count),
+            0 => new BTreeNodeVariableKeyReader(keys, count).FindFloorIndex(q),
             _ => throw new InvalidDataException($"Unknown KeyType: {metadata.KeyType}")
         };
     }
@@ -382,22 +282,6 @@ public readonly ref struct BTreeNodeReader(
         return true;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FindFloorIndexVariable(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        ushort searchPrefix = EncodeVariableSearchPrefix(key);
-        int result = -1;
-        int lo = 0, hi = count - 1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) >>> 1;
-            int cmp = CompareVariableEntry(key, searchPrefix, keys, count, mid);
-            if (cmp >= 0) { result = mid; lo = mid + 1; }
-            else { hi = mid - 1; }
-        }
-        return result;
-    }
-
     /// <summary>
     /// Copy the full key (common prefix + per-entry suffix) for entry <paramref name="index"/>
     /// into <paramref name="dest"/>. Always emits bytes in original (lex) order, byte-swapping
@@ -407,44 +291,26 @@ public readonly ref struct BTreeNodeReader(
     public int GetFullKey(int index, Span<byte> dest)
     {
         if (metadata.KeyType == 0)
-        {
-            // Variable: prefix slot is byte-reversed; tail (if tag 11) lives in remainingkeys.
-            int slot = GetVariableKeyOffsetSlot(keys, metadata.KeyCount, index);
-            int tag = slot >>> 14;
-            ReadOnlySpan<byte> tail = tag == 0b11
-                ? GetVariableKeyTail(keys, metadata.KeyCount, index)
-                : default;
-            int suffixLen = tag == 0b11 ? 2 + tail.Length : tag;
-            int total = commonKeyPrefix.Length + suffixLen;
-            if (dest.Length < total)
-                throw new ArgumentException("Destination too small for full key", nameof(dest));
-            commonKeyPrefix.CopyTo(dest);
-            Span<byte> suffixDst = dest.Slice(commonKeyPrefix.Length, suffixLen);
-            // Un-reverse prefix slot bytes [b, a] → lex [a, b] up to suffixLen.
-            if (suffixLen >= 1) suffixDst[0] = keys[index * 2 + 1];
-            if (suffixLen >= 2) suffixDst[1] = keys[index * 2];
-            if (tag == 0b11) tail.CopyTo(suffixDst[2..]);
-            return total;
-        }
+            return new BTreeNodeVariableKeyReader(keys, metadata.KeyCount).GetFullKey(index, commonKeyPrefix, dest);
 
         ReadOnlySpan<byte> suffix = GetRawSlot(index);
-        int totalLegacy = commonKeyPrefix.Length + suffix.Length;
-        if (dest.Length < totalLegacy)
+        int total = commonKeyPrefix.Length + suffix.Length;
+        if (dest.Length < total)
             throw new ArgumentException("Destination too small for full key", nameof(dest));
         commonKeyPrefix.CopyTo(dest);
-        Span<byte> suffixDstLegacy = dest.Slice(commonKeyPrefix.Length, suffix.Length);
+        Span<byte> suffixDst = dest.Slice(commonKeyPrefix.Length, suffix.Length);
         if (metadata.IsKeyLittleEndian)
         {
             // Stored slots for KeyType ∈ {1,2} with LE flag are byte-reversed on disk.
             // Reverse back into dest to recover the original lex/numeric byte order.
             int n = suffix.Length;
-            for (int i = 0; i < n; i++) suffixDstLegacy[i] = suffix[n - 1 - i];
+            for (int i = 0; i < n; i++) suffixDst[i] = suffix[n - 1 - i];
         }
         else
         {
-            suffix.CopyTo(suffixDstLegacy);
+            suffix.CopyTo(suffixDst);
         }
-        return totalLegacy;
+        return total;
     }
 
     /// <summary>
