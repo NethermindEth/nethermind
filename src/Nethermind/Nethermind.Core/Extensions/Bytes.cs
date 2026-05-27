@@ -23,7 +23,7 @@ namespace Nethermind.Core.Extensions
 {
     public static unsafe partial class Bytes
     {
-        internal const string ErrMissingPrefix = "hex string without 0x prefix";
+        public const string ErrMissingPrefix = "hex string without 0x prefix";
         internal const string ErrOddLength = "hex string of odd length";
         internal const string ErrSyntax = "invalid hex string";
 

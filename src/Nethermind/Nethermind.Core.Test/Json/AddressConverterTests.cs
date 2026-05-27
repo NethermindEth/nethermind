@@ -58,8 +58,10 @@ public class AddressConverterTests : ConverterTestBase<Address>
     [Test]
     public void Rejects_address_without_0x_prefix()
     {
-        Action action = () => JsonSerializer.Deserialize<Address>("\"cf1dc766fc2c62bef0b67a8de666c8e67acf35f6\"", EthereumJsonSerializer.JsonOptions);
-        action.Should().Throw<FormatException>().WithMessage("hex string without 0x prefix");
+        FormatException exception = Assert.Throws<FormatException>(() =>
+            JsonSerializer.Deserialize<Address>("\"cf1dc766fc2c62bef0b67a8de666c8e67acf35f6\"", EthereumJsonSerializer.JsonOptions))!;
+
+        Assert.That(exception.Message, Is.EqualTo("hex string without 0x prefix"));
     }
 
     static IEnumerable<TestCaseData> AddressTestCases =

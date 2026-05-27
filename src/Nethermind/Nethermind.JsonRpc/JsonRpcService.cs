@@ -14,7 +14,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -282,9 +284,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             {
                 FormatException
                 {
-                    Message: "hex string without 0x prefix"
-                        or "hex number with leading zero digits"
-                        or "hex string \"0x\""
+                    Message: Bytes.ErrMissingPrefix
+                        or BlockParameter.LeadingZeroHexNumberError
+                        or BlockParameter.EmptyHexQuantityError
                 } => e.Message,
                 _ => "Invalid params"
             };

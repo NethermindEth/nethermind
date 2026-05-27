@@ -17,10 +17,14 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Blockchain.Find
 {
     using Nethermind.JsonRpc.Data;
+    using Nethermind.Core.Extensions;
 
     [JsonConverter(typeof(BlockParameterConverter))]
     public class BlockParameter : IEquatable<BlockParameter>
     {
+        public const string LeadingZeroHexNumberError = "hex number with leading zero digits";
+        public const string EmptyHexQuantityError = "hex string \"" + Bytes.EmptyHexValue + "\"";
+
         public static BlockParameter Earliest = new(BlockParameterType.Earliest);
 
         public static BlockParameter Pending = new(BlockParameterType.Pending);
@@ -249,7 +253,7 @@ namespace Nethermind.JsonRpc.Data
 
                 if (span.Length == 0)
                 {
-                    throw new FormatException($"hex string \"{Bytes.EmptyHexValue}\"");
+                    throw new FormatException(BlockParameter.EmptyHexQuantityError);
                 }
 
                 // 64 hex chars = 32 bytes = Hash256
@@ -261,7 +265,7 @@ namespace Nethermind.JsonRpc.Data
 
                 if (span.Length > 1 && span[0] == (byte)'0')
                 {
-                    throw new FormatException("hex number with leading zero digits");
+                    throw new FormatException(BlockParameter.LeadingZeroHexNumberError);
                 }
 
                 // Parse as block number
@@ -300,6 +304,7 @@ namespace Nethermind.JsonRpc.Data
         private static void ThrowInvalidFormatting()
             => throw new FormatException("unknown block parameter type");
 
+        // Non-JSON callers still use the legacy parser here; the stricter EIP-1474 quantity checks live in JSON-RPC deserialization.
         public static BlockParameter GetBlockParameter(string? value) => value switch
         {
             null => BlockParameter.Latest,
