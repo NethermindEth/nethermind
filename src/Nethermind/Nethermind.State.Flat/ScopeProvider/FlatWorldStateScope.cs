@@ -91,18 +91,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Hash256 prevRoot = currentStateId.StateRoot.ToCommitment();
             ParentStateTrieNodeReader proofReader = new(snapshotBundle);
 
-            // M3: cross-block trie reuse. Combined with dirty-path-only HashNode
-            // (only re-encode dirty subtrees), this should be a perf win because
-            // we avoid re-fetching proofs for hot paths already in the trie.
-            if (preservedSparseTrie is not null)
-            {
-                _sparseStateTrie = preservedSparseTrie.Take(prevRoot);
-                _sparseRootComputer = new SparseRootComputer(_sparseStateTrie, proofReader, prevRoot);
-            }
-            else
-            {
-                _sparseRootComputer = new SparseRootComputer(proofReader, prevRoot);
-            }
+            // Fresh sparse trie per block. PreservedSparseTrie infrastructure is wired
+            // but disabled by default because cross-block reuse doesn't help perf without
+            // ALSO skipping the proof reads for already-revealed hot paths. That requires
+            // MultiProofReader to be aware of the sparse trie's state (M5 prefetcher
+            // territory). Until then, fresh-per-block is the faster path.
+            _sparseRootComputer = new SparseRootComputer(proofReader, prevRoot);
 
             // After enough consecutive matches, skip Patricia UpdateRootHash (unless verification mode is on)
             _sparseIsAuthoritative = !configuration.SparseTrieVerificationMode
@@ -709,22 +703,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _currentStateId = newStateId;
 
-        // M3: store the sparse trie back for cross-block reuse, anchored at the new state root.
-        // The next block's Take() returns this warm trie if its parent state root matches.
+        // Fresh sparse trie per block.
         if (_sparseRootComputer is not null)
         {
-            Hash256 newRoot = newStateId.StateRoot.ToCommitment();
-
-            if (_preservedSparseTrie is not null && _sparseStateTrie is not null)
-            {
-                // Anchor only if sparse produced a matching root. Otherwise clear to be safe.
-                if (_sparseComputedRoot is not null && _sparseComputedRoot == newRoot)
-                    _preservedSparseTrie.StoreAnchored(_sparseStateTrie, newRoot);
-                else
-                    _preservedSparseTrie.StoreCleared(_sparseStateTrie);
-                _sparseStateTrie = null;
-            }
-
             _sparseRootComputer.Dispose();
             _sparseRootComputer = null;
             _sparseComputedRoot = null;
