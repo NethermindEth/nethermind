@@ -216,6 +216,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 _sparseComputedRoot = null;
                 _sparseIsAuthoritative = false;
 
+                // In SkipPatricia (M3) mode, Patricia BulkSet was never called, so falling back
+                // to Patricia would produce a stale/empty root. Propagate the exception.
+                if (_configuration.SparseTrieSkipPatricia)
+                    throw;
+
                 // Fallback: run Patricia
                 _stateTree.UpdateRootHash();
             }
@@ -777,9 +782,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (logger.IsTrace) Trace(address, storageRoot, account);
                 }
 
-                // Always feed Patricia BulkSet — even in authoritative mode, we need
-                // the Patricia tree populated as a safety net for fallback if the sparse
-                // trie throws during UpdateRootHash or Commit.
+                // Feed Patricia BulkSet UNLESS authoritative + SkipPatricia configured (M3 mode).
+                // In M3 mode, sparse is the only computation; Patricia BulkSet is skipped for perf.
+                bool skipPatriciaBulkSet = scope._configuration.SparseTrieSkipPatricia
+                    && scope._sparseIsAuthoritative
+                    && !scope._configuration.SparseTrieVerificationMode;
+                if (!skipPatriciaBulkSet)
                 {
                     using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
                     foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)

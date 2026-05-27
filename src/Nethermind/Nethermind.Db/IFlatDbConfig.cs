@@ -58,4 +58,10 @@ public interface IFlatDbConfig : IConfig
         "sparse trie and compare results every block. Prevents the sparse trie from becoming authoritative — " +
         "Patricia always remains the source of truth for persistence and root hash.", DefaultValue = "false")]
     bool SparseTrieVerificationMode { get; set; }
+
+    [ConfigItem(Description = "M3 mode: when sparse trie is authoritative, skip Patricia BulkSet/Commit entirely. " +
+        "Eliminates the hybrid overhead but removes the Patricia fallback if sparse throws. Requires that " +
+        "UseSparseRootComputation=true and SparseTrieVerificationMode=false. " +
+        "Recommended only after extensive verification-mode validation.", DefaultValue = "false")]
+    bool SparseTrieSkipPatricia { get; set; }
 }
