@@ -56,11 +56,6 @@ internal static class HsstBTreeReader
         int trailerKeyLength = tailBuf[3];
         // tailBuf[4] is IndexType — already consumed by the HsstReader dispatcher.
 
-        // Exact-match needs the input key to match the HSST's fixed key length; reject up
-        // front before walking the tree. Floor lookups intentionally allow mismatched
-        // lengths so callers can seek with a key prefix or sentinel.
-        if (exactMatch && key.Length != trailerKeyLength) return false;
-
         // Root prefix bytes seed the root's parentSeparator (non-root nodes get their
         // prefix bytes from the parent's separator during descent; the root has no
         // parent, so the bytes ride the trailer). Size to the actual prefix length
@@ -76,8 +71,45 @@ internal static class HsstBTreeReader
         }
 
         long trailerLen = 5L + rootPrefixLen;
-        long currentAbsStart = bound.Offset + bound.Length - trailerLen - rootSize;
+        long rootStart = bound.Offset + bound.Length - trailerLen - rootSize;
         long scopeEnd = bound.Offset + bound.Length - trailerLen;
+
+        return TrySeekFromRoot<TReader, TPin>(in reader, bound, rootStart, scopeEnd,
+            rootPrefix, trailerKeyLength, key, exactMatch, keyFirst, out resultBound);
+    }
+
+    /// <summary>
+    /// Walk-only variant of <see cref="TrySeek"/> for callers that have already resolved the
+    /// BTree's root descriptor (start offset, scope end, root prefix bytes, trailer key length)
+    /// — typically because they cache it for the life of their backing container. Skips the
+    /// two trailer-region reads that <see cref="TrySeek"/> issues to recover the same values
+    /// and jumps straight into the node-walk loop.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="rootStart"/> is the absolute byte offset of the root node's flag byte
+    /// (the same value <see cref="TrySeek"/> computes as
+    /// <c>bound.Offset + bound.Length - trailerLen - rootSize</c>). <paramref name="scopeEnd"/>
+    /// is the absolute upper edge available to nodes — the trailer's lower edge. The bound is
+    /// still required because <see cref="DecodeEntry"/> uses it to derive entry-region offsets
+    /// and validate value lengths against the HSST's total span.
+    /// </remarks>
+    [SkipLocalsInit]
+    public static bool TrySeekFromRoot<TReader, TPin>(
+        scoped in TReader reader, Bound bound,
+        long rootStart, long scopeEnd,
+        scoped ReadOnlySpan<byte> rootPrefix,
+        int trailerKeyLength,
+        scoped ReadOnlySpan<byte> key,
+        bool exactMatch, bool keyFirst, out Bound resultBound)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        resultBound = default;
+
+        // Exact-match needs the input key to match the HSST's fixed key length; reject up
+        // front before walking the tree. Floor lookups intentionally allow mismatched
+        // lengths so callers can seek with a key prefix or sentinel.
+        if (exactMatch && key.Length != trailerKeyLength) return false;
 
         // parentSeparator for the current node — seeded with the trailer's root prefix
         // for the root, then overwritten with each descended-through separator's full
@@ -85,6 +117,7 @@ internal static class HsstBTreeReader
         // so the value is irrelevant once the cursor reaches one.
         Span<byte> separatorScratch = stackalloc byte[Math.Max(trailerKeyLength, 1)];
         scoped ReadOnlySpan<byte> parentSeparator = rootPrefix;
+        long currentAbsStart = rootStart;
 
         Span<byte> flagBuf = stackalloc byte[1];
         while (true)

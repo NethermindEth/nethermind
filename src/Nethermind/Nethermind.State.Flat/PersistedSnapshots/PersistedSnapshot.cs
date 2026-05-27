@@ -12,6 +12,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Hsst.BTree;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 
@@ -80,6 +81,20 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     private Vector512<long> _addressBoundCache;
     private int _addressBoundCacheMeta;
+
+    // Cached descriptor of the outer address-column BTree's root, snapshotted once at
+    // construction. The address column is immutable for the life of the snapshot, so the
+    // values the BTree walker would otherwise read out of the trailer (root prefix bytes,
+    // root size, key length) are fixed too. Caching them lets the cache-miss path of
+    // <see cref="TryGetAddressBound"/> skip the two trailer-region reads in
+    // <see cref="HsstBTreeReader.TrySeek"/> and start the walk from the cached root offset.
+    // _addressBtreeBound.Length == 0 is the sentinel for "no address column in this snapshot"
+    // (legitimate for a snapshot that touched no accounts); the miss path short-circuits to
+    // "no entry" without bothering with the BTree at all.
+    private readonly Bound _addressBtreeBound;
+    private readonly long _addressBtreeRootStart;
+    private readonly long _addressBtreeScopeEnd;
+    private readonly byte[] _addressBtreeRootPrefix = [];
 
     private readonly ArenaReservation _reservation;
     // Manager that owns the per-id blob arena slots. The repository acquires one lease per
@@ -158,6 +173,43 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                 if (!_blobManager.TryLeaseFile(e.Current, out _))
                     throw new InvalidOperationException($"Blob arena {e.Current} not registered in this tier");
                 acquired++;
+            }
+
+            // Cache the address-column BTree's root descriptor so the cache-miss path of
+            // TryGetAddressBound can walk the tree directly without re-reading the trailer
+            // and root prefix on every miss. Defensive: a missing address column (legitimate
+            // for snapshots that touched no accounts) or an unreadable trailer leaves the
+            // cache empty and the miss path short-circuits to "no entry" — same outcome as
+            // the slow path delivered before.
+            ArenaByteReader probeReader = _reservation.CreateReader();
+            if (PersistedSnapshotReader.TryGetAddressColumnBound<ArenaByteReader, NoOpPin>(
+                    in probeReader, out Bound addrColBound) &&
+                addrColBound.Length >= 5 + 12)
+            {
+                Span<byte> tailBuf = stackalloc byte[5];
+                if (probeReader.TryRead(addrColBound.Offset + addrColBound.Length - 5, tailBuf))
+                {
+                    int rootPrefixLen = tailBuf[0];
+                    int rootSize = tailBuf[1] | (tailBuf[2] << 8);
+                    // tailBuf[3] is the trailer key length — fixed at AddressKeyLength (= 20)
+                    // for column 0x01; the miss path passes the constant rather than caching it.
+                    byte[] rootPrefix = [];
+                    bool prefixOk = true;
+                    if (rootPrefixLen > 0)
+                    {
+                        rootPrefix = new byte[rootPrefixLen];
+                        prefixOk = probeReader.TryRead(
+                            addrColBound.Offset + addrColBound.Length - 5 - rootPrefixLen, rootPrefix);
+                    }
+                    if (prefixOk)
+                    {
+                        long trailerLen = 5L + rootPrefixLen;
+                        _addressBtreeBound = addrColBound;
+                        _addressBtreeRootStart = addrColBound.Offset + addrColBound.Length - trailerLen - rootSize;
+                        _addressBtreeScopeEnd = addrColBound.Offset + addrColBound.Length - trailerLen;
+                        _addressBtreeRootPrefix = rootPrefix;
+                    }
+                }
             }
         }
         catch
@@ -298,7 +350,15 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             return true;
         }
 
-        if (!PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, address, out addressBound))
+        if (_addressBtreeBound.Length == 0)
+        {
+            addressBound = default;
+            return false;
+        }
+        if (!HsstBTreeReader.TrySeekFromRoot<ArenaByteReader, NoOpPin>(
+                in reader, _addressBtreeBound, _addressBtreeRootStart, _addressBtreeScopeEnd,
+                _addressBtreeRootPrefix, PersistedSnapshotTags.AddressKeyLength,
+                address.Bytes, exactMatch: true, keyFirst: false, out addressBound))
             return false;
 
         // Pre-fault the trailing window of the resolved bound in one syscall. The DenseByteIndex
