@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -53,7 +52,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(0, _xdcReleaseSpec);
 
         // Assert
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -70,7 +69,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // assert that it was retrieved from cache
-        result.Should().BeEquivalentTo(snapshot);
+        Assert.That(result, Is.EqualTo(snapshot).UsingXdcProperties());
     }
 
     [Test]
@@ -79,7 +78,7 @@ internal class SnapshotManagerTests
         // Act
         Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(0, _xdcReleaseSpec);
         // Assert
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -96,7 +95,7 @@ internal class SnapshotManagerTests
         Snapshot? saved = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
-        saved.Should().BeEquivalentTo(snapshot);
+        Assert.That(saved, Is.EqualTo(snapshot).UsingXdcProperties());
     }
 
     [Test]
@@ -113,7 +112,7 @@ internal class SnapshotManagerTests
         Snapshot? fromDb = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
-        fromDb.Should().BeEquivalentTo(snapshot);
+        Assert.That(fromDb, Is.EqualTo(snapshot).UsingXdcProperties());
     }
 
     [Test]
@@ -128,7 +127,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock1);
 
         // assert that it was retrieved from db
-        result.Should().BeEquivalentTo(snapshot1);
+        Assert.That(result, Is.EqualTo(snapshot1).UsingXdcProperties());
 
         // store another snapshot with the same hash but different data
 
@@ -141,7 +140,7 @@ internal class SnapshotManagerTests
         result = _snapshotManager.GetSnapshotByBlockNumber(900, _xdcReleaseSpec);
 
         // assert that the original snapshot is still returned
-        result.Should().BeEquivalentTo(snapshot2);
+        Assert.That(result, Is.EqualTo(snapshot2).UsingXdcProperties());
     }
 
     [TestCase(1, 0)]
@@ -161,7 +160,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(blockNumber, _xdcReleaseSpec);
 
         // assert that it was retrieved from db
-        result.Should().BeEquivalentTo(snapshot);
+        Assert.That(result, Is.EqualTo(snapshot).UsingXdcProperties());
     }
 
     [TestCase(450)]
@@ -179,7 +178,9 @@ internal class SnapshotManagerTests
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
 
         blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([new Block(header)], true));
-        snapshotManager.GetSnapshotByGapNumber(header.Number)!.HeaderHash.Should().Be(header.Hash!);
+        Snapshot? result = snapshotManager.GetSnapshotByGapNumber(header.Number);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.HeaderHash, Is.EqualTo(header.Hash!));
     }
 
     [Test]
@@ -194,8 +195,8 @@ internal class SnapshotManagerTests
 
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(450);
 
-        result.Should().NotBeNull();
-        result!.HeaderHash.Should().Be(header.Hash!);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.HeaderHash, Is.EqualTo(header.Hash!));
     }
 
     [Test]
@@ -210,7 +211,7 @@ internal class SnapshotManagerTests
 
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(450);
 
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -225,7 +226,7 @@ internal class SnapshotManagerTests
 
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(450);
 
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -253,7 +254,7 @@ internal class SnapshotManagerTests
 
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(100);
 
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
         _stateReader.DidNotReceiveWithAnyArgs().HasStateForBlock(default);
     }
 }

@@ -3,7 +3,6 @@
 
 using System.Net;
 using System.Text;
-using FluentAssertions;
 using Nethermind.EraE.Store;
 using NUnit.Framework;
 
@@ -21,8 +20,8 @@ public class HttpRemoteEraClientTests
         IReadOnlyDictionary<int, RemoteEraEntry> manifest =
             await FetchManifest($"{ValidHash}  sepolia-00000-deadbeef.erae");
 
-        manifest.Should().ContainKey(0);
-        manifest[0].Filename.Should().Be("sepolia-00000-deadbeef.erae");
+        Assert.That(manifest.ContainsKey(0), Is.True);
+        Assert.That(manifest[0].Filename, Is.EqualTo("sepolia-00000-deadbeef.erae"));
     }
 
     [TestCase("../sepolia-00000-deadbeef.erae", TestName = "RelativeParentTraversal")]
@@ -33,7 +32,7 @@ public class HttpRemoteEraClientTests
         IReadOnlyDictionary<int, RemoteEraEntry> manifest =
             await FetchManifest($"{ValidHash}  {hostileFilename}");
 
-        manifest.Should().BeEmpty();
+        Assert.That(manifest, Is.Empty);
     }
 
     private static async Task<IReadOnlyDictionary<int, RemoteEraEntry>> FetchManifest(string manifestBody)

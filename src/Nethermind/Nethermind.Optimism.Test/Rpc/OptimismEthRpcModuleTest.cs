@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
-using FluentAssertions.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -27,8 +25,8 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
-using Newtonsoft.Json.Linq;
 using NSubstitute;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test.Rpc;
@@ -98,7 +96,7 @@ public class OptimismEthRpcModuleTest
         string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).Bytes.ToHexString());
 
         await txSender.Received().SendTransaction(tx: Arg.Any<Transaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast);
-        serialized.Should().BeEquivalentTo($$"""{"jsonrpc":"2.0","result":"{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}","id":67}""");
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}","id":67}"""));
     }
 
     [Test]
@@ -171,7 +169,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -245,7 +243,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -300,12 +298,12 @@ public class OptimismEthRpcModuleTest
         {
             // By block hash
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, 0);
-            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+            Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
         {
             // By block number
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
-            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+            Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
     }
 
@@ -361,12 +359,12 @@ public class OptimismEthRpcModuleTest
         {
             // By block hash
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, 0);
-            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+            Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
         {
             // By block number
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
-            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+            Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
     }
 
@@ -432,13 +430,13 @@ public class OptimismEthRpcModuleTest
         JToken firstTx = result["transactions"]![0]!;
         JToken secondTx = result["transactions"]![1]!;
 
-        firstTx["hash"]!.Value<string>().Should().Be(depositTx.Hash!.Bytes.ToHexString(withZeroX: true));
+        Assert.That(firstTx["hash"]!.Value<string>(), Is.EqualTo(depositTx.Hash!.Bytes.ToHexString(withZeroX: true)));
         if (expectedDepositVersion is null)
-            firstTx["depositReceiptVersion"].Should().BeNull();
+            Assert.That(firstTx["depositReceiptVersion"], Is.Null);
         else
-            firstTx["depositReceiptVersion"]!.Value<string>().Should().Be(expectedDepositVersion);
-        secondTx["hash"]!.Value<string>().Should().Be(regularTx.Hash!.Bytes.ToHexString(withZeroX: true));
-        secondTx["depositReceiptVersion"].Should().BeNull();
+            Assert.That(firstTx["depositReceiptVersion"]!.Value<string>(), Is.EqualTo(expectedDepositVersion));
+        Assert.That(secondTx["hash"]!.Value<string>(), Is.EqualTo(regularTx.Hash!.Bytes.ToHexString(withZeroX: true)));
+        Assert.That(secondTx["depositReceiptVersion"], Is.Null);
     }
 
     [Test]
@@ -531,7 +529,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -604,7 +602,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 }
 

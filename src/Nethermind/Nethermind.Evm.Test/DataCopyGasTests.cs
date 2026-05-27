@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -21,7 +20,7 @@ public class DataCopyGasTests : VirtualMachineTestsBase
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        result.Error.Should().BeNull();
+        Assert.That(result.Error, Is.Null);
     }
 
     [Test]
@@ -36,7 +35,7 @@ public class DataCopyGasTests : VirtualMachineTestsBase
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        result.Error.Should().BeNull();
+        Assert.That(result.Error, Is.Null);
     }
 
     [TestCase(Instruction.CALLDATACOPY)]
@@ -48,8 +47,8 @@ public class DataCopyGasTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        result.Error.Should().BeNull();
-        result.GasSpent.Should().Be(GetBaseGas(instruction));
+        Assert.That(result.Error, Is.Null);
+        Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction)));
     }
 
     [TestCase(Instruction.CALLDATACOPY)]
@@ -62,7 +61,7 @@ public class DataCopyGasTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(Activation, gasLimit, code);
 
-        result.Error.Should().Be("OutOfGas");
+        Assert.That(result.Error, Is.EqualTo("OutOfGas"));
     }
 
     [TestCase(Instruction.CALLDATACOPY)]
@@ -74,8 +73,8 @@ public class DataCopyGasTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        result.Error.Should().BeNull();
-        result.GasSpent.Should().Be(GetBaseGas(instruction) + 2 * GasCostOf.Memory);
+        Assert.That(result.Error, Is.Null);
+        Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction) + 2 * GasCostOf.Memory));
     }
 
     private static byte[] BuildCopyCode(Instruction instruction, int length)
