@@ -33,13 +33,13 @@ namespace Nethermind.State.Repositories
             {
                 // Always release the lock and mark disposed, even if the batch commit threw,
                 // so a failed commit cannot leave the repository write lock held.
+                Disposed = true;
+
                 if (_lockTaken)
                 {
                     _lockTaken = false;
                     Monitor.Exit(_lockObject);
                 }
-
-                Disposed = true;
             }
         }
 

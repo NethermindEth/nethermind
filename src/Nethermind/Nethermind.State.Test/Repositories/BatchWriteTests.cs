@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -18,8 +18,8 @@ public class BatchWriteTests
     {
         (BatchWrite batch, _, object writeLock, Exception failure) = CreateFailingBatch();
 
-        Assert.Throws<Exception>(() => batch.Dispose())
-            .Should().BeSameAs(failure, "the original commit failure must propagate");
+        Action dispose = () => batch.Dispose();
+        dispose.Should().Throw<Exception>().Which.Should().BeSameAs(failure, "the original commit failure must propagate");
         batch.Disposed.Should().BeTrue("a failed commit must still mark the batch disposed");
 
         Action exitOnceMore = () => Monitor.Exit(writeLock);
@@ -32,7 +32,8 @@ public class BatchWriteTests
     {
         (BatchWrite batch, IWriteBatch writeBatch, _, _) = CreateFailingBatch();
 
-        Assert.Throws<Exception>(() => batch.Dispose());
+        Action firstDispose = () => batch.Dispose();
+        firstDispose.Should().Throw<Exception>("the failed commit must surface on first dispose");
 
         Action secondDispose = () => batch.Dispose();
         secondDispose.Should().NotThrow("a disposed batch must not re-enter the failed commit");
