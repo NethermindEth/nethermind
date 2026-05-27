@@ -24,17 +24,12 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// directly (commonly via the implementer's own generic parameters that don't appear here).
 /// <typeparamref name="TWriter"/> is therefore unconstrained at the interface level.</para>
 /// </remarks>
-internal interface IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource>
+internal interface IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource, TFactory>
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
     where TSource : struct, IHsstMergeSource<TReader, TPin>
+    where TFactory : struct, IHsstEnumeratorFactory<TReader, TPin>
 {
-    /// <summary>Fired once per emitted key (single-source verbatim copy and multi-source
-    /// rebuild alike), AFTER the value has been written into the outer builder. Use for
-    /// path-independent outer-key bookkeeping (e.g. <c>bloom.Add(addrKey)</c>). Supply an
-    /// empty body when not needed.</summary>
-    void OnKey(scoped ReadOnlySpan<byte> key);
-
     /// <summary>Fired when matchCount==1 AND the source value was copied verbatim through
     /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.TryAddAligned"/>. The destination
     /// has no inner structure to walk, so this hook walks the SOURCE bytes for per-element
@@ -42,7 +37,7 @@ internal interface IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource>
     /// slot key). Read source bytes via <c>cursor.MinValue</c> + <c>cursor.CreateMinReader()</c>.
     /// Supply an empty body when not needed.</summary>
     void OnFastCopy(scoped ReadOnlySpan<byte> key,
-        scoped ref NWayMergeCursor<TReader, TPin, TSource> cursor);
+        scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor);
 
     /// <summary>Fired when the value must be merged: matchCount &gt; 1, OR matchCount==1
     /// with a verbatim copy that didn't fit page-aligned. Emit the merged value bytes
@@ -50,8 +45,8 @@ internal interface IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource>
     /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.BeginValueWrite"/> on the caller's
     /// behalf). Inline any per-element bookkeeping that <see cref="OnFastCopy"/> would have
     /// done on a verbatim copy. Access matching sources via
-    /// <see cref="NWayMergeCursor{TReader,TPin,TSource}.MatchingSources"/>,
+    /// <see cref="NWayMergeCursor{TReader,TPin,TSource,TFactory}.MatchingSources"/>,
     /// <c>cursor.ValueAt(srcIdx)</c>, and <c>cursor.CreateReaderAt(srcIdx)</c>.</summary>
     void MergeValues(ref TWriter writer, scoped ReadOnlySpan<byte> key,
-        scoped ref NWayMergeCursor<TReader, TPin, TSource> cursor);
+        scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor);
 }
