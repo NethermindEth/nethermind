@@ -977,7 +977,8 @@ public static class PersistedSnapshotMerger
             }
         }
 
-        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, PersistedSnapshotTags.MetadataKeyLength);
+        using HsstBTreeBuilderBuffersContainer buffers = new();
+        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, ref buffers.Buffers, PersistedSnapshotTags.MetadataKeyLength);
 
         // Emit all keys in sorted ASCII order. NUL-padding to 10 bytes preserves the
         // original ASCII sort order:

@@ -23,7 +23,8 @@ internal static class HsstTestUtil
     public static byte[] BuildToArray(BuildAction buildAction, int keyLength = -1, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, bool keyFirst = false)
     {
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
-        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder = new(ref pooled.GetWriter(), keyLength, new HsstBTreeOptions
+        using HsstBTreeBuilderBuffersContainer buffers = new();
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder = new(ref pooled.GetWriter(), ref buffers.Buffers, keyLength, new HsstBTreeOptions
         {
             MaxLeafEntries = maxLeafEntries,
         }, keyFirst: keyFirst);

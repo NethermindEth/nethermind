@@ -66,19 +66,11 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private readonly bool _keyFirst;
     private int _keyLength;
 
-    // Per-build working buffers (entry positions, full keys, per-entry LCP, current /
-    // next index-build levels, value scratch, etc.). When the builder is constructed
-    // via the auto-owned overload, this field is the live storage; the borrowed
-    // overload leaves it default and routes through <see cref="_externalBuffers"/>
-    // instead.
-    private HsstBTreeBuilderBuffers _ownedBuffers;
-
-    // Ref to the caller's HsstBTreeBuilderBuffers when constructed via the borrowed
-    // overload; default (invalid) for the auto-owned path — guard with _useExternalBuffers.
+    // Ref to the caller's HsstBTreeBuilderBuffers. The caller owns and disposes the
+    // buffer; the builder holds a borrowed ref for the duration of the build.
     // HsstBTreeBuilder is a ref struct so a ref field is allowed; HsstBTreeBuilderBuffers
-    // is no longer a ref struct so CS9050 doesn't apply.
-    private readonly ref HsstBTreeBuilderBuffers _externalBuffers;
-    private readonly bool _useExternalBuffers;
+    // is not a ref struct so CS9050 doesn't apply.
+    private readonly ref HsstBTreeBuilderBuffers _buffers;
 
     // Index of the first entry that has not yet been folded into a page-local leaf.
     // Add / FinishValueWrite push entries; <see cref="MaybeFlushBeforeEntry"/> closes
@@ -97,55 +89,42 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private long _lastWriterPage;
 
     /// <summary>
-    /// Create builder writing via the given writer.
+    /// Create a builder that writes via <paramref name="writer"/> and uses
+    /// <paramref name="buffers"/> as its working storage. The caller owns the
+    /// buffer's lifetime — allocate one (typically via
+    /// <c>using HsstBTreeBuilderBuffersContainer buffers = new(expectedKeyCount);</c>,
+    /// then pass <c>ref buffers.Buffers</c>) and dispose it after the build.
+    /// </summary>
+    /// <remarks>
     /// The trailing [RootSize u16][KeyLength u8][IndexType u8] is appended in <see cref="Build"/>.
-    /// Allocates working buffers from NativeMemory — call Dispose() to free them.
+    /// <para>
+    /// <paramref name="buffers"/> is reset for this build via
+    /// <see cref="HsstBTreeBuilderBuffers.ResetForBuild"/>, so the same buffer can be
+    /// passed to back-to-back builds — the entry-positions list, common-prefix array,
+    /// leaf-first-keys, level lists, value scratch, segment tree, and DFS stack stay
+    /// rented across invocations.
+    /// </para>
+    /// <para>
     /// <paramref name="keyLength"/> declares the fixed key length (0–255) every entry must use;
     /// all keys in a single HSST must be exactly this many bytes. Pass -1 to defer the
-    /// declaration to the first <see cref="Add"/>/<see cref="FinishValueWrite(System.ReadOnlySpan{byte})"/>
+    /// declaration to the first <see cref="Add"/>/<see cref="FinishValueWrite"/>
     /// call, which then locks the length for the rest of the build. The fixed length is
     /// recorded once in the trailer (single KeyLength:u8 byte before the IndexType byte)
     /// rather than per-entry, and the builder rejects mismatches at build time so readers
     /// can rely on the trailer value.
+    /// </para>
+    /// <para>
     /// <paramref name="expectedKeyCount"/> sizes the entry-positions buffer up front;
     /// pass an estimate when known to avoid resize allocations. The buffer still grows on demand.
+    /// </para>
+    /// <para>
     /// When <paramref name="keyFirst"/> is true, the data-region entries are written
     /// key-first (<c>[FullKey][LEB128][Value]</c>) and the trailer carries
     /// <see cref="IndexType.BTreeKeyFirst"/>; <see cref="BeginValueWrite"/> is rejected
     /// because the value length must be known up front, so callers must use
     /// <see cref="Add"/>.
-    /// </summary>
-    public HsstBTreeBuilder(ref TWriter writer, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false)
-    {
-        ArgumentOutOfRangeException.ThrowIfLessThan(keyLength, -1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLength, 255);
-
-        HsstBTreeOptions opts = options ?? HsstBTreeOptions.Default;
-
-        _writer = ref writer;
-        _baseOffset = _writer.Written;
-        _options = opts;
-        _keyLength = keyLength;
-        _keyFirst = keyFirst;
-
-        _ownedBuffers = new HsstBTreeBuilderBuffers(expectedKeyCount);
-        _useExternalBuffers = false;
-        _pendingFirstEntryIdx = 0;
-        _lastWriterPage = (_writer.Written - _writer.FirstOffset) / PageLayout.PageSize;
-        PrimePerAddBuffers(ref _ownedBuffers, expectedKeyCount, keyLength);
-    }
-
-    /// <summary>
-    /// Create a builder that shares an externally-owned <see cref="HsstBTreeBuilderBuffers"/>
-    /// across multiple builds. Use this overload when the same builder pattern fires
-    /// repeatedly in a loop (per slot-prefix group, per merged address) so the work
-    /// buffers — entry positions, common-prefix array, leaf-first-keys, level lists,
-    /// value scratch, segment tree, DFS stack — stay rented across invocations.
-    /// <paramref name="buffers"/> is reset for this build via
-    /// <see cref="HsstBTreeBuilderBuffers.ResetForBuild"/>; it remains the caller's
-    /// responsibility to dispose.
-    /// See the primary constructor for <paramref name="keyFirst"/> semantics.
-    /// </summary>
+    /// </para>
+    /// </remarks>
     public HsstBTreeBuilder(ref TWriter writer, ref HsstBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(keyLength, -1);
@@ -160,8 +139,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _keyFirst = keyFirst;
 
         buffers.ResetForBuild(expectedKeyCount);
-        _externalBuffers = ref buffers;
-        _useExternalBuffers = true;
+        _buffers = ref buffers;
         _pendingFirstEntryIdx = 0;
         _lastWriterPage = (_writer.Written - _writer.FirstOffset) / PageLayout.PageSize;
         PrimePerAddBuffers(ref buffers, expectedKeyCount, keyLength);
@@ -186,23 +164,18 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Free the working buffer when this builder owns it. In the borrowed-buffers
-    /// constructor path the caller's struct owns and disposes those buffers; this is a no-op.
+    /// No-op: the caller owns and disposes the <see cref="HsstBTreeBuilderBuffers"/>
+    /// passed to the constructor. Kept so existing <c>using HsstBTreeBuilder&lt;…&gt;</c>
+    /// call sites compile unchanged.
     /// </summary>
-    public void Dispose()
-    {
-        if (!_useExternalBuffers) _ownedBuffers.Dispose();
-    }
+    public void Dispose() { }
 
-    /// <summary>
-    /// Reference to the active <see cref="HsstBTreeBuilderBuffers"/> — either the
-    /// caller's (borrowed overload) or <see cref="_ownedBuffers"/> (auto-owned).
-    /// </summary>
+    /// <summary>Reference to the caller-owned <see cref="HsstBTreeBuilderBuffers"/>.</summary>
     [UnscopedRef]
     private ref HsstBTreeBuilderBuffers Buffers
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => ref _useExternalBuffers ? ref _externalBuffers : ref _ownedBuffers;
+        get => ref _buffers;
     }
 
     [UnscopedRef]

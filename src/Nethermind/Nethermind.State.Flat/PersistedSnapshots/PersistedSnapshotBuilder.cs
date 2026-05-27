@@ -230,7 +230,8 @@ public static class PersistedSnapshotBuilder
         // its trie RLPs into. Compactor's NWayMetadataMerge replaces this with the union
         // of input snapshots' referenced ids.
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, PersistedSnapshotTags.MetadataKeyLength, expectedKeyCount: 6);
+        using HsstBTreeBuilderBuffersContainer innerBuffers = new(expectedKeyCount: 6);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, ref innerBuffers.Buffers, PersistedSnapshotTags.MetadataKeyLength, expectedKeyCount: 6);
 
         Span<byte> blockNumBytes = stackalloc byte[8];
         Span<byte> refIdsBytes = stackalloc byte[2];
@@ -266,7 +267,8 @@ public static class PersistedSnapshotBuilder
 
         // Address-level HSST keyed by raw 20-byte Address.
         ref TWriter addressWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, PersistedSnapshotTags.AddressKeyLength, expectedKeyCount: uniqueAddresses.Count);
+        using HsstBTreeBuilderBuffersContainer addressLevelBuffers = new(expectedKeyCount: uniqueAddresses.Count);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, ref addressLevelBuffers.Buffers, PersistedSnapshotTags.AddressKeyLength, expectedKeyCount: uniqueAddresses.Count);
         // Slim-account RLP for any single account fits comfortably in 256 bytes (4×u256 fields
         // plus framing). Pool the scratch so it doesn't allocate per WritePerAddressColumn call.
         byte[] rlpBuffer = ArrayPool<byte>.Shared.Rent(256);
@@ -498,7 +500,8 @@ public static class PersistedSnapshotBuilder
         }
 
         ref TWriter colWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> addrLevel = new(ref colWriter, PersistedSnapshotTags.AddressHashPrefixLength, expectedKeyCount: uniqueAddrHashes.Count);
+        using HsstBTreeBuilderBuffersContainer addrLevelBuffers = new(expectedKeyCount: uniqueAddrHashes.Count);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> addrLevel = new(ref colWriter, ref addrLevelBuffers.Buffers, PersistedSnapshotTags.AddressHashPrefixLength, expectedKeyCount: uniqueAddrHashes.Count);
 
         Span<byte> topPathKey = stackalloc byte[4];
         Span<byte> compactPathKey = stackalloc byte[8];
@@ -528,7 +531,8 @@ public static class PersistedSnapshotBuilder
             {
                 addrRefForStorageNode ??= new Hash256(in addressHash);
                 ref TWriter fbWriter = ref perAddrHash.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> fbLevel = new(ref fbWriter, keyLength: 33, expectedKeyCount: fallbackIdx - fallbackStart);
+                using HsstBTreeBuilderBuffersContainer fbBuffers = new(expectedKeyCount: fallbackIdx - fallbackStart);
+                using HsstBTreeBuilder<TWriter, TReader, TPin> fbLevel = new(ref fbWriter, ref fbBuffers.Buffers, keyLength: 33, expectedKeyCount: fallbackIdx - fallbackStart);
                 for (int j = fallbackStart; j < fallbackIdx; j++)
                 {
                     (ValueHash256 _, TreePath path) = storFallback[j];
@@ -556,7 +560,8 @@ public static class PersistedSnapshotBuilder
             {
                 addrRefForStorageNode ??= new Hash256(in addressHash);
                 ref TWriter compactWriter = ref perAddrHash.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> compactLevel = new(ref compactWriter, keyLength: 8,
+                using HsstBTreeBuilderBuffersContainer compactBuffers = new(expectedKeyCount: compactIdx - compactStart);
+                using HsstBTreeBuilder<TWriter, TReader, TPin> compactLevel = new(ref compactWriter, ref compactBuffers.Buffers, keyLength: 8,
                     expectedKeyCount: compactIdx - compactStart);
                 for (int j = compactStart; j < compactIdx; j++)
                 {
@@ -584,7 +589,8 @@ public static class PersistedSnapshotBuilder
             {
                 addrRefForStorageNode ??= new Hash256(in addressHash);
                 ref TWriter topWriter = ref perAddrHash.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> topLevel = new(ref topWriter, keyLength: 4,
+                using HsstBTreeBuilderBuffersContainer topBuffers = new(expectedKeyCount: topIdx - topStart);
+                using HsstBTreeBuilder<TWriter, TReader, TPin> topLevel = new(ref topWriter, ref topBuffers.Buffers, keyLength: 4,
                     expectedKeyCount: topIdx - topStart);
                 for (int j = topStart; j < topIdx; j++)
                 {
@@ -614,7 +620,8 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 4, expectedKeyCount: stateNodeKeys.Count);
+        using HsstBTreeBuilderBuffersContainer innerBuffers = new(expectedKeyCount: stateNodeKeys.Count);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, ref innerBuffers.Buffers, keyLength: 4, expectedKeyCount: stateNodeKeys.Count);
         Span<byte> keyBuffer = stackalloc byte[4];
         Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
         for (int i = 0; i < stateNodeKeys.Count; i++)
@@ -638,7 +645,8 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 8, expectedKeyCount: stateNodeKeys.Count);
+        using HsstBTreeBuilderBuffersContainer innerBuffers = new(expectedKeyCount: stateNodeKeys.Count);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, ref innerBuffers.Buffers, keyLength: 8, expectedKeyCount: stateNodeKeys.Count);
         Span<byte> keyBuffer = stackalloc byte[8];
         Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
         for (int i = 0; i < stateNodeKeys.Count; i++)
@@ -662,7 +670,8 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateNodesColumnFallback<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 33, expectedKeyCount: stateNodeKeys.Count);
+        using HsstBTreeBuilderBuffersContainer innerBuffers = new(expectedKeyCount: stateNodeKeys.Count);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, ref innerBuffers.Buffers, keyLength: 33, expectedKeyCount: stateNodeKeys.Count);
         Span<byte> keyBuffer = stackalloc byte[33];
         Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
         for (int i = 0; i < stateNodeKeys.Count; i++)

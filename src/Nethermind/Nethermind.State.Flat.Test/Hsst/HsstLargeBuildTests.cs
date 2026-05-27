@@ -144,7 +144,8 @@ public class HsstLargeBuildTests
             {
                 case IndexType.BTree:
                     {
-                        using HsstBTreeBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> hsst = new(ref writer, KeySize, expectedKeyCount: checked((int)count));
+                        using HsstBTreeBuilderBuffersContainer hsstBuffers = new(checked((int)count));
+                        using HsstBTreeBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> hsst = new(ref writer, ref hsstBuffers.Buffers, KeySize, expectedKeyCount: checked((int)count));
                         Span<byte> keyBuf = stackalloc byte[8];
                         Span<byte> valueBuf = stackalloc byte[1];
                         valueBuf[0] = BTreeValueByte;
@@ -382,7 +383,8 @@ public class HsstLargeBuildTests
                 {
                     case IndexType.BTree:
                         {
-                            using HsstBTreeBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> outHsst = new(ref writer, KeySize, expectedKeyCount: merged);
+                            using HsstBTreeBuilderBuffersContainer outHsstBuffers = new(merged);
+                            using HsstBTreeBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> outHsst = new(ref writer, ref outHsstBuffers.Buffers, KeySize, expectedKeyCount: merged);
                             Span<byte> keyBufA = stackalloc byte[KeySize];
                             Span<byte> keyBufB = stackalloc byte[KeySize];
                             while (moreA || moreB)
