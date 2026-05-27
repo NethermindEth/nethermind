@@ -97,8 +97,8 @@ public static class MultiProofReader
                     byte[] extKey = node.Key ?? [];
                     int newDepth = nibbleDepth + extKey.Length;
 
-                    // Find targets that match the extension key
-                    int matchStart = targetEnd; // no match by default
+                    // Find targets that match the extension key (for further descent)
+                    int matchStart = targetEnd;
                     int matchEnd = targetStart;
                     for (int i = targetStart; i < targetEnd; i++)
                     {
@@ -108,8 +108,11 @@ public static class MultiProofReader
                             matchEnd = i + 1;
                         }
                     }
-                    if (matchStart >= matchEnd) return;
 
+                    // Always load the underlying Branch and include in the proof — even when no target
+                    // fully matches the extension prefix. The sparse trie needs the inner Branch's content
+                    // to handle absence-at-extension cases (where an update partially matches the prefix
+                    // then diverges, requiring a split that uses the inner Branch's children).
                     if (node.ChildRlps is { Length: > 0 } && !node.ChildRlps[0].IsNull)
                     {
                         RlpNode childRef = node.ChildRlps[0];
@@ -121,13 +124,15 @@ public static class MultiProofReader
                             byte[] childRlp = loadRlp.Load(childPath, childHash, ReadFlags.None);
                             ProofNode childProof = DecodeProofNode(childRlp, childPath);
                             output.Add(childProof);
-                            WalkNode(loadRlp, childProof, childPath, targets, matchStart, matchEnd, newDepth, output);
+                            if (matchStart < matchEnd)
+                                WalkNode(loadRlp, childProof, childPath, targets, matchStart, matchEnd, newDepth, output);
                         }
                         else
                         {
                             ProofNode childProof = DecodeProofNode(childRef.AsSpan().ToArray(), childPath);
                             output.Add(childProof);
-                            WalkNode(loadRlp, childProof, childPath, targets, matchStart, matchEnd, newDepth, output);
+                            if (matchStart < matchEnd)
+                                WalkNode(loadRlp, childProof, childPath, targets, matchStart, matchEnd, newDepth, output);
                         }
                     }
                     break;

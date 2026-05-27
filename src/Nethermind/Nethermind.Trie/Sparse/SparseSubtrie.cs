@@ -396,6 +396,17 @@ public sealed class SparseSubtrie : IDisposable
         proofTarget = default;
         byte[] shortKey = _arena[nodeIdx].ShortKey ?? [];
 
+        // Extension-only state: BranchWithExtension was revealed from an Extension proof
+        // but the underlying Branch's children were never revealed (stateMask == 0 with shortKey).
+        // We cannot split or insert through this — the underlying Branch's structure is unknown.
+        // Request a proof so the inner Branch gets revealed via MergeChildIntoBranchWithExtension.
+        bool isExtensionOnly = shortKey.Length > 0 && _arena[nodeIdx].StateMask == TrieMask.Empty;
+        if (isExtensionOnly && !(update.IsDelete || update.Kind == LeafUpdateKind.Touched))
+        {
+            proofTarget = TreePath.FromNibble(path);
+            return (UpdateResult.NeedsProof, nodeIdx);
+        }
+
         if (shortKey.Length > 0)
         {
             int commonLen = CommonPrefixLength(path, shortKey);
