@@ -7,7 +7,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Store;
@@ -114,6 +114,26 @@ public class RemoteEraStoreDecoratorTests
             .WithMessage("*SHA-256*");
 
         File.Exists(expectedFilePath).Should().BeFalse();
+    }
+
+    [Test]
+    public async Task FindBlockAndReceipts_WhenManifestFilenameEscapesDownloadDir_ThrowsAndWritesNothing()
+    {
+        string filename = $"..{Path.DirectorySeparatorChar}escape-00000-deadbeef.erae";
+        byte[] sha256 = new byte[32];
+
+        _client.FetchManifestAsync(Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<int, RemoteEraEntry> { [0] = new(filename, sha256) });
+
+        string escapedPath = Path.GetFullPath(Path.Join(_downloadDir.Path, filename));
+        using RemoteEraStoreDecorator sut = new(localStore: null, _client, _downloadDir.Path, maxEraSize: 16);
+
+        await sut.Invoking(s => s.FindBlockAndReceipts(0, ensureValidated: false))
+            .Should().ThrowAsync<EraException>()
+            .WithMessage("*escapes the download directory*");
+
+        await _client.DidNotReceive().DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        File.Exists(escapedPath).Should().BeFalse();
     }
 
     private static int ParseEpoch(string filename)

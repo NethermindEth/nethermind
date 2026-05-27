@@ -15,7 +15,7 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.TraceStore.Tests;
+namespace Nethermind.JsonRpc.TraceStore.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class TraceStorePrunerTests

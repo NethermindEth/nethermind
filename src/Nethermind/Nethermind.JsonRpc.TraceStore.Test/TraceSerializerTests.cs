@@ -12,7 +12,7 @@ using Nethermind.Logging;
 
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.TraceStore.Tests;
+namespace Nethermind.JsonRpc.TraceStore.Test;
 
 public class TraceSerializerTests
 {

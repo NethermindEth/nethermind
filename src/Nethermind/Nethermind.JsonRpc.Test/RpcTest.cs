@@ -100,9 +100,6 @@ public static class RpcTest
         ArrayBufferWriter<byte> writer = new();
         JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptions);
 
-        ArrayBufferWriter<byte> indentedWriter = new();
-        JsonRpcResponseWriter.Write(indentedWriter, response, EthereumJsonSerializer.JsonOptionsIndented);
-
         string serialized = Encoding.UTF8.GetString(writer.WrittenSpan);
         await TestContext.Out.WriteLineAsync(serialized);
 
