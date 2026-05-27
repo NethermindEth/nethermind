@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Validators

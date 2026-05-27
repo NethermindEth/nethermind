@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Tools.Kute.Test;
@@ -17,8 +16,8 @@ public class TimerTests
             await Task.Delay(TimeSpan.FromMilliseconds(100));
         }
 
-        t.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(90));
-        t.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
+        Assert.That(t.Elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
+        Assert.That(t.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(110)));
     }
 
     [Test]
@@ -34,8 +33,8 @@ public class TimerTests
             await Task.Delay(TimeSpan.FromMilliseconds(50));
         }
 
-        t.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(90));
-        t.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
+        Assert.That(t.Elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
+        Assert.That(t.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(110)));
     }
 
     [Test]
@@ -49,7 +48,7 @@ public class TimerTests
 
         await Task.Delay(TimeSpan.FromMilliseconds(50));
 
-        t.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(40));
-        t.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(60));
+        Assert.That(t.Elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(40)));
+        Assert.That(t.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(60)));
     }
 }

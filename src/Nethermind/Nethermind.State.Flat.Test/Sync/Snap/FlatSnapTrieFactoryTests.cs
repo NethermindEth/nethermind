@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -61,9 +60,9 @@ public class FlatSnapTrieFactoryTests
         using (ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default))
         using (ISnapTree<PathWithStorageSlot> nonDefaultStorageTree = factory.CreateStorageTree(new ValueHash256(Bytes.FromHexString("11" + new string('0', 62)))))
         {
-            stateTree.Should().NotBeNull();
-            storageTree.Should().NotBeNull();
-            nonDefaultStorageTree.Should().NotBeNull();
+            Assert.That(stateTree, Is.Not.Null);
+            Assert.That(storageTree, Is.Not.Null);
+            Assert.That(nonDefaultStorageTree, Is.Not.Null);
         }
 
         // Clear is the runner's responsibility via EnsureInitialize; tree creation must not invoke it.

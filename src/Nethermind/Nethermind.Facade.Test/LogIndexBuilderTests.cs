@@ -144,8 +144,8 @@ public class LogIndexBuilderTests
         }
     }
 
-    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage) => new LogIndexBuilder(
-            logIndexStorage, _config, _blockTree, _syncConfig, _receiptStorage, _logManager
+    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null) => new LogIndexBuilder(
+            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager
         ).AddTo(_testDisposables);
 
     [Test]
@@ -190,22 +190,29 @@ public class LogIndexBuilderTests
         }
     }
 
-    [Test]
-    public async Task Should_ForwardError(
-        [Values(0, 1, 4)] int failAfter
-    )
+    [TestCase(-1, TestName = "Should_ForwardError_FromQueueingLoop")]
+    [TestCase(0, TestName = "Should_ForwardError_FromStorage_Immediately")]
+    [TestCase(1, TestName = "Should_ForwardError_FromStorage_AfterOneBatch")]
+    [TestCase(4, TestName = "Should_ForwardError_FromStorage_AfterFourBatches")]
+    [CancelAfter(60_000)]
+    public async Task Should_ForwardErrorAndStopWithoutDeadlock(int failAfter)
     {
-        Exception exception = new(nameof(Should_ForwardError));
-        LogIndexBuilder builder = GetService(new FailingLogIndexStorage(failAfter, exception));
+        Exception exception = new(nameof(Should_ForwardErrorAndStopWithoutDeadlock));
+
+        LogIndexBuilder builder = failAfter < 0
+            ? GetService(new TestLogIndexStorage(), CreateFailingBlockTree(exception))
+            : GetService(new FailingLogIndexStorage(failAfter, exception));
 
         await builder.StartAsync();
 
         using (Assert.EnterMultipleScope())
         {
-            Exception thrown = Assert.ThrowsAsync<Exception>(() => builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(999)));
+            Exception thrown = Assert.ThrowsAsync<Exception>(() => builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(10)));
             Assert.That(thrown, Is.EqualTo(exception));
             Assert.That(builder.LastError, Is.EqualTo(exception));
         }
+
+        await builder.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     [Test]
@@ -232,6 +239,25 @@ public class LogIndexBuilderTests
             Assert.That(builder.LastError, Is.Null);
             Assert.That(builder.LastUpdate, Is.Null);
         }
+    }
+
+    // FindBlock must succeed for the single pivot-setup lookup in StartAsync, then throw on
+    // the later lookups issued by DoQueueBlocks — that is the self-await deadlock path.
+    private IBlockTree CreateFailingBlockTree(Exception exception)
+    {
+        IBlockTree realTree = _blockTree;
+        int findCalls = 0;
+
+        IBlockTree throwingTree = Substitute.For<IBlockTree>();
+        throwingTree.SyncPivot.Returns(realTree.SyncPivot);
+        throwingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        throwingTree
+            .FindBlock(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => Interlocked.Increment(ref findCalls) == 1
+                ? realTree.FindBlock(ci.ArgAt<long>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
+                : throw exception);
+
+        return throwingTree;
     }
 
     private static Task WaitMaxBlockAsync(TestLogIndexStorage storage, int blockNumber, CancellationToken cancellation)

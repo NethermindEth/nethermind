@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -67,8 +66,8 @@ public class WorldStateDbDeciderModuleTests
         IWorldStateManager worldStateManager = container.Resolve<IWorldStateManager>();
 
         if (expectFlat)
-            worldStateManager.Should().BeOfType<FlatWorldStateManager>();
+            Assert.That(worldStateManager, Is.TypeOf<FlatWorldStateManager>());
         else
-            worldStateManager.Should().NotBeOfType<FlatWorldStateManager>();
+            Assert.That(worldStateManager, Is.Not.TypeOf<FlatWorldStateManager>());
     }
 }

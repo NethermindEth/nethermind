@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Xdc.Test.Helpers;
 
 namespace Nethermind.Xdc.Test;
 
@@ -107,27 +108,33 @@ public class TimeoutCertificateManagerTests
         int quorumCount = (int)Math.Ceiling(keys.Length * 0.667);
 
         // Base case
-        yield return new TestCaseData(BuildTimeoutCertificate(keys), masterNodes, true);
+        yield return new TestCaseData(BuildTimeoutCertificate(keys), masterNodes, true)
+            .SetName("BaseCase");
 
         // Insufficient signature count
         PrivateKey[] notEnoughKeys = [.. keys.Take(quorumCount - 1)];
-        yield return new TestCaseData(BuildTimeoutCertificate(notEnoughKeys), masterNodes, false);
+        yield return new TestCaseData(BuildTimeoutCertificate(notEnoughKeys), masterNodes, false)
+            .SetName("InsufficientSignatureCount");
 
         // Duplicated signatures still should fail if not enough
-        yield return new TestCaseData(BuildTimeoutCertificate([.. notEnoughKeys, .. notEnoughKeys]), masterNodes, false);
+        yield return new TestCaseData(BuildTimeoutCertificate([.. notEnoughKeys, .. notEnoughKeys]), masterNodes, false)
+            .SetName("DuplicatedSignaturesNotEnough");
 
         // Sufficient signature count
-        yield return new TestCaseData(BuildTimeoutCertificate([.. keys.Take(quorumCount)]), masterNodes, true);
+        yield return new TestCaseData(BuildTimeoutCertificate([.. keys.Take(quorumCount)]), masterNodes, true)
+            .SetName("SufficientSignatureCount");
 
         // Signer not in master nodes
-        yield return new TestCaseData(BuildTimeoutCertificate(keys), keys.Skip(1).Select(k => k.Address), false);
+        yield return new TestCaseData(BuildTimeoutCertificate(keys), keys.Skip(1).Select(k => k.Address), false)
+            .SetName("SignerNotInMasterNodes");
 
         //N byte-distinct signatures but only N-1 unique signer addresses (keys[0] signs twice via ECDSA malleability)
         EthereumEcdsa ecdsa = new(0);
         ValueHash256 msgHash = TimeoutCertificateManager.ComputeTimeoutMsgHash(1, 0);
         Signature[] sigs = [.. keys.Take(quorumCount - 1).Select(k => ecdsa.Sign(k, msgHash))];
         Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
-        yield return new TestCaseData(new TimeoutCertificate(1, [.. sigs, malleable], 0), masterNodes, false);
+        yield return new TestCaseData(new TimeoutCertificate(1, [.. sigs, malleable], 0), masterNodes, false)
+            .SetName("MalleableDuplicateSigner");
     }
 
     [TestCaseSource(nameof(TcCases))]

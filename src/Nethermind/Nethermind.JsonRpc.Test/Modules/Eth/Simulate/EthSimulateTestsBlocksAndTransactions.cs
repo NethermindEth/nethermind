@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,7 +24,7 @@ using Nethermind.Specs.Test;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
-namespace Nethermind.JsonRpc.Test.Modules.Eth;
+namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 public class EthSimulateTestsBlocksAndTransactions
 {
@@ -191,8 +190,8 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(data, Has.Count.EqualTo(7));
 
         SimulateBlockResult<SimulateCallResult> blockResult = data.Last();
-        blockResult.Calls.Select(static c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
-        blockResult.Calls.Should().OnlyContain(static c => c.MaxUsedGas.HasValue && c.GasUsed.HasValue && c.MaxUsedGas.Value >= c.GasUsed.Value);
+        Assert.That(blockResult.Calls.Select(static c => c.Status), Is.EqualTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success }));
+        Assert.That(blockResult.Calls.All(static c => c.MaxUsedGas.HasValue && c.GasUsed.HasValue && c.MaxUsedGas.Value >= c.GasUsed.Value), Is.True);
 
     }
 
@@ -461,8 +460,8 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        result.ErrorCode.Should().Be(expectedErrorCode);
-        result.Result.Error.Should().Be(expectedMessage);
+        Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
+        Assert.That(result.Result.Error, Is.EqualTo(expectedMessage));
     }
 
     // Minimal bytecode: PREVRANDAO PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN
@@ -519,11 +518,12 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        result.Result.ResultType.Should().Be(Core.ResultType.Success);
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
         SimulateCallResult callResult = result.Data.First().Calls.First();
-        callResult.Status.Should().Be((ulong)ResultType.Success);
-        callResult.ReturnData.Should().NotBeNull().And.HaveCount(32);
-        new Hash256(callResult.ReturnData!).Should().Be(expected);
+        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+        Assert.That(callResult.ReturnData, Is.Not.Null);
+        Assert.That(callResult.ReturnData!.Length, Is.EqualTo(32));
+        Assert.That(new Hash256(callResult.ReturnData), Is.EqualTo(expected));
     }
 
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
@@ -745,9 +745,9 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payloadFactory(), BlockParameter.Latest);
 
-        result.ErrorCode.Should().Be(expectedErrorCode);
+        Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
         if (expectedMessage is not null)
-            result.Result!.Error.Should().Be(expectedMessage);
+            Assert.That(result.Result!.Error, Is.EqualTo(expectedMessage));
     }
 
     /// <summary>
@@ -853,8 +853,8 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        result.ErrorCode.Should().Be(ErrorCodes.InsufficientFunds);
-        result.Result.Error.Should().Be(SimulateErrorMessages.InsufficientFunds);
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
+        Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
     }
 
 }

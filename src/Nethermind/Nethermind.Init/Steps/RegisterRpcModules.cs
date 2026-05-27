@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;

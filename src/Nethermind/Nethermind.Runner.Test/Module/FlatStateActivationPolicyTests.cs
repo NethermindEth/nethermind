@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Db;
 using Nethermind.Init;
 using Nethermind.Logging;
@@ -53,6 +52,6 @@ public class FlatStateActivationPolicyTests
             patriciaDb.Set([1], [1]);
 
         FlatStateActivationPolicy policy = new(flatDbConfig, new Lazy<IPersistence>(() => flatPersistence), new Lazy<IDb>(() => patriciaDb), LimboLogs.Instance);
-        policy.ShouldTurnOnFlatDb().Should().Be(expected);
+        Assert.That(policy.ShouldTurnOnFlatDb(), Is.EqualTo(expected));
     }
 }
