@@ -25,38 +25,27 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// </summary>
 public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
 {
-    // Per-key metadata position list — owned by the outer HsstBTreeBuilder phase.
+    // Current/next index-build level node lists. Populated during Add (one Entry-kind
+    // descriptor pushed per entry; the trailing pending run is collapsed into a leaf
+    // descriptor when a page-local leaf is emitted, or simply sealed in place when a
+    // flush decides not to wrap them); then consumed by HsstBTreeBuilder.BuildIndex
+    // as the bottom level and flipped between iterations as it walks up to the root.
     // Using NativeMemoryList<T> (class) rather than NativeMemoryListRef<T> (ref
     // struct) keeps the struct itself non-ref so it can live as a field of a class
     // (see HsstBTreeBuilderBuffersContainer) and so HsstBTreeBuilder's borrowed-
     // buffers ref field needs no Unsafe.AsPointer indirection.
-    internal NativeMemoryList<long> EntryPositions = new(expectedKeyCount);
-
-    // Full keys for the entries that are still pending — i.e. not yet folded into
-    // an inline page-local leaf. Flat (pendingCount * keyLength) layout. Cleared
-    // on every <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/>.EmitInlineLeaf
-    // (after the leaf has been written). Peak size is bounded by one 4 KiB page-
-    // worth of entries (a few hundred entries × keyLength, low KB) — once flushed,
-    // the leftmost-entry key the index builder still needs for intermediate
-    // construction is preserved in <see cref="CurrentLevelFirstKeys"/>.
-    internal NativeMemoryList<byte> PendingKeys = new(64);
-
-    // Current/next index-build level node lists. Populated during Add (entry
-    // descriptors pushed for each Add; collapsed into a leaf descriptor when a
-    // page-local leaf is emitted); then consumed by HsstBTreeBuilder.BuildIndex as
-    // the bottom level and flipped between iterations as it walks up to the root.
-    internal NativeMemoryList<HsstIndexNodeInfo> CurrentLevel = new(64);
+    internal NativeMemoryList<HsstIndexNodeInfo> CurrentLevel = new(expectedKeyCount);
     internal NativeMemoryList<HsstIndexNodeInfo> NextLevel = new(64);
 
     // First-entry full key for every descriptor in <see cref="CurrentLevel"/> /
     // <see cref="NextLevel"/>, in matching order. Flat (descriptorCount * keyLength)
     // layout: the i-th descriptor's first-key occupies bytes
     // [i * keyLength, (i + 1) * keyLength). Populated whenever a descriptor is
-    // pushed (inline leaf, direct-flush entry, or freshly written intermediate)
-    // so that HsstBTreeBuilder.BuildIndex can read every child's first-key directly
-    // without reaching back into the already-written data region for a 20-byte
-    // address that may straddle a 4 KiB page. Flipped together with the level
-    // lists at the end of each Build iteration.
+    // pushed (per-entry Add, inline leaf, or freshly written intermediate) so that
+    // HsstBTreeBuilder.BuildIndex can read every child's first-key directly without
+    // reaching back into the already-written data region for a 20-byte address that
+    // may straddle a 4 KiB page. Flipped together with the level lists at the end
+    // of each Build iteration.
     internal NativeMemoryList<byte> CurrentLevelFirstKeys = new(64);
     internal NativeMemoryList<byte> NextLevelFirstKeys = new(64);
 
@@ -84,23 +73,22 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     internal byte[]? RootFirstKey = null;
 
     // Previous entry's full key, used by HsstBTreeBuilder.OnEntryAdded /
-    // MaybeFlushBeforeEntry to compute online LCP. Independent of
-    // <see cref="PendingKeys"/> (which only holds keys for the in-flight pending
-    // set and is cleared on each leaf emission), so the LCP chain stays intact
-    // across flushes. ArrayPool-backed and retained across builds: cross-build
-    // contamination is impossible because the in-build invariant is "PrevKeyBuf
-    // is meaningful only when entryIdx > 0 in the current build", and entryIdx=0's
-    // OnEntryAdded unconditionally writes the entry-0 key before any later add
-    // reads it.
+    // MaybeFlushBeforeEntry to compute online LCP across flushes (the pending-range
+    // descriptor slice in <see cref="CurrentLevel"/> can shrink to zero on a flush,
+    // but the LCP chain must stay intact). ArrayPool-backed and retained across
+    // builds: cross-build contamination is impossible because the in-build invariant
+    // is "PrevKeyBuf is meaningful only when entryIdx > 0 in the current build", and
+    // entryIdx=0's OnEntryAdded unconditionally writes the entry-0 key before any
+    // later add reads it.
     internal byte[]? PrevKeyBuf = null;
 
-    // Running max separator length over the currently-pending entry range
-    // [_pendingFirstEntryIdx, EntryPositions.Count). Maintained incrementally by
-    // HsstBTreeBuilder.OnEntryAdded so MaybeFlushBeforeEntry's leaf-fit estimate
-    // can read it in O(1) instead of rescanning the pending CommonPrefixArr slice
-    // on every Add. Reset to 0 on every full pending flush
-    // (EmitInlineLeaf / FlushPendingAsEntries); recomputed by a bounded rescan in
-    // FlushPendingNotOnCurrentPage's partial-flush path.
+    // Running max separator length over the currently-pending entry range (the
+    // trailing run of Entry-kind descriptors in <see cref="CurrentLevel"/>).
+    // Maintained incrementally by HsstBTreeBuilder.OnEntryAdded so
+    // MaybeFlushBeforeEntry's leaf-fit estimate can read it in O(1) instead of
+    // rescanning the pending CommonPrefixArr slice on every Add. Reset to 0 on
+    // every full pending flush (EmitInlineLeaf / FlushPendingAsEntries); recomputed
+    // by a bounded rescan in FlushPendingNotOnCurrentPage's partial-trim path.
     internal byte PendingMaxSepLen = 0;
 
     /// <summary>
@@ -109,10 +97,8 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     /// </summary>
     internal void ResetForBuild(int expectedKeyCount)
     {
-        EntryPositions.Clear();
-        EntryPositions.EnsureCapacity(expectedKeyCount);
-        PendingKeys.Clear();
         CurrentLevel.Clear();
+        CurrentLevel.EnsureCapacity(expectedKeyCount);
         NextLevel.Clear();
         CurrentLevelFirstKeys.Clear();
         NextLevelFirstKeys.Clear();
@@ -135,8 +121,6 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
 
     public void Dispose()
     {
-        EntryPositions.Dispose();
-        PendingKeys.Dispose();
         CurrentLevel.Dispose();
         NextLevel.Dispose();
         CurrentLevelFirstKeys.Dispose();
@@ -152,29 +136,3 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     }
 }
 
-/// <summary>
-/// Per-node record used by <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}"/> while
-/// it walks the index region bottom-up. Lifted out of the generic builder so that
-/// <see cref="HsstBTreeBuilderBuffers"/> — which is not generic in <c>TWriter</c> — can
-/// hold preallocated lists of these.
-/// </summary>
-/// <summary>
-/// One node descriptor in the bottom-up B-tree build. Used uniformly for entries, leaves,
-/// and intermediate nodes — the on-disk flag byte at <see cref="ChildOffset"/> tells the
-/// reader which kind of thing it is sitting on.
-/// </summary>
-internal readonly struct HsstIndexNodeInfo(long childOffset, int firstEntry, int lastEntry, int prefixLen)
-{
-    /// <summary>Absolute first-byte position of this node (or entry) in the HSST (= the flag byte).</summary>
-    public readonly long ChildOffset = childOffset;
-    /// <summary>Index (into <c>EntryPositions</c> / <c>PendingKeys</c>) of the first leaf entry under this subtree.</summary>
-    public readonly int FirstEntry = firstEntry;
-    /// <summary>Index (into <c>EntryPositions</c> / <c>PendingKeys</c>) of the last leaf entry under this subtree.</summary>
-    public readonly int LastEntry = lastEntry;
-    /// <summary>Common-key-prefix length the BTreeNode planner picked for this node.
-    /// Read at the level above when computing each separator length: the parent must extend
-    /// its separator i to at least <c>PrefixLen</c> bytes so the child can recover its
-    /// prefix bytes from the parent's separator at descent time. <c>0</c> for an entry
-    /// descriptor — entries have no header, no <c>CommonKeyPrefix</c>.</summary>
-    public readonly int PrefixLen = prefixLen;
-}

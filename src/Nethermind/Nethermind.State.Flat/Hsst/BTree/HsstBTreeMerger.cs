@@ -56,8 +56,9 @@ internal static class HsstBTreeMerger
         // builder is referenced indirectly across MergeValues via BeginValueWrite; the
         // compiler refuses `ref` to a `using`-declared local, so manage disposal manually
         // via try/finally (same pattern as PersistedSnapshotMerger's BTree call sites).
+        using HsstBTreeBuilderBuffersContainer buffers = new(expectedKeyCount);
         HsstBTreeBuilder<TWriter, TWriterReader, TWriterPin> builder =
-            new(ref writer, keyLength, options, expectedKeyCount, keyFirst);
+            new(ref writer, ref buffers.Buffers, keyLength, options, expectedKeyCount, keyFirst);
         try
         {
             while (cursor.MoveNext())
@@ -85,8 +86,9 @@ internal static class HsstBTreeMerger
                 else
                 {
                     ref TWriter inner = ref builder.BeginValueWrite();
+                    long valueStart = inner.Written;
                     valueMerger.MergeValues(ref inner, cursor.MinKey, ref cursor);
-                    builder.FinishValueWrite(cursor.MinKey);
+                    builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
                 }
                 valueMerger.OnKey(cursor.MinKey);
                 cursor.AdvanceMatching();

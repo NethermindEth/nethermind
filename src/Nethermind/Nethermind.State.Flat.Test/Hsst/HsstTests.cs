@@ -675,7 +675,8 @@ public class HsstTests
 
         byte[] buffer = new byte[4096];
         SpanBufferWriter writer = new(buffer);
-        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> b = new(ref writer, keyLength: -1);
+        using HsstBTreeBuilderBuffersContainer buffers = new();
+        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> b = new(ref writer, ref buffers.Buffers, keyLength: -1);
         try
         {
             ref SpanBufferWriter w = ref b.BeginValueWrite();
@@ -704,15 +705,18 @@ public class HsstTests
         // Outer HSST with one entry whose value is an inner HSST
         byte[] buffer = new byte[4096];
         SpanBufferWriter writer = new(buffer);
-        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer, keyLength: -1);
+        using HsstBTreeBuilderBuffersContainer outerBuffers = new();
+        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer, ref outerBuffers.Buffers, keyLength: -1);
         try
         {
             ref SpanBufferWriter innerWriter = ref outer.BeginValueWrite();
-            using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref innerWriter, keyLength: -1);
+            long innerStart = innerWriter.Written;
+            using HsstBTreeBuilderBuffersContainer innerBuffers = new();
+            using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref innerWriter, ref innerBuffers.Buffers, keyLength: -1);
             inner.Add("key1"u8, "val1"u8);
             inner.Add("key2"u8, "val2"u8);
             inner.Build();
-            outer.FinishValueWrite("tag"u8);
+            outer.FinishValueWrite("tag"u8, innerWriter.Written - innerStart);
             outer.Build();
         }
         finally
@@ -735,30 +739,37 @@ public class HsstTests
         // Outer HSST with 3 columns, each an inner HSST built via shared writer
         byte[] buffer = new byte[65536];
         SpanBufferWriter writer = new(buffer);
-        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer, keyLength: -1);
+        using HsstBTreeBuilderBuffersContainer outerBuffers = new();
+        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer, ref outerBuffers.Buffers, keyLength: -1);
         try
         {
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
+                long start = iw.Written;
+                using HsstBTreeBuilderBuffersContainer innerBuffers = new();
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
                 inner.Add("from"u8, "block0"u8);
                 inner.Add("to\0\0"u8, "block1"u8);
                 inner.Build();
-                outer.FinishValueWrite([0x00]);
+                outer.FinishValueWrite([0x00], iw.Written - start);
             }
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
+                long start = iw.Written;
+                using HsstBTreeBuilderBuffersContainer innerBuffers = new();
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
                 byte[] addr = new byte[20]; addr[0] = 0xAB;
                 inner.Add(addr, [0xC0, 0x80]);
                 inner.Build();
-                outer.FinishValueWrite([0x01]);
+                outer.FinishValueWrite([0x01], iw.Written - start);
             }
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
+                long start = iw.Written;
+                using HsstBTreeBuilderBuffersContainer innerBuffers = new();
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
                 inner.Build();
-                outer.FinishValueWrite([0x02]);
+                outer.FinishValueWrite([0x02], iw.Written - start);
             }
             outer.Build();
         }
