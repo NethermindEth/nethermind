@@ -131,11 +131,9 @@ public class PersistenceManagerTests
     [TestCase(false, TestName = "DetermineSnapshotAction_SufficientDepthAndFinalized_BaseAtFinalizedBlock")]
     public void DetermineSnapshotAction_SufficientDepthAndFinalized(bool useCompacted)
     {
-        // Setup: persisted at Block0, latest at 100, finalized at the target block (= seed under
-        // the single-seed model). With CompactSize=16, finalized must be >= persisted + 16 for
-        // the normal-trigger seed to engage — for the non-compacted case we use a base at block 16
-        // to satisfy the gate; the OLD "fall back to a 1-wide base at persisted+1" semantic was
-        // removed when DetermineSnapshotAction switched to a single seed.
+        // Persisted at Block0, latest at 100, finalized at the target block (= the single seed).
+        // With CompactSize=16, finalized must be >= persisted + 16 for the normal-trigger seed to
+        // engage; the non-compacted case uses a base at block 16 to satisfy that gate.
         StateId persisted = Block0;
         StateId latest = CreateStateId(100);
 
@@ -273,12 +271,10 @@ public class PersistenceManagerTests
     [Test]
     public void TryFindSnapshotToConvert_PrefersBoundaryCompactedOverBase()
     {
-        // Bug A regression: Phase 2 must globally prefer a CompactSize-wide compacted (→ large
-        // repo via Branch A) over any in-memory base (→ small repo via Branch B), regardless of
-        // block-number ordering. Seed an in-memory base at state(1) and a CompactSize-wide
-        // (16-wide) compacted at state(16) — both have From == Block0 on disk. The old single-pass
-        // ascending walk would pick the base at state(1) first; the two-pass form must pick the
-        // compacted at state(16).
+        // Phase 2 must globally prefer a CompactSize-wide compacted (→ large repo via Branch A)
+        // over any in-memory base (→ small repo via Branch B), regardless of block-number
+        // ordering. Seed an in-memory base at state(1) and a CompactSize-wide (16-wide) compacted
+        // at state(16) — both have From == Block0 on disk — and assert the compacted is picked.
         StateId persisted = Block0;
         StateId baseTo = CreateStateId(1);
         StateId compactedTo = CreateStateId(16);
@@ -302,9 +298,9 @@ public class PersistenceManagerTests
     [Test]
     public void AddToPersistence_InMemoryPersist_PrunesPersistedTier()
     {
-        // Bug B regression: persisting an in-memory snapshot must trigger PruneBefore on both
-        // tier repos so superseded tier entries get cleared. The toPersist branch previously
-        // skipped the prune; only persistedToPersist did it.
+        // Persisting an in-memory snapshot must trigger PruneBefore on both tier repos so
+        // superseded tier entries get cleared — the toPersist branch must prune, not only the
+        // persistedToPersist branch.
         StateId from = Block0;
         StateId to = CreateStateId(16);
         StateId latest = CreateStateId(100);

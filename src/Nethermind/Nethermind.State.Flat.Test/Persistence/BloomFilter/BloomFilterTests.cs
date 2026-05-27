@@ -104,11 +104,9 @@ public class BloomFilterTests
     [TestCase(ulong.MaxValue)]
     public void AlwaysTrue_MightContain_AnyKey_ReturnsTrue(ulong key)
     {
-        // Arrange
         using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
             Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
 
-        // Act & Assert
         bloom.MightContain(key).Should().BeTrue("AlwaysTrue sentinel must match every probe");
     }
 

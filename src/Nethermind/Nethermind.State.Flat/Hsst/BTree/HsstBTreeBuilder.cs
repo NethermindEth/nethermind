@@ -854,7 +854,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         bufs.PendingMaxSepLen = newMax;
     }
 
-    // ─────────── Index-region construction (formerly HsstIndexBuilder) ───────────
+    // ─────────── Index-region construction ───────────
     //
     // Builds the B-tree index region. Consumes the per-build state already prepared
     // by the data-region phase above (CurrentLevel / CurrentLevelFirstKeys descriptor

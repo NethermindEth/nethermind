@@ -19,7 +19,6 @@ internal static class PersistedSnapshotUtils
     {
         Dictionary<string, object> dump = [];
 
-        // 1. Accounts
         Dictionary<string, string> accounts = [];
         foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
         {
@@ -30,12 +29,11 @@ internal static class PersistedSnapshotUtils
         }
         dump["accounts"] = accounts;
 
-        // 2. Storages
         Dictionary<string, string> storages = [];
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
         {
             (Address addr, UInt256 slot) = kv.Key.Key;
-            // Store slot as decimal string representation (safe for JSON)
+            // Slot serialized as decimal so it survives JSON round-trips without ambiguity.
             string key = $"{addr.Bytes.ToHexString(false)}:{slot}";
             storages[key] = kv.Value.HasValue
                 ? kv.Value.Value.AsReadOnlySpan.ToHexString(false)
@@ -43,7 +41,6 @@ internal static class PersistedSnapshotUtils
         }
         dump["storages"] = storages;
 
-        // 3. SelfDestructedStorageAddresses
         Dictionary<string, bool> selfDestructed = [];
         foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
         {
@@ -52,7 +49,6 @@ internal static class PersistedSnapshotUtils
         }
         dump["selfDestructed"] = selfDestructed;
 
-        // 4. StateNodes
         Dictionary<string, string> stateNodes = [];
         foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
         {
@@ -63,7 +59,6 @@ internal static class PersistedSnapshotUtils
         }
         dump["stateNodes"] = stateNodes;
 
-        // 5. StorageNodes
         Dictionary<string, string> storageNodes = [];
         foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
         {
@@ -85,7 +80,6 @@ internal static class PersistedSnapshotUtils
 
         SnapshotContent content = new();
 
-        // Deserialize accounts
         if (root.TryGetProperty("accounts", out JsonElement accountsElement))
         {
             foreach (JsonProperty prop in accountsElement.EnumerateObject())
@@ -104,14 +98,13 @@ internal static class PersistedSnapshotUtils
             }
         }
 
-        // Deserialize storages
         if (root.TryGetProperty("storages", out JsonElement storagesElement))
         {
             foreach (JsonProperty prop in storagesElement.EnumerateObject())
             {
                 string[] parts = prop.Name.Split(':');
                 Address addr = new(Bytes.FromHexString(parts[0]));
-                // Slot is stored as decimal string
+                // Matches DumpSnapshotToJson: slot serialized as decimal.
                 UInt256 slot = UInt256.Parse(parts[1]);
                 string value = prop.Value.GetString() ?? "";
                 SlotValue? slotValue = value == "" ? null : new SlotValue(Bytes.FromHexString(value));
@@ -119,7 +112,6 @@ internal static class PersistedSnapshotUtils
             }
         }
 
-        // Deserialize selfDestructed
         if (root.TryGetProperty("selfDestructed", out JsonElement selfDestructElement))
         {
             foreach (JsonProperty prop in selfDestructElement.EnumerateObject())
@@ -130,7 +122,6 @@ internal static class PersistedSnapshotUtils
             }
         }
 
-        // Deserialize stateNodes
         if (root.TryGetProperty("stateNodes", out JsonElement stateNodesElement))
         {
             foreach (JsonProperty prop in stateNodesElement.EnumerateObject())
@@ -144,7 +135,6 @@ internal static class PersistedSnapshotUtils
             }
         }
 
-        // Deserialize storageNodes
         if (root.TryGetProperty("storageNodes", out JsonElement storageNodesElement))
         {
             foreach (JsonProperty prop in storageNodesElement.EnumerateObject())
@@ -170,7 +160,6 @@ internal static class PersistedSnapshotUtils
 
         try
         {
-            // 1. Accounts
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
             {
                 Address address = kv.Key;
@@ -192,7 +181,6 @@ internal static class PersistedSnapshotUtils
                 }
             }
 
-            // 2. Storages
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
@@ -205,7 +193,6 @@ internal static class PersistedSnapshotUtils
                     throw new InvalidOperationException($"Storage {addr}:{slot} mismatch");
             }
 
-            // 3. SelfDestructedStorageAddresses
             foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
             {
                 Address address = kv.Key;
@@ -214,7 +201,6 @@ internal static class PersistedSnapshotUtils
                     throw new InvalidOperationException($"SelfDestruct {address} mismatch: expected {kv.Value}, got {flag.Value}");
             }
 
-            // 4. StateNodes
             foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
             {
                 if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
@@ -225,7 +211,6 @@ internal static class PersistedSnapshotUtils
                     throw new InvalidOperationException($"StateNode at path length {path.Length} RLP mismatch");
             }
 
-            // 5. StorageNodes
             foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
             {
                 if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;

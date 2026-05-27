@@ -54,12 +54,10 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     internal byte[]? ValueScratch = null;
 
     // Per-Build scratch for HsstBTreeBuilder.ChooseIntermediateChildCount and
-    // HsstBTreeBuilder.WriteIndexNode. Previously stackalloc'd per call (255 bytes
-    // each for firstSep / sepBuf, plus variable-sized int[] for sepLengths).
-    // Promoted to pooled fields so a hot caller (e.g. PersistedSnapshotBuilder,
-    // which fires many small Builds back-to-back) reuses the rented buffers across
-    // calls. Sized lazily by HsstBTreeBuilder; null until the first build that needs
-    // them.
+    // HsstBTreeBuilder.WriteIndexNode. Pooled fields (rather than stackalloc'd per call)
+    // so a hot caller (e.g. PersistedSnapshotBuilder, which fires many small Builds
+    // back-to-back) reuses the rented buffers across calls. Sized lazily by
+    // HsstBTreeBuilder; null until the first build that needs them.
     internal byte[]? IndexFirstSepScratch = null;
     internal byte[]? IndexSepBufScratch = null;
     internal int[]? IndexSepLengthsScratch = null;
