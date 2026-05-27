@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc;
@@ -45,7 +44,7 @@ namespace Nethermind.Db.Test.Rpc
             byte[] key = new byte[1];
             _ = _rpcDb[key];
             _jsonRpcClient.Received().Post("debug_getFromDb", "Name", key.ToHexString());
-            _recordDb[key].Should().BeEquivalentTo(Bytes.FromHexString(result));
+            Assert.That(_recordDb[key], Is.EqualTo(Bytes.FromHexString(result)));
         }
     }
 }

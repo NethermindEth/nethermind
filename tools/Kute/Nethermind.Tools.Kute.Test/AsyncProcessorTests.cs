@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Tools.Kute.AsyncProcessor;
 using NUnit.Framework;
 
@@ -27,9 +26,9 @@ public class AsyncProcessorTests
             });
         }
 
-        counter.Should().Be(taskCount);
-        t.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(90));
-        t.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
+        Assert.That(counter, Is.EqualTo(taskCount));
+        Assert.That(t.Elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
+        Assert.That(t.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(110)));
     }
 
     [Test]
@@ -50,8 +49,8 @@ public class AsyncProcessorTests
             });
         }
 
-        counter.Should().Be(taskCount);
-        t.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(90));
-        t.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
+        Assert.That(counter, Is.EqualTo(taskCount));
+        Assert.That(t.Elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
+        Assert.That(t.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(110)));
     }
 }
