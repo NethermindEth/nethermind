@@ -182,7 +182,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         if (!manifest.TryGetValue(epoch, out RemoteEraEntry entry))
             throw new EraException($"Epoch {epoch} is not available in the remote eraE manifest.");
 
-        string destinationPath = Path.Join(_downloadDir, entry.Filename);
+        string destinationPath = ResolveDestinationPath(entry.Filename);
 
         SemaphoreSlim epochLock = _epochLocks.GetOrAddDisposable(epoch, static _ => new SemaphoreSlim(1, 1));
         await epochLock.WaitAsync(cancellation).ConfigureAwait(false);
@@ -209,6 +209,17 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         {
             epochLock.Release();
         }
+    }
+
+    private string ResolveDestinationPath(string filename)
+    {
+        string root = Path.GetFullPath(_downloadDir);
+        string destinationPath = Path.GetFullPath(Path.Join(root, filename));
+        string boundary = Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar;
+        if (!destinationPath.StartsWith(boundary, StringComparison.Ordinal))
+            throw new EraException($"Remote eraE manifest filename '{filename}' escapes the download directory.");
+
+        return destinationPath;
     }
 
     private static void VerifySha256(string filePath, byte[] expectedHash)
