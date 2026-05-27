@@ -125,6 +125,7 @@ namespace Nethermind.Network
         {
             Peer peer = nodeEventArgs.Peer;
             int newPeerPoolLength = _peerPool.PeerCount;
+            Metrics.PeerCandidateCount = newPeerPoolLength;
             int currentMaxPeerPoolLength = Volatile.Read(ref _maxPeerPoolLength);
             while (newPeerPoolLength > currentMaxPeerPoolLength + 100)
             {
@@ -251,10 +252,10 @@ namespace Nethermind.Network
 
         private class CandidateSelection
         {
-            public List<Peer> PreCandidates { get; } = new();
-            public List<Peer> Candidates { get; } = new();
-            public List<Peer> Incompatible { get; } = new();
-            public Dictionary<string, int> Counters { get; } = new();
+            public List<Peer> PreCandidates { get; } = [];
+            public List<Peer> Candidates { get; } = [];
+            public List<Peer> Incompatible { get; } = [];
+            public Dictionary<string, int> Counters { get; } = [];
         }
 
         private readonly CandidateSelection _currentSelection = new();

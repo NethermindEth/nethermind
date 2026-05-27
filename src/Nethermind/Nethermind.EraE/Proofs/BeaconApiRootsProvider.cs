@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -17,28 +18,22 @@ public sealed class BeaconApiRootsProvider(
 {
     private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
     private readonly BeaconApiRetry<(ValueHash256, ValueHash256)?> _beaconApiRetry = new(maxAttempts);
-    private readonly object _cacheLock = new();
-    private readonly Dictionary<long, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)?> _cache = new();
+    private readonly LruCache<long, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)> _cache =
+        new(HistoricalRootConstants.SlotsPerHistoricalRoot, nameof(BeaconApiRootsProvider));
 
     public void Dispose() => _client.Dispose();
 
     public async Task<(ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)?> GetBeaconRoots(
         long slot, CancellationToken cancellationToken = default)
     {
-        lock (_cacheLock)
-        {
-            if (_cache.TryGetValue(slot, out (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? cached))
-                return cached;
-        }
+        if (_cache.TryGet(slot, out (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot) cached))
+            return cached;
 
-        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await FetchWithRetryAsync(slot, cancellationToken).ConfigureAwait(false);
+        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? roots = await FetchWithRetryAsync(slot, cancellationToken).ConfigureAwait(false);
+        if (roots.HasValue)
+            _cache.Set(slot, roots.Value);
 
-        lock (_cacheLock)
-        {
-            _cache.TryAdd(slot, result);
-        }
-
-        return result;
+        return roots;
     }
 
     private Task<(ValueHash256, ValueHash256)?> FetchWithRetryAsync(

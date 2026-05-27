@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -28,7 +26,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
+            Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
 
         [TestCase(0, 200ul)]
@@ -39,7 +37,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
+            Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
 
         [TestCase(0, 0ul)]
@@ -49,7 +47,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(null);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
+            Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
 
         [TestCase(9, 0ul)]
@@ -60,17 +58,17 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
+            Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
 
         [TestCase(1, 0ul)]
         public void calculates_rewards_correctly_for_empty_dictionary(long blockNumber, ulong expectedReward)
         {
-            Dictionary<long, UInt256> blockReward = new() { };
+            Dictionary<long, UInt256> blockReward = [];
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
+            Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
     }
 }

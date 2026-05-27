@@ -17,8 +17,6 @@ public sealed class Validator
     private readonly IReadOnlyList<ValueHash256>? _trustedHistoricalRoots;
     private readonly SlotTime? _slotTime;
 
-    private const int SlotsPerHistoricalRoot = 8192;
-
     public Validator(
         ISpecProvider specProvider,
         IReadOnlyList<ValueHash256>? trustedAccumulators,
@@ -44,11 +42,10 @@ public sealed class Validator
     public bool VerifyAccumulator(long blockNumber, ValueHash256 accumulatorRoot)
     {
         if (!TrustedAccumulatorsProvided()) return true;
-        long epochIdx = blockNumber / SlotsPerHistoricalRoot;
-        if (_trustedAccumulators is null || epochIdx < 0 || epochIdx >= _trustedAccumulators.Count)
-            throw new EraVerificationException("Trusted accumulator root was not provided.");
-
-        return _trustedAccumulators[(int)epochIdx].Equals(accumulatorRoot);
+        ValueHash256? trusted = GetAccumulatorForEpoch(blockNumber / HistoricalRootConstants.SlotsPerHistoricalRoot);
+        return trusted is null
+            ? throw new EraVerificationException("Trusted accumulator root was not provided.")
+            : trusted.Equals(accumulatorRoot);
     }
 
     public async Task VerifyBlocksRootContext(BlocksRootContext context, CancellationToken cancellation = default)
@@ -82,17 +79,23 @@ public sealed class Validator
 
     private bool TrustedAccumulatorsProvided() => _trustedAccumulators is { Count: > 0 };
 
+    private ValueHash256? GetAccumulatorForEpoch(long epochIdx) =>
+        _trustedAccumulators is null || epochIdx < 0 || epochIdx >= _trustedAccumulators.Count
+            ? default(ValueHash256?)
+            : _trustedAccumulators[(int)epochIdx];
+
     private ValueHash256? GetHistoricalRoot(long slotNumber)
     {
-        long idx = slotNumber / SlotsPerHistoricalRoot;
-        return _trustedHistoricalRoots is not null && _trustedHistoricalRoots.Count > idx
-            ? _trustedHistoricalRoots[(int)idx]
-            : null;
+        long idx = slotNumber / HistoricalRootConstants.SlotsPerHistoricalRoot;
+        if (_trustedHistoricalRoots is null || idx < 0 || idx >= _trustedHistoricalRoots.Count)
+            return null;
+
+        return _trustedHistoricalRoots[(int)idx];
     }
 
     private async Task<HistoricalSummary?> GetHistoricalSummary(long slotNumber, CancellationToken cancellation = default)
     {
-        long idx = slotNumber / SlotsPerHistoricalRoot;
+        long idx = slotNumber / HistoricalRootConstants.SlotsPerHistoricalRoot;
         return _historicalSummariesProvider is null
             ? null
             : await _historicalSummariesProvider.GetHistoricalSummary((int)idx, cancellationToken: cancellation);

@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         public NetworkInfo Network { get; set; } = new();
 
-        public Dictionary<string, object> Protocols { get; set; } = new();
+        public Dictionary<string, object> Protocols { get; set; } = [];
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public NodeClientType? ClientType { get; set; }
@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         private void SetProtocols(Peer peer, IReadOnlyList<Capability> capabilities)
         {
-            Dictionary<string, object> protocols = new();
+            Dictionary<string, object> protocols = [];
 
             ISession? session = peer.InSession ?? peer.OutSession;
             bool hasEthHandler = TryGetHandlerVersion(session, Protocol.Eth, out int ethVersion);

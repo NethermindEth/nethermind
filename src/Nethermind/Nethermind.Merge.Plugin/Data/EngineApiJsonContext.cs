@@ -4,6 +4,7 @@
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -12,11 +13,12 @@ namespace Nethermind.Merge.Plugin.Data;
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     PropertyNameCaseInsensitive = true,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    IncludeFields = true)]
-[JsonSerializable(typeof(ExecutionPayload))]
+    IncludeFields = true,
+    Converters = new[] { typeof(ByteArrayArrayConverter) })]
 [JsonSerializable(typeof(ExecutionPayloadV3))]
-[JsonSerializable(typeof(PayloadStatusV1))]
+[JsonSerializable(typeof(ExecutionPayload))]
 [JsonSerializable(typeof(byte[][]))]
+[JsonSerializable(typeof(PayloadStatusV1))]
 [JsonSerializable(typeof(ForkchoiceStateV1))]
 [JsonSerializable(typeof(ForkchoiceUpdatedV1Result))]
 [JsonSerializable(typeof(PayloadAttributes))]

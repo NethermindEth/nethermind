@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Net;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -31,12 +30,12 @@ namespace Nethermind.Network.Test.Stats
             manager.ReportSyncEvent(nodes[2], NodeStatsEventType.SyncStarted);
             Node removedNode = new(TestItem.PublicKeyD, IPEndPoint.Parse("192.168.0.4:30303"));
             manager.ReportHandshakeEvent(removedNode, ConnectionDirection.In);
-            manager.GetCurrentReputation(removedNode).Should().NotBe(0);
+            Assert.That(manager.GetCurrentReputation(removedNode), Is.Not.EqualTo(0));
 
             timer.Elapsed += Raise.Event();
 
-            manager.GetCurrentReputation(removedNode).Should().Be(0);
-            nodes.Select(n => manager.GetCurrentReputation(n)).Should().NotContain(0);
+            Assert.That(manager.GetCurrentReputation(removedNode), Is.EqualTo(0));
+            Assert.That(nodes.Select(n => manager.GetCurrentReputation(n)), Does.Not.Contain(0));
         }
     }
 }

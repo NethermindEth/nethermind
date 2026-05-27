@@ -14,6 +14,19 @@ namespace Nethermind.JsonRpc.Test.Data
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
+        private bool _previousStrictHexFormat;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
+            EthereumJsonSerializer.StrictHexFormat = false;
+        }
+
+        [TearDown]
+        public void TearDown() =>
+            EthereumJsonSerializer.StrictHexFormat = _previousStrictHexFormat;
+
         [TestCase("0", 0)]
         [TestCase("100", 100)]
         [TestCase("\"0x0\"", 0)]
@@ -45,7 +58,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("{ \"blockNumber\": \"100\" }", true)]
         public void Cant_read_block_number_when_strict_hex_format_is_enabled(string input, bool throws)
         {
-            TestDelegate action = () => WithStrictHexFormat(true, () =>
+            Action action = () => WithStrictHexFormat(true, () =>
             {
                 IJsonSerializer serializer = new EthereumJsonSerializer();
                 return serializer.Deserialize<BlockParameter>(input);

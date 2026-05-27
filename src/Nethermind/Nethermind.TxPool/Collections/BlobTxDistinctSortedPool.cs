@@ -144,7 +144,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                 if (blobVersionedHash?.Length == Eip4844Constants.BytesPerBlobVersionedHash)
                 {
                     ref List<Hash256>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(BlobIndex, blobVersionedHash, out _);
-                    list ??= new List<Hash256>();
+                    list ??= [];
                     list.Add(blobTx.Hash!);
                 }
             }

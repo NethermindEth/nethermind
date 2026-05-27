@@ -329,7 +329,7 @@ public class CertainBatchLookupTests
         Substitute.For<ITxPool>(),
         blockFinder ?? Substitute.For<IBlockFinder>(),
         Substitute.For<IShareableTxProcessorSource>(),
-        Substitute.For<IRlpStreamEncoder<Transaction>>(),
+        Substitute.For<IRlpDecoder<Transaction>>(),
         l1OriginStore,
         new SurgeConfig()
     );

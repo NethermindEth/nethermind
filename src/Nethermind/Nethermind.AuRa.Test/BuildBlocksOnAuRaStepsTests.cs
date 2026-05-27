@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -21,7 +20,7 @@ namespace Nethermind.AuRa.Test
         [Retry(3)]
         public async Task should_cancel_block_production_trigger_on_next_step_if_not_finished_yet()
         {
-            List<BlockProductionEventArgs> args = new();
+            List<BlockProductionEventArgs> args = [];
             await using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(new TestAuRaStepCalculator(), LimboLogs.Instance))
             {
                 buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
@@ -38,14 +37,14 @@ namespace Nethermind.AuRa.Test
             }
 
             bool[] allButLastCancellations = args.Skip(1).SkipLast(1).Select(e => e.CancellationToken.IsCancellationRequested).ToArray();
-            allButLastCancellations.Should().AllBeEquivalentTo(true);
-            allButLastCancellations.Should().HaveCountGreaterThanOrEqualTo(2);
+            Assert.That(allButLastCancellations, Is.All.EqualTo(true));
+            Assert.That(allButLastCancellations.Length, Is.GreaterThanOrEqualTo(2));
         }
 
         [Test]
         public async Task should_not_cancel_block_production_trigger_on_next_step_finished()
         {
-            List<BlockProductionEventArgs> args = new();
+            List<BlockProductionEventArgs> args = [];
 
             BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(new TestAuRaStepCalculator(), LimboLogs.Instance);
             buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
@@ -59,7 +58,7 @@ namespace Nethermind.AuRa.Test
             }
 
             IEnumerable<bool> enumerable = args.Select(e => e.CancellationToken.IsCancellationRequested).ToArray();
-            enumerable.Should().AllBeEquivalentTo(false);
+            Assert.That(enumerable, Is.All.EqualTo(false));
 
             await buildBlocksOnAuRaSteps.DisposeAsync();
         }

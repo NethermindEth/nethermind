@@ -4,12 +4,18 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Merkleization;
+
+using SHA256 =
+#if ZK_EVM
+    Merkle.Sha256;
+#else
+    System.Security.Cryptography.SHA256;
+#endif
 
 public static partial class Merkle
 {
@@ -404,4 +410,18 @@ public static partial class Merkle
 
         merkleizer.CalculateRoot(out root);
     }
+
+#if ZK_EVM
+    internal static class Sha256
+    {
+        internal static byte[] HashData(ReadOnlySpan<byte> data)
+        {
+            byte[] output = new byte[System.Security.Cryptography.SHA256.HashSizeInBytes];
+
+            Nethermind.Zkvm.Abstractions.Accelerators.Sha256(data, output);
+
+            return output;
+        }
+    }
+#endif
 }

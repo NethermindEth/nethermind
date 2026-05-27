@@ -44,7 +44,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private bool _isDisposing;
     private bool _isDisposed;
 
-    private readonly ConcurrentHashSet<IWriteBatch> _currentBatches = new();
+    private readonly ConcurrentHashSet<IWriteBatch> _currentBatches = [];
 
     internal readonly RocksDb _db;
 
@@ -88,7 +88,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
 
-    private readonly List<IDisposable> _metricsUpdaters = new();
+    private readonly List<IDisposable> _metricsUpdaters = [];
 
     internal long _allocatedSpan = 0;
     private long _totalReads;
@@ -99,6 +99,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private int _maxWriteBufferNumber;
     private readonly RocksDbReader _reader;
     private bool _isUsingSharedBlockCache;
+    private long _addedMemoryPressure;
 
     public DbOnTheRocks(
         string basePath,
@@ -122,6 +123,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
 
         _reader = new RocksDbReader(this, CreateReadOptions, _iteratorManager, null);
+
+        if (_addedMemoryPressure > 0) GC.AddMemoryPressure(_addedMemoryPressure);
     }
 
     protected virtual RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
@@ -160,7 +163,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             ColumnFamilies? columnFamilies = null;
             if (columnNames is not null)
             {
-                columnFamilies = new ColumnFamilies();
+                columnFamilies = [];
                 foreach (string enumColumnName in columnNames)
                 {
                     string columnFamily = enumColumnName;
@@ -229,7 +232,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         long availableMemory = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
         _logger.Info($"Warming up database {Name} assuming {availableMemory} bytes of available memory");
-        List<(FileMetadata metadata, DateTime creationTime)> fileMetadataEntries = new();
+        List<(FileMetadata metadata, DateTime creationTime)> fileMetadataEntries = [];
 
         foreach (LiveFileMetadata liveFileMetadata in db.GetLiveFilesMetadata())
         {
@@ -442,7 +445,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public static IDictionary<string, string> ExtractOptions(string dbOptions)
     {
-        Dictionary<string, string> asDict = new();
+        Dictionary<string, string> asDict = [];
         if (string.IsNullOrEmpty(dbOptions)) return asDict;
 
         foreach (Match match in ExtractDbOptionsRegex().Matches(dbOptions))
@@ -507,6 +510,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
 
         BlockBasedTableOptions? tableOptions = new();
+        ulong perCallCachePressure = 0;
         if (dbConfig.BlockCache is not null)
         {
             tableOptions.SetBlockCache(dbConfig.BlockCache.Value);
@@ -515,6 +519,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             tableOptions.SetBlockCache(sharedCache.Value);
             _isUsingSharedBlockCache = true;
+        }
+        else
+        {
+            // RocksDB allocates a 32MB block cache by default if `block_based_table_factory.block_cache`
+            // is not specified in the options string.
+            perCallCachePressure = blockCacheSize > 0 ? blockCacheSize : 32_000_000;
         }
 
         // Note: the ordering is important.
@@ -558,6 +568,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             if (_logger.IsDebug) _logger.Debug($"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1000 / 1000} MB ({writeBufferNumber} * {writeBufferSize / 1000 / 1000} MB + {blockCacheSize / 1000 / 1000} MB)");
             if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000} MB");
         }
+
+        _addedMemoryPressure += (long)_writeBufferSize + (long)perCallCachePressure;
 
         #endregion
 
@@ -1492,6 +1504,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         ReleaseUnmanagedResources();
 
         _dbsByPath.Remove(_fullPath!, out _);
+
+        if (_addedMemoryPressure > 0) GC.RemoveMemoryPressure(_addedMemoryPressure);
 
         _isDisposed = true;
     }

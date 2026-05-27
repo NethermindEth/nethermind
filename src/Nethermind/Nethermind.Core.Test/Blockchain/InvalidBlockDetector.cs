@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 

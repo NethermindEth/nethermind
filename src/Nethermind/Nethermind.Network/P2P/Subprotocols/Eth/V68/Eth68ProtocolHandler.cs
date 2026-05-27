@@ -56,7 +56,7 @@ public class Eth68ProtocolHandler(ISession session,
     public new static byte Version => EthVersions.Eth68;
     public override byte ProtocolVersion => Version;
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -75,10 +75,9 @@ public class Eth68ProtocolHandler(ISession session,
                     ReportIn(ignored, size);
                 }
 
-                break;
+                return true;
             default:
-                base.HandleMessageCore(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 

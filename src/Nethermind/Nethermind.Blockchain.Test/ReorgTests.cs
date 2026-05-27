@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
@@ -135,7 +134,7 @@ public class ReorgTests
     [Retry(3)]
     public void Test()
     {
-        List<Block> events = new();
+        List<Block> events = [];
 
         Block block0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
         Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(2).WithTotalDifficulty(2L).TestObject;
@@ -160,8 +159,8 @@ public class ReorgTests
 
         Assert.That(() => _blockTree.Head, Is.EqualTo(block2B).After(10000, 500));
 
-        events.Should().HaveCount(6);
-        events[4].Hash.Should().Be(block1B.Hash!);
-        events[5].Hash.Should().Be(block2B.Hash!);
+        Assert.That(events.Count, Is.EqualTo(6));
+        Assert.That(events[4].Hash, Is.EqualTo(block1B.Hash!));
+        Assert.That(events[5].Hash, Is.EqualTo(block2B.Hash!));
     }
 }

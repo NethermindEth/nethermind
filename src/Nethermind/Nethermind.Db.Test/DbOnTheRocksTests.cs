@@ -30,7 +30,7 @@ namespace Nethermind.Db.Test
     {
         private RocksDbConfigFactory _rocksdbConfigFactory;
         private DbConfig _dbConfig = new();
-        string DbPath => Path.Join("testdb", GetType().Name, TestContext.CurrentContext.Test.Name);
+        string DbPath => Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
 
         [SetUp]
         public void Setup()
@@ -172,7 +172,7 @@ namespace Nethermind.Db.Test
                 _dbConfig.BlocksDbRocksDbOptions += "block_based_table_factory.block_cache=1000000;";
             }
 
-            using DbOnTheRocks db = new("testBlockCache", GetRocksDbSettings("testBlockCache", DbNames.Blocks), _dbConfig,
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, DbNames.Blocks), _dbConfig,
                 _rocksdbConfigFactory, LimboLogs.Instance, sharedCache: cache.Handle);
 
             Random rng = new();
@@ -220,7 +220,7 @@ namespace Nethermind.Db.Test
                     return baseConfig;
                 });
 
-            using DbOnTheRocks db = new("testBlockCache", GetRocksDbSettings("testBlockCache", DbNames.Blocks), _dbConfig,
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, DbNames.Blocks), _dbConfig,
                 rocksDbConfigFactory, LimboLogs.Instance);
 
             Random rng = new();
@@ -296,19 +296,66 @@ namespace Nethermind.Db.Test
             file.Received().Delete(markerFile);
         }
 
+        [Test]
+        public void TestExtractOptions()
+        {
+            string options = "compression=kSnappyCompression;optimize_filters_for_hits=true;optimize_filters_for_hits=false;memtable_whole_key_filtering=true;memtable_prefix_bloom_size_ratio=0.02;advise_random_on_open=true;block_based_table_factory.block_size=16000;block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;block_based_table_factory.format_version=5;block_based_table_factory.index_type=kTwoLevelIndexSearch;block_based_table_factory.partition_filters=true;block_based_table_factory.metadata_block_size=4096;";
+            IDictionary<string, string> parsedOptions = DbOnTheRocks.ExtractOptions(options);
+            Assert.That(parsedOptions["compression"], Is.EqualTo("kSnappyCompression"));
+            Assert.That(parsedOptions["block_based_table_factory.metadata_block_size"], Is.EqualTo("4096"));
+            Assert.That(parsedOptions["optimize_filters_for_hits"], Is.EqualTo("false"));
+            Assert.That(parsedOptions["memtable_whole_key_filtering"], Is.EqualTo("true"));
+        }
+
+        [Test]
+        public void TestNormalizeRocksDbOptions_RemovesDuplicateOptimizeFiltersForHits()
+        {
+            string options = "optimize_filters_for_hits=true;compression=kSnappyCompression;optimize_filters_for_hits=false;";
+            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+
+            Assert.That(normalized, Is.EqualTo("compression=kSnappyCompression;optimize_filters_for_hits=false;"));
+        }
+
+        [Test]
+        public void TestNormalizeRocksDbOptions_HandlesEmptyString()
+        {
+            Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(""), Is.EqualTo(""));
+            Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(null!), Is.EqualTo(""));
+        }
+
+        [Test]
+        public void TestNormalizeRocksDbOptions_PreservesStringWithoutDuplicates()
+        {
+            string options = "compression=kSnappyCompression;block_size=16000;optimize_filters_for_hits=true;";
+            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+
+            Assert.That(normalized, Is.EqualTo(options));
+        }
+
+        [Test]
+        public void TestNormalizeRocksDbOptions_HandlesMultipleDuplicates()
+        {
+            string options = "optimize_filters_for_hits=true;foo=bar;optimize_filters_for_hits=false;baz=qux;optimize_filters_for_hits=true;";
+            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+
+            Assert.That(normalized, Is.EqualTo("foo=bar;baz=qux;optimize_filters_for_hits=true;"));
+        }
+
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };
     }
 
+    [TestFixture(true)]
+    [TestFixture(false)]
     [Parallelizable(ParallelScope.None)]
-    public class DbOnTheRocksDbTests
+    public class DbOnTheRocksDbTests(bool useColumnDb)
     {
-        string DbPath => Path.Join("testdb", nameof(DbOnTheRocksDbTests), TestContext.CurrentContext.Test.Name);
+        string DbPath => Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
         private IDb _db = null!;
-        private IDisposable? _dbDisposable = null!;
+        IDisposable? _dbDisposable = null!;
 
-        private bool UseColumnDb => TestContext.CurrentContext.Test.Arguments is [bool useColumnDb] && useColumnDb;
+        private readonly bool _useColumnDb = useColumnDb;
 
         [SetUp]
         public void Setup()
@@ -321,7 +368,7 @@ namespace Nethermind.Db.Test
             }
 
             Directory.CreateDirectory(DbPath);
-            if (UseColumnDb)
+            if (_useColumnDb)
             {
                 IDbConfig config = new DbConfig();
                 ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, rocksdbConfigFactory,
@@ -530,8 +577,8 @@ namespace Nethermind.Db.Test
                 i = 0;
                 while (view.MoveNext())
                 {
-                    Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { i, i, i }));
-                    Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(new byte[] { i, i, i }));
+                    Assert.That(view.CurrentKey.ToArray(), Is.EqualTo([i, i, i]));
+                    Assert.That(view.CurrentValue.ToArray(), Is.EqualTo([i, i, i]));
                     i++;
                 }
 
@@ -550,54 +597,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void TestExtractOptions()
-        {
-            string options = "compression=kSnappyCompression;optimize_filters_for_hits=true;optimize_filters_for_hits=false;memtable_whole_key_filtering=true;memtable_prefix_bloom_size_ratio=0.02;advise_random_on_open=true;block_based_table_factory.block_size=16000;block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;block_based_table_factory.format_version=5;block_based_table_factory.index_type=kTwoLevelIndexSearch;block_based_table_factory.partition_filters=true;block_based_table_factory.metadata_block_size=4096;";
-            IDictionary<string, string> parsedOptions = DbOnTheRocks.ExtractOptions(options);
-            Assert.That(parsedOptions["compression"], Is.EqualTo("kSnappyCompression"));
-            Assert.That(parsedOptions["block_based_table_factory.metadata_block_size"], Is.EqualTo("4096"));
-            Assert.That(parsedOptions["optimize_filters_for_hits"], Is.EqualTo("false"));
-            Assert.That(parsedOptions["memtable_whole_key_filtering"], Is.EqualTo("true"));
-        }
-
-        [Test]
-        public void NormalizeDuplicateFilterOption()
-        {
-            string options = "optimize_filters_for_hits=true;compression=kSnappyCompression;optimize_filters_for_hits=false;";
-            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
-
-            // Should contain only one optimize_filters_for_hits with the last value (false)
-            Assert.That(normalized, Is.EqualTo("compression=kSnappyCompression;optimize_filters_for_hits=false;"));
-        }
-
-        [Test]
-        public void NormalizeOptionsHandlesEmptyString()
-        {
-            Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(""), Is.EqualTo(string.Empty));
-            Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(null!), Is.EqualTo(string.Empty));
-        }
-
-        [Test]
-        public void NormalizeOptionsPreservesInput()
-        {
-            string options = "compression=kSnappyCompression;block_size=16000;optimize_filters_for_hits=true;";
-            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
-
-            Assert.That(normalized, Is.EqualTo(options));
-        }
-
-        [Test]
-        public void NormalizeOptionsHandlesMultipleDuplicates()
-        {
-            string options = "optimize_filters_for_hits=true;foo=bar;optimize_filters_for_hits=false;baz=qux;optimize_filters_for_hits=true;";
-            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
-
-            Assert.That(normalized, Is.EqualTo("foo=bar;baz=qux;optimize_filters_for_hits=true;"));
-        }
-
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Can_GetMetric_AfterDispose(bool _)
+        public void Can_GetMetric_AfterDispose()
         {
             _db.Dispose();
             Assert.That(_db.GatherMetric().Size, Is.EqualTo(0));

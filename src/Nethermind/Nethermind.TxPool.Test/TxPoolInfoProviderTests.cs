@@ -78,8 +78,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        Assert.That(info.Pending[_address].Keys, Is.EquivalentTo(new ulong[] { 0 }));
-        Assert.That(info.Queued[_address].Keys, Is.EquivalentTo(new ulong[] { 2 }));
+        Assert.That(info.Pending[_address].Keys, Is.EqualTo(new ulong[] { 0 }));
+        Assert.That(info.Queued[_address].Keys, Is.EqualTo(new ulong[] { 2 }));
     }
 
     [Test]
@@ -130,10 +130,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        Assert.That(senderInfo.Pending.Keys, Is.EquivalentTo(scenario.ExpectedPending),
-            "pending nonces are those continuous with the account nonce");
-        Assert.That(senderInfo.Queued.Keys, Is.EquivalentTo(scenario.ExpectedQueued),
-            "queued nonces are those beyond a gap from the account nonce");
+        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(scenario.ExpectedPending), "pending nonces are those continuous with the account nonce");
+        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(scenario.ExpectedQueued), "queued nonces are those beyond a gap from the account nonce");
     }
 
     [Test]
@@ -141,8 +139,7 @@ public class TxPoolInfoProviderTests
     {
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        Assert.That(senderInfo, Is.SameAs(TxPoolSenderInfo.Empty),
-            "the empty singleton avoids allocating two empty dictionaries on the miss path");
+        Assert.That(senderInfo, Is.SameAs(TxPoolSenderInfo.Empty), "the empty singleton avoids allocating two empty dictionaries on the miss path");
     }
 
     [Test]
@@ -156,8 +153,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        Assert.That(senderInfo.Pending.Keys, Is.EquivalentTo(new ulong[] { 0 }));
-        Assert.That(senderInfo.Queued.Keys, Is.EquivalentTo(new ulong[] { 2 }));
+        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(new ulong[] { 0 }));
+        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(new ulong[] { 2 }));
     }
 
     [Test]

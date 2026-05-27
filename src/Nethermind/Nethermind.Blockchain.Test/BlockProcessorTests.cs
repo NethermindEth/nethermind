@@ -12,6 +12,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -145,8 +146,8 @@ public class BlockProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(parentReaderFactory.CreatedSources, Is.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltWorldStates, Has.Count.EqualTo(2));
+            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(2));
+            Assert.That(parentReaderFactory.BuiltWorldStates.Count, Is.EqualTo(2));
             Assert.That(parentReaderFactory.BuiltWorldStates[0], Is.Not.SameAs(parentReaderFactory.BuiltWorldStates[1]));
             Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
         }
@@ -218,7 +219,7 @@ public class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(1));
+            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(1));
             Assert.That(parentReaderFactory.BuiltHeaders[0]!.StateRoot, Is.EqualTo(parentStateRoot));
         }
 
@@ -597,6 +598,61 @@ public class BlockProcessorTests
         Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
     }
 
+    // Verify-only structural-equivalence check: covers the mismatch classes the column-index
+    // and gas-budget checks don't catch (their inputs slip through to the structural walk in
+    // SetBlockAccessList).
+    [TestCaseSource(nameof(VerifyOnlyStructuralMismatchCases))]
+    public void SetBlockAccessList_verify_only_rejects_structural_mismatch(
+        ReadOnlyBlockAccessList suggested,
+        Action<BlockAccessListAtIndex> populateGenerated)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager(stateProvider);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasUsed(0)
+            .WithBlockAccessList(suggested)
+            .TestObject;
+
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        BlockAccessListAtIndex slice = new();
+        populateGenerated(slice);
+        balManager.GeneratedBlockAccessList.Merge(slice);
+
+        Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+            () => balManager.SetBlockAccessList(block));
+    }
+
+    private static IEnumerable<TestCaseData> VerifyOnlyStructuralMismatchCases()
+    {
+        // storage_reads content mismatch (count matches, values differ): the one mismatch class
+        // nothing else catches — column-index only tracks read counts via the gas-budget check.
+        yield return new TestCaseData(
+            Build.A.BlockAccessList
+                .WithAccountChanges(Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithStorageReads((UInt256)5)
+                    .TestObject)
+                .TestObject,
+            (Action<BlockAccessListAtIndex>)(s => s.AddStorageRead(TestItem.AddressA, (UInt256)7)))
+            .SetName("storage_reads content mismatch (same count, different value)");
+
+        // Per-account presence mismatch with matching count: suggested has AddressA, generated
+        // touched AddressB — the structural walk catches via `generated.GetAccountChanges` miss.
+        yield return new TestCaseData(
+            Build.A.BlockAccessList
+                .WithAccountChanges(Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges(new BalanceChange(0, 1))
+                    .TestObject)
+                .TestObject,
+            (Action<BlockAccessListAtIndex>)(s => s.AddBalanceChange(TestItem.AddressB, before: 0, after: 1)))
+            .SetName("account presence mismatch (same count, different address)");
+    }
+
     [TestCase(1)]
     [TestCase(2)]
     public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks(int txCount) =>
@@ -949,7 +1005,7 @@ public class BlockProcessorTests
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = new();
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
         BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
             Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
             stateProvider,
@@ -1211,6 +1267,7 @@ public class BlockProcessorTests
         public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
         public bool Enabled => true;
         public bool ParallelExecutionEnabled => true;
+        public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
         public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
         {
@@ -1302,7 +1359,7 @@ public class BlockProcessorTests
         private readonly ManualResetEventSlim _parallelExecutionStarted = new();
         private int _executedCount;
 
-        public ConcurrentBag<bool> ObservedProcessingThreadFlags { get; } = new();
+        public ConcurrentBag<bool> ObservedProcessingThreadFlags { get; } = [];
         public ConcurrentDictionary<int, byte> ThreadIds { get; } = new();
 
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)

@@ -70,7 +70,7 @@ public class Eth72ProtocolHandlerTests
 
         NetworkDiagTracer.IsEnabled = true;
 
-        _disposables = new();
+        _disposables = [];
         _session = Substitute.For<ISession>();
         Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
         _session.Node.Returns(node);

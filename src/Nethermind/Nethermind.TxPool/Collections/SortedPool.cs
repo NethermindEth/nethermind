@@ -23,6 +23,8 @@ namespace Nethermind.TxPool.Collections
         where TKey : notnull
         where TGroupKey : notnull
     {
+        internal delegate bool BucketVisitor<TState>(TValue value, ref TState state);
+
         protected McsLock Lock { get; } = new();
 
         private readonly int _capacity;
@@ -56,8 +58,8 @@ namespace Nethermind.TxPool.Collections
             // ReSharper disable VirtualMemberCallInConstructor
             _sortedComparer = GetUniqueComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
-            _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
-            _buckets = new Dictionary<TGroupKey, EnhancedSortedSet<TValue>>();
+            _cacheMap = []; // do not initialize it at the full capacity
+            _buckets = [];
             _worstSortedValues = new DictionarySortedSet<TValue, TKey>(_sortedComparer);
             _logger = logManager?.GetClassLogger(typeof(SortedPool<,,>)) ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -323,7 +325,7 @@ namespace Nethermind.TxPool.Collections
                         break;
                     }
 
-                    list ??= new List<TValue>();
+                    list ??= [];
                     list.Add(enumerator.Current);
                 }
 
@@ -546,6 +548,34 @@ namespace Nethermind.TxPool.Collections
 
             item = default;
             return false;
+        }
+
+        /// <summary>
+        /// Iterates over bucket items under lock until visitor returns false.
+        /// </summary>
+        /// <remarks>
+        /// The visitor runs while the pool lock is held, so it must be short and must not call back into the pool.
+        /// Items are visited in the pool's group comparer order (ascending nonce for the tx pool).
+        /// </remarks>
+        internal void VisitBucket<TState>(TGroupKey groupKey, ref TState state, BucketVisitor<TState> visitor)
+        {
+            ArgumentNullException.ThrowIfNull(groupKey);
+            ArgumentNullException.ThrowIfNull(visitor);
+
+            using McsLock.Disposable lockRelease = Lock.Acquire();
+
+            if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
+            {
+                return;
+            }
+
+            foreach (TValue value in bucket)
+            {
+                if (!visitor(value, ref state))
+                {
+                    break;
+                }
+            }
         }
 
         public bool BucketAny(TGroupKey groupKey, Func<TValue, bool> predicate)

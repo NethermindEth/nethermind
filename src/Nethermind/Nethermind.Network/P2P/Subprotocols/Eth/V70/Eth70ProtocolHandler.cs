@@ -61,7 +61,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     public new static byte Version => EthVersions.Eth70;
     public override byte ProtocolVersion => Version;
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -70,13 +70,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content);
                 ReportIn(receiptsMessage, size);
                 Handle(receiptsMessage, size);
-                break;
+                return true;
             case Eth70MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage70, ReceiptsMessage70>(message, Handle);
-                break;
+                return true;
             default:
-                base.HandleMessageCore(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 
@@ -106,14 +105,15 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 }
 
                 Hash256 blockHash = hashes[blockIndex];
-                if (SyncServer.FindHeader(blockHash) is null)
+                TxReceipt[]? receipts = SyncServer.GetReceipts(blockHash);
+                if (receipts is null)
                 {
                     break;
                 }
 
-                TxReceipt[] receipts = SyncServer.GetReceipts(blockHash);
                 long requestedStartIndex = blockIndex == 0 ? getReceiptsMessage.FirstBlockReceiptIndex : 0;
-                if (requestedStartIndex < 0 || requestedStartIndex > receipts.Length)
+                // ulong (not uint) so an adversarial negative long isn't truncated.
+                if ((ulong)requestedStartIndex > (ulong)(uint)receipts.Length)
                 {
                     throw new SubprotocolException($"Invalid firstBlockReceiptIndex {requestedStartIndex} for block receipts length {receipts.Length}");
                 }

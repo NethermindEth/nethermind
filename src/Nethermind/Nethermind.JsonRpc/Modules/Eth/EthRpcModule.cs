@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -18,7 +18,6 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Facade.Filters;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
@@ -41,8 +40,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Security;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -92,12 +89,14 @@ public partial class EthRpcModule(
     protected readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager.GetClassLogger<EthRpcModule>();
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
+    private ResultWrapper<ulong>? _chainIdResponse;
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
     public ResultWrapper<string> eth_protocolVersion()
@@ -334,19 +333,8 @@ public partial class EthRpcModule(
 
     public ResultWrapper<Signature> eth_sign(Address addressData, byte[] message)
     {
-        Signature sig;
-        try
-        {
-            sig = _wallet.SignMessage(message, addressData);
-        }
-        catch (SecurityException e)
-        {
-            return ResultWrapper<Signature>.Fail(e.Message, ErrorCodes.AccountLocked);
-        }
-        catch (Exception)
-        {
-            return ResultWrapper<Signature>.Fail($"Unable to sign as {addressData}");
-        }
+        if (!_wallet.TrySignMessage(message, addressData, out Signature sig))
+            return ResultWrapper<Signature>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
 
         if (_logger.IsTrace) _logger.Trace($"eth_sign request {addressData}, {message}, result: {sig}");
         return ResultWrapper<Signature>.Success(sig);
@@ -372,7 +360,7 @@ public partial class EthRpcModule(
     {
         try
         {
-            Transaction tx = TxDecoder.Instance.DecodeCompleteNotNull(transaction,
+            Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(transaction,
                 RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
             return await SendTx(tx);
         }
@@ -412,14 +400,8 @@ public partial class EthRpcModule(
                 return ResultWrapper<SignTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
         }
 
-        try
-        {
-            _wallet.Sign(tx, chainId);
-        }
-        catch (Exception ex) when (ex is SecurityException or InvalidOperationException or CryptographicException)
-        {
+        if (!_wallet.TrySignTransaction(tx, chainId))
             return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
-        }
 
         tx.Hash = tx.CalculateHash();
 
@@ -532,13 +514,12 @@ public partial class EthRpcModule(
             (Hash256 txHash, AcceptTxResult? acceptTxResult) =
                 await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
 
-            return acceptTxResult.Equals(AcceptTxResult.Accepted)
-                ? ResultWrapper<Hash256>.Success(txHash)
+            if (acceptTxResult.Equals(AcceptTxResult.Accepted))
+                return ResultWrapper<Hash256>.Success(txHash);
+
+            return acceptTxResult.Equals(AcceptTxResult.SignFailed)
+                ? ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked)
                 : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
-        }
-        catch (SecurityException e)
-        {
-            return ResultWrapper<Hash256>.Fail(e.Message, ErrorCodes.AccountLocked);
         }
         catch (Exception e)
         {
@@ -547,7 +528,7 @@ public partial class EthRpcModule(
         }
     }
 
-    public virtual ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
+    public virtual ResultWrapper<HexBytes> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
             .ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride);
 
@@ -651,7 +632,7 @@ public partial class EthRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
+        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, encodingSettings);
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 
@@ -715,7 +696,7 @@ public partial class EthRpcModule(
 
         Transaction transaction = block.Transactions[(int)positionIndex];
         // Block-stored txs never carry a sidecar (blob commitments live separately), so consensus form only.
-        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, RlpBehaviors.SkipTypedWrapping);
+        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, RlpBehaviors.SkipTypedWrapping);
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 
@@ -838,6 +819,7 @@ public partial class EthRpcModule(
     {
         CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
+        bool timeoutTransferred = false;
 
         try
         {
@@ -845,16 +827,21 @@ public partial class EthRpcModule(
             bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
             if (id < 0 || !filterFound)
             {
-                timeout.Dispose();
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
             }
 
-            return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, timeout));
+            return GetLogsResponse(filterLogs, timeout, verifyLogsResponse: null, out timeoutTransferred);
         }
         catch (ResourceNotFoundException exception)
         {
-            timeout.Dispose();
             return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+        }
+        finally
+        {
+            if (!timeoutTransferred)
+            {
+                timeout.Dispose();
+            }
         }
     }
 
@@ -863,49 +850,53 @@ public partial class EthRpcModule(
         BlockParameter fromBlock = filter.FromBlock!;
         BlockParameter toBlock = filter.ToBlock!;
 
+        ResultWrapper<IEnumerable<FilterLog>> FailWithNoHeadersSyncedYet(SearchResult<BlockHeader> blockResult)
+            => GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(blockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+
         // because of lazy evaluation of enumerable, we need to do the validation here first
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
-
-        long? headNumber = _blockFinder.Head?.Number;
-        if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
-        {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
-        }
-        if (fromBlock.BlockNumber > toBlock.BlockNumber)
-        {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail("invalid block range params", ErrorCodes.InvalidParams);
-        }
-
-        SearchResult<BlockHeader> fromResult = blockFinder.SearchForHeader(fromBlock);
-        if (fromResult.IsError)
-        {
-            return FailWithNoHeadersSyncedYet(fromResult);
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        SearchResult<BlockHeader> toResult;
-        if (fromBlock == toBlock)
-        {
-            toResult = fromResult;
-        }
-        else
-        {
-            toResult = blockFinder.SearchForHeader(toBlock);
-            if (toResult.IsError)
-            {
-                return FailWithNoHeadersSyncedYet(toResult);
-            }
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        BlockHeader fromBlockHeader = fromResult.Object!;
-        BlockHeader toBlockHeader = toResult.Object!;
-
+        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        bool timeoutTransferred = false;
         try
         {
+            CancellationToken cancellationToken = timeout.Token;
+
+            long? headNumber = _blockFinder.Head?.Number;
+            if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
+            {
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
+            }
+            if (fromBlock.BlockNumber > toBlock.BlockNumber)
+            {
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail("invalid block range params", ErrorCodes.InvalidParams);
+            }
+
+            SearchResult<BlockHeader> fromResult = blockFinder.SearchForHeader(fromBlock);
+            if (fromResult.IsError)
+            {
+                return FailWithNoHeadersSyncedYet(fromResult);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            SearchResult<BlockHeader> toResult;
+            if (fromBlock == toBlock)
+            {
+                toResult = fromResult;
+            }
+            else
+            {
+                toResult = blockFinder.SearchForHeader(toBlock);
+                if (toResult.IsError)
+                {
+                    return FailWithNoHeadersSyncedYet(toResult);
+                }
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            BlockHeader fromBlockHeader = fromResult.Object!;
+            BlockHeader toBlockHeader = toResult.Object!;
+
             LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
             // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
@@ -914,32 +905,24 @@ public partial class EthRpcModule(
 
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
-            ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
-
-            foreach (FilterLog log in filterLogs)
-            {
-                logs.Add(log);
-                if (JsonRpcContext.Current.Value?.IsAuthenticated != true // not authenticated
-                    && _rpcConfig.MaxLogsPerResponse != 0                 // not unlimited
-                    && logs.Count > _rpcConfig.MaxLogsPerResponse)
-                {
-                    logs.Dispose();
-                    return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
-                }
-            }
-
-            if (logIndexConfig?.VerifyRpcResponse is true && logFilter.UseIndex)
-                VerifyLogsResponse(logs, logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
-
-            return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
+            bool verifyLogIndexResponse = logIndexConfig?.VerifyRpcResponse is true && logFilter.UseIndex;
+            return GetLogsResponse(
+                filterLogs,
+                timeout,
+                verifyLogIndexResponse ? (logs, token) => VerifyLogsResponse(logs, logFilter, fromBlockHeader, toBlockHeader, token) : null,
+                out timeoutTransferred);
         }
         catch (ResourceNotFoundException exception)
         {
             return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
         }
-
-        ResultWrapper<IEnumerable<FilterLog>> FailWithNoHeadersSyncedYet(SearchResult<BlockHeader> blockResult)
-            => GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(blockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+        finally
+        {
+            if (!timeoutTransferred)
+            {
+                timeout.Dispose();
+            }
+        }
     }
 
     // https://github.com/ethereum/EIPs/issues/1186
@@ -972,28 +955,80 @@ public partial class EthRpcModule(
 
     public ResultWrapper<ulong> eth_chainId()
     {
+        ResultWrapper<ulong>? cachedResponse = Volatile.Read(ref _chainIdResponse);
+        if (cachedResponse is not null)
+        {
+            return cachedResponse;
+        }
+
         try
         {
             ulong chainId = _blockchainBridge.GetChainId();
-            return ResultWrapper<ulong>.Success(chainId);
+            CachedChainIdResponse response = new(chainId);
+            return Interlocked.CompareExchange(ref _chainIdResponse, response, null) ?? response;
         }
         catch (Exception ex)
         {
-            return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError, 0L);
+            return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError, 0ul);
         }
+    }
+
+    private sealed class CachedChainIdResponse : ResultWrapper<ulong>, IJsonRpcRawResponse
+    {
+        private readonly byte[] _rawResult;
+
+        public CachedChainIdResponse(ulong chainId)
+        {
+            Data = chainId;
+            string hexChainId = chainId.ToHexString(skipLeadingZeros: true);
+            byte[] rawResult = GC.AllocateUninitializedArray<byte>(hexChainId.Length + 2);
+            rawResult[0] = (byte)'"';
+            Encoding.ASCII.GetBytes(hexChainId, rawResult.AsSpan(1));
+            rawResult[^1] = (byte)'"';
+            _rawResult = rawResult;
+        }
+
+        void IJsonRpcRawResponse.WriteRaw(IBufferWriter<byte> writer) =>
+            JsonRpcResponseWriter.WriteRawSuccess(writer, _rawResult, in IdRef);
     }
 
     protected void RecoverTxSenderIfNeeded(Transaction transaction) => transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
 
-    private static IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
+    private ResultWrapper<IEnumerable<FilterLog>> GetLogsResponse(
+        IEnumerable<FilterLog> filterLogs,
+        CancellationTokenSource timeout,
+        Action<IList<FilterLog>, CancellationToken>? verifyLogsResponse,
+        out bool timeoutTransferred)
     {
-        using (cancellationTokenSource)
+        timeoutTransferred = false;
+        bool enforceLogsLimits = JsonRpcContext.Current.Value?.IsAuthenticated != true;
+        bool enforceMaxLogs = enforceLogsLimits && _rpcConfig.MaxLogsPerResponse != 0;
+
+        if (_rpcConfig.EnableLogsStreamMode && verifyLogsResponse is null)
         {
-            foreach (FilterLog log in logs)
+            long? maxLogsResponseBodySize = enforceLogsLimits ? _rpcConfig.MaxLogsResponseBodySize : null;
+            long? maxBatchResponseBodySize = enforceLogsLimits ? _rpcConfig.MaxBatchResponseBodySize : null;
+            ResultWrapper<IEnumerable<FilterLog>> response = ResultWrapper<IEnumerable<FilterLog>>.Success(
+                new LogsStreamableResult(filterLogs, _rpcConfig.MaxLogsPerResponse, enforceMaxLogs, maxLogsResponseBodySize, maxBatchResponseBodySize, timeout, _logger));
+            timeoutTransferred = true;
+            return response;
+        }
+
+        ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
+
+        foreach (FilterLog log in filterLogs)
+        {
+            logs.Add(log);
+            if (enforceMaxLogs && logs.Count > _rpcConfig.MaxLogsPerResponse)
             {
-                yield return log;
+                logs.Dispose();
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
             }
         }
+
+        verifyLogsResponse?.Invoke(logs, timeout.Token);
+
+        return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
     }
 
     public ResultWrapper<AccountForRpc?> eth_getAccount(Address accountAddress, BlockParameter? blockParameter)
@@ -1121,7 +1156,7 @@ public partial class EthRpcModule(
             return ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
         }
 
-        ReadOnlyBlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Hash);
+        ReadOnlyBlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Number, block.Hash);
 
         return bal is null ?
             ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)

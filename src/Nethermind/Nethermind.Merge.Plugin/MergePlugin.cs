@@ -71,7 +71,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     public virtual Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
-        EthereumJsonSerializer.AddTypeInfoResolver(EngineApiJsonContext.Default);
+        EthereumJsonSerializer.AddTypeInfoResolver(EngineApiJsonContext.Default, JsonTypeInfoResolverPriority.EngineApi);
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
         _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();

@@ -101,7 +101,7 @@ public class Eth72ProtocolHandler(
         base.Init();
     }
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -119,13 +119,13 @@ public class Eth72ProtocolHandler(
                     ReportIn(ignored, size);
                 }
 
-                break;
+                return true;
             case Eth66MessageCode.GetPooledTransactions:
                 HandleInBackground<GetPooledTransactionsMessage66, PooledTransactionsMessage66>(message, Handle);
-                break;
+                return true;
             case Eth72MessageCode.GetCells:
                 HandleInBackground<GetCellsMessage72, CellsMessage72>(message, Handle);
-                break;
+                return true;
             case Eth72MessageCode.Cells:
                 if (CanReceiveTransactions)
                 {
@@ -139,10 +139,9 @@ public class Eth72ProtocolHandler(
                     ReportIn(ignored, size);
                 }
 
-                break;
+                return true;
             default:
-                base.HandleMessageCore(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 

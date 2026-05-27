@@ -107,7 +107,7 @@ public class PayloadByNumberProtocol(
 
     private async Task<Stream?> ReadPayloadData(IReader reader)
     {
-        List<ReadOnlySequenceStream> streams = new();
+        List<ReadOnlySequenceStream> streams = [];
         long bytesRead = 0;
         ReadResult readResult = await reader.ReadAsync(MaxResponseSizeBytes, ReadBlockingMode.WaitAny);
         while (readResult.Result == IOResult.Ok)

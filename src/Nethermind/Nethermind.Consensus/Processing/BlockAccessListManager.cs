@@ -7,8 +7,10 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -92,6 +94,21 @@ public partial class BlockAccessListManager(
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
 
+    /// <summary>
+    /// When set, the manager always builds the constructed GeneratedBlockAccessList even on
+    /// the parallel-validation path where the column-index validator suffices on its own.
+    /// Wrappers that read the constructed BAL after processing (BAL recorder, RPC diagnostics)
+    /// must set this before PrepareForProcessing runs.
+    /// </summary>
+    public bool ForceConstructGeneratedBlockAccessList { get; set; }
+
+    // Non-null when the manager is constructing the per-block aggregate (always points at
+    // GeneratedBlockAccessList itself in that case); null on the verify-only path where the
+    // column-index validator stands in for the constructed list. Drives both the per-tx
+    // Merge target and the end-of-block encode + Keccak step.
+    private GeneratedBlockAccessList? _currentGeneratedBlockAccessList;
+    private bool VerifyOnly => _currentGeneratedBlockAccessList is null;
+
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
@@ -118,17 +135,19 @@ public partial class BlockAccessListManager(
             if (ParallelExecutionEnabled && suggestedBlock.BlockAccessList is not null)
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
-                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggestedBlock.BlockAccessList, suggestedBlock.Transactions.Length, addressIndex);
-                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex);
+                ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
+                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
+                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
                 int suggestedReads = 0;
-                foreach (ReadOnlyAccountChanges ac in suggestedBlock.BlockAccessList.AccountChanges)
+                foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
                 {
-                    suggestedReads += IsSystemContract(ac.Address) ? 0 : ac.StorageReads.Length;
+                    if (!IsSystemContract(ac.Address)) suggestedReads += ac.StorageReads.Length;
                 }
                 _suggestedChargeableStorageReads = suggestedReads;
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
+            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
     }
 
@@ -194,12 +213,14 @@ public partial class BlockAccessListManager(
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
         }
+        DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
+        DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
     }
 
     /// <summary>
     /// Detach the slice for <paramref name="balIndex"/>, fold it into
-    /// <see cref="GeneratedBlockAccessList"/>, and feed it to <see cref="RegisterGeneratedSlice"/>
-    /// so the column-index fast path and read-only-account mismatch flag stay in sync.
+    /// <see cref="GeneratedBlockAccessList"/> (or skip the fold in verify-only mode), and feed
+    /// it to <see cref="RegisterGeneratedSlice"/> so the column-index fast path stays in sync.
     /// </summary>
     /// <remarks>
     /// The <paramref name="balIndex"/> default exists for the sequential per-tx hook
@@ -208,7 +229,10 @@ public partial class BlockAccessListManager(
     /// value to identify the per-tx slot to detach.
     /// </remarks>
     private void MergeAndReturnBal(uint balIndex = 0)
-        => _txProcessorWithWorldStateManager!.MergeAndReturnBal(balIndex, GeneratedBlockAccessList, RegisterGeneratedSlice);
+        => _txProcessorWithWorldStateManager!.MergeAndReturnBal(
+            balIndex,
+            _currentGeneratedBlockAccessList,
+            RegisterGeneratedSlice);
 
     private void CheckInitialized()
     {
@@ -224,12 +248,13 @@ public partial class BlockAccessListManager(
         _gasRemaining = null;
         _parentStateRoot = null;
         GeneratedBlockAccessList.Reset();
-        _suggestedValidationIndex = null;
-        _generatedValidationIndex = null;
+        DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
+        DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
         _suggestedChargeableStorageReads = 0;
         _generatedChargeableStorageReads = 0;
         _hasGeneratedValidationIndexUpdates = false;
         _hasGeneratedRequiredReadAccountMismatch = false;
+        _currentGeneratedBlockAccessList = null;
     }
 
     [DoesNotReturn]

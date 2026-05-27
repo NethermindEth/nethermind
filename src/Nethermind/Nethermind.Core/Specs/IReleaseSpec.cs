@@ -18,6 +18,7 @@ namespace Nethermind.Core.Specs
         long MaxCodeSize { get; }
         long MinGasLimit { get; }
         long MinHistoryRetentionEpochs { get; }
+        long MinBalRetentionEpochs { get; }
         long GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
         long DifficultyBombDelay { get; }

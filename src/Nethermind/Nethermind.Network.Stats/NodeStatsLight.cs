@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
-using Nethermind.Core;
+using Nethermind.Core.RequestSizer;
 using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
 
