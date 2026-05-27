@@ -42,7 +42,7 @@ public abstract class StreamingResultBase(CancellationTokenSource timeoutCts, IL
         }
         catch (OperationCanceledException) when (combinedToken.IsCancellationRequested)
         {
-            if (logger.IsDebug) logger.Debug("debug_trace streaming cancelled mid-response; client receives a partial body with the JSON envelope closed by the inner finally blocks.");
+            if (logger.IsDebug) logger.Debug("JSON-RPC streaming cancelled mid-response; client receives a partial body with the JSON envelope closed by the inner finally blocks.");
         }
     }
 
