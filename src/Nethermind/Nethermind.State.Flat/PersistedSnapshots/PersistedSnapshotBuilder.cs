@@ -355,6 +355,7 @@ public static class PersistedSnapshotBuilder
             //   0x01 SD: [] absent / [0x00] destructed / [0x01] new account
             //   0x00 account: [] absent / [0x00] deleted / RLP-bytes present
             ref TWriter perAddrWriter = ref addressLevel.BeginValueWrite();
+            long perAddrValueStart = perAddrWriter.Written;
             using HsstDenseByteIndexBuilder<TWriter> perAddr = new(ref perAddrWriter);
 
             // Sub-tag 0x02: Slots. Emitted first so the per-address DenseByteIndex receives
@@ -459,7 +460,7 @@ public static class PersistedSnapshotBuilder
             }
 
             perAddr.Build();
-            addressLevel.FinishValueWrite(addressBytes);
+            addressLevel.FinishValueWrite(addressBytes, perAddrWriter.Written - perAddrValueStart);
         }
 
         addressLevel.Build();
@@ -513,6 +514,7 @@ public static class PersistedSnapshotBuilder
             Hash256? addrRefForStorageNode = null;
 
             ref TWriter perAddrHashWriter = ref addrLevel.BeginValueWrite();
+            long perAddrHashValueStart = perAddrHashWriter.Written;
             using HsstDenseByteIndexBuilder<TWriter> perAddrHash = new(ref perAddrHashWriter);
 
             // Sub-tag 0x02: Storage trie nodes (fallback, 33-byte path keys, length 16+).
@@ -602,7 +604,7 @@ public static class PersistedSnapshotBuilder
             }
 
             perAddrHash.Build();
-            addrLevel.FinishValueWrite(addressHashPrefix);
+            addrLevel.FinishValueWrite(addressHashPrefix, perAddrHashWriter.Written - perAddrHashValueStart);
         }
 
         addrLevel.Build();

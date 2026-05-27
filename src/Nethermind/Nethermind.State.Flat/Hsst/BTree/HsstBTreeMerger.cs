@@ -85,8 +85,9 @@ internal static class HsstBTreeMerger
                 else
                 {
                     ref TWriter inner = ref builder.BeginValueWrite();
+                    long valueStart = inner.Written;
                     valueMerger.MergeValues(ref inner, cursor.MinKey, ref cursor);
-                    builder.FinishValueWrite(cursor.MinKey);
+                    builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
                 }
                 valueMerger.OnKey(cursor.MinKey);
                 cursor.AdvanceMatching();

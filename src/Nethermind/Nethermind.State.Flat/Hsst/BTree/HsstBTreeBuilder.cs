@@ -258,25 +258,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Finish value write. Computes length from snapshot taken by BeginValueWrite —
-    /// every byte written since BeginValueWrite is treated as part of the value.
-    /// Use <see cref="FinishValueWrite(ReadOnlySpan{byte}, long)"/> to declare a
-    /// value length smaller than the writer delta when leading padding was inserted.
-    /// Key must be greater than previous key (sorted order).
-    /// Not supported in key-first mode — use <see cref="Add"/>.
-    /// </summary>
-    public void FinishValueWrite(scoped ReadOnlySpan<byte> key)
-    {
-        long actualLen = _writer.Written - _writtenBeforeValue;
-        FinishValueWrite(key, actualLen);
-    }
-
-    /// <summary>
-    /// Finish value write with an explicit value length. The writer may have been
-    /// advanced past <paramref name="valueLength"/> bytes — any leading bytes
-    /// between the BeginValueWrite snapshot and (Written - valueLength) are treated
-    /// as padding and become inert gap data that no index entry points at. Use this
-    /// to keep a value from crossing a 4 KiB page boundary by padding ahead of it.
+    /// Finish value write with an explicit value length. <paramref name="valueLength"/>
+    /// is the number of bytes the caller wrote into the writer between the matching
+    /// <see cref="BeginValueWrite"/> snapshot and now that should be treated as the
+    /// value. The writer may have been advanced past <paramref name="valueLength"/>
+    /// bytes — any leading bytes between the snapshot and
+    /// <c>(Written − valueLength)</c> are treated as padding and become inert gap
+    /// data that no index entry points at. Use this to keep a value from crossing a
+    /// 4 KiB page boundary by padding ahead of it.
     /// Key must be greater than previous key (sorted order).
     /// Not supported in key-first mode — use <see cref="Add"/>.
     /// </summary>
@@ -287,8 +276,9 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// Same as <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/>, but accepts
     /// a precomputed LCP byte count against <c>Buffers.PrevKeyBuf</c> (or <c>-1</c> when
     /// unknown). Used by <see cref="AddCore"/> to forward the LCP already computed by
-    /// <see cref="MaybeFlushBeforeEntry"/>; the streaming
-    /// <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/> path passes <c>-1</c>.
+    /// <see cref="MaybeFlushBeforeEntry"/>; streaming callers that invoke
+    /// <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/> directly hit this
+    /// path with <c>-1</c>.
     /// </summary>
     private void FinishValueWrite(scoped ReadOnlySpan<byte> key, long valueLength, int precomputedLcp)
     {

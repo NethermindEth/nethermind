@@ -708,11 +708,12 @@ public class HsstTests
         try
         {
             ref SpanBufferWriter innerWriter = ref outer.BeginValueWrite();
+            long innerStart = innerWriter.Written;
             using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref innerWriter, keyLength: -1);
             inner.Add("key1"u8, "val1"u8);
             inner.Add("key2"u8, "val2"u8);
             inner.Build();
-            outer.FinishValueWrite("tag"u8);
+            outer.FinishValueWrite("tag"u8, innerWriter.Written - innerStart);
             outer.Build();
         }
         finally
@@ -740,25 +741,28 @@ public class HsstTests
         {
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
+                long start = iw.Written;
                 using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
                 inner.Add("from"u8, "block0"u8);
                 inner.Add("to\0\0"u8, "block1"u8);
                 inner.Build();
-                outer.FinishValueWrite([0x00]);
+                outer.FinishValueWrite([0x00], iw.Written - start);
             }
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
+                long start = iw.Written;
                 using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
                 byte[] addr = new byte[20]; addr[0] = 0xAB;
                 inner.Add(addr, [0xC0, 0x80]);
                 inner.Build();
-                outer.FinishValueWrite([0x01]);
+                outer.FinishValueWrite([0x01], iw.Written - start);
             }
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
+                long start = iw.Written;
                 using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
                 inner.Build();
-                outer.FinishValueWrite([0x02]);
+                outer.FinishValueWrite([0x02], iw.Written - start);
             }
             outer.Build();
         }
