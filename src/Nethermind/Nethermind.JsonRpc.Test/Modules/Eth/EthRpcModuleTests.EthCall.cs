@@ -248,8 +248,9 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
-        JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
-            .Should().Contain("intrinsic gas too low");
+        Assert.That(
+            JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
+            Does.Contain("intrinsic gas too low"));
     }
 
     [Test]
