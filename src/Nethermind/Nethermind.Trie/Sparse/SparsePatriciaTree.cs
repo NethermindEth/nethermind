@@ -62,7 +62,19 @@ public sealed class SparsePatriciaTree : IDisposable
                 byte[] shortKey = current.ShortKey ?? [];
                 // Skip past the extension prefix
                 nibblePos += shortKey.Length;
-                if (nibblePos >= targetNibbles.Length) break;
+                if (nibblePos >= targetNibbles.Length)
+                {
+                    // The target path ends exactly at this node. For extension nodes
+                    // created from proofs (empty StateMask), the child proof node's path
+                    // is extPath + extKey. This child IS the branch the extension points
+                    // to — merge the child's structure into this node, preserving ShortKey.
+                    if (current.HasShortKey() && current.ChildCount() == 0)
+                    {
+                        MergeChildIntoBranchWithExtension(currentIdx, proofNode);
+                        return;
+                    }
+                    break;
+                }
 
                 int nibble = targetNibbles[nibblePos];
                 if (!current.StateMask.IsBitSet(nibble)) break;
@@ -100,6 +112,44 @@ public sealed class SparsePatriciaTree : IDisposable
             // Reached a leaf or empty node — can't descend further
             break;
         }
+    }
+
+    /// <summary>
+    /// Merges a child branch proof node into an existing extension-only branch.
+    /// The existing node was created from an Extension proof node with empty StateMask.
+    /// The child IS the branch the extension points to. We preserve the extension's
+    /// ShortKey and CachedRlp, but adopt the child's StateMask, BlindedMask, and children.
+    /// </summary>
+    private void MergeChildIntoBranchWithExtension(int extensionIdx, ProofNode childProof)
+    {
+        if (childProof.Kind != ProofNodeKind.Branch) return;
+
+        ref SparseTrieNode ext = ref _subtrie.NodeAt(extensionIdx);
+        byte[]? shortKey = ext.ShortKey;
+        RlpNode extensionCachedRlp = ext.CachedRlp;
+
+        int childCount = childProof.ChildMask.CountBits();
+        int childStart = _subtrie.AllocChildren(childCount);
+        TrieMask mask = childProof.ChildMask;
+        int dense = 0;
+        for (int n = 0; n < 16; n++)
+        {
+            if (!mask.IsBitSet(n)) continue;
+            RlpNode childRlp = childProof.ChildRlps is not null && n < childProof.ChildRlps.Length
+                ? childProof.ChildRlps[n]
+                : default;
+            _subtrie.ChildAt(childStart + dense) = SparseChildEntry.Blinded(childRlp);
+            dense++;
+        }
+
+        ext = ref _subtrie.NodeAt(extensionIdx);
+        ext.StateMask = mask;
+        ext.BlindedMask = mask;
+        ext.ChildrenStart = childStart;
+        ext.ShortKey = shortKey;
+        ext.CachedRlp = extensionCachedRlp;
+        ext.InnerBranchRlp = childProof.RawRlp;
+        ext.State = SparseNodeState.Cached;
     }
 
     private static int CreateNodeFromProof(SparseSubtrie subtrie, ProofNode proofNode)

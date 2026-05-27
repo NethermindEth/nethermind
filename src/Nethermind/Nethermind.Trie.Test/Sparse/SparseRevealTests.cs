@@ -307,37 +307,123 @@ public class SparseRevealTests
             "SparseRootComputer with 50/200 account updates must match Patricia");
     }
 
-    [TestCase(198, 20)]
-    public void SparseRootComputer_LargeTrie_MatchesPatricia(int trieSize, int updateCount)
+    [TestCase(198, 12)]
+    [TestCase(500, 50)]
+    [TestCase(1000, 100)]
+    public void SequentialUpdateAndComputeRoot_MatchesPatricia(int trieSize, int updateCount)
     {
-        // Also test with a full reveal (no updates) to isolate proof reading
-        MemDb dbReveal = new();
-        PatriciaTree treeReveal = new(new RawTrieStore(dbReveal).GetTrieStore(null), LimboLogs.Instance);
-        Hash256[] keysReveal = new Hash256[trieSize];
+        MemDb db = new();
+        PatriciaTree tree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        Hash256[] keys = new Hash256[trieSize];
         for (int i = 0; i < trieSize; i++)
         {
-            keysReveal[i] = Keccak.Compute(System.BitConverter.GetBytes(i));
-            treeReveal.Set(keysReveal[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
+            keys[i] = Keccak.Compute(System.BitConverter.GetBytes(i));
+            tree.Set(keys[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
         }
-        treeReveal.UpdateRootHash();
-        treeReveal.Commit();
-        Hash256 revealRoot = treeReveal.RootHash;
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 originalRoot = tree.RootHash;
 
-        HalfPathTrieNodeReader readerReveal = new(new NodeStorage(dbReveal));
-        DecodedMultiProof revealProof = MultiProofReader.ReadAccountProofs(
-            readerReveal, revealRoot, keysReveal);
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(reader, originalRoot, keys);
 
-        using SparsePatriciaTree sparseReveal = new();
-        sparseReveal.RevealNodes(revealProof.AccountNodes);
-        Hash256 revealOnlyRoot = sparseReveal.ComputeRoot();
+        using SparsePatriciaTree sparse = new();
+        sparse.RevealNodes(proof.AccountNodes);
 
-        TestContext.Out.WriteLine($"Reveal-only: original={revealRoot}, sparse={revealOnlyRoot}, proofNodes={revealProof.AccountNodes.Count}");
-        revealOnlyRoot.Should().Be(revealRoot, "Reveal-only root must match original (no updates)");
+        MemDb refDb = new();
+        PatriciaTree refTree = new(new RawTrieStore(refDb).GetTrieStore(null), LimboLogs.Instance);
+        for (int i = 0; i < trieSize; i++)
+            refTree.Set(keys[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
+        refTree.UpdateRootHash();
+        refTree.Commit();
 
-        // Main test below:
+        for (int k = 0; k < updateCount; k++)
+        {
+            byte[] newRlp = TestItem.GenerateIndexedAccountRlp(50000 + k);
+            refTree.Set(keys[k].Bytes, newRlp);
+
+            Dictionary<Hash256, LeafUpdate> oneUpdate = new()
+            {
+                [keys[k]] = LeafUpdate.Changed(newRlp)
+            };
+            sparse.UpdateLeaves(oneUpdate, (_, _) => { });
+
+            refTree.UpdateRootHash();
+            refTree.Commit();
+
+            Hash256 sparseRoot = sparse.ComputeRoot();
+            sparseRoot.Should().Be(refTree.RootHash, $"Update[{k}] must match");
+        }
+    }
+
+    [Test]
+    public void ExtensionReveal_ThenUpdate_MatchesPatricia()
+    {
         MemDb db = new();
         PatriciaTree tree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
 
+        // Use keccak keys which may produce extensions at various trie depths
+        Hash256[] keys = new Hash256[100];
+        for (int i = 0; i < 100; i++)
+        {
+            keys[i] = Keccak.Compute(System.BitConverter.GetBytes(i));
+            tree.Set(keys[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
+        }
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 originalRoot = tree.RootHash;
+
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(reader, originalRoot, keys);
+
+        // Count extension nodes in proof to ensure we're exercising that path
+        int extensionCount = 0;
+        foreach (ProofNode pn in proof.AccountNodes)
+            if (pn.Kind == ProofNodeKind.Extension) extensionCount++;
+        TestContext.Out.WriteLine($"Extensions in proof: {extensionCount}");
+
+        using SparsePatriciaTree sparse = new();
+        sparse.RevealNodes(proof.AccountNodes);
+
+        // Verify reveal-only root matches
+        Hash256 revealRoot = sparse.ComputeRoot();
+        revealRoot.Should().Be(originalRoot, "Reveal-only root must match original");
+
+        // Now update a single key and verify
+        byte[] newRlp = TestItem.GenerateIndexedAccountRlp(999);
+        tree.Set(keys[0].Bytes, newRlp);
+        tree.UpdateRootHash();
+        tree.Commit();
+
+        Dictionary<Hash256, LeafUpdate> updates = new() { [keys[0]] = LeafUpdate.Changed(newRlp) };
+        sparse.UpdateLeaves(updates, (_, _) => { });
+        Hash256 sparseRoot = sparse.ComputeRoot();
+        sparseRoot.Should().Be(tree.RootHash, "Post-update root must match Patricia");
+    }
+
+    [Test]
+    public void MarkDirty_ClearsAllCachedState()
+    {
+        SparseTrieNode node = SparseTrieNode.CreateBranch(TrieMask.Empty.SetBit(0), 0);
+        node.CachedRlp = RlpNode.FromRlp([0xc0]);
+        node.FullRlp = [0xc0];
+        node.InnerBranchRlp = [0xc1];
+        node.State = SparseNodeState.Cached;
+
+        node.MarkDirty();
+
+        node.State.Should().Be(SparseNodeState.Dirty);
+        node.CachedRlp.IsNull.Should().BeTrue("CachedRlp must be cleared");
+        node.FullRlp.Should().BeNull("FullRlp must be cleared");
+        node.InnerBranchRlp.Should().BeNull("InnerBranchRlp must be cleared");
+    }
+
+    [TestCase(200, 50)]
+    [TestCase(300, 100)]
+    public void SparseRootComputer_KeccakKeys_MatchesPatricia(int trieSize, int updateCount)
+    {
+        MemDb db = new();
+        PatriciaTree tree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
         Hash256[] keys = new Hash256[trieSize];
         for (int i = 0; i < trieSize; i++)
         {
@@ -364,12 +450,7 @@ public class SparseRevealTests
         computer.SetAccountChanges(updates);
 
         Hash256 sparseRoot = computer.ComputeStateRoot();
-
-        TestContext.Out.WriteLine($"Trie size: {trieSize}, updates: {updateCount}");
-        TestContext.Out.WriteLine($"Patricia root: {patriciaNewRoot}");
-        TestContext.Out.WriteLine($"Sparse root:   {sparseRoot}");
-
         sparseRoot.Should().Be(patriciaNewRoot,
-            $"SparseRootComputer with {updateCount}/{trieSize} must match Patricia");
+            $"SparseRootComputer with {updateCount}/{trieSize} keccak-key updates must match Patricia");
     }
 }

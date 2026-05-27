@@ -92,6 +92,8 @@ public struct SparseTrieNode
     {
         State = SparseNodeState.Dirty;
         CachedRlp = default;
+        FullRlp = null;
+        InnerBranchRlp = null;
     }
 
     public static SparseTrieNode CreateEmpty() => new()
