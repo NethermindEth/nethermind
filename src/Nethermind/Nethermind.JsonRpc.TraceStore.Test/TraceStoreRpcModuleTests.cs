@@ -19,7 +19,7 @@ using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.TraceStore.Tests;
+namespace Nethermind.JsonRpc.TraceStore.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class TraceStoreRpcModuleTests

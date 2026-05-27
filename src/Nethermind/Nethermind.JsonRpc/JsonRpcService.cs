@@ -14,7 +14,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;

@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RLP;
 
 internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
 {

@@ -20,7 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.Hive.Tests
+namespace Nethermind.Hive.Test
 {
     public class HivePluginTests
     {

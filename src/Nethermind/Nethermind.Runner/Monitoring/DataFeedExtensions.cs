@@ -11,11 +11,10 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Runner.Monitoring;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 
-namespace Nethermind.Runner;
+namespace Nethermind.Runner.Monitoring;
 
 public static class DataFeedExtensions
 {

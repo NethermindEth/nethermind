@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade;
-using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
 using Nethermind.JsonRpc.Modules.Eth;
 

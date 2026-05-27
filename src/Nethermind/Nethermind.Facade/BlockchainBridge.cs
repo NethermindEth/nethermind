@@ -7,7 +7,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -23,7 +23,6 @@ using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade.Filters;
 using Nethermind.Facade.Eth;
 using Nethermind.State;
 using Nethermind.Config;
@@ -36,7 +35,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Eip2930;
 using Nethermind.Consensus.Stateless;
@@ -543,7 +542,8 @@ namespace Nethermind.Facade
 
         public Address? RecoverTxSender(Transaction tx) => ecdsa.RecoverAddress(tx);
 
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx> => stateReader.RunTreeVisitor(treeVisitor, baseBlock);
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
+            => stateReader.RunTreeVisitor(treeVisitor, baseBlock, diagnostics: diagnostics);
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => stateReader.HasStateForBlock(baseBlock);
 
