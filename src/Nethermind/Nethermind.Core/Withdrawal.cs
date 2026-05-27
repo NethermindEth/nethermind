@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
@@ -11,7 +12,7 @@ namespace Nethermind.Core;
 /// <summary>
 /// Represents a withdrawal that has been validated at the consensus layer.
 /// </summary>
-public class Withdrawal
+public class Withdrawal : IEquatable<Withdrawal>
 {
     /// <summary>
     /// Gets or sets the withdrawal unique id.
@@ -35,6 +36,18 @@ public class Withdrawal
 
     [JsonIgnore]
     public UInt256 AmountInWei => AmountInGwei * 1.GWei;
+
+    public bool Equals(Withdrawal? other) =>
+        ReferenceEquals(this, other) ||
+        other is not null &&
+        Index == other.Index &&
+        ValidatorIndex == other.ValidatorIndex &&
+        Address == other.Address &&
+        AmountInGwei == other.AmountInGwei;
+
+    public override bool Equals(object? obj) => obj is Withdrawal other && Equals(other);
+
+    public override int GetHashCode() => HashCode.Combine(Index, ValidatorIndex, Address, AmountInGwei);
 
     public override string ToString() => ToString(string.Empty);
 

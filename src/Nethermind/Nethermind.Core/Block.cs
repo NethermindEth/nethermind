@@ -17,7 +17,7 @@ using Nethermind.Core.BlockAccessLists;
 namespace Nethermind.Core;
 
 [DebuggerDisplay("{Hash} ({Number})")]
-public class Block
+public class Block : IEquatable<Block>
 {
     public Block(BlockHeader header, BlockBody body, ReadOnlyBlockAccessList? bal = null)
     {
@@ -201,6 +201,24 @@ public class Block
         }
 
         return builder.ToString();
+    }
+
+    public virtual bool Equals(Block? other) =>
+        ReferenceEquals(this, other) ||
+        other is not null &&
+        GetType() == other.GetType() &&
+        Header.Equals(other.Header) &&
+        Body.Equals(other.Body);
+
+    public override bool Equals(object? obj) => obj is Block other && Equals(other);
+
+    public override int GetHashCode()
+    {
+        HashCode hashCode = new();
+        hashCode.Add(GetType());
+        hashCode.Add(Header);
+        hashCode.Add(Body);
+        return hashCode.ToHashCode();
     }
 
     public enum Format

@@ -147,6 +147,21 @@ public class BlockHeaderTests
     }
 
     [Test]
+    public void Equals_and_hash_code_ignore_post_merge_processing_flag()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        BlockHeader sameHeaderAfterMergeTransition = header.Clone();
+        header.IsPostMerge = false;
+        sameHeaderAfterMergeTransition.IsPostMerge = true;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sameHeaderAfterMergeTransition, Is.EqualTo(header));
+            Assert.That(sameHeaderAfterMergeTransition.GetHashCode(), Is.EqualTo(header.GetHashCode()));
+        });
+    }
+
+    [Test]
     public void Eip_1559_CalculateBaseFee_should_returns_zero_when_eip1559_not_enabled()
     {
         IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();

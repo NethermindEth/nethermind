@@ -32,7 +32,26 @@ public class AuthorizationTupleDecoderTests
         Rlp.ValueDecoderContext ctx = new(result.Bytes);
 
         AuthorizationTuple decoded = sut.Decode(ref ctx);
-        Assert.That(decoded, Is.EqualTo(item).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(item));
+    }
+
+    [Test]
+    public void Equals_and_hash_code_ignore_recovered_authority()
+    {
+        Signature signature = new(new byte[64], 0);
+        AuthorizationTuple tuple = new(1, Address.Zero, 2, signature, Address.Zero);
+        AuthorizationTuple sameSignedTupleWithRecoveredAuthority = new(
+            1,
+            Address.Zero,
+            2,
+            signature,
+            new Address(Enumerable.Repeat((byte)1, 20).ToArray()));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sameSignedTupleWithRecoveredAuthority, Is.EqualTo(tuple));
+            Assert.That(sameSignedTupleWithRecoveredAuthority.GetHashCode(), Is.EqualTo(tuple.GetHashCode()));
+        });
     }
 
     [Test]

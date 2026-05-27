@@ -19,7 +19,7 @@ using Nethermind.Int256;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
-    public class Transaction
+    public class Transaction : IEquatable<Transaction>
     {
         public const byte MaxTxType = 0x7F;
         public const int BaseTxGasCost = 21000;
@@ -269,6 +269,181 @@ namespace Nethermind.Core
         public override string ToString() => ToString(string.Empty);
 
         public bool MayHaveNetworkForm => Type is TxType.Blob;
+
+        public virtual bool Equals(Transaction? other) =>
+            ReferenceEquals(this, other) ||
+            other is not null &&
+            GetType() == other.GetType() &&
+            ChainId == other.ChainId &&
+            Type == other.Type &&
+            IsAnchorTx == other.IsAnchorTx &&
+            SourceHash == other.SourceHash &&
+            Mint == other.Mint &&
+            IsOPSystemTransaction == other.IsOPSystemTransaction &&
+            Nonce == other.Nonce &&
+            GasPrice == other.GasPrice &&
+            DecodedMaxFeePerGas == other.DecodedMaxFeePerGas &&
+            GasLimit == other.GasLimit &&
+            To == other.To &&
+            Value == other.Value &&
+            Data.Span.SequenceEqual(other.Data.Span) &&
+            Equals(Signature, other.Signature) &&
+            Hash == other.Hash &&
+            Equals(AccessList, other.AccessList) &&
+            MaxFeePerBlobGas == other.MaxFeePerBlobGas &&
+            ByteArraysEqual(BlobVersionedHashes, other.BlobVersionedHashes) &&
+            NetworkWrappersEqual(NetworkWrapper, other.NetworkWrapper) &&
+            IsServiceTransaction == other.IsServiceTransaction &&
+            (AuthorizationList is null) == (other.AuthorizationList is null) &&
+            (AuthorizationList is null || AuthorizationList.AsSpan().SequenceEqual(other.AuthorizationList)) &&
+            GetProofVersion() == other.GetProofVersion();
+
+        public override bool Equals(object? obj) => obj is Transaction other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            HashCode hashCode = new();
+            hashCode.Add(GetType());
+            hashCode.Add(ChainId);
+            hashCode.Add(Type);
+            hashCode.Add(IsAnchorTx);
+            hashCode.Add(SourceHash);
+            hashCode.Add(Mint);
+            hashCode.Add(IsOPSystemTransaction);
+            hashCode.Add(Nonce);
+            hashCode.Add(GasPrice);
+            hashCode.Add(DecodedMaxFeePerGas);
+            hashCode.Add(GasLimit);
+            hashCode.Add(To);
+            hashCode.Add(Value);
+            AddMemoryHashCode(ref hashCode, Data);
+            hashCode.Add(Signature);
+            hashCode.Add(Hash);
+            hashCode.Add(AccessList);
+            hashCode.Add(MaxFeePerBlobGas);
+            AddByteArraysHashCode(ref hashCode, BlobVersionedHashes);
+            AddNetworkWrapperHashCode(ref hashCode, NetworkWrapper);
+            hashCode.Add(IsServiceTransaction);
+            AddAuthorizationListHashCode(ref hashCode, AuthorizationList);
+            hashCode.Add(GetProofVersion());
+            return hashCode.ToHashCode();
+        }
+
+        private static bool NetworkWrappersEqual(object? actual, object? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            return actual is ShardBlobNetworkWrapper actualWrapper && expected is ShardBlobNetworkWrapper expectedWrapper
+                ? actualWrapper.Version == expectedWrapper.Version &&
+                  ByteArraysEqual(actualWrapper.Blobs, expectedWrapper.Blobs) &&
+                  ByteArraysEqual(actualWrapper.Commitments, expectedWrapper.Commitments) &&
+                  ByteArraysEqual(actualWrapper.Proofs, expectedWrapper.Proofs)
+                : Equals(actual, expected);
+        }
+
+        private static bool ByteArraysEqual(byte[]?[]? actual, byte[]?[]? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            if (actual.Length != expected.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < actual.Length; i++)
+            {
+                if (!BytesEqual(actual[i], expected[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool BytesEqual(byte[]? actual, byte[]? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            return actual.AsSpan().SequenceEqual(expected);
+        }
+
+        private static void AddAuthorizationListHashCode(ref HashCode hashCode, AuthorizationTuple[]? authorizationList)
+        {
+            if (authorizationList is null)
+            {
+                hashCode.Add(0);
+                return;
+            }
+
+            hashCode.Add(authorizationList.Length);
+            foreach (AuthorizationTuple authorizationTuple in authorizationList)
+            {
+                hashCode.Add(authorizationTuple);
+            }
+        }
+
+        private static void AddNetworkWrapperHashCode(ref HashCode hashCode, object? networkWrapper)
+        {
+            if (networkWrapper is null)
+            {
+                hashCode.Add(0);
+                return;
+            }
+
+            if (networkWrapper is ShardBlobNetworkWrapper wrapper)
+            {
+                hashCode.Add(wrapper.Version);
+                AddByteArraysHashCode(ref hashCode, wrapper.Blobs);
+                AddByteArraysHashCode(ref hashCode, wrapper.Commitments);
+                AddByteArraysHashCode(ref hashCode, wrapper.Proofs);
+                return;
+            }
+
+            hashCode.Add(networkWrapper);
+        }
+
+        private static void AddByteArraysHashCode(ref HashCode hashCode, byte[]?[]? values)
+        {
+            if (values is null)
+            {
+                hashCode.Add(0);
+                return;
+            }
+
+            hashCode.Add(values.Length);
+            foreach (byte[]? value in values)
+            {
+                AddBytesHashCode(ref hashCode, value);
+            }
+        }
+
+        private static void AddMemoryHashCode(ref HashCode hashCode, ReadOnlyMemory<byte> memory)
+        {
+            hashCode.Add(memory.Length);
+            hashCode.AddBytes(memory.Span);
+        }
+
+        private static void AddBytesHashCode(ref HashCode hashCode, byte[]? bytes)
+        {
+            if (bytes is null)
+            {
+                hashCode.Add(0);
+                return;
+            }
+
+            hashCode.Add(bytes.Length);
+            hashCode.AddBytes(bytes);
+        }
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {

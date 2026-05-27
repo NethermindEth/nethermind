@@ -270,7 +270,7 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         Assert.That(depositTransactions.Length, Is.EqualTo(1));
-        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction).UsingTransactionComparer());
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction));
     }
 
     [Test]
@@ -333,7 +333,7 @@ public class DepositTransactionBuilderTest
 
         Assert.That(depositTransactions.Length, Is.EqualTo(1));
 
-        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction).UsingTransactionComparer());
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction));
     }
 
     [Test]
@@ -420,7 +420,7 @@ public class DepositTransactionBuilderTest
 
         Assert.That(depositTransactions.Length, Is.EqualTo(1));
 
-        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction).UsingTransactionComparer());
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction));
     }
 
     [Test]
@@ -521,9 +521,9 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         Assert.That(depositTransactions.Length, Is.EqualTo(2));
-        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0).UsingTransactionComparer());
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0));
 
-        Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1).UsingTransactionComparer());
+        Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1));
     }
 
     [Test]
@@ -707,8 +707,8 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         Assert.That(depositTransactions.Length, Is.EqualTo(2));
-        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0).UsingTransactionComparer());
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0));
 
-        Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1).UsingTransactionComparer());
+        Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1));
     }
 }

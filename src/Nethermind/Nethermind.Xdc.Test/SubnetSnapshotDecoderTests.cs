@@ -23,5 +23,18 @@ public class SubnetSnapshotDecoderTests
 
     [Test, TestCaseSource(nameof(Snapshots))]
     public void RoundTrip(SubnetSnapshot original) =>
-        Assert.That(Decoder.Decode(Decoder.Encode(original).Bytes), Is.EqualTo(original).UsingPropertiesComparer());
+        Assert.That(Decoder.Decode(Decoder.Encode(original).Bytes), Is.EqualTo(original));
+
+    [Test]
+    public void NullCandidateAndPenaltyArrays_EqualAndHashLikeEmpty()
+    {
+        SubnetSnapshot nullArrays = new(1, Keccak.EmptyTreeHash, null!, null!);
+        SubnetSnapshot emptyArrays = new(1, Keccak.EmptyTreeHash, [], []);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(nullArrays, Is.EqualTo(emptyArrays));
+            Assert.That(nullArrays.GetHashCode(), Is.EqualTo(emptyArrays.GetHashCode()));
+        });
+    }
 }

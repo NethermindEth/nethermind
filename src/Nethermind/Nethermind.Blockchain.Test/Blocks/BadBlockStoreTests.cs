@@ -63,7 +63,7 @@ public class BadBlockStoreTests
         foreach (Block expectedBlock in expected)
         {
             Block? actualBlock = actual.SingleOrDefault(block => block.Hash == expectedBlock.Hash);
-            BlockTestAssertions.AssertBlockEquivalent(actualBlock, expectedBlock);
+            Assert.That(actualBlock, Is.EqualTo(expectedBlock));
         }
     }
 }

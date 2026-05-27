@@ -473,7 +473,7 @@ namespace Nethermind.Blockchain.Test
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             IReadOnlyList<Transaction> selectedTransactions = SelectTransactions(testCase);
-            Assert.That(selectedTransactions, Is.EqualTo(testCase.ExpectedSelectedTransactions).UsingTransactionComparer());
+            Assert.That(selectedTransactions, Is.EqualTo(testCase.ExpectedSelectedTransactions));
         }
 
         [Test]
@@ -500,7 +500,7 @@ namespace Nethermind.Blockchain.Test
             testCase.ExpectedSelectedTransactions.Add(first);
 
             IReadOnlyList<Transaction> selectedTransactions = SelectTransactions(testCase);
-            Assert.That(selectedTransactions, Is.EqualTo(testCase.ExpectedSelectedTransactions).UsingTransactionComparer());
+            Assert.That(selectedTransactions, Is.EqualTo(testCase.ExpectedSelectedTransactions));
         }
 
         private static IReadOnlyList<Transaction> SelectTransactions(ProperTransactionsSelectedTestCase testCase)

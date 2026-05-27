@@ -23,5 +23,18 @@ public class SnapshotDecoderTests
 
     [Test, TestCaseSource(nameof(Snapshots))]
     public void RoundTrip(Snapshot original) =>
-        Assert.That(Decoder.Decode(Decoder.Encode(original).Bytes), Is.EqualTo(original).UsingPropertiesComparer());
+        Assert.That(Decoder.Decode(Decoder.Encode(original).Bytes), Is.EqualTo(original));
+
+    [Test]
+    public void NullCandidates_EqualAndHashLikeEmpty()
+    {
+        Snapshot nullCandidates = new(1, Keccak.EmptyTreeHash, null!);
+        Snapshot emptyCandidates = new(1, Keccak.EmptyTreeHash, []);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(nullCandidates, Is.EqualTo(emptyCandidates));
+            Assert.That(nullCandidates.GetHashCode(), Is.EqualTo(emptyCandidates.GetHashCode()));
+        });
+    }
 }

@@ -12,7 +12,7 @@ using Nethermind.Int256;
 namespace Nethermind.Core;
 
 [DebuggerDisplay("{Hash} ({Number})")]
-public class BlockHeader
+public class BlockHeader : IEquatable<BlockHeader>
 {
     internal BlockHeader() { }
 
@@ -183,5 +183,104 @@ public class BlockHeader
         BlockHeader header = (BlockHeader)MemberwiseClone();
         header.Bloom = Bloom?.Clone() ?? new Bloom();
         return header;
+    }
+
+    public virtual bool Equals(BlockHeader? other) =>
+        ReferenceEquals(this, other) ||
+        other is not null &&
+        GetType() == other.GetType() &&
+        EqualsCore(other);
+
+    public override bool Equals(object? obj) => obj is BlockHeader other && Equals(other);
+
+    public override int GetHashCode()
+    {
+        HashCode hashCode = new();
+        AddHashCodeComponents(ref hashCode);
+        return hashCode.ToHashCode();
+    }
+
+    protected virtual bool EqualsCore(BlockHeader other) =>
+        ParentHash == other.ParentHash &&
+        UnclesHash == other.UnclesHash &&
+        Author == other.Author &&
+        Beneficiary == other.Beneficiary &&
+        StateRoot == other.StateRoot &&
+        TxRoot == other.TxRoot &&
+        ReceiptsRoot == other.ReceiptsRoot &&
+        Equals(Bloom, other.Bloom) &&
+        Difficulty == other.Difficulty &&
+        Number == other.Number &&
+        GasUsed == other.GasUsed &&
+        GasLimit == other.GasLimit &&
+        Timestamp == other.Timestamp &&
+        BytesEqual(ExtraData, other.ExtraData) &&
+        MixHash == other.MixHash &&
+        Nonce == other.Nonce &&
+        Hash == other.Hash &&
+        TotalDifficulty == other.TotalDifficulty &&
+        BytesEqual(AuRaSignature, other.AuRaSignature) &&
+        AuRaStep == other.AuRaStep &&
+        BaseFeePerGas == other.BaseFeePerGas &&
+        WithdrawalsRoot == other.WithdrawalsRoot &&
+        ParentBeaconBlockRoot == other.ParentBeaconBlockRoot &&
+        RequestsHash == other.RequestsHash &&
+        BlockAccessListHash == other.BlockAccessListHash &&
+        BlobGasUsed == other.BlobGasUsed &&
+        ExcessBlobGas == other.ExcessBlobGas &&
+        SlotNumber == other.SlotNumber;
+
+    protected virtual void AddHashCodeComponents(ref HashCode hashCode)
+    {
+        hashCode.Add(ParentHash);
+        hashCode.Add(UnclesHash);
+        hashCode.Add(Author);
+        hashCode.Add(Beneficiary);
+        hashCode.Add(StateRoot);
+        hashCode.Add(TxRoot);
+        hashCode.Add(ReceiptsRoot);
+        hashCode.Add(Bloom);
+        hashCode.Add(Difficulty);
+        hashCode.Add(Number);
+        hashCode.Add(GasUsed);
+        hashCode.Add(GasLimit);
+        hashCode.Add(Timestamp);
+        AddBytesHashCode(ref hashCode, ExtraData);
+        hashCode.Add(MixHash);
+        hashCode.Add(Nonce);
+        hashCode.Add(Hash);
+        hashCode.Add(TotalDifficulty);
+        AddBytesHashCode(ref hashCode, AuRaSignature);
+        hashCode.Add(AuRaStep);
+        hashCode.Add(BaseFeePerGas);
+        hashCode.Add(WithdrawalsRoot);
+        hashCode.Add(ParentBeaconBlockRoot);
+        hashCode.Add(RequestsHash);
+        hashCode.Add(BlockAccessListHash);
+        hashCode.Add(BlobGasUsed);
+        hashCode.Add(ExcessBlobGas);
+        hashCode.Add(SlotNumber);
+    }
+
+    protected static bool BytesEqual(byte[]? actual, byte[]? expected)
+    {
+        if (actual is null || expected is null)
+        {
+            return actual is null && expected is null;
+        }
+
+        return actual.AsSpan().SequenceEqual(expected);
+    }
+
+    protected static void AddBytesHashCode(ref HashCode hashCode, byte[]? bytes)
+    {
+        if (bytes is null)
+        {
+            hashCode.Add(0);
+            return;
+        }
+
+        hashCode.Add(bytes.Length);
+        hashCode.AddBytes(bytes);
     }
 }

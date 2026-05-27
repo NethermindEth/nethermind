@@ -35,7 +35,8 @@ namespace Nethermind.Xdc.Test
 
             XdcSubnetBlockHeader decoded = (XdcSubnetBlockHeader)decodedBase!;
 
-            XdcTestAssertions.AssertXdcHeader(decoded, original, compareHash: false);
+            original.Hash = decoded.Hash;
+            Assert.That(decoded, Is.EqualTo(original));
         }
 
         [Test]
