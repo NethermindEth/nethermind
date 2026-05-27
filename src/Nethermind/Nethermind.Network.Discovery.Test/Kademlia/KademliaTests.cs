@@ -77,7 +77,7 @@ public class KademliaTests
     [Test]
     public async Task TestTooManyNode()
     {
-        TaskCompletionSource pingSource = new();
+        TaskCompletionSource pingSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _kademliaMessageSender
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
@@ -107,7 +107,7 @@ public class KademliaTests
     [Test]
     public void TestGetKNeighbours()
     {
-        TaskCompletionSource pingSource = new();
+        TaskCompletionSource pingSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _kademliaMessageSender
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
