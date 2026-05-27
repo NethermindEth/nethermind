@@ -560,15 +560,8 @@ public static class PersistedSnapshotMerger
                     Span<WholeReadSessionMergeSource> slotSrcArr = slotMergeSourcesList.AsSpan();
                     try
                     {
-                        for (int j = 0; j < slotSourceCount; j++)
-                        {
-                            // Clone the matching outer source with a fresh enumerator scoped
-                            // to this source's slot-HSST bound; WithEnumerator preserves the
-                            // view (Ptr+Len) so CreateReader stays cheap downstream.
-                            WholeReadSessionMergeSource outer = outerSources[slotSources[j]];
-                            WholeReadSessionReader slotReader = outer.CreateReader();
-                            slotSrcArr[j] = outer.WithEnumerator(new HsstEnumerator(in slotReader, slotBounds[j]));
-                        }
+                        MapCursorSource<TailDispatchEnumeratorFactory>(
+                            outerSources, slotSources[..slotSourceCount], slotBounds[..slotSourceCount], slotSrcArr);
 
                         ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
                         NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
@@ -687,6 +680,10 @@ public static class PersistedSnapshotMerger
         using ArrayPoolList<WholeReadSessionMergeSource> innerSourcesList = new(n, n);
         Span<WholeReadSessionMergeSource> innerSources = innerSourcesList.AsSpan();
 
+        // Per-source value-bound scratch parallel to innerSources, sliced per outer
+        // iteration. Hoisted out of the while loop below to avoid CA2014.
+        Span<Bound> innerBoundsScratch = stackalloc Bound[n];
+
         // Reusable 32-byte slot-key scratch for per-slot bloom adds: outerKey (30 bytes)
         // populates [0,30); per-slot innerSuffix (2 bytes) populates [30,32). Allocated once
         // here so the per-slot bloom path is allocation-free.
@@ -749,18 +746,11 @@ public static class PersistedSnapshotMerger
                 using LoserTreeState innerState = new(innerN, InnerKeyLen);
                 try
                 {
-                    // Build inner sources from outerMatches: inner cursor slot k clones the
-                    // matching outer source with a fresh TwoByteSlot enumerator scoped to the
-                    // outer entry's value bound. WithEnumerator preserves the original view so
-                    // CreateReader stays cheap; the cursor ctor seeds each via MoveNext.
+                    Span<Bound> innerBounds = innerBoundsScratch[..innerN];
                     for (int k = 0; k < innerN; k++)
-                    {
-                        int srcIdx = outerMatches[k];
-                        WholeReadSessionMergeSource outer = outerSources[srcIdx];
-                        Bound vb = outer.GetEnumerator().CurrentValue;
-                        WholeReadSessionReader r = outer.CreateReader();
-                        innerSources[k] = outer.WithEnumerator(HsstEnumerator.CreateTwoByteSlot(in r, vb));
-                    }
+                        innerBounds[k] = outerCursor.ValueAt(outerMatches[k]);
+                    MapCursorSource<TwoByteSlotEnumeratorFactory>(
+                        outerSources, outerMatches, innerBounds, innerSources[..innerN]);
                     NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor = new(
                         innerSources[..innerN], innerState, InnerKeyLen);
 
@@ -890,15 +880,10 @@ public static class PersistedSnapshotMerger
 
         try
         {
-            // Build sources: clone the matching outer source with a fresh enumerator scoped
-            // to the sub-tag's bound. WithEnumerator preserves the original view (Ptr+Len)
-            // so CreateReader stays cheap. The cursor ctor seeds each one via MoveNext.
-            for (int j = 0; j < active; j++)
-            {
-                WholeReadSessionMergeSource outer = outerSources[matchingSources[srcs[j]]];
-                WholeReadSessionReader r = outer.CreateReader();
-                sources[j] = outer.WithEnumerator(new HsstEnumerator(in r, subBounds[j]));
-            }
+            Span<int> outerIndices = stackalloc int[active];
+            for (int j = 0; j < active; j++) outerIndices[j] = matchingSources[srcs[j]];
+            MapCursorSource<TailDispatchEnumeratorFactory>(
+                outerSources, outerIndices, subBounds[..active], sources);
             NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
                 sources, state, innerKeySize);
 
