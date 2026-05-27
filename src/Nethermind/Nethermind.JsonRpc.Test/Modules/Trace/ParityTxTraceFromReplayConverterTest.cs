@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -38,7 +39,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = [],
+                Input = CappedArray<byte>.Empty,
                 Gas = 10000,
                 TraceAddress = new int[] { 0, 0, 0 }
             };
@@ -49,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = [],
+                Input = CappedArray<byte>.Empty,
                 Gas = 10000,
                 TraceAddress = new int[] { 0, 0 }
             };
@@ -115,7 +116,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = [],
+                Input = CappedArray<byte>.Empty,
                 Gas = 10000,
                 TraceAddress = new int[] { 0, 0 }
             };

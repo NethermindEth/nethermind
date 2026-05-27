@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -132,7 +131,7 @@ public class KeyStorePasswordProviderTests
         KeyStorePasswordProvider passwordProvider = new(keyStoreConfig);
         SecureString blockAuthorPassword = passwordProvider.GetPassword(new Address(Bytes.FromHexString(keyStoreConfig.BlockAuthorAccount)));
         Assert.That(blockAuthorPassword.IsReadOnly(), Is.True);
-        blockAuthorPassword.Unsecure().Should().Be(test.ExpectedBlockAuthorAccountPassword, test.TestName);
+        Assert.That(blockAuthorPassword.Unsecure(), Is.EqualTo(test.ExpectedBlockAuthorAccountPassword), test.TestName);
     }
 }
 

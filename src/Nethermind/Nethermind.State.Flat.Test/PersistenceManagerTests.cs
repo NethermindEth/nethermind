@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -49,6 +48,7 @@ public class PersistenceManagerTests
 
         _persistenceManager = new PersistenceManager(
             _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
@@ -310,11 +310,11 @@ public class PersistenceManagerTests
         _persistenceManager.PersistSnapshot(snapshot);
 
         // Assert
-        writeBatch.SetAccountCalls.Should().Contain(c => c.Addr == TestItem.AddressA);
-        writeBatch.SetAccountCalls.Should().Contain(c => c.Addr == TestItem.AddressB);
-        writeBatch.SetStorageCalls.Should().Contain(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1);
-        writeBatch.SetStorageCalls.Should().Contain(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2);
-        writeBatch.SetStateTrieNodeCalls.Should().NotBeEmpty();
+        Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressA));
+        Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressB));
+        Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, SlotValue? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1));
+        Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, SlotValue? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2));
+        Assert.That(writeBatch.SetStateTrieNodeCalls, Is.Not.Empty);
         Assert.That(node.IsPersisted, Is.True);
     }
 
@@ -384,6 +384,39 @@ public class PersistenceManagerTests
 
         // Verify current persisted state was updated
         Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(to));
+    }
+
+    #endregion
+
+    #region Offset Behavior
+
+    [TestCase(3, 13)]
+    [TestCase(5, 11)]
+    [TestCase(0, 16)]
+    public void DetermineSnapshotToPersist_WithOffset_FirstBoundaryShifted(int offset, int expectedTargetBlock)
+    {
+        // Fresh DB: currentPersistedState = Block0 (block 0).
+        // With CompactSize=16 and offset=N, the next full compaction boundary is at block 16-N.
+        PersistenceManager pm = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, offset),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            LimboLogs.Instance);
+
+        StateId target = CreateStateId(expectedTargetBlock);
+        StateId latest = CreateStateId(200);
+        _finalizedStateProvider.SetFinalizedBlockNumber(200);
+        _finalizedStateProvider.SetFinalizedStateRootAt(expectedTargetBlock, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot expected = CreateSnapshot(Block0, target, compacted: true);
+
+        Snapshot? result = pm.DetermineSnapshotToPersist(latest);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.To, Is.EqualTo(target));
+        result.Dispose();
     }
 
     #endregion

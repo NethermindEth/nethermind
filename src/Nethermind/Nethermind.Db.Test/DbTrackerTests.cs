@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -55,11 +54,13 @@ public class DbTrackerTests
 
         IDbFactory dbFactory = container.Resolve<IDbFactory>();
         DbMonitoringModule.DbTracker tracker = container.Resolve<DbMonitoringModule.DbTracker>();
-        tracker.GetAllDbMeta().Count().Should().Be(0);
+        Assert.That(tracker.GetAllDbMeta().Count(), Is.EqualTo(0));
 
         dbFactory.CreateDb(new DbSettings("TestDb", "TestDb"));
 
-        tracker.GetAllDbMeta().Should().ContainSingle().Which.Key.Should().Be("TestDb");
+        Assert.That(tracker.GetAllDbMeta().Count(), Is.EqualTo(1));
+        KeyValuePair<string, IDbMeta> firstEntry = tracker.GetAllDbMeta().First();
+        Assert.That(firstEntry.Key, Is.EqualTo("TestDb"));
     }
 
     [Parallelizable(ParallelScope.None)]
@@ -97,7 +98,9 @@ public class DbTrackerTests
         dbFactory.CreateDb(new DbSettings("SkippedDb", "SkippedDb") { SkipMetricsTracking = true });
         dbFactory.CreateDb(new DbSettings("TrackedDb", "TrackedDb"));
 
-        tracker.GetAllDbMeta().Should().ContainSingle().Which.Key.Should().Be("TrackedDb");
+        KeyValuePair<string, IDbMeta>[] allDbMeta = [.. tracker.GetAllDbMeta()];
+        Assert.That(allDbMeta, Has.Length.EqualTo(1));
+        Assert.That(allDbMeta[0].Key, Is.EqualTo("TrackedDb"));
     }
 
     [Parallelizable(ParallelScope.None)]
@@ -151,7 +154,7 @@ public class DbTrackerTests
         Assert.That(Metrics.DbSize["PrunedState"], Is.EqualTo(100));
 
         // Trigger and commit a full pruning cycle; pruningDb._currentDb now points to the second inner DB.
-        pruningDb.TryStartPruning(out IPruningContext context).Should().BeTrue();
+        Assert.That(pruningDb.TryStartPruning(out IPruningContext context), Is.True);
         context.Commit();
         context.Dispose();
 
@@ -159,7 +162,9 @@ public class DbTrackerTests
 
         // After pruning, the wrapper delegates GatherMetric() to the new inner DB. No stale entry.
         Assert.That(Metrics.DbSize["PrunedState"], Is.EqualTo(200));
-        tracker.GetAllDbMeta().Should().ContainSingle().Which.Key.Should().Be("PrunedState");
+        KeyValuePair<string, IDbMeta>[] allDbMeta = [.. tracker.GetAllDbMeta()];
+        Assert.That(allDbMeta, Has.Length.EqualTo(1));
+        Assert.That(allDbMeta[0].Key, Is.EqualTo("PrunedState"));
     }
 
     [Parallelizable(ParallelScope.None)]
@@ -193,10 +198,10 @@ public class DbTrackerTests
         container.Dispose();
 
         Action invoke = () => updateAction!();
-        invoke.Should().NotThrow();
-        invoke.Should().NotThrow();
+        Assert.That(invoke, Throws.Nothing);
+        Assert.That(invoke, Throws.Nothing);
 
-        testLogger.LogList.Should().BeEmpty();
+        Assert.That(testLogger.LogList, Is.Empty);
     }
 
     /// <summary>
