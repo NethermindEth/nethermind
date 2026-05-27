@@ -88,7 +88,7 @@ public abstract class KademliaDiscoveryApp(
 
     public abstract void InitializeChannel(IChannel channel);
 
-    public void AddNodeToDiscovery(Node node) => Kademlia.AddOrRefresh(node);
+    public virtual void AddNodeToDiscovery(Node node) => Kademlia.AddOrRefresh(node);
 
     public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken token)
         => (_kademliaNodeSource ?? throw new InvalidOperationException("Kademlia services were not initialized.")).DiscoverNodes(token);

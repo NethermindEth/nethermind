@@ -4,17 +4,21 @@
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
@@ -42,7 +46,7 @@ public class DiscoveryV5AppTests
         _discoveryV5App = CreateDiscoveryV5App(IPAddress.Parse("8.8.8.8"));
     }
 
-    private DiscoveryV5App CreateDiscoveryV5App(IPAddress externalIp)
+    private DiscoveryV5App CreateDiscoveryV5App(IPAddress externalIp, Action<ContainerBuilder>? configureDiscv5Services = null)
     {
         NetworkConfig networkConfig = new()
         {
@@ -72,7 +76,8 @@ public class DiscoveryV5AppTests
             _discoveryDb,
             _legacyDiscoveryDb,
             new ProcessExitSource(CancellationToken.None),
-            LimboLogs.Instance
+            LimboLogs.Instance,
+            configureDiscv5Services
         );
     }
 
@@ -271,6 +276,80 @@ public class DiscoveryV5AppTests
         Assert.That(result, Is.True);
         Assert.That(node, Is.Not.Null);
         Assert.That(node!.Host, Is.EqualTo("8.8.8.8"));
+    }
+
+    [Test]
+    public async Task AddNodeToDiscovery_ShouldSkipNodeWithoutEnr()
+    {
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        DiscoveryV5App discoveryV5App = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>());
+
+        try
+        {
+            discoveryV5App.AddNodeToDiscovery(new Node(TestItem.PublicKeyA, "8.8.8.8", 30303));
+
+            kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
+        }
+        finally
+        {
+            await discoveryV5App.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task AddNodeToDiscovery_ShouldAddValidatedEnrNode()
+    {
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        DiscoveryV5App discoveryV5App = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>());
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), udpPort: 30304);
+        Node node = new(TestItem.PrivateKeyA.PublicKey, "1.1.1.1", 30303)
+        {
+            Enr = enr.EnrString
+        };
+
+        try
+        {
+            discoveryV5App.AddNodeToDiscovery(node);
+
+            kademlia.Received(1).AddOrRefresh(Arg.Is<Node>(added =>
+                added.Id.Equals(TestItem.PrivateKeyA.PublicKey) &&
+                added.Host == "8.8.8.8" &&
+                added.Port == 30304 &&
+                added.Enr == enr.EnrString));
+        }
+        finally
+        {
+            await discoveryV5App.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task AddNodeToDiscovery_ShouldSkipMismatchedEnr()
+    {
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        DiscoveryV5App discoveryV5App = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>());
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"));
+        Node node = new(TestItem.PrivateKeyB.PublicKey, "8.8.8.8", 30303)
+        {
+            Enr = enr.EnrString
+        };
+
+        try
+        {
+            discoveryV5App.AddNodeToDiscovery(node);
+
+            kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
+        }
+        finally
+        {
+            await discoveryV5App.DisposeAsync();
+        }
     }
 
     [Test]

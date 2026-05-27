@@ -128,6 +128,35 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         return bootNodes;
     }
 
+    public override void AddNodeToDiscovery(Node node)
+    {
+        if (string.IsNullOrEmpty(node.Enr))
+        {
+            return;
+        }
+
+        try
+        {
+            NodeRecord record = NodeRecord.FromEnrString(node.Enr);
+            if (!TryGetNodeFromEnr(record, out Node? enrNode))
+            {
+                return;
+            }
+
+            if (!enrNode.IdHash.Equals(node.IdHash))
+            {
+                if (Logger.IsTrace) Logger.Trace($"Skipping discv5 discovery node {node:s} with mismatched ENR identity.");
+                return;
+            }
+
+            Kademlia.AddOrRefresh(enrNode);
+        }
+        catch (Exception e)
+        {
+            if (Logger.IsTrace) Logger.Trace($"Unable to parse discv5 discovery ENR for {node}: {e}");
+        }
+    }
+
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, HashSet<Hash256> seen, NetworkNode networkNode)
     {
         if (networkNode.IsEnr)
