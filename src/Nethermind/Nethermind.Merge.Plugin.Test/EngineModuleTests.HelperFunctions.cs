@@ -10,7 +10,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -81,7 +80,7 @@ namespace Nethermind.Merge.Plugin.Test
                 3 => (await rpc.engine_getPayloadV3(payloadId)).ErrorCode,
                 _ => throw new ArgumentOutOfRangeException(nameof(version))
             };
-            errorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+            Assert.That(errorCode, Is.EqualTo(MergeErrorCodes.UnknownPayload));
         }
 
         private static async Task<string> AssertStreamedJsonMatchesSerializer<TResponse>(TResponse response)
@@ -95,7 +94,7 @@ namespace Nethermind.Merge.Plugin.Test
             string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
             pipe.Reader.AdvanceTo(readResult.Buffer.End);
 
-            streamedJson.Should().Be(JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions));
+            Assert.That(streamedJson, Is.EqualTo(JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions)));
             return streamedJson;
         }
 

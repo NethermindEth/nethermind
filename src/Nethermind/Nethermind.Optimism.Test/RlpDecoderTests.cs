@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -34,7 +33,7 @@ public class RlpDecoderTests
         Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
         Transaction? decodedTx = _decoder.Decode(ref ctx);
 
-        decodedTx.Should().NotBeNull();
+        Assert.That(decodedTx, Is.Not.Null);
     }
 
     [Test]
@@ -49,7 +48,7 @@ public class RlpDecoderTests
 
         Transaction? decodedTx = Rlp.Decode<Transaction?>(rlpStream.Data.AsSpan());
 
-        decodedTx.Should().NotBeNull();
+        Assert.That(decodedTx, Is.Not.Null);
     }
 
     [Test]
@@ -65,6 +64,6 @@ public class RlpDecoderTests
 
         Transaction transaction = _decoder.Decode(ref context);
 
-        transaction.Should().NotBeNull();
+        Assert.That(transaction, Is.Not.Null);
     }
 }

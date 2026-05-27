@@ -11,7 +11,6 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
@@ -135,10 +134,10 @@ public class MetricsTests
         using MemoryStream stream = new();
         await Prometheus.Metrics.DefaultRegistry.CollectAndExportAsTextAsync(stream);
         string scrape = Encoding.UTF8.GetString(stream.ToArray());
-        scrape.Should().Contain("nethermind_explicit_histogram_observation_bucket");
-        scrape.Should().Contain("nethermind_explicit_histogram_observation_sum");
-        scrape.Should().Contain("nethermind_explicit_histogram_observation_count");
-        scrape.Should().NotContain("nethermind_explicit_histogram_observation{quantile=");
+        Assert.That(scrape, Does.Contain("nethermind_explicit_histogram_observation_bucket"));
+        Assert.That(scrape, Does.Contain("nethermind_explicit_histogram_observation_sum"));
+        Assert.That(scrape, Does.Contain("nethermind_explicit_histogram_observation_count"));
+        Assert.That(scrape, Does.Not.Contain("nethermind_explicit_histogram_observation{quantile="));
     }
 
     [Test]
@@ -156,10 +155,10 @@ public class MetricsTests
         using MemoryStream stream = new();
         await Prometheus.Metrics.DefaultRegistry.CollectAndExportAsTextAsync(stream);
         string scrape = Encoding.UTF8.GetString(stream.ToArray());
-        scrape.Should().Contain("nethermind_json_rpc_call_duration_micros_bucket");
-        scrape.Should().Contain("nethermind_json_rpc_call_duration_micros_sum");
-        scrape.Should().Contain("nethermind_json_rpc_call_duration_micros_count");
-        scrape.Should().NotContain("nethermind_json_rpc_call_latency_micros");
+        Assert.That(scrape, Does.Contain("nethermind_json_rpc_call_duration_micros_bucket"));
+        Assert.That(scrape, Does.Contain("nethermind_json_rpc_call_duration_micros_sum"));
+        Assert.That(scrape, Does.Contain("nethermind_json_rpc_call_duration_micros_count"));
+        Assert.That(scrape, Does.Not.Contain("nethermind_json_rpc_call_latency_micros"));
     }
 
     [TestCase(true)]
@@ -266,7 +265,7 @@ public class MetricsTests
     private static void CheckDescribedOrHidden(PropertyInfo property)
     {
         System.ComponentModel.DescriptionAttribute attribute = property.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>();
-        attribute.Should().NotBeNull();
+        Assert.That(attribute, Is.Not.Null);
     }
 
     private static void ForEachProperty(Action<PropertyInfo> verifier)

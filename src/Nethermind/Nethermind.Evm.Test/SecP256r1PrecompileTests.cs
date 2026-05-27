@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);
-                Assert.That(output.ToArray(), Is.EquivalentTo(Array.Empty<byte>()));
+                Assert.That(output.ToArray(), Is.EqualTo(Array.Empty<byte>()));
             }
         }
 
@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);
-                Assert.That(output.ToArray(), Is.EquivalentTo(ValidResult));
+                Assert.That(output.ToArray(), Is.EqualTo(ValidResult));
             }
         }
 
