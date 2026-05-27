@@ -109,115 +109,120 @@ public sealed class SszMiddleware
         }
     }
 
-    public async Task InvokeAsync(HttpContext ctx)
+    public Task InvokeAsync(HttpContext ctx)
     {
         if (!IsSszRequest(ctx))
         {
-            await _next(ctx);
+            return _next(ctx);
         }
-        else if (_processExitToken.IsCancellationRequested)
+
+        if (_processExitToken.IsCancellationRequested)
         {
             ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            return Task.CompletedTask;
         }
-        else if (!_urlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) || !url.IsAuthenticated || !url.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+
+        if (!_urlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) || !url.IsAuthenticated || !url.RpcEndpoint.HasFlag(RpcEndpoint.Http))
         {
-            await _next(ctx);
+            return _next(ctx);
+        }
+
+        Metrics.SszRestRequestsTotal++;
+        return ProcessSszRequestAsync(ctx);
+    }
+
+    private async Task ProcessSszRequestAsync(HttpContext ctx)
+    {
+        string? authHeader = ctx.Request.Headers.Authorization;
+        if (authHeader is null || !await _auth.Authenticate(authHeader))
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized,
+                "Authentication error");
+        }
+        else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out ReadOnlyMemory<char> pathSegment))
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
+                "Unknown SSZ endpoint");
+        }
+        else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
+            // intermediate string; appending the span goes straight into the format buffer.
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
+                $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}");
         }
         else
         {
-            Metrics.SszRestRequestsTotal++;
+            if (_logger.IsTrace)
+            {
+                _logger.Trace(extra.IsEmpty
+                    ? $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}"
+                    : $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}/{extra.Span}");
+            }
 
-            string? authHeader = ctx.Request.Headers.Authorization;
-            if (authHeader is null || !await _auth.Authenticate(authHeader))
+            // Read directly from PipeReader: the buffer is a ReadOnlySequence over Kestrel's
+            // pooled blocks (~4 KB each), so multi-segment is the common case for blob-bearing
+            // payloads. The generated SSZ codecs accept ReadOnlySequence<byte> — single-segment
+            // is zero-copy, multi-segment consolidates once via ArrayPool. Both paths skip the
+            // MemoryStream + ToArray dance the previous implementation needed.
+            PipeReader reader = ctx.Request.BodyReader;
+            ReadOnlySequence<byte> body = default;
+            bool bodyRead = false;
+            try
+            {
+                body = await ReadBodyAsync(ctx, reader);
+                bodyRead = true;
+                Metrics.SszRestRequestBytesTotal += body.Length;
+
+                await handler!.HandleAsync(ctx, version, extra, body);
+
+                int status = ctx.Response.StatusCode;
+                switch (status)
+                {
+                    case >= 200 and < 300:
+                        Metrics.SszRestRequestsSuccessTotal++;
+                        break;
+                    case >= 400 and < 500:
+                        Metrics.SszRestRequestsClientErrorTotal++;
+                        break;
+                    case >= 500:
+                        Metrics.SszRestRequestsServerErrorTotal++;
+                        break;
+                }
+            }
+            catch (InvalidOperationException ex) when (!bodyRead)
             {
                 Metrics.SszRestRequestsClientErrorTotal++;
-                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized,
-                    "Authentication error");
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
             }
-            else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out ReadOnlyMemory<char> pathSegment))
+            catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or EndOfStreamException)
             {
+                // Per execution-apis #764 (Engine API SSZ Transport spec, "HTTP status codes" section):
+                // malformed SSZ encoding is 400 Bad Request. 422 Unprocessable Entity is reserved
+                // for "Invalid payload attributes" and is emitted by the handler chain via
+                // ErrorCodeToHttpStatus when the engine module returns InvalidPayloadAttributes.
+                Metrics.SszRestDecodeFailuresTotal++;
                 Metrics.SszRestRequestsClientErrorTotal++;
-                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                    "Unknown SSZ endpoint");
+                if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, "Malformed SSZ body");
             }
-            else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
+            catch (Exception ex)
             {
-                Metrics.SszRestRequestsClientErrorTotal++;
-                // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
-                // intermediate string; appending the span goes straight into the format buffer.
-                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                    $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}");
+                Metrics.SszRestRequestsServerErrorTotal++;
+                if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
+
+                // If the inner code already aborted the request (e.g. encode failed mid-stream
+                // and called ctx.Abort), don't try to write a 500 — WriteAsync would throw
+                // OperationCanceledException, producing a duplicate exception in the logs.
+                if (!ctx.RequestAborted.IsCancellationRequested)
+                    await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
             }
-            else
+            finally
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace(extra.IsEmpty
-                        ? $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}"
-                        : $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}/{extra.Span}");
-                }
-
-                // Read directly from PipeReader: the buffer is a ReadOnlySequence over Kestrel's
-                // pooled blocks (~4 KB each), so multi-segment is the common case for blob-bearing
-                // payloads. The generated SSZ codecs accept ReadOnlySequence<byte> — single-segment
-                // is zero-copy, multi-segment consolidates once via ArrayPool. Both paths skip the
-                // MemoryStream + ToArray dance the previous implementation needed.
-                PipeReader reader = ctx.Request.BodyReader;
-                ReadOnlySequence<byte> body = default;
-                bool bodyRead = false;
-                try
-                {
-                    body = await ReadBodyAsync(ctx, reader);
-                    bodyRead = true;
-                    Metrics.SszRestRequestBytesTotal += body.Length;
-
-                    await handler!.HandleAsync(ctx, version, extra, body);
-
-                    int status = ctx.Response.StatusCode;
-                    switch (status)
-                    {
-                        case >= 200 and < 300:
-                            Metrics.SszRestRequestsSuccessTotal++;
-                            break;
-                        case >= 400 and < 500:
-                            Metrics.SszRestRequestsClientErrorTotal++;
-                            break;
-                        case >= 500:
-                            Metrics.SszRestRequestsServerErrorTotal++;
-                            break;
-                    }
-                }
-                catch (InvalidOperationException ex) when (!bodyRead)
-                {
-                    Metrics.SszRestRequestsClientErrorTotal++;
-                    await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
-                }
-                catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or EndOfStreamException)
-                {
-                    // Per execution-apis #764 (Engine API SSZ Transport spec, "HTTP status codes" section):
-                    // malformed SSZ encoding is 400 Bad Request. 422 Unprocessable Entity is reserved
-                    // for "Invalid payload attributes" and is emitted by the handler chain via
-                    // ErrorCodeToHttpStatus when the engine module returns InvalidPayloadAttributes.
-                    Metrics.SszRestDecodeFailuresTotal++;
-                    Metrics.SszRestRequestsClientErrorTotal++;
-                    if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
-                    await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, "Malformed SSZ body");
-                }
-                catch (Exception ex)
-                {
-                    Metrics.SszRestRequestsServerErrorTotal++;
-                    if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
-
-                    // If the inner code already aborted the request (e.g. encode failed mid-stream
-                    // and called ctx.Abort), don't try to write a 500 — WriteAsync would throw
-                    // OperationCanceledException, producing a duplicate exception in the logs.
-                    if (!ctx.RequestAborted.IsCancellationRequested)
-                        await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
-                }
-                finally
-                {
-                    if (bodyRead) reader.AdvanceTo(body.End);
-                }
+                if (bodyRead) reader.AdvanceTo(body.End);
             }
         }
     }

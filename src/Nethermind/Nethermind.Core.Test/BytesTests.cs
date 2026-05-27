@@ -17,6 +17,17 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class BytesTests
     {
+        private static string CreateHexString(int byteLength)
+        {
+            char[] chars = new char[byteLength * 2];
+            for (int i = 0; i < byteLength; i++)
+            {
+                HexConverter.ToCharsBuffer((byte)i, chars, i * 2);
+            }
+
+            return new string(chars);
+        }
+
         [TestCase("0x", "0x", 0)]
         [TestCase(null, null, 0)]
         [TestCase(null, "0x", -1)]
@@ -48,6 +59,43 @@ namespace Nethermind.Core.Test
                 Assert.That(expectedResult, Is.EqualTo(bytes.Length), "Bytes array should be empty but is not");
             else
                 Assert.That(expectedResult, Is.EqualTo(bytes[0]), "new");
+        }
+
+        [TestCase("", true)]
+        [TestCase("0123456789abcdefABCDEF", true)]
+        [TestCase("0123456789abcdefABCDEF0123456789abcdef", true)]
+        [TestCase("0123456789abcdefg", false)]
+        [TestCase("0123456789abcdef\u0100", false)]
+        public void TryCopyHexToUtf8_validates_and_copies_hex_chars(string hex, bool expected)
+        {
+            byte[] utf8 = new byte[hex.Length];
+
+            bool actual = HexConverter.TryCopyHexToUtf8(hex, utf8);
+
+            Assert.That(actual, Is.EqualTo(expected));
+            if (expected)
+            {
+                for (int i = 0; i < hex.Length; i++)
+                {
+                    Assert.That(utf8[i], Is.EqualTo((byte)hex[i]));
+                }
+            }
+        }
+
+        [TestCase(32)]
+        [TestCase(64)]
+        [TestCase(128)]
+        public void FromHexString_large_even_length_matches_expected_bytes(int byteLength)
+        {
+            string hex = CreateHexString(byteLength);
+
+            byte[] bytes = Bytes.FromHexString(hex);
+
+            Assert.That(bytes.Length, Is.EqualTo(byteLength));
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                Assert.That(bytes[i], Is.EqualTo((byte)i));
+            }
         }
 
         [TestCase(null)]

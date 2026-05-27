@@ -53,13 +53,11 @@ public partial class DebugRpcModuleTests
         // responsible for the state setup.
         if (blockNumber == 0)
         {
-            response.Should().BeOfType<JsonRpcErrorResponse>().Which.Error!.Message.Should().Be("Cannot generate witness for genesis block");
+            RpcTest.AssertError(response).Message.Should().Be("Cannot generate witness for genesis block");
             return;
         }
 
-        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>()
-            .Subject;
+        using Witness witness = RpcTest.AssertSuccess<Witness>(response);
 
         witness.Headers.Should().NotBeEmpty();
         witness.State.Should().NotBeEmpty();
@@ -199,8 +197,7 @@ public partial class DebugRpcModuleTests
         JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
             new { to = TestItem.AddressA.ToString() }, "0x0");
 
-        response.Should().BeOfType<JsonRpcErrorResponse>()
-            .Which.Error!.Message.Should().Be("Cannot generate witness for genesis block");
+        RpcTest.AssertError(response).Message.Should().Be("Cannot generate witness for genesis block");
     }
 
     [Test]
@@ -216,9 +213,7 @@ public partial class DebugRpcModuleTests
         JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
             new { to = TestItem.AddressB.ToString() }, "0x1");
 
-        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>()
-            .Subject;
+        using Witness witness = RpcTest.AssertSuccess<Witness>(response);
 
         witness.State.Should().NotBeEmpty("a call touching state should produce trie nodes");
     }
@@ -238,9 +233,7 @@ public partial class DebugRpcModuleTests
             new { to = contractAddress.ToString(), gas = "0x30D40" },
             $"0x{blockNumber:x}");
 
-        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>()
-            .Subject;
+        using Witness witness = RpcTest.AssertSuccess<Witness>(response);
 
         witness.State.Should().NotBeEmpty();
         witness.Codes.Should().NotBeEmpty("calling a contract should capture its bytecode");
@@ -274,10 +267,8 @@ public partial class DebugRpcModuleTests
             new { to = contractAddress.ToString() },
             $"0x{blockNumber:x}");
 
-        using Witness witnessWithGas = withGas.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>().Subject;
-        using Witness witnessWithoutGas = withoutGas.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>().Subject;
+        using Witness witnessWithGas = RpcTest.AssertSuccess<Witness>(withGas);
+        using Witness witnessWithoutGas = RpcTest.AssertSuccess<Witness>(withoutGas);
 
         // The two paths must produce witnesses of the same shape.
         witnessWithoutGas.State.Should().NotBeEmpty(

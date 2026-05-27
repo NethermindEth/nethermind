@@ -99,9 +99,9 @@ public class DebugModuleTests
         _debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
         _ = Substitute.For<IConfigProvider>();
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key) as JsonRpcSuccessResponse;
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key);
 
-        Assert.That(response, Is.Not.Null);
+        RpcTest.AssertSuccess<byte[]>(response);
     }
 
     [Test]
@@ -111,9 +111,9 @@ public class DebugModuleTests
         _ = Substitute.For<IConfigProvider>();
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         byte[] key = [1, 2, 3];
-        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key) as JsonRpcSuccessResponse;
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key);
 
-        Assert.That(response, Is.Not.Null);
+        RpcTest.AssertSuccess<byte[]>(response);
     }
 
     [TestCase(1)]
@@ -123,8 +123,8 @@ public class DebugModuleTests
         _debugBridge.GetLevelInfo(1).Returns(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1000), new BlockInfo(TestItem.KeccakB, 1001)));
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
-        ChainLevelForRpc? chainLevel = response?.Result as ChainLevelForRpc;
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter);
+        ChainLevelForRpc? chainLevel = RpcTest.AssertSuccess<ChainLevelForRpc>(response);
         Assert.That(chainLevel, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
@@ -142,8 +142,8 @@ public class DebugModuleTests
         _debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", "0x") as JsonRpcSuccessResponse;
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", "0x");
+        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
     }
 
     [Test]
@@ -155,9 +155,9 @@ public class DebugModuleTests
         localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
-        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "0x1") as JsonRpcSuccessResponse;
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "0x1");
 
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
     }
 
     [Test]
@@ -168,8 +168,8 @@ public class DebugModuleTests
         _debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero) as JsonRpcSuccessResponse;
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero);
+        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
     }
 
     [Test]
@@ -181,9 +181,9 @@ public class DebugModuleTests
         localDebugBridge.GetBlockRlp(BlockParameter.Latest).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
-        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "latest") as JsonRpcSuccessResponse;
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "latest");
 
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
     }
 
     [TestCase("debug_getRawBlock", "0x1")]
@@ -192,9 +192,9 @@ public class DebugModuleTests
         _debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, method, parameter) as JsonRpcErrorResponse;
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, method, parameter);
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }
 
     [Test]
@@ -203,9 +203,9 @@ public class DebugModuleTests
         _debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).ReturnsNull();
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero) as JsonRpcErrorResponse;
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero);
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }
 
     [Test]
@@ -252,9 +252,9 @@ public class DebugModuleTests
         setup(_debugBridge, _blockchainBridge);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest") as JsonRpcErrorResponse;
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest");
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(expectedErrorCode));
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(expectedErrorCode));
     }
 
     private BlockTree BuildBlockTree(Func<BlockTreeBuilder, BlockTreeBuilder>? builderOptions = null)

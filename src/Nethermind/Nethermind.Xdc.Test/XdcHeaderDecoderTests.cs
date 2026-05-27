@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Test
 {

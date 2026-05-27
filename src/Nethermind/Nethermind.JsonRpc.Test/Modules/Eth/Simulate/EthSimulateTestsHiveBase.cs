@@ -22,7 +22,7 @@ using NUnit.Framework;
 using static Nethermind.Core.Test.Blockchain.TestBlockchain;
 using ResultType = Nethermind.Core.ResultType;
 
-namespace Nethermind.JsonRpc.Test.Modules.Eth;
+namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 public class EthSimulateTestsHiveBase
 {
