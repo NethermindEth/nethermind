@@ -316,6 +316,59 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                                     int childIdx = relativeOffset / 33;
                                     int byteInChild = relativeOffset % 33;
                                     logger.Warn($"  DIAG: divergence in child #{childIdx}, byte {byteInChild} of child slot (0=tag, 1-32=hash bytes)");
+
+                                    // Drill into sparse trie's child at nibble childIdx
+                                    try
+                                    {
+                                        SparseTrieNode rootNode = sub.NodeAt(sub.Root);
+                                        if (rootNode.IsBranch() && rootNode.StateMask.IsBitSet(childIdx))
+                                        {
+                                            int denseIdx = rootNode.DenseChildIndex(childIdx);
+                                            SparseChildEntry entry = sub.ChildAt(denseIdx);
+                                            if (entry.IsBlinded)
+                                            {
+                                                logger.Warn($"  DIAG: sparse child #{childIdx} is BLINDED (kept from proof). RlpNode={entry.BlindedRlp}");
+                                            }
+                                            else
+                                            {
+                                                SparseTrieNode childNode = sub.NodeAt(entry.ArenaIndex);
+                                                logger.Warn($"  DIAG: sparse child #{childIdx} kind={childNode.Kind}, state={childNode.State}, shortKey.len={childNode.ShortKey?.Length ?? -1}, stateMask={childNode.StateMask}, childCount={childNode.ChildCount()}");
+                                                if (!childNode.CachedRlp.IsNull)
+                                                {
+                                                    ReadOnlySpan<byte> ccr = childNode.CachedRlp.AsSpan();
+                                                    logger.Warn($"  DIAG: sparse child #{childIdx} CachedRlp.Length={ccr.Length}");
+                                                    if (ccr.Length >= 32) logger.Warn($"  DIAG: sparse child #{childIdx} keccak={Keccak.Compute(ccr)}");
+                                                }
+                                                if (childNode.FullRlp is not null)
+                                                {
+                                                    logger.Warn($"  DIAG: sparse child #{childIdx} FullRlp.Length={childNode.FullRlp.Length}, keccak={Keccak.Compute(childNode.FullRlp)}");
+                                                }
+                                            }
+                                        }
+                                    }
+                                    catch (Exception scEx)
+                                    {
+                                        logger.Warn($"  DIAG: sparse child drill failed: {scEx.GetType().Name}: {scEx.Message}");
+                                    }
+
+                                    // Walk Patricia tree's RootRef to child #childIdx
+                                    try
+                                    {
+                                        TreePath emptyPath = TreePath.Empty;
+                                        TrieNode? patChild = patriciaRootRef?.GetChild(_stateTree.TrieStore, ref emptyPath, childIdx);
+                                        if (patChild is not null)
+                                        {
+                                            logger.Warn($"  DIAG: patricia child #{childIdx} NodeType={patChild.NodeType}, Keccak={patChild.Keccak}, FullRlp.Length={patChild.FullRlp.Length}");
+                                        }
+                                        else
+                                        {
+                                            logger.Warn($"  DIAG: patricia child #{childIdx} = null");
+                                        }
+                                    }
+                                    catch (Exception ppEx)
+                                    {
+                                        logger.Warn($"  DIAG: patricia child walk failed: {ppEx.GetType().Name}: {ppEx.Message}");
+                                    }
                                 }
                             }
                         }
