@@ -4,7 +4,7 @@
 using System.Text.Json.Nodes;
 using System.Threading.Tasks.Dataflow;
 
-namespace Nethermind.RpcTestsGen;
+namespace Nethermind.RpcTests.Generator;
 
 public class RequestReader(FilePos[] sources, Filter filter)
 {

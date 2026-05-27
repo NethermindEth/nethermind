@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 using SmartFormat;
 using SmartFormat.Core.Parsing;
 
-namespace Nethermind.RpcTestsGen;
+namespace Nethermind.RpcTests.Generator;
 
 // not thread-safe
 public sealed class TestWriter(Filter filter, Format outputFormat) : IAsyncDisposable

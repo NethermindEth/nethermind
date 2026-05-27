@@ -3,8 +3,8 @@
 
 using System.CommandLine;
 using System.CommandLine.Parsing;
-using RpcTestsMon;
-using RpcTestsMon.Notifiers;
+using Nethermind.RpcTests.Monitor;
+using Nethermind.RpcTests.Monitor.Notifiers;
 
 Option<Uri> targetOption = new("--target", "-t")
 {

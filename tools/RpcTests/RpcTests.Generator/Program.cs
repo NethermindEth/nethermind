@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.CommandLine;
-using Nethermind.RpcTestsGen;
+using Nethermind.RpcTests.Generator;
 using SmartFormat;
 using SmartFormat.Core.Parsing;
 

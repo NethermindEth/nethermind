@@ -19,6 +19,6 @@
   <Project Path="../../src/Nethermind/Nethermind.State/Nethermind.State.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Trie/Nethermind.Trie.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.TxPool/Nethermind.TxPool.csproj" />
-  <Project Path="../RpcTestsMon/RpcTestsMon/RpcTestsMon.csproj" />
-  <Project Path="RpcTestsGen.csproj" />
+  <Project Path="RpcTests.Generator/RpcTests.Generator.csproj" />
+  <Project Path="RpcTestsMon/RpcTests.Monitor/RpcTests.Monitor.csproj" />
 </Solution>

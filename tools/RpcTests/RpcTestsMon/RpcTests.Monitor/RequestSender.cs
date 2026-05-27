@@ -5,7 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace RpcTestsMon;
+namespace Nethermind.RpcTests.Monitor;
 
 internal class RequestSender(HttpClient httpClient)
 {

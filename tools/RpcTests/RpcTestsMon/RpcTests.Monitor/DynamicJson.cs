@@ -1,9 +1,9 @@
 using System.Diagnostics.CodeAnalysis;
-using DynamicExpresso;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using DynamicExpresso;
 
-namespace RpcTestsMon;
+namespace Nethermind.RpcTests.Monitor;
 
 internal class DynamicJson
 {

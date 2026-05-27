@@ -3,9 +3,9 @@
 
 using System.Text.Json.Nodes;
 using System.Threading.Tasks.Dataflow;
-using RpcTestsMon.Notifiers;
+using Nethermind.RpcTests.Monitor.Notifiers;
 
-namespace RpcTestsMon;
+namespace Nethermind.RpcTests.Monitor;
 
 internal record RequestContext(long Number);
 

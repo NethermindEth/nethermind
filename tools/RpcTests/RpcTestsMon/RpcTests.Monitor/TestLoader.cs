@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Nodes;
 using DynamicExpresso;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.FileSystemGlobbing.Abstractions;
-using System.Text.Json.Nodes;
 
-namespace RpcTestsMon;
+namespace Nethermind.RpcTests.Monitor;
 
 internal class TestDefinition
 {

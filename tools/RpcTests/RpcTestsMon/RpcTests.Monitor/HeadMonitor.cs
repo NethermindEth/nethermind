@@ -5,9 +5,9 @@ using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Nodes;
-using RpcTestsMon.Notifiers;
+using Nethermind.RpcTests.Monitor.Notifiers;
 
-namespace RpcTestsMon;
+namespace Nethermind.RpcTests.Monitor;
 
 internal record HeadInfo(long Number, string Hash) : IFormattable
 {

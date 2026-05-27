@@ -3,7 +3,7 @@
 
 using System.Text.Json.Nodes;
 
-namespace RpcTestsMon;
+namespace Nethermind.RpcTests.Monitor;
 
 internal static class ResponseComparer
 {

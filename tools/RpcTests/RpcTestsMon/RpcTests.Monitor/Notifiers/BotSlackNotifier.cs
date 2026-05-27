@@ -5,7 +5,7 @@ using System.Text;
 using SlackNet;
 using SlackNet.WebApi;
 
-namespace RpcTestsMon.Notifiers;
+namespace Nethermind.RpcTests.Monitor.Notifiers;
 
 internal class BotSlackConfig
 {

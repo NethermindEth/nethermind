@@ -3,7 +3,7 @@
 
 using SmartFormat.Core.Parsing;
 
-namespace Nethermind.RpcTestsGen;
+namespace Nethermind.RpcTests.Generator;
 
 public class ExecutionArgs
 {
