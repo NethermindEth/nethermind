@@ -11,6 +11,7 @@ namespace Nethermind.State.Repositories
     {
         private readonly object _lockObject;
         private bool _lockTaken;
+        private int _disposed;
 
         public BatchWrite(object lockObject, IWriteBatch writeBatch)
         {
@@ -22,8 +23,10 @@ namespace Nethermind.State.Repositories
 
         public void Dispose()
         {
-            if (Disposed)
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
                 return;
+            }
 
             try
             {
@@ -31,10 +34,6 @@ namespace Nethermind.State.Repositories
             }
             finally
             {
-                // Always release the lock and mark disposed, even if the batch commit threw,
-                // so a failed commit cannot leave the repository write lock held.
-                Disposed = true;
-
                 if (_lockTaken)
                 {
                     _lockTaken = false;
@@ -45,6 +44,6 @@ namespace Nethermind.State.Repositories
 
         public IWriteBatch WriteBatch { get; }
 
-        public bool Disposed { get; private set; }
+        public bool Disposed => _disposed != 0;
     }
 }
