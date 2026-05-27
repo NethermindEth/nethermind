@@ -196,14 +196,14 @@ public static class PersistedSnapshotMerger
     /// outer key adds <c>addrKey</c> to the bloom. On a fast-copied source value walks the
     /// source's <c>SlotSubTag</c> for per-slot bloom adds. On a multi-source (or oversized
     /// single-source) rebuild resolves each contributing source's per-address bounds and
-    /// per-source sub-tag bounds, then delegates to
-    /// <see cref="NWayMergePerAddressHsst{TWriter,TReader,TPin}"/> to stream the merged
-    /// DenseByteIndex through the outer builder's value writer.</summary>
+    /// per-source sub-tag bounds, then streams the merged per-address DenseByteIndex
+    /// (sub-tags 0x02 Slots, 0x01 SelfDestruct, 0x00 Account) through the outer builder's
+    /// value writer.</summary>
     /// <remarks>Cursor-side reader/pin are pinned to (<see cref="WholeReadSessionReader"/>,
     /// <see cref="NoOpPin"/>) because the merge always reads from open snapshot mmaps; the
-    /// three generic parameters are the WRITER-side trio threaded through to
-    /// <see cref="NWayMergePerAddressHsst{TWriter,TReader,TPin}"/>. Per-source reader
-    /// factories come via the cursor (<c>cursor.CreateMinReader</c>, <c>cursor.Sources</c>).
+    /// three generic parameters are the WRITER-side trio threaded through to the inner
+    /// DenseByteIndex builder and the nested slot-prefix merger. Per-source reader factories
+    /// come via the cursor (<c>cursor.CreateMinReader</c>, <c>cursor.Sources</c>).
     /// The shared <see cref="HsstBTreeBuilderBuffers"/> arena (re-used across every emitted
     /// address) is held via <see cref="HsstBTreeBuilderBuffersContainer"/> — a class handle
     /// that hides the ref-to-ref-struct workaround.</remarks>
@@ -242,11 +242,134 @@ public static class PersistedSnapshotMerger
             Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
             ResolvePerAddrAndSubTagBounds(ref cursor, perAddrBounds, subTagBounds, SubTagCount);
 
-            NWayMergePerAddressHsst<TWriter, TReader, TPin>(
-                matchingSources, matchCount, cursor.Sources,
-                ref writer, ref slotPrefixBuffers.Buffers,
-                subTagBounds,
-                bloom, addrKey);
+            // perAddrBuilder is passed to several helpers by ref, so it can't be a `using`
+            // declaration (the compiler refuses ref to using-variables). Manage its disposal
+            // with a try/finally instead.
+            HsstDenseByteIndexBuilder<TWriter> perAddrBuilder = new(ref writer);
+            try
+            {
+                // Find newest destruct barrier: newest j where SelfDestructSubTag is present and
+                // marks "destructed" ([0x00]). With DenseByteIndex per-address encoding, sub-tag
+                // values are presence-marked: length 0 = absent, [0x00] = destructed, [0x01] = new.
+                int sdTag = PersistedSnapshotTags.SelfDestructSubTag[0];
+                int destructBarrier = -1;
+                for (int j = 0; j < matchCount; j++)
+                {
+                    Bound sdb = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + sdTag];
+                    if (sdb.Length != 1) continue;
+                    WholeReadSessionReader r = cursor.Sources[matchingSources[j]].CreateReader();
+                    using NoOpPin sdPin = r.PinBuffer(sdb.Offset, 1);
+                    if (sdPin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
+                        destructBarrier = j;
+                }
+
+                // Sub-tag 0x02: Slots — emitted first so the per-address DenseByteIndex receives
+                // tags in strictly descending order. Merge slots only from max(0, destructBarrier)
+                // ..matchCount-1. Collect the active slot sources, then early-return for 0 sources
+                // (no emit) or run the outer/inner BTree streaming merge through
+                // NWayNestedStreamingSlotMerge for any positive count. We do not byte-copy a
+                // single-source slot blob through perAddrBuilder here: the dense byte index does
+                // not page-align its values, so re-emitting through the inner BTree builder (which
+                // does align) keeps the slot HSST on its own page.
+                {
+                    int slotStart = Math.Max(0, destructBarrier);
+                    int slotTag = PersistedSnapshotTags.SlotSubTag[0];
+                    int slotSourceCount = 0;
+                    int slotCapacity = matchCount - slotStart;
+                    using NativeMemoryListRef<int> slotSourcesList = new(slotCapacity, slotCapacity);
+                    using NativeMemoryListRef<Bound> slotBoundsList = new(slotCapacity, slotCapacity);
+                    Span<int> slotSources = slotSourcesList.AsSpan();
+                    Span<Bound> slotBounds = slotBoundsList.AsSpan();
+                    for (int j = slotStart; j < matchCount; j++)
+                    {
+                        Bound slotBound = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + slotTag];
+                        if (slotBound.Length > 0)
+                        {
+                            slotSources[slotSourceCount] = matchingSources[j];
+                            slotBounds[slotSourceCount] = slotBound;
+                            slotSourceCount++;
+                        }
+                    }
+
+                    if (slotSourceCount > 0)
+                    {
+                        ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
+                        NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
+                            cursor.Sources,
+                            slotSources[..slotSourceCount],
+                            slotBounds[..slotSourceCount],
+                            ref slotWriter,
+                            ref slotPrefixBuffers.Buffers,
+                            bloom, addrKey);
+                        perAddrBuilder.FinishValueWrite(PersistedSnapshotTags.SlotSubTag);
+                    }
+                }
+
+                // Sub-tag 0x01: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
+                // is signalled by length>0 ([0x00]=destructed, [0x01]=new); absent entries (gap-
+                // filled length 0 under DenseByteIndex) are ignored. Track the winning bound
+                // snapshot-absolute so we can re-pin at the end without holding a span across
+                // iterations.
+                {
+                    int sdSrcJ = -1;
+                    long sdValOff = 0;
+                    long sdValLen = 0;
+
+                    for (int j = 0; j < matchCount; j++)
+                    {
+                        Bound sdb = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + sdTag];
+                        if (sdb.Length == 0) continue;
+
+                        if (sdSrcJ < 0)
+                        {
+                            sdSrcJ = j;
+                            sdValOff = sdb.Offset;
+                            sdValLen = sdb.Length;
+                        }
+                        else
+                        {
+                            // TryAdd: newer=destructed ([0x00]) -> destructed wins; newer=new ([0x01]) -> keep older.
+                            WholeReadSessionReader r = cursor.Sources[matchingSources[j]].CreateReader();
+                            using NoOpPin firstBytePin = r.PinBuffer(sdb.Offset, 1);
+                            if (firstBytePin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
+                            {
+                                sdSrcJ = j;
+                                sdValOff = sdb.Offset;
+                                sdValLen = sdb.Length;
+                            }
+                        }
+                    }
+
+                    if (sdSrcJ >= 0)
+                    {
+                        WholeReadSessionReader r = cursor.Sources[matchingSources[sdSrcJ]].CreateReader();
+                        using NoOpPin sdPin = r.PinBuffer(sdValOff, sdValLen);
+                        perAddrBuilder.Add(PersistedSnapshotTags.SelfDestructSubTag, sdPin.Buffer);
+                    }
+                }
+
+                // Sub-tag 0x00: Account — newest wins (walk M-1..0, first present (length>0)).
+                // Emitted last so the hot Account blob lands adjacent to the DenseByteIndex
+                // Ends[] trailer.
+                {
+                    int acctTag = PersistedSnapshotTags.AccountSubTag[0];
+                    for (int j = matchCount - 1; j >= 0; j--)
+                    {
+                        Bound ab = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + acctTag];
+                        if (ab.Length == 0) continue;
+                        WholeReadSessionReader r = cursor.Sources[matchingSources[j]].CreateReader();
+                        using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
+                        perAddrBuilder.Add(PersistedSnapshotTags.AccountSubTag, acctPin.Buffer);
+                        break;
+                    }
+                }
+
+                perAddrBuilder.Build();
+            }
+            finally
+            {
+                perAddrBuilder.Dispose();
+            }
         }
     }
 
@@ -551,7 +674,8 @@ public static class PersistedSnapshotMerger
     /// <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}.TryAddAligned"/>
     /// (HSST internal pointers are HSST-relative, so a relocation stays readable);
     /// larger entries, unalignable positions, and any multi-source collision fall
-    /// through to <see cref="NWayMergePerAddressHsst"/>, which re-emits per sub-tag.
+    /// through to <see cref="PerAddressColumnValueMerger{TWriter,TReader,TPin}.MergeValues"/>,
+    /// which re-emits per sub-tag.
     /// Per-address inner sub-tags are 0x00 (account RLP), 0x01 (self-destruct),
     /// 0x02 (slots). Storage-trie nodes live in column 0x05 keyed by addressHash
     /// and are merged separately by <see cref="NWayMergeStorageTrieColumn"/>.
@@ -628,154 +752,6 @@ public static class PersistedSnapshotMerger
         finally
         {
             for (int i = 0; i < n; i++) sources[i].Dispose();
-        }
-    }
-
-    /// <summary>
-    /// N-way merge of per-address HSSTs from M sources (oldest-first by matchingSources order).
-    /// All three column-0x01 inner sub-tags emitted in <b>descending</b> byte order so the
-    /// DenseByteIndex builder accepts them (writer streams high-tag → low-tag):
-    /// - 0x02 Slots: find newest destruct barrier, merge slots from barrier..M-1 via nested streaming merge
-    /// - 0x01 SelfDestruct: iterate 0..M-1, apply TryAdd semantics
-    /// - 0x00 Account: newest wins (walk M-1..0, first with AccountSubTag)
-    /// Storage-trie nodes for the matching addressHash live in column 0x05 and are merged
-    /// independently by <see cref="NWayMergeStorageTrieColumn"/>.
-    /// </summary>
-    private static void NWayMergePerAddressHsst<TWriter, TReader, TPin>(
-        scoped ReadOnlySpan<int> matchingSources, int matchCount,
-        Span<WholeReadSessionMergeSource> outerSources,
-        ref TWriter writer,
-        ref HsstBTreeBuilderBuffers slotPrefixBuffers,
-        scoped ReadOnlySpan<Bound> subTagBounds,
-        BloomFilter bloom, ulong addrBloomKey = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
-    {
-        // perAddrBuilder is passed to several helpers by ref, so it can't be a `using`
-        // declaration (the compiler refuses ref to using-variables). Manage its disposal
-        // with a try/finally instead.
-        HsstDenseByteIndexBuilder<TWriter> perAddrBuilder = new(ref writer);
-        try
-        {
-            // Find newest destruct barrier: newest j where SelfDestructSubTag is present and
-            // marks "destructed" ([0x00]). With DenseByteIndex per-address encoding, sub-tag
-            // values are presence-marked: length 0 = absent, [0x00] = destructed, [0x01] = new.
-            int sdTag = PersistedSnapshotTags.SelfDestructSubTag[0];
-            int destructBarrier = -1;
-            for (int j = 0; j < matchCount; j++)
-            {
-                Bound sdb = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + sdTag];
-                if (sdb.Length != 1) continue;
-                WholeReadSessionReader r = outerSources[matchingSources[j]].CreateReader();
-                using NoOpPin sdPin = r.PinBuffer(sdb.Offset, 1);
-                if (sdPin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
-                    destructBarrier = j;
-            }
-
-            // Sub-tag 0x02: Slots — emitted first so the per-address DenseByteIndex receives
-            // tags in strictly descending order. Merge slots only from max(0, destructBarrier)
-            // ..matchCount-1. Collect the active slot sources, then early-return for 0 sources
-            // (no emit) or run the outer/inner BTree streaming merge through
-            // NWayNestedStreamingSlotMerge for any positive count. We do not byte-copy a
-            // single-source slot blob through perAddrBuilder here: the dense byte index does
-            // not page-align its values, so re-emitting through the inner BTree builder (which
-            // does align) keeps the slot HSST on its own page.
-            {
-                int slotStart = Math.Max(0, destructBarrier);
-                int slotTag = PersistedSnapshotTags.SlotSubTag[0];
-                int slotSourceCount = 0;
-                int slotCapacity = matchCount - slotStart;
-                using NativeMemoryListRef<int> slotSourcesList = new(slotCapacity, slotCapacity);
-                using NativeMemoryListRef<Bound> slotBoundsList = new(slotCapacity, slotCapacity);
-                Span<int> slotSources = slotSourcesList.AsSpan();
-                Span<Bound> slotBounds = slotBoundsList.AsSpan();
-                for (int j = slotStart; j < matchCount; j++)
-                {
-                    Bound slotBound = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + slotTag];
-                    if (slotBound.Length > 0)
-                    {
-                        slotSources[slotSourceCount] = matchingSources[j];
-                        slotBounds[slotSourceCount] = slotBound;
-                        slotSourceCount++;
-                    }
-                }
-
-                if (slotSourceCount > 0)
-                {
-                    ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
-                    NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
-                        outerSources,
-                        slotSources[..slotSourceCount],
-                        slotBounds[..slotSourceCount],
-                        ref slotWriter,
-                        ref slotPrefixBuffers,
-                        bloom, addrBloomKey);
-                    perAddrBuilder.FinishValueWrite(PersistedSnapshotTags.SlotSubTag);
-                }
-            }
-
-            // Sub-tag 0x01: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
-            // is signalled by length>0 ([0x00]=destructed, [0x01]=new); absent entries (gap-
-            // filled length 0 under DenseByteIndex) are ignored. Track the winning bound
-            // snapshot-absolute so we can re-pin at the end without holding a span across
-            // iterations.
-            {
-                int sdSrcJ = -1;
-                long sdValOff = 0;
-                long sdValLen = 0;
-
-                for (int j = 0; j < matchCount; j++)
-                {
-                    Bound sdb = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + sdTag];
-                    if (sdb.Length == 0) continue;
-
-                    if (sdSrcJ < 0)
-                    {
-                        sdSrcJ = j;
-                        sdValOff = sdb.Offset;
-                        sdValLen = sdb.Length;
-                    }
-                    else
-                    {
-                        // TryAdd: newer=destructed ([0x00]) -> destructed wins; newer=new ([0x01]) -> keep older.
-                        WholeReadSessionReader r = outerSources[matchingSources[j]].CreateReader();
-                        using NoOpPin firstBytePin = r.PinBuffer(sdb.Offset, 1);
-                        if (firstBytePin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
-                        {
-                            sdSrcJ = j;
-                            sdValOff = sdb.Offset;
-                            sdValLen = sdb.Length;
-                        }
-                    }
-                }
-
-                if (sdSrcJ >= 0)
-                {
-                    WholeReadSessionReader r = outerSources[matchingSources[sdSrcJ]].CreateReader();
-                    using NoOpPin sdPin = r.PinBuffer(sdValOff, sdValLen);
-                    perAddrBuilder.Add(PersistedSnapshotTags.SelfDestructSubTag, sdPin.Buffer);
-                }
-            }
-
-            // Sub-tag 0x00: Account — newest wins (walk M-1..0, first present (length>0)).
-            // Emitted last so the hot Account blob lands adjacent to the DenseByteIndex
-            // Ends[] trailer.
-            {
-                int acctTag = PersistedSnapshotTags.AccountSubTag[0];
-                for (int j = matchCount - 1; j >= 0; j--)
-                {
-                    Bound ab = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + acctTag];
-                    if (ab.Length == 0) continue;
-                    WholeReadSessionReader r = outerSources[matchingSources[j]].CreateReader();
-                    using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
-                    perAddrBuilder.Add(PersistedSnapshotTags.AccountSubTag, acctPin.Buffer);
-                    break;
-                }
-            }
-
-            perAddrBuilder.Build();
-        }
-        finally
-        {
-            perAddrBuilder.Dispose();
         }
     }
 
