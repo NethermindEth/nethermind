@@ -17,7 +17,7 @@ file static class KnownFailingTests
 
     private static HashSet<string> Load()
     {
-        string path = Path.Combine(AppContext.BaseDirectory, "known-failing-zkevm-tests.txt");
+        string path = Path.Combine(AppContext.BaseDirectory, "known-failing-hive-tests.txt");
         if (!File.Exists(path))
             return [];
 

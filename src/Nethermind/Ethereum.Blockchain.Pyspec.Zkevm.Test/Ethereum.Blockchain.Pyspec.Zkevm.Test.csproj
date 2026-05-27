@@ -7,8 +7,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="../../../scripts/known-failing-zkevm-tests.txt" CopyToOutputDirectory="PreserveNewest">
-      <Link>known-failing-zkevm-tests.txt</Link>
+    <Content Include="../../../scripts/known-failing-hive-tests.txt" CopyToOutputDirectory="PreserveNewest">
+      <Link>known-failing-hive-tests.txt</Link>
     </Content>
   </ItemGroup>
 
