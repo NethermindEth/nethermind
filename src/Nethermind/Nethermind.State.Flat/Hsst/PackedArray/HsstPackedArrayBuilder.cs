@@ -305,13 +305,6 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         _writer.Advance(2);
     }
 
-    private void WriteLeb128(long value)
-    {
-        Span<byte> buf = _writer.GetSpan(10);
-        int len = Leb128.Write(buf, 0, value);
-        _writer.Advance(len);
-    }
-
     // Lex-keyed input arrives big-endian. When IsLittleEndian is set (KeySize ∈ {2,4,8}),
     // emit byte-reversed bytes so a native LE int load over the slot recovers the lex value.
     // Mirrors the BTreeNode LE-stored convention (see UniformKeySearch.Pack24LeMask512).

@@ -140,37 +140,6 @@ internal static class HsstTwoByteSlotValueLargeReader
         return true;
     }
 
-    /// <summary>Resolve all entry bounds into <paramref name="dst"/>. Returns Count or 0 if dst is too small.</summary>
-    public static int TryResolveAll<TReader, TPin>(scoped in TReader reader, Bound bound, Span<Bound> dst)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        if (!TryReadLayout<TReader, TPin>(in reader, bound, out Layout L)) return 0;
-        if (L.Count > dst.Length) return 0;
-        if (L.Count == 1)
-        {
-            dst[0] = new Bound(L.ValuesStart, L.ValuesEnd - L.ValuesStart);
-            return 1;
-        }
-
-        long offsetsBytes = (long)(L.Count - 1) * OffsetSize;
-        using TPin offsetsPin = reader.PinBuffer(L.OffsetsStart, offsetsBytes);
-        ReadOnlySpan<byte> offsets = offsetsPin.Buffer;
-
-        long prevStart = 0;
-        Span<byte> scratch = stackalloc byte[4];
-        for (int i = 0; i < L.Count - 1; i++)
-        {
-            scratch.Clear();
-            offsets.Slice(i * OffsetSize, OffsetSize).CopyTo(scratch);
-            long nextStart = BinaryPrimitives.ReadUInt32LittleEndian(scratch);
-            dst[i] = new Bound(L.ValuesStart + prevStart, nextStart - prevStart);
-            prevStart = nextStart;
-        }
-        dst[L.Count - 1] = new Bound(L.ValuesStart + prevStart, L.ValuesEnd - L.ValuesStart - prevStart);
-        return L.Count;
-    }
-
     internal static long ReadU24LE<TReader, TPin>(scoped in TReader reader, long offset)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct

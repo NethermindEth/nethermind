@@ -19,7 +19,6 @@ public readonly unsafe ref struct MmapByteReader(byte* basePtr, long size) : IHs
 {
     private readonly byte* _basePtr = basePtr;
     public long Length => size;
-    public Bound Bound => new(0, size);
 
     public bool TryRead(long offset, scoped Span<byte> output)
     {
