@@ -3,22 +3,25 @@
 
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class TestMergeModule : Module
+public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
 {
-    public TestMergeModule() { }
-    public TestMergeModule(ITxPoolConfig _) { }
-    public TestMergeModule(IConfigProvider _) { }
+    public TestMergeModule(IConfigProvider configProvider) : this(configProvider.GetConfig<ITxPoolConfig>())
+    {
+    }
 
     protected override void Load(ContainerBuilder builder)
     {
@@ -44,5 +47,16 @@ public class TestMergeModule : Module
             .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
             ;
 
+        if (txPoolConfig.BlobsSupport.SupportsReorgs())
+        {
+            // Registered for resolution by tests that need it; no `ResolveOnServiceActivation` trigger
+            // since the prior `IBlockFinalizationManager`-keyed trigger never actually fired in
+            // any test fixture (the type wasn't a dependency in test DI chains).
+            builder.AddSingleton<ProcessedTransactionsDbCleaner, IBlockTree, IDbProvider, ILogManager>(
+                static (blockTree, dbProvider, logManager) => new ProcessedTransactionsDbCleaner(
+                    blockTree,
+                    dbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs),
+                    logManager));
+        }
     }
 }
