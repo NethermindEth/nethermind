@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -30,7 +29,7 @@ public class InclusionListTxSourceTests
         InclusionListTxSource source = CreateSource();
         BlockHeader parent = Build.A.BlockHeader.TestObject;
 
-        source.GetTransactions(parent, 30_000_000).Should().BeEmpty();
+        Assert.That(source.GetTransactions(parent, 30_000_000), Is.Empty);
     }
 
     [Test]
@@ -41,12 +40,14 @@ public class InclusionListTxSourceTests
         Transaction tx2 = Build.A.Transaction.WithNonce(2).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
         source.Set([Encode(tx1)], Bogota.Instance);
-        source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000)
-            .Select(t => t.Nonce.u0).Should().Equal(1ul);
+        Assert.That(
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000).Select(t => t.Nonce.u0),
+            Is.EqualTo(new[] { 1ul }));
 
         source.Set([Encode(tx2)], Bogota.Instance);
-        source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000)
-            .Select(t => t.Nonce.u0).Should().Equal(2ul);
+        Assert.That(
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000).Select(t => t.Nonce.u0),
+            Is.EqualTo(new[] { 2ul }));
     }
 
     [Test]
@@ -56,15 +57,15 @@ public class InclusionListTxSourceTests
         Transaction tx = Build.A.Transaction.WithNonce(5).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
         source.Set([Encode(tx)], Bogota.Instance);
-        source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000).Should().HaveCount(1);
+        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000).Count(), Is.EqualTo(1));
 
         source.Set([], Bogota.Instance);
-        source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000).Should().BeEmpty();
+        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000), Is.Empty);
     }
 
     // Per spec, blob (EIP-4844) transactions are excluded from the inclusion list.
     [Test]
-    public void SupportsBlobs_is_false() => CreateSource().SupportsBlobs.Should().BeFalse();
+    public void SupportsBlobs_is_false() => Assert.That(CreateSource().SupportsBlobs, Is.False);
 
     private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 }

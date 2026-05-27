@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -43,7 +42,7 @@ public class InclusionListBuilderTests
         pool.GetPendingTransactions().Returns([]);
         InclusionListBuilder builder = new(pool);
 
-        builder.GetInclusionList().Should().BeEmpty();
+        Assert.That(builder.GetInclusionList(), Is.Empty);
     }
 
     [Test]
@@ -58,9 +57,9 @@ public class InclusionListBuilderTests
         List<byte[]> il = builder.GetInclusionList().ToList();
 
         int totalBytes = il.Sum(t => t.Length);
-        totalBytes.Should().BeLessOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList);
+        Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
         // Sanity: we returned at least one tx so the cap isn't a false positive on selection
-        il.Should().NotBeEmpty();
+        Assert.That(il, Is.Not.Empty);
     }
 
     [Test]
@@ -78,7 +77,7 @@ public class InclusionListBuilderTests
 
         // Either both fit (sum below cap) or huge alone fits and tiny is skipped — both legal.
         int totalBytes = il.Sum(t => t.Length);
-        totalBytes.Should().BeLessOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList);
+        Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
     }
 
     [Test]
@@ -98,7 +97,7 @@ public class InclusionListBuilderTests
         {
             Rlp.ValueDecoderContext ctx = new(bytes);
             Transaction decoded = TxDecoder.Instance.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
-            originals.Should().Contain(decoded.Hash!);
+            Assert.That(originals, Does.Contain(decoded.Hash!));
         }
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -45,14 +44,14 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 fcuState = new(startingHead, Keccak.Zero, startingHead);
 
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV5(fcuState, payloadAttrs);
-        fcuResult.Result.ResultType.Should().Be(ResultType.Success, fcuResult.Result.Error);
-        fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        fcuResult.Data.PayloadId.Should().NotBeNull();
+        Assert.That(fcuResult.Result.ResultType, Is.EqualTo(ResultType.Success), fcuResult.Result.Error);
+        Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(fcuResult.Data.PayloadId, Is.Not.Null);
 
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcuResult.Data.PayloadId!));
-        payloadResult.Data.Should().NotBeNull();
+        Assert.That(payloadResult.Data, Is.Not.Null);
         ExecutionPayloadV4 executionPayload = payloadResult.Data!.ExecutionPayload;
-        executionPayload.Transactions.Should().BeEmpty();
+        Assert.That(executionPayload.Transactions, Is.Empty);
 
         ResultWrapper<PayloadStatusV1> newPayload = await rpc.engine_newPayloadV6(
             executionPayload,
@@ -60,18 +59,18 @@ public partial class EngineModuleTests
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
             inclusionListTransactions: []);
-        newPayload.Result.ResultType.Should().Be(ResultType.Success, newPayload.Result.Error);
-        newPayload.Data.Status.Should().Be(PayloadStatus.Valid);
-        newPayload.Data.LatestValidHash.Should().Be(executionPayload.BlockHash);
+        Assert.That(newPayload.Result.ResultType, Is.EqualTo(ResultType.Success), newPayload.Result.Error);
+        Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(newPayload.Data.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
 
         // Promote the new block to head, finalized, and safe.
         ResultWrapper<ForkchoiceUpdatedV1Result> finalFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash),
             payloadAttributes: null);
-        finalFcu.Result.ResultType.Should().Be(ResultType.Success, finalFcu.Result.Error);
-        finalFcu.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        finalFcu.Data.PayloadStatus.LatestValidHash.Should().Be(executionPayload.BlockHash);
-        finalFcu.Data.PayloadId.Should().BeNull();
+        Assert.That(finalFcu.Result.ResultType, Is.EqualTo(ResultType.Success), finalFcu.Result.Error);
+        Assert.That(finalFcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(finalFcu.Data.PayloadStatus.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
+        Assert.That(finalFcu.Data.PayloadId, Is.Null);
     }
 
     /// <summary>
@@ -120,9 +119,9 @@ public partial class EngineModuleTests
             executionRequests: baselinePayload.Data!.ExecutionRequests,
             inclusionListTransactions: inclusionList);
 
-        result.Result.ResultType.Should().Be(ResultType.Success, result.Result.Error);
-        result.Data.Status.Should().Be(PayloadStatus.InvalidInclusionList);
-        result.Data.LatestValidHash.Should().Be(emptyPayload.BlockHash);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InvalidInclusionList));
+        Assert.That(result.Data.LatestValidHash, Is.EqualTo(emptyPayload.BlockHash));
     }
 
     /// <summary>
@@ -151,17 +150,18 @@ public partial class EngineModuleTests
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: [txBytes]));
 
-        fcu.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        fcu.Data.PayloadId.Should().NotBeNull();
+        Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(fcu.Data.PayloadId, Is.Not.Null);
 
         // With FOCIL, PayloadPreparationService.ProduceEmptyBlock drops the EmptyBlock fast
         // path whenever the CL supplies a non-empty IL, so the very first build already
         // contains the IL transactions. Fetch once via engine_getPayloadV6 — no polling /
         // sleeping needed.
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
-        payloadResult.Data.Should().NotBeNull();
+        Assert.That(payloadResult.Data, Is.Not.Null);
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
-        payload.Transactions.Should().ContainSingle().Which.Should().BeEquivalentTo(txBytes);
+        Assert.That(payload.Transactions, Has.Length.EqualTo(1));
+        Assert.That(payload.Transactions[0], Is.EqualTo(txBytes));
 
         // The block-as-built must round-trip through newPayloadV6 with the same IL.
         ResultWrapper<PayloadStatusV1> verify = await rpc.engine_newPayloadV6(
@@ -170,8 +170,8 @@ public partial class EngineModuleTests
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: [],
             inclusionListTransactions: [txBytes]);
-        verify.Result.ResultType.Should().Be(ResultType.Success, verify.Result.Error);
-        verify.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(verify.Result.ResultType, Is.EqualTo(ResultType.Success), verify.Result.Error);
+        Assert.That(verify.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     /// <summary>

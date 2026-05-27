@@ -3,7 +3,6 @@
 
 #nullable enable
 
-using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -41,7 +40,7 @@ public class PayloadAttributesPayloadIdTests
         string idA = BaseAttrs([[0x01, 0x02]]).GetPayloadId(parent);
         string idB = BaseAttrs([[0x03, 0x04]]).GetPayloadId(parent);
 
-        idA.Should().NotBe(idB);
+        Assert.That(idA, Is.Not.EqualTo(idB));
     }
 
     [Test]
@@ -51,7 +50,7 @@ public class PayloadAttributesPayloadIdTests
         string idEmpty = BaseAttrs([]).GetPayloadId(parent);
         string idOne = BaseAttrs([[0x01]]).GetPayloadId(parent);
 
-        idEmpty.Should().NotBe(idOne);
+        Assert.That(idEmpty, Is.Not.EqualTo(idOne));
     }
 
     [Test]
@@ -61,7 +60,7 @@ public class PayloadAttributesPayloadIdTests
         string idAB = BaseAttrs([[0x01], [0x02]]).GetPayloadId(parent);
         string idBA = BaseAttrs([[0x02], [0x01]]).GetPayloadId(parent);
 
-        idAB.Should().NotBe(idBA);
+        Assert.That(idAB, Is.Not.EqualTo(idBA));
     }
 
     [Test]
@@ -71,7 +70,7 @@ public class PayloadAttributesPayloadIdTests
         string id1 = BaseAttrs([[0x01, 0x02, 0x03]]).GetPayloadId(parent);
         string id2 = BaseAttrs([[0x01, 0x02, 0x03]]).GetPayloadId(parent);
 
-        id1.Should().Be(id2);
+        Assert.That(id1, Is.EqualTo(id2));
     }
 
     [Test]
@@ -84,6 +83,6 @@ public class PayloadAttributesPayloadIdTests
         string idNull = BaseAttrs(null).GetPayloadId(parent);
         string idEmpty = BaseAttrs([]).GetPayloadId(parent);
 
-        idNull.Should().NotBe(idEmpty);
+        Assert.That(idNull, Is.Not.EqualTo(idEmpty));
     }
 }

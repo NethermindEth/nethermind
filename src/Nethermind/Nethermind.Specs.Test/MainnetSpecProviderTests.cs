@@ -87,7 +87,7 @@ namespace Nethermind.Specs.Test
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.AmsterdamBlockTimestamp, false)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.BogotaBlockTimestamp, true)]
         public void Bogota_eips(long blockNumber, ulong timestamp, bool isEnabled) =>
-            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7805Enabled.Should().Be(isEnabled);
+            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7805Enabled, Is.EqualTo(isEnabled));
 
         [Test]
         public void Dao_block_number_is_correct() => Assert.That(_specProvider.DaoBlockNumber, Is.EqualTo(1920000L));

@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -56,9 +55,9 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         List<Transaction> drained = composed.GetTransactions(parent, 30_000_000).ToList();
 
-        drained.Should().HaveCountGreaterOrEqualTo(2);
-        drained[0].Nonce.Should().Be((UInt256)3, "the IL transaction must be drained before the mempool source");
-        drained.Any(t => t.Nonce == (UInt256)7).Should().BeTrue("the mempool transaction must still appear after the IL");
+        Assert.That(drained, Has.Count.GreaterThanOrEqualTo(2));
+        Assert.That(drained[0].Nonce, Is.EqualTo((UInt256)3), "the IL transaction must be drained before the mempool source");
+        Assert.That(drained.Any(t => t.Nonce == (UInt256)7), Is.True, "the mempool transaction must still appear after the IL");
     }
 
     [Test]
@@ -88,7 +87,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         List<Transaction> drained = composed.GetTransactions(parent, 30_000_000).ToList();
 
-        drained.Should().ContainSingle();
-        drained[0].Nonce.Should().Be((UInt256)7);
+        Assert.That(drained, Has.Count.EqualTo(1));
+        Assert.That(drained[0].Nonce, Is.EqualTo((UInt256)7));
     }
 }
