@@ -36,7 +36,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             (long pivotNumber, Hash256 pivotHash) = _blockTree.SyncPivot;
             BlockHeader? pivotHeader = _blockTree.FindHeader(pivotHash, blockNumber: pivotNumber);
             return pivotHeader is not null &&
-                   (pivotHeader.BlockAccessListHash is null || _blockAccessListStore.Exists(pivotHash));
+                   (pivotHeader.BlockAccessListHash is null || _blockAccessListStore.Exists(pivotNumber, pivotHash));
         };
 
     private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.BlockAccessLists, 0, true);
@@ -236,7 +236,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 bool isValid = !hasBreachedProtocol && IsValidAccessList(blockInfo, accessListRlp, out errorMessage);
                 if (isValid)
                 {
-                    _blockAccessListStore.Insert(blockInfo.BlockHash, accessListRlp);
+                    _blockAccessListStore.Insert(blockInfo.BlockNumber, blockInfo.BlockHash, accessListRlp);
                     _syncStatusList.MarkInserted(blockInfo.BlockNumber);
                     validResponsesCount++;
                 }
