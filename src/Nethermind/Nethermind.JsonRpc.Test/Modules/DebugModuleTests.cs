@@ -214,7 +214,7 @@ public class DebugModuleTests
         Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
         byte[] rawBal = [0xc0];
         _debugBridge.GetBlock(BlockParameter.Latest).Returns(block);
-        _blockchainBridge.GetBlockAccessListRlp(block.Hash!).Returns(ArrayMemoryManager.From(rawBal));
+        _blockchainBridge.GetBlockAccessListRlp(block.Number, block.Hash!).Returns(ArrayMemoryManager.From(rawBal));
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         string serialized = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest");
@@ -240,7 +240,7 @@ public class DebugModuleTests
             {
                 Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
                 debug.GetBlock(BlockParameter.Latest).Returns(block);
-                chain.GetBlockAccessListRlp(block.Hash!).ReturnsNull();
+                chain.GetBlockAccessListRlp(block.Number, block.Hash!).ReturnsNull();
             }),
             ErrorCodes.PrunedHistoryUnavailable)
         { TestName = "Get_raw_block_access_list_when_pruned" };
