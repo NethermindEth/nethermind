@@ -777,6 +777,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
         spec.IsPrecompile(recipient).Should().BeFalse();
         CodeInfo codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: true, spec, out Address? delegationAddress);
         ReferenceEquals(codeInfo, CodeInfo.Empty).Should().BeTrue();
+        codeInfo.IsEmpty.Should().BeTrue();
         delegationAddress.Should().BeNull();
 
         TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);

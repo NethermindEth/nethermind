@@ -285,7 +285,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress)
-            => delegationAddress is null && (codeInfo.IsEmpty || ReferenceEquals(codeInfo, CodeInfo.Empty));
+            => delegationAddress is null && codeInfo.IsEmpty;
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]

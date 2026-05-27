@@ -310,7 +310,7 @@ public static partial class EvmInstructions
             in snapshot);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool HasNoExecutableCode(CodeInfo codeInfo) => codeInfo.IsEmpty || ReferenceEquals(codeInfo, CodeInfo.Empty);
+        static bool HasNoExecutableCode(CodeInfo codeInfo) => codeInfo.IsEmpty;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         static EvmExceptionType SlowCall(
