@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

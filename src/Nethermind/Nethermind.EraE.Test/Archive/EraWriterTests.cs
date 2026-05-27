@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
-using Nethermind.Era1;
+using Nethermind.Era1.Exceptions;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;

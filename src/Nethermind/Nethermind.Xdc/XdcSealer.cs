@@ -10,6 +10,7 @@ using Nethermind.Serialization.Rlp;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
