@@ -91,12 +91,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Hash256 prevRoot = currentStateId.StateRoot.ToCommitment();
             ParentStateTrieNodeReader proofReader = new(snapshotBundle);
 
-            // Fresh sparse trie per block. PreservedSparseTrie infrastructure is wired
-            // but disabled by default because cross-block reuse doesn't help perf without
-            // ALSO skipping the proof reads for already-revealed hot paths. That requires
-            // MultiProofReader to be aware of the sparse trie's state (M5 prefetcher
-            // territory). Until then, fresh-per-block is the faster path.
-            _sparseRootComputer = new SparseRootComputer(proofReader, prevRoot);
+            // M3: cross-block sparse trie reuse via PreservedSparseTrie. Combined with
+            // dirty-path-only HashNode and minLen-aware proof reading, the next block
+            // skips proof reads for hot paths already revealed in the trie.
+            if (preservedSparseTrie is not null)
+            {
+                _sparseStateTrie = preservedSparseTrie.Take(prevRoot);
+                _sparseRootComputer = new SparseRootComputer(_sparseStateTrie, proofReader, prevRoot);
+            }
+            else
+            {
+                _sparseRootComputer = new SparseRootComputer(proofReader, prevRoot);
+            }
 
             // After enough consecutive matches, skip Patricia UpdateRootHash (unless verification mode is on)
             _sparseIsAuthoritative = !configuration.SparseTrieVerificationMode
@@ -357,9 +363,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _currentStateId = newStateId;
 
-        // Fresh sparse trie per block.
+        // M3: anchor the sparse trie for cross-block reuse if the computed root matches.
         if (_sparseRootComputer is not null)
         {
+            Hash256 newRoot = newStateId.StateRoot.ToCommitment();
+
+            if (_preservedSparseTrie is not null && _sparseStateTrie is not null)
+            {
+                if (_sparseComputedRoot is not null && _sparseComputedRoot == newRoot)
+                    _preservedSparseTrie.StoreAnchored(_sparseStateTrie, newRoot);
+                else
+                    _preservedSparseTrie.StoreCleared(_sparseStateTrie);
+                _sparseStateTrie = null;
+            }
+
             _sparseRootComputer.Dispose();
             _sparseRootComputer = null;
             _sparseComputedRoot = null;

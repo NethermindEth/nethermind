@@ -222,7 +222,10 @@ public sealed class SparsePatriciaTree : IDisposable
     }
 
     /// <summary>
-    /// Applies leaf updates to the trie. Updates that hit blinded nodes invoke the callback.
+    /// Applies leaf updates to the trie. Updates that hit blinded nodes invoke the callback
+    /// with (target, minLen) where minLen is the depth at which the blind was hit. The retry
+    /// proof reader can then skip nodes ABOVE minLen for that target (they're already revealed
+    /// in this sparse trie). This mirrors Reth's ProofV2Target.with_min_len() optimization.
     /// </summary>
     public void UpdateLeaves(
         Dictionary<Hash256, LeafUpdate> updates,
@@ -235,7 +238,12 @@ public sealed class SparsePatriciaTree : IDisposable
                 nibblePath, kvp.Value, out TreePath proofTarget);
 
             if (result == SparseSubtrie.UpdateResult.NeedsProof)
-                proofRequired?.Invoke(kvp.Key, 0);
+            {
+                // depth walked through sparse trie before hitting blinded = totalNibbles - remainingPath.
+                // proofTarget is the REMAINING path (including the blinded nibble), so minLen = nibbles consumed.
+                int minLen = nibblePath.Length - proofTarget.Length;
+                proofRequired?.Invoke(kvp.Key, (byte)Math.Min(minLen, byte.MaxValue));
+            }
         }
     }
 

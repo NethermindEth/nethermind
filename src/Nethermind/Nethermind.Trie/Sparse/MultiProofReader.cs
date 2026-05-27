@@ -17,14 +17,24 @@ public static class MultiProofReader
 {
     public static DecodedMultiProof ReadAccountProofs(
         ITrieNodeReader reader, Hash256 stateRoot, Hash256[] hashedAddresses)
+        => ReadAccountProofs(reader, stateRoot, hashedAddresses, null);
+
+    /// <summary>
+    /// Reads multi-proofs with optional per-target minLen filtering. Nodes at depth &lt; the
+    /// minimum minLen across all matching targets are NOT added to the output (the caller
+    /// already has them revealed). Mirrors Reth's ProofV2Target.with_min_len() optimization.
+    /// Pass null minLens to fetch full proofs from root (initial proof read).
+    /// </summary>
+    public static DecodedMultiProof ReadAccountProofs(
+        ITrieNodeReader reader, Hash256 stateRoot, Hash256[] hashedAddresses, byte[]? minLens)
     {
         DecodedMultiProof proof = new();
         if (stateRoot == Keccak.EmptyTreeHash || hashedAddresses.Length == 0)
             return proof;
 
-        byte[][] targets = SortTargets(hashedAddresses);
+        (byte[][] targets, byte[] sortedMinLens) = SortTargetsWithMinLen(hashedAddresses, minLens);
         LoadRlpFunc loadRlp = new StateLoadRlp(reader);
-        WalkTrie(loadRlp, stateRoot, targets, proof.AccountNodes);
+        WalkTrie(loadRlp, stateRoot, targets, sortedMinLens, proof.AccountNodes);
         return proof;
     }
 
@@ -36,9 +46,9 @@ public static class MultiProofReader
             return proof;
 
         List<ProofNode> storageNodes = [];
-        byte[][] targets = SortTargets(hashedSlots);
+        (byte[][] targets, byte[] sortedMinLens) = SortTargetsWithMinLen(hashedSlots, null);
         LoadRlpFunc loadRlp = new StorageLoadRlp(reader, accountPathHash);
-        WalkTrie(loadRlp, storageRoot, targets, storageNodes);
+        WalkTrie(loadRlp, storageRoot, targets, sortedMinLens, storageNodes);
 
         if (storageNodes.Count > 0)
             proof.StorageNodes[accountPathHash] = storageNodes;
@@ -66,13 +76,23 @@ public static class MultiProofReader
         T loadRlp,
         Hash256 rootHash,
         byte[][] sortedTargetNibbles,
+        byte[] sortedMinLens,
         List<ProofNode> output) where T : LoadRlpFunc
     {
         byte[] rootRlp = loadRlp.Load(TreePath.Empty, rootHash, ReadFlags.None);
         ProofNode rootProof = DecodeProofNode(rootRlp, TreePath.Empty);
-        output.Add(rootProof);
+        // Add root only if at least one target needs depth 0 (i.e., minLen == 0 for some target).
+        if (AnyTargetNeedsDepth(sortedMinLens, 0, sortedMinLens.Length, 0))
+            output.Add(rootProof);
 
-        WalkNode(loadRlp, rootProof, TreePath.Empty, sortedTargetNibbles, 0, sortedTargetNibbles.Length, 0, output);
+        WalkNode(loadRlp, rootProof, TreePath.Empty, sortedTargetNibbles, sortedMinLens, 0, sortedTargetNibbles.Length, 0, output);
+    }
+
+    private static bool AnyTargetNeedsDepth(byte[] minLens, int start, int end, int depth)
+    {
+        for (int i = start; i < end; i++)
+            if (minLens[i] <= depth) return true;
+        return false;
     }
 
     private static void WalkNode<T>(
@@ -80,6 +100,7 @@ public static class MultiProofReader
         ProofNode node,
         TreePath currentPath,
         byte[][] targets,
+        byte[] minLens,
         int targetStart,
         int targetEnd,
         int nibbleDepth,
@@ -117,22 +138,24 @@ public static class MultiProofReader
                     {
                         RlpNode childRef = node.ChildRlps[0];
                         TreePath childPath = currentPath.Append(extKey);
+                        // Only emit this child if some target needs its depth (minLen <= newDepth)
+                        bool needEmit = AnyTargetNeedsDepth(minLens, matchStart < matchEnd ? matchStart : targetStart, matchStart < matchEnd ? matchEnd : targetEnd, newDepth);
 
                         if (childRef.IsHash())
                         {
                             Hash256 childHash = childRef.AsHash();
                             byte[] childRlp = loadRlp.Load(childPath, childHash, ReadFlags.None);
                             ProofNode childProof = DecodeProofNode(childRlp, childPath);
-                            output.Add(childProof);
+                            if (needEmit) output.Add(childProof);
                             if (matchStart < matchEnd)
-                                WalkNode(loadRlp, childProof, childPath, targets, matchStart, matchEnd, newDepth, output);
+                                WalkNode(loadRlp, childProof, childPath, targets, minLens, matchStart, matchEnd, newDepth, output);
                         }
                         else
                         {
                             ProofNode childProof = DecodeProofNode(childRef.AsSpan().ToArray(), childPath);
-                            output.Add(childProof);
+                            if (needEmit) output.Add(childProof);
                             if (matchStart < matchEnd)
-                                WalkNode(loadRlp, childProof, childPath, targets, matchStart, matchEnd, newDepth, output);
+                                WalkNode(loadRlp, childProof, childPath, targets, minLens, matchStart, matchEnd, newDepth, output);
                         }
                     }
                     break;
@@ -164,20 +187,22 @@ public static class MultiProofReader
                         if (childRef.IsNull) continue;
 
                         TreePath childPath = currentPath.Append(nibble);
+                        int childDepth = nibbleDepth + 1;
+                        bool needEmit = AnyTargetNeedsDepth(minLens, subStart, subEnd, childDepth);
 
                         if (childRef.IsHash())
                         {
                             Hash256 childHash = childRef.AsHash();
                             byte[] childRlp = loadRlp.Load(childPath, childHash, ReadFlags.None);
                             ProofNode childProof = DecodeProofNode(childRlp, childPath);
-                            output.Add(childProof);
-                            WalkNode(loadRlp, childProof, childPath, targets, subStart, subEnd, nibbleDepth + 1, output);
+                            if (needEmit) output.Add(childProof);
+                            WalkNode(loadRlp, childProof, childPath, targets, minLens, subStart, subEnd, childDepth, output);
                         }
                         else
                         {
                             ProofNode childProof = DecodeProofNode(childRef.AsSpan().ToArray(), childPath);
-                            output.Add(childProof);
-                            WalkNode(loadRlp, childProof, childPath, targets, subStart, subEnd, nibbleDepth + 1, output);
+                            if (needEmit) output.Add(childProof);
+                            WalkNode(loadRlp, childProof, childPath, targets, minLens, subStart, subEnd, childDepth, output);
                         }
                     }
                     break;
@@ -298,6 +323,29 @@ public static class MultiProofReader
             nibbles[i] = Nibbles.BytesToNibbleBytes(keys[i].Bytes);
         Array.Sort(nibbles, CompareNibbleArrays);
         return nibbles;
+    }
+
+    /// <summary>Sorts targets (and aligned minLens). Pass null minLens to default everything to 0.</summary>
+    private static (byte[][] targets, byte[] minLens) SortTargetsWithMinLen(Hash256[] keys, byte[]? minLens)
+    {
+        int n = keys.Length;
+        byte[][] nibbles = new byte[n][];
+        byte[] sortedMinLens = new byte[n];
+        int[] indices = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            nibbles[i] = Nibbles.BytesToNibbleBytes(keys[i].Bytes);
+            indices[i] = i;
+        }
+        // Sort indices by nibble order
+        Array.Sort(indices, (a, b) => CompareNibbleArrays(nibbles[a], nibbles[b]));
+        byte[][] sortedNibbles = new byte[n][];
+        for (int i = 0; i < n; i++)
+        {
+            sortedNibbles[i] = nibbles[indices[i]];
+            sortedMinLens[i] = minLens is null ? (byte)0 : minLens[indices[i]];
+        }
+        return (sortedNibbles, sortedMinLens);
     }
 
     private static int CompareNibbleArrays(byte[] a, byte[] b)

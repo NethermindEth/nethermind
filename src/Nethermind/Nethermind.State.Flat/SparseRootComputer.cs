@@ -60,7 +60,9 @@ public sealed class SparseRootComputer : IDisposable
 
         if (entry.PreviousStorageRoot != Keccak.EmptyTreeHash)
         {
-            Hash256[] targetKeys = entry.Updates.Keys.ToArray();
+            Hash256[] targetKeys = new Hash256[entry.Updates.Count];
+            int i = 0;
+            foreach (Hash256 k in entry.Updates.Keys) targetKeys[i++] = k;
             DecodedMultiProof initialProof = MultiProofReader.ReadStorageProofs(
                 _reader, accountPathHash, entry.PreviousStorageRoot, targetKeys);
             if (initialProof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? initialNodes))
@@ -104,7 +106,11 @@ public sealed class SparseRootComputer : IDisposable
         if (_accountChanges is null || _accountChanges.Count == 0)
             return _previousStateRoot;
 
-        Hash256[] targetKeys = _accountChanges.Keys.ToArray();
+        Hash256[] targetKeys = new Hash256[_accountChanges.Count];
+        {
+            int i = 0;
+            foreach (Hash256 k in _accountChanges.Keys) targetKeys[i++] = k;
+        }
 
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         DecodedMultiProof initialProof = MultiProofReader.ReadAccountProofs(
@@ -123,14 +129,14 @@ public sealed class SparseRootComputer : IDisposable
         for (int retry = 0; retry < MaxRetries; retry++)
         {
             long ts = System.Diagnostics.Stopwatch.GetTimestamp();
-            List<Hash256> targets = [];
-            _trie.UpdateAccountLeaves(_accountChanges, (key, _) => targets.Add(key));
+            List<(Hash256 key, byte minLen)> targets = [];
+            _trie.UpdateAccountLeaves(_accountChanges, (key, minLen) => targets.Add((key, minLen)));
             updateMsAccum += (System.Diagnostics.Stopwatch.GetTimestamp() - ts) * 1000 / System.Diagnostics.Stopwatch.Frequency;
             LastRetryCount = retry;
             if (targets.Count == 0) break;
 
             // Detect stuck-on-same-target case: track if the same target keeps coming back
-            Hash256 firstTarget = targets[0];
+            Hash256 firstTarget = targets[0].key;
             if (lastTarget is not null && lastTarget == firstTarget) sameTargetCount++;
             else sameTargetCount = 0;
             lastTarget = firstTarget;
@@ -139,7 +145,11 @@ public sealed class SparseRootComputer : IDisposable
             // (no target walks through that nibble). Resolve the sibling directly from the
             // sparse trie's known blinded hashes and inject it as a ProofNode.
             if (sameTargetCount >= 1)
-                TryResolveBlindedSiblings(targets);
+            {
+                List<Hash256> deletionTargets = [];
+                foreach ((Hash256 k, _) in targets) deletionTargets.Add(k);
+                TryResolveBlindedSiblings(deletionTargets);
+            }
 
             if (retry == MaxRetries - 1)
                 throw new TrieException(
@@ -147,8 +157,17 @@ public sealed class SparseRootComputer : IDisposable
                     $"{targets.Count} blinded targets remain. firstTarget={firstTarget}, " +
                     $"prevRoot={_previousStateRoot}, totalChanges={_accountChanges.Count}");
 
+            // Pass per-target minLen so the proof reader can SKIP adding nodes ABOVE that
+            // depth (sparse trie already has them revealed). Major win for cross-block reuse.
+            Hash256[] tArr = new Hash256[targets.Count];
+            byte[] minLens = new byte[targets.Count];
+            for (int i = 0; i < targets.Count; i++)
+            {
+                tArr[i] = targets[i].key;
+                minLens[i] = targets[i].minLen;
+            }
             DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
-                _reader, _previousStateRoot, targets.ToArray());
+                _reader, _previousStateRoot, tArr, minLens);
             _trie.AccountTrie.RevealNodes(proof.AccountNodes);
         }
 
@@ -190,10 +209,8 @@ public sealed class SparseRootComputer : IDisposable
                 ProofNode siblingProof = MultiProofReader.DecodeProofNode(siblingRlp, siblingPath);
                 _trie.AccountTrie.RevealNodes([siblingProof]);
             }
-            catch
-            {
-                // Failure here is non-fatal; the outer retry will throw with diagnostics.
-            }
+            catch (MissingTrieNodeException) { /* sibling missing in DB — outer retry will throw with diagnostics */ }
+            catch (TrieNodeHashMismatchException) { /* same as above */ }
         }
     }
 
