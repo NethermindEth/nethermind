@@ -16,8 +16,7 @@ internal static class Discv5NodeRecordConverter
         node = null;
 
         PublicKey? key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
-        IPAddress? ip = enr.GetObj<IPAddress>(EnrContentKey.Ip);
-        int? discoveryPort = enr.GetValue<int>(EnrContentKey.Udp) ?? enr.GetValue<int>(EnrContentKey.Tcp);
+        (IPAddress? ip, int? discoveryPort) = GetDiscoveryEndpoint(enr);
         if (key is null || ip is null || discoveryPort is null)
         {
             return false;
@@ -38,5 +37,19 @@ internal static class Discv5NodeRecordConverter
             Enr = enr.EnrString
         };
         return true;
+    }
+
+    internal static (IPAddress? Ip, int? Port) GetDiscoveryEndpoint(NodeRecord enr)
+    {
+        IPAddress? ip = enr.GetObj<IPAddress>(EnrContentKey.Ip);
+        int? udp = enr.GetValue<int>(EnrContentKey.Udp);
+        if (ip is not null && udp is not null)
+        {
+            return (ip, udp);
+        }
+
+        IPAddress? ip6 = enr.GetObj<IPAddress>(EnrContentKey.Ip6);
+        int? udp6 = enr.GetValue<int>(EnrContentKey.Udp6);
+        return ip6 is not null && udp6 is not null ? (ip6, udp6) : (null, null);
     }
 }

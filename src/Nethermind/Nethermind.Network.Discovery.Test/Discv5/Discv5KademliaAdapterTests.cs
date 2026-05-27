@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -63,6 +64,19 @@ public class Discv5KademliaAdapterTests
         Discv5KademliaAdapter adapter = CreateAdapter();
 
         Assert.Throws<ArgumentOutOfRangeException>(() => adapter.GetNodesAtDistances([distance]));
+    }
+
+    [Test]
+    public void TryAcceptChallenge_ShouldLimitBurstPerIp()
+    {
+        Discv5KademliaAdapter adapter = CreateAdapter();
+        IPEndPoint endpoint = IPEndPoint.Parse("192.0.2.1:30303");
+
+        Assert.That(adapter.TryAcceptChallenge(endpoint), Is.True);
+        Assert.That(adapter.TryAcceptChallenge(endpoint), Is.True);
+        Assert.That(adapter.TryAcceptChallenge(endpoint), Is.True);
+        Assert.That(adapter.TryAcceptChallenge(endpoint), Is.True);
+        Assert.That(adapter.TryAcceptChallenge(endpoint), Is.False);
     }
 
     private Discv5KademliaAdapter CreateAdapter() => new(

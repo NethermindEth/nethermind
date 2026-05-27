@@ -118,27 +118,14 @@ internal static class Discv5MessageCodec
         int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(checkPosition);
         NodeRecord[] records = new NodeRecord[count];
-        int validRecords = 0;
         for (int i = 0; i < count; i++)
         {
             ReadOnlySpan<byte> record = ctx.PeekNextItem();
-            try
-            {
-                records[validRecords++] = NodeRecord.FromBytes(record);
-            }
-            catch (Exception)
-            {
-            }
-
+            records[i] = NodeRecord.FromBytes(record);
             ctx.SkipItem();
         }
 
         ctx.Check(checkPosition);
-        if (validRecords != records.Length)
-        {
-            Array.Resize(ref records, validRecords);
-        }
-
         return new Discv5Nodes(requestId, total, records);
     }
 }

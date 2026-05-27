@@ -33,7 +33,7 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Host part of the network node.
         /// </summary>
-        public string Host => _host ??= Address?.Address?.MapToIPv4()?.ToString();
+        public string Host => _host ??= FormatHost(Address?.Address);
         private string _host;
 
         /// <summary>
@@ -117,6 +117,9 @@ namespace Nethermind.Stats.Model
             _paddedHost = null;
             _paddedPort = null;
         }
+
+        private static string FormatHost(IPAddress address)
+            => address.IsIPv4MappedToIPv6 ? address.MapToIPv4().ToString() : address.ToString();
 
         // xxx.xxx.xxx.xxx = 15
         private string PaddedHost => _paddedHost ??= Host.PadLeft(15, ' ');

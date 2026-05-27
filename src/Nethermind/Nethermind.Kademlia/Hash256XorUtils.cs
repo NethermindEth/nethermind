@@ -65,12 +65,12 @@ public static class Hash256XorUtils
 
     public static KademliaHash GetRandomHashAtDistance(KademliaHash currentHash, int distance, Random random)
     {
-        // TODO: Just add a min/max range per bucket and randomized between them.
-        if (distance == MaxDistance)
+        if ((uint)distance > MaxDistance)
         {
-            return currentHash;
+            throw new ArgumentOutOfRangeException(nameof(distance), distance, $"Distance must be between 0 and {MaxDistance}.");
         }
 
+        // TODO: Just add a min/max range per bucket and randomized between them.
         Span<byte> randomized = stackalloc byte[KademliaHash.Length];
         random.NextBytes(randomized);
         return CopyForRandom(currentHash, randomized, MaxDistance - distance);

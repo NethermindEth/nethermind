@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
@@ -37,6 +38,9 @@ public class Discv5KademliaAdapter(
     private const int MaxNodesResponseMessages = 16;
     private const int MaxNodesResponseRecords = 64;
     private const long SentChallengeTtlMilliseconds = 60_000;
+    private static readonly TimeSpan ChallengeRateLimitWindow = TimeSpan.FromMilliseconds(100);
+    private const int ChallengeRateLimitBurstPerIp = 4;
+    private const int ChallengeRateLimitFilterSize = 8_192;
 
     private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
     private readonly TimeSpan _findNodeTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
@@ -52,6 +56,7 @@ public class Discv5KademliaAdapter(
     private readonly ConcurrentQueue<ResponseKey> _responseHandlerKeys = new();
     private readonly ConcurrentDictionary<Hash256, NodeRecord> _knownRecords = new();
     private readonly ConcurrentQueue<Hash256> _knownRecordKeys = new();
+    private readonly NodeFilter[] _challengeRateLimiters = CreateChallengeRateLimiters();
 
     /// <inheritdoc/>
     public Node[] GetNodesAtDistances(IEnumerable<int> distances, Node? excluding = null)
@@ -312,9 +317,22 @@ public class Discv5KademliaAdapter(
     private async Task SendWhoAreYou(IPEndPoint endpoint, Discv5Packet requestPacket, byte[] destinationNodeId)
     {
         Hash256 nodeId = new(destinationNodeId);
+        ChallengeKey challengeKey = new(nodeId, endpoint);
+        long now = Environment.TickCount64;
+        if (_sentChallenges.TryGetValue(challengeKey, out SentChallenge existingChallenge) && !IsExpired(existingChallenge, now))
+        {
+            return;
+        }
+
+        if (!TryAcceptChallenge(endpoint))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rate limiting discv5 WHOAREYOU challenge to {endpoint}.");
+            return;
+        }
+
         ulong enrSequence = TryGetKnownRecord(nodeId, out NodeRecord? record) ? record.EnrSequence : 0UL;
         byte[] packet = packetCodec.EncodeWhoAreYou(destinationNodeId, requestPacket.Nonce, enrSequence, out Discv5Challenge challenge);
-        SetSentChallenge(new ChallengeKey(nodeId, endpoint), challenge);
+        SetSentChallenge(challengeKey, challenge);
         await discoveryHandler.SendAsync(packet, endpoint);
     }
 
@@ -534,6 +552,30 @@ public class Discv5KademliaAdapter(
 
     private static bool IsExpired(SentChallenge challenge, long now)
         => now - challenge.CreatedAtMilliseconds > SentChallengeTtlMilliseconds;
+
+    internal bool TryAcceptChallenge(IPEndPoint endpoint)
+    {
+        for (int i = 0; i < _challengeRateLimiters.Length; i++)
+        {
+            if (_challengeRateLimiters[i].TryAccept(endpoint.Address, exactOnly: true))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static NodeFilter[] CreateChallengeRateLimiters()
+    {
+        NodeFilter[] filters = new NodeFilter[ChallengeRateLimitBurstPerIp];
+        for (int i = 0; i < filters.Length; i++)
+        {
+            filters[i] = NodeFilter.CreateExact(ChallengeRateLimitFilterSize, ChallengeRateLimitWindow);
+        }
+
+        return filters;
+    }
 
     private static void SetBounded<TKey, TValue>(
         ConcurrentDictionary<TKey, TValue> dictionary,

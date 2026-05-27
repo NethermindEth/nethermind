@@ -28,6 +28,8 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
             throw new InvalidOperationException("Cannot sign an ENR without a private key.");
         }
 
+        nodeRecord.OriginalRlp = null;
+        nodeRecord.OriginalContentRlp = null;
         nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
     }
 
@@ -55,14 +57,16 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         int recordRlpLength = ctx.ReadSequenceLength();
         if (recordRlpLength > 300)
             throw new RlpException("RLP received for ENR is bigger than 300 bytes");
+        int checkPosition = ctx.Position + recordRlpLength;
         NodeRecord nodeRecord = new();
+        byte[]? originalContent = null;
 
         ReadOnlySpan<byte> sigBytes = ctx.DecodeByteArraySpan(RlpLimit.L65);
         Signature signature = new(sigBytes, 0);
 
         bool canVerify = true;
         ulong enrSequence = ctx.DecodeULong();
-        while (ctx.Position < startPosition + recordRlpLength)
+        while (ctx.Position < checkPosition)
         {
             ReadOnlySpan<byte> key = ctx.DecodeByteArraySpan();
             switch (key.Length)
@@ -72,10 +76,19 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     nodeRecord.SetEntry(IdEntry.Instance);
                     break;
                 case 2 when key.SequenceEqual(EnrContentKey.IpU8):
+                {
                     ReadOnlySpan<byte> ipBytes = ctx.DecodeByteArraySpan();
                     IPAddress address = new(ipBytes);
                     nodeRecord.SetEntry(new IpEntry(address));
                     break;
+                }
+                case 3 when key.SequenceEqual(EnrContentKey.Ip6U8):
+                {
+                    ReadOnlySpan<byte> ipBytes = ctx.DecodeByteArraySpan();
+                    IPAddress address = new(ipBytes);
+                    nodeRecord.SetEntry(new Ip6Entry(address));
+                    break;
+                }
                 case 3 when key.SequenceEqual(EnrContentKey.EthU8):
                     _ = ctx.ReadSequenceLength();
                     _ = ctx.ReadSequenceLength();
@@ -84,13 +97,29 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.TcpU8):
+                {
                     int tcpPort = ctx.DecodePositiveInt();
                     nodeRecord.SetEntry(new TcpEntry(tcpPort));
                     break;
+                }
+                case 4 when key.SequenceEqual(EnrContentKey.Tcp6U8):
+                {
+                    int tcpPort = ctx.DecodePositiveInt();
+                    nodeRecord.SetEntry(new Tcp6Entry(tcpPort));
+                    break;
+                }
                 case 3 when key.SequenceEqual(EnrContentKey.UdpU8):
+                {
                     int udpPort = ctx.DecodePositiveInt();
                     nodeRecord.SetEntry(new UdpEntry(udpPort));
                     break;
+                }
+                case 4 when key.SequenceEqual(EnrContentKey.Udp6U8):
+                {
+                    int udpPort = ctx.DecodePositiveInt();
+                    nodeRecord.SetEntry(new Udp6Entry(udpPort));
+                    break;
+                }
                 case 9 when key.SequenceEqual(EnrContentKey.SecP256k1U8):
                     ReadOnlySpan<byte> keyBytes = ctx.DecodeByteArraySpan();
                     CompressedPublicKey reportedKey = new(keyBytes);
@@ -102,26 +131,30 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     ctx.SkipItem();
                     nodeRecord.Snap = true;
                     break;
-            }
+                }
         }
 
+        ctx.Check(checkPosition);
+        int endPosition = ctx.Position;
         if (!canVerify)
         {
             ctx.Position = startPosition;
             ctx.ReadSequenceLength();
             ctx.SkipItem(); // signature
-            int noSigContentLength = ctx.Length - ctx.Position;
+            int noSigContentLength = endPosition - ctx.Position;
             int noSigSequenceLength = Rlp.LengthOfSequence(noSigContentLength);
-            byte[] originalContent = new byte[noSigSequenceLength];
+            originalContent = new byte[noSigSequenceLength];
             RlpStream originalContentStream = new(originalContent);
             originalContentStream.StartSequence(noSigContentLength);
             originalContentStream.Write(ctx.Read(noSigContentLength));
-            ctx.Position = startPosition;
-            nodeRecord.OriginalContentRlp = originalContentStream.Data.ToArray()!;
+            ctx.Position = endPosition;
+            originalContent = originalContentStream.Data.ToArray()!;
         }
 
         nodeRecord.EnrSequence = enrSequence;
         nodeRecord.Signature = signature;
+        nodeRecord.OriginalContentRlp = originalContent;
+        nodeRecord.OriginalRlp = ctx.Data.Slice(startPosition, endPosition - startPosition).ToArray();
 
         return nodeRecord;
     }

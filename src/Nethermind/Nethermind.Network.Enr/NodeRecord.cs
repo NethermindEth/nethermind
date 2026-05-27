@@ -20,7 +20,11 @@ public class NodeRecord
 
     private Hash256? _contentHash;
 
+    private Signature? _signature;
+
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new(System.StringComparer.Ordinal);
+
+    internal byte[]? OriginalRlp { get; set; }
 
     /// <summary>
     /// This field is used when this <see cref="NodeRecord"/> is deserialized and an unknown entry is encountered.
@@ -74,6 +78,11 @@ public class NodeRecord
 
     private Hash256 CalculateContentHash()
     {
+        if (OriginalContentRlp is not null)
+        {
+            return ValueKeccak.Compute(OriginalContentRlp).ToCommitment();
+        }
+
         KeccakRlpStream rlpStream = new();
         EncodeContent(rlpStream);
         return rlpStream.GetHash();
@@ -82,7 +91,18 @@ public class NodeRecord
     /// <summary>
     /// A signature resulting from a secp256k1 signing of the [seq, k, v, ...] content.
     /// </summary>
-    public Signature? Signature { get; set; }
+    public Signature? Signature
+    {
+        get => _signature;
+        set
+        {
+            _signature = value;
+            OriginalRlp = null;
+            OriginalContentRlp = null;
+            _enrString = null;
+            _contentHash = null;
+        }
+    }
 
     public bool Snap { get; set; }
 
@@ -103,7 +123,9 @@ public class NodeRecord
             base64 = string.Concat(base64, new string('=', padding));
         }
 
-        return FromBytes(Convert.FromBase64String(base64));
+        NodeRecord nodeRecord = FromBytes(Convert.FromBase64String(base64));
+        nodeRecord._enrString = enrString;
+        return nodeRecord;
     }
 
     public static NodeRecord FromBytes(ReadOnlySpan<byte> bytes)
@@ -133,6 +155,11 @@ public class NodeRecord
         }
 
         Entries[entry.Key] = entry;
+        OriginalRlp = null;
+        OriginalContentRlp = null;
+        _enrString = null;
+        _contentHash = null;
+        _signature = null;
     }
 
     /// <summary>
@@ -195,8 +222,8 @@ public class NodeRecord
     /// Needed for optimized RLP serialization when a proper length byte array has to be allocated upfront.
     /// </summary>
     /// <returns>Length of the Rlp([signature, seq, k, v, ...])</returns>
-    public int GetRlpLengthWithSignature() => Rlp.LengthOfSequence(
-            GetContentLengthWithSignature());
+    public int GetRlpLengthWithSignature() => OriginalRlp?.Length ?? Rlp.LengthOfSequence(
+        GetContentLengthWithSignature());
 
     /// <summary>
     /// Applies Rlp([seq, k, v, ...]]).
@@ -217,17 +244,15 @@ public class NodeRecord
     /// Added here for diagnostic purposes - hes is easier to read and compare.
     /// </summary>
     /// <returns>Rlp([signature, seq, k, v, ...]) as a hex string</returns>
-    public string GetHex()
-    {
-        int contentLength = GetContentLengthWithSignature();
-        int totalLength = Rlp.LengthOfSequence(contentLength);
-        RlpStream rlpStream = new(totalLength);
-        Encode(rlpStream);
-        return rlpStream.Data.AsSpan().ToHexString();
-    }
+    public string GetHex() => ToRlpBytes().AsSpan().ToHexString();
 
     public byte[] ToRlpBytes()
     {
+        if (OriginalRlp is not null)
+        {
+            return OriginalRlp.ToArray();
+        }
+
         int rlpLength = GetRlpLengthWithSignature();
         RlpStream rlpStream = new(rlpLength);
         Encode(rlpStream);
@@ -240,6 +265,12 @@ public class NodeRecord
     /// <param name="rlpStream">An RLP stream to encode the content to.</param>
     public void Encode(RlpStream rlpStream)
     {
+        if (OriginalRlp is not null)
+        {
+            rlpStream.Write(OriginalRlp);
+            return;
+        }
+
         RequireSignature();
 
         int contentLength = GetContentLengthWithSignature();

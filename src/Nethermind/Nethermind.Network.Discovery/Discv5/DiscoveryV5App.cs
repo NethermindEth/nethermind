@@ -176,14 +176,13 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             return false;
         }
 
-        IPAddress? ip = enr.GetObj<IPAddress>(EnrContentKey.Ip);
+        (IPAddress? ip, int? discoveryPort) = Discv5NodeRecordConverter.GetDiscoveryEndpoint(enr);
         if (ip is null)
         {
             if (Logger.IsTrace) Logger.Trace("Enr declined, no IP.");
             return false;
         }
 
-        int? discoveryPort = GetDiscoveryPort(enr);
         if (discoveryPort is null)
         {
             if (Logger.IsTrace) Logger.Trace("Enr declined, no discovery UDP port.");
@@ -208,9 +207,6 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         };
         return true;
     }
-
-    private static int? GetDiscoveryPort(NodeRecord enr) =>
-        enr.GetValue<int>(EnrContentKey.Udp) ?? enr.GetValue<int>(EnrContentKey.Tcp);
 
     private static PublicKey? GetPublicKeyFromEnr(NodeRecord enr) =>
         enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();

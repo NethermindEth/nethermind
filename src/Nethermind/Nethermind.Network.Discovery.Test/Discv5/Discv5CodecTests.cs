@@ -7,7 +7,9 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using System;
 using System.Net;
 
 namespace Nethermind.Network.Discovery.Test.Discv5;
@@ -167,6 +169,25 @@ public class Discv5CodecTests
         Discv5FindNode decodedFindNode = (Discv5FindNode)decoded;
         Assert.That(decodedFindNode.RequestId, Is.EqualTo(message.RequestId));
         Assert.That(decodedFindNode.Distances, Is.EqualTo(message.Distances));
+    }
+
+    [Test]
+    public void MessageCodec_Rejects_Nodes_With_Invalid_Enr()
+    {
+        byte[] invalidRecord = new byte[304];
+        invalidRecord[0] = 0xf9;
+        invalidRecord[1] = 0x01;
+        invalidRecord[2] = 0x2d;
+
+        Rlp data = Rlp.Encode(
+            Rlp.Encode(new byte[] { 1 }),
+            Rlp.Encode(1),
+            Rlp.Encode(new Rlp(invalidRecord)));
+        byte[] message = new byte[data.Length + 1];
+        message[0] = (byte)Discv5MessageType.Nodes;
+        data.Bytes.CopyTo(message.AsSpan(1));
+
+        Assert.That(() => Discv5MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
     }
 
     private static Discv5PacketCodec CreateCodec(PrivateKey privateKey)

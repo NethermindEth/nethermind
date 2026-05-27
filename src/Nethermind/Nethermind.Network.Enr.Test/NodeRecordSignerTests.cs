@@ -124,6 +124,7 @@ public class NodeRecordSignerTests
         Console.WriteLine(testCase);
         Console.WriteLine(hex);
         Assert.That(signer.Verify(nodeRecord), Is.True);
+        Assert.That(nodeRecord.ToRlpBytes(), Is.EqualTo(Bytes.FromHexString(testCase)));
     }
 
 

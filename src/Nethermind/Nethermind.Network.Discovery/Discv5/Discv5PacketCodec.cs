@@ -52,7 +52,7 @@ public sealed class Discv5PacketCodec(
     [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
     INodeRecordProvider nodeRecordProvider,
     ICryptoRandom cryptoRandom,
-    IEcdsa ecdsa)
+    IEcdsa ecdsa) : IDisposable
 {
     public const int NonceSize = 12;
 
@@ -79,6 +79,8 @@ public sealed class Discv5PacketCodec(
     private readonly IEcdsa _ecdsa = ecdsa;
 
     internal byte[] LocalNodeId => _publicKey.Hash.BytesToArray();
+
+    public void Dispose() => _privateKey.Dispose();
 
     internal byte[] EncodeOrdinary(PublicKey destination, byte[] encryptionKey, Discv5Message message, byte[]? nonce = null)
     {

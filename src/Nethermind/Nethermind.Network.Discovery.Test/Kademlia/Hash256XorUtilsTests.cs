@@ -71,7 +71,7 @@ public class Hash256XorUtilsTests
             Assert.That(Hash256XorUtils.CalculateLogDistance(randomized, randHash), Is.EqualTo(distance));
         }
 
-        for (int i = 1; i < 256; i++)
+        for (int i = 0; i <= 256; i++)
         {
             rand = new(0);
             for (int j = 0; j < 10; j++)
@@ -80,6 +80,15 @@ public class Hash256XorUtilsTests
             }
         }
 
+    }
+
+    [TestCase(-1)]
+    [TestCase(257)]
+    public void GetRandomHashAtDistance_ShouldRejectInvalidDistance(int distance)
+    {
+        KademliaHash hash = new("0x0000000000000000000000000000000000000000000000000000000000000000");
+
+        Assert.That(() => Hash256XorUtils.GetRandomHashAtDistance(hash, distance, new Random(0)), Throws.InstanceOf<ArgumentOutOfRangeException>());
     }
 
     [TestCase]
