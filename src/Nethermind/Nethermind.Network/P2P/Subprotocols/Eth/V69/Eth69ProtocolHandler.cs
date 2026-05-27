@@ -122,21 +122,20 @@ public class Eth69ProtocolHandler(
                 DisconnectReason.InvalidBlockRangeUpdate,
                 $"BlockRangeUpdate with earliest ({blockRangeUpdate.EarliestBlock}) > latest ({blockRangeUpdate.LatestBlock})."
             );
-            return;
         }
-
-        if (blockRangeUpdate.LatestBlockHash.IsZero)
+        else if (blockRangeUpdate.LatestBlockHash.IsZero)
         {
             Disconnect(
                 DisconnectReason.InvalidBlockRangeUpdate,
                 "BlockRangeUpdate with latest block hash as zero."
             );
-            return;
         }
-
-        _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
-        HeadNumber = blockRangeUpdate.LatestBlock;
-        HeadHash = blockRangeUpdate.LatestBlockHash;
+        else
+        {
+            _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
+            HeadNumber = blockRangeUpdate.LatestBlock;
+            HeadHash = blockRangeUpdate.LatestBlockHash;
+        }
     }
 
     private new async Task<ReceiptsMessage69> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
