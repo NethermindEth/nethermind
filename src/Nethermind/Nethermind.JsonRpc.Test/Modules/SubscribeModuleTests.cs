@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using FluentAssertions.Json;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;

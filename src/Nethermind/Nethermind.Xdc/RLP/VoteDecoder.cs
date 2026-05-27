@@ -4,10 +4,9 @@
 using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RLP;
 
 public sealed class VoteDecoder : RlpDecoder<Vote>
 {
