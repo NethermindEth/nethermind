@@ -20,7 +20,7 @@ public class NeighborsMsgSerializer(
     : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<NeighborsMsg>
 {
     private static readonly RlpLimit NodesRlpLimit = RlpLimit.For<NeighborsMsg>(16, nameof(NeighborsMsg.Nodes));
-    private static readonly DecodeRlpValue<Node?> _decodeItem = static (ref Rlp.ValueDecoderContext ctx) =>
+    private static readonly DecodeRlpValue<Node?> _decodeItem = static (ref ctx) =>
     {
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
