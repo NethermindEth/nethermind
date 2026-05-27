@@ -91,15 +91,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Hash256 prevRoot = currentStateId.StateRoot.ToCommitment();
             ParentStateTrieNodeReader proofReader = new(snapshotBundle);
 
-            if (preservedSparseTrie is not null)
-            {
-                _sparseStateTrie = preservedSparseTrie.Take(prevRoot);
-                _sparseRootComputer = new SparseRootComputer(_sparseStateTrie, proofReader, prevRoot);
-            }
-            else
-            {
-                _sparseRootComputer = new SparseRootComputer(proofReader, prevRoot);
-            }
+            // M2: always fresh trie per block. Cross-block reuse deferred to M3.
+            _sparseRootComputer = new SparseRootComputer(proofReader, prevRoot);
 
             // After enough consecutive matches, skip Patricia UpdateRootHash (unless verification mode is on)
             _sparseIsAuthoritative = !configuration.SparseTrieVerificationMode
@@ -424,27 +417,23 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _currentStateId = newStateId;
 
-        // M3: Store sparse trie back for cross-block reuse, then create fresh computer for next block
+        // Create fresh SparseRootComputer for next block.
+        // Cross-block trie reuse (PreservedSparseTrie) is deferred to M3 — the current
+        // RevealNodes logic skips already-revealed nodes, so stale structure from prior
+        // blocks causes wrong roots. For M2, a fresh trie per block is correct.
         if (_sparseRootComputer is not null)
         {
             Hash256 newRoot = newStateId.StateRoot.ToCommitment();
 
             if (_preservedSparseTrie is not null && _sparseStateTrie is not null)
             {
-                if (_sparseComputedRoot is not null)
-                    _preservedSparseTrie.StoreAnchored(_sparseStateTrie, newRoot);
-                else
-                    _preservedSparseTrie.StoreCleared(_sparseStateTrie);
-
-                _sparseStateTrie = _preservedSparseTrie.Take(newRoot);
+                _preservedSparseTrie.StoreCleared(_sparseStateTrie);
+                _sparseStateTrie = null;
             }
 
             _sparseRootComputer.Dispose();
             ParentStateTrieNodeReader proofReader = new(_snapshotBundle);
-
-            _sparseRootComputer = _sparseStateTrie is not null
-                ? new SparseRootComputer(_sparseStateTrie, proofReader, newRoot)
-                : new SparseRootComputer(proofReader, newRoot);
+            _sparseRootComputer = new SparseRootComputer(proofReader, newRoot);
 
             _sparseComputedRoot = null;
             _sparseIsAuthoritative = !_configuration.SparseTrieVerificationMode
