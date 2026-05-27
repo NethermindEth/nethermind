@@ -290,7 +290,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             return;
 
         if (exception is AggregateException a)
-            exception = a.InnerException;
+            exception = a.Flatten().InnerException;
 
         if (exception is OperationCanceledException oc && oc.CancellationToken == CancellationToken)
             return; // Cancelled
@@ -399,7 +399,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (!_pivotTask.IsCompletedSuccessfully) return;
         int pivotNumber = _pivotTask.Result;
 
-        DirectionState forward = Direction(isForward: true);
+        ref DirectionState forward = ref Direction(isForward: true);
         if (forward.Progress is { HasEnded: false } forwardProgress)
         {
             forwardProgress.TargetValue = Math.Max(0, _blockTree.BestKnownNumber - MaxReorgDepth - pivotNumber + 1);
@@ -407,7 +407,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             forwardProgress.CurrentQueued = forward.Queue!.QueueCount;
         }
 
-        DirectionState backward = Direction(isForward: false);
+        ref DirectionState backward = ref Direction(isForward: false);
         if (backward.Progress is { HasEnded: false } backwardProgress)
         {
             backwardProgress.TargetValue = pivotNumber - MinTargetBlockNumber;
@@ -418,7 +418,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private void MarkCompleted(bool isForward)
     {
-        DirectionState dir = Direction(isForward);
+        ref DirectionState dir = ref Direction(isForward);
         if (!dir.Completion.TrySetResult())
             return;
 
