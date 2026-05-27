@@ -23,7 +23,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "EIP-7805 (FOCIL): verifies the payload plus its inclusion list against the chain state. Returns INCLUSION_LIST_UNSATISFIED if any valid IL tx is missing.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV6(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions);
+    Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions);
 
     [JsonRpcMethod(
         Description = "EIP-7805 (FOCIL) + EIP-7805/PeerDAS: forkchoice update with PayloadAttributesV5 (carries inclusionListTransactions) plus a 16-byte custodyColumns bitarray.",

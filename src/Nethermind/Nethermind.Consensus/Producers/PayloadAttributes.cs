@@ -217,6 +217,7 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V2 when Withdrawals is null => $"{nameof(Withdrawals)} must be provided",
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
+            >= PayloadAttributesVersions.V5 when InclusionListTransactions is null => $"{nameof(InclusionListTransactions)} must be provided",
             _ => null
         };
     }
@@ -229,6 +230,10 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
+            // EIP-7805 (FOCIL): PayloadAttributesV5 introduces InclusionListTransactions; an
+            // empty list is still V5 because the field is mandatory on a FOCIL-enabled chain.
+            // We detect "not null" rather than non-empty length for that reason.
+            { InclusionListTransactions: not null } => PayloadAttributesVersions.V5,
             { SlotNumber: not null } => PayloadAttributesVersions.V4,
             { ParentBeaconBlockRoot: not null } => PayloadAttributesVersions.V3,
             { Withdrawals: not null } => PayloadAttributesVersions.V2,
@@ -238,6 +243,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
+            { IsEip7805Enabled: true } => PayloadAttributesVersions.V5,
             { IsEip7843Enabled: true } => PayloadAttributesVersions.V4,
             { IsEip4844Enabled: true } => PayloadAttributesVersions.V3,
             { WithdrawalsEnabled: true } => PayloadAttributesVersions.V2,
@@ -251,4 +257,5 @@ public static class PayloadAttributesVersions
     public const int V2 = 2; // Shanghai
     public const int V3 = 3; // Cancun/Prague/Osaka
     public const int V4 = 4; // Amsterdam
+    public const int V5 = 5; // Bogota (EIP-7805 FOCIL — adds InclusionListTransactions)
 }

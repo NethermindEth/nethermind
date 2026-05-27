@@ -63,6 +63,9 @@ public class BalRecordingBlockProcessorTests
         public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
             => (ProcessedBlock ?? suggestedBlock, []);
 
+        // EIP-7805 (FOCIL): no IL checks for BAL recorder — it only sees fully-processed blocks.
+        public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options) => true;
+
         public event Action? TransactionsExecuted;
 
         public void RaiseTransactionsExecuted() => TransactionsExecuted?.Invoke();

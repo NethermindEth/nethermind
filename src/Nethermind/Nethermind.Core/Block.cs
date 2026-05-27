@@ -139,6 +139,14 @@ public class Block
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
 
+    /// <summary>
+    /// EIP-7805 (FOCIL): transient flag stamped by the block processor when the IL
+    /// constraint is unsatisfied. Stamped during processing (worldstate is in scope) and
+    /// read by <see cref="Nethermind.Consensus.Processing.BlockchainProcessor"/> after the
+    /// scope closes to emit <c>ProcessingResult.InvalidInclusionList</c>. Not serialised.
+    /// </summary>
+    public bool InclusionListUnsatisfied { get; set; }
+
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
 

@@ -16,13 +16,18 @@ public class InclusionListTxSource(
     Logging.ILogManager? logManager) : ITxSource
 {
     private IEnumerable<Transaction> _inclusionListTransactions = [];
-    private readonly InclusionListDecoder _inclusionListDecoder = new(ecdsa, specProvider, logManager);
+
+    // Lazy: decoder needs a non-null ecdsa, but unit-test fixtures that don't exercise IL
+    // injection construct this with all-nulls. Building it on first Set() lets those tests
+    // keep working without leaking dependencies they don't actually need.
+    private InclusionListDecoder? _decoder;
+    private InclusionListDecoder Decoder => _decoder ??= new InclusionListDecoder(ecdsa, specProvider, logManager);
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         => _inclusionListTransactions;
 
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
-        => _inclusionListTransactions = _inclusionListDecoder.DecodeAndRecover(inclusionListTransactions, spec);
+        => _inclusionListTransactions = Decoder.DecodeAndRecover(inclusionListTransactions, spec);
 
     public bool SupportsBlobs => false;
 }

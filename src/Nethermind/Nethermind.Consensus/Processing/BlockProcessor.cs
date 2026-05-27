@@ -81,6 +81,18 @@ public partial class BlockProcessor(
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+
+        // EIP-7805 (FOCIL): cache the IL-validity decision NOW — inside the BranchProcessor's
+        // worldstate scope — because the validator reads sender balance/nonce from the
+        // post-execution state. BlockchainProcessor reads back the flag via
+        // ValidateInclusionList AFTER the scope has closed, where directly hitting the
+        // worldstate would throw "IWorldState must only be used within scope".
+        if (spec.InclusionListsEnabled && !options.ContainsFlag(ProcessingOptions.NoValidation))
+        {
+            block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
+            suggestedBlock.InclusionListUnsatisfied = !_inclusionListValidator.ValidateInclusionList(block, _blockTransactionsExecutor.IsTransactionInBlock);
+        }
+
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts, spec);
@@ -106,6 +118,11 @@ public partial class BlockProcessor(
         suggestedBlock.EncodedBlockAccessList = block.EncodedBlockAccessList ?? suggestedBlock.EncodedBlockAccessList;
     }
 
+    /// <summary>
+    /// Returns the cached IL-validity decision made by <see cref="ProcessOne"/>. The actual
+    /// check ran inside the worldstate scope (during processing); this is just a read of the
+    /// flag stamped on <paramref name="suggestedBlock"/>, safe to call after the scope closes.
+    /// </summary>
     public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
     {
         if (options.ContainsFlag(ProcessingOptions.NoValidation))
@@ -113,8 +130,7 @@ public partial class BlockProcessor(
             return true;
         }
 
-        block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
-        return _inclusionListValidator.ValidateInclusionList(block, _blockTransactionsExecutor.IsTransactionInBlock);
+        return !suggestedBlock.InclusionListUnsatisfied;
     }
 
     protected bool ShouldComputeStateRoot(BlockHeader header) =>

@@ -27,11 +27,14 @@ public partial class EngineRpcModule : IEngineRpcModule
         => getInclusionListTransactionsHandler.Handle(blockHash);
 
     /// <summary>
-    /// Method parameter list is extended with <c>inclusionListTransactions</c> parameter.
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// Bogota (EIP-7805 FOCIL) layered on Amsterdam's <see cref="ExecutionPayloadV4"/>: identical
+    /// payload structure to <c>engine_newPayloadV5</c> plus a new <c>inclusionListTransactions</c>
+    /// parameter that the EL validates against the post-execution state and returns
+    /// <see cref="PayloadStatus.InvalidInclusionList"/> when any IL tx is valid but missing.
+    /// <see href="https://github.com/ethereum/execution-apis/pull/609">execution-apis#609</see>.
     /// </summary>
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV6(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
-        => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions), EngineApiVersions.NewPayload.V6);
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
+        => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions), EngineApiVersions.NewPayload.V6);
 
     /// <summary>
     /// EIP-7805 (FOCIL): <c>payloadAttributes</c> is extended (PayloadAttributesV5) with
