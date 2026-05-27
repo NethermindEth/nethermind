@@ -308,6 +308,158 @@ public static class PersistedSnapshotMerger
     }
 
     /// <summary>
+    /// Per-call scratch for <see cref="SlotPrefixValueMerger"/>: holds the buffers
+    /// reused across outer keys of a single
+    /// <see cref="NWayNestedStreamingSlotMerge{TWriter,TReader,TPin}"/> invocation.
+    /// One instance per per-address slot-prefix merge; held by reference on the
+    /// value-merger struct so callbacks can reach it across method boundaries.
+    /// </summary>
+    private sealed class SlotPrefixValueMergerScratch : IDisposable
+    {
+        public readonly byte[] SlotKeyBuf;
+        public readonly Bound[] InnerBoundsScratch;
+        public readonly ArrayPoolList<WholeReadSessionMergeSource> InnerSources;
+        public readonly ArrayPoolList<byte> ScratchValues;
+        public readonly ArrayPoolList<byte> ScratchKeys;
+        public readonly ArrayPoolList<int> ScratchLens;
+
+        public SlotPrefixValueMergerScratch(int n)
+        {
+            const int InnerKeyLen = 2;
+            SlotKeyBuf = new byte[32];
+            InnerBoundsScratch = new Bound[n];
+            InnerSources = new ArrayPoolList<WholeReadSessionMergeSource>(n, n);
+            ScratchValues = new ArrayPoolList<byte>(512);
+            ScratchKeys = new ArrayPoolList<byte>(Math.Max(1, n) * InnerKeyLen);
+            ScratchLens = new ArrayPoolList<int>(Math.Max(1, n));
+        }
+
+        public void Dispose()
+        {
+            InnerSources.Dispose();
+            ScratchValues.Dispose();
+            ScratchKeys.Dispose();
+            ScratchLens.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// BTree value merger for the per-address slot-prefix column. Outer is a keyFirst
+    /// 30-byte BTree of slot prefixes; each outer entry's value is a keys-first
+    /// TwoByteSlotValue / TwoByteSlotValueLarge HSST of the remaining 2-byte slot
+    /// suffixes. Drives the inner 2-byte merge from the matched outer sources,
+    /// buffers merged keys/values into the scratch, picks the inner format by total
+    /// payload size, and emits the chosen blob into the staging writer that
+    /// <see cref="HsstBTreeMerger.NWayMergeKeyFirst"/> hands in.
+    /// </summary>
+    /// <remarks>
+    /// TWriter is fixed to <see cref="PooledByteBufferWriter.Writer"/> because the
+    /// keyFirst BTree builder needs the value length up front, so
+    /// <see cref="HsstBTreeMerger.NWayMergeKeyFirst"/> stages each value through an
+    /// internal <see cref="PooledByteBufferWriter"/> and then calls
+    /// <c>builder.Add(key, stagedSpan)</c>. The scratch lives on a class so this
+    /// struct can hold it by reference across the
+    /// <see cref="IHsstBTreeValueMerger{TWriter,TReader,TPin,TSource}"/> callbacks.
+    /// </remarks>
+    private readonly struct SlotPrefixValueMerger(
+        BloomFilter bloom, ulong addrBloomKey, SlotPrefixValueMergerScratch scratch)
+        : IHsstBTreeValueMerger<PooledByteBufferWriter.Writer, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>
+    {
+        private const int OuterKeyLen = 30;
+        private const int InnerKeyLen = 2;
+
+        public void OnKey(scoped ReadOnlySpan<byte> key) { }
+
+        public void OnFastCopy(scoped ReadOnlySpan<byte> key,
+            scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor)
+        {
+            Bound vb = cursor.MinValue;
+            WholeReadSessionReader srcReader = cursor.CreateMinReader();
+            Span<byte> slotKeyBuf = scratch.SlotKeyBuf;
+            key.CopyTo(slotKeyBuf[..OuterKeyLen]);
+            HsstEnumerator suffixEnum = HsstEnumerator.CreateTwoByteSlot(in srcReader, vb);
+            while (suffixEnum.MoveNext(in srcReader))
+            {
+                suffixEnum.CopyCurrentLogicalKey(in srcReader, slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
+                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
+            }
+            suffixEnum.Dispose();
+        }
+
+        public void MergeValues(ref PooledByteBufferWriter.Writer writer, scoped ReadOnlySpan<byte> key,
+            scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor)
+        {
+            int matchCount = cursor.MatchCount;
+            ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
+            Span<byte> slotKeyBuf = scratch.SlotKeyBuf;
+            key.CopyTo(slotKeyBuf[..OuterKeyLen]);
+
+            using LoserTreeState innerState = new(matchCount, InnerKeyLen);
+            Span<Bound> innerBounds = scratch.InnerBoundsScratch.AsSpan(0, matchCount);
+            for (int k = 0; k < matchCount; k++)
+                innerBounds[k] = cursor.ValueAt(matchingSources[k]);
+            Span<WholeReadSessionMergeSource> innerSources = scratch.InnerSources.AsSpan()[..matchCount];
+            MapCursorSource<TwoByteSlotEnumeratorFactory>(
+                cursor.Sources, matchingSources, innerBounds, innerSources);
+            try
+            {
+                NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor = new(
+                    innerSources, innerState, InnerKeyLen);
+
+                ArrayPoolList<byte> scratchValues = scratch.ScratchValues;
+                ArrayPoolList<byte> scratchKeys = scratch.ScratchKeys;
+                ArrayPoolList<int> scratchLens = scratch.ScratchLens;
+                scratchValues.Clear();
+                scratchKeys.Clear();
+                scratchLens.Clear();
+
+                while (innerCursor.MoveNext())
+                {
+                    Bound vb = innerCursor.MinValue;
+                    using NoOpPin valPin = innerCursor.CreateMinReader().PinBuffer(vb.Offset, vb.Length);
+                    ReadOnlySpan<byte> innerKey = innerCursor.MinKey;
+                    innerKey.CopyTo(slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
+                    bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
+                    scratchValues.AddRange(valPin.Buffer);
+                    scratchKeys.AddRange(innerKey);
+                    scratchLens.Add((int)vb.Length);
+                    innerCursor.AdvanceMatching();
+                }
+
+                ReadOnlySpan<byte> mergedValues = scratchValues.AsSpan();
+                ReadOnlySpan<byte> mergedKeys = scratchKeys.AsSpan();
+                ReadOnlySpan<int> mergedLens = scratchLens.AsSpan();
+                if (HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(mergedValues.Length))
+                {
+                    using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> innerBuilder = new(ref writer);
+                    int valOff = 0;
+                    for (int i = 0; i < mergedLens.Length; i++)
+                    {
+                        innerBuilder.Add(mergedKeys.Slice(i * InnerKeyLen, InnerKeyLen), mergedValues.Slice(valOff, mergedLens[i]));
+                        valOff += mergedLens[i];
+                    }
+                    innerBuilder.Build();
+                }
+                else
+                {
+                    using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> innerBuilder = new(ref writer);
+                    int valOff = 0;
+                    for (int i = 0; i < mergedLens.Length; i++)
+                    {
+                        innerBuilder.Add(mergedKeys.Slice(i * InnerKeyLen, InnerKeyLen), mergedValues.Slice(valOff, mergedLens[i]));
+                        valOff += mergedLens[i];
+                    }
+                    innerBuilder.Build();
+                }
+            }
+            finally
+            {
+                for (int k = 0; k < matchCount; k++) innerSources[k].Dispose();
+            }
+        }
+    }
+
+    /// <summary>
     /// N-way merge of N persisted snapshots (oldest-first) into <paramref name="writer"/>.
     /// Callers (the compactor in production, the test/benchmark helpers otherwise) own the
     /// session lifecycle: open one <see cref="WholeReadSession"/> per source up front, pass
@@ -665,157 +817,19 @@ public static class PersistedSnapshotMerger
     {
         const int OuterKeyLen = 30;
         const int OuterStride = 32;
-        const int InnerKeyLen = 2;
-        using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, ref slotPrefixBuffers, OuterKeyLen, keyFirst: true);
-        // Per-prefix staging buffer for the sub-slot HSST. The outer BTree is built
-        // key-first, so its outer entry layout requires the value length up front —
-        // each sub-slot must be fully materialised in this buffer before Add. Reused
-        // across prefix iterations via Reset() to amortize the backing allocation.
-        using PooledByteBufferWriter innerStaging = new(4096);
-
-        // Inner source array for the inner cursor. Rented once for the column. Outer cursor's
-        // ctor seeds each source via MoveNext; inner cursors get their own LoserTreeState per
-        // outer iteration (created+disposed inside the loop below).
         using LoserTreeState outerState = new(n, OuterStride);
-        using ArrayPoolList<WholeReadSessionMergeSource> innerSourcesList = new(n, n);
-        Span<WholeReadSessionMergeSource> innerSources = innerSourcesList.AsSpan();
-
-        // Per-source value-bound scratch parallel to innerSources, sliced per outer
-        // iteration. Hoisted out of the while loop below to avoid CA2014.
-        Span<Bound> innerBoundsScratch = stackalloc Bound[n];
-
-        // Reusable 32-byte slot-key scratch for per-slot bloom adds: outerKey (30 bytes)
-        // populates [0,30); per-slot innerSuffix (2 bytes) populates [30,32). Allocated once
-        // here so the per-slot bloom path is allocation-free.
-        Span<byte> slotKeyBuf = stackalloc byte[32];
-
-        // Inner-merge scratch buffers — hoisted once and Clear()ed between multi-source
-        // prefix groups so both the ArrayPool rents and the ArrayPoolList wrappers reuse.
-        // Sized at construction for a typical small group; the lists grow internally as needed.
-        using ArrayPoolList<byte> scratchValues = new(512);
-        using ArrayPoolList<byte> scratchKeys = new(Math.Max(1, n) * InnerKeyLen);
-        using ArrayPoolList<int> scratchLens = new(Math.Max(1, n));
+        using SlotPrefixValueMergerScratch scratch = new(n);
 
         NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> outerCursor = new(
             outerSources[..n], outerState, OuterKeyLen);
 
-        while (outerCursor.MoveNext())
-        {
-            ReadOnlySpan<byte> outerKey = outerCursor.MinKey;
-            int outerMatchCount = outerCursor.MatchCount;
-            ReadOnlySpan<int> outerMatches = outerCursor.MatchingSources;
-
-            outerKey.CopyTo(slotKeyBuf[..OuterKeyLen]);
-
-            // 1-matching-source fast path: pin the source's suffix HSST blob and try
-            // to add it page-aligned through the outer builder. HSST internal pointers
-            // are blob-relative so the relocated blob stays readable. The bloom walk
-            // reads the source bytes directly. Falls through to the inner-merge
-            // rebuild below if the entry can't fit on one page or the alignment pad
-            // would exceed the threshold.
-            if (outerMatchCount == 1)
-            {
-                int srcIdx = outerMatches[0];
-                Bound vb = outerSources[srcIdx].GetEnumerator().CurrentValue;
-                WholeReadSessionReader srcReader = outerSources[srcIdx].CreateReader();
-                using NoOpPin suffixPin = srcReader.PinBuffer(vb.Offset, vb.Length);
-                if (outerBuilder.TryAddAligned(outerKey, suffixPin.Buffer))
-                {
-                    // The outer entry's value is a keys-first TwoByteSlotValue / -Large
-                    // sub-slot blob — front-dispatch on byte 0, no tail read.
-                    HsstEnumerator<WholeReadSessionReader, NoOpPin> suffixEnum =
-                        HsstEnumerator<WholeReadSessionReader, NoOpPin>.CreateTwoByteSlot(in srcReader, vb);
-                    while (suffixEnum.MoveNext(in srcReader))
-                    {
-                        suffixEnum.CopyCurrentLogicalKey(in srcReader, slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
-                        bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
-                    }
-                    suffixEnum.Dispose();
-                    outerCursor.AdvanceMatching();
-                    continue;
-                }
-            }
-
-            {
-                // Rebuild path: inner 2-byte BTree streaming merge driven by a second
-                // cursor over the matched-source subset. Handles >1 matching sources
-                // and the N=1 fall-through case when TryAddAligned above couldn't fit
-                // the source blob on one page. Each inner iteration rents its own
-                // LoserTreeState (sized to the actual innerN).
-                int innerN = outerMatchCount;
-                using LoserTreeState innerState = new(innerN, InnerKeyLen);
-                try
-                {
-                    Span<Bound> innerBounds = innerBoundsScratch[..innerN];
-                    for (int k = 0; k < innerN; k++)
-                        innerBounds[k] = outerCursor.ValueAt(outerMatches[k]);
-                    MapCursorSource<TwoByteSlotEnumeratorFactory>(
-                        outerSources, outerMatches, innerBounds, innerSources[..innerN]);
-                    NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor = new(
-                        innerSources[..innerN], innerState, InnerKeyLen);
-
-                    // Buffer the merged stream so we can size it and pick the inner format
-                    // afterward. TwoByteSlotValue caps the data region at ushort.MaxValue;
-                    // BTree handles anything larger. Per-prefix-group payloads are tiny in
-                    // practice (a handful of slots × ≤32 bytes), so the buffering cost
-                    // beats the format-choice trade-off. Scratch lists are hoisted; reuse
-                    // their backing arrays across outer iterations.
-                    scratchValues.Clear();
-                    scratchKeys.Clear();
-                    scratchLens.Clear();
-
-                    while (innerCursor.MoveNext())
-                    {
-                        Bound vb = innerCursor.MinValue;
-                        using NoOpPin valPin = innerCursor.CreateMinReader().PinBuffer(vb.Offset, vb.Length);
-                        ReadOnlySpan<byte> innerKey = innerCursor.MinKey;
-                        innerKey.CopyTo(slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
-                        bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
-                        scratchValues.AddRange(valPin.Buffer);
-                        scratchKeys.AddRange(innerKey);
-                        scratchLens.Add((int)vb.Length);
-                        innerCursor.AdvanceMatching();
-                    }
-
-                    innerStaging.Reset();
-                    ref PooledByteBufferWriter.Writer stagingWriter = ref innerStaging.GetWriter();
-                    ReadOnlySpan<byte> mergedValues = scratchValues.AsSpan();
-                    ReadOnlySpan<byte> mergedKeys = scratchKeys.AsSpan();
-                    ReadOnlySpan<int> mergedLens = scratchLens.AsSpan();
-                    if (HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(mergedValues.Length))
-                    {
-                        using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> innerBuilder = new(ref stagingWriter);
-                        int valOff = 0;
-                        for (int i = 0; i < mergedLens.Length; i++)
-                        {
-                            innerBuilder.Add(mergedKeys.Slice(i * InnerKeyLen, InnerKeyLen), mergedValues.Slice(valOff, mergedLens[i]));
-                            valOff += mergedLens[i];
-                        }
-                        innerBuilder.Build();
-                    }
-                    else
-                    {
-                        using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> innerBuilder = new(ref stagingWriter);
-                        int valOff = 0;
-                        for (int i = 0; i < mergedLens.Length; i++)
-                        {
-                            innerBuilder.Add(mergedKeys.Slice(i * InnerKeyLen, InnerKeyLen), mergedValues.Slice(valOff, mergedLens[i]));
-                            valOff += mergedLens[i];
-                        }
-                        innerBuilder.Build();
-                    }
-                    outerBuilder.Add(outerKey, innerStaging.WrittenSpan);
-                }
-                finally
-                {
-                    for (int k = 0; k < innerN; k++) innerSources[k].Dispose();
-                }
-            }
-
-            outerCursor.AdvanceMatching();
-        }
-
-        outerBuilder.Build();
+        HsstBTreeMerger.NWayMergeKeyFirst<
+            TWriter, TReader, TPin,
+            WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
+            SlotPrefixValueMerger>(
+                ref writer, OuterKeyLen, ref outerCursor,
+                new SlotPrefixValueMerger(bloom, addrBloomKey, scratch),
+                ref slotPrefixBuffers);
     }
 
     /// <summary>
