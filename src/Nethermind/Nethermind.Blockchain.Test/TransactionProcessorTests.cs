@@ -13,6 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Evm.TransactionProcessing;
@@ -785,6 +786,127 @@ public class TransactionProcessorTests(bool eip155Enabled)
         result.TransactionExecuted.Should().BeTrue();
         virtualMachine.ExecuteTransactionCalls.Should().Be(0);
         _stateProvider.GetBalance(recipient).Should().Be(1.Wei);
+    }
+
+    [TestCaseSource(nameof(SimpleTransferFastPathCases))]
+    public void Simple_transfer_fast_path_predicate_enters_vm_when_expected(SimpleTransferFastPathCase testCase)
+    {
+        Address recipient = testCase.Kind == SimpleTransferRecipientKind.Precompile
+            ? IdentityPrecompile.Address
+            : Address.FromNumber((UInt256)(uint)(1100 + (int)testCase.Kind));
+        IReleaseSpec spec = Prague.Instance;
+        PrepareSimpleTransferRecipient(testCase.Kind, recipient, spec);
+        _stateProvider.Commit(spec);
+        _stateProvider.CommitTree(0);
+
+        CountingVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance,
+            _specProvider,
+            _stateProvider,
+            virtualMachine,
+            codeInfoRepository,
+            LimboLogs.Instance);
+
+        Transaction tx = BuildSimpleTransfer(recipient, testCase.Value, testCase.WithAuthorizationList);
+        Block block = Build.A.Block
+            .WithNumber(MainnetSpecProvider.PragueActivation.BlockNumber)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(1_000_000)
+            .TestObject;
+
+        UInt256 senderBalanceBefore = _stateProvider.GetBalance(TestItem.AddressA);
+        UInt256 recipientBalanceBefore = _stateProvider.GetBalance(recipient);
+
+        TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+
+        result.TransactionExecuted.Should().BeTrue();
+        virtualMachine.ExecuteTransactionCalls.Should().Be(testCase.ExpectedVmCalls);
+        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(1);
+        tx.SpentGas.Should().Be(testCase.ExpectedSpentGas);
+        _stateProvider.GetBalance(TestItem.AddressA).Should().Be(senderBalanceBefore - testCase.ExpectedSenderDebit);
+        _stateProvider.GetBalance(recipient).Should().Be(recipientBalanceBefore + testCase.Value);
+    }
+
+    public static IEnumerable<TestCaseData> SimpleTransferFastPathCases()
+    {
+        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.Empty, 1.Wei, false, 0, GasCostOf.Transaction, 1.Wei + GasCostOf.Transaction))
+            .SetName("Empty-code recipient with value uses fast path");
+        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.Empty, UInt256.Zero, false, 0, GasCostOf.Transaction, GasCostOf.Transaction))
+            .SetName("Empty-code recipient with zero value uses fast path");
+        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.Contract, 1.Wei, false, 1, GasCostOf.Transaction, 1.Wei + GasCostOf.Transaction))
+            .SetName("Contract recipient enters VM");
+        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.Precompile, 1.Wei, false, 1, GasCostOf.Transaction + 15, 1.Wei + GasCostOf.Transaction + 15))
+            .SetName("Precompile recipient enters VM");
+        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.Empty, 1.Wei, true, 1, GasCostOf.Transaction + 25_000, 1.Wei))
+            .SetName("Authorization-list transaction enters VM");
+        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.DelegatedToContract, 1.Wei, false, 1, GasCostOf.Transaction, 1.Wei + GasCostOf.Transaction))
+            .SetName("Delegated recipient with executable target enters VM");
+    }
+
+    private Transaction BuildSimpleTransfer(Address recipient, UInt256 value, bool withAuthorizationList)
+    {
+        TransactionBuilder<Transaction> builder = Build.A.Transaction
+            .WithTo(recipient)
+            .WithValue(value)
+            .WithGasPrice(1)
+            .WithGasLimit(100_000);
+
+        if (withAuthorizationList)
+        {
+            builder
+                .WithType(TxType.SetCode)
+                .WithAuthorizationCode(_ethereumEcdsa.Sign(TestItem.PrivateKeyB, _specProvider.ChainId, Address.Zero, 0));
+        }
+
+        return builder
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
+            .TestObject;
+    }
+
+    private void PrepareSimpleTransferRecipient(SimpleTransferRecipientKind kind, Address recipient, IReleaseSpec spec)
+    {
+        if (kind == SimpleTransferRecipientKind.Precompile)
+        {
+            return;
+        }
+
+        _stateProvider.CreateAccount(recipient, UInt256.Zero);
+        switch (kind)
+        {
+            case SimpleTransferRecipientKind.Empty:
+                CodeInfoRepository.InsertCode(_stateProvider, Array.Empty<byte>(), recipient, spec, out _);
+                break;
+            case SimpleTransferRecipientKind.Contract:
+                CodeInfoRepository.InsertCode(_stateProvider, new byte[] { (byte)Instruction.STOP }, recipient, spec, out _);
+                break;
+            case SimpleTransferRecipientKind.DelegatedToContract:
+                Address codeSource = Address.FromNumber(1200);
+                _stateProvider.CreateAccount(codeSource, UInt256.Zero);
+                CodeInfoRepository.InsertCode(_stateProvider, new byte[] { (byte)Instruction.STOP }, codeSource, spec, out _);
+                CodeInfoRepository.SetDelegation(_stateProvider, codeSource, recipient, spec, out _, out _);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
+        }
+    }
+
+    public readonly record struct SimpleTransferFastPathCase(
+        SimpleTransferRecipientKind Kind,
+        UInt256 Value,
+        bool WithAuthorizationList,
+        int ExpectedVmCalls,
+        long ExpectedSpentGas,
+        UInt256 ExpectedSenderDebit);
+
+    public enum SimpleTransferRecipientKind
+    {
+        Empty,
+        Contract,
+        Precompile,
+        DelegatedToContract
     }
 
     private sealed class CountingVirtualMachine(
