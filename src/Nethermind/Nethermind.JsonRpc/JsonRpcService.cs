@@ -451,7 +451,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                         explicitNullableParamsCount += 1;
                     }
 
-                    if (!expectedParameters[parameterIndex].IsOptional && !nullable)
+                    if (expectedParameters[parameterIndex].IsRequired || !expectedParameters[parameterIndex].IsOptional && !nullable)
                     {
                         hasIncorrectParameters = true;
                         firstMissingRequiredIndex = parameterIndex;

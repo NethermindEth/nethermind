@@ -111,11 +111,11 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_balance_default_block()
+    public async Task Eth_get_balance_requires_block_argument()
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true));
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x3635c9adc5de9f09e5\",\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
     }
 
     [Test]
@@ -349,11 +349,11 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_tx_count_default_block()
+    public async Task Eth_get_tx_count_requires_block_argument()
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressA.Bytes.ToHexString(true));
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
     }
 
     [Test]
@@ -367,7 +367,7 @@ public partial class EthRpcModuleTests
         ValueTask<(Hash256? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
             ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None)!;
         Assert.That(AcceptTxResult.Accepted, Is.EqualTo(resultNextNonce.Result.AddTxResult));
-        string serializedLatestAfter = await ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressB.Bytes.ToHexString(true));
+        string serializedLatestAfter = await ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressB.Bytes.ToHexString(true), "latest");
         Assert.That(serializedLatestAfter, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}"));
         string serializedPendingAfter = await ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressB.Bytes.ToHexString(true), "pending");
         Assert.That(serializedPendingAfter, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":67}"));
@@ -492,11 +492,11 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_storage_at_default_block()
+    public async Task Eth_get_storage_at_requires_block_argument()
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000abcdef\",\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 2\"},\"id\":67}"));
     }
 
     [Test]
@@ -508,7 +508,7 @@ public partial class EthRpcModuleTests
         ctx.Test.StateDb.Clear();
         BlockParameter? blockParameter = null;
         BlockHeader? header = ctx.Test.BlockFinder.FindHeader(blockParameter);
-        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1", "latest");
         string expected = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"missing trie node {header?.StateRoot} (path ) state {header?.StateRoot} is not available\"}},\"id\":67}}";
         Assert.That(serialized, Is.EqualTo(expected));
     }
@@ -1499,11 +1499,11 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_code_default()
+    public async Task Eth_get_code_requires_block_argument()
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getCode", TestItem.AddressA.ToString());
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0xabcd\",\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
     }
 
     [Test]

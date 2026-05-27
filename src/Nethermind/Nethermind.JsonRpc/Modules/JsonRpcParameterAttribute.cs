@@ -11,5 +11,7 @@ namespace Nethermind.JsonRpc.Modules
         public string? Description { get; set; }
 
         public string? ExampleValue { get; set; }
+
+        public bool IsRequired { get; set; }
     }
 }

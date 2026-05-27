@@ -321,6 +321,7 @@ namespace Nethermind.JsonRpc.Modules
                 public bool IsNullable => (_introspection & ParameterDetails.IsNullable) != 0;
                 public bool IsIJsonRpcParam => ConstructorInvoker is not null;
                 public bool IsOptional => (_introspection & ParameterDetails.IsOptional) != 0;
+                public bool IsRequired => (_introspection & ParameterDetails.IsRequired) != 0;
                 public bool ReparseString => (_introspection & ParameterDetails.ReparseString) != 0;
 
                 public IJsonRpcParam CreateRpcParam()
@@ -373,6 +374,7 @@ namespace Nethermind.JsonRpc.Modules
                 IsNullable = 0b1,
                 IsOptional = 0b10,
                 ReparseString = 0b100,
+                IsRequired = 0b1000,
             }
 
             public ResolvedMethodInfo() => ExpectedParameters = [];
@@ -437,6 +439,10 @@ namespace Nethermind.JsonRpc.Modules
                     if (parameter.IsOptional)
                     {
                         details |= ParameterDetails.IsOptional;
+                    }
+                    if (parameter.GetCustomAttribute<JsonRpcParameterAttribute>()?.IsRequired == true)
+                    {
+                        details |= ParameterDetails.IsRequired;
                     }
 
                     object? defaultValue = parameter.IsOptional ? GetDefaultValue(parameter, paramType) : null;
