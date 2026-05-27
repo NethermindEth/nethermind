@@ -159,6 +159,7 @@ public class SparseRootComputerFlatDbTests
     [TestCase(200, 10, 30)]
     [TestCase(10000, 5, 400)]
     [TestCase(20000, 10, 500)]
+    [TestCase(100000, 3, 500)]
     public void MultiBlock_SnapshotBundleReader_MatchesPatricia(int trieSize, int numBlocks, int changesPerBlock)
     {
         ResourcePool pool = new(new FlatDbConfig { CompactSize = 32 });

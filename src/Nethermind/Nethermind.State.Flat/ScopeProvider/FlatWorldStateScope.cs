@@ -281,9 +281,45 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 {
                     ReadOnlySpan<byte> patSpan = patriciaRootRef.FullRlp.AsSpan();
                     logger.Warn($"  DIAG: PATRICIA root NodeType={patriciaRootRef.NodeType}, FullRlp.Length={patSpan.Length}");
-                    logger.Warn($"  DIAG: PATRICIA root FullRlp[0..min(64,len)]={Convert.ToHexString(patSpan[..Math.Min(64, patSpan.Length)])}");
                     Hash256 patriciaRootHash = Keccak.Compute(patSpan);
                     logger.Warn($"  DIAG: PATRICIA keccak(rootRlp)={patriciaRootHash}, expected={_stateTree.RootHash}, match={patriciaRootHash == _stateTree.RootHash}");
+
+                    // Find first byte-divergence between Patricia and sparse RLPs
+                    SparseSubtrie sub = computer.Trie.AccountTrie.Subtrie;
+                    if (sub.Root >= 0)
+                    {
+                        SparseTrieNode sparseRoot = sub.NodeAt(sub.Root);
+                        if (!sparseRoot.CachedRlp.IsNull)
+                        {
+                            ReadOnlySpan<byte> sparseSpan = sparseRoot.CachedRlp.AsSpan();
+                            int diffAt = -1;
+                            int minLen = Math.Min(patSpan.Length, sparseSpan.Length);
+                            for (int i = 0; i < minLen; i++)
+                            {
+                                if (patSpan[i] != sparseSpan[i]) { diffAt = i; break; }
+                            }
+                            logger.Warn($"  DIAG: RLP first byte diff at index={diffAt}, patriciaLen={patSpan.Length}, sparseLen={sparseSpan.Length}");
+                            if (diffAt >= 0)
+                            {
+                                // Print 32 bytes around the diff
+                                int start = Math.Max(0, diffAt - 4);
+                                int end = Math.Min(patSpan.Length, diffAt + 32);
+                                logger.Warn($"  DIAG: patricia[{start}..{end}]={Convert.ToHexString(patSpan[start..end])}");
+                                logger.Warn($"  DIAG: sparse  [{start}..{end}]={Convert.ToHexString(sparseSpan[start..Math.Min(sparseSpan.Length, end)])}");
+
+                                // Determine which child slot the diff is in
+                                // Branch RLP: 3-byte header + 16 × 33-byte child slots + 1-byte 0x80
+                                // Child N starts at offset 3 + N*33 (if all children are A0 + 32-byte hashes)
+                                if (diffAt >= 3 && patSpan.Length >= 532)
+                                {
+                                    int relativeOffset = diffAt - 3;
+                                    int childIdx = relativeOffset / 33;
+                                    int byteInChild = relativeOffset % 33;
+                                    logger.Warn($"  DIAG: divergence in child #{childIdx}, byte {byteInChild} of child slot (0=tag, 1-32=hash bytes)");
+                                }
+                            }
+                        }
+                    }
                 }
                 else
                 {
