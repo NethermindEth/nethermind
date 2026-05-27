@@ -25,10 +25,10 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     private readonly IPeerDifficultyRefreshPool _syncPeerPool;
     private static readonly TimeSpan _minRefreshDelay = TimeSpan.FromSeconds(10);
     private DateTime _lastRefresh = DateTime.MinValue;
-    private volatile Blockhashes _lastBlockhashes = new(Keccak.Zero, Keccak.Zero, Keccak.Zero);
+    private Blockhashes _lastBlockhashes = new(Keccak.Zero, Keccak.Zero, Keccak.Zero);
     private readonly ITimer _refreshTimer;
     private readonly ILogger _logger;
-    private volatile bool _disposed;
+    private bool _disposed;
 
     public PeerRefresher(IPeerDifficultyRefreshPool syncPeerPool, ITimerFactory timerFactory, ILogManager logManager)
     {
