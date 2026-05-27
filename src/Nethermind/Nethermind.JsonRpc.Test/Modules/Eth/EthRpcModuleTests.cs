@@ -2561,9 +2561,9 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_block_access_list_by_hash_pruned()
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
-        Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
-        ctx.Test.Bridge.DeleteBlockAccessList(blockHash);
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
+        Block head = ctx.Test.BlockTree.Head!;
+        ctx.Test.Bridge.DeleteBlockAccessList(head.Number, head.Hash!);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", head.Hash!);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
     }
 
@@ -2597,7 +2597,7 @@ public partial class EthRpcModuleTests
         const long number = 3;
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         Hash256 blockHash = ctx.Test.BlockTree.FindLevel(number)!.BlockInfos[0].BlockHash;
-        ctx.Test.Bridge.DeleteBlockAccessList(blockHash);
+        ctx.Test.Bridge.DeleteBlockAccessList(number, blockHash);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", number);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
     }

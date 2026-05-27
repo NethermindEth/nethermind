@@ -57,7 +57,7 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
                     continue;
                 }
 
-                MemoryManager<byte>? blockAccessList = block.Hash is null ? null : balStore.GetRlp(block.Hash);
+                MemoryManager<byte>? blockAccessList = block.Hash is null ? null : balStore.GetRlp(block.Number, block.Hash);
                 results[i - start] = PayloadBodiesV2DirectResponse.CreatePayloadBody(block.Transactions, block.Withdrawals, blockAccessList);
             }
         }

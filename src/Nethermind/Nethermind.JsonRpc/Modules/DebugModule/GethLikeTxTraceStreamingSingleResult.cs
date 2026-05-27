@@ -23,8 +23,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 [JsonConverter(typeof(GethLikeTxTraceStreamingSingleResultConverter))]
 public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IStreamableResult
 {
-    private static readonly JsonWriterOptions StreamingWriterOptions = new() { SkipValidation = true };
-
     private readonly Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> _runTrace;
     private readonly CancellationToken _timeoutToken;
     private readonly ILogger _logger;
@@ -43,33 +41,18 @@ public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IStr
         _logger = logger;
     }
 
-    public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
-    {
-        using CancellationTokenSource linkedCts =
-            CancellationTokenSource.CreateLinkedTokenSource(_timeoutToken, cancellationToken);
-        CancellationToken combinedToken = linkedCts.Token;
-
-        using Utf8JsonWriter jsonWriter = new(writer, StreamingWriterOptions);
-
-        try
-        {
-            StructLogEnvelopeWriter.EmitTraceObject(jsonWriter, writer, combinedToken, _runTrace, _logger);
-            jsonWriter.Flush();
-            await writer.FlushAsync(combinedToken);
-        }
-        catch (OperationCanceledException) when (combinedToken.IsCancellationRequested)
-        {
-            if (_logger.IsDebug) _logger.Debug("debug_trace streaming cancelled mid-response; client receives a partial body with the JSON envelope closed by the inner finally blocks.");
-        }
-    }
+    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
+        StreamingResultBase.WriteJsonToAsync(_timeoutToken, _logger, writer, EmitContent, cancellationToken);
 
     /// <summary>
     /// Synchronous emission for the fallback path (test infrastructure and batch responses
     /// that bypass <see cref="IStreamableResult"/>). The entire trace is buffered into the
     /// caller's <see cref="System.Buffers.IBufferWriter{T}"/> behind <paramref name="writer"/>.
     /// </summary>
-    internal void WriteAsJson(Utf8JsonWriter writer) =>
-        StructLogEnvelopeWriter.EmitTraceObject(writer, pipeWriter: null, _timeoutToken, _runTrace, _logger);
+    internal void WriteAsJson(Utf8JsonWriter writer) => EmitContent(writer, null, _timeoutToken);
+
+    private void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken) =>
+        StructLogEnvelopeWriter.EmitTraceObject(writer, pipeWriter, cancellationToken, _runTrace, _logger);
 }
 
 internal sealed class GethLikeTxTraceStreamingSingleResultConverter : JsonConverter<GethLikeTxTraceStreamingSingleResult>

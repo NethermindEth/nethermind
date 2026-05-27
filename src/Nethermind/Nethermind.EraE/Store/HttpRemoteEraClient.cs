@@ -53,6 +53,7 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
             string hashHex = line[..separatorIdx].Trim();
             string filename = line[(separatorIdx + 2)..].Trim();
 
+            if (!IsPlainFilename(filename)) continue;
             if (!TryParseEpoch(filename, out int epoch)) continue;
             if (!TryParseHex(hashHex, out byte[] sha256)) continue;
 
@@ -98,6 +99,11 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
 
         File.Move(tmpPath, destinationPath, overwrite: true);
     }
+
+    // Manifest filenames must be plain names — no directory separators and not rooted —
+    // so that joining them onto the download directory cannot escape it (path traversal).
+    private static bool IsPlainFilename(string filename) =>
+        filename == Path.GetFileName(filename) && !Path.IsPathRooted(filename);
 
     private static bool TryParseEpoch(string filename, out int epoch)
     {
