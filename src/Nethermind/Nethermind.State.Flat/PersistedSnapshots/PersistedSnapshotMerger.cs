@@ -49,10 +49,23 @@ public static class PersistedSnapshotMerger
         /// their parameter lists.</summary>
         public WholeReadSessionMergeSource WithEnumerator(HsstEnumerator newEnumerator)
             => new(newEnumerator, view);
+
+        /// <summary>Build a source over <paramref name="view"/> with its
+        /// <see cref="HsstEnumerator"/> positioned at the bound of
+        /// <paramref name="columnTag"/> in the view's root HSST. Returns an empty-bound
+        /// source if the column tag is absent (the loser tree treats such a source as
+        /// exhausted on first MoveNext).</summary>
+        public static WholeReadSessionMergeSource FromView(WholeReadSessionView view, byte[] columnTag)
+        {
+            WholeReadSessionReader r = view.CreateReader();
+            HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
+            Bound cb = hsst.TrySeek(columnTag, out Bound cbOut) ? cbOut : default;
+            return new WholeReadSessionMergeSource(new HsstEnumerator(in r, cb), view);
+        }
     }
 
     /// <summary>
-    /// Constructs a fresh <see cref="HsstEnumerator"/> for <see cref="MapCursorSource{TFactory}"/>.
+    /// Constructs a fresh <see cref="HsstEnumerator"/> for <see cref="BuildMergeCursor{TFactory}"/>.
     /// Stateless struct implementations dispatch over the two HSST layout entry points
     /// (tail-byte <see cref="IndexType"/> vs. front-byte two-byte-slot).
     /// </summary>
@@ -79,10 +92,11 @@ public static class PersistedSnapshotMerger
     }
 
     /// <summary>
-    /// Re-seeds <paramref name="indices"/>.Length cursor sources by cloning entries of
-    /// <paramref name="outerSources"/> (selected via <paramref name="indices"/>) at the
-    /// matching <paramref name="innerBounds"/>, writing the results into
-    /// <paramref name="result"/>. Each clone shares the original source's
+    /// Constructs an <see cref="NWayMergeCursor{TReader,TPin,TSource}"/> by cloning
+    /// <paramref name="indices"/>.Length entries of <paramref name="outerSources"/>
+    /// (selected via <paramref name="indices"/>) at the matching
+    /// <paramref name="innerBounds"/>, writing them into <paramref name="sourcesBuf"/>,
+    /// and returning a cursor over the result. Each clone shares the original source's
     /// <c>WholeReadSessionView</c> (so <c>CreateReader</c> stays cheap) and gets a fresh
     /// <see cref="HsstEnumerator"/> built by <typeparamref name="TFactory"/> over the
     /// per-source inner bound. Used by every nested merge that descends from an outer
@@ -90,43 +104,49 @@ public static class PersistedSnapshotMerger
     /// </summary>
     /// <remarks>
     /// <paramref name="indices"/>, <paramref name="innerBounds"/>, and
-    /// <paramref name="result"/> must all have the same length. Disposal of
-    /// <paramref name="result"/>'s entries is the caller's responsibility — one
-    /// <c>Dispose()</c> per entry once the inner merge finishes; the underlying view
-    /// stays open for further outer iteration.
+    /// <paramref name="sourcesBuf"/> must each have at least
+    /// <paramref name="indices"/>.Length elements. Disposal of the populated cursor
+    /// slots is the caller's responsibility — one <c>Dispose()</c> per entry once the
+    /// merge finishes; the underlying view stays open for further outer iteration.
     /// </remarks>
-    private static void MapCursorSource<TFactory>(
-        ReadOnlySpan<WholeReadSessionMergeSource> outerSources,
-        ReadOnlySpan<int> indices,
-        ReadOnlySpan<Bound> innerBounds,
-        Span<WholeReadSessionMergeSource> result,
-        TFactory factory = default)
+    private static NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>
+        BuildMergeCursor<TFactory>(
+            ReadOnlySpan<WholeReadSessionMergeSource> outerSources,
+            ReadOnlySpan<int> indices,
+            ReadOnlySpan<Bound> innerBounds,
+            Span<WholeReadSessionMergeSource> sourcesBuf,
+            LoserTreeState state,
+            int keyLen,
+            TFactory factory = default)
         where TFactory : struct, IHsstEnumeratorFactory
     {
         for (int j = 0; j < indices.Length; j++)
         {
             WholeReadSessionMergeSource outer = outerSources[indices[j]];
             WholeReadSessionReader reader = outer.CreateReader();
-            result[j] = outer.WithEnumerator(factory.Create(in reader, innerBounds[j]));
+            sourcesBuf[j] = outer.WithEnumerator(factory.Create(in reader, innerBounds[j]));
         }
+        return new NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>(
+            sourcesBuf[..indices.Length], state, keyLen);
     }
 
-    /// <summary>Seed every cursor slot in <paramref name="sources"/> at the column-tag's
-    /// bound for the matching <paramref name="views"/> entry. Each source opens a reader,
-    /// seeks the column tag in the root HSST, and constructs an enumerator over that bound
-    /// (empty bound for sources that don't carry the tag — the loser tree treats them as
-    /// exhausted on first MoveNext). Shared by every column-merge helper.</summary>
-    private static void SeedSourcesAtColumn(
-        ReadOnlySpan<WholeReadSessionView> views, byte[] tag,
-        Span<WholeReadSessionMergeSource> sources)
+    /// <summary>Constructs an <see cref="NWayMergeCursor{TReader,TPin,TSource}"/> by
+    /// seeding one cursor slot per entry in <paramref name="views"/> at
+    /// <paramref name="columnTag"/>'s bound (via
+    /// <see cref="WholeReadSessionMergeSource.FromView"/>), writing them into
+    /// <paramref name="sourcesBuf"/>, and returning a cursor over the result.</summary>
+    private static NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>
+        BuildMergeCursorFromViews(
+            ReadOnlySpan<WholeReadSessionView> views,
+            byte[] columnTag,
+            Span<WholeReadSessionMergeSource> sourcesBuf,
+            LoserTreeState state,
+            int keyLen)
     {
         for (int i = 0; i < views.Length; i++)
-        {
-            WholeReadSessionReader r = views[i].CreateReader();
-            HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
-            Bound cb = hsst.TrySeek(tag, out Bound cbOut) ? cbOut : default;
-            sources[i] = new(new HsstEnumerator(in r, cb), views[i]);
-        }
+            sourcesBuf[i] = WholeReadSessionMergeSource.FromView(views[i], columnTag);
+        return new NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource>(
+            sourcesBuf[..views.Length], state, keyLen);
     }
 
     /// <summary>For each matching source in <paramref name="cursor"/>'s <c>MatchingSources</c>,
@@ -415,12 +435,11 @@ public static class PersistedSnapshotMerger
             for (int k = 0; k < matchCount; k++)
                 innerBounds[k] = cursor.ValueAt(matchingSources[k]);
             Span<WholeReadSessionMergeSource> innerSources = scratch.InnerSources.AsSpan()[..matchCount];
-            MapCursorSource<TwoByteSlotEnumeratorFactory>(
-                cursor.Sources, matchingSources, innerBounds, innerSources);
+            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor =
+                BuildMergeCursor(cursor.Sources, matchingSources, innerBounds, innerSources, innerState, InnerKeyLen,
+                    default(TwoByteSlotEnumeratorFactory));
             try
             {
-                NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor = new(
-                    innerSources, innerState, InnerKeyLen);
                 HsstTwoByteSlotMerger.NWayMerge<
                     PooledByteBufferWriter.Writer, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
                     SlotSuffixBloomCallback>(
@@ -513,9 +532,8 @@ public static class PersistedSnapshotMerger
 
         try
         {
-            SeedSourcesAtColumn(views, tag, sources);
-            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
-                sources, state, keySize);
+            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor =
+                BuildMergeCursorFromViews(views, tag, sources, state, keySize);
 
             HsstPackedArrayMerger.NWayMerge<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, StatePathBloomCallback>(
                 ref writer, NodeRef.Size, ref cursor, new StatePathBloomCallback(bloom));
@@ -558,9 +576,8 @@ public static class PersistedSnapshotMerger
 
         try
         {
-            SeedSourcesAtColumn(views, tag, sources);
-            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
-                sources, state, AddrKeyLen);
+            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor =
+                BuildMergeCursorFromViews(views, tag, sources, state, AddrKeyLen);
 
             PerAddressColumnValueMerger<TWriter, TReader, TPin> valueMerger =
                 new(bloom, slotPrefixBuffers);
@@ -599,9 +616,8 @@ public static class PersistedSnapshotMerger
 
         try
         {
-            SeedSourcesAtColumn(views, tag, sources);
-            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
-                sources, state, AddrKeyLen);
+            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor =
+                BuildMergeCursorFromViews(views, tag, sources, state, AddrKeyLen);
 
             StorageTrieColumnValueMerger<TWriter, TReader, TPin> valueMerger = new(bloom);
             HsstBTreeMerger.NWayMerge<TWriter, TReader, TPin,
@@ -684,25 +700,15 @@ public static class PersistedSnapshotMerger
 
                 if (slotSourceCount > 0)
                 {
-                    using ArrayPoolList<WholeReadSessionMergeSource> slotMergeSourcesList = new(slotSourceCount, slotSourceCount);
-                    Span<WholeReadSessionMergeSource> slotSrcArr = slotMergeSourcesList.AsSpan();
-                    try
-                    {
-                        MapCursorSource<TailDispatchEnumeratorFactory>(
-                            outerSources, slotSources[..slotSourceCount], slotBounds[..slotSourceCount], slotSrcArr);
-
-                        ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
-                        NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
-                            slotSrcArr, slotSourceCount,
-                            ref slotWriter,
-                            ref slotPrefixBuffers,
-                            bloom, addrBloomKey);
-                        perAddrBuilder.FinishValueWrite(PersistedSnapshotTags.SlotSubTag);
-                    }
-                    finally
-                    {
-                        for (int j = 0; j < slotSourceCount; j++) slotSrcArr[j].Dispose();
-                    }
+                    ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
+                    NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
+                        outerSources,
+                        slotSources[..slotSourceCount],
+                        slotBounds[..slotSourceCount],
+                        ref slotWriter,
+                        ref slotPrefixBuffers,
+                        bloom, addrBloomKey);
+                    perAddrBuilder.FinishValueWrite(PersistedSnapshotTags.SlotSubTag);
                 }
             }
 
@@ -786,26 +792,39 @@ public static class PersistedSnapshotMerger
     /// wrapping this call in BeginValueWrite/FinishValueWrite on its outer builder.
     /// </summary>
     private static void NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
-        Span<WholeReadSessionMergeSource> outerSources, int n,
+        ReadOnlySpan<WholeReadSessionMergeSource> perAddrSources,
+        ReadOnlySpan<int> slotIndices,
+        ReadOnlySpan<Bound> slotBounds,
         ref TWriter writer,
         scoped ref HsstBTreeBuilderBuffers slotPrefixBuffers,
         BloomFilter bloom, ulong addrBloomKey) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
+        int n = slotIndices.Length;
         const int OuterKeyLen = 30;
         const int OuterStride = 32;
         using LoserTreeState outerState = new(n, OuterStride);
         using SlotPrefixValueMergerScratch scratch = new(n);
+        using ArrayPoolList<WholeReadSessionMergeSource> slotPrefixSourcesList = new(n, n);
+        Span<WholeReadSessionMergeSource> slotPrefixSources = slotPrefixSourcesList.AsSpan();
 
-        NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> outerCursor = new(
-            outerSources[..n], outerState, OuterKeyLen);
+        try
+        {
+            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> outerCursor =
+                BuildMergeCursor(perAddrSources, slotIndices, slotBounds, slotPrefixSources, outerState, OuterKeyLen,
+                    default(TailDispatchEnumeratorFactory));
 
-        HsstBTreeMerger.NWayMergeKeyFirst<
-            TWriter, TReader, TPin,
-            WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
-            SlotPrefixValueMerger>(
-                ref writer, OuterKeyLen, ref outerCursor,
-                new SlotPrefixValueMerger(bloom, addrBloomKey, scratch),
-                ref slotPrefixBuffers);
+            HsstBTreeMerger.NWayMergeKeyFirst<
+                TWriter, TReader, TPin,
+                WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
+                SlotPrefixValueMerger>(
+                    ref writer, OuterKeyLen, ref outerCursor,
+                    new SlotPrefixValueMerger(bloom, addrBloomKey, scratch),
+                    ref slotPrefixBuffers);
+        }
+        finally
+        {
+            for (int j = 0; j < n; j++) slotPrefixSources[j].Dispose();
+        }
     }
 
     /// <summary>
@@ -872,10 +891,9 @@ public static class PersistedSnapshotMerger
         {
             Span<int> outerIndices = stackalloc int[active];
             for (int j = 0; j < active; j++) outerIndices[j] = matchingSources[srcs[j]];
-            MapCursorSource<TailDispatchEnumeratorFactory>(
-                outerSources, outerIndices, subBounds[..active], sources);
-            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor = new(
-                sources, state, innerKeySize);
+            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor =
+                BuildMergeCursor(outerSources, outerIndices, subBounds[..active], sources, state, innerKeySize,
+                    default(TailDispatchEnumeratorFactory));
 
             ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
             HsstPackedArrayMerger.NWayMerge<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, AddrXorStatePathBloomCallback>(
