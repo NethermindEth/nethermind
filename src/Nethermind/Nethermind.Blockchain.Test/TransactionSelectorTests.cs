@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -283,7 +282,7 @@ namespace Nethermind.Blockchain.Test
                 }
                 {
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
-                    List<Transaction> txs = new();
+                    List<Transaction> txs = [];
 
                     UInt256 nonce = 1;
                     AddTxs(txCount: 5, blobsPerTx: 5, account: 0, txs, ref nonce);
@@ -474,8 +473,7 @@ namespace Nethermind.Blockchain.Test
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             IReadOnlyList<Transaction> selectedTransactions = SelectTransactions(testCase);
-            selectedTransactions.Should()
-                .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
+            Assert.That(selectedTransactions, Is.EqualTo(testCase.ExpectedSelectedTransactions).UsingTransactionComparer());
         }
 
         [Test]
@@ -502,8 +500,7 @@ namespace Nethermind.Blockchain.Test
             testCase.ExpectedSelectedTransactions.Add(first);
 
             IReadOnlyList<Transaction> selectedTransactions = SelectTransactions(testCase);
-            selectedTransactions.Should()
-                .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
+            Assert.That(selectedTransactions, Is.EqualTo(testCase.ExpectedSelectedTransactions).UsingTransactionComparer());
         }
 
         private static IReadOnlyList<Transaction> SelectTransactions(ProperTransactionsSelectedTestCase testCase)
@@ -591,9 +588,9 @@ namespace Nethermind.Blockchain.Test
             public IDictionary<Address, (UInt256 Balance, UInt256 Nonce)> AccountStates { get; } =
                 new Dictionary<Address, (UInt256 Balance, UInt256 Nonce)>();
 
-            public List<Transaction> Transactions { get; set; } = new();
+            public List<Transaction> Transactions { get; set; } = [];
             public long GasLimit { get; set; }
-            public List<Transaction> ExpectedSelectedTransactions { get; } = new();
+            public List<Transaction> ExpectedSelectedTransactions { get; } = [];
             public UInt256 MinGasPriceForMining { get; set; } = 1;
 
             public required IReleaseSpec ReleaseSpec { get; set; }
@@ -653,7 +650,7 @@ namespace Nethermind.Blockchain.Test
                     GasLimit = 10000000
                 };
 
-            public List<Address> MissingAddresses { get; } = new();
+            public List<Address> MissingAddresses { get; } = [];
         }
     }
 }

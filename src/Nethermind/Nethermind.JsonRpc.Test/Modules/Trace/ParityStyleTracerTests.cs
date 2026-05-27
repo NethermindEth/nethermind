@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
@@ -19,6 +18,7 @@ using Nethermind.Specs;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -83,21 +83,21 @@ public class ParityStyleTracerTests
     public async Task Should_return_correct_block_reward(bool isPostMerge)
     {
         Block block = Build.A.Block.WithParent(_blockTree!.Head!).TestObject;
-        (await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)).Should().Be(AddBlockResult.Added);
+        Assert.That((await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)), Is.EqualTo(AddBlockResult.Added));
         _poSSwitcher!.IsPostMerge(Arg.Any<BlockHeader>()).Returns(isPostMerge);
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));
-        rpcResult.Result.Should().Be(Result.Success);
+        Assert.That(rpcResult.Result, Is.EqualTo(Result.Success));
         ParityTxTraceFromStore[] result = rpcResult.Data.ToArray();
         if (isPostMerge)
         {
-            result.Length.Should().Be(1);
-            result[0].Action.Author.Should().Be(block.Beneficiary!);
-            result[0].Action.Value.Should().Be(0);
+            Assert.That(result.Length, Is.EqualTo(1));
+            Assert.That(result[0].Action.Author, Is.EqualTo(block.Beneficiary!));
+            Assert.That(result[0].Action.Value, Is.EqualTo(UInt256.Zero));
         }
         else
         {
-            result.Length.Should().Be(0);
+            Assert.That(result.Length, Is.EqualTo(0));
         }
     }
 }

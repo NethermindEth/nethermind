@@ -14,7 +14,7 @@ internal static class WmicCpuInfoParser
     {
         List<Dictionary<string, string>> processors = SectionsHelper.ParseSections(content, '=');
 
-        HashSet<string> processorModelNames = new();
+        HashSet<string> processorModelNames = [];
         int physicalCoreCount = 0;
         int logicalCoreCount = 0;
         int processorsCount = 0;

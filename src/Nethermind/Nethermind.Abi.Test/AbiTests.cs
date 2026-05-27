@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
-using FluentAssertions;
 using MathNet.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -541,7 +540,7 @@ public class AbiTests
             new Address("0x4173c8cE71a385e325357d8d79d6B7bc1c708F40")
         ];
 
-        objects.Should().BeEquivalentTo(expectedObjects);
+        Assert.That(objects, Is.EqualTo(expectedObjects).UsingPropertiesComparer());
     }
 
     [Test]
@@ -549,15 +548,15 @@ public class AbiTests
     {
         AbiArray abi = new(AbiType.UInt256);
         UInt256[] array = new UInt256[] { 1, 2, 3, UInt256.MaxValue };
-        List<UInt256> list = new() { 1, 2, 3, UInt256.MaxValue };
+        List<UInt256> list = [1, 2, 3, UInt256.MaxValue];
         using ArrayPoolList<UInt256> pool = new(4);
 
         pool.AddRange(array);
 
         byte[] encoded = abi.Encode(array, false);
 
-        abi.Encode(list, false).Should().BeEquivalentTo(encoded);
-        abi.Encode(pool, false).Should().BeEquivalentTo(encoded);
+        Assert.That(abi.Encode(list, false), Is.EqualTo(encoded));
+        Assert.That(abi.Encode(pool, false), Is.EqualTo(encoded));
     }
 
     [Test]
@@ -670,7 +669,7 @@ public class AbiTests
             new BigInteger[] { 0x456, 0x789 },
             Encoding.ASCII.GetBytes("1234567890"),
             Encoding.ASCII.GetBytes("Hello, world!"));
-        encoded.ToHexString().Should().BeEquivalentTo(expectedValue.ToHexString());
+        Assert.That(encoded.ToHexString(), Is.EqualTo(expectedValue.ToHexString()));
     }
 
     [TestCase("tuple", typeof(AbiTuple), "()")]
@@ -682,17 +681,17 @@ public class AbiTests
     {
         AbiType result = JsonSerializer.Deserialize<AbiType>($"\"{typeName}\"")!;
 
-        result.Should().BeOfType(expectedType);
-        result.Name.Should().Be(expectedName);
+        Assert.That(result, Is.TypeOf(expectedType));
+        Assert.That(result.Name, Is.EqualTo(expectedName));
     }
 
     [Test]
     public void AbiTuple_Name_Reflects_Elements()
     {
         AbiTuple tuple = new(AbiType.UInt8, AbiType.UInt64);
-        tuple.Name.Should().Be("(uint8,uint64)");
+        Assert.That(tuple.Name, Is.EqualTo("(uint8,uint64)"));
 
         AbiArray tupleArray = new(tuple);
-        tupleArray.Name.Should().Be("(uint8,uint64)[]");
+        Assert.That(tupleArray.Name, Is.EqualTo("(uint8,uint64)[]"));
     }
 }

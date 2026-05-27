@@ -101,7 +101,7 @@ internal class EpochSwitchManager(
 
     private EpochSwitchInfo[] GetEpochSwitchBetween(XdcBlockHeader start, XdcBlockHeader end)
     {
-        List<EpochSwitchInfo> epochSwitchInfos = new();
+        List<EpochSwitchInfo> epochSwitchInfos = [];
 
         Hash256 iteratorHash = end.Hash;
         long iteratorBlockNumber = end.Number;
@@ -135,7 +135,7 @@ internal class EpochSwitchManager(
 
     private BlockRoundInfo? GetBlockInfoInCache(ulong estRound, ulong epoch)
     {
-        List<BlockRoundInfo> epochSwitchInCache = new();
+        List<BlockRoundInfo> epochSwitchInCache = [];
 
         for (ulong r = estRound; r < estRound + (ulong)epoch; r++)
         {

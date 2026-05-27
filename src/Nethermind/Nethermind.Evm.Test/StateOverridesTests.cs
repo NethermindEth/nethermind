@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -51,7 +50,7 @@ public class StateOverridesTests
 
         Action act = () => _state.ApplyStateOverridesNoCommit(_codeRepo, overrides, Shanghai.Instance);
 
-        act.Should().Throw<ArgumentException>().WithMessage("*maximum supported value*");
+        Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains(@"maximum supported value"));
     }
 
     private static IEnumerable<TestCaseData> ValidNonceCases() =>
@@ -71,6 +70,6 @@ public class StateOverridesTests
 
         Action act = () => _state.ApplyStateOverridesNoCommit(_codeRepo, overrides, Shanghai.Instance);
 
-        act.Should().NotThrow();
+        Assert.That(act, Throws.Nothing);
     }
 }

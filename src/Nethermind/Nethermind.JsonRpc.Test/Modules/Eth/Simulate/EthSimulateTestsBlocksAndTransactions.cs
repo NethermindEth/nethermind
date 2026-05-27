@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,7 +24,7 @@ using Nethermind.Specs.Test;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
-namespace Nethermind.JsonRpc.Test.Modules.Eth;
+namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 public class EthSimulateTestsBlocksAndTransactions
 {
@@ -64,8 +63,8 @@ public class EthSimulateTestsBlocksAndTransactions
 
         return new()
         {
-            BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>
-            {
+            BlockStateCalls =
+            [
                 new()
                 {
                     BlockOverrides =
@@ -90,7 +89,7 @@ public class EthSimulateTestsBlocksAndTransactions
                         },
                     Calls = [ToRpcForInput(txAtoB3), ToRpcForInput(txAtoB4)]
                 }
-            },
+            ],
             TraceTransfers = true
         };
     }
@@ -121,8 +120,8 @@ public class EthSimulateTestsBlocksAndTransactions
 
         return new()
         {
-            BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>
-            {
+            BlockStateCalls =
+            [
                 new()
                 {
                     BlockOverrides =
@@ -147,7 +146,7 @@ public class EthSimulateTestsBlocksAndTransactions
                         },
                     Calls = new[] { transactionForRpc }
                 }
-            },
+            ],
             TraceTransfers = true,
             Validation = true
         };
@@ -191,8 +190,8 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(data, Has.Count.EqualTo(7));
 
         SimulateBlockResult<SimulateCallResult> blockResult = data.Last();
-        blockResult.Calls.Select(static c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
-        blockResult.Calls.Should().OnlyContain(static c => c.MaxUsedGas.HasValue && c.GasUsed.HasValue && c.MaxUsedGas.Value >= c.GasUsed.Value);
+        Assert.That(blockResult.Calls.Select(static c => c.Status), Is.EqualTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success }));
+        Assert.That(blockResult.Calls.All(static c => c.MaxUsedGas.HasValue && c.GasUsed.HasValue && c.MaxUsedGas.Value >= c.GasUsed.Value), Is.True);
 
     }
 
@@ -381,9 +380,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.EthRpcModule, "eth_simulateV1", payload!, "latest");
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
-        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
-        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = (IReadOnlyList<SimulateBlockResult<SimulateCallResult>>)successResponse.Result!;
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>(response);
         Log[] logs = data[0].Calls.First().Logs.ToArray();
         Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
     }
@@ -463,8 +460,8 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        result.ErrorCode.Should().Be(expectedErrorCode);
-        result.Result.Error.Should().Be(expectedMessage);
+        Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
+        Assert.That(result.Result.Error, Is.EqualTo(expectedMessage));
     }
 
     // Minimal bytecode: PREVRANDAO PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN
@@ -521,11 +518,12 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        result.Result.ResultType.Should().Be(Core.ResultType.Success);
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
         SimulateCallResult callResult = result.Data.First().Calls.First();
-        callResult.Status.Should().Be((ulong)ResultType.Success);
-        callResult.ReturnData.Should().NotBeNull().And.HaveCount(32);
-        new Hash256(callResult.ReturnData!).Should().Be(expected);
+        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+        Assert.That(callResult.ReturnData, Is.Not.Null);
+        Assert.That(callResult.ReturnData!.Length, Is.EqualTo(32));
+        Assert.That(new Hash256(callResult.ReturnData), Is.EqualTo(expected));
     }
 
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
@@ -747,9 +745,9 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payloadFactory(), BlockParameter.Latest);
 
-        result.ErrorCode.Should().Be(expectedErrorCode);
+        Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
         if (expectedMessage is not null)
-            result.Result!.Error.Should().Be(expectedMessage);
+            Assert.That(result.Result!.Error, Is.EqualTo(expectedMessage));
     }
 
     /// <summary>
@@ -801,6 +799,62 @@ public class EthSimulateTestsBlocksAndTransactions
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.SenderIsNotEoa));
+    }
+
+    /// <summary>
+    /// Regression test: blob tx rejected when <c>maxFeePerBlobGas</c> is below the <c>blobBaseFee</c>
+    /// block override. The decorated calculator must be used for validation, not the static
+    /// <c>BlobGasCalculator.TryCalculateFeePerBlobGas</c> which reads from the raw header.
+    /// </summary>
+    /// <remarks>
+    /// With <c>validation = false</c>, <see cref="ProcessingOptions.NoValidation"/> is set but
+    /// <c>ShouldValidateGas</c> still returns <c>true</c> when <c>MaxFeePerGas != 0</c>, so the
+    /// blob fee cap check runs regardless and the result is identical(mirrors geth).
+    /// </remarks>
+    [TestCase(true, TestName = "validation=true rejects blob tx when maxFeePerBlobGas below blobBaseFee override")]
+    [TestCase(false, TestName = "validation=false rejects blob tx when maxFeePerBlobGas below blobBaseFee override")]
+    public async Task eth_simulateV1_blob_tx_rejected_when_max_fee_per_blob_gas_below_block_override(bool validation)
+    {
+        // excessBlobGas=0 so the static calculator gives feePerBlobGas=1 (would pass),
+        // but the blobBaseFee override is 11 > maxFeePerBlobGas=10, so must fail.
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Cancun.Instance);
+
+        byte[] validHash = new byte[32];
+        validHash[0] = 0x01;
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { BlobBaseFee = 11, BaseFeePerGas = 1 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new BlobTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            MaxFeePerGas = 1_000_000_000,
+                            MaxPriorityFeePerGas = 1,
+                            MaxFeePerBlobGas = 10,
+                            BlobVersionedHashes = [validHash],
+                            GasPrice = null
+                        }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
+        Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
     }
 
 }

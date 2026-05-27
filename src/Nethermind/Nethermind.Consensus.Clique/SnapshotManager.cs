@@ -10,6 +10,7 @@ using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -100,7 +101,7 @@ namespace Nethermind.Consensus.Clique
                 return snapshot;
             }
 
-            List<BlockHeader> headers = new();
+            List<BlockHeader> headers = [];
             lock (_snapshotCreationLock)
             {
                 BlockHeader? header = null;

@@ -4,7 +4,7 @@
 using System.IO.Abstractions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using Testably.Abstractions;
 
 namespace Nethermind.EraE.Export;

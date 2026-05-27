@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -38,7 +37,7 @@ public class EnrDiscoveryTests
         {
             await TestContext.Out.WriteLineAsync(error.Text);
         }
-        addedRecords.Count.Should().Be(3000);
+        Assert.That(addedRecords.Count, Is.EqualTo(3000));
     }
 
     [Test]
@@ -54,7 +53,7 @@ public class EnrDiscoveryTests
             NodeRecord nodeRecord = parser.ParseRecord(record);
             if (!nodeRecord.Snap)
             {
-                nodeRecord.EnrString.Should().BeEquivalentTo(record);
+                Assert.That(nodeRecord.EnrString, Is.EqualTo(record));
                 verified++;
             }
         }

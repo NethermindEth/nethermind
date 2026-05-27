@@ -4,6 +4,7 @@
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
@@ -19,6 +20,7 @@ using Nethermind.Evm;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Int256;
@@ -138,11 +140,12 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(successResponse, Is.Not.Null);
-            Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+            string expectedResponse = chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
             {
                 Id = successResponse.Id,
                 Result = expectedPayload
-            })));
+            });
+            Assert.That(JsonNode.DeepEquals(JsonNode.Parse(response), JsonNode.Parse(expectedResponse)), Is.True);
         }
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
@@ -462,6 +465,27 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task PayloadBodiesV2DirectResponse_WriteToAsync_produces_valid_json()
+    {
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        Withdrawal[] withdrawals = CreateDirectResponseWithdrawals();
+
+        PayloadBodiesV2DirectResponse.PayloadBody?[] items =
+        [
+            PayloadBodiesV2DirectResponse.CreatePayloadBody(
+                [transaction],
+                withdrawals,
+                ArrayMemoryManager.From([0x01, 0x02, 0x03])),
+            null,
+            PayloadBodiesV2DirectResponse.CreatePayloadBody([], null, null)
+        ];
+
+        using PayloadBodiesV2DirectResponse response = new(items);
+
+        await AssertStreamedJsonMatchesSerializer(response);
+    }
+
+    [Test]
     public virtual async Task Can_build_and_process_multiple_blocks_V6()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -505,7 +529,7 @@ public partial class EngineModuleTests
         }
 
         GetPayloadV6Result payload = payloadResult.Data;
-        await rpcModule.engine_newPayloadV5(payload.ExecutionPayload, payload.BlobsBundle.Blobs, TestItem.KeccakE, []);
+        await rpcModule.engine_newPayloadV5(payload.ExecutionPayload, Array.ConvertAll(payload.BlobsBundle.Blobs, static h => (Hash256?)new Hash256(h)), TestItem.KeccakE, []);
 
         ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash);
         await rpcModule.engine_forkchoiceUpdatedV4(newForkchoiceState, null);
@@ -855,7 +879,7 @@ public partial class EngineModuleTests
         Block block = blockResult.Data!;
         ReadOnlyBlockAccessList validBal = block.BlockAccessList!;
 
-        SortedDictionary<Address, ReadOnlyAccountChanges> modifiedAccounts = new();
+        SortedDictionary<Address, ReadOnlyAccountChanges> modifiedAccounts = [];
         Address senderAddress = TestItem.AddressA;
 
         ReadOnlyBlockAccessList modifiedBal = CreateBlockAccessList();

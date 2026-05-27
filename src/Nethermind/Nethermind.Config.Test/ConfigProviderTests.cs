@@ -5,8 +5,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
@@ -59,7 +59,7 @@ namespace Nethermind.Config.Test
                 bitArray.Set(4, (i >> 4) % 2 == 1);
                 bitArray.Set(5, (i >> 5) % 2 == 1);
 
-                Dictionary<string, string> args = new();
+                Dictionary<string, string> args = [];
                 if (bitArray.Get(4))
                 {
                     args.Add("JsonRpc.Enabled", bitArray.Get(5).ToString());
@@ -71,7 +71,7 @@ namespace Nethermind.Config.Test
                     Environment.SetEnvironmentVariable("NETHERMIND_JSONRPCCONFIG_ENABLED", bitArray.Get(3).ToString(), EnvironmentVariableTarget.Process);
                 }
 
-                Dictionary<string, string> fakeJson = new();
+                Dictionary<string, string> fakeJson = [];
                 if (bitArray.Get(0))
                 {
                     fakeJson.Add("JsonRpc.Enabled", bitArray.Get(1).ToString());
@@ -101,7 +101,7 @@ namespace Nethermind.Config.Test
             };
             IConfigProvider configProvider = new ConfigProvider(blocksConfig);
 
-            configProvider.GetConfig<IBlocksConfig>().MinGasPrice.Should().Be(12345);
+            Assert.That(configProvider.GetConfig<IBlocksConfig>().MinGasPrice, Is.EqualTo((UInt256)12345));
         }
     }
 

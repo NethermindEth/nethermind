@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -255,7 +255,7 @@ public class HistoryPrunerTests
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new TestMemDb());
 
-        TestDelegate action = () => new HistoryPruner(
+        Action action = () => new HistoryPruner(
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<IBlockAccessListStore>(),
@@ -399,7 +399,7 @@ public class HistoryPrunerTests
     private sealed class CapturingScheduler : IBackgroundTaskScheduler
     {
         public TimeSpan? CapturedTimeout { get; private set; }
-        public TaskCompletionSource Invoked { get; } = new();
+        public TaskCompletionSource Invoked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string source = null)
         {

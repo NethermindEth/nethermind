@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -337,7 +338,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithBloom(new Bloom())
                     .TestObject;
 
-                List<TxReceipt> receipts = new();
+                List<TxReceipt> receipts = [];
                 foreach (Transaction transaction in currentBlock.Transactions)
                 {
                     LogEntry[] logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? [];

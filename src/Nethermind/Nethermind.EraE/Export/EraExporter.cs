@@ -11,7 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Archive;
 using Nethermind.EraE.Config;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.EraE.Proofs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -272,7 +272,7 @@ public sealed class EraExporter(
     /// </summary>
     private Dictionary<string, ValueHash256> LoadHashFile(string path)
     {
-        Dictionary<string, ValueHash256> result = new();
+        Dictionary<string, ValueHash256> result = [];
         if (!fileSystem.File.Exists(path))
             return result;
 

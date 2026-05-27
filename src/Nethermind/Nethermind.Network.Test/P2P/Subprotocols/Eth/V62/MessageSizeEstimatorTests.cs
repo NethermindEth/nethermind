@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -17,44 +16,44 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Estimate_header_size()
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
-            MessageSizeEstimator.EstimateSize(header).Should().Be(512);
+            Assert.That(MessageSizeEstimator.EstimateSize(header), Is.EqualTo(512));
         }
 
         [Test]
-        public void Estimate_null_header_size() => MessageSizeEstimator.EstimateSize((BlockHeader)null).Should().Be(0);
+        public void Estimate_null_header_size() => Assert.That(MessageSizeEstimator.EstimateSize((BlockHeader)null), Is.EqualTo(0));
 
         [Test]
         public void Estimate_block_size()
         {
             Block block = Build.A.Block.WithTransactions(100, MuirGlacier.Instance).TestObject;
-            MessageSizeEstimator.EstimateSize(block).Should().Be(10512);
+            Assert.That(MessageSizeEstimator.EstimateSize(block), Is.EqualTo(10512));
         }
 
         [Test]
-        public void Estimate_null_block_size() => MessageSizeEstimator.EstimateSize((Block)null).Should().Be(0);
+        public void Estimate_null_block_size() => Assert.That(MessageSizeEstimator.EstimateSize((Block)null), Is.EqualTo(0));
 
         [Test]
-        public void Estimate_null_tx_size() => MessageSizeEstimator.EstimateSize((Transaction)null).Should().Be(0);
+        public void Estimate_null_tx_size() => Assert.That(MessageSizeEstimator.EstimateSize((Transaction)null), Is.EqualTo(0));
 
         [Test]
         public void Estimate_tx_size()
         {
             Transaction tx = Build.A.Transaction.TestObject;
-            MessageSizeEstimator.EstimateSize(tx).Should().Be(100);
+            Assert.That(MessageSizeEstimator.EstimateSize(tx), Is.EqualTo(100));
         }
 
         [Test]
         public void Estimate_tx_with_data_size()
         {
             Transaction tx = Build.A.Transaction.WithData(new byte[7]).TestObject;
-            MessageSizeEstimator.EstimateSize(tx).Should().Be(107);
+            Assert.That(MessageSizeEstimator.EstimateSize(tx), Is.EqualTo(107));
         }
 
         [Test]
         public void Estimate_tx_receipt_size()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
-            MessageSizeEstimator.EstimateSize(txReceipt).Should().Be(256 + 32);
+            Assert.That(MessageSizeEstimator.EstimateSize(txReceipt), Is.EqualTo(256 + 32));
         }
     }
 }

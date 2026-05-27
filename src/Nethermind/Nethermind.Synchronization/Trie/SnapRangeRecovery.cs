@@ -175,7 +175,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         ArrayPoolList<(TreePath, byte[])> result = new(1);
 
         ITrieNodeResolver emptyResolver = new EmptyTrieNodeResolver();
-        Dictionary<ValueHash256, byte[]> nodes = new();
+        Dictionary<ValueHash256, byte[]> nodes = [];
         for (int i = 0; i < proofs.Count; i++)
         {
             byte[] proof = proofs[i].ToArray();

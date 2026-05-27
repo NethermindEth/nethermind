@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
             IList<IRewardContract> BuildTransitions()
             {
-                List<IRewardContract> contracts = new();
+                List<IRewardContract> contracts = [];
 
                 if (auRaParameters.BlockRewardContractTransitions is not null)
                 {

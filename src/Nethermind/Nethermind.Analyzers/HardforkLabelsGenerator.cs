@@ -87,7 +87,7 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
 
     private sealed class ApplyAnalysis
     {
-        public List<(int Eip, bool Enabled)> EipDelta { get; set; } = new();
+        public List<(int Eip, bool Enabled)> EipDelta { get; set; } = [];
         public bool SetsIsPostMerge { get; set; }
     }
 
@@ -98,7 +98,7 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
             .FirstOrDefault(m => m.Identifier.ValueText == "Apply" && m.Modifiers.Any(SyntaxKind.OverrideKeyword));
         if (apply is null) return null;
 
-        List<(int, bool)> delta = new();
+        List<(int, bool)> delta = [];
         bool setsIsPostMerge = false;
         foreach (AssignmentExpressionSyntax asn in apply.DescendantNodes().OfType<AssignmentExpressionSyntax>())
         {
@@ -180,17 +180,17 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
     ///         — only ConstantinopleFix does this.</item>
     /// </list>
     /// </remarks>
-    private static readonly HashSet<int> NoJsonField = new()
-    {
+    private static readonly HashSet<int> NoJsonField =
+    [
         2,                   // Homestead — no Eip2Transition
         100, 196, 197, 198,  // Byzantium consensus / precompile activations
         170,                 // MaxCodeSize-tracked
         649, 1234,           // Block-reward / difficulty-bomb deltas
-    };
+    ];
 
     private static List<string> ResolveJsonFields(ForkInfo fork)
     {
-        List<string> result = new();
+        List<string> result = [];
         string suffix = fork.IsPostMerge ? "TransitionTimestamp" : "Transition";
         foreach ((int eip, bool enabled) in fork.EipDelta)
         {
@@ -207,7 +207,7 @@ internal sealed class ForkInfo
 {
     public string Name { get; set; } = "";
     public string? ParentName { get; set; }
-    public List<(int Eip, bool Enabled)> EipDelta { get; set; } = new();
+    public List<(int Eip, bool Enabled)> EipDelta { get; set; } = [];
     public bool SetsIsPostMerge { get; set; }
     public bool IsPostMerge { get; set; }
     public int Depth { get; set; }

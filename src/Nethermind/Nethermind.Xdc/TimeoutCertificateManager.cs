@@ -16,6 +16,7 @@ using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -37,6 +38,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly ISigner _signer;
     private readonly ILogger _logger;
     private readonly XdcPool<Timeout> _timeouts = new();
+    private readonly ConcurrentDictionary<ulong, byte> _tcBuildStartedByRound = new();
 
     public TimeoutCertificateManager(
         IXdcConsensusContext context,
@@ -83,11 +85,13 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         BroadcastTimeout(timeout);
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
-        double CertificateThreshold = spec.CertificateThreshold;
-        if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * CertificateThreshold)
-        {
-            OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
-        }
+        if (collectedTimeouts.Count < epochSwitchInfo.Masternodes.Length * spec.CertificateThreshold)
+            return Task.CompletedTask;
+
+        if (!_tcBuildStartedByRound.TryAdd(timeout.Round, 0))
+            return Task.CompletedTask;
+
+        OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
         return Task.CompletedTask;
     }
 
@@ -118,9 +122,18 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         if (timeoutCertificate.Round >= _consensusContext.CurrentRound)
         {
-            _timeouts.EndRound(timeoutCertificate.Round);
             _consensusContext.SetNewRound(timeoutCertificate.Round + 1);
         }
+
+        CleanupTimeouts(timeoutCertificate.Round);
+    }
+
+    private void CleanupTimeouts(ulong round)
+    {
+        _timeouts.EndRound(round);
+
+        foreach (KeyValuePair<ulong, byte> kvp in _tcBuildStartedByRound)
+            if (kvp.Key <= round) _tcBuildStartedByRound.TryRemove(kvp.Key, out _);
     }
 
     public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, [NotNullWhen(false)] out string? errorMessage)

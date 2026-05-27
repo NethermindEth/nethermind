@@ -12,6 +12,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -145,8 +146,8 @@ public class BlockProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(parentReaderFactory.CreatedSources, Is.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltWorldStates, Has.Count.EqualTo(2));
+            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(2));
+            Assert.That(parentReaderFactory.BuiltWorldStates.Count, Is.EqualTo(2));
             Assert.That(parentReaderFactory.BuiltWorldStates[0], Is.Not.SameAs(parentReaderFactory.BuiltWorldStates[1]));
             Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
         }
@@ -218,7 +219,7 @@ public class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(1));
+            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(1));
             Assert.That(parentReaderFactory.BuiltHeaders[0]!.StateRoot, Is.EqualTo(parentStateRoot));
         }
 
@@ -1004,7 +1005,7 @@ public class BlockProcessorTests
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = new();
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
         BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
             Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
             stateProvider,
@@ -1358,7 +1359,7 @@ public class BlockProcessorTests
         private readonly ManualResetEventSlim _parallelExecutionStarted = new();
         private int _executedCount;
 
-        public ConcurrentBag<bool> ObservedProcessingThreadFlags { get; } = new();
+        public ConcurrentBag<bool> ObservedProcessingThreadFlags { get; } = [];
         public ConcurrentDictionary<int, byte> ThreadIds { get; } = new();
 
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)

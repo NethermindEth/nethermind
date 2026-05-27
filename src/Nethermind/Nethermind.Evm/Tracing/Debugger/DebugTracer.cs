@@ -19,7 +19,7 @@ public class DebugTracer<TGasPolicy>(ITxTracer tracer) : ITxTracer, ITxTracerWra
     public enum DebugPhase { Starting, Blocked, Running, Aborted }
 
     private readonly AutoResetEvent _autoResetEvent = new(false);
-    private readonly Dictionary<(int depth, int pc), Func<VmState<TGasPolicy>, bool>> _breakPoints = new();
+    private readonly Dictionary<(int depth, int pc), Func<VmState<TGasPolicy>, bool>> _breakPoints = [];
     private Func<VmState<TGasPolicy>, bool>? _globalBreakCondition;
     private readonly object _lock = new();
 

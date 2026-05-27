@@ -10,6 +10,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 

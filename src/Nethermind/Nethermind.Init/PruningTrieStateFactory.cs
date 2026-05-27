@@ -64,7 +64,8 @@ public class PruningTrieStateFactory(
             : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
                 codeDb,
-                logManager);
+                logManager,
+                codeDbIsPersistent: true);
 
         IWorldStateManager stateManager = new WorldStateManager(
             scopeProvider,

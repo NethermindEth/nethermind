@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -83,7 +82,7 @@ public class SnapProtocolHandlerTests
 
         public TimeSpan SimulatedLatency { get; set; } = TimeSpan.Zero;
 
-        private readonly List<long> _recordedResponseBytesLength = new();
+        private readonly List<long> _recordedResponseBytesLength = [];
 
         public Context WithResponseBytesRecorder
         {
@@ -118,11 +117,11 @@ public class SnapProtocolHandlerTests
             }
         }
 
-        public void RecordedMessageSizesShouldIncrease() => _recordedResponseBytesLength[^1].Should().BeGreaterThan(_recordedResponseBytesLength[^2]);
+        public void RecordedMessageSizesShouldIncrease() => Assert.That(_recordedResponseBytesLength[^1], Is.GreaterThan(_recordedResponseBytesLength[^2]));
 
-        public void RecordedMessageSizesShouldDecrease() => _recordedResponseBytesLength[^1].Should().BeLessThan(_recordedResponseBytesLength[^2]);
+        public void RecordedMessageSizesShouldDecrease() => Assert.That(_recordedResponseBytesLength[^1], Is.LessThan(_recordedResponseBytesLength[^2]));
 
-        public void RecordedMessageSizesShouldNotChange() => _recordedResponseBytesLength[^1].Should().Be(_recordedResponseBytesLength[^2]);
+        public void RecordedMessageSizesShouldNotChange() => Assert.That(_recordedResponseBytesLength[^1], Is.EqualTo(_recordedResponseBytesLength[^2]));
     }
 
     [Test]
