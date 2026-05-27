@@ -723,8 +723,8 @@ public partial class EthRpcModuleTests
         object? blockOverride = JsonSerializer.Deserialize<object>("""{"gasLimit":"0xC350"}"""); // 50000
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
-        JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
-            .Should().StartWith("Cannot estimate gas");
+        Assert.That(JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
+            Does.StartWith("Cannot estimate gas"));
     }
 
     [TestCase(
