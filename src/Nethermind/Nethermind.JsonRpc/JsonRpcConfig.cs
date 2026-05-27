@@ -48,6 +48,10 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
     public long? MaxRequestBodySize { get; set; } = 30000000;
     public int MaxLogsPerResponse { get; set; } = 20_000;
+    public bool EnableTracingStreamMode { get; set; } = true;
+    public bool EnableLogsStreamMode { get; set; } = false;
+    public long? MaxLogsResponseBodySize { get; set; } = null;
+    public int? DebugModuleConcurrentInstances { get; set; } = null;
     public int? EthModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
@@ -81,4 +85,5 @@ public class JsonRpcConfig : IJsonRpcConfig
     public bool StrictHexFormat { get; set; } = true;
     public int RpcTxSyncDefaultTimeoutMs { get; set; } = 20_000;
     public int RpcTxSyncMaxTimeoutMs { get; set; } = 60_000;
+    public string[] AdditionalTrustedNetworks { get; set; } = [];
 };

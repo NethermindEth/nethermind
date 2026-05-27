@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -209,7 +208,7 @@ public class StorageProviderTests(bool useFlat)
 
         using (IDisposable _ = storageProvider.BeginScope(newBase))
         {
-            storageProvider.AccountExists(ctx.Address1).Should().BeTrue();
+            Assert.That(storageProvider.AccountExists(ctx.Address1), Is.True);
 
             byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
 
@@ -366,12 +365,12 @@ public class StorageProviderTests(bool useFlat)
         {
             snapshot--;
         }
-        snapshots[0].StorageSnapshot.Should().BeEquivalentTo(Snapshot.Storage.Empty);
-        snapshots[1].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(Snapshot.EmptyPosition, 0));
-        snapshots[2].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(0, 1));
-        snapshots[3].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(1, 1));
+        Assert.That(snapshots[0].StorageSnapshot, Is.EqualTo(Snapshot.Storage.Empty));
+        Assert.That(snapshots[1].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(Snapshot.EmptyPosition, 0)));
+        Assert.That(snapshots[2].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(0, 1)));
+        Assert.That(snapshots[3].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(1, 1)));
 
-        _values[snapshot + 1].Should().BeEquivalentTo(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray());
+        Assert.That(_values[snapshot + 1], Is.EqualTo(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray()));
     }
 
     /// <summary>
@@ -412,14 +411,9 @@ public class StorageProviderTests(bool useFlat)
             snapshot--;
         }
 
-        snapshots.Should().Equal(
-            Snapshot.Empty,
-            new Snapshot(new Snapshot.Storage(0, Snapshot.EmptyPosition), Snapshot.EmptyPosition),
-            new Snapshot(new Snapshot.Storage(1, 0), Snapshot.EmptyPosition),
-            new Snapshot(new Snapshot.Storage(1, 1), Snapshot.EmptyPosition)
-        );
+        Assert.That(snapshots, Is.EqualTo(new[] { Snapshot.Empty, new Snapshot(new Snapshot.Storage(0, Snapshot.EmptyPosition), Snapshot.EmptyPosition), new Snapshot(new Snapshot.Storage(1, 0), Snapshot.EmptyPosition), new Snapshot(new Snapshot.Storage(1, 1), Snapshot.EmptyPosition) }));
 
-        _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());
+        Assert.That(_values[snapshot + 1], Is.EqualTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray()));
     }
 
     /// <summary>
@@ -437,8 +431,8 @@ public class StorageProviderTests(bool useFlat)
         provider.Get(accessedStorageCell);
         provider.Commit(Paris.Instance);
         provider.ClearStorage(TestItem.AddressA);
-        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
-        provider.Get(nonAccessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+        Assert.That(provider.Get(accessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+        Assert.That(provider.Get(nonAccessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
     [Test]
@@ -477,9 +471,9 @@ public class StorageProviderTests(bool useFlat)
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
 
-        baseBlock.StateRoot.Should().NotBe(originalStateRoot);
+        Assert.That(baseBlock.StateRoot, Is.Not.EqualTo(originalStateRoot));
 
-        ctx.WrittenData.SelfDestructed[TestItem.AddressA].Should().BeTrue();
+        Assert.That(ctx.WrittenData.SelfDestructed[TestItem.AddressA], Is.True);
         ctx.WrittenData.Clear();
 
         using (provider.BeginScope(baseBlock))
@@ -495,9 +489,9 @@ public class StorageProviderTests(bool useFlat)
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
 
-        baseBlock.StateRoot.Should().Be(originalStateRoot);
+        Assert.That(baseBlock.StateRoot, Is.EqualTo(originalStateRoot));
 
-        ctx.WrittenData.SelfDestructed[TestItem.AddressA].Should().BeTrue();
+        Assert.That(ctx.WrittenData.SelfDestructed[TestItem.AddressA], Is.True);
     }
 
     [Test]
@@ -533,13 +527,13 @@ public class StorageProviderTests(bool useFlat)
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
 
-        ctx.WrittenData.SelfDestructed[TestItem.AddressA].Should().BeTrue();
+        Assert.That(ctx.WrittenData.SelfDestructed[TestItem.AddressA], Is.True);
         ctx.WrittenData.Clear();
 
         using (provider.BeginScope(baseBlock))
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            provider.Get(new StorageCell(TestItem.AddressA, 100)).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+            Assert.That(provider.Get(new StorageCell(TestItem.AddressA, 100)).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
 
             provider.Commit(Frontier.Instance);
             provider.CommitTree(0);
@@ -567,7 +561,7 @@ public class StorageProviderTests(bool useFlat)
             baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
         }
 
-        baseBlock.StateRoot.Should().Be(Keccak.EmptyTreeHash);
+        Assert.That(baseBlock.StateRoot, Is.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]
@@ -605,10 +599,10 @@ public class StorageProviderTests(bool useFlat)
         preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
 
         WorldState provider = BuildStorageProvider(ctx);
-        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo([1, 2, 3]);
+        Assert.That(provider.Get(accessedStorageCell).ToArray(), Is.EqualTo([1, 2, 3]));
         provider.ClearStorage(TestItem.AddressA);
         provider.Commit(Paris.Instance);
-        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+        Assert.That(provider.Get(accessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
     [Test]
@@ -626,7 +620,7 @@ public class StorageProviderTests(bool useFlat)
         worldState.Set(new StorageCell(TestItem.AddressA, 1), [1, 2, 3]);
         worldState.Commit(SpuriousDragon.Instance);
 
-        worldState.AccountExists(TestItem.AddressA).Should().BeFalse();
+        Assert.That(worldState.AccountExists(TestItem.AddressA), Is.False);
     }
 
     [Test]
@@ -688,7 +682,7 @@ public class StorageProviderTests(bool useFlat)
         worldState.CommitTree(1);
 
         Hash256 fullHash = worldState.StateRoot;
-        fullHash.Should().NotBe(emptyHash);
+        Assert.That(fullHash, Is.Not.EqualTo(emptyHash));
 
         for (int i = 0; i < numItems; i++)
         {
@@ -699,7 +693,7 @@ public class StorageProviderTests(bool useFlat)
 
         Hash256 clearedHash = worldState.StateRoot;
 
-        clearedHash.Should().Be(emptyHash);
+        Assert.That(clearedHash, Is.EqualTo(emptyHash));
     }
 
     [Test]
@@ -719,7 +713,7 @@ public class StorageProviderTests(bool useFlat)
         worldState.CommitTree(1);
 
         Hash256 fullHash = worldState.StateRoot;
-        fullHash.Should().NotBe(emptyHash);
+        Assert.That(fullHash, Is.Not.EqualTo(emptyHash));
 
         worldState.Get(new StorageCell(TestItem.AddressA, 1));
         worldState.Get(new StorageCell(TestItem.AddressA, 2));
@@ -730,7 +724,7 @@ public class StorageProviderTests(bool useFlat)
 
         Hash256 clearedHash = worldState.StateRoot;
 
-        clearedHash.Should().Be(emptyHash);
+        Assert.That(clearedHash, Is.EqualTo(emptyHash));
     }
 
     private class Context : IDisposable

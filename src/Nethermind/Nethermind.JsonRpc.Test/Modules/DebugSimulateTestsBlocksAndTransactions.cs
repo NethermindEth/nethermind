@@ -21,8 +21,10 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test.Modules.Simulate;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.JsonRpc.Test.Modules.Eth;
+using Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
-namespace Nethermind.JsonRpc.Test.Modules.Eth;
+namespace Nethermind.JsonRpc.Test.Modules;
 
 public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<GethLikeTxTrace>
 {
@@ -30,7 +32,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default);
 
     protected override void AssertSerializationBlockResult(SimulateBlockResult<GethLikeTxTrace> blockResult) =>
-        Assert.That(blockResult.Traces.Select(static c => c.Failed), Is.EquivalentTo(new[] { false, false }));
+        Assert.That(blockResult.Traces.Select(static c => c.Failed), Is.EqualTo(new[] { false, false }));
 
     [Test]
     public async Task Test_debug_simulate_caps_gas_to_gas_cap()
@@ -92,9 +94,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_simulateV1", payload!, "latest");
-        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
-        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
-        IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = (IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>)successResponse.Result!;
+        IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>>(response);
         Assert.That(data.First().Traces.First().TxHash, Is.EqualTo(new Core.Crypto.Hash256("0xe690a6e09e13d163bc8b92c725202e9633770b14c8541a0ee48794ae014351f0")));
     }
 

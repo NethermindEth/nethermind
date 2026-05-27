@@ -16,6 +16,9 @@ using Nethermind.Core.Threading;
 [assembly: InternalsVisibleTo("Nethermind.Evm")]
 [assembly: InternalsVisibleTo("Nethermind.TxPool")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain")]
+[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Consensus.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Db
 {
     public static class Metrics
@@ -30,6 +33,9 @@ namespace Nethermind.Db
         public static long StateTreeCache => _mainStateTreeCacheHits + _otherStateTreeCacheHits;
         private static long _mainStateTreeCacheHits;
         private static long _otherStateTreeCacheHits;
+        // Exposed so consumers (e.g. ProcessingStats) can compute block-level deltas that exclude
+        // background prewarmer activity, which runs with IsBlockProcessingThread = false.
+        internal static long MainThreadStateTreeCache => _mainStateTreeCacheHits;
         internal static void IncrementStateTreeCacheHits() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeCacheHits : ref _otherStateTreeCacheHits);
 
         [CounterMetric]
@@ -37,6 +43,7 @@ namespace Nethermind.Db
         public static long StateTreeReads => _mainStateTreeReads + _otherStateTreeReads;
         private static long _mainStateTreeReads;
         private static long _otherStateTreeReads;
+        internal static long MainThreadStateTreeReads => _mainStateTreeReads;
         internal static void IncrementStateTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeReads : ref _otherStateTreeReads);
 
         [CounterMetric]
@@ -67,6 +74,7 @@ namespace Nethermind.Db
         public static long StorageTreeCache => _mainStorageTreeCache + _otherStorageTreeCache;
         private static long _mainStorageTreeCache;
         private static long _otherStorageTreeCache;
+        internal static long MainThreadStorageTreeCache => _mainStorageTreeCache;
         internal static void IncrementStorageTreeCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeCache : ref _otherStorageTreeCache);
 
         [CounterMetric]
@@ -74,6 +82,7 @@ namespace Nethermind.Db
         public static long StorageTreeReads => _mainStorageTreeReads + _otherStorageTreeReads;
         private static long _mainStorageTreeReads;
         private static long _otherStorageTreeReads;
+        internal static long MainThreadStorageTreeReads => _mainStorageTreeReads;
         internal static void IncrementStorageTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeReads : ref _otherStorageTreeReads);
 
         [CounterMetric]

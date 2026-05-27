@@ -7,7 +7,6 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Trie;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Proofs;

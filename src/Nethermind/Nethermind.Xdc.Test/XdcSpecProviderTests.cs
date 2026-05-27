@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Xdc.Spec;
 using NUnit.Framework;
 using System;
@@ -26,7 +25,7 @@ public class XdcSpecProviderTests
         XdcChainSpecEngineParameters p = new();
         Action action = () => p.V2Configs = bad;
 
-        action.Should().Throw<InvalidOperationException>();
+        Assert.That(action, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -42,7 +41,7 @@ public class XdcSpecProviderTests
         XdcChainSpecEngineParameters p = new();
         Action action = () => p.V2Configs = dup;
 
-        action.Should().Throw<InvalidOperationException>();
+        Assert.That(action, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -57,9 +56,9 @@ public class XdcSpecProviderTests
 
         XdcChainSpecEngineParameters p = new() { V2Configs = unsorted };
 
-        p.V2Configs[0].SwitchRound.Should().Be(0);
-        p.V2Configs[1].SwitchRound.Should().Be(2000);
-        p.V2Configs[2].SwitchRound.Should().Be(8000);
+        Assert.That(p.V2Configs[0].SwitchRound, Is.EqualTo(0));
+        Assert.That(p.V2Configs[1].SwitchRound, Is.EqualTo(2000));
+        Assert.That(p.V2Configs[2].SwitchRound, Is.EqualTo(8000));
     }
 
     [TestCase(0UL, 0UL)]
@@ -81,7 +80,7 @@ public class XdcSpecProviderTests
 
         V2ConfigParams cfg = XdcReleaseSpec.GetConfigAtRound(v2Configs, round);
 
-        cfg.SwitchRound.Should().Be(expectedSwitchRound);
+        Assert.That(cfg.SwitchRound, Is.EqualTo(expectedSwitchRound));
     }
 
     [Test]
@@ -109,13 +108,13 @@ public class XdcSpecProviderTests
         XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, parameters, Substitute.For<ILogManager>());
 
         IXdcReleaseSpec specA = specProvider.GetXdcSpec(6, 6);
-        specA.SwitchRound.Should().Be(0);
+        Assert.That(specA.SwitchRound, Is.EqualTo(0));
 
         IXdcReleaseSpec specB = specProvider.GetXdcSpec(11, 11);
-        specB.SwitchRound.Should().Be(10);
+        Assert.That(specB.SwitchRound, Is.EqualTo(10));
 
-        specA.SwitchRound.Should().Be(0);
+        Assert.That(specA.SwitchRound, Is.EqualTo(0));
 
-        ReferenceEquals(specA, specB).Should().BeFalse();
+        Assert.That(ReferenceEquals(specA, specB), Is.False);
     }
 }

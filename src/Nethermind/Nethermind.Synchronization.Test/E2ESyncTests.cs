@@ -14,7 +14,7 @@ using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -589,7 +589,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         Assert.That(serverBlockTree.Head!.Number, Is.EqualTo(BalSyncChainLength));
 
         IBlockAccessListStore serverBalStore = server.Resolve<IBlockAccessListStore>();
-        using (MemoryManager<byte>? serverBal = serverBalStore.GetRlp(serverBlockTree.FindBlock(1)!.Hash!))
+        using (MemoryManager<byte>? serverBal = serverBalStore.GetRlp(1, serverBlockTree.FindBlock(1)!.Hash!))
         {
             Assert.That(serverBal, Is.Not.Null);
         }
@@ -671,12 +671,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         Block lastPreActivationBlock = serverBlockTree.FindBlock(PartialBalActivationBlock - 1)!;
         Block firstActivatedBlock = serverBlockTree.FindBlock(PartialBalActivationBlock)!;
         Assert.That(lastPreActivationBlock.Header.BlockAccessListHash, Is.Null);
-        using (MemoryManager<byte>? preActivationBal = serverBalStore.GetRlp(lastPreActivationBlock.Hash!))
+        using (MemoryManager<byte>? preActivationBal = serverBalStore.GetRlp(lastPreActivationBlock.Number, lastPreActivationBlock.Hash!))
         {
             Assert.That(preActivationBal, Is.Null);
         }
         Assert.That(firstActivatedBlock.Header.BlockAccessListHash, Is.Not.Null);
-        using (MemoryManager<byte>? firstActivatedBal = serverBalStore.GetRlp(firstActivatedBlock.Hash!))
+        using (MemoryManager<byte>? firstActivatedBal = serverBalStore.GetRlp(firstActivatedBlock.Number, firstActivatedBlock.Hash!))
         {
             Assert.That(firstActivatedBal, Is.Not.Null);
         }
@@ -1090,8 +1090,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 Block sourceBlock = sourceBlockTree.FindBlock(blockNumber)!;
                 Block syncedBlock = blockTree.FindBlock(blockNumber)!;
 
-                byte[]? sourceBal = GetBlockAccessListRlp(sourceBlockAccessListStore, sourceBlock.Hash!);
-                byte[]? syncedBal = GetBlockAccessListRlp(blockAccessListStore, syncedBlock.Hash!);
+                byte[]? sourceBal = GetBlockAccessListRlp(sourceBlockAccessListStore, sourceBlock.Number, sourceBlock.Hash!);
+                byte[]? syncedBal = GetBlockAccessListRlp(blockAccessListStore, syncedBlock.Number, syncedBlock.Hash!);
                 bool balEnabled = sourceBlock.Header.BlockAccessListHash is not null;
 
                 if (!balEnabled)
@@ -1117,7 +1117,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                         $"BAL debug block {blockNumber}: sourceBal={(sourceBal is null ? "null" : sourceBal.Length)}, " +
                         $"syncedBal={(syncedBal is null ? "null" : syncedBal.Length)}, " +
                         $"syncedEncoded={(syncedBlock.EncodedBlockAccessList is null ? "null" : syncedBlock.EncodedBlockAccessList.Length)}, " +
-                        $"syncedHasStore={blockAccessListStore.Exists(syncedBlock.Hash!)}, " +
+                        $"syncedHasStore={blockAccessListStore.Exists(syncedBlock.Number, syncedBlock.Hash!)}, " +
                         $"headerBalHash={syncedBlock.Header.BlockAccessListHash}");
                 }
 
@@ -1129,9 +1129,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }
         }
 
-        private static byte[]? GetBlockAccessListRlp(IBlockAccessListStore blockAccessListStore, Hash256 blockHash)
+        private static byte[]? GetBlockAccessListRlp(IBlockAccessListStore blockAccessListStore, long blockNumber, Hash256 blockHash)
         {
-            using MemoryManager<byte>? rlp = blockAccessListStore.GetRlp(blockHash);
+            using MemoryManager<byte>? rlp = blockAccessListStore.GetRlp(blockNumber, blockHash);
             return rlp?.Memory.ToArray();
         }
     }

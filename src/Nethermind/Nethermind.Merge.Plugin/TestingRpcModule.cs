@@ -238,7 +238,7 @@ public class TestingRpcModule(
         processedBlock.Header.RequestsHash ??= ExecutionRequestExtensions.EmptyRequestsHash;
 
         return spec.IsEip7928Enabled
-            ? new GetPayloadV6Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false)
-            : new GetPayloadV5Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false);
+            ? new GetPayloadV6DirectResponse(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false)
+            : new GetPayloadV5DirectResponse(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false);
     }
 }

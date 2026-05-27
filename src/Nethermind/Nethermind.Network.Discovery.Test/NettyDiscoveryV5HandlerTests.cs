@@ -12,6 +12,7 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Logging;
+using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
