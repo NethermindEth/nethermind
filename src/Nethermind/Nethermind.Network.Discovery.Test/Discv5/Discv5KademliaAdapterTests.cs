@@ -104,6 +104,18 @@ public class Discv5KademliaAdapterTests
         Assert.That(handler.GetNodes(), Has.Length.EqualTo(1));
     }
 
+    [Test]
+    public void NodesResponseHandler_ShouldRejectSpecialUseRecordFromNonRoutableReceiver()
+    {
+        Node receiver = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303);
+        NodeRecord documentationRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("192.0.2.1"));
+        Discv5KademliaAdapter.NodesResponseHandler handler = CreateNodesResponseHandler(receiver, documentationRecord);
+
+        handler.Handle(new Discv5Nodes([1], 1, [documentationRecord]));
+
+        Assert.That(handler.GetNodes(), Is.Empty);
+    }
+
     private Discv5KademliaAdapter CreateAdapter() => new(
         new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
         null!,

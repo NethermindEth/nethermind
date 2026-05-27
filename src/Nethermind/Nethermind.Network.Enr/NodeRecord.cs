@@ -134,7 +134,13 @@ public class NodeRecord
     public static NodeRecord FromBytes(byte[] bytes)
     {
         NodeRecordSigner signer = new(new Ecdsa());
-        NodeRecord nodeRecord = signer.Deserialize(new RlpStream(bytes));
+        RlpStream stream = new(bytes);
+        NodeRecord nodeRecord = signer.Deserialize(stream);
+        if (stream.Position != stream.Length)
+        {
+            throw new RlpException("Unexpected trailing bytes in ENR.");
+        }
+
         if (!signer.Verify(nodeRecord))
         {
             throw new RlpException("Invalid ENR signature.");

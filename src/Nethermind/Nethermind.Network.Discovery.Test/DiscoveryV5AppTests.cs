@@ -132,6 +132,11 @@ public class DiscoveryV5AppTests
         return enr;
     }
 
+    private static NodeRecord CreateEnrForAddress(Nethermind.Crypto.PrivateKey privateKey, IPAddress ipAddress) =>
+        ipAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+            ? CreateTestIpv6Enr(privateKey, ipAddress, 30303)
+            : CreateTestEnr(privateKey, ipAddress);
+
     [Test]
     public void Should_Migrate_Correctly()
     {
@@ -215,6 +220,41 @@ public class DiscoveryV5AppTests
         Assert.That(result, Is.True);
         Assert.That(node, Is.Not.Null);
         Assert.That(node!.Host, Is.EqualTo(IPAddress.Loopback.ToString()));
+    }
+
+    [TestCase("0.1.2.3")]
+    [TestCase("192.0.0.1")]
+    [TestCase("192.0.2.1")]
+    [TestCase("198.18.0.1")]
+    [TestCase("198.51.100.1")]
+    [TestCase("203.0.113.1")]
+    [TestCase("240.0.0.1")]
+    [TestCase("64:ff9b::1")]
+    [TestCase("100::1")]
+    [TestCase("2001:db8::1")]
+    [TestCase("2002::1")]
+    [TestCase("3fff::1")]
+    public void Should_Reject_Special_Use_Ip_Enr(string ip)
+    {
+        NodeRecord enr = CreateEnrForAddress(TestItem.PrivateKeyA, IPAddress.Parse(ip));
+
+        bool result = _discoveryV5App.TryGetNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.False);
+        Assert.That(node, Is.Null);
+    }
+
+    [TestCase("192.0.2.1")]
+    [TestCase("2001:db8::1")]
+    public void Should_Reject_Special_Use_Ip_Enr_On_Private_Deployment(string ip)
+    {
+        DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(IPAddress.Loopback);
+        NodeRecord enr = CreateEnrForAddress(TestItem.PrivateKeyA, IPAddress.Parse(ip));
+
+        bool result = privateDiscoveryApp.TryGetNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.False);
+        Assert.That(node, Is.Null);
     }
 
     [Test]

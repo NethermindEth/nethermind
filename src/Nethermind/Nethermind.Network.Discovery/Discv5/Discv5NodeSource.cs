@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Core.Crypto;
@@ -18,20 +18,25 @@ public class Discv5NodeSource(
     ILogManager logManager)
     : IKademliaNodeSource
 {
+    private const int ChannelCapacity = 64;
+
     private readonly ILogger _logger = logManager.GetClassLogger<Discv5NodeSource>();
     private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.IdHash;
+    private readonly int _recentNodeLimit = Math.Max(ChannelCapacity, kademliaConfig.KSize * Hash256XorUtils.MaxDistance);
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
         if (_logger.IsDebug) _logger.Debug("Starting discv5 node source");
 
-        Channel<Node> channel = Channel.CreateBounded<Node>(64);
-        ConcurrentDictionary<Hash256, Hash256> writtenNodes = new();
+        Channel<Node> channel = Channel.CreateBounded<Node>(ChannelCapacity);
+        LinkedList<Hash256> recentlyWrittenNodes = [];
+        Dictionary<Hash256, LinkedListNode<Hash256>> writtenNodes = [];
+        object writtenNodesLock = new();
         int initialNodes = 0;
 
         foreach (Node node in kademlia.IterateNodes())
         {
-            if (!IsExcluded(node) && writtenNodes.TryAdd(node.IdHash, node.IdHash))
+            if (!IsExcluded(node) && TryReserveNode(node.IdHash))
             {
                 initialNodes++;
                 yield return node;
@@ -55,15 +60,53 @@ public class Discv5NodeSource(
 
         void Handler(object? _, Node node)
         {
-            if (!IsExcluded(node) && writtenNodes.TryAdd(node.IdHash, node.IdHash))
+            if (IsExcluded(node) || !TryReserveNode(node.IdHash))
             {
-                if (channel.Writer.TryWrite(node))
+                return;
+            }
+
+            if (channel.Writer.TryWrite(node))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Discv5 node source queued discovered node {node:s}.");
+                return;
+            }
+
+            ReleaseReservedNode(node.IdHash);
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"Discv5 node source queue is full, dropping discovered node {node:s}.");
+            }
+        }
+
+        bool TryReserveNode(Hash256 nodeId)
+        {
+            lock (writtenNodesLock)
+            {
+                if (writtenNodes.ContainsKey(nodeId))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Discv5 node source queued discovered node {node:s}.");
+                    return false;
                 }
-                else if (_logger.IsTrace)
+
+                LinkedListNode<Hash256> listNode = recentlyWrittenNodes.AddLast(nodeId);
+                writtenNodes.Add(nodeId, listNode);
+                while (writtenNodes.Count > _recentNodeLimit)
                 {
-                    _logger.Trace($"Discv5 node source queue is full, dropping discovered node {node:s}.");
+                    LinkedListNode<Hash256> oldestNode = recentlyWrittenNodes.First!;
+                    recentlyWrittenNodes.RemoveFirst();
+                    writtenNodes.Remove(oldestNode.Value);
+                }
+
+                return true;
+            }
+        }
+
+        void ReleaseReservedNode(Hash256 nodeId)
+        {
+            lock (writtenNodesLock)
+            {
+                if (writtenNodes.Remove(nodeId, out LinkedListNode<Hash256>? listNode))
+                {
+                    recentlyWrittenNodes.Remove(listNode);
                 }
             }
         }

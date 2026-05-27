@@ -182,6 +182,16 @@ public class NodeRecordSignerTests
         Assert.That(nodeRecord.ToRlpBytes(), Is.EqualTo(Bytes.FromHexString(testCase)));
     }
 
+    [Test]
+    public void FromBytes_throws_when_record_has_trailing_bytes()
+    {
+        byte[] recordBytes = Bytes.FromHexString(
+            "f897b840421561b4ed5de28a7100e0a5005ecc0ba6ba6cc18528061e811704c8794fec965cba63831051d134bdc801c0c90d31a30d241074095311ffe6628d5545478b770a83657468c7c68496516d06808269648276348269708436ed0a0a89736563703235366b31a103f5c110132b0374805d4453f55577cc9c58bb1a08f822b9b3722132e3095f69728374637082765f8375647082765f");
+        byte[] recordWithTrailingBytes = [.. recordBytes, 0x80];
+
+        Assert.That(() => NodeRecord.FromBytes(recordWithTrailingBytes), Throws.TypeOf<RlpException>());
+    }
+
 
     [Test]
     public void Cannot_verify_when_signature_missing()

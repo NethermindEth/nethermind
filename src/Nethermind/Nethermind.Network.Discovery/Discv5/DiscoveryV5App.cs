@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
@@ -223,11 +224,78 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             return false;
         }
 
+        if (IsSpecialUseAddress(ipAddress))
+        {
+            return false;
+        }
+
         return allowNonRoutable || !NodeFilter.IsLoopbackOrPrivateOrLinkLocal(ipAddress);
     }
 
     internal static bool IsDiscoveryAddressRoutable(IPAddress ipAddress)
         => IsDiscoveryAddressAcceptable(ipAddress, allowNonRoutable: false);
+
+    private static bool IsSpecialUseAddress(IPAddress ipAddress)
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        if (!ipAddress.TryWriteBytes(bytes, out int written))
+        {
+            return true;
+        }
+
+        if (written == 4)
+        {
+            return IsSpecialUseIPv4(bytes[..4]);
+        }
+
+        if (IsIPv4MappedIPv6(bytes))
+        {
+            return IsSpecialUseIPv4(bytes[12..]);
+        }
+
+        return IsSpecialUseIPv6(bytes);
+    }
+
+    private static bool IsSpecialUseIPv4(ReadOnlySpan<byte> bytes)
+    {
+        uint v4 = BinaryPrimitives.ReadUInt32BigEndian(bytes);
+        byte a = (byte)(v4 >> 24);
+        byte b = (byte)(v4 >> 16);
+        byte c = (byte)(v4 >> 8);
+
+        return a == 0                              // 0.0.0.0/8
+            || a == 192 && b == 0 && c is 0 or 2   // 192.0.0.0/24, 192.0.2.0/24
+            || a == 192 && b == 88 && c == 99      // 192.88.99.0/24
+            || a == 198 && b is 18 or 19           // 198.18.0.0/15
+            || a == 198 && b == 51 && c == 100     // 198.51.100.0/24
+            || a == 203 && b == 0 && c == 113      // 203.0.113.0/24
+            || a >= 240;                           // 240.0.0.0/4
+    }
+
+    private static bool IsSpecialUseIPv6(ReadOnlySpan<byte> bytes)
+        => bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b && IsZero(bytes[4..12]) // 64:ff9b::/96
+            || bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b && bytes[4] == 0x00 && bytes[5] == 0x01 // 64:ff9b:1::/48
+            || bytes[0] == 0x01 && IsZero(bytes[1..8]) // 100::/64
+            || bytes[0] == 0x20 && bytes[1] == 0x01 && (bytes[2] & 0xfe) == 0x00 // 2001::/23
+            || bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x0d && bytes[3] == 0xb8 // 2001:db8::/32
+            || bytes[0] == 0x20 && bytes[1] == 0x02 // 2002::/16
+            || bytes[0] == 0x3f && bytes[1] == 0xff && (bytes[2] & 0xf0) == 0x00; // 3fff::/20
+
+    private static bool IsIPv4MappedIPv6(ReadOnlySpan<byte> bytes)
+        => IsZero(bytes[..10]) && bytes[10] == 0xff && bytes[11] == 0xff;
+
+    private static bool IsZero(ReadOnlySpan<byte> bytes)
+    {
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            if (bytes[i] != 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private static bool ShouldAcceptNonRoutableEnrs(IPAddress externalIp)
         => !IPAddress.Any.Equals(externalIp)
