@@ -106,14 +106,29 @@ public sealed class SparseRootComputer : IDisposable
 
         _trie.AccountTrie.RevealNodes(initialProof.AccountNodes);
 
+        Hash256? lastTarget = null;
+        int sameTargetCount = 0;
         for (int retry = 0; retry < MaxRetries; retry++)
         {
             List<Hash256> targets = [];
             _trie.UpdateAccountLeaves(_accountChanges, (key, _) => targets.Add(key));
             if (targets.Count == 0) break;
 
+            // Detect stuck-on-same-target case: track if the same target keeps coming back
+            Hash256 firstTarget = targets[0];
+            if (lastTarget is not null && lastTarget == firstTarget) sameTargetCount++;
+            else sameTargetCount = 0;
+            lastTarget = firstTarget;
+
             if (retry == MaxRetries - 1)
-                throw new TrieException($"Sparse trie account retry loop exceeded {MaxRetries} iterations. {targets.Count} blinded targets remain.");
+            {
+                // Detailed exception with diagnostic info on the stuck target
+                throw new TrieException(
+                    $"Sparse trie account retry loop exceeded {MaxRetries} iterations. " +
+                    $"{targets.Count} blinded targets remain. " +
+                    $"firstTarget={firstTarget}, sameTargetForLast={sameTargetCount} retries, prevRoot={_previousStateRoot}, " +
+                    $"totalChanges={_accountChanges.Count}, lastProofNodeCount={LastProofNodeCount}");
+            }
 
             DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
                 _reader, _previousStateRoot, targets.ToArray());
