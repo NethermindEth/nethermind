@@ -11,6 +11,8 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Evm.TransactionProcessing;
@@ -739,5 +741,66 @@ public class TransactionProcessorTests(bool eip155Enabled)
         _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
         Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(balanceBefore), "Warmup must not deduct sender balance (should use SystemTransactionProcessor path)");
+    }
+
+    [Test]
+    public void Simple_value_transfer_to_empty_account_does_not_enter_vm()
+    {
+        Address recipient = Address.FromNumber(1000);
+        _stateProvider.CreateAccount(recipient, UInt256.Zero);
+        _stateProvider.InsertCode(recipient, Array.Empty<byte>(), _specProvider.GenesisSpec);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+        _stateProvider.CommitTree(0);
+
+        CountingVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance,
+            _specProvider,
+            _stateProvider,
+            virtualMachine,
+            codeInfoRepository,
+            LimboLogs.Instance);
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(recipient)
+            .WithValue(1.Wei)
+            .WithGasPrice(1)
+            .WithGasLimit(GasCostOf.Transaction)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+        tx.To.Should().Be(recipient);
+        tx.AuthorizationList.Should().BeNull();
+        spec.IsPrecompile(recipient).Should().BeFalse();
+        CodeInfo codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: true, spec, out Address? delegationAddress);
+        ReferenceEquals(codeInfo, CodeInfo.Empty).Should().BeTrue();
+        delegationAddress.Should().BeNull();
+
+        TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+
+        result.TransactionExecuted.Should().BeTrue();
+        virtualMachine.ExecuteTransactionCalls.Should().Be(0);
+        _stateProvider.GetBalance(recipient).Should().Be(1.Wei);
+    }
+
+    private sealed class CountingVirtualMachine(
+        IBlockhashProvider blockHashProvider,
+        ISpecProvider specProvider,
+        ILogManager logManager)
+        : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine
+    {
+        public int ExecuteTransactionCalls { get; private set; }
+
+        public override TransactionSubstate ExecuteTransaction<TTracingInst>(
+            VmState<EthereumGasPolicy> vmState,
+            IWorldState worldState,
+            ITxTracer txTracer)
+        {
+            ExecuteTransactionCalls++;
+            return base.ExecuteTransaction<TTracingInst>(vmState, worldState, txTracer);
+        }
     }
 }
