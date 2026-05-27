@@ -9,6 +9,7 @@ using Nethermind.Serialization.Ssz;
 using System;
 using System.Buffers.Binary;
 using System.Collections;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.SszGenerator.Test
 {
@@ -75,6 +76,13 @@ namespace Nethermind.Serialization.SszGenerator.Test
     {
         [SszList(4)]
         public ulong[]? Items { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct ArrayPoolListContainer
+    {
+        [SszList(4)]
+        public ArrayPoolList<ulong> Items { get; set; }
     }
 
     [SszContainer]

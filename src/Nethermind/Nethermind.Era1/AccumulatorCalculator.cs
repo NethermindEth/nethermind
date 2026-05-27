@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Era1;
 
@@ -17,39 +16,31 @@ public class AccumulatorCalculator : IDisposable
     private const int TreeDepth = 13;   // log2(8192)
     private const int ProofLength = 15; // 1 (HeaderRecord field) + 13 (tree) + 1 (length mixin)
 
-    private readonly ArrayPoolList<ReadOnlyMemory<byte>> _roots = new(EraWriter.MaxEra1Size);
+    private readonly ArrayPoolList<ValueHash256> _roots = new(EraWriter.MaxEra1Size);
     private readonly ArrayPoolList<UInt256> _totalDifficulties = new(EraWriter.MaxEra1Size);
 
     public void Add(Hash256 headerHash, UInt256 td)
     {
-        Merkleizer merkleizer = new(Merkle.NextPowerOfTwoExponent(2));
-        Merkle.Merkleize(out UInt256 headerHashRoot, headerHash.Bytes);
-        merkleizer.Feed(headerHashRoot);
-        merkleizer.Feed(td);
-        merkleizer.CalculateRoot(out UInt256 root);
-        _roots.Add(root.ToLittleEndian());
+        HeaderRecord.Merkleize(new()
+        {
+            BlockHash = headerHash,
+            TotalDifficulty = td
+        }, out UInt256 root);
+        _roots.Add(ToValueHash256(root));
         _totalDifficulties.Add(td);
     }
 
     public ValueHash256 ComputeRoot()
     {
-        int count = _roots.Count;
-        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
-        try
-        {
-            for (int i = 0; i < count; i++)
-            {
-                Merkle.Merkleize(out subRoots[i], _roots[i].Span);
-            }
+        HeaderRecordRoots.Merkleize(new() { Roots = _roots }, out UInt256 root);
+        return ToValueHash256(root);
+    }
 
-            Merkle.Merkleize(out UInt256 root, subRoots.AsSpan(0, count), EraWriter.MaxEra1Size);
-            Merkle.MixIn(ref root, count);
-            return new ValueHash256(root.ToLittleEndian());
-        }
-        finally
-        {
-            ArrayPool<UInt256>.Shared.Return(subRoots);
-        }
+    private static ValueHash256 ToValueHash256(UInt256 root)
+    {
+        Span<byte> bytes = stackalloc byte[ValueHash256.MemorySize];
+        root.ToLittleEndian(bytes);
+        return new ValueHash256(bytes);
     }
 
     public ValueHash256[] GetProof(int blockIndex)
@@ -69,7 +60,7 @@ public class AccumulatorCalculator : IDisposable
         flatTree.Clear();
         for (int i = 0; i < count; i++)
         {
-            _roots[i].Span.CopyTo(flatTree.Slice((EraWriter.MaxEra1Size + i) * 32, 32));
+            _roots[i].Bytes.CopyTo(flatTree.Slice((EraWriter.MaxEra1Size + i) * 32, 32));
         }
 
         Span<byte> combined = stackalloc byte[64];
@@ -108,4 +99,18 @@ public class AccumulatorCalculator : IDisposable
         _roots.Dispose();
         _totalDifficulties.Dispose();
     }
+}
+
+[SszContainer]
+internal partial struct HeaderRecord
+{
+    public Hash256 BlockHash { get; set; }
+    public UInt256 TotalDifficulty { get; set; }
+}
+
+[SszContainer(isCollectionItself: true)]
+internal partial struct HeaderRecordRoots
+{
+    [SszList(EraWriter.MaxEra1Size)]
+    public ArrayPoolList<ValueHash256> Roots { get; set; }
 }

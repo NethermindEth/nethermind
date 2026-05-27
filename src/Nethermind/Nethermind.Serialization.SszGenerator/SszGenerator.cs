@@ -538,7 +538,7 @@ internal static class SszCodecHelpers
         property.Kind switch
         {
             Kind.BitList or Kind.ProgressiveBitList => $"{expression} ?? new BitArray(0)",
-            _ when property.IsMemoryLikeProperty && property.IsCollection => $"{expression}.Span",
+            _ when property.IsCollection && property.Type.Name != "BitArray" => SpanExpression(property, expression),
             _ => expression,
         };
 
@@ -546,6 +546,7 @@ internal static class SszCodecHelpers
         property.IsSpanLikeProperty ? expression
             : property.IsMemoryLikeProperty ? $"{expression}.Span"
             : property.IsArrayProperty ? $"{expression}.AsSpan()"
+            : property.HasCollectionAsSpan ? $"{expression}.AsSpan()"
             : $"CollectionsMarshal.AsSpan({expression})";
 
     private static IEnumerable<string> ValidationStatements(SszType decl, IEnumerable<SszProperty> properties, string expressionPrefix)
@@ -618,8 +619,9 @@ internal static class SszCodecHelpers
             string limitGuard = (property.Kind == Kind.List && property.Limit.HasValue)
                 ? $"if (__count > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.TypeReferenceName}.{property.Name}: list count {{__count}} exceeds SSZ limit {property.Limit.Value}\");"
                 : string.Empty;
+            string assignment = DecodeAssignmentExpression(property, variableName, sourceIsArray: true);
             string validation = ValidationStatement(decl, property, $"container.{property.Name}");
-            string loop = $"{{ {remainderGuard} int __count = {countExpr}; {limitGuard} {property.Type.TypeReferenceName}[] {variableName} = new {property.Type.TypeReferenceName}[__count]; for (int __i = 0; __i < __count; __i++) {{ {decodeBody} {variableName}[__i] = __item; }} container.{property.Name} = {variableName}; }}";
+            string loop = $"{{ {remainderGuard} int __count = {countExpr}; {limitGuard} {property.Type.TypeReferenceName}[] {variableName} = new {property.Type.TypeReferenceName}[__count]; for (int __i = 0; __i < __count; __i++) {{ {decodeBody} {variableName}[__i] = __item; }} container.{property.Name} = {assignment}; }}";
             return string.IsNullOrEmpty(validation) ? loop : $"{loop} {validation}";
         }
 
@@ -638,16 +640,7 @@ internal static class SszCodecHelpers
             _ => $"{property.Type.StaticMemberAccess}.Decode({sliceExpression}, out {outType} {variableName});",
         };
 
-        string assignment2 = property switch
-        {
-            { IsReadOnlySpanProperty: true } => $"container.{property.Name} = {variableName};",
-            { IsReadOnlyMemoryProperty: true } => $"container.{property.Name} = {variableName}.ToArray();",
-            { IsSpanLikeProperty: true, HandledByStd: true } => $"container.{property.Name} = {variableName}.ToArray();",
-            { IsSpanLikeProperty: true } => $"container.{property.Name} = {variableName};",
-            { IsMemoryLikeProperty: true } => $"container.{property.Name} = {variableName}.ToArray();",
-            { IsCollection: true } => $"container.{property.Name} = [ ..{variableName}];",
-            _ => $"container.{property.Name} = {variableName};",
-        };
+        string assignment2 = $"container.{property.Name} = {DecodeAssignmentExpression(property, variableName, !property.HandledByStd)};";
         string validation2 = ValidationStatement(decl, property, $"container.{property.Name}");
 
         string preAllocationListGuard = string.Empty;
@@ -671,6 +664,20 @@ internal static class SszCodecHelpers
         }
         return string.Join(" ", statements);
     }
+
+    private static string DecodeAssignmentExpression(SszProperty property, string variableName, bool sourceIsArray) =>
+        property switch
+        {
+            { IsReadOnlySpanProperty: true } => variableName,
+            { IsReadOnlyMemoryProperty: true } => $"{variableName}.ToArray()",
+            { IsSpanLikeProperty: true, HandledByStd: true } => $"{variableName}.ToArray()",
+            { IsSpanLikeProperty: true } => variableName,
+            { IsMemoryLikeProperty: true } => $"{variableName}.ToArray()",
+            { IsCollection: true, CanConstructCollectionFromReadOnlySpan: true, CollectionTypeReferenceName: not null } => $"new {property.CollectionTypeReferenceName}({variableName})",
+            { IsCollection: true, IsArrayProperty: true } => sourceIsArray ? variableName : $"[ ..{variableName}]",
+            { IsCollection: true } => $"[ ..{variableName}]",
+            _ => variableName,
+        };
 
     private static string ConverterMerkleizeStatement(SszProperty property, string expression, string rootName) =>
         $"MerkleizeWithConverter({expression}, {property.Type.CustomFeedMethod}, out {rootName});";

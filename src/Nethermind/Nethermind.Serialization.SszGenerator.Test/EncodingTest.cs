@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Merkleization;
@@ -168,6 +169,33 @@ public class EncodingTest
         Merkle.MixIn(ref expected, items.Length);
 
         Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Encode_decode_and_merkleize_array_pool_list()
+    {
+        using ArrayPoolList<ulong> items = new(4);
+        items.Add(1);
+        items.Add(2);
+        ArrayPoolListContainer container = new() { Items = items };
+
+        byte[] encoded = Encode(container);
+        Merkleize(container, out UInt256 actual);
+        Decode(encoded, out ArrayPoolListContainer decoded);
+
+        try
+        {
+            ulong[] expectedItems = [1UL, 2UL];
+            Merkle.Merkleize(out UInt256 expected, MemoryMarshal.AsBytes(expectedItems.AsSpan()), 1);
+            Merkle.MixIn(ref expected, expectedItems.Length);
+
+            Assert.That(decoded.Items.AsSpan().ToArray(), Is.EqualTo(expectedItems));
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+        finally
+        {
+            decoded.Items.Dispose();
+        }
     }
 
     [Test]

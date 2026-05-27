@@ -16,6 +16,7 @@
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.SszGenerator\Nethermind.Serialization.SszGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
   </ItemGroup>
 

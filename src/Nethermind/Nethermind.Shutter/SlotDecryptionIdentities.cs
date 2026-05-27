@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.Ssz;
-using System.Collections.Generic;
 
 namespace Nethermind.Shutter;
 
@@ -15,12 +16,12 @@ public partial struct SlotDecryptionIdentities
     public ulong TxPointer { get; set; }
 
     [SszList(1024)]
-    public List<IdentityPreimage> IdentityPreimages { get; set; }
+    public ArrayPoolList<IdentityPreimage> IdentityPreimages { get; set; }
 }
 
 [SszContainer]
-public partial struct IdentityPreimage(byte[] data)
+public partial struct IdentityPreimage(ReadOnlyMemory<byte> data)
 {
     [SszVector(52)]
-    public byte[] Data { get; set; } = data;
+    public ReadOnlyMemory<byte> Data { get; set; } = data;
 }
