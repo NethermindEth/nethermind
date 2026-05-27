@@ -197,7 +197,7 @@ public class RemoteEraStoreDecoratorTests
             .Returns(new Dictionary<int, RemoteEraEntry> { [0] = new(filename, sha256) });
 
         string escapedPath = Path.GetFullPath(Path.Join(_downloadDir.Path, filename));
-        using RemoteEraStoreDecorator sut = new(localStore: null, _client, _downloadDir.Path, maxEraSize: 16);
+        using RemoteEraStoreDecorator sut = CreateDecorator(localStore: null, maxEraSize: 16);
 
         await sut.Invoking(s => s.FindBlockAndReceipts(0, ensureValidated: false))
             .Should().ThrowAsync<EraException>()
