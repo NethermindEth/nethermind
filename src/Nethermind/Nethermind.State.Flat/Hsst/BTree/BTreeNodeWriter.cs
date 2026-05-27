@@ -155,8 +155,7 @@ internal ref struct BTreeNodeWriter<TWriter>
         // offset reasoning stays valid.
         if (_metadata.KeyType == 0)
         {
-            int header = HeaderSize();
-            int totalNodeSize = header + keySize + valueSize;
+            int totalNodeSize = HeaderSize + keySize + valueSize;
             const int MaxVariableNodeSize = 64 * 1024;
             if (totalNodeSize > MaxVariableNodeSize)
                 throw new InvalidOperationException(
@@ -164,7 +163,7 @@ internal ref struct BTreeNodeWriter<TWriter>
         }
     }
 
-    private int HeaderSize() => 12;
+    private const int HeaderSize = 12;
 
     /// <summary>
     /// Map a <see cref="BTreeNodeMetadata.ValueSlotSize"/> to its 2-bit Flags encoding
