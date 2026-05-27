@@ -426,19 +426,19 @@ public class JsonRpcServiceTests
         switch (method)
         {
             case nameof(IEthRpcModule.eth_getBalance):
-                ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
+                ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter>());
                 break;
             case nameof(IEthRpcModule.eth_getCode):
-                ethRpcModule.DidNotReceive().eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
+                ethRpcModule.DidNotReceive().eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter>());
                 break;
             case nameof(IEthRpcModule.eth_getStorageAt):
-                ethRpcModule.DidNotReceive().eth_getStorageAt(Arg.Any<Address>(), Arg.Any<UInt256>(), Arg.Any<BlockParameter?>());
+                ethRpcModule.DidNotReceive().eth_getStorageAt(Arg.Any<Address>(), Arg.Any<UInt256>(), Arg.Any<BlockParameter>());
                 break;
             case nameof(IEthRpcModule.eth_getTransactionCount):
-                ethRpcModule.DidNotReceive().eth_getTransactionCount(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
+                ethRpcModule.DidNotReceive().eth_getTransactionCount(Arg.Any<Address>(), Arg.Any<BlockParameter>());
                 break;
             case nameof(IEthRpcModule.eth_getProof):
-                ethRpcModule.DidNotReceive().eth_getProof(Arg.Any<Address>(), Arg.Any<HashSet<UInt256>>(), Arg.Any<BlockParameter?>());
+                ethRpcModule.DidNotReceive().eth_getProof(Arg.Any<Address>(), Arg.Any<HashSet<UInt256>>(), Arg.Any<BlockParameter>());
                 break;
             default:
                 Assert.Fail($"Unhandled method {method}");
@@ -452,7 +452,7 @@ public class JsonRpcServiceTests
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         AssertInvalidParamsWithoutData(TestRawRequest(ethRpcModule, nameof(IEthRpcModule.eth_getBalance), rawParameters), "missing value for required argument 1");
-        ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
+        ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter>());
     }
 
     [Test]
@@ -460,9 +460,9 @@ public class JsonRpcServiceTests
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         AssertInvalidParamsWithoutData(
-            TestRequest(ethRpcModule, nameof(IEthRpcModule.eth_getBalance), "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6", null),
+            TestRequest(ethRpcModule, nameof(IEthRpcModule.eth_getBalance), "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6", null!),
             "missing value for required argument 1");
-        ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
+        ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter>());
     }
 
     [TestCaseSource(nameof(InvalidRawUtf8ParamCases))]

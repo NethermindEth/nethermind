@@ -92,13 +92,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Returns account balance",
             IsSharable = true,
             ExampleResponse = "0x6c8ae945bfe6e")]
-        Task<ResultWrapper<UInt256?>> eth_getBalance([JsonRpcParameter(ExampleValue = "[\"0x78467cada5f1883e79fcf0f3ebfa50abeec8c820\"]")] Address address, [JsonRpcParameter(IsRequired = true)] BlockParameter? blockParameter = null);
+        Task<ResultWrapper<UInt256?>> eth_getBalance([JsonRpcParameter(ExampleValue = "[\"0x78467cada5f1883e79fcf0f3ebfa50abeec8c820\"]")] Address address, BlockParameter blockParameter);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns storage data at address. storage_index",
             IsSharable = true,
             ExampleResponse = "0x")]
-        ResultWrapper<byte[]> eth_getStorageAt([JsonRpcParameter(ExampleValue = "[\"0x000000000000000000000000c666d239cbda32aa7ebca894b6dc598ddb881285\",\"0x2\"]")] Address address, UInt256 positionIndex, [JsonRpcParameter(IsRequired = true)] BlockParameter? blockParameter = null);
+        ResultWrapper<byte[]> eth_getStorageAt([JsonRpcParameter(ExampleValue = "[\"0x000000000000000000000000c666d239cbda32aa7ebca894b6dc598ddb881285\",\"0x2\"]")] Address address, UInt256 positionIndex, BlockParameter blockParameter);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns storage values for multiple slots across multiple accounts in a single request. Total slot count across all addresses must not exceed 1024.",
@@ -110,7 +110,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Returns account nonce (number of transactions from the account since genesis) at the given block number",
             IsSharable = true,
             ExampleResponse = "0x3e")]
-        Task<ResultWrapper<UInt256>> eth_getTransactionCount([JsonRpcParameter(ExampleValue = "[\"0xae3ed7a6ccdddf2914133d0669b5f02ff6fa8ad2\"]")] Address address, [JsonRpcParameter(IsRequired = true)] BlockParameter? blockParameter = null);
+        Task<ResultWrapper<UInt256>> eth_getTransactionCount([JsonRpcParameter(ExampleValue = "[\"0xae3ed7a6ccdddf2914133d0669b5f02ff6fa8ad2\"]")] Address address, BlockParameter blockParameter);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns number of transactions in the block block hash",
@@ -143,7 +143,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber([JsonRpcParameter(ExampleValue = "[\"5127400\"]")] BlockParameter blockParameter);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Returns account code at given address and block", IsSharable = true)]
-        ResultWrapper<byte[]> eth_getCode(Address address, [JsonRpcParameter(IsRequired = true)] BlockParameter? blockParameter = null);
+        ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter blockParameter);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Returns an EIP-191 signature over the provided message", IsSharable = true)]
         ResultWrapper<Signature> eth_sign(Address addressData, byte[] message);
@@ -341,7 +341,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             [JsonRpcParameter(ExampleValue = "[\"0x7F0d15C7FAae65896648C8273B6d7E43f58Fa842\",[  \"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\" ],\"latest\"]")]
             Address accountAddress,
             HashSet<UInt256> storageKeys,
-            [JsonRpcParameter(IsRequired = true)] BlockParameter? blockParameter = null);
+            BlockParameter blockParameter);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Accounts via Address and Blocknumber", IsSharable = true)]
         ResultWrapper<AccountForRpc?> eth_getAccount([JsonRpcParameter(ExampleValue = "[\"0xaa00000000000000000000000000000000000000\", \"latest\"]")] Address accountAddress, BlockParameter? blockParameter = null);

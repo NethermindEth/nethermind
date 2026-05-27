@@ -173,7 +173,7 @@ public partial class EthRpcModule(
         return Task.FromResult(ResultWrapper<long?>.Success(number));
     }
 
-    public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter? blockParameter = null)
+    public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
@@ -192,7 +192,7 @@ public partial class EthRpcModule(
     }
 
     public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
-        BlockParameter? blockParameter = null)
+        BlockParameter blockParameter)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
@@ -258,7 +258,7 @@ public partial class EthRpcModule(
     private static ResultWrapper<StorageValuesResult> TooManySlotsError() =>
         ResultWrapper<StorageValuesResult>.Fail($"too many slots (max {MaxGetStorageSlots})", ErrorCodes.InvalidParams);
 
-    public virtual Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
+    public virtual Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
     {
         if (blockParameter == BlockParameter.Pending)
         {
@@ -314,7 +314,7 @@ public partial class EthRpcModule(
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
     }
 
-    public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null)
+    public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter blockParameter)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
@@ -926,7 +926,7 @@ public partial class EthRpcModule(
     }
 
     // https://github.com/ethereum/EIPs/issues/1186
-    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter? blockParameter)
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter blockParameter)
     {
         if (storageKeys.Count > GetProofStorageKeyLimit)
         {
