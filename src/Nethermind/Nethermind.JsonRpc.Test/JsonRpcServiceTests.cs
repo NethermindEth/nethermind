@@ -77,6 +77,7 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(nameof(IEthRpcModule.eth_feeHistory), """[{},"latest"]""", "missing value for required argument 2").SetName("Missing required argument");
         yield return new TestCaseData(nameof(IEthRpcModule.eth_getBlockByNumber), """["0x1",false,"extra"]""", "Invalid params").SetName("Extra argument");
         yield return new TestCaseData(nameof(IEthRpcModule.eth_getBalance), """["cf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x1036640"]""", "hex string without 0x prefix").SetName("Address without 0x prefix");
+        yield return new TestCaseData(nameof(IEthRpcModule.eth_getBalance), """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x00"]""", "hex number with leading zero digits").SetName("Block number boundary leading zero");
         yield return new TestCaseData(nameof(IEthRpcModule.eth_getBalance), """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x00001036640"]""", "hex number with leading zero digits").SetName("Block number with leading zeros");
         yield return new TestCaseData(nameof(IEthRpcModule.eth_getBalance), """["0x0000000000000000000000000000000000000000","0x"]""", "hex string \"0x\"").SetName("Empty hex block quantity");
     }
