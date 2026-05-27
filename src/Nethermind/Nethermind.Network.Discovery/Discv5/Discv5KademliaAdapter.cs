@@ -34,11 +34,13 @@ public class Discv5KademliaAdapter(
     private const int MaxPendingRequests = 4_096;
     private const int MaxResponseHandlers = 1_024;
     private const int MaxKnownRecords = 16_384;
+    private const int MaxEndpointChecks = 4_096;
     private const int MaxNodesResponseMessages = 16;
     private const int MaxNodesResponseRecords = 64;
     private const long SentChallengeTtlMilliseconds = 60_000;
+    private const long EndpointCheckTtlMilliseconds = 60_000;
     private static readonly TimeSpan ChallengeRateLimitWindow = TimeSpan.FromMilliseconds(100);
-    private const int ChallengeRateLimitBurstPerIp = 4;
+    private const int ChallengeRateLimitBurstPerIp = 16;
     private const int ChallengeRateLimitFilterSize = 8_192;
 
     private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
@@ -50,6 +52,7 @@ public class Discv5KademliaAdapter(
     private readonly BoundedMap<PendingNonceKey, PendingRequest> _pendingByNonce = new(MaxPendingRequests);
     private readonly BoundedMap<ResponseKey, IResponseHandler> _responseHandlers = new(MaxResponseHandlers);
     private readonly BoundedMap<Hash256, NodeRecord> _knownRecords = new(MaxKnownRecords);
+    private readonly BoundedMap<SessionKey, long> _endpointChecks = new(MaxEndpointChecks);
     private readonly NodeFilter[] _challengeRateLimiters = CreateChallengeRateLimiters();
 
     /// <inheritdoc/>
@@ -91,6 +94,7 @@ public class Discv5KademliaAdapter(
     public async Task Ping(Node receiver, CancellationToken token)
     {
         RegisterKnownRecord(receiver);
+        ReserveEndpointCheck(receiver);
         byte[] requestId = CreateRequestId();
         Discv5Ping ping = new(requestId, nodeRecordProvider.Current.EnrSequence);
         PongResponseHandler responseHandler = new(receiver);
@@ -310,18 +314,23 @@ public class Discv5KademliaAdapter(
             return;
         }
 
+        NodeRecord? messageRecord = knownRecord;
         if (nodeRecord is not null)
         {
-            if (!IsAcceptableNodeRecord(nodeRecord, nodeId, NodeFilter.IsLoopbackOrPrivateOrLinkLocal(endpoint.Address)))
+            if (!HasExpectedNodeId(nodeRecord, nodeId))
             {
                 return;
             }
 
-            SetKnownRecord(nodeId, nodeRecord);
+            if (IsAcceptableNodeRecord(nodeRecord, nodeId, NodeFilter.IsLoopbackOrPrivateOrLinkLocal(endpoint.Address)))
+            {
+                SetKnownRecord(nodeId, nodeRecord);
+                messageRecord = nodeRecord;
+            }
         }
 
         SetSession(new SessionKey(nodeId, endpoint), session);
-        await HandleMessage(session.RemotePublicKey, endpoint, message, token, nodeRecord ?? knownRecord);
+        await HandleMessage(session.RemotePublicKey, endpoint, message, token, messageRecord);
     }
 
     private async Task SendWhoAreYou(IPEndPoint endpoint, Discv5Packet requestPacket, byte[] destinationNodeId)
@@ -331,6 +340,7 @@ public class Discv5KademliaAdapter(
         long now = Environment.TickCount64;
         if (_sentChallenges.TryGetValue(challengeKey, out SentChallenge existingChallenge) && !IsExpired(existingChallenge, now))
         {
+            await discoveryHandler.SendAsync(existingChallenge.Packet, endpoint);
             return;
         }
 
@@ -342,7 +352,7 @@ public class Discv5KademliaAdapter(
 
         ulong enrSequence = TryGetKnownRecord(nodeId, out NodeRecord? record) ? record.EnrSequence : 0UL;
         byte[] packet = packetCodec.EncodeWhoAreYou(destinationNodeId, requestPacket.Nonce, enrSequence, out Discv5Challenge challenge);
-        SetSentChallenge(challengeKey, challenge);
+        SetSentChallenge(challengeKey, challenge, packet);
         await discoveryHandler.SendAsync(packet, endpoint);
     }
 
@@ -366,6 +376,10 @@ public class Discv5KademliaAdapter(
                     new Discv5Pong(ping.RequestId, nodeRecordProvider.Current.EnrSequence, endpoint.Address, endpoint.Port),
                     token);
                 kademlia.Value.AddOrRefresh(remoteNode);
+                if (!string.IsNullOrEmpty(remoteNode.Enr))
+                {
+                    StartEndpointCheck(remoteNode, token);
+                }
                 break;
             case Discv5FindNode findNode:
                 await HandleFindNode(remoteNode, findNode, token);
@@ -541,11 +555,14 @@ public class Discv5KademliaAdapter(
         => Discv5NodeRecordConverter.TryGetNodeFromEnr(record, allowNonRoutable, out Node? node) &&
             node.Id.Hash.Equals(expectedNodeId);
 
-    private void SetSentChallenge(ChallengeKey challengeKey, Discv5Challenge challenge)
+    internal static bool HasExpectedNodeId(NodeRecord record, Hash256 expectedNodeId)
+        => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash.Equals(expectedNodeId) == true;
+
+    private void SetSentChallenge(ChallengeKey challengeKey, Discv5Challenge challenge, byte[] packet)
     {
         long now = Environment.TickCount64;
         TryTrimExpiredChallenges(now);
-        _sentChallenges.Set(challengeKey, new SentChallenge(challenge, now));
+        _sentChallenges.Set(challengeKey, new SentChallenge(challenge, packet, now));
     }
 
     private void TryTrimExpiredChallenges(long now)
@@ -689,7 +706,7 @@ public class Discv5KademliaAdapter(
 
     private sealed record PendingRequest(Node Receiver, Discv5Message Message);
 
-    private readonly record struct SentChallenge(Discv5Challenge Challenge, long CreatedAtMilliseconds);
+    private readonly record struct SentChallenge(Discv5Challenge Challenge, byte[] Packet, long CreatedAtMilliseconds);
 
     private interface IResponseHandler
     {
@@ -793,5 +810,47 @@ public class Discv5KademliaAdapter(
 
             return false;
         }
+    }
+
+    private void StartEndpointCheck(Node remoteNode, CancellationToken token)
+    {
+        if (!TryReserveEndpointCheck(remoteNode))
+        {
+            return;
+        }
+
+        _ = RunEndpointCheck(remoteNode, token);
+    }
+
+    private async Task RunEndpointCheck(Node remoteNode, CancellationToken token)
+    {
+        try
+        {
+            await Ping(remoteNode, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Discv5 endpoint check failed for {remoteNode}: {e}");
+        }
+    }
+
+    private void ReserveEndpointCheck(Node remoteNode)
+        => _endpointChecks.Set(new SessionKey(remoteNode.Id.Hash, remoteNode.Address), Environment.TickCount64);
+
+    private bool TryReserveEndpointCheck(Node remoteNode)
+    {
+        SessionKey sessionKey = new(remoteNode.Id.Hash, remoteNode.Address);
+        long now = Environment.TickCount64;
+        if (_endpointChecks.TryGetValue(sessionKey, out long startedAt) &&
+            now - startedAt <= EndpointCheckTtlMilliseconds)
+        {
+            return false;
+        }
+
+        _endpointChecks.Set(sessionKey, now);
+        return true;
     }
 }

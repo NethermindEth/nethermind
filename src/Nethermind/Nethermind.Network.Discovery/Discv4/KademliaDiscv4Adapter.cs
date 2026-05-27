@@ -10,7 +10,6 @@ using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NonBlocking;
@@ -177,8 +176,8 @@ public class KademliaDiscv4Adapter(
             EnrSequence = nodeRecordProvider.Current.EnrSequence // optional and does not seem to be used anywhere.
         };
         session.OnPingSent();
-        _ = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, token);
-        session.OnPongReceived();
+        PongMsg pong = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, token);
+        session.OnPongReceived(pong.FarAddress ?? receiver.Address);
     }
 
     public async Task<Node[]> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
@@ -211,20 +210,25 @@ public class KademliaDiscv4Adapter(
 
     private async Task<bool> HandleEnrRequest(Node node, NodeSession session, EnrRequestMsg msg, CancellationToken token)
     {
-        if (!session.HasReceivedPong)
+        if (!session.HasEndpointProof(node.Address))
         {
             if (_logger.IsDebug) _logger.Debug($"Rejecting enr request from unbonded peer {node}");
             return false;
         }
 
-        Rlp requestRlp = Rlp.Encode(Rlp.Encode(msg.ExpirationTime));
-        await SendMessage(session, new EnrResponseMsg(node.Address, nodeRecordProvider.Current, Keccak.Compute(requestRlp.Bytes)), token);
+        if (msg.Hash is not { } requestHash)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejecting enr request without packet hash from {node}");
+            return false;
+        }
+
+        await SendMessage(session, new EnrResponseMsg(node.Address, nodeRecordProvider.Current, new Hash256(requestHash.Span)), token);
         return true;
     }
 
     private async Task<bool> HandleFindNode(Node node, NodeSession session, FindNodeMsg msg, CancellationToken token)
     {
-        if (!session.HasReceivedPong)
+        if (!session.HasEndpointProof(node.Address))
         {
             if (_logger.IsDebug) _logger.Debug($"Rejecting findNode request from unbonded peer {node}");
             return false;

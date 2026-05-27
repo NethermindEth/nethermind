@@ -73,10 +73,11 @@ public class Discv5KademliaAdapterTests
         Discv5KademliaAdapter adapter = CreateAdapter();
         IPEndPoint endpoint = IPEndPoint.Parse("192.0.2.1:30303");
 
-        Assert.That(adapter.TryAcceptChallenge(endpoint), Is.True);
-        Assert.That(adapter.TryAcceptChallenge(endpoint), Is.True);
-        Assert.That(adapter.TryAcceptChallenge(endpoint), Is.True);
-        Assert.That(adapter.TryAcceptChallenge(endpoint), Is.True);
+        for (int i = 0; i < 16; i++)
+        {
+            Assert.That(adapter.TryAcceptChallenge(endpoint), Is.True);
+        }
+
         Assert.That(adapter.TryAcceptChallenge(endpoint), Is.False);
     }
 

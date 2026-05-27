@@ -156,9 +156,9 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         byteBuffer.WriteByte(msgType);
     }
 
-    protected static IPEndPoint GetAddress(ReadOnlySpan<byte> ip, int port)
+    protected static IPEndPoint GetAddress(ReadOnlySpan<byte> ip, int port, bool allowZeroPort = false)
     {
-        if ((uint)(port - 1) >= ushort.MaxValue)
+        if (allowZeroPort ? (uint)port > ushort.MaxValue : (uint)(port - 1) >= ushort.MaxValue)
         {
             ThrowInvalidPort(port);
         }

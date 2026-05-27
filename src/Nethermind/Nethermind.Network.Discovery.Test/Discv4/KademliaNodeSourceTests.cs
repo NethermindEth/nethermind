@@ -77,7 +77,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         {
             Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
-            _nodeSession.OnPongReceived();
+            _nodeSession.OnPongReceived(node1.Address);
 
             _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node1, node2));
@@ -129,7 +129,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             session1.OnPingSent();
 
             // Set up session2 to have received a pong
-            session2.OnPongReceived();
+            session2.OnPongReceived(node2.Address);
 
             _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node1, node2));
@@ -178,7 +178,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
 
-            _nodeSession.OnPongReceived();
+            _nodeSession.OnPongReceived(node1.Address);
 
             _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node1));
@@ -202,7 +202,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         {
             Node node = new(TestItem.PublicKeyC, "192.168.1.1", 30303);
 
-            _nodeSession.OnPongReceived();
+            _nodeSession.OnPongReceived(node.Address);
 
             _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node, node));
@@ -223,7 +223,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
 
-            _nodeSession.OnPongReceived();
+            _nodeSession.OnPongReceived(node1.Address);
 
             // Set up the lookup to return different nodes for different calls
             int callCount = 0;
@@ -254,7 +254,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         {
             _discoveryConfig.ConcurrentDiscoveryJob = 1;
             Node node = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
-            _nodeSession.OnPongReceived();
+            _nodeSession.OnPongReceived(node.Address);
             _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node));
 

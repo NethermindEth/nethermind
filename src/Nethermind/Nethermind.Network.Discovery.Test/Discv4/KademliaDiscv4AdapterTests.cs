@@ -342,12 +342,30 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
         [Test]
         [CancelAfter(10000)]
+        public async Task OnIncomingMsg_find_node_from_different_endpoint_should_not_respond(CancellationToken token)
+        {
+            await BondReceiver(token);
+
+            IPEndPoint differentEndpoint = new(IPAddress.Parse("192.168.1.3"), _receiver.Address.Port);
+            FindNodeMsg findNodeMsg = new(differentEndpoint, _timestamper.UnixTime.SecondsLong + 20, _testPublicKey.Bytes);
+            findNodeMsg = AddReceiverFarAddress(findNodeMsg);
+
+            await _adapter.OnIncomingMsg(findNodeMsg);
+
+            _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id == _receiver.Id));
+            _kademliaMessageReceiver.DidNotReceive().GetKNeighbour(Arg.Any<PublicKey>(), Arg.Any<Node>());
+            await _msgSender.DidNotReceive().SendMsg(Arg.Any<NeighborsMsg>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task OnIncomingMsg_enr_request_should_respond_with_enr_response(CancellationToken token)
         {
             await BondReceiver(token);
 
             EnrRequestMsg enrRequestMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20);
             enrRequestMsg = AddReceiverFarAddress(enrRequestMsg);
+            Hash256 expectedRequestHash = new(enrRequestMsg.Hash!.Value.Span);
 
             await _adapter.OnIncomingMsg(enrRequestMsg);
 
@@ -355,6 +373,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             await _msgSender.Received(1).SendMsg(Arg.Is<EnrResponseMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address) &&
+                m.RequestKeccak.Equals(expectedRequestHash) &&
                 m.NodeRecord.Equals(_selfNodeRecord)));
         }
 

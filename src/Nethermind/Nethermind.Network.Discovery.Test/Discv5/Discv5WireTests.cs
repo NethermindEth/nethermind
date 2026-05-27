@@ -11,6 +11,7 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
@@ -92,6 +93,65 @@ public class Discv5WireTests
     }
 
     [Test]
+    public async Task Ping_Completes_With_HandshakeRecord_WithoutEndpoint()
+    {
+        IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
+        IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
+        TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA, includeEndpointInRecord: false);
+        TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
+        Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
+        {
+            Enr = peerB.NodeRecordProvider.Current.EnrString
+        };
+
+        using CancellationTokenSource cancellationSource = new(10_000);
+        Task runA = peerA.Adapter.RunAsync(cancellationSource.Token);
+        Task runB = peerB.Adapter.RunAsync(cancellationSource.Token);
+
+        Task pingTask = peerA.Adapter.Ping(nodeB, cancellationSource.Token);
+        await PumpUntilComplete(pingTask, peerA, peerB, cancellationSource.Token);
+        await pingTask;
+
+        await cancellationSource.CancelAsync();
+        await Task.WhenAll(runA, runB);
+
+        peerB.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyA.PublicKey) && string.IsNullOrEmpty(node.Enr)));
+    }
+
+    [Test]
+    public async Task InboundPing_Starts_EndpointCheck_PingBack()
+    {
+        IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
+        IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
+        TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA);
+        TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
+        Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
+        {
+            Enr = peerB.NodeRecordProvider.Current.EnrString
+        };
+
+        using CancellationTokenSource cancellationSource = new(10_000);
+        Task runA = peerA.Adapter.RunAsync(cancellationSource.Token);
+        Task runB = peerB.Adapter.RunAsync(cancellationSource.Token);
+
+        Task pingTask = peerA.Adapter.Ping(nodeB, cancellationSource.Token);
+        await PumpUntilComplete(pingTask, peerA, peerB, cancellationSource.Token);
+        await pingTask;
+
+        await PumpUntil(
+            () => peerB.Kademlia.ReceivedCallsMatching(
+                kademlia => kademlia.AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyA.PublicKey))),
+                requiredNumberOfCalls: 2,
+                maxNumberOfCalls: int.MaxValue),
+            peerA,
+            peerB,
+            cancellationSource.Token);
+
+        await cancellationSource.CancelAsync();
+        await Task.WhenAll(runA, runB);
+    }
+
+    [Test]
     public async Task FindNeighbours_Returns_Records_At_Requested_Distance()
     {
         IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
@@ -132,14 +192,14 @@ public class Discv5WireTests
         peerA.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyC.PublicKey)));
     }
 
-    private static TestPeer CreatePeer(PrivateKey privateKey, IPEndPoint endpoint)
+    private static TestPeer CreatePeer(PrivateKey privateKey, IPEndPoint endpoint, bool includeEndpointInRecord = true)
     {
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
         NettyDiscoveryV5Handler handler = new(new TestLogManager());
         EmbeddedChannel channel = new();
         handler.InitializeChannel(channel);
 
-        TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint);
+        TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord);
         Discv5KademliaAdapter adapter = new(
             new Lazy<IKademlia<PublicKey, Node>>(kademlia),
             handler,
@@ -159,6 +219,19 @@ public class Discv5WireTests
     private static async Task PumpUntilComplete(Task task, TestPeer peerA, TestPeer peerB, CancellationToken token)
     {
         while (!task.IsCompleted)
+        {
+            Pump(peerA, peerB);
+            Pump(peerB, peerA);
+            await Task.Delay(10, token);
+        }
+
+        Pump(peerA, peerB);
+        Pump(peerB, peerA);
+    }
+
+    private static async Task PumpUntil(Func<bool> condition, TestPeer peerA, TestPeer peerB, CancellationToken token)
+    {
+        while (!condition())
         {
             Pump(peerA, peerB);
             Pump(peerB, peerA);
@@ -209,13 +282,16 @@ public class Discv5WireTests
 
     private sealed class TestNodeRecordProvider : INodeRecordProvider
     {
-        public TestNodeRecordProvider(PrivateKey privateKey, IPEndPoint endpoint)
+        public TestNodeRecordProvider(PrivateKey privateKey, IPEndPoint endpoint, bool includeEndpoint)
         {
             NodeRecord nodeRecord = new();
             nodeRecord.SetEntry(IdEntry.Instance);
-            nodeRecord.SetEntry(new IpEntry(endpoint.Address));
-            nodeRecord.SetEntry(new TcpEntry(endpoint.Port));
-            nodeRecord.SetEntry(new UdpEntry(endpoint.Port));
+            if (includeEndpoint)
+            {
+                nodeRecord.SetEntry(new IpEntry(endpoint.Address));
+                nodeRecord.SetEntry(new TcpEntry(endpoint.Port));
+                nodeRecord.SetEntry(new UdpEntry(endpoint.Port));
+            }
             nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
             nodeRecord.EnrSequence = 1;
             new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(nodeRecord);

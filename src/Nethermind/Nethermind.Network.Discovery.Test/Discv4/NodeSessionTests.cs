@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
 using Nethermind.Core;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Stats;
@@ -17,6 +18,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         private INodeStats _nodeStats = null!;
         private ManualTimestamper _timestamper = null!;
         private NodeSession _nodeSession = null!;
+        private static readonly IPEndPoint TestEndpoint = new(IPAddress.Loopback, 30303);
 
         [SetUp]
         public void Setup()
@@ -36,7 +38,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 NodeSession.BondTimeout).SetName(nameof(NodeSession.HasReceivedPing)),
             new TestCaseData(
                 (Func<NodeSession, bool>)(s => s.HasReceivedPong),
-                (Action<NodeSession>)(s => s.OnPongReceived()),
+                (Action<NodeSession>)(s => s.OnPongReceived(TestEndpoint)),
                 NodeSession.BondTimeout).SetName(nameof(NodeSession.HasReceivedPong)),
             new TestCaseData(
                 (Func<NodeSession, bool>)(s => s.HasTriedPingRecently),

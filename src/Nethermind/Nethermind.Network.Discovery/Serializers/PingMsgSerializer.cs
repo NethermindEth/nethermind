@@ -51,16 +51,15 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         ctx.ReadSequenceLength();
         ReadOnlySpan<byte> sourceAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
 
-        // TODO: please note that we decode only one field for port and if the UDP is different from TCP then
-        // our discovery messages will not be routed correctly (the fix will not be part of this commit)
-        ctx.DecodeInt(); // UDP port
-        int tcpPort = ctx.DecodeInt(); // we assume here that UDP and TCP port are same
+        int sourceUdpPort = ctx.DecodeInt();
+        ctx.DecodeInt(); // TCP port
 
-        IPEndPoint source = GetAddress(sourceAddress, tcpPort);
+        IPEndPoint source = GetAddress(sourceAddress, sourceUdpPort, allowZeroPort: true);
         ctx.ReadSequenceLength();
         ReadOnlySpan<byte> destinationAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
-        IPEndPoint destination = GetAddress(destinationAddress, ctx.DecodeInt());
-        ctx.DecodeInt(); // UDP port
+        int destinationUdpPort = ctx.DecodeInt();
+        ctx.DecodeInt(); // TCP port
+        IPEndPoint destination = GetAddress(destinationAddress, destinationUdpPort, allowZeroPort: true);
 
         long expireTime = ctx.DecodeLong();
         PingMsg msg = new(FarPublicKey, expireTime, source, destination, Mdc.ToArray()) { Version = version };

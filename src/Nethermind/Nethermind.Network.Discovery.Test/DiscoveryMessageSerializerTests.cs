@@ -71,7 +71,7 @@ public class DiscoveryMessageSerializerTests
     }
 
     [Test]
-    public void PingMessage_Rejects_Port_Zero()
+    public void PingMessage_Allows_Endpoint_Port_Zero()
     {
         PingMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new IPEndPoint(_farAddress.Address, 0), _nearAddress,
@@ -79,7 +79,21 @@ public class DiscoveryMessageSerializerTests
             { FarAddress = _farAddress };
 
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
-        Assert.Throws<NetworkingException>(() => _messageSerializationService.Deserialize<PingMsg>(data));
+        PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(data);
+
+        Assert.That(deserializedMessage.SourceAddress.Port, Is.Zero);
+    }
+
+    [Test]
+    public void PingMessage_UsesUdpPortWhenTcpPortIsZero()
+    {
+        string devp2pDiscoveryOnlyPing =
+            "24fca4f142312eb2c8b850295cf1c7b3dbbcac49c79a4e1dbc84bffde5e3605bd3c81c2d313f3ac8f293ead68f0efc76d78033279923216da1ad5bc0356f0d0e4dab24602f48452ac037d8a7291260c6999fc9f65b85095fb5f6abc4ed1f49020101e104c9847f00000182f2bb80c9847f000001827d6580846a17400086019e6ad1b545";
+
+        PingMsg ping = _messageSerializationService.Deserialize<PingMsg>(Bytes.FromHexString(devp2pDiscoveryOnlyPing));
+
+        Assert.That(ping.SourceAddress, Is.EqualTo(new IPEndPoint(IPAddress.Loopback, 62139)));
+        Assert.That(ping.DestinationAddress, Is.EqualTo(new IPEndPoint(IPAddress.Loopback, 32101)));
     }
 
     [Test]

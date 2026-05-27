@@ -26,6 +26,7 @@ public abstract class KademliaDiscoveryApp(
     private IKademliaNodeSource? _kademliaNodeSource;
     private IKademlia<PublicKey, Node>? _kademlia;
     private Task? _runningTask;
+    private int _activationStarted;
 
     protected ILogger Logger { get; } = logger;
 
@@ -36,6 +37,7 @@ public abstract class KademliaDiscoveryApp(
         try
         {
             Initialize();
+            TryStartActivation();
             return Task.CompletedTask;
         }
         catch (Exception e)
@@ -127,6 +129,17 @@ public abstract class KademliaDiscoveryApp(
         if (Logger.IsDebug) Logger.Debug("Activated discovery channel.");
 
         if (_stopCts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        TryStartActivation();
+    }
+
+    private void TryStartActivation()
+    {
+        if (_stopCts.IsCancellationRequested ||
+            Interlocked.CompareExchange(ref _activationStarted, 1, 0) != 0)
         {
             return;
         }

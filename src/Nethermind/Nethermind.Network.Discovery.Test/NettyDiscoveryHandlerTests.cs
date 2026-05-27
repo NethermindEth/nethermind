@@ -161,15 +161,26 @@ namespace Nethermind.Network.Discovery.Test
             await _kademliaAdaptersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Neighbors));
         }
 
-        private (IKademliaDiscv4Adapter Adapter, NettyDiscoveryHandler Handler, IChannelHandlerContext Ctx, IMessageSerializationService Service) CreateHandler(NodeFilter? nodeFilter = null)
+        private (IKademliaDiscv4Adapter Adapter, NettyDiscoveryHandler Handler, IChannelHandlerContext Ctx, IMessageSerializationService Service) CreateHandler(
+            NodeFilter? nodeFilter = null,
+            int? globalInboundMessageBurst = null,
+            int? inboundMessageQueueCapacity = null,
+            int? inboundMessageWorkerCount = null)
         {
             IKademliaDiscv4Adapter adapter = Substitute.For<IKademliaDiscv4Adapter>();
             adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
             IMessageSerializationService service = Build.A.SerializationService().WithDiscovery(_privateKey2).TestObject;
             IChannel channel = Substitute.For<IChannel>();
-            NettyDiscoveryHandler handler = nodeFilter is not null
-                ? new(adapter, channel, service, Timestamper.Default, LimboLogs.Instance, nodeFilter)
-                : new(adapter, channel, service, Timestamper.Default, LimboLogs.Instance);
+            NettyDiscoveryHandler handler = new(
+                adapter,
+                channel,
+                service,
+                Timestamper.Default,
+                LimboLogs.Instance,
+                nodeFilter,
+                globalInboundMessageBurst,
+                inboundMessageQueueCapacity,
+                inboundMessageWorkerCount);
             IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
             return (adapter, handler, ctx, service);
         }
@@ -257,14 +268,67 @@ namespace Nethermind.Network.Discovery.Test
 
             byte[] data = SerializePing(service);
 
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 9; i++)
             {
                 handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), _address2, _address));
             }
 
             await SleepWhileWaiting();
 
-            await adapter.Received(4).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+            await adapter.Received(8).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [Test]
+        public async Task GlobalInboundRateLimiter_Drops_Messages_AboveBurstLimit()
+        {
+            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(globalInboundMessageBurst: 2);
+            using SemaphoreSlim called = new(0);
+            adapter.When(x => x.OnIncomingMsg(Arg.Any<DiscoveryMsg>())).Do(_ => called.Release());
+
+            byte[] data = SerializePing(service);
+
+            for (int i = 0; i < 3; i++)
+            {
+                IPEndPoint sender = new(IPAddress.Parse($"127.0.1.{i + 1}"), _address2.Port);
+                handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), sender, _address));
+            }
+
+            Assert.That(await called.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(await called.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            await Task.Delay(50);
+
+            await adapter.Received(2).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [Test]
+        public async Task InboundDispatchQueue_Drops_Messages_WhenFull()
+        {
+            TaskCompletionSource unblockHandler = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(
+                globalInboundMessageBurst: 64,
+                inboundMessageQueueCapacity: 1,
+                inboundMessageWorkerCount: 1);
+            int received = 0;
+            adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(_ =>
+            {
+                Interlocked.Increment(ref received);
+                return unblockHandler.Task;
+            });
+
+            byte[] data = SerializePing(service);
+
+            for (int i = 0; i < 16; i++)
+            {
+                IPEndPoint sender = new(IPAddress.Parse($"127.0.2.{i + 1}"), _address2.Port);
+                handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), sender, _address));
+            }
+
+            Assert.That(() => Interlocked.CompareExchange(ref received, 0, 0), Is.GreaterThanOrEqualTo(1).After(5000, 10));
+            await Task.Delay(100);
+            unblockHandler.SetResult();
+            await Task.Delay(100);
+
+            Assert.That(Interlocked.CompareExchange(ref received, 0, 0), Is.LessThan(16));
         }
 
         private byte[] SerializePing(IMessageSerializationService service)
