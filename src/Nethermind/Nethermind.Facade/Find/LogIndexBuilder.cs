@@ -307,6 +307,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         {
             await _cancellationSource.CancelAsync();
             _pivotSource.TrySetCanceled(CancellationToken);
+            _progressLoggerTimer?.Stop();
+            IsRunning = false;
         }
     }
 
