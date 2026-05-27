@@ -410,6 +410,8 @@ namespace Nethermind.Evm.TransactionProcessing
             in UInt256 senderReservedGasPayment,
             in UInt256 blobBaseFee)
         {
+            Metrics.IncrementEmptyCalls();
+
             ref readonly UInt256 value = ref tx.ValueRef;
             if (tracer.IsTracingActions)
             {

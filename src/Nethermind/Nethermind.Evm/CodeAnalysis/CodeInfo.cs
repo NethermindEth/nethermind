@@ -53,6 +53,13 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     private JumpDestinationAnalyzer? _analyzer;
 
+    /// <summary>
+    /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
+    /// </summary>
+    /// <remarks>
+    /// Empty code is represented by the shared analyzer sentinel so fast paths can test this without inspecting bytecode.
+    /// Constructors that create zero-length executable bytecode must assign the sentinel to preserve that invariant.
+    /// </remarks>
     public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer);
     public bool IsPrecompile => Precompile is not null;
 

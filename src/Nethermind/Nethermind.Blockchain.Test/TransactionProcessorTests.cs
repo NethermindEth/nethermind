@@ -831,6 +831,88 @@ public class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(_stateProvider.GetBalance(recipient), Is.EqualTo(recipientBalanceBefore + testCase.Value));
     }
 
+    [Test]
+    public void Simple_transfer_fast_path_reports_action_trace()
+    {
+        Address recipient = Address.FromNumber((UInt256)1400);
+        IReleaseSpec spec = Prague.Instance;
+        PrepareSimpleTransferRecipient(SimpleTransferRecipientKind.Empty, recipient, spec);
+        _stateProvider.Commit(spec);
+        _stateProvider.CommitTree(0);
+
+        CountingVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance,
+            _specProvider,
+            _stateProvider,
+            virtualMachine,
+            codeInfoRepository,
+            LimboLogs.Instance);
+
+        Transaction tx = BuildSimpleTransfer(recipient, 7.Wei, withAuthorizationList: false);
+        Block block = Build.A.Block
+            .WithNumber(MainnetSpecProvider.PragueActivation.BlockNumber)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(1_000_000)
+            .TestObject;
+        SimpleTransferActionTracer tracer = new();
+
+        TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+        Assert.That(tracer.ActionCalls, Is.EqualTo(1));
+        Assert.That(tracer.ActionEndCalls, Is.EqualTo(1));
+        Assert.That(tracer.ActionGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
+        Assert.That(tracer.ActionEndGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
+        Assert.That(tracer.ActionValue, Is.EqualTo((UInt256)7.Wei));
+        Assert.That(tracer.ActionFrom, Is.EqualTo(TestItem.AddressA));
+        Assert.That(tracer.ActionTo, Is.EqualTo(recipient));
+        Assert.That(tracer.ActionInput, Is.Empty);
+        Assert.That(tracer.ActionType, Is.EqualTo(ExecutionType.TRANSACTION));
+        Assert.That(tracer.IsPrecompileCall, Is.False);
+        Assert.That(tracer.ActionOutput, Is.Empty);
+    }
+
+    [Test]
+    public void Simple_transfer_fast_path_restores_state_on_call_and_restore()
+    {
+        Address recipient = Address.FromNumber((UInt256)1401);
+        IReleaseSpec spec = Prague.Instance;
+        _stateProvider.Commit(spec);
+        _stateProvider.CommitTree(0);
+
+        CountingVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance,
+            _specProvider,
+            _stateProvider,
+            virtualMachine,
+            codeInfoRepository,
+            LimboLogs.Instance);
+
+        Transaction tx = BuildSimpleTransfer(recipient, 7.Wei, withAuthorizationList: false);
+        Block block = Build.A.Block
+            .WithNumber(MainnetSpecProvider.PragueActivation.BlockNumber)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(1_000_000)
+            .TestObject;
+        UInt256 senderBalanceBefore = _stateProvider.GetBalance(TestItem.AddressA);
+        UInt256 senderNonceBefore = _stateProvider.GetNonce(TestItem.AddressA);
+
+        TransactionResult result = transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+        Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore));
+        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(senderNonceBefore));
+        Assert.That(_stateProvider.AccountExists(recipient), Is.False);
+    }
+
     [TestCase(false, 1ul, true, true)]
     [TestCase(false, 1ul, false, true)]
     [TestCase(false, 0ul, true, false)]
@@ -984,6 +1066,41 @@ public class TransactionProcessorTests(bool eip155Enabled)
             ReceiptLogs = logs;
 
         public override void ReportLog(LogEntry log) => ReportedLogs.Add(log);
+    }
+
+    private sealed class SimpleTransferActionTracer : TxTracer
+    {
+        public override bool IsTracingActions { get; protected set; } = true;
+        public int ActionCalls { get; private set; }
+        public int ActionEndCalls { get; private set; }
+        public long ActionGas { get; private set; }
+        public long ActionEndGas { get; private set; }
+        public UInt256 ActionValue { get; private set; }
+        public Address ActionFrom { get; private set; } = Address.Zero;
+        public Address ActionTo { get; private set; } = Address.Zero;
+        public byte[] ActionInput { get; private set; } = [];
+        public ExecutionType ActionType { get; private set; }
+        public bool IsPrecompileCall { get; private set; }
+        public byte[] ActionOutput { get; private set; } = [];
+
+        public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        {
+            ActionCalls++;
+            ActionGas = gas;
+            ActionValue = value;
+            ActionFrom = from;
+            ActionTo = to;
+            ActionInput = input.ToArray();
+            ActionType = callType;
+            IsPrecompileCall = isPrecompileCall;
+        }
+
+        public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+        {
+            ActionEndCalls++;
+            ActionEndGas = gas;
+            ActionOutput = output.ToArray();
+        }
     }
 
     private sealed class CountingVirtualMachine(

@@ -17,6 +17,14 @@ namespace Nethermind.Evm
         public static bool IsAnyCall(this ExecutionType executionType) =>
             executionType is ExecutionType.CALL or ExecutionType.STATICCALL or ExecutionType.DELEGATECALL or ExecutionType.CALLCODE;
 
+        /// <summary>
+        /// Returns <c>true</c> when entering this frame credits the executing account balance with the frame value.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="ExecutionType.DELEGATECALL"/> carries the caller's value without moving ETH, while
+        /// <see cref="ExecutionType.STATICCALL"/> cannot transfer ETH. <see cref="ExecutionType.CALLCODE"/>
+        /// still credits the executing account, which is a self-transfer when caller and target are the same account.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool CreditsBalance(this ExecutionType executionType) =>
             executionType is ExecutionType.TRANSACTION or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE or ExecutionType.CREATE2;

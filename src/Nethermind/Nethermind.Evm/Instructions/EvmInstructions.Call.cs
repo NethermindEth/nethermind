@@ -273,6 +273,7 @@ public static partial class EvmInstructions
         if (HasNoExecutableCode(codeInfo) && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
+            // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.
             EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             if (pushResult != EvmExceptionType.None) return pushResult;
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
