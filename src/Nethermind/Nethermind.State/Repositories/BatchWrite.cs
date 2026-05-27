@@ -22,10 +22,17 @@ namespace Nethermind.State.Repositories
 
         public void Dispose()
         {
-            if (!Disposed)
+            if (Disposed)
+                return;
+
+            try
             {
                 WriteBatch.Dispose();
-
+            }
+            finally
+            {
+                // Always release the lock and mark disposed, even if the batch commit threw,
+                // so a failed commit cannot leave the repository write lock held.
                 if (_lockTaken)
                 {
                     _lockTaken = false;
