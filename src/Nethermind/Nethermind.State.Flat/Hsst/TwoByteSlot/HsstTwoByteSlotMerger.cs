@@ -33,9 +33,9 @@ internal static class HsstTwoByteSlotMerger
     /// <param name="scratchLens">Caller-owned scratch for per-entry value lengths.</param>
     /// <param name="callback">Per-emitted-key hook; pass
     /// <see cref="NoOpHsstTwoByteSlotMergeCallback"/> when no hook is needed.</param>
-    internal static void NWayMerge<TWriter, TReader, TPin, TSource, TCallback>(
+    internal static void NWayMerge<TWriter, TReader, TPin, TSource, TFactory, TCallback>(
         ref TWriter writer,
-        scoped ref NWayMergeCursor<TReader, TPin, TSource> cursor,
+        scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
         ArrayPoolList<byte> scratchKeys,
         ArrayPoolList<byte> scratchValues,
         ArrayPoolList<int> scratchLens,
@@ -44,6 +44,7 @@ internal static class HsstTwoByteSlotMerger
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TSource : struct, IHsstMergeSource<TReader, TPin>
+        where TFactory : struct, IHsstEnumeratorFactory<TReader, TPin>
         where TCallback : struct, IHsstTwoByteSlotMergeCallback
     {
         const int KeyLength = HsstTwoByteSlotValueBuilder<TWriter>.KeyLength;

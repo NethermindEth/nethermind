@@ -23,15 +23,16 @@ internal static class HsstPackedArrayMerger
     /// The merger drives it to exhaustion; the key length is read from <see cref="NWayMergeCursor{TReader,TPin,TSource}.KeyLen"/>.</param>
     /// <param name="callback">Per-emitted-key hook; pass <see cref="NoOpHsstPackedArrayMergeCallback"/>
     /// when no hook is needed.</param>
-    internal static void NWayMerge<TWriter, TReader, TPin, TSource, TCallback>(
+    internal static void NWayMerge<TWriter, TReader, TPin, TSource, TFactory, TCallback>(
         ref TWriter writer,
         int valueSize,
-        scoped ref NWayMergeCursor<TReader, TPin, TSource> cursor,
+        scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
         TCallback callback)
         where TWriter : IByteBufferWriter
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TSource : struct, IHsstMergeSource<TReader, TPin>
+        where TFactory : struct, IHsstEnumeratorFactory<TReader, TPin>
         where TCallback : struct, IHsstPackedArrayMergeCallback
     {
         using HsstPackedArrayBuilder<TWriter> builder = new(ref writer, cursor.KeyLen, valueSize);

@@ -13,15 +13,17 @@ namespace Nethermind.State.Flat.Hsst;
 /// linear (the merge bodies that consume <see cref="MatchingSources"/> need a dense list).
 ///
 /// The cursor is intentionally allocation-free: all working memory lives in the caller-
-/// supplied <see cref="LoserTreeState"/> (stack-allocated spans). Per-source state — the
-/// HSST enumerator plus the means to construct a reader — comes via a
-/// <typeparamref name="TSource"/> ref-struct per cursor slot. Newest-source-wins tie-break
+/// supplied <see cref="LoserTreeState"/> (stack-allocated spans) plus a caller-supplied
+/// <c>Span&lt;HsstEnumerator&gt;</c> for the per-slot iteration state. Per-source state —
+/// the reader factory plus the bound this slot is positioned over — comes via a
+/// <typeparamref name="TSource"/> per cursor slot; the cursor constructs an enumerator
+/// per slot in its ctor via <typeparamref name="TFactory"/>. Newest-source-wins tie-break
 /// is hard-coded; every live merge in <c>PersistedSnapshotMerger</c> wants this rule.
 ///
 /// Usage:
 /// <code>
-/// // Caller primes enumerators + first key per source, then constructs the cursor:
-/// NWayMergeCursor&lt;TReader, TPin, TSource&gt; cursor = new(sources, state, keyLen);
+/// // Caller rents sources + enumerators buffers and constructs the cursor:
+/// NWayMergeCursor&lt;TReader, TPin, TSource, TFactory&gt; cursor = new(sources, enumerators, state, keyLen);
 /// while (cursor.MoveNext())
 /// {
 ///     // emit at cursor.MinIdx using cursor.MinKey;
@@ -30,12 +32,14 @@ namespace Nethermind.State.Flat.Hsst;
 /// }
 /// </code>
 /// </summary>
-internal ref struct NWayMergeCursor<TReader, TPin, TSource>
+internal ref struct NWayMergeCursor<TReader, TPin, TSource, TFactory>
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
     where TSource : struct, IHsstMergeSource<TReader, TPin>
+    where TFactory : struct, IHsstEnumeratorFactory<TReader, TPin>
 {
     private readonly Span<TSource> _sources;
+    private readonly Span<HsstEnumerator<TReader, TPin>> _enumerators;
     // Cache the 4 state spans + stride at ctor so the hot loop stays Span-direct
     // (LoserTreeState's pool-backed properties construct a Span per access).
     private readonly Span<bool> _hasMore;
@@ -71,9 +75,9 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
     /// <summary>Logical key length in bytes (≤ <c>state.KeyStride</c>), as supplied to the ctor.</summary>
     public readonly int KeyLen => _keyLen;
 
-    /// <summary>Value bound of the current winner — routes to the winning source's enumerator's
-    /// <c>CurrentValue</c>. Valid after a true <see cref="MoveNext"/>, until <see cref="AdvanceMatching"/>.</summary>
-    public readonly Bound MinValue => _sources[_minIdx].GetEnumerator().CurrentValue;
+    /// <summary>Value bound of the current winner's current entry. Valid after a true
+    /// <see cref="MoveNext"/>, until <see cref="AdvanceMatching"/>.</summary>
+    public readonly Bound MinValue => _enumerators[_minIdx].CurrentValue;
 
     /// <summary>Materialise a fresh reader for the current winner — routes to the winning
     /// source's <c>CreateReader()</c>. Each call constructs a new reader; the caller is
@@ -83,8 +87,8 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
     /// <summary>Value bound of source <paramref name="srcIdx"/>'s current entry. Valid while
     /// the source's cached key still equals <see cref="MinKey"/> (i.e. for slots present in
     /// <see cref="MatchingSources"/>, between <see cref="MoveNext"/> and the corresponding
-    /// <see cref="AdvanceMatching"/>). Routes to <c>_sources[srcIdx].GetEnumerator().CurrentValue</c>.</summary>
-    public readonly Bound ValueAt(int srcIdx) => _sources[srcIdx].GetEnumerator().CurrentValue;
+    /// <see cref="AdvanceMatching"/>).</summary>
+    public readonly Bound ValueAt(int srcIdx) => _enumerators[srcIdx].CurrentValue;
 
     /// <summary>Materialise a fresh reader for source <paramref name="srcIdx"/>. Routes to
     /// <c>_sources[srcIdx].CreateReader()</c>; caller owns the returned reader's lifetime
@@ -93,21 +97,27 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
 
     /// <summary>The cursor's source span (one source per cursor slot). Used by nested-merge
     /// helpers that need the per-source reader factory list to build inner sources or to walk
-    /// source bytes — handing them <c>cursor.Sources</c> avoids plumbing a parallel
-    /// <c>views</c>/<c>(IntPtr, long)</c> span through every merge layer.</summary>
+    /// source bytes.</summary>
     public readonly Span<TSource> Sources => _sources;
 
-    /// <param name="sources">N source structs, one per cursor slot. Each source's
-    /// enumerator must be positioned at the start of its scope but NOT yet advanced;
-    /// the ctor calls <c>MoveNext</c> on each source to prime the loser tree.</param>
+    /// <param name="sources">N source structs, one per cursor slot. Each source supplies a
+    /// reader factory and the bound this slot is positioned over.</param>
+    /// <param name="enumerators">Caller-supplied buffer for the per-slot
+    /// <see cref="HsstEnumerator{TReader,TPin}"/>s. Must be at least <c>sources.Length</c>
+    /// elements; the ctor fills it via <paramref name="factory"/>.</param>
     /// <param name="state">Caller-allocated scratch (hasMore + keyBuf + matchingBuf + tree + keyStride).</param>
     /// <param name="keyLen">Logical key length in bytes (≤ <c>state.KeyStride</c>).</param>
+    /// <param name="factory">Stateless dispatcher used to construct the per-slot enumerators
+    /// from each source's reader + bound.</param>
     public NWayMergeCursor(
         Span<TSource> sources,
+        Span<HsstEnumerator<TReader, TPin>> enumerators,
         LoserTreeState state,
-        int keyLen)
+        int keyLen,
+        TFactory factory = default)
     {
         _sources = sources;
+        _enumerators = enumerators;
         _hasMore = state.HasMore;
         _keyBuf = state.KeyBuf;
         _matchingBuf = state.MatchingBuf;
@@ -118,17 +128,17 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
         _pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, _n));
         _minIdx = 0;
         _matchCount = 0;
-        // Seed each source: MoveNext once on its enumerator, cache the first key into
-        // _keyBuf for the tree compare. Sources that don't have any entries leave
-        // _hasMore[i]=false (LoserTreeState's ctor pre-cleared the array) so the tree
-        // treats them as +∞ losers.
+        // Seed each source: construct the per-slot enumerator over its bound, MoveNext once
+        // on it, cache the first key into _keyBuf for the tree compare. Sources that don't
+        // have any entries leave _hasMore[i]=false (LoserTreeState's ctor pre-cleared the
+        // array) so the tree treats them as +∞ losers.
         for (int i = 0; i < _n; i++)
         {
             TReader r = sources[i].CreateReader();
-            HsstEnumerator<TReader, TPin> e = sources[i].GetEnumerator();
-            _hasMore[i] = e.MoveNext(in r);
+            _enumerators[i] = factory.Create(in r, sources[i].Bound);
+            _hasMore[i] = _enumerators[i].MoveNext(in r);
             if (_hasMore[i])
-                e.CopyCurrentLogicalKey(in r, _keyBuf.Slice(i * _keyStride, _keyLen));
+                _enumerators[i].CopyCurrentLogicalKey(in r, _keyBuf.Slice(i * _keyStride, _keyLen));
         }
         Build();
     }
@@ -209,10 +219,9 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource>
         {
             int i = _matchingBuf[k];
             TReader r = _sources[i].CreateReader();
-            HsstEnumerator<TReader, TPin> e = _sources[i].GetEnumerator();
-            _hasMore[i] = e.MoveNext(in r);
+            _hasMore[i] = _enumerators[i].MoveNext(in r);
             if (_hasMore[i])
-                e.CopyCurrentLogicalKey(in r, _keyBuf.Slice(i * _keyStride, _keyLen));
+                _enumerators[i].CopyCurrentLogicalKey(in r, _keyBuf.Slice(i * _keyStride, _keyLen));
             UpdateLeaf(i);
         }
     }
