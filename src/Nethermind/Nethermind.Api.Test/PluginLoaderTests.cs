@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -19,7 +18,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Api.Test;
@@ -101,7 +99,7 @@ public class PluginLoaderTests
         ChainSpec chainSpec = new();
         chainSpec.SealEngineType = SealEngineType.AuRa;
 
-        loader.LoadPlugins(configProvider, chainSpec).Should().Throws<InvalidOperationException>();
+        Assert.That(async () => await loader.LoadPlugins(configProvider, chainSpec), Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -164,7 +162,9 @@ public class PluginLoaderTests
         chainSpec.ChainId = 999;
 
         IList<INethermindPlugin> loadedPlugins = await loader.LoadPlugins(configProvider, chainSpec);
-        loadedPlugins.Should().BeEquivalentTo([new TestPlugin1(chainSpec, initConfig)]);
+        Assert.That(loadedPlugins, Has.Count.EqualTo(1));
+        Assert.That(loadedPlugins[0], Is.TypeOf<TestPlugin1>());
+        Assert.That(loadedPlugins[0].Enabled, Is.True);
     }
 
     private class TestPlugin1(ChainSpec chainSpec, IInitConfig initConfig) : INethermindPlugin

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -15,7 +14,9 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.TraceStore.Test;
 
@@ -63,6 +64,7 @@ public class DbPersistingBlockTracerTests
             }
         );
 
+        EthereumJsonSerializer serializer = new();
         ParityLikeTxTrace[] expected =
         [
             new()
@@ -103,8 +105,7 @@ public class DbPersistingBlockTracerTests
             }
         ];
 
-        Serialization.Json.EthereumJsonSerializer serializer = new();
-        serializer.Serialize(traces).Should().Be(serializer.Serialize(expected));
+        Assert.That(JToken.Parse(serializer.Serialize(traces)), Is.EqualTo(JToken.Parse(serializer.Serialize(expected))).Using(JToken.EqualityComparer));
     }
 
     [TestCase(510)]
@@ -142,7 +143,7 @@ public class DbPersistingBlockTracerTests
                     action = action.Subtraces.FirstOrDefault();
                 }
 
-                checkedDepth.Should().Be(depth);
+                Assert.That(checkedDepth, Is.EqualTo(depth));
             }
             catch (Exception ex)
             {

@@ -583,7 +583,7 @@ public class SyncServerTests
                         .Select(a => (earliest: a[0], latest: a[1])).ToArray();
                     return arr.Length >= 2 ? arr[^2..] : arr;
                 },
-                Is.EquivalentTo(expectedUpdates).After(15000, 50) // Wait for background notifications to finish
+                Is.EqualTo(expectedUpdates).After(15000, 50) // Wait for background notifications to finish
             );
         }
     }
