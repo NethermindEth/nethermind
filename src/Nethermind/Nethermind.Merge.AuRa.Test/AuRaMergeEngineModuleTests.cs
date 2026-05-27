@@ -92,8 +92,9 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f",
         "0x7255eb3f45136fccaa3449d2787f80e33e197b4fbc417f1d62423a72a76b5d43",
         "0xcf205144eb1991b718be9c4694f22d6b0937740c17e2d811c8fc3c999d596fcf",
-        _auraWithdrawalContractAddress)]
-    [TestCase("0x0f125b68c09e5dc3b57cc47e93189d431fbb2d02d0aceb001eda8938ae933e21", "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f", "0x7255eb3f45136fccaa3449d2787f80e33e197b4fbc417f1d62423a72a76b5d43", "0xcf205144eb1991b718be9c4694f22d6b0937740c17e2d811c8fc3c999d596fcf", _auraWithdrawalContractAddress)]
+        _auraWithdrawalContractAddress,
+        TestName = "NewPayloadV5_rejects_invalid_BAL_after_processing_AuRa_expanded")]
+    [TestCase("0x0f125b68c09e5dc3b57cc47e93189d431fbb2d02d0aceb001eda8938ae933e21", "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f", "0x7255eb3f45136fccaa3449d2787f80e33e197b4fbc417f1d62423a72a76b5d43", "0xcf205144eb1991b718be9c4694f22d6b0937740c17e2d811c8fc3c999d596fcf", _auraWithdrawalContractAddress, TestName = "NewPayloadV5_rejects_invalid_BAL_after_processing_AuRa_inline")]
     public override Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? customWithdrawalContractAddress)
         => base.NewPayloadV5_rejects_invalid_BAL_after_processing(blockHash, stateRoot, invalidBalHash, expectedBalHash, customWithdrawalContractAddress);
 
@@ -133,8 +134,9 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
 
     [Test]
     [Retry(3)]
+    [NonParallelizable]
     [Platform(Exclude = "MacOsX", Reason = "Timing-sensitive 10ms delays too tight on macOS ARM runners")]
-    public new Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
+    public Task AuRa_getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
         => base.getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty();
 
     protected override BlockBuilder BuildNewBlock(Block head)

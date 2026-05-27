@@ -24,7 +24,7 @@ public class TxTypeExtensionsTests
 
         TxType[] actualTxTypes = (TxType[])Enum.GetValues(typeof(TxType));
         Assert.That(actualTxTypes.Length, Is.EqualTo(expectedTxTypes.Length));
-        Assert.That(actualTxTypes, Is.EquivalentTo(expectedTxTypes));
+        Assert.That(actualTxTypes, Is.EqualTo(expectedTxTypes));
     }
 
     public enum TxFeatureSupport

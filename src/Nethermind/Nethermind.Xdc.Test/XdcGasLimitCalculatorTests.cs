@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -35,7 +34,7 @@ public class XdcGasLimitCalculatorTests
         long result = calculator.GetGasLimit(parentHeader);
 
         // Assert
-        result.Should().Be(targetGasLimit);
+        Assert.That(result, Is.EqualTo(targetGasLimit));
     }
 
     [Test]
@@ -56,7 +55,7 @@ public class XdcGasLimitCalculatorTests
         long result = calculator.GetGasLimit(parentHeader);
 
         // Assert
-        result.Should().Be(XdcConstants.DefaultTargetGasLimit);
+        Assert.That(result, Is.EqualTo(XdcConstants.DefaultTargetGasLimit));
     }
 
     [Test]
@@ -81,10 +80,10 @@ public class XdcGasLimitCalculatorTests
 
         // Assert
         // The TargetAdjustedGasLimitCalculator will adjust the gas limit toward the target
-        result.Should().NotBe(parentGasLimit);
+        Assert.That(result, Is.Not.EqualTo(parentGasLimit));
         // It should move toward the target (100M) from parent (84M)
-        result.Should().BeGreaterThan(parentGasLimit);
-        result.Should().BeLessThanOrEqualTo(targetGasLimit);
+        Assert.That(result, Is.GreaterThan(parentGasLimit));
+        Assert.That(result, Is.LessThanOrEqualTo(targetGasLimit));
     }
 
     [Test]
@@ -109,8 +108,8 @@ public class XdcGasLimitCalculatorTests
 
         // Assert
         // Should increase toward target
-        result.Should().BeGreaterThan(parentGasLimit);
-        result.Should().BeLessThanOrEqualTo(targetGasLimit);
+        Assert.That(result, Is.GreaterThan(parentGasLimit));
+        Assert.That(result, Is.LessThanOrEqualTo(targetGasLimit));
     }
 
     [TestCase(true)]
@@ -132,11 +131,11 @@ public class XdcGasLimitCalculatorTests
 
         if (dynamicBlockActive)
         {
-            result.Should().BeInRange(parentHeader.GasLimit - 100000, parentHeader.GasLimit + 100000);
+            Assert.That(result, Is.InRange(parentHeader.GasLimit - 100000, parentHeader.GasLimit + 100000));
         }
         else
         {
-            result.Should().Be(targetGasLimit);
+            Assert.That(result, Is.EqualTo(targetGasLimit));
         }
     }
 
@@ -161,8 +160,8 @@ public class XdcGasLimitCalculatorTests
 
         // Assert
         // When at target, should return close to target
-        result.Should().BeGreaterOrEqualTo(targetGasLimit - 100_000);
-        result.Should().BeLessThanOrEqualTo(targetGasLimit + 100_000);
+        Assert.That(result, Is.GreaterThanOrEqualTo(targetGasLimit - 100_000));
+        Assert.That(result, Is.LessThanOrEqualTo(targetGasLimit + 100_000));
     }
 
     [Test]
@@ -185,7 +184,7 @@ public class XdcGasLimitCalculatorTests
         long result = calculator.GetGasLimit(genesisHeader);
 
         // Assert
-        result.Should().Be(targetGasLimit);
+        Assert.That(result, Is.EqualTo(targetGasLimit));
     }
 
     private static BlockHeader CreateParentHeader(long number, long gasLimit = 84_000_000L) =>
