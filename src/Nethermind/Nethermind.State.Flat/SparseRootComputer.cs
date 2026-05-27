@@ -125,7 +125,6 @@ public sealed class SparseRootComputer : IDisposable
                 // Walk the sparse trie along the stuck target's nibble path and
                 // find the FIRST blinded node — that's what's not being revealed.
                 string stuckTrace = WalkSparsePath(firstTarget);
-                // Also count proof nodes for the stuck target alone
                 int singleTargetProofCount = -1;
                 try
                 {
@@ -135,12 +134,34 @@ public sealed class SparseRootComputer : IDisposable
                 }
                 catch { /* swallow */ }
 
+                // Re-invoke UpdateLeaves for just the stuck target to capture the exact proofTarget
+                string singleUpdateResult = "?";
+                try
+                {
+                    byte[] nibbles = Nibbles.BytesToNibbleBytes(firstTarget.Bytes);
+                    Dictionary<Hash256, LeafUpdate> single = new() { [firstTarget] = _accountChanges[firstTarget] };
+                    TreePath capturedTarget = default;
+                    string capturedKey = "?";
+                    _trie.AccountTrie.UpdateLeaves(single, (k, _) =>
+                    {
+                        capturedKey = k.ToString();
+                        capturedTarget = TreePath.FromNibble(Nibbles.BytesToNibbleBytes(k.Bytes));
+                    });
+                    LeafUpdate upd = _accountChanges[firstTarget];
+                    singleUpdateResult = $"updateKind={upd.Kind},capturedKey={capturedKey}";
+                }
+                catch (Exception singleEx)
+                {
+                    singleUpdateResult = $"single-exception:{singleEx.GetType().Name}:{singleEx.Message}";
+                }
+
                 throw new TrieException(
                     $"Sparse trie account retry loop exceeded {MaxRetries} iterations. " +
                     $"{targets.Count} blinded targets remain. " +
                     $"firstTarget={firstTarget}, sameTargetForLast={sameTargetCount} retries, prevRoot={_previousStateRoot}, " +
                     $"totalChanges={_accountChanges.Count}, lastProofNodeCount={LastProofNodeCount}, " +
-                    $"singleTargetProofNodes={singleTargetProofCount}, sparseTrieWalk=[{stuckTrace}]");
+                    $"singleTargetProofNodes={singleTargetProofCount}, sparseTrieWalk=[{stuckTrace}], " +
+                    $"singleUpdate=[{singleUpdateResult}]");
             }
 
             DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
