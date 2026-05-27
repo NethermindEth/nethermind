@@ -209,24 +209,25 @@ public class KademliaDiscv4Adapter(
         }, token);
     }
 
-    private async Task HandleEnrRequest(Node node, NodeSession session, EnrRequestMsg msg, CancellationToken token)
+    private async Task<bool> HandleEnrRequest(Node node, NodeSession session, EnrRequestMsg msg, CancellationToken token)
     {
         if (!session.HasReceivedPong)
         {
             if (_logger.IsDebug) _logger.Debug($"Rejecting enr request from unbonded peer {node}");
-            return;
+            return false;
         }
 
         Rlp requestRlp = Rlp.Encode(Rlp.Encode(msg.ExpirationTime));
         await SendMessage(session, new EnrResponseMsg(node.Address, nodeRecordProvider.Current, Keccak.Compute(requestRlp.Bytes)), token);
+        return true;
     }
 
-    private async Task HandleFindNode(Node node, NodeSession session, FindNodeMsg msg, CancellationToken token)
+    private async Task<bool> HandleFindNode(Node node, NodeSession session, FindNodeMsg msg, CancellationToken token)
     {
         if (!session.HasReceivedPong)
         {
             if (_logger.IsDebug) _logger.Debug($"Rejecting findNode request from unbonded peer {node}");
-            return;
+            return false;
         }
 
         PublicKey publicKey = new(msg.SearchedNodeId);
@@ -234,7 +235,7 @@ public class KademliaDiscv4Adapter(
         if (nodes.Length == 0)
         {
             await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes), token);
-            return;
+            return true;
         }
 
         for (int i = 0; i < nodes.Length; i += MaxNodesPerNeighborsMsg)
@@ -242,6 +243,8 @@ public class KademliaDiscv4Adapter(
             int batchEnd = Math.Min(i + MaxNodesPerNeighborsMsg, nodes.Length);
             await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), new ArraySegment<Node>(nodes, i, batchEnd - i)), token);
         }
+
+        return true;
     }
 
     private async Task HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
@@ -285,12 +288,16 @@ public class KademliaDiscv4Adapter(
                     nodeHealthTracker.Value.OnIncomingMessageFrom(node);
                     break;
                 case MsgType.FindNode:
-                    await HandleFindNode(node, session, (FindNodeMsg)msg, token);
-                    nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                    if (await HandleFindNode(node, session, (FindNodeMsg)msg, token))
+                    {
+                        nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                    }
                     break;
                 case MsgType.EnrRequest:
-                    await HandleEnrRequest(node, session, (EnrRequestMsg)msg, token);
-                    nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                    if (await HandleEnrRequest(node, session, (EnrRequestMsg)msg, token))
+                    {
+                        nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                    }
                     break;
 
                 // Unsolicited response.

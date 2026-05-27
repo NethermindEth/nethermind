@@ -63,6 +63,14 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                     Task.Run(() => _adapter.OnIncomingMsg(pong));
                 });
 
+        private async Task BondReceiver(CancellationToken token)
+        {
+            ConfigureBondCallback();
+            await _adapter.Ping(_receiver, token);
+            _msgSender.ClearReceivedCalls();
+            _nodeHealthTracker.ClearReceivedCalls();
+        }
+
         [SetUp]
         public void Setup()
         {
@@ -80,7 +88,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             _logManager = LimboLogs.Instance;
             _timestamper = Substitute.For<ITimestamper>();
-            _timestamper.UnixTime.Returns(new UnixTime(new(2021, 5, 3, 0, 0, 0, DateTimeKind.Utc)));
+            DateTime now = new(2021, 5, 3, 0, 0, 0, DateTimeKind.Utc);
+            _timestamper.UtcNow.Returns(now);
+            _timestamper.UnixTime.Returns(new UnixTime(now));
             _msgSender = Substitute.For<IMsgSender>();
             _msgSender.SendMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
 
@@ -288,7 +298,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(10000)]
         public async Task OnIncomingMsg_find_node_should_respond_with_neighbors(CancellationToken token)
         {
-            ConfigureBondCallback();
+            await BondReceiver(token);
 
             FindNodeMsg findNodeMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _testPublicKey.Bytes);
             findNodeMsg = AddReceiverFarAddress(findNodeMsg);
@@ -318,9 +328,23 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
         [Test]
         [CancelAfter(10000)]
+        public async Task OnIncomingMsg_find_node_from_unbonded_peer_should_not_update_node_health(CancellationToken token)
+        {
+            FindNodeMsg findNodeMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _testPublicKey.Bytes);
+            findNodeMsg = AddReceiverFarAddress(findNodeMsg);
+
+            await _adapter.OnIncomingMsg(findNodeMsg);
+
+            _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id == _receiver.Id));
+            _kademliaMessageReceiver.DidNotReceive().GetKNeighbour(Arg.Any<PublicKey>(), Arg.Any<Node>());
+            await _msgSender.DidNotReceive().SendMsg(Arg.Any<NeighborsMsg>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task OnIncomingMsg_enr_request_should_respond_with_enr_response(CancellationToken token)
         {
-            ConfigureBondCallback();
+            await BondReceiver(token);
 
             EnrRequestMsg enrRequestMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20);
             enrRequestMsg = AddReceiverFarAddress(enrRequestMsg);
@@ -332,6 +356,19 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await _msgSender.Received(1).SendMsg(Arg.Is<EnrResponseMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address) &&
                 m.NodeRecord.Equals(_selfNodeRecord)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_enr_request_from_unbonded_peer_should_not_update_node_health(CancellationToken token)
+        {
+            EnrRequestMsg enrRequestMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20);
+            enrRequestMsg = AddReceiverFarAddress(enrRequestMsg);
+
+            await _adapter.OnIncomingMsg(enrRequestMsg);
+
+            _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id == _receiver.Id));
+            await _msgSender.DidNotReceive().SendMsg(Arg.Any<EnrResponseMsg>());
         }
     }
 }
