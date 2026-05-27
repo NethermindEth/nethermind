@@ -23,7 +23,6 @@ namespace Nethermind.AuRa.Test
     {
         private IBranchProcessor _blockProcessor;
         private IValidatorStore _validatorStore;
-        private IManualBlockFinalizationManager _manualFinalizationManager;
         private ILogManager _logManager;
 
         [SetUp]
@@ -32,14 +31,10 @@ namespace Nethermind.AuRa.Test
             Substitute.For<IChainLevelInfoRepository>();
             _blockProcessor = Substitute.For<IBranchProcessor>();
             _validatorStore = Substitute.For<IValidatorStore>();
-            _manualFinalizationManager = new ManualBlockFinalizationManager();
             _logManager = LimboLogs.Instance;
 
             _validatorStore.GetValidators(Arg.Any<long?>()).Returns([TestItem.AddressA, TestItem.AddressB, TestItem.AddressC]);
         }
-
-        [TearDown]
-        public void TearDown() => _manualFinalizationManager?.Dispose();
 
         [Test]
         public void correctly_initializes_lastFinalizedBlock()
@@ -47,7 +42,7 @@ namespace Nethermind.AuRa.Test
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(3, 1, 1);
             FinalizeToLevel(1, blockTreeBuilder.ChainLevelInfoRepository);
 
-            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _manualFinalizationManager, _logManager);
+            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
             Assert.That(finalizationManager.LastFinalizedBlockLevel, Is.EqualTo(1));
         }
@@ -60,7 +55,7 @@ namespace Nethermind.AuRa.Test
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(3, 1, 1);
             FinalizeToLevel(1, blockTreeBuilder.ChainLevelInfoRepository);
 
-            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _manualFinalizationManager, _logManager);
+            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
 
@@ -103,7 +98,7 @@ namespace Nethermind.AuRa.Test
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree();
             HashSet<BlockHeader> finalizedBlocks = [];
 
-            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _manualFinalizationManager, _logManager, twoThirdsMajorityTransition);
+            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager, twoThirdsMajorityTransition);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
             finalizationManager.BlocksFinalized += (sender, args) =>
             {
@@ -134,7 +129,7 @@ namespace Nethermind.AuRa.Test
         {
             int count = 2;
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(count, blockBeneficiaries: [TestItem.AddressA, TestItem.AddressB]);
-            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _manualFinalizationManager, _logManager);
+            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
 
             IEnumerable<bool> result = Enumerable.Range(0, count).Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.IsFinalized);
@@ -158,7 +153,7 @@ namespace Nethermind.AuRa.Test
             Block genesis = Build.A.Block.Genesis.TestObject;
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis);
 
-            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _manualFinalizationManager, _logManager);
+            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
 
             blockTreeBuilder
@@ -202,7 +197,7 @@ namespace Nethermind.AuRa.Test
             SetupValidators(minForFinalization, beneficiaries);
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(chainLength, blockBeneficiaries: beneficiaries);
             BlockTree blockTree = blockTreeBuilder.TestObject;
-            AuRaBlockFinalizationManager finalizationManager = new(blockTree, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _manualFinalizationManager, _logManager);
+            AuRaBlockFinalizationManager finalizationManager = new(blockTree, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
 
             long result = finalizationManager.GetLastLevelFinalizedBy(blockTree.Head.Hash);
@@ -233,7 +228,7 @@ namespace Nethermind.AuRa.Test
             SetupValidators(minForFinalization, beneficiaries);
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(chainLength, blockBeneficiaries: beneficiaries);
             BlockTree blockTree = blockTreeBuilder.TestObject;
-            AuRaBlockFinalizationManager finalizationManager = new(blockTree, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _manualFinalizationManager, _logManager);
+            AuRaBlockFinalizationManager finalizationManager = new(blockTree, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
 
             long? result = finalizationManager.GetFinalizationLevel(level);
@@ -252,7 +247,6 @@ namespace Nethermind.AuRa.Test
                 blockTree,
                 Substitute.For<IChainLevelInfoRepository>(),
                 _validatorStore,
-                _manualFinalizationManager,
                 _logManager);
 
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
@@ -272,7 +266,6 @@ namespace Nethermind.AuRa.Test
                 blockTreeBuilder.TestObject,
                 blockTreeBuilder.ChainLevelInfoRepository,
                 _validatorStore,
-                _manualFinalizationManager,
                 _logManager,
                 twoThirdsMajorityTransition ? 0 : long.MaxValue);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);

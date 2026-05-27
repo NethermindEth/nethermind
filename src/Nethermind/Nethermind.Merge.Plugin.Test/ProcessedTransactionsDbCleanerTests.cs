@@ -46,10 +46,10 @@ public class ProcessedTransactionsDbCleanerTests
         Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out Transaction[]? returnedTxs), Is.True);
         Assert.That(returnedTxs!.Length, Is.EqualTo(2));
 
-        IBlockFinalizationManager finalizationManager = Substitute.For<IBlockFinalizationManager>();
-        ProcessedTransactionsDbCleaner dbCleaner = new(finalizationManager, columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _logManager);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ProcessedTransactionsDbCleaner dbCleaner = new(blockTree, columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _logManager);
 
-        finalizationManager.BlocksFinalized += Raise.EventWith(
+        blockTree.BlocksFinalized += Raise.EventWith(
             new FinalizeEventArgs(Build.A.BlockHeader.WithNumber(finalizedBlock).TestObject));
 
         await dbCleaner.CleaningTask;

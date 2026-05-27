@@ -36,7 +36,6 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </remarks>
 public class ForkchoiceUpdatedHandler(
     IBlockTree blockTree,
-    IManualBlockFinalizationManager manualBlockFinalizationManager,
     IPoSSwitcher poSSwitcher,
     IPayloadPreparationService payloadPreparationService,
     IBlockProcessingQueue processingQueue,
@@ -51,7 +50,6 @@ public class ForkchoiceUpdatedHandler(
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-    private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
@@ -263,12 +261,6 @@ public class ForkchoiceUpdatedHandler(
         if (shouldUpdateHead)
         {
             _blockTree.UpdateMainChain(blocks!, true, true);
-        }
-
-        bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
-        if (nonZeroFinalizedBlockHash)
-        {
-            _manualBlockFinalizationManager.MarkFinalized(finalizedHeader!);
         }
 
         if (shouldUpdateHead)

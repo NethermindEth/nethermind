@@ -631,7 +631,7 @@ public partial class EngineModuleTests
             Assert.That(blockForRpc.Hash, Is.Not.Null);
             Assert.That(blockForRpc.Hash, Is.EqualTo(startingHead));
 
-            Assert.That(chain.BlockFinalizationManager.LastFinalizedHash, Is.EqualTo(blockForRpc.Hash));
+            Assert.That(chain.BlockFinalizationManager.FinalizedHash, Is.EqualTo(blockForRpc.Hash));
         }
         AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, startingHead, startingHead);
     }
@@ -1839,7 +1839,7 @@ public partial class EngineModuleTests
         {
             Assert.That(higherFinalizedResult.ErrorCode, Is.EqualTo(0));
             Assert.That(higherFinalizedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(chain.BlockFinalizationManager.LastFinalizedHash, Is.EqualTo(blocks[2].BlockHash));
+            Assert.That(chain.BlockFinalizationManager.FinalizedHash, Is.EqualTo(blocks[2].BlockHash));
             Assert.That(chain.BlockFinalizationManager.LastFinalizedBlockLevel, Is.EqualTo(blocks[2].BlockNumber));
         }
 
@@ -1849,7 +1849,7 @@ public partial class EngineModuleTests
         {
             Assert.That(lowerFinalizedResult.ErrorCode, Is.EqualTo(0));
             Assert.That(lowerFinalizedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(chain.BlockFinalizationManager.LastFinalizedHash, Is.EqualTo(blocks[1].BlockHash));
+            Assert.That(chain.BlockFinalizationManager.FinalizedHash, Is.EqualTo(blocks[1].BlockHash));
             Assert.That(chain.BlockFinalizationManager.LastFinalizedBlockLevel, Is.EqualTo(blocks[1].BlockNumber));
         }
 

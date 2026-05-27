@@ -6,16 +6,14 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Merge.Plugin;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.AuRa.Test;
 
 [Parallelizable(ParallelScope.Self)]
-public class AuRaMergeFinalizationManagerTests
+public class AuRaTerminalBlockDisposerTests
 {
-    private IManualBlockFinalizationManager _manualFinalizationManager;
     private IAuRaBlockFinalizationManager _auRaFinalizationManager;
     private IPoSSwitcher _poSSwitcher;
     private IBlockTree _blockTree;
@@ -23,18 +21,13 @@ public class AuRaMergeFinalizationManagerTests
     [SetUp]
     public void Setup()
     {
-        _manualFinalizationManager = Substitute.For<IManualBlockFinalizationManager>();
         _auRaFinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
         _blockTree = Substitute.For<IBlockTree>();
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _manualFinalizationManager?.Dispose();
-        _auRaFinalizationManager?.Dispose();
-    }
+    public void TearDown() => _auRaFinalizationManager?.Dispose();
 
     private void SetHead(bool postMerge)
     {
@@ -49,7 +42,7 @@ public class AuRaMergeFinalizationManagerTests
     {
         SetHead(alreadyPostMerge);
 
-        AuRaMergeFinalizationManager _ = new(_manualFinalizationManager, _auRaFinalizationManager, _poSSwitcher, _blockTree);
+        AuRaTerminalBlockDisposer _ = new(_auRaFinalizationManager, _poSSwitcher, _blockTree);
 
         if (!alreadyPostMerge)
         {
@@ -65,15 +58,13 @@ public class AuRaMergeFinalizationManagerTests
     {
         SetHead(postMerge: false);
 
-        AuRaMergeFinalizationManager _ = new(_manualFinalizationManager, _auRaFinalizationManager, _poSSwitcher, _blockTree);
+        AuRaTerminalBlockDisposer _ = new(_auRaFinalizationManager, _poSSwitcher, _blockTree);
 
-        // First raise disposes and unsubscribes
         _poSSwitcher.TerminalBlockReached += Raise.Event();
         _auRaFinalizationManager.Received(1).Dispose();
 
         _auRaFinalizationManager.ClearReceivedCalls();
 
-        // Second raise should be a no-op — handler was unsubscribed
         _poSSwitcher.TerminalBlockReached += Raise.Event();
         _auRaFinalizationManager.DidNotReceive().Dispose();
     }
@@ -88,7 +79,7 @@ public class AuRaMergeFinalizationManagerTests
         _poSSwitcher.HasEverReachedTerminalBlock().Returns(true);
         _poSSwitcher.IsPostMerge(genesis.Header).Returns(false);
 
-        AuRaMergeFinalizationManager _ = new(_manualFinalizationManager, _auRaFinalizationManager, _poSSwitcher, _blockTree);
+        AuRaTerminalBlockDisposer _ = new(_auRaFinalizationManager, _poSSwitcher, _blockTree);
 
         _auRaFinalizationManager.DidNotReceive().Dispose();
     }

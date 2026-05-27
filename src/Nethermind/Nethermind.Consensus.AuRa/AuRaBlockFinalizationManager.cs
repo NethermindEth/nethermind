@@ -21,14 +21,12 @@ namespace Nethermind.Consensus.AuRa
         IBlockTree blockTree,
         IChainLevelInfoRepository chainLevelInfoRepository,
         IValidatorStore validatorStore,
-        IManualBlockFinalizationManager manualBlockFinalizationManager,
         ILogManager logManager,
         long twoThirdsMajorityTransition = long.MaxValue) : IAuRaBlockFinalizationManager
     {
         private static readonly List<BlockHeader> Empty = [];
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-        private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
         private readonly ILogger _logger = logManager?.GetClassLogger<AuRaBlockFinalizationManager>() ?? throw new ArgumentNullException(nameof(logManager));
         private IBranchProcessor? _branchProcessor;
         private readonly IValidatorStore _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
@@ -131,7 +129,7 @@ namespace Nethermind.Consensus.AuRa
                         : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[^1].Number} [{string.Join(",", finalizedBlocks.Select(static b => b.Hash))}].");
 
                 LastFinalizedBlockLevel = finalizedBlocks[^1].Number;
-                _manualBlockFinalizationManager.MarkFinalized(finalizedBlocks[^1]);
+                _blockTree.ForkChoiceUpdated(finalizedBlocks[^1].Hash, null);
                 BlocksFinalized?.Invoke(this, new AuRaFinalizeEventArgs(finalizingBlock, finalizedBlocks));
             }
         }

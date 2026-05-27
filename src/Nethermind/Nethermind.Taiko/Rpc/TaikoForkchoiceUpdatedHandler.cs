@@ -24,7 +24,6 @@ namespace Nethermind.Taiko.Rpc;
 
 internal class TaikoForkchoiceUpdatedHandler(
     IBlockTree blockTree,
-    IManualBlockFinalizationManager manualBlockFinalizationManager,
     IPoSSwitcher poSSwitcher,
     IPayloadPreparationService payloadPreparationService,
     IBlockProcessingQueue processingQueue,
@@ -38,7 +37,6 @@ internal class TaikoForkchoiceUpdatedHandler(
     IMergeConfig mergeConfig,
     ILogManager logManager) : ForkchoiceUpdatedHandler(
     blockTree,
-    manualBlockFinalizationManager,
     poSSwitcher,
     payloadPreparationService,
     processingQueue,

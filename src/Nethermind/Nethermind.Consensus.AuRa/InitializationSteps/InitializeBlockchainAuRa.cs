@@ -3,9 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -34,7 +32,6 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
             api.BlockTree!,
             api.ChainLevelInfoRepository!,
             api.ValidatorStore!,
-            api.Context.Resolve<IManualBlockFinalizationManager>(),
             api.LogManager,
             chainSpecAuRa.TwoThirdsMajorityTransition);
 

@@ -3,7 +3,6 @@
 
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -15,11 +14,11 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
+public class TestMergeModule : Module
 {
-    public TestMergeModule(IConfigProvider configProvider) : this(configProvider.GetConfig<ITxPoolConfig>())
-    {
-    }
+    public TestMergeModule() { }
+    public TestMergeModule(ITxPoolConfig _) { }
+    public TestMergeModule(IConfigProvider _) { }
 
     protected override void Load(ContainerBuilder builder)
     {
@@ -28,7 +27,6 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
         builder
             .AddModule(new MergePluginModule())
 
-            .Bind<IBlockFinalizationManager, IManualBlockFinalizationManager>()
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
             // Validators
@@ -36,7 +34,6 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
             .AddSingleton<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
 
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
-            .AddDecorator<IBlockFinalizationManager, MergeFinalizationManager>()
 
             // Block production related.
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
@@ -47,11 +44,5 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
             .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
             ;
 
-        if (txPoolConfig.BlobsSupport.SupportsReorgs())
-        {
-            builder
-                .AddSingleton<ProcessedTransactionsDbCleaner>()
-                .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockFinalizationManager>();
-        }
     }
 }

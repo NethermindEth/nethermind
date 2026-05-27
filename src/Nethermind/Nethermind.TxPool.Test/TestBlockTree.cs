@@ -30,6 +30,7 @@ internal class TestBlockTree : IBlockTree
     public event EventHandler<BlockEventArgs>? NewHeadBlock { add { } remove { } }
     public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain { add { } remove { } }
     public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>? OnForkChoiceUpdated { add { } remove { } }
+    public event EventHandler<FinalizeEventArgs>? BlocksFinalized { add { } remove { } }
 
     public void RaiseBlockAddedToMain(BlockReplacementEventArgs args) => BlockAddedToMain?.Invoke(this, args);
 
@@ -41,6 +42,7 @@ internal class TestBlockTree : IBlockTree
     public Hash256? PendingHash => null;
     public Hash256? FinalizedHash => null;
     public Hash256? SafeHash => null;
+    public long LastFinalizedBlockLevel => 0;
     public long? BestPersistedState { get; set; }
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => null;
