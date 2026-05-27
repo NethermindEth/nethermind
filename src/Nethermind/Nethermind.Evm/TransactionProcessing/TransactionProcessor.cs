@@ -210,8 +210,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
 
-            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
-
             UpdateMetrics(opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
@@ -227,7 +225,40 @@ namespace Nethermind.Evm.TransactionProcessing
                 return result;
             }
 
-            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
+            Address? recipient = tx.To;
+            bool useSimpleTransferFastPath = false;
+            CodeInfo? preloadedCodeInfo = null;
+            Address? preloadedDelegationAddress = null;
+            if (IsSimpleTransferFastPathCandidate(tx, _isOverridableCodeInfoRepository))
+            {
+                preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(recipient!, followDelegation: true, spec, out preloadedDelegationAddress);
+                useSimpleTransferFastPath = HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress);
+            }
+
+            bool commitBeforeExecution = commit && (!useSimpleTransferFastPath || restore || tracer.IsTracingState);
+            if (commitBeforeExecution) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
+
+            if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
+
+            if (useSimpleTransferFastPath)
+            {
+                return ExecuteSimpleTransfer(
+                    tx,
+                    header,
+                    spec,
+                    tracer,
+                    opts,
+                    restore,
+                    commit,
+                    deleteCallerAccount,
+                    recipient!,
+                    in intrinsicGas,
+                    gasAvailable,
+                    in opcodeGasPrice,
+                    in premiumPerGas,
+                    in senderReservedGasPayment,
+                    in blobBaseFee);
+            }
 
             return ExecuteEvmTransaction(
                 tx,
@@ -239,10 +270,22 @@ namespace Nethermind.Evm.TransactionProcessing
                 commit,
                 deleteCallerAccount,
                 in intrinsicGas,
+                gasAvailable,
+                in opcodeGasPrice,
                 in premiumPerGas,
                 in senderReservedGasPayment,
-                in blobBaseFee);
+                in blobBaseFee,
+                preloadedCodeInfo,
+                preloadedDelegationAddress);
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsSimpleTransferFastPathCandidate(Transaction tx, bool isOverridableCodeInfoRepository)
+            => !isOverridableCodeInfoRepository && tx.To is not null && tx.AuthorizationList is null;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress)
+            => delegationAddress is null && (codeInfo.IsEmpty || ReferenceEquals(codeInfo, CodeInfo.Empty));
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -256,17 +299,20 @@ namespace Nethermind.Evm.TransactionProcessing
             bool commit,
             bool deleteCallerAccount,
             in IntrinsicGas<TGasPolicy> intrinsicGas,
+            TGasPolicy gasAvailable,
+            in UInt256 opcodeGasPrice,
             in UInt256 premiumPerGas,
             in UInt256 senderReservedGasPayment,
-            in UInt256 blobBaseFee)
+            in UInt256 blobBaseFee,
+            CodeInfo? preloadedCodeInfo,
+            Address? preloadedDelegationAddress)
         {
+            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
             int delegationRefunds = 0;
             int delegationAuthBaseRefunds = 0;
             TransactionResult result;
-            if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
-
             if (!(result = Validate8037DelegationRefundBounds(tx, spec, in gasAvailable))) return result;
 
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
@@ -276,7 +322,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!(result = Apply8037DelegationRefunds(tx, spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds, ref delegationAuthBaseRefunds))) return result;
 
-            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
+            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
             int statusCode = !tracer.IsTracingInstructions ?
@@ -339,10 +385,143 @@ namespace Nethermind.Evm.TransactionProcessing
                 commit,
                 deleteCallerAccount,
                 in senderReservedGasPayment,
-                env,
+                env.ExecutingAccount,
                 in substate,
                 spentGas,
                 statusCode);
+        }
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private TransactionResult ExecuteSimpleTransfer(
+            Transaction tx,
+            BlockHeader header,
+            IReleaseSpec spec,
+            ITxTracer tracer,
+            ExecutionOptions opts,
+            bool restore,
+            bool commit,
+            bool deleteCallerAccount,
+            Address recipient,
+            in IntrinsicGas<TGasPolicy> intrinsicGas,
+            TGasPolicy gasAvailable,
+            in UInt256 opcodeGasPrice,
+            in UInt256 premiumPerGas,
+            in UInt256 senderReservedGasPayment,
+            in UInt256 blobBaseFee)
+        {
+            ref readonly UInt256 value = ref tx.ValueRef;
+            if (tracer.IsTracingActions)
+            {
+                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
+            }
+
+            PayValue(tx, spec, opts);
+            WorldState.AddToBalanceAndCreateIfNotExists(recipient, in value, spec);
+
+            JournalCollection<LogEntry>? logs = null;
+            if (spec.IsEip7708Enabled && !value.IsZero && tx.SenderAddress != recipient)
+            {
+                LogEntry transferLog = TransferLog.CreateTransfer(tx.SenderAddress!, recipient, in value);
+                logs = [transferLog];
+                if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
+            }
+
+            TransactionSubstate substate = new(
+                bytes: default,
+                refund: 0,
+                destroyList: null,
+                logs: logs,
+                shouldRevert: false,
+                isTracerConnected: tracer.IsTracing,
+                logger: Logger);
+
+            if (tracer.IsTracingActions)
+            {
+                tracer.ReportActionEnd(TGasPolicy.GetRemainingGas(in gasAvailable), default);
+            }
+
+            TGasPolicy floorGas = intrinsicGas.FloorGas;
+            TGasPolicy standardGas = intrinsicGas.Standard;
+            long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
+            GasConsumed spentGas = Refund(tx, header, spec, opts, in substate, in gasAvailable, in opcodeGasPrice, codeInsertRefunds: 0, in floorGas, in standardGas, postIntrinsicStateReservoir);
+
+            const int statusCode = StatusCode.Success;
+            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+
+            if (tracer.IsTracingAccess)
+            {
+                ReportSimpleTransferAccess(tx, spec, tracer, recipient);
+            }
+
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !_parallel)
+            {
+                if (spec.IsEip8037Enabled)
+                {
+                    _blockCumulativeRegularGas += spentGas.EffectiveBlockGas;
+                    _blockCumulativeStateGas += spentGas.BlockStateGas;
+                    header.GasUsed = Math.Max(_blockCumulativeRegularGas, _blockCumulativeStateGas);
+                }
+                else
+                {
+                    header.GasUsed += spentGas.EffectiveBlockGas;
+                }
+            }
+
+            return FinalizeTransaction(
+                tx,
+                header,
+                spec,
+                tracer,
+                opts,
+                restore,
+                commit,
+                deleteCallerAccount,
+                in senderReservedGasPayment,
+                recipient,
+                in substate,
+                spentGas,
+                statusCode);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void TraceSimpleTransferActionStart(Transaction tx, Address recipient, ITxTracer tracer, in UInt256 value, in TGasPolicy gasAvailable)
+        {
+            tracer.ReportAction(
+                TGasPolicy.GetRemainingGas(in gasAvailable),
+                value,
+                tx.SenderAddress!,
+                recipient,
+                tx.Data,
+                ExecutionType.TRANSACTION);
+
+            if (tracer.IsTracingCode)
+            {
+                tracer.ReportByteCode(default);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void ReportSimpleTransferAccess(Transaction tx, IReleaseSpec spec, ITxTracer tracer, Address recipient)
+        {
+            using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
+            WarmUpTxAccesses(tx, spec, in accessTracker, recipient);
+            tracer.ReportAccess(accessTracker.AccessedAddresses, accessTracker.AccessedStorageCells);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WarmUpTxAccesses(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker, Address recipient)
+        {
+            if (!spec.UseHotAndColdStorage) return;
+
+            if (spec.UseTxAccessLists)
+                accessTracker.WarmUp(tx.AccessList); // eip-2930
+
+            if (spec.AddCoinbaseToTxAccessList)
+                accessTracker.WarmUp(VirtualMachine.BlockExecutionContext.Header.GasBeneficiary!);
+
+            accessTracker.WarmUp(recipient);
+            accessTracker.WarmUp(tx.SenderAddress!);
         }
 
         [SkipLocalsInit]
@@ -357,7 +536,7 @@ namespace Nethermind.Evm.TransactionProcessing
             bool commit,
             bool deleteCallerAccount,
             in UInt256 senderReservedGasPayment,
-            ExecutionEnvironment env,
+            Address executingAccount,
             in TransactionSubstate substate,
             GasConsumed spentGas,
             int statusCode)
@@ -417,12 +596,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (statusCode == StatusCode.Failure)
                 {
                     byte[] output = substate.ShouldRevert ? substate.Output.ToArray() : [];
-                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate.Error, stateRoot);
+                    tracer.MarkAsFailed(executingAccount, spentGas, output, substate.Error, stateRoot);
                 }
                 else
                 {
                     LogEntry[] logs = substate.Logs.Count != 0 ? substate.LogsToArray() : [];
-                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
+                    tracer.MarkAsSuccess(executingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
                 }
             }
 
@@ -951,6 +1130,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             ICodeInfoRepository codeInfoRepository,
             in StackAccessTracker accessTracker,
+            CodeInfo? preloadedCodeInfo,
+            Address? preloadedDelegationAddress,
             out ExecutionEnvironment env)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
@@ -963,24 +1144,23 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else
             {
-                codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, spec, out Address? delegationAddress);
+                Address? delegationAddress;
+                if (preloadedCodeInfo is not null)
+                {
+                    codeInfo = preloadedCodeInfo;
+                    delegationAddress = preloadedDelegationAddress;
+                }
+                else
+                {
+                    codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, spec, out delegationAddress);
+                }
 
                 //We assume eip-7702 must be active if it is a delegation
                 if (delegationAddress is not null)
                     accessTracker.WarmUp(delegationAddress);
             }
 
-            if (spec.UseHotAndColdStorage)
-            {
-                if (spec.UseTxAccessLists)
-                    accessTracker.WarmUp(tx.AccessList); // eip-2930
-
-                if (spec.AddCoinbaseToTxAccessList)
-                    accessTracker.WarmUp(VirtualMachine.BlockExecutionContext.Header.GasBeneficiary!);
-
-                accessTracker.WarmUp(recipient);
-                accessTracker.WarmUp(tx.SenderAddress!);
-            }
+            WarmUpTxAccesses(tx, spec, in accessTracker, recipient);
 
             env = ExecutionEnvironment.Rent(
                 codeInfo: codeInfo,
@@ -1327,7 +1507,10 @@ namespace Nethermind.Evm.TransactionProcessing
             return true;
         }
 
-        protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts) => WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+        protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
+        {
+            if (!tx.ValueRef.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+        }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
         {
