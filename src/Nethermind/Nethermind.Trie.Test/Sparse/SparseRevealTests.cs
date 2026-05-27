@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
@@ -399,6 +400,41 @@ public class SparseRevealTests
         sparse.UpdateLeaves(updates, (_, _) => { });
         Hash256 sparseRoot = sparse.ComputeRoot();
         sparseRoot.Should().Be(tree.RootHash, "Post-update root must match Patricia");
+    }
+
+    [Test]
+    public void RlpNode_FromRlp_32Bytes_NotTreatedAsHash()
+    {
+        // Regression: a 32-byte RLP (raw node encoding, not a hash) was treated as a hash
+        // by WriteChildRef, causing it to be written as 0xa0+data instead of 0xa0+keccak(data).
+        byte[] rlp32 = new byte[32];
+        for (int i = 0; i < 32; i++) rlp32[i] = (byte)(i + 1);
+
+        RlpNode fromRlp = RlpNode.FromRlp(rlp32);
+        RlpNode fromHash = RlpNode.FromHash(new Hash256(rlp32));
+
+        fromRlp.IsHash().Should().BeFalse("FromRlp with 32-byte data is NOT a hash");
+        fromHash.IsHash().Should().BeTrue("FromHash is a hash");
+
+        // WriteChildRef for FromRlp(32 bytes) should compute keccak, not copy raw
+        byte[] bufRlp = new byte[33];
+        byte[] bufHash = new byte[33];
+        int lenRlp = fromRlp.WriteChildRef(bufRlp);
+        int lenHash = fromHash.WriteChildRef(bufHash);
+
+        lenRlp.Should().Be(33, "32-byte RLP should produce a 33-byte hash reference");
+        lenHash.Should().Be(33, "Hash should produce a 33-byte hash reference");
+
+        // The hash reference for FromRlp should be keccak(rlp32), not rlp32 itself
+        Hash256 expectedHash = Keccak.Compute(rlp32);
+        bufRlp[0].Should().Be(0xa0, "Should have hash prefix");
+        new ReadOnlySpan<byte>(bufRlp, 1, 32).ToArray().Should().BeEquivalentTo(expectedHash.Bytes.ToArray(),
+            "FromRlp(32 bytes) must produce keccak hash, not raw bytes");
+
+        // FromHash should copy the hash directly (no re-hashing)
+        bufHash[0].Should().Be(0xa0);
+        new ReadOnlySpan<byte>(bufHash, 1, 32).ToArray().Should().BeEquivalentTo(rlp32,
+            "FromHash must copy hash bytes directly");
     }
 
     [Test]

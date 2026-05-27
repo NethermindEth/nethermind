@@ -15,19 +15,24 @@ namespace Nethermind.Trie.Sparse;
 public readonly struct RlpNode : IEquatable<RlpNode>
 {
     private readonly byte[] _data;
+    private readonly bool _isHash;
 
-    private RlpNode(byte[] data) => _data = data;
+    private RlpNode(byte[] data, bool isHash)
+    {
+        _data = data;
+        _isHash = isHash;
+    }
 
-    public static RlpNode FromRlp(byte[] rlp) => new(rlp);
-    public static RlpNode FromHash(Hash256 hash) => new(hash.Bytes.ToArray());
+    public static RlpNode FromRlp(byte[] rlp) => new(rlp, isHash: false);
+    public static RlpNode FromHash(Hash256 hash) => new(hash.Bytes.ToArray(), isHash: true);
 
     public ReadOnlySpan<byte> AsSpan() => _data;
     public int Length => _data?.Length ?? 0;
     public bool IsNull => _data is null;
 
-    /// <summary>True if this represents a 32-byte hash (not inline RLP).</summary>
+    /// <summary>True if this was explicitly created from a hash (not from raw RLP).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool IsHash() => _data is not null && _data.Length == 32;
+    public bool IsHash() => _isHash;
 
     /// <summary>
     /// Returns the hash. If this is already a 32-byte hash, returns it directly.
@@ -36,7 +41,7 @@ public readonly struct RlpNode : IEquatable<RlpNode>
     public Hash256 AsHash()
     {
         if (_data is null) return Keccak.EmptyTreeHash;
-        if (_data.Length == 32) return new Hash256(_data);
+        if (_isHash) return new Hash256(_data);
         return Keccak.Compute(_data);
     }
 
@@ -58,19 +63,17 @@ public readonly struct RlpNode : IEquatable<RlpNode>
             buffer[0] = 0x80;
             return 1;
         }
+        if (_isHash)
+        {
+            buffer[0] = 0xa0;
+            _data.AsSpan().CopyTo(buffer[1..]);
+            return 33;
+        }
         if (_data.Length >= 32)
         {
-            // Hash reference: either already a 32-byte hash, or compute keccak of the RLP
             buffer[0] = 0xa0;
-            if (_data.Length == 32)
-            {
-                _data.AsSpan().CopyTo(buffer[1..]);
-            }
-            else
-            {
-                ValueHash256 hash = ValueKeccak.Compute(_data);
-                hash.Bytes.CopyTo(buffer[1..]);
-            }
+            ValueHash256 hash = ValueKeccak.Compute(_data);
+            hash.Bytes.CopyTo(buffer[1..]);
             return 33;
         }
         // Inline RLP (< 32 bytes)
@@ -79,7 +82,7 @@ public readonly struct RlpNode : IEquatable<RlpNode>
     }
 
     /// <summary>RLP length contribution when this node is a child reference in a parent.</summary>
-    public int ChildRefLength => _data is null ? 1 : _data.Length >= 32 ? 33 : Length;
+    public int ChildRefLength => _data is null ? 1 : (_isHash || _data.Length >= 32) ? 33 : Length;
 
     public bool Equals(RlpNode other) => AsSpan().SequenceEqual(other.AsSpan());
     public override bool Equals(object? obj) => obj is RlpNode other && Equals(other);
