@@ -250,9 +250,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // metadataPos is relative to the data section start (== _baseOffset). The byte at
         // this position is the entry's leading flag byte (NodeKind = Entry); the BTree
         // reader's dispatch loop reads it first to recognize the entry before decoding the
-        // value/LEB128 that follow. The index builder reads keys back through OpenReader
-        // using this position; both ReadKey and the leaf-floor entry decode skip the flag
-        // byte before parsing the LEB128.
+        // value/LEB128 that follow.
         long metadataPos = _writer.Written - _baseOffset;
 
         // Single GetSpan/Advance for the post-value [FlagByte][LEB128][FullKey] trailer.
@@ -448,8 +446,6 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// </summary>
     public unsafe void Build()
     {
-        int maxLeafEntries = _options.MaxLeafEntries;
-        int minLeafEntries = Math.Min(_options.MinLeafEntries, maxLeafEntries);
         int maxIntermediateEntries = _options.MaxIntermediateEntries;
         int maxIntermediateBytes = _options.MaxIntermediateBytes;
         int minIntermediateChildren = Math.Min(_options.MinIntermediateChildren, maxIntermediateEntries);
@@ -479,7 +475,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // populated at descriptor-push time (EmitInlineLeaf, FlushPendingAsEntries,
         // FlushPendingNotOnCurrentPage). BuildIndex propagates first-keys as it walks
         // up the tree, so no read-back is required.
-        int rootSize = BuildIndex(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
+        int rootSize = BuildIndex(absoluteIndexStart, maxIntermediateEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
         int rootPrefixLen = _rootPrefixLen;
 
         if ((uint)rootSize > ushort.MaxValue)
@@ -893,9 +889,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// end and supply the root's prefix bytes when parsing its header.
     /// </summary>
     private int BuildIndex(long absoluteIndexStart,
-        int maxLeafEntries,
         int maxIntermediateEntries,
-        int minLeafEntries,
         int maxIntermediateBytes,
         int minIntermediateChildren,
         int minIntermediateBytes)
@@ -917,18 +911,15 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         if (minIntermediateBytes < 0) minIntermediateBytes = 0;
         if (minIntermediateBytes > maxIntermediateBytes) minIntermediateBytes = maxIntermediateBytes;
 
-        int valueScratchEntries = Math.Max(maxLeafEntries, maxIntermediateEntries);
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, valueScratchEntries * 8));
+        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, maxIntermediateEntries * 8));
         byte[] valueScratchArr = bufs.ValueScratch!;
         byte[] commonPrefixArr = bufs.CommonPrefixArr!;
 
-        // CurrentLevel is pre-populated by the inline-leaf emission above (every
-        // <c>NaiveLeafBatchSize</c> entries during Add, plus a final trigger 3 flush
-        // at Build start). BuildIndex is purely the intermediate-construction loop —
-        // no leaf phase, no LeafBoundaryEnumerator, no PrecomputeCommonPrefixLengths.
-        // The parallel CurrentLevelFirstKeys list carries each descriptor's
-        // first-entry full key in matching order so this loop never re-reads the
-        // data section.
+        // CurrentLevel is pre-populated by the inline-leaf emission in the data-region
+        // phase (page-local leaves pushed during Add, plus a final trigger 3 flush at
+        // Build start). BuildIndex is purely the intermediate-construction loop. The
+        // parallel CurrentLevelFirstKeys list carries each descriptor's first-entry
+        // full key in matching order so this loop never re-reads the data section.
         ref NativeMemoryList<HsstIndexNodeInfo> currentNative = ref bufs.CurrentLevel;
         ref NativeMemoryList<HsstIndexNodeInfo> nextNative = ref bufs.NextLevel;
         ref NativeMemoryList<byte> currentFirstKeys = ref bufs.CurrentLevelFirstKeys;
