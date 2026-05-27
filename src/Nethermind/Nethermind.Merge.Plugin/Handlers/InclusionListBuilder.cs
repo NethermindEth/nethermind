@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -21,9 +22,14 @@ public class InclusionListBuilder(ITxPool txPool)
         return DecodeTransactionsUpToLimit(orderedTxs);
     }
 
+    // EIP-7805 §"Generation": "MUST NOT include any blob transactions". Filter them out
+    // before sampling so a blob-heavy mempool can still produce a non-empty IL of
+    // executable txs, and the size-shuffle budget below isn't burned on entries that
+    // would be dropped anyway.
     // todo: score txs and randomly sample weighted by score
     private IEnumerable<Transaction> OrderTransactions(IEnumerable<Transaction> txs)
-        => txs.Shuffle(_rnd, Eip7805Constants.MaxTransactionsPerInclusionList);
+        => txs.Where(static tx => tx.Type != TxType.Blob)
+              .Shuffle(_rnd, Eip7805Constants.MaxTransactionsPerInclusionList);
 
     private static IEnumerable<byte[]> DecodeTransactionsUpToLimit(IEnumerable<Transaction> txs)
     {

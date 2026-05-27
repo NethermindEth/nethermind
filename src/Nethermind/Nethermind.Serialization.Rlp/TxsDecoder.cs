@@ -31,7 +31,12 @@ public static class TxsDecoder
             try
             {
                 Rlp.ValueDecoderContext ctx = new(txData[i]);
-                transactions[added++] = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                // `transactions[added++] = decode(...)` post-increments BEFORE the decoder
+                // is called: if decoder throws under skipErrors, slot `added` was already
+                // advanced past a null entry, and the next successful decode writes past it.
+                // Stage into a local first, then commit only on success.
+                Transaction decoded = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                transactions[added++] = decoded;
             }
             catch (RlpException e)
             {

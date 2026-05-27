@@ -26,8 +26,15 @@ namespace Nethermind.Merge.Plugin.Data
         public const string Accepted = "ACCEPTED";
 
         /// <summary>
-        /// The inclusion list was not satisfied.
+        /// EIP-7805 (FOCIL): the block executed cleanly but the inclusion-list constraint was
+        /// not satisfied — an appendable IL transaction was omitted from the payload.
         /// </summary>
-        public const string InvalidInclusionList = "INVALID_INCLUSION_LIST";
+        /// <remarks>
+        /// Wire value mandated by <see href="https://github.com/ethereum/execution-apis/pull/609">execution-apis#609</see>.
+        /// The C# member is named <see cref="InvalidInclusionList"/> to match the existing
+        /// nethermind convention (one-camel-cased word per status), but the string sent on
+        /// the wire must be the spec's <c>INCLUSION_LIST_UNSATISFIED</c>.
+        /// </remarks>
+        public const string InvalidInclusionList = "INCLUSION_LIST_UNSATISFIED";
     }
 }

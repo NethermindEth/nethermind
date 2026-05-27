@@ -139,7 +139,16 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         bool isTrace = _logger.IsTrace;
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
-        Block emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock).Result!;
+        // EIP-7805 (FOCIL): when the CL supplies an inclusion list, the "empty" payload
+        // must still contain those IL transactions — otherwise the first
+        // engine_getPayloadV6 returns a payload that fails the IL constraint, and any
+        // newPayloadV6 with the same IL reports INCLUSION_LIST_UNSATISFIED. Suppress the
+        // EmptyBlock fast-path so the producer drains InclusionListTxSource on the first
+        // pass; the mempool source still returns nothing extra when the pool is empty.
+        IBlockProducer.Flags flags = payloadAttributes.InclusionListTransactions is { Length: > 0 }
+            ? IBlockProducer.Flags.DontSeal
+            : IBlockProducer.Flags.PrepareEmptyBlock;
+        Block emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: flags).Result!;
 
         if (isTrace) TraceAfter(payloadId, emptyBlock);
         return emptyBlock;

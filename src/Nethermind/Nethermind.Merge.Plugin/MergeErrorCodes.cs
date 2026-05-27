@@ -34,4 +34,10 @@ public static class MergeErrorCodes
     /// Payload attributes are invalid or inconsistent.
     /// </summary>
     public const int UnsupportedFork = -38005;
+
+    /// <summary>
+    /// EIP-7805 (FOCIL): the parent block referenced by <c>engine_getInclusionListV1</c>
+    /// is unknown to the node.
+    /// </summary>
+    public const int UnknownParent = -38007;
 }

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -16,24 +18,29 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// <see cref="Eip7805Constants.MaxTransactionsPerInclusionList"/> transactions.
 /// </summary>
 /// <remarks>
-/// Selection strategy is implementation-defined per spec. The current
-/// <see cref="InclusionListBuilder"/> drains the local pool by descending fee priority.
-/// The <c>blockHash</c> parameter is required by
+/// Returns <see cref="MergeErrorCodes.UnknownParent"/> (-38007) if <c>blockHash</c> is
+/// not known to this node, matching the
 /// <see href="https://github.com/ethereum/execution-apis/pull/609">execution-apis#609</see>
-/// but is not consulted today — the IL is built from the current mempool snapshot rather
-/// than a hypothetical post-<c>blockHash</c> state. If a future committee policy needs to
-/// gate IL contents on a specific head, the hash flows through ready to use.
+/// spec. Selection strategy itself is implementation-defined; the current
+/// <see cref="InclusionListBuilder"/> drains the local pool by a randomised sample of
+/// non-blob transactions and stops once the encoded list would exceed
+/// <see cref="Eip7805Constants.MaxBytesPerInclusionList"/>.
 /// </remarks>
-public class GetInclusionListTransactionsHandler(ITxPool? txPool)
+public class GetInclusionListTransactionsHandler(ITxPool? txPool, IBlockFinder? blockFinder)
     : IHandler<Hash256, ArrayPoolList<byte[]>>
 {
     private readonly InclusionListBuilder? _inclusionListBuilder = txPool is null ? null : new(txPool);
 
     public ResultWrapper<ArrayPoolList<byte[]>> Handle(Hash256 blockHash)
     {
-        if (_inclusionListBuilder is null)
+        if (_inclusionListBuilder is null || blockFinder is null)
         {
             return ResultWrapper<ArrayPoolList<byte[]>>.Success(ArrayPoolList<byte[]>.Empty());
+        }
+
+        if (blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is null)
+        {
+            return ResultWrapper<ArrayPoolList<byte[]>>.Fail($"unknown parent block {blockHash}", MergeErrorCodes.UnknownParent);
         }
 
         ArrayPoolList<byte[]> txBytes = new(Eip7805Constants.MaxTransactionsPerInclusionList, _inclusionListBuilder.GetInclusionList());

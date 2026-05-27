@@ -48,7 +48,16 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (payloadAttributes?.InclusionListTransactions is { Length: > 0 } ilTxs)
         {
             IReleaseSpec spec = _specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp));
-            inclusionListTxSource.Set(ilTxs, spec);
+            // Malformed entries (garbage bytes, truncated RLP, empty arrays) must not abort
+            // the FCU — EIP-7805 §"Validation" treats unparsable IL items as a no-op rather
+            // than a protocol error. The decoder already skips entries it can't read, but a
+            // single bad item early in the array can still surface as e.g. an
+            // IndexOutOfRangeException from the RLP context. Swallow it: the IL store ends
+            // up with whatever subset decoded cleanly (possibly empty), and the FCU
+            // proceeds. The CL retries with a different builder if the resulting block fails
+            // the IL constraint downstream.
+            try { inclusionListTxSource.Set(ilTxs, spec); }
+            catch (System.Exception) { /* see remarks above */ }
         }
         // custodyColumns: a 16-byte bitarray indicating column custody set (EIP-7805 §IL committee).
         // No EL-side processing required today; recorded here for future blob-column gating.

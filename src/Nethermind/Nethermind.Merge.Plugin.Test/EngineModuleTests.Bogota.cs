@@ -154,11 +154,13 @@ public partial class EngineModuleTests
         fcu.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         fcu.Data.PayloadId.Should().NotBeNull();
 
-        // The initial payload is empty by design (StartPreparingPayload short-circuits to an
-        // empty block first). Let the improvement task drain the IL into a non-empty payload
-        // before fetching — getPayloadV6 disposes the improvement context, so calling once
-        // after a delay is more reliable than polling.
-        ExecutionPayloadV4 payload = await GetPayloadAfterImprovementV6(rpc, fcu.Data.PayloadId!);
+        // With FOCIL, PayloadPreparationService.ProduceEmptyBlock drops the EmptyBlock fast
+        // path whenever the CL supplies a non-empty IL, so the very first build already
+        // contains the IL transactions. Fetch once via engine_getPayloadV6 — no polling /
+        // sleeping needed.
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        payloadResult.Data.Should().NotBeNull();
+        ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
         payload.Transactions.Should().ContainSingle().Which.Should().BeEquivalentTo(txBytes);
 
         // The block-as-built must round-trip through newPayloadV6 with the same IL.
@@ -170,25 +172,6 @@ public partial class EngineModuleTests
             inclusionListTransactions: [txBytes]);
         verify.Result.ResultType.Should().Be(ResultType.Success, verify.Result.Error);
         verify.Data.Status.Should().Be(PayloadStatus.Valid);
-    }
-
-    /// <summary>
-    /// Yields long enough for the improvement task to drain the IL into a non-empty payload,
-    /// then fetches once via <c>engine_getPayloadV6</c>. We deliberately don't poll: the
-    /// first <c>engine_getPayloadV6</c> call cancels and disposes the improvement context, so
-    /// subsequent calls return the same snapshot and can't observe a later improvement.
-    /// </summary>
-    /// <remarks>
-    /// 1.5 s aligns with the empty-block-then-improve cadence inside
-    /// <see cref="PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay"/>
-    /// (~50 ms) plus enough headroom for noisy CI runners.
-    /// </remarks>
-    private static async Task<ExecutionPayloadV4> GetPayloadAfterImprovementV6(IEngineRpcModule rpc, string payloadId)
-    {
-        await Task.Delay(1500);
-        ResultWrapper<GetPayloadV6Result?> result = await rpc.engine_getPayloadV6(Bytes.FromHexString(payloadId));
-        result.Data.Should().NotBeNull();
-        return result.Data!.ExecutionPayload;
     }
 
     /// <summary>
