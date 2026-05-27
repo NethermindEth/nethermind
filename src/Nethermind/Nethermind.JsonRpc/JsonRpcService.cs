@@ -278,7 +278,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             ReturnParameters(parameters, returnParametersToPool);
             if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
+            string message = e switch
+            {
+                FormatException
+                {
+                    Message: "hex string without 0x prefix"
+                        or "hex number with leading zero digits"
+                        or "hex string \"0x\""
+                } => e.Message,
+                _ => "Invalid params"
+            };
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }
     }
 

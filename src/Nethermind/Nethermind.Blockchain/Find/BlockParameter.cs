@@ -247,11 +247,21 @@ namespace Nethermind.JsonRpc.Data
             {
                 span = span[2..];
 
+                if (span.Length == 0)
+                {
+                    throw new FormatException($"hex string \"{Bytes.EmptyHexValue}\"");
+                }
+
                 // 64 hex chars = 32 bytes = Hash256
                 if (span.Length == 64)
                 {
                     byte[] bytes = Bytes.FromUtf8HexString(span);
                     return new BlockParameter(new Hash256(bytes));
+                }
+
+                if (span.Length > 1 && span[0] == (byte)'0')
+                {
+                    throw new FormatException("hex number with leading zero digits");
                 }
 
                 // Parse as block number

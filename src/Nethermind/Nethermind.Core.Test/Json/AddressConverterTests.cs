@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -51,6 +53,13 @@ public class AddressConverterTests : ConverterTestBase<Address>
         Assert.That(result, Is.Not.Null);
         Assert.That(result![addressA], Is.EqualTo(1));
         Assert.That(result[addressB], Is.EqualTo(2));
+    }
+
+    [Test]
+    public void Rejects_address_without_0x_prefix()
+    {
+        Action action = () => JsonSerializer.Deserialize<Address>("\"cf1dc766fc2c62bef0b67a8de666c8e67acf35f6\"", EthereumJsonSerializer.JsonOptions);
+        action.Should().Throw<FormatException>().WithMessage("hex string without 0x prefix");
     }
 
     static IEnumerable<TestCaseData> AddressTestCases =

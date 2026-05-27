@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
         [TestCase("0", true)]
         [TestCase("100", true)]
-        [TestCase("\"0x\"", false)]
+        [TestCase("\"0x\"", true)]
         [TestCase("\"0x0\"", false)]
         [TestCase("\"0xA\"", false)]
         [TestCase("\"0xa\"", false)]
@@ -74,6 +74,17 @@ namespace Nethermind.JsonRpc.Test.Data
             {
                 EthereumJsonSerializer.StrictHexFormat = original;
             }
+        }
+
+        [TestCase("\"0x00001036640\"", "hex number with leading zero digits")]
+        [TestCase("\"0x\"", "hex string \"0x\"")]
+        public void Rejects_eip1474_invalid_hex_quantities(string input, string expectedMessage)
+        {
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+
+            Action action = () => serializer.Deserialize<BlockParameter>(input);
+
+            action.Should().Throw<FormatException>().WithMessage(expectedMessage);
         }
 
         [TestCase("null", BlockParameterType.Latest)]
