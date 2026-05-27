@@ -124,12 +124,10 @@ public class RemoteEraStoreDecoratorTests
         string escapedPath = Path.GetFullPath(Path.Join(_downloadDir.Path, filename));
         using RemoteEraStoreDecorator sut = new(localStore: null, _client, _downloadDir.Path, maxEraSize: 16);
 
-        await sut.Invoking(s => s.FindBlockAndReceipts(0, ensureValidated: false))
-            .Should().ThrowAsync<EraException>()
-            .WithMessage("*escapes the download directory*");
+        Assert.That(async () => await sut.FindBlockAndReceipts(0, ensureValidated: false), Throws.TypeOf<EraException>().With.Message.Contains("escapes the download directory"));
 
         await _client.DidNotReceive().DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
-        File.Exists(escapedPath).Should().BeFalse();
+        Assert.That(File.Exists(escapedPath), Is.False);
     }
 
     private static int ParseEpoch(string filename)
