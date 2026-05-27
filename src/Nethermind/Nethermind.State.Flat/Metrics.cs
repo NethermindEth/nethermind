@@ -241,4 +241,34 @@ public static class Metrics
     [Description("Live arena reservation bytes, by tier")]
     [KeyIsLabel("tier")]
     public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaReservationBytesByTier { get; } = new();
+
+    [DetailedMetric]
+    [Description("Snapshot-bundle depth in blocks, by part (in_memory / persisted)")]
+    [ExponentialPowerHistogramMetric(LabelNames = ["part"], Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver SnapshotBundleBlockNumberDepth { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Time spent skipping accounts/slots/state-rlp/storage-rlp on a read-only snapshot bundle access, by part")]
+    [ExponentialPowerHistogramMetric(LabelNames = ["part"], Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver ReadOnlySnapshotBundleSkipTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Time to convert one in-memory snapshot into a persisted snapshot, by part")]
+    [ExponentialPowerHistogramMetric(LabelNames = ["part"], Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver PersistedSnapshotConvertTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Persisted-snapshot byte size, by tier")]
+    [ExponentialPowerHistogramMetric(LabelNames = ["tier"], Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver PersistedSnapshotSize { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Persisted-snapshot compaction output size, by compact size")]
+    [ExponentialPowerHistogramMetric(LabelNames = ["size"], Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver PersistedSnapshotCompactedSize { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Persisted-snapshot compaction wall-clock time, by compact size")]
+    [ExponentialPowerHistogramMetric(LabelNames = ["size"], Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver PersistedSnapshotCompactTime { get; set; } = new NoopMetricObserver();
 }

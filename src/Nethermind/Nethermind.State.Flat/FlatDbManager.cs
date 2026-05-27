@@ -9,9 +9,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie.Pruning;
-using Prometheus;
 
 namespace Nethermind.State.Flat;
 
@@ -249,8 +249,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             usage: usage);
     }
 
-    private readonly Histogram _snapshotBundleBlockNumberDepth =
-        Prometheus.Metrics.CreateHistogram("snapshot_bundle_blocknumber_depth", "snapshot_bundle_blocknumber_depth", "part");
+    private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
+    private static readonly StringLabel _depthPersistedLabel = new("persisted");
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
     {
@@ -315,8 +315,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             if (assembled.InMemory.Count > 0) inMemoryDepth = (int)(assembled.InMemory[^1].To.BlockNumber - assembled.InMemory[0].From.BlockNumber);
             if (assembled.Persisted.Count > 0) persistedDepth = (int)(assembled.Persisted[^1].To.BlockNumber - assembled.Persisted[0].From.BlockNumber);
 
-            _snapshotBundleBlockNumberDepth.WithLabels("in_memory").Observe(inMemoryDepth);
-            _snapshotBundleBlockNumberDepth.WithLabels("persisted").Observe(persistedDepth);
+            Metrics.SnapshotBundleBlockNumberDepth.Observe(inMemoryDepth, _depthInMemoryLabel);
+            Metrics.SnapshotBundleBlockNumberDepth.Observe(persistedDepth, _depthPersistedLabel);
 
             // Lease blooms parallel to assembled.Persisted; fall back to AlwaysTrue on miss.
             // One shared bloom manager covers both tiers — see FlatWorldStateModule. A

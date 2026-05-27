@@ -13,7 +13,6 @@ using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
-using Prometheus;
 
 namespace Nethermind.State.Flat;
 
@@ -46,12 +45,10 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
     private static readonly StringLabel _readStorageRlpPersistedLabel = new("storage_rlp_persisted_snapshot");
 
-    private static readonly Histogram _persistedSnapshotSkipTime = Prometheus.Metrics.CreateHistogram(
-        "readonly_snapshot_bundle_skip_time", "skip time", new HistogramConfiguration()
-        {
-            LabelNames = ["part"],
-            Buckets = Histogram.PowersOfTenDividedBuckets(0, 10, 10)
-        });
+    private static readonly StringLabel _skipAccountLabel = new("account");
+    private static readonly StringLabel _skipSlotLabel = new("slot");
+    private static readonly StringLabel _skipStateRlpLabel = new("state_rlp");
+    private static readonly StringLabel _skipStorageRlpLabel = new("storage_rlp");
 
     public Account? GetAccount(Address address) => GetAccount(address, address);
 
@@ -86,7 +83,7 @@ public sealed class ReadOnlySnapshotBundle(
                 }
             }
         }
-        _persistedSnapshotSkipTime.WithLabels("account").Observe(Stopwatch.GetTimestamp() - psw);
+        Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - psw, _skipAccountLabel);
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         Account? account = persistenceReader.GetAccount(address);
@@ -177,7 +174,7 @@ public sealed class ReadOnlySnapshotBundle(
                 }
             }
         }
-        _persistedSnapshotSkipTime.WithLabels("slot").Observe(Stopwatch.GetTimestamp() - psw);
+        Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - psw, _skipSlotLabel);
 
         SlotValue outSlotValue = new();
 
@@ -261,7 +258,7 @@ public sealed class ReadOnlySnapshotBundle(
                 return rlp;
             }
         }
-        _persistedSnapshotSkipTime.WithLabels("state_rlp").Observe(Stopwatch.GetTimestamp() - sw);
+        Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStateRlpLabel);
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -289,7 +286,7 @@ public sealed class ReadOnlySnapshotBundle(
                 return rlp;
             }
         }
-        _persistedSnapshotSkipTime.WithLabels("storage_rlp").Observe(Stopwatch.GetTimestamp() - sw);
+        Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStorageRlpLabel);
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;

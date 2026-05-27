@@ -16,7 +16,6 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using Prometheus;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
@@ -77,8 +76,7 @@ public class PersistenceManager(
         return _compactPersistedTask;
     }
 
-    private readonly Histogram _persistedSnapshotConvertTime =
-        Prometheus.Metrics.CreateHistogram("persisted_snapshot_convert_time", "persisted_snapshot_convert_time", "size");
+    private static readonly StringLabel _convertTimeBaseLabel = new("base");
 
     private async Task RunPersistedCompactor(CancellationToken cancellationToken)
     {
@@ -492,7 +490,7 @@ public class PersistenceManager(
                             // Pre-leased return — dispose the caller's lease immediately;
                             // the repository's dict entry holds its own lease.
                             _repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
-                            _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
+                            Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw, _convertTimeBaseLabel);
                             snap.Dispose();
                         }
                     });
@@ -518,7 +516,7 @@ public class PersistenceManager(
                 // Pre-leased return — dispose the caller's lease immediately;
                 // the repository's dict entry holds its own lease.
                 _repo.ConvertSnapshotToPersistedSnapshot(baseSnap).Dispose();
-                _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
+                Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw, _convertTimeBaseLabel);
 
                 EnsureCompactorStarted();
                 ArrayPoolList<StateId> single = new(1) { baseSnap.To };

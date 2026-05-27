@@ -62,45 +62,74 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
-            // The (ArenaManager, BlobArenaManager, PersistedSnapshotRepository,
-            // PersistedSnapshotCompactor) set is built in a single factory so the repo and the
-            // compactor share the same ArenaManager instance.
-            .AddSingleton<PersistedSnapshotComponents>((ctx) =>
+            // Shared ArenaManager + BlobArenaManager: the persisted-snapshot repo and the
+            // compactor MUST resolve the same instances, otherwise compaction would write
+            // through a different mmap than the repository reads from. Registering them
+            // here as singletons keeps both consumers naturally on the same instance and
+            // lets IPersistedSnapshotRepository / IPersistedSnapshotCompactor be registered
+            // separately below.
+            //
+            // EnableLongFinality off: arena/blob construction is skipped and the Null
+            // impls of repo/compactor are returned. The ArenaManager / BlobArenaManager
+            // singletons are still registered but never actually resolved in that mode
+            // (the Null impls don't reach them).
+            .AddSingleton<ArenaManager>((ctx) =>
             {
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
-
-                // Feature flag off: skip arena / blob / catalog construction entirely and wire
-                // null implementations. Conversion paths in PersistenceManager.DetermineSnapshotAction
-                // are also gated on this flag, so no ConvertSnapshotToPersistedSnapshot call will
-                // ever reach the repo — this guarantees no on-disk artefacts under
-                // `<data-dir>/persisted_snapshot/`.
-                if (!cfg.EnableLongFinality)
-                {
-                    return new PersistedSnapshotComponents(
-                        NullPersistedSnapshotRepository.Instance,
-                        NullPersistedSnapshotCompactor.Instance);
-                }
-
-                ILogManager logManager = ctx.Resolve<ILogManager>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshot");
+                return new ArenaManager(
+                    Path.Combine(basePath, "arena"),
+                    cfg.PersistedSnapshotArenaPageCacheBytes,
+                    cfg.ArenaFileSizeBytes,
+                    cfg.PersistedSnapshotFadviseOnPageEviction,
+                    tier: PersistedSnapshotTier.Persisted,
+                    punchHoleOnReclaim: cfg.PersistedSnapshotPunchHoleOnReclaim);
+            })
+            .AddSingleton<BlobArenaManager>((ctx) =>
+            {
+                IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
+                string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshot");
+                return new BlobArenaManager(
+                    Path.Combine(basePath, "blob"),
+                    cfg.ArenaFileSizeBytes,
+                    PersistedSnapshotTier.Persisted,
+                    punchHoleOnReclaim: cfg.PersistedSnapshotPunchHoleOnReclaim);
+            })
+            .AddSingleton<IPersistedSnapshotRepository>((ctx) =>
+            {
+                IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
+                // Feature flag off: skip arena / blob / catalog construction entirely and
+                // wire a null implementation. Conversion paths in PersistenceManager.
+                // DetermineSnapshotAction are also gated on this flag, so no
+                // ConvertSnapshotToPersistedSnapshot call will ever reach the repo — this
+                // guarantees no on-disk artefacts under `<data-dir>/persisted_snapshot/`.
+                if (!cfg.EnableLongFinality) return NullPersistedSnapshotRepository.Instance;
+
                 IColumnsDb<PersistedSnapshotCatalogColumns> catalogColumns =
                     ctx.Resolve<IColumnsDb<PersistedSnapshotCatalogColumns>>();
-                PersistedSnapshotBloomFilterManager bloomManager = ctx.Resolve<PersistedSnapshotBloomFilterManager>();
-
-                ArenaManager arena = new(Path.Combine(basePath, "arena"), cfg.PersistedSnapshotArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction, tier: PersistedSnapshotTier.Persisted, punchHoleOnReclaim: cfg.PersistedSnapshotPunchHoleOnReclaim);
-                BlobArenaManager blobs = new(Path.Combine(basePath, "blob"), cfg.ArenaFileSizeBytes, PersistedSnapshotTier.Persisted, punchHoleOnReclaim: cfg.PersistedSnapshotPunchHoleOnReclaim);
                 IDb catalogDb = catalogColumns.GetColumnDb(PersistedSnapshotCatalogColumns.Catalog);
-                PersistedSnapshotRepository repo = new(arena, blobs, catalogDb, cfg, bloomManager);
-                PersistedSnapshotCompactor compactor = new(
-                    repo, arena, cfg, logManager, bloomManager,
+                PersistedSnapshotRepository repo = new(
+                    ctx.Resolve<ArenaManager>(),
+                    ctx.Resolve<BlobArenaManager>(),
+                    catalogDb, cfg,
+                    ctx.Resolve<PersistedSnapshotBloomFilterManager>());
+                repo.LoadFromCatalog();
+                return repo;
+            })
+            .AddSingleton<IPersistedSnapshotCompactor>((ctx) =>
+            {
+                IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
+                if (!cfg.EnableLongFinality) return NullPersistedSnapshotCompactor.Instance;
+
+                return new PersistedSnapshotCompactor(
+                    ctx.Resolve<IPersistedSnapshotRepository>(),
+                    ctx.Resolve<ArenaManager>(),
+                    cfg,
+                    ctx.Resolve<ILogManager>(),
+                    ctx.Resolve<PersistedSnapshotBloomFilterManager>(),
                     minCompactSize: cfg.MinCompactSize,
                     maxCompactSize: cfg.PersistedSnapshotMaxCompactSize);
-
-                repo.LoadFromCatalog();
-                return new PersistedSnapshotComponents(repo, compactor);
             })
-            .AddSingleton<IPersistedSnapshotRepository>((ctx) => ctx.Resolve<PersistedSnapshotComponents>().Repository)
-            .AddSingleton<IPersistedSnapshotCompactor>((ctx) => ctx.Resolve<PersistedSnapshotComponents>().Compactor)
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()

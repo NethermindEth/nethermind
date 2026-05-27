@@ -8,9 +8,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Hsst;
+using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
-using Prometheus;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
@@ -77,31 +77,16 @@ public class PersistedSnapshotCompactor(
         CompactRange(snapshotTo, blockNumber - _compactSize, _compactSize, isPersistable: true);
     }
 
-    private readonly Histogram _persistedSnapshotSize =
-        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compacted_size", "persisted_snapshot_compacted_size", "size");
-    private readonly Histogram _persistedSnapshotCompactTime =
-        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compact_time", "persisted_snapshot_compact_time", "size");
+    // Compact sizes are powers of 2; cache one StringLabel per sizeLabel so the
+    // observe path skips the per-call string interpolation. Indexed by
+    // BitOperations.Log2(compactSize). Filled lazily on first use.
+    private StringLabel[]? _sizeLabelsByLog2;
 
-    // Compact sizes are powers of 2; cache one Histogram.Child per sizeLabel so the
-    // observe path is a single array read instead of two WithLabels lookups + a string
-    // interpolation. Indexed by BitOperations.Log2(compactSize). Filled lazily on first use.
-    private (Histogram.Child Size, Histogram.Child Time)[]? _sizeMetricsByLog2;
-
-    private (Histogram.Child Size, Histogram.Child Time) GetSizeMetrics(int compactSize)
+    private StringLabel GetSizeLabel(int compactSize)
     {
         int log2 = BitOperations.Log2((uint)compactSize);
-        (Histogram.Child Size, Histogram.Child Time)[] table =
-            _sizeMetricsByLog2 ??= new (Histogram.Child, Histogram.Child)[32];
-        (Histogram.Child Size, Histogram.Child Time) entry = table[log2];
-        if (entry.Size is null)
-        {
-            string sizeLabel = $"size{compactSize}";
-            entry = (
-                _persistedSnapshotSize.WithLabels(sizeLabel),
-                _persistedSnapshotCompactTime.WithLabels(sizeLabel));
-            table[log2] = entry;
-        }
-        return entry;
+        StringLabel[] table = _sizeLabelsByLog2 ??= new StringLabel[32];
+        return table[log2] ??= new StringLabel($"size{compactSize}");
     }
 
     private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isPersistable)
@@ -164,9 +149,9 @@ public class PersistedSnapshotCompactor(
                     views, ref arenaWriter.GetWriter(), mergedBloom);
 
                 long len = arenaWriter.GetWriter().Written;
-                (Histogram.Child sizeChild, Histogram.Child timeChild) = GetSizeMetrics(compactSize);
-                sizeChild.Observe(len);
-                timeChild.Observe(Stopwatch.GetTimestamp() - sw);
+                StringLabel sizeLabel = GetSizeLabel(compactSize);
+                Metrics.PersistedSnapshotCompactedSize.Observe(len, sizeLabel);
+                Metrics.PersistedSnapshotCompactTime.Observe(Stopwatch.GetTimestamp() - sw, sizeLabel);
 
                 (location, reservation) = arenaWriter.Complete();
             }

@@ -103,8 +103,4 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
     }
 
 
-    public static void IgnoreIfRunningFlat()
-    {
-        if (TestUseFlat) Assert.Ignore("Does not work in flat");
-    }
 }

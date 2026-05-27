@@ -6,9 +6,9 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.State.Flat.Hsst;
+using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
-using Prometheus;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
@@ -37,7 +37,7 @@ public sealed class PersistedSnapshotRepository(
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
-    private readonly string _tierLabel = arenaManager.Tier.Name;
+    private readonly StringLabel _tierLabel = new(arenaManager.Tier.Name);
     // Do NOT iterate these dictionaries on hot or metric paths — entry counts can
     // reach hundreds of thousands in production. Use TryGetValue for point lookups;
     // O(1) aggregates (Base/CompactedSnapshotMemory) are maintained as running totals
@@ -196,7 +196,6 @@ public sealed class PersistedSnapshotRepository(
         Interlocked.Increment(ref Metrics._persistedSnapshotCount);
     }
 
-    private readonly Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size", "tier");
 
     /// <summary>
     /// Persist an in-memory snapshot as a base input: write its HSST metadata + a contiguous
@@ -231,7 +230,7 @@ public sealed class PersistedSnapshotRepository(
         {
             PersistedSnapshotBuilder.Build<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
                 snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom);
-            _persistedSnapshotSize.WithLabels(_tierLabel).Observe(arenaWriter.GetWriter().Written);
+            Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written, _tierLabel);
             (location, reservation) = arenaWriter.Complete();
         }
         blobWriter.Complete();
