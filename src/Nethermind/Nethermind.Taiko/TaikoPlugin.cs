@@ -7,7 +7,6 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;

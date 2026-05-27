@@ -11,7 +11,6 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
