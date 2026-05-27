@@ -63,35 +63,31 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// so the first <c>CommonPrefixLen</c> bytes of the parent's full separator are the child's
 /// prefix bytes.
 /// </summary>
-public readonly ref struct BTreeNodeReader
+public readonly ref struct BTreeNodeReader(
+    NodeMetadata metadata,
+    ReadOnlySpan<byte> values,
+    ReadOnlySpan<byte> keys,
+    ReadOnlySpan<byte> commonKeyPrefix,
+    int totalSize)
 {
-    private readonly NodeMetadata _metadata;
-    private readonly ReadOnlySpan<byte> _values;
-    private readonly ReadOnlySpan<byte> _keys;
-    private readonly ReadOnlySpan<byte> _commonKeyPrefix;
-    private readonly int _totalSize;
+    // Ref-like primary-ctor params can't be used in instance members of a ref struct;
+    // forward them into fields.
+    private readonly ReadOnlySpan<byte> values = values;
+    private readonly ReadOnlySpan<byte> keys = keys;
+    private readonly ReadOnlySpan<byte> commonKeyPrefix = commonKeyPrefix;
 
-    private BTreeNodeReader(NodeMetadata metadata, ReadOnlySpan<byte> values, ReadOnlySpan<byte> keys, ReadOnlySpan<byte> commonKeyPrefix, int totalSize)
-    {
-        _metadata = metadata;
-        _values = values;
-        _keys = keys;
-        _commonKeyPrefix = commonKeyPrefix;
-        _totalSize = totalSize;
-    }
-
-    public int EntryCount => _metadata.KeyCount;
-    public BTreeNodeKind NodeKind => _metadata.NodeKind;
-    public NodeMetadata Metadata => _metadata;
+    public int EntryCount => metadata.KeyCount;
+    public BTreeNodeKind NodeKind => metadata.NodeKind;
+    public NodeMetadata Metadata => metadata;
     /// <summary>Total bytes occupied by this index node, including header.</summary>
-    public int TotalSize => _totalSize;
+    public int TotalSize => totalSize;
 
     /// <summary>
     /// Bytes shared by every stored key. Empty when the node was written without the
     /// common-prefix optimization. The full lex-order key for entry i is reconstructed via
     /// <see cref="GetFullKey"/>.
     /// </summary>
-    public ReadOnlySpan<byte> CommonKeyPrefix => _commonKeyPrefix;
+    public ReadOnlySpan<byte> CommonKeyPrefix => commonKeyPrefix;
 
     /// <summary>
     /// Read an index block forward from <paramref name="nodeStart"/> (inclusive start position).
@@ -127,7 +123,7 @@ public readonly ref struct BTreeNodeReader
 
         // When prefixLen > 0 the prefix bytes ride in from the caller's parentSeparator.
         // An insufficient parentSeparator (typical of value-only enumerators) leaves
-        // _commonKeyPrefix empty — see the doc on this method for which APIs stay valid
+        // commonKeyPrefix empty — see the doc on this method for which APIs stay valid
         // in that mode.
         ReadOnlySpan<byte> commonKeyPrefix = prefixLen > 0 && parentSeparator.Length >= prefixLen
             ? parentSeparator[..prefixLen]
@@ -162,14 +158,14 @@ public readonly ref struct BTreeNodeReader
     /// external callers wanting lex-order key bytes use <see cref="GetFullKey"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ReadOnlySpan<byte> GetRawSlot(int index) => _metadata.KeyType switch
+    private ReadOnlySpan<byte> GetRawSlot(int index) => metadata.KeyType switch
     {
         // Variable: SoA layout, prefix slot is byte-reversed (LE-stored). Returning the raw
         // 2-byte slot follows the same convention as LE-stored Uniform — callers that need
         // the full key in lex order use GetFullKey with a destination buffer.
-        0 => _keys.Slice(index * 2, 2),
-        1 => _keys.Slice(index * _metadata.KeySize, _metadata.KeySize),
-        _ => throw new InvalidDataException($"Unknown KeyType: {_metadata.KeyType}")
+        0 => keys.Slice(index * 2, 2),
+        1 => keys.Slice(index * metadata.KeySize, metadata.KeySize),
+        _ => throw new InvalidDataException($"Unknown KeyType: {metadata.KeyType}")
     };
 
     /// <summary>
@@ -178,7 +174,7 @@ public readonly ref struct BTreeNodeReader
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ReadOnlySpan<byte> GetValue(int index) =>
-        _values.Slice(index * _metadata.ValueSize, _metadata.ValueSize);
+        values.Slice(index * metadata.ValueSize, metadata.ValueSize);
 
     /// <summary>
     /// Get the unsigned integer value at the given entry index with BaseOffset applied.
@@ -189,7 +185,7 @@ public readonly ref struct BTreeNodeReader
     public ulong GetUInt64Value(int index)
     {
         ReadOnlySpan<byte> raw = GetValue(index);
-        return ReadUInt64LE(raw) + _metadata.BaseOffset;
+        return ReadUInt64LE(raw) + metadata.BaseOffset;
     }
 
     /// <summary>
@@ -309,23 +305,23 @@ public readonly ref struct BTreeNodeReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TryStripCommonPrefix(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> residual, out int shortcutResult)
     {
-        if (_commonKeyPrefix.Length == 0)
+        if (commonKeyPrefix.Length == 0)
         {
             residual = key;
             shortcutResult = 0;
             return true;
         }
-        if (key.StartsWith(_commonKeyPrefix))
+        if (key.StartsWith(commonKeyPrefix))
         {
-            residual = key[_commonKeyPrefix.Length..];
+            residual = key[commonKeyPrefix.Length..];
             shortcutResult = 0;
             return true;
         }
         // key does not start with prefix — relationship to every stored key is fixed.
         residual = default;
-        shortcutResult = key.SequenceCompareTo(_commonKeyPrefix) < 0
+        shortcutResult = key.SequenceCompareTo(commonKeyPrefix) < 0
             ? -1                       // key < prefix ≤ every stored key → no floor
-            : _metadata.KeyCount - 1;  // key > prefix && !StartsWith(prefix) → floor = last
+            : metadata.KeyCount - 1;  // key > prefix && !StartsWith(prefix) → floor = last
         return false;
     }
 
@@ -339,27 +335,27 @@ public readonly ref struct BTreeNodeReader
         if (!TryStripCommonPrefix(key, out ReadOnlySpan<byte> q, out int shortcut))
             return shortcut;
 
-        int count = _metadata.KeyCount;
+        int count = metadata.KeyCount;
         if (count == 0) return -1;
 
-        // q is the search key with CommonKeyPrefix stripped; _keys holds the matching
+        // q is the search key with CommonKeyPrefix stripped; keys holds the matching
         // stripped separators, so the lexicographic compare is consistent.
-        bool keyLe = _metadata.IsKeyLittleEndian;
-        int keySize = _metadata.KeySize;
-        return _metadata.KeyType switch
+        bool keyLe = metadata.IsKeyLittleEndian;
+        int keySize = metadata.KeySize;
+        return metadata.KeyType switch
         {
             1 => keyLe
                 ? keySize switch
                 {
-                    2 => UniformKeySearch.Uniform2LE(q, _keys, count),
-                    3 => UniformKeySearch.Uniform3LE(q, _keys, count),
-                    4 => UniformKeySearch.Uniform4LE(q, _keys, count),
-                    8 => UniformKeySearch.Uniform8LE(q, _keys, count),
+                    2 => UniformKeySearch.Uniform2LE(q, keys, count),
+                    3 => UniformKeySearch.Uniform3LE(q, keys, count),
+                    4 => UniformKeySearch.Uniform4LE(q, keys, count),
+                    8 => UniformKeySearch.Uniform8LE(q, keys, count),
                     _ => throw new InvalidDataException($"Invalid LE keySize: {keySize}")
                 }
-                : UniformKeySearch.UniformBE(q, _keys, count, keySize),
-            0 => FindFloorIndexVariable(q, _keys, count),
-            _ => throw new InvalidDataException($"Unknown KeyType: {_metadata.KeyType}")
+                : UniformKeySearch.UniformBE(q, keys, count, keySize),
+            0 => FindFloorIndexVariable(q, keys, count),
+            _ => throw new InvalidDataException($"Unknown KeyType: {metadata.KeyType}")
         };
     }
 
@@ -410,34 +406,34 @@ public readonly ref struct BTreeNodeReader
     /// </summary>
     public int GetFullKey(int index, Span<byte> dest)
     {
-        if (_metadata.KeyType == 0)
+        if (metadata.KeyType == 0)
         {
             // Variable: prefix slot is byte-reversed; tail (if tag 11) lives in remainingkeys.
-            int slot = GetVariableKeyOffsetSlot(_keys, _metadata.KeyCount, index);
+            int slot = GetVariableKeyOffsetSlot(keys, metadata.KeyCount, index);
             int tag = slot >>> 14;
             ReadOnlySpan<byte> tail = tag == 0b11
-                ? GetVariableKeyTail(_keys, _metadata.KeyCount, index)
+                ? GetVariableKeyTail(keys, metadata.KeyCount, index)
                 : default;
             int suffixLen = tag == 0b11 ? 2 + tail.Length : tag;
-            int total = _commonKeyPrefix.Length + suffixLen;
+            int total = commonKeyPrefix.Length + suffixLen;
             if (dest.Length < total)
                 throw new ArgumentException("Destination too small for full key", nameof(dest));
-            _commonKeyPrefix.CopyTo(dest);
-            Span<byte> suffixDst = dest.Slice(_commonKeyPrefix.Length, suffixLen);
+            commonKeyPrefix.CopyTo(dest);
+            Span<byte> suffixDst = dest.Slice(commonKeyPrefix.Length, suffixLen);
             // Un-reverse prefix slot bytes [b, a] → lex [a, b] up to suffixLen.
-            if (suffixLen >= 1) suffixDst[0] = _keys[index * 2 + 1];
-            if (suffixLen >= 2) suffixDst[1] = _keys[index * 2];
+            if (suffixLen >= 1) suffixDst[0] = keys[index * 2 + 1];
+            if (suffixLen >= 2) suffixDst[1] = keys[index * 2];
             if (tag == 0b11) tail.CopyTo(suffixDst[2..]);
             return total;
         }
 
         ReadOnlySpan<byte> suffix = GetRawSlot(index);
-        int totalLegacy = _commonKeyPrefix.Length + suffix.Length;
+        int totalLegacy = commonKeyPrefix.Length + suffix.Length;
         if (dest.Length < totalLegacy)
             throw new ArgumentException("Destination too small for full key", nameof(dest));
-        _commonKeyPrefix.CopyTo(dest);
-        Span<byte> suffixDstLegacy = dest.Slice(_commonKeyPrefix.Length, suffix.Length);
-        if (_metadata.IsKeyLittleEndian)
+        commonKeyPrefix.CopyTo(dest);
+        Span<byte> suffixDstLegacy = dest.Slice(commonKeyPrefix.Length, suffix.Length);
+        if (metadata.IsKeyLittleEndian)
         {
             // Stored slots for KeyType ∈ {1,2} with LE flag are byte-reversed on disk.
             // Reverse back into dest to recover the original lex/numeric byte order.
@@ -486,62 +482,4 @@ public readonly ref struct BTreeNodeReader
         public ReadOnlySpan<byte> Value { get; } = value;
     }
 
-    /// <summary>
-    /// Decode the value-slot width from <paramref name="flags"/>'s ValueSizeCode field
-    /// (bits 4-5): 00→2, 01→3, 10→4, 11→6.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int DecodeValueSize(byte flags) => ((flags >> 4) & 0b11) switch
-    {
-        0 => 2,
-        1 => 3,
-        2 => 4,
-        _ => 6,
-    };
-
-    /// <summary>
-    /// Metadata for a B-tree index block, parsed from the Metadata section.
-    /// </summary>
-    public readonly struct NodeMetadata
-    {
-        public byte Flags { get; init; }
-        public int KeyCount { get; init; }
-        /// <summary>KeyType=0: section size. KeyType=1: fixed key length.</summary>
-        public int KeySize { get; init; }
-        /// <summary>Base offset added to every Uniform value read. 0 when absent. Encoded on disk as 6-byte LE.</summary>
-        public ulong BaseOffset { get; init; }
-
-        /// <summary>
-        /// The <see cref="BTreeNodeKind"/> packed into Flags bits 0-1. For BTreeNode
-        /// nodes parsed by this reader, this is always <see cref="BTreeNodeKind.Intermediate"/>;
-        /// <see cref="BTreeNodeKind.Entry"/> sits on data-region entries which the BTree
-        /// reader recognizes from a single flag-byte read before deciding whether to call
-        /// <see cref="ReadFromStart"/> at all.
-        /// </summary>
-        public BTreeNodeKind NodeKind => (BTreeNodeKind)(Flags & 0x03);
-        public int KeyType => (Flags >> 2) & 0x03;
-        /// <summary>
-        /// Fixed value width in bytes (one of {2, 3, 4, 6}). Decoded from Flags bits 4-5.
-        /// Values are always Uniform.
-        /// </summary>
-        public int ValueSize => DecodeValueSize(Flags);
-        /// <summary>
-        /// True when fixed-width key slots are stored byte-reversed (Flags bit 6). Honored by
-        /// readers for Uniform with <see cref="KeySize"/> ∈ {2,4,8}, and unconditionally for
-        /// Variable (<see cref="KeyType"/>=0) where the prefixArr slot is uniformly 2 bytes.
-        /// See <see cref="BTreeNodeReader"/> docs for details.
-        /// </summary>
-        public bool IsKeyLittleEndian => (Flags & 0x40) != 0;
-
-        /// <summary>Total byte size of the Keys section.</summary>
-        public int KeySectionSize => KeyType switch
-        {
-            0 => KeySize,              // Variable: KeySize IS the section size
-            1 => KeyCount * KeySize,   // Uniform: count * fixed length
-            _ => throw new InvalidDataException()
-        };
-
-        /// <summary>Total byte size of the Values section. Always Uniform: count × fixed width.</summary>
-        public int ValueSectionSize => KeyCount * ValueSize;
-    }
 }
