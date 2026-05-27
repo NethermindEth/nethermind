@@ -9,7 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Headers;
+namespace Nethermind.Blockchain.BlockAccessLists;
 
 public interface IBlockAccessListStore
 {

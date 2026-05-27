@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 

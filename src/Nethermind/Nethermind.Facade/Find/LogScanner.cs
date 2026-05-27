@@ -3,11 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 
 namespace Nethermind.Facade.Find

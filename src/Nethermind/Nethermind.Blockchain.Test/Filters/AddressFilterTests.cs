@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;

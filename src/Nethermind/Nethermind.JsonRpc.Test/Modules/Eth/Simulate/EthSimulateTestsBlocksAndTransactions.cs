@@ -25,7 +25,7 @@ using Nethermind.Specs.Test;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
-namespace Nethermind.JsonRpc.Test.Modules.Eth;
+namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 public class EthSimulateTestsBlocksAndTransactions
 {
@@ -381,9 +381,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.EthRpcModule, "eth_simulateV1", payload!, "latest");
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
-        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
-        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = (IReadOnlyList<SimulateBlockResult<SimulateCallResult>>)successResponse.Result!;
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>(response);
         Log[] logs = data[0].Calls.First().Logs.ToArray();
         Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
     }
@@ -801,6 +799,62 @@ public class EthSimulateTestsBlocksAndTransactions
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.SenderIsNotEoa));
+    }
+
+    /// <summary>
+    /// Regression test: blob tx rejected when <c>maxFeePerBlobGas</c> is below the <c>blobBaseFee</c>
+    /// block override. The decorated calculator must be used for validation, not the static
+    /// <c>BlobGasCalculator.TryCalculateFeePerBlobGas</c> which reads from the raw header.
+    /// </summary>
+    /// <remarks>
+    /// With <c>validation = false</c>, <see cref="ProcessingOptions.NoValidation"/> is set but
+    /// <c>ShouldValidateGas</c> still returns <c>true</c> when <c>MaxFeePerGas != 0</c>, so the
+    /// blob fee cap check runs regardless and the result is identical(mirrors geth).
+    /// </remarks>
+    [TestCase(true, TestName = "validation=true rejects blob tx when maxFeePerBlobGas below blobBaseFee override")]
+    [TestCase(false, TestName = "validation=false rejects blob tx when maxFeePerBlobGas below blobBaseFee override")]
+    public async Task eth_simulateV1_blob_tx_rejected_when_max_fee_per_blob_gas_below_block_override(bool validation)
+    {
+        // excessBlobGas=0 so the static calculator gives feePerBlobGas=1 (would pass),
+        // but the blobBaseFee override is 11 > maxFeePerBlobGas=10, so must fail.
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Cancun.Instance);
+
+        byte[] validHash = new byte[32];
+        validHash[0] = 0x01;
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { BlobBaseFee = 11, BaseFeePerGas = 1 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new BlobTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            MaxFeePerGas = 1_000_000_000,
+                            MaxPriorityFeePerGas = 1,
+                            MaxFeePerBlobGas = 10,
+                            BlobVersionedHashes = [validHash],
+                            GasPrice = null
+                        }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        result.ErrorCode.Should().Be(ErrorCodes.InsufficientFunds);
+        result.Result.Error.Should().Be(SimulateErrorMessages.InsufficientFunds);
     }
 
 }

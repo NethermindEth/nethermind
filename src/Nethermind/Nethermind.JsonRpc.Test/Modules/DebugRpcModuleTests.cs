@@ -103,7 +103,7 @@ public partial class DebugRpcModuleTests
             $"{lastBlockHash}"
         );
 
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        RpcTest.AssertSuccess(response);
     }
 
     [TestCase(

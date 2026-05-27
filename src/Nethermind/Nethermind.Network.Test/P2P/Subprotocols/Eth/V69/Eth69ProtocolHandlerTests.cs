@@ -202,9 +202,8 @@ public class Eth69ProtocolHandlerTests
             Build.A.Receipt.WithAllFieldsFilled.TestObject
         ];
 
-        _syncManager.FindHeader(TestItem.KeccakA).Returns((BlockHeader?)null);
         _syncManager.GetReceipts(Keccak.Zero).Returns(blockReceipts);
-        _syncManager.GetReceipts(TestItem.KeccakA).Returns([]);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns((TxReceipt[]?)null);
         _syncManager.GetReceipts(TestItem.KeccakB).Returns(
         [
             Build.A.Receipt.WithAllFieldsFilled.TestObject
@@ -219,11 +218,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_return_empty_receipts_response_when_first_hash_is_unknown()
     {
-        _syncManager.FindHeader(Keccak.Zero).Returns((BlockHeader?)null);
-        _syncManager.GetReceipts(Keccak.Zero).Returns(
-        [
-            Build.A.Receipt.WithAllFieldsFilled.TestObject
-        ]);
+        _syncManager.GetReceipts(Keccak.Zero).Returns((TxReceipt[]?)null);
 
         IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
 
