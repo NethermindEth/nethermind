@@ -270,17 +270,6 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// Not supported in key-first mode — use <see cref="Add"/>.
     /// </summary>
     public void FinishValueWrite(scoped ReadOnlySpan<byte> key, long valueLength)
-        => FinishValueWrite(key, valueLength, -1);
-
-    /// <summary>
-    /// Same as <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/>, but accepts
-    /// a precomputed LCP byte count against <c>Buffers.PrevKeyBuf</c> (or <c>-1</c> when
-    /// unknown). Used by <see cref="AddCore"/> to forward the LCP already computed by
-    /// <see cref="MaybeFlushBeforeEntry"/>; streaming callers that invoke
-    /// <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/> directly hit this
-    /// path with <c>-1</c>.
-    /// </summary>
-    private void FinishValueWrite(scoped ReadOnlySpan<byte> key, long valueLength, int precomputedLcp)
     {
         if (_keyFirst)
             throw new InvalidOperationException("Key-first BTree requires Add(key, value); BeginValueWrite/FinishValueWrite streaming is not supported.");
@@ -316,7 +305,10 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         if (key.Length > 0) key.CopyTo(dest.Slice(1 + lebSize, key.Length));
         _writer.Advance(trailerLen);
 
-        EmitEntryBookkeeping(ref Buffers, key, metadataPos, precomputedLcp);
+        // No precomputed LCP available on this path — EmitEntryBookkeeping will compute
+        // it from PrevKeyBuf. AddCore forwards its own MaybeFlushBeforeEntry-derived LCP
+        // through EmitEntryBookkeeping directly, without routing through this method.
+        EmitEntryBookkeeping(ref Buffers, key, metadataPos, precomputedLcp: -1);
     }
 
     /// <summary>
@@ -469,11 +461,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
     /// <summary>
     /// Per-entry list pushes + LCP update shared by the buffered <see cref="AddCore"/>
-    /// path and the streaming <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long,int)"/>
+    /// path and the streaming <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/>
     /// path. Records the entry's index pointer (MetadataStart in key-after-value
     /// mode, EntryStart in key-first mode), appends the key to the pending leaf set,
     /// and runs the LCP / PendingMaxSepLen / PrevKeyBuf bookkeeping in
-    /// <see cref="OnEntryAdded"/>.
+    /// <see cref="OnEntryAdded"/>. <paramref name="precomputedLcp"/> is the LCP
+    /// against <c>PrevKeyBuf</c> when the caller already has it (AddCore forwards the
+    /// value from <see cref="MaybeFlushBeforeEntry"/>); <c>-1</c> means OnEntryAdded
+    /// recomputes it.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EmitEntryBookkeeping(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, long entryPos, int precomputedLcp)
