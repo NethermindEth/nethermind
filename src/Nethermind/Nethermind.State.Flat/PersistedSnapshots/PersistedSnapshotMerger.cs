@@ -832,45 +832,53 @@ public static class PersistedSnapshotMerger
         // {storage-trie top/compact/fallback}.
         using HsstDenseByteIndexBuilder<TWriter> outerBuilder = new(ref writer);
 
-        // Shared sources buffer for the three state-trie PackedArray columns. Rented
-        // once and reused across columns — each column re-seeds the buffer at its own
-        // column tag and disposes the entries before the next re-seed.
+        // Shared sources buffer for every cursor-using column. Rented once and reused
+        // across all five columns — each column re-seeds the buffer at its own column
+        // tag (via WholeReadSessionMergeSource.FromView) and disposes the entries
+        // before the next re-seed. NWayMetadataMerge below stays on raw views: it
+        // reads metadata fields directly through readers, no cursor needed.
         int n = views.Length;
-        using ArrayPoolList<WholeReadSessionMergeSource> stateNodeSourcesList = new(n, n);
-        Span<WholeReadSessionMergeSource> stateNodeSources = stateNodeSourcesList.AsSpan();
+        using ArrayPoolList<WholeReadSessionMergeSource> columnSourcesList = new(n, n);
+        Span<WholeReadSessionMergeSource> columnSources = columnSourcesList.AsSpan();
 
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayMergeStorageTrieColumn<TWriter, TReader, TPin>(views, PersistedSnapshotTags.StorageTrieColumnTag, ref valueWriter, bloom);
+            for (int i = 0; i < n; i++)
+                columnSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.StorageTrieColumnTag);
+            try { NWayMergeStorageTrieColumn<TWriter, TReader, TPin>(columnSources, ref valueWriter, bloom); }
+            finally { for (int i = 0; i < n; i++) columnSources[i].Dispose(); }
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.StorageTrieColumnTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
             for (int i = 0; i < n; i++)
-                stateNodeSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.StateNodeFallbackTag);
-            try { NWayPackedArrayMerge<TWriter, TReader, TPin>(stateNodeSources, keySize: 33, ref valueWriter, bloom); }
-            finally { for (int i = 0; i < n; i++) stateNodeSources[i].Dispose(); }
+                columnSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.StateNodeFallbackTag);
+            try { NWayPackedArrayMerge<TWriter, TReader, TPin>(columnSources, keySize: 33, ref valueWriter, bloom); }
+            finally { for (int i = 0; i < n; i++) columnSources[i].Dispose(); }
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.StateNodeFallbackTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
             for (int i = 0; i < n; i++)
-                stateNodeSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.StateNodeTag);
-            try { NWayPackedArrayMerge<TWriter, TReader, TPin>(stateNodeSources, keySize: 8, ref valueWriter, bloom); }
-            finally { for (int i = 0; i < n; i++) stateNodeSources[i].Dispose(); }
+                columnSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.StateNodeTag);
+            try { NWayPackedArrayMerge<TWriter, TReader, TPin>(columnSources, keySize: 8, ref valueWriter, bloom); }
+            finally { for (int i = 0; i < n; i++) columnSources[i].Dispose(); }
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.StateNodeTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
             for (int i = 0; i < n; i++)
-                stateNodeSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.StateTopNodesTag);
-            try { NWayPackedArrayMerge<TWriter, TReader, TPin>(stateNodeSources, keySize: 4, ref valueWriter, bloom); }
-            finally { for (int i = 0; i < n; i++) stateNodeSources[i].Dispose(); }
+                columnSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.StateTopNodesTag);
+            try { NWayPackedArrayMerge<TWriter, TReader, TPin>(columnSources, keySize: 4, ref valueWriter, bloom); }
+            finally { for (int i = 0; i < n; i++) columnSources[i].Dispose(); }
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.StateTopNodesTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayMergePerAddressColumn<TWriter, TReader, TPin>(views, PersistedSnapshotTags.AccountColumnTag, ref valueWriter, bloom);
+            for (int i = 0; i < n; i++)
+                columnSources[i] = WholeReadSessionMergeSource.FromView(views[i], PersistedSnapshotTags.AccountColumnTag);
+            try { NWayMergePerAddressColumn<TWriter, TReader, TPin>(columnSources, ref valueWriter, bloom); }
+            finally { for (int i = 0; i < n; i++) columnSources[i].Dispose(); }
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.AccountColumnTag);
         }
         {
@@ -922,15 +930,13 @@ public static class PersistedSnapshotMerger
     /// and are merged separately by <see cref="NWayMergeStorageTrieColumn"/>.
     /// </summary>
     private static void NWayMergePerAddressColumn<TWriter, TReader, TPin>(
-        ReadOnlySpan<WholeReadSessionView> views, byte[] tag, ref TWriter writer, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        Span<WholeReadSessionMergeSource> sources, ref TWriter writer, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
-        int n = views.Length;
+        int n = sources.Length;
         // Cache each source's current 20-byte Address key (stride 32 with room).
         const int KeyStride = 32;
         const int AddrKeyLen = PersistedSnapshotTags.AddressKeyLength;
         using LoserTreeState state = new(n, KeyStride);
-        using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(n, n);
-        Span<WholeReadSessionMergeSource> sources = sourcesList.AsSpan();
 
         // Reusable work buffers for the per-address slot prefix/suffix HSST builders.
         // The container is a class so the value-merger can hold it as a regular field; the
@@ -939,22 +945,15 @@ public static class PersistedSnapshotMerger
         // amortising the rentals matters.
         using HsstBTreeBuilderBuffersContainer slotPrefixBuffers = new();
 
-        try
-        {
-            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor =
-                BuildMergeCursorFromViews(views, tag, sources, state, AddrKeyLen);
+        NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor =
+            new(sources, state, AddrKeyLen);
 
-            PerAddressColumnValueMerger<TWriter, TReader, TPin> valueMerger =
-                new(bloom, slotPrefixBuffers);
-            HsstBTreeMerger.NWayMerge<TWriter, TReader, TPin,
-                WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
-                PerAddressColumnValueMerger<TWriter, TReader, TPin>>(
-                ref writer, AddrKeyLen, ref cursor, valueMerger);
-        }
-        finally
-        {
-            for (int i = 0; i < n; i++) sources[i].Dispose();
-        }
+        PerAddressColumnValueMerger<TWriter, TReader, TPin> valueMerger =
+            new(bloom, slotPrefixBuffers);
+        HsstBTreeMerger.NWayMerge<TWriter, TReader, TPin,
+            WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
+            PerAddressColumnValueMerger<TWriter, TReader, TPin>>(
+            ref writer, AddrKeyLen, ref cursor, valueMerger);
     }
 
     /// <summary>
@@ -971,30 +970,20 @@ public static class PersistedSnapshotMerger
     /// the inner-PackedArray merge for its sub-tag.
     /// </summary>
     private static void NWayMergeStorageTrieColumn<TWriter, TReader, TPin>(
-        ReadOnlySpan<WholeReadSessionView> views, byte[] tag, ref TWriter writer, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        Span<WholeReadSessionMergeSource> sources, ref TWriter writer, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
-        int n = views.Length;
+        int n = sources.Length;
         const int KeyStride = 32;
         const int AddrKeyLen = PersistedSnapshotTags.AddressHashPrefixLength;
         using LoserTreeState state = new(n, KeyStride);
-        using ArrayPoolList<WholeReadSessionMergeSource> sourcesList = new(n, n);
-        Span<WholeReadSessionMergeSource> sources = sourcesList.AsSpan();
+        NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor =
+            new(sources, state, AddrKeyLen);
 
-        try
-        {
-            NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> cursor =
-                BuildMergeCursorFromViews(views, tag, sources, state, AddrKeyLen);
-
-            StorageTrieColumnValueMerger<TWriter, TReader, TPin> valueMerger = new(bloom);
-            HsstBTreeMerger.NWayMerge<TWriter, TReader, TPin,
-                WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
-                StorageTrieColumnValueMerger<TWriter, TReader, TPin>>(
-                ref writer, AddrKeyLen, ref cursor, valueMerger);
-        }
-        finally
-        {
-            for (int i = 0; i < n; i++) sources[i].Dispose();
-        }
+        StorageTrieColumnValueMerger<TWriter, TReader, TPin> valueMerger = new(bloom);
+        HsstBTreeMerger.NWayMerge<TWriter, TReader, TPin,
+            WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
+            StorageTrieColumnValueMerger<TWriter, TReader, TPin>>(
+            ref writer, AddrKeyLen, ref cursor, valueMerger);
     }
 
     /// <summary>
