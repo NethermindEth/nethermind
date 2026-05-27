@@ -94,4 +94,39 @@ public class LookupKNearestNeighbourTests
 
         Assert.That(result, Is.Not.Empty);
     }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_should_drain_cancelled_workers_before_returning(CancellationToken token)
+    {
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256> lookup, _, _) =
+            CreateLookup(2, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3, N1]);
+        TaskCompletionSource cancelledWorkerDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        _ = await lookup.Lookup(
+            IdentityNodeHashProvider.ToKademliaHash(Self),
+            1,
+            async (node, findToken) =>
+            {
+                if (node != Seed1)
+                {
+                    return [];
+                }
+
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, findToken);
+                    return [];
+                }
+                catch (OperationCanceledException)
+                {
+                    await Task.Delay(100, CancellationToken.None);
+                    cancelledWorkerDrained.SetResult();
+                    throw;
+                }
+            },
+            token);
+
+        Assert.That(cancelledWorkerDrained.Task.IsCompleted, Is.True);
+    }
 }

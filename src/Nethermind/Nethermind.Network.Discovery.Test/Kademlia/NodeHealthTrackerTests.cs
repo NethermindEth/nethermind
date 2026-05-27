@@ -93,6 +93,42 @@ public class NodeHealthTrackerTests
     }
 
     [Test]
+    [CancelAfter(10000)]
+    public async Task Dispose_ShouldCancelActiveRefreshWithoutRemovingNode(CancellationToken token)
+    {
+        TaskCompletionSource pingStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource pingCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IKademliaMessageSender<KademliaHash, string> sender = Substitute.For<IKademliaMessageSender<KademliaHash, string>>();
+        sender.Ping(Stale, Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            CancellationToken pingToken = call.Arg<CancellationToken>();
+            pingStarted.SetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, pingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                pingCancelled.SetResult();
+                throw;
+            }
+        });
+
+        (NodeHealthTracker<KademliaHash, string> tracker, RoutingTableStub routing, _) = CreateTracker(
+            toRefresh: Stale,
+            refreshPingTimeout: TimeSpan.FromSeconds(10),
+            sender: sender);
+
+        tracker.OnIncomingMessageFrom(Remote);
+        await pingStarted.Task.WaitAsync(token);
+
+        tracker.Dispose();
+
+        await pingCancelled.Task.WaitAsync(token);
+        Assert.That(routing.RemoveCalls, Does.Not.Contain(ToKademliaHash(ValueKeccak.Compute(Stale))));
+    }
+
+    [Test]
     public void OnRequestFailed_ShouldClearFailureCount_WhenNodeIsRemoved()
     {
         (NodeHealthTracker<KademliaHash, string> tracker, RoutingTableStub routing, _) = CreateTracker(failureThreshold: 1);

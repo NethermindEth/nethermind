@@ -120,6 +120,13 @@ public class LookupKNearestNeighbour<TKey, TNode>(
         await Task.WhenAny(worker);
         Volatile.Write(ref finished, true);
         await cts.CancelAsync();
+        try
+        {
+            await Task.WhenAll(worker);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
 
         return CompileResult();
 

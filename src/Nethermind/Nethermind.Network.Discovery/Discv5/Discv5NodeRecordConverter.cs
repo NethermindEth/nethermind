@@ -49,7 +49,7 @@ internal static class Discv5NodeRecordConverter
         }
 
         IPAddress? ip6 = enr.GetObj<IPAddress>(EnrContentKey.Ip6);
-        int? udp6 = enr.GetValue<int>(EnrContentKey.Udp6);
+        int? udp6 = enr.GetValue<int>(EnrContentKey.Udp6) ?? udp;
         return ip6 is not null && udp6 is not null ? (ip6, udp6) : (null, null);
     }
 }

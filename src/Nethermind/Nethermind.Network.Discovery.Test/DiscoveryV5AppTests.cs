@@ -112,13 +112,20 @@ public class DiscoveryV5AppTests
         return enr;
     }
 
-    private static NodeRecord CreateTestIpv6Enr(Nethermind.Crypto.PrivateKey privateKey, IPAddress ipAddress, int udpPort)
+    private static NodeRecord CreateTestIpv6Enr(Nethermind.Crypto.PrivateKey privateKey, IPAddress ipAddress, int udpPort, bool useUdp6 = true)
     {
         NodeRecord enr = new();
         enr.SetEntry(IdEntry.Instance);
         enr.SetEntry(new Ip6Entry(ipAddress));
         enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-        enr.SetEntry(new Udp6Entry(udpPort));
+        if (useUdp6)
+        {
+            enr.SetEntry(new Udp6Entry(udpPort));
+        }
+        else
+        {
+            enr.SetEntry(new UdpEntry(udpPort));
+        }
         enr.EnrSequence = 1;
         new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
 
@@ -249,6 +256,19 @@ public class DiscoveryV5AppTests
     public void Should_Accept_Ipv6_Enr()
     {
         NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001);
+
+        bool result = _discoveryV5App.TryGetNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.True);
+        Assert.That(node, Is.Not.Null);
+        Assert.That(node!.Host, Is.EqualTo("2001:4860:4860::8888"));
+        Assert.That(node.Port, Is.EqualTo(9001));
+    }
+
+    [Test]
+    public void Should_Accept_Ipv6_Enr_With_Default_Udp_Port()
+    {
+        NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001, useUdp6: false);
 
         bool result = _discoveryV5App.TryGetNodeFromEnr(enr, out Node? node);
 
