@@ -70,8 +70,9 @@ public static class SparseTrieSnapshotCommitter
     private static void PersistNode(byte[] fullRlp, TreePath path, SnapshotBundle bundle, Hash256? address)
     {
         Hash256 keccak = Keccak.Compute(fullRlp);
+        // TrieNode(NodeType, Hash256, CappedArray<byte>) defaults to isDirty=false, so the node
+        // is already sealed at construction. Calling Seal() again would throw "already sealed".
         TrieNode trieNode = new(NodeType.Unknown, keccak, new CappedArray<byte>(fullRlp));
-        trieNode.Seal();
 
         if (address is null)
             bundle.SetStateNode(path, trieNode);
