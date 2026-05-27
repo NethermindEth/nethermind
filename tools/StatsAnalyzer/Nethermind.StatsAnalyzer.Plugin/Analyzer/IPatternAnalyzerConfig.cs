@@ -2,7 +2,7 @@ using Nethermind.Config;
 using Nethermind.Evm;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
 
-namespace Nethermind.StatsAnalyzer.Plugin;
+namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 public interface IPatternAnalyzerConfig : IConfig
 {
