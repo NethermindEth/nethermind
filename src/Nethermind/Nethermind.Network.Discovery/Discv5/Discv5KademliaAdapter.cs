@@ -662,11 +662,12 @@ public class Discv5KademliaAdapter(
         }
     }
 
-    private sealed class NodesResponseHandler(Node receiver, int[] requestedDistances) : IResponseHandler
+    internal sealed class NodesResponseHandler(Node receiver, int[] requestedDistances) : IResponseHandler
     {
         private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly List<Node> _nodes = [];
         private readonly HashSet<Hash256> _seenNodeIds = [];
+        private readonly bool _allowNonRoutableRelays = NodeFilter.IsLoopbackOrPrivateOrLinkLocal(receiver.Address.Address);
         private int? _total;
         private int _received;
 
@@ -702,7 +703,7 @@ public class Discv5KademliaAdapter(
             for (int i = 0; i < nodes.Records.Length && _nodes.Count < MaxNodesResponseRecords; i++)
             {
                 NodeRecord record = nodes.Records[i];
-                if (!Discv5NodeRecordConverter.TryGetNodeFromEnr(record, allowNonRoutable: true, out Node? node) ||
+                if (!Discv5NodeRecordConverter.TryGetNodeFromEnr(record, _allowNonRoutableRelays, out Node? node) ||
                     !_seenNodeIds.Add(node.Id.Hash) ||
                     !MatchesRequestedDistance(node, requestedDistances))
                 {

@@ -9,6 +9,7 @@ using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -79,6 +80,30 @@ public class Discv5KademliaAdapterTests
         Assert.That(adapter.TryAcceptChallenge(endpoint), Is.False);
     }
 
+    [Test]
+    public void NodesResponseHandler_ShouldRejectNonRoutableRecordFromPublicReceiver()
+    {
+        Node receiver = new(TestItem.PublicKeyA, "8.8.8.8", 30303);
+        NodeRecord loopbackRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
+        Discv5KademliaAdapter.NodesResponseHandler handler = CreateNodesResponseHandler(receiver, loopbackRecord);
+
+        handler.Handle(new Discv5Nodes([1], 1, [loopbackRecord]));
+
+        Assert.That(handler.GetNodes(), Is.Empty);
+    }
+
+    [Test]
+    public void NodesResponseHandler_ShouldAcceptNonRoutableRecordFromNonRoutableReceiver()
+    {
+        Node receiver = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303);
+        NodeRecord loopbackRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
+        Discv5KademliaAdapter.NodesResponseHandler handler = CreateNodesResponseHandler(receiver, loopbackRecord);
+
+        handler.Handle(new Discv5Nodes([1], 1, [loopbackRecord]));
+
+        Assert.That(handler.GetNodes(), Has.Length.EqualTo(1));
+    }
+
     private Discv5KademliaAdapter CreateAdapter() => new(
         new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
         null!,
@@ -90,4 +115,25 @@ public class Discv5KademliaAdapterTests
 
     private static Node CreateNode(PublicKey publicKey, int hostSuffix) =>
         new(publicKey, $"192.168.1.{hostSuffix}", 30303);
+
+    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress)
+    {
+        NodeRecord enr = new();
+        enr.SetEntry(IdEntry.Instance);
+        enr.SetEntry(new IpEntry(ipAddress));
+        enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        enr.SetEntry(new UdpEntry(30303));
+        enr.EnrSequence = 1;
+        new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
+        return enr;
+    }
+
+    private static Discv5KademliaAdapter.NodesResponseHandler CreateNodesResponseHandler(Node receiver, NodeRecord record)
+    {
+        PublicKey nodeId = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)!.Decompress();
+        int distance = Hash256XorUtils.CalculateLogDistance(
+            KademliaHash.FromBytes(receiver.Id.Hash.Bytes),
+            KademliaHash.FromBytes(nodeId.Hash.Bytes));
+        return new Discv5KademliaAdapter.NodesResponseHandler(receiver, [distance]);
+    }
 }
