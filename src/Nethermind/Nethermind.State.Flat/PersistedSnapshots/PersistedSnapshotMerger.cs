@@ -51,6 +51,66 @@ public static class PersistedSnapshotMerger
             => new(newEnumerator, view);
     }
 
+    /// <summary>
+    /// Constructs a fresh <see cref="HsstEnumerator"/> for <see cref="MapCursorSource{TFactory}"/>.
+    /// Stateless struct implementations dispatch over the two HSST layout entry points
+    /// (tail-byte <see cref="IndexType"/> vs. front-byte two-byte-slot).
+    /// </summary>
+    private interface IHsstEnumeratorFactory
+    {
+        HsstEnumerator Create(scoped in WholeReadSessionReader reader, Bound bound);
+    }
+
+    /// <summary>Tail-byte dispatch: <c>new HsstEnumerator(in reader, bound)</c> reads the
+    /// trailing <see cref="IndexType"/> byte to pick PackedArray / BTree / BTreeKeyFirst.</summary>
+    private readonly struct TailDispatchEnumeratorFactory : IHsstEnumeratorFactory
+    {
+        public HsstEnumerator Create(scoped in WholeReadSessionReader reader, Bound bound)
+            => new(in reader, bound);
+    }
+
+    /// <summary>Front-byte dispatch for the keys-first two-byte-slot variants, whose
+    /// <see cref="IndexType"/> byte sits at byte 0 of the scope rather than the tail.
+    /// Forwards to <see cref="HsstEnumerator.CreateTwoByteSlot"/>.</summary>
+    private readonly struct TwoByteSlotEnumeratorFactory : IHsstEnumeratorFactory
+    {
+        public HsstEnumerator Create(scoped in WholeReadSessionReader reader, Bound bound)
+            => HsstEnumerator.CreateTwoByteSlot(in reader, bound);
+    }
+
+    /// <summary>
+    /// Re-seeds <paramref name="indices"/>.Length cursor sources by cloning entries of
+    /// <paramref name="outerSources"/> (selected via <paramref name="indices"/>) at the
+    /// matching <paramref name="innerBounds"/>, writing the results into
+    /// <paramref name="result"/>. Each clone shares the original source's
+    /// <c>WholeReadSessionView</c> (so <c>CreateReader</c> stays cheap) and gets a fresh
+    /// <see cref="HsstEnumerator"/> built by <typeparamref name="TFactory"/> over the
+    /// per-source inner bound. Used by every nested merge that descends from an outer
+    /// column into a sub-tag scope.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="indices"/>, <paramref name="innerBounds"/>, and
+    /// <paramref name="result"/> must all have the same length. Disposal of
+    /// <paramref name="result"/>'s entries is the caller's responsibility — one
+    /// <c>Dispose()</c> per entry once the inner merge finishes; the underlying view
+    /// stays open for further outer iteration.
+    /// </remarks>
+    private static void MapCursorSource<TFactory>(
+        ReadOnlySpan<WholeReadSessionMergeSource> outerSources,
+        ReadOnlySpan<int> indices,
+        ReadOnlySpan<Bound> innerBounds,
+        Span<WholeReadSessionMergeSource> result,
+        TFactory factory = default)
+        where TFactory : struct, IHsstEnumeratorFactory
+    {
+        for (int j = 0; j < indices.Length; j++)
+        {
+            WholeReadSessionMergeSource outer = outerSources[indices[j]];
+            WholeReadSessionReader reader = outer.CreateReader();
+            result[j] = outer.WithEnumerator(factory.Create(in reader, innerBounds[j]));
+        }
+    }
+
     /// <summary>Seed every cursor slot in <paramref name="sources"/> at the column-tag's
     /// bound for the matching <paramref name="views"/> entry. Each source opens a reader,
     /// seeks the column tag in the root HSST, and constructs an enumerator over that bound
