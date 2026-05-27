@@ -38,7 +38,7 @@ public partial struct ForkConfig
 
         return new()
         {
-            Fork = (ulong)forkIndex + 1,
+            Fork = (ulong)forkIndex,
             Activation = SszForkActivation.From(forkActivation),
             BlobSchedule =
             [

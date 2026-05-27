@@ -38,9 +38,8 @@ internal static class InputGenerator
                 Witness = ExecutionWitness.From(witness),
                 ChainConfig = new()
                 {
-                    ChainId = chainId,
-                    ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId))
-                },
+                    ChainId = chainId
+                }
             };
         }
 

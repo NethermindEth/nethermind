@@ -11,8 +11,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stateless.Execution.IO;
+using Nethermind.Trie;
 
 namespace Nethermind.Stateless.Execution;
 
@@ -21,9 +22,14 @@ public static class StatelessExecutor
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
         StatelessPayload payload = InputDecoder.Decode(data);
-        ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig.ChainId);
-        IReleaseSpec spec = specProvider.GetSpec(payload.ChainConfig.ActiveFork.Activation.ToForkActivation());
+        ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig);
+        IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
         EthereumEcdsa ecdsa = new(payload.ChainConfig.ChainId);
+
+#if !ZK_EVM
+        if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
+            KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
+#endif
 
         // Recover sender addresses for transactions,
         // as RLP-deserialized blocks don't have them
@@ -90,11 +96,22 @@ public static class StatelessExecutor
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
-        (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
-            suggestedBlock,
-            ProcessingOptions.ReadOnlyChain,
-            NullBlockTracer.Instance,
-            specProvider.GetSpec(suggestedBlock.Header));
+        Block processedBlock;
+        TxReceipt[] receipts;
+
+        try
+        {
+            (processedBlock, receipts) = blockProcessor.ProcessOne(
+                suggestedBlock,
+                ProcessingOptions.ReadOnlyChain,
+                NullBlockTracer.Instance,
+                specProvider.GetSpec(suggestedBlock.Header));
+        }
+        catch (Exception ex) when (ex is InvalidBlockException or MissingTrieNodeException)
+        {
+            Debug.Fail(ex.Message);
+            return false;
+        }
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
         {
@@ -105,11 +122,19 @@ public static class StatelessExecutor
         return true;
     }
 
-    private static ISpecProvider GetSpecProvider(ulong chainId) => chainId switch
+    private static ISpecProvider GetSpecProvider(ChainConfig chainConfig)
     {
-        BlockchainIds.Hoodi => HoodiSpecProvider.Instance,
-        BlockchainIds.Mainnet => MainnetSpecProvider.Instance,
-        BlockchainIds.Sepolia => SepoliaSpecProvider.Instance,
-        _ => throw new ArgumentException($"Unsupported chain id: {chainId}", nameof(chainId))
-    };
+        if (!ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider))
+            throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
+
+        // If the active fork is empty, use the base provider directly
+        if (chainConfig.ActiveFork.Fork == 0 &&
+            chainConfig.ActiveFork.Activation.BlockNumber.Length == 0 &&
+            chainConfig.ActiveFork.Activation.Timestamp.Length == 0)
+        {
+            return baseProvider;
+        }
+
+        return StatelessSpecProvider.Create(baseProvider, chainConfig.ActiveFork);
+    }
 }
