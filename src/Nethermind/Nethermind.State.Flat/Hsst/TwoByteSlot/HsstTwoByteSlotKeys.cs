@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat.Hsst.TwoByteSlot;
 /// <see cref="HsstTwoByteSlotValueLargeBuilder{TWriter}"/>): keys are stored in little-
 /// endian byte order so a native <c>u16</c> load on a stored key recovers the
 /// big-endian (logical) numeric value, which lets SIMD scans compare numerically
-/// (see <see cref="BSearchIndex.UniformKeySearch.LowerBound2LE"/>).
+/// (see <see cref="UniformKeySearch.LowerBound2LE"/>).
 /// </summary>
 internal static class HsstTwoByteSlotKeys
 {

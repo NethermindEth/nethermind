@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
-namespace Nethermind.State.Flat.Hsst.BSearchIndex;
+namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
 /// Unified uniform-width key search utility. SIMD specialisations exist only for the
