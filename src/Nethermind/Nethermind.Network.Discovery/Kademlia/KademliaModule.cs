@@ -3,7 +3,6 @@
 
 using Autofac;
 using Nethermind.Core;
-using Nethermind.Network.Discovery.Discv4;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 

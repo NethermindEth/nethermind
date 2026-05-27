@@ -8,10 +8,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
 using NonBlocking;
 
-namespace Nethermind.Network.Discovery.Discv4;
+namespace Nethermind.Network.Discovery.Kademlia;
 
 /// <summary>
 /// Special lookup made specially for node discovery as the standard lookup is too slow or unnecessarily parallelized.
