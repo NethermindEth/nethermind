@@ -144,6 +144,11 @@ public class LookupKNearestNeighbour<TKey, TNode>(
                 return (node, ret);
             }
             catch (OperationCanceledException)
+            when (token.IsCancellationRequested)
+            {
+                return (node, null);
+            }
+            catch (OperationCanceledException)
             {
                 nodeHealthTracker.OnRequestFailed(node);
                 return (node, null);

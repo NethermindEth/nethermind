@@ -68,6 +68,26 @@ public class LookupKNearestNeighbourTests
         cts.CancelAfter(100);
 
         _ = await task;
+        health.DidNotReceive().OnRequestFailed(Seed1);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_should_record_peer_failure_on_find_neighbour_timeout(CancellationToken token)
+    {
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
+            CreateLookup(1, TimeSpan.FromMilliseconds(50), [Seed1]);
+
+        _ = await lookup.Lookup(
+            IdentityNodeHashProvider.ToKademliaHash(Seed1),
+            8,
+            async (_, t) =>
+            {
+                await Task.Delay(Timeout.Infinite, t);
+                return null;
+            },
+            token);
+
         health.Received().OnRequestFailed(Seed1);
     }
 
