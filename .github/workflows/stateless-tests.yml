@@ -48,19 +48,19 @@ jobs:
       matrix:
         include:
           - input: 150026.ssz
-            hash: 35b017badd31a71a27b174ecc5088c513324ff66f94b591c5d069325228f6a4e
+            hash: c32830af208c1f05fa26c560d3ab51cf3dfd74769619937ec2fdf4f4c02ccaca
           - input: 24721542.ssz
-            hash: 10df0db9fc2f00e2475e7694d9b888f8b91671fc2701ae550d33e8a9e878cdb3
+            hash: 81ae6aed73eb9ba5fd2fbd584b43a14a6a009d2f8b4bea2508c3545f7ae39c8f
           - input: 24723632.ssz
-            hash: c598c1a7938287da8c811e763b7576050c92af190d9b8d2662fbc39d0a694572
+            hash: c9ce44e17519539872b85bf6e085fc8388029b9cc632cbb52765e4fe764d4aa6
           - input: 24723668.ssz
-            hash: f6aaf72032e8c9703aa820cb006d215c5adfc8749094f26c1200be2a5c08b615
+            hash: c1ccbb893271092f8a9f599743e8a119f16e191342d493b6c184c6da3d8822a0
           - input: 24772857.ssz
-            hash: 6f9d6224a33d023ca982b3faf9118e46d07a8cdbe513d2efa5a4408cb2734915
+            hash: ad971da9787b53a91652814b6e4db02178ba56c61827dc0af1ec1d8b4f036a21
           - input: 24777027.ssz
-            hash: a159d8cfe2d8cd12a03e725ab607373b92e7fa0e005f51d2bf8a2081b0a50015
+            hash: e3486cc868f2e61da5c3658d196aaac74d6b5a93bd719efbe3d229814adb53f4
           - input: 24777988.ssz
-            hash: 18c75b1a179bd1aaa09c02011b4c8cd7ab6bef55a56ffb797ca3a0360f2287e7
+            hash: e928c63fdf95bbae3485c1e3a71313e87c43ff69b411c08be1302a90b06f2a54
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
