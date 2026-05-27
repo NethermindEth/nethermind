@@ -774,19 +774,19 @@ public class TransactionProcessorTests(bool eip155Enabled)
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        tx.To.Should().Be(recipient);
-        tx.AuthorizationList.Should().BeNull();
-        spec.IsPrecompile(recipient).Should().BeFalse();
+        Assert.That(tx.To, Is.EqualTo(recipient));
+        Assert.That(tx.AuthorizationList, Is.Null);
+        Assert.That(spec.IsPrecompile(recipient), Is.False);
         CodeInfo codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: true, spec, out Address? delegationAddress);
-        ReferenceEquals(codeInfo, CodeInfo.Empty).Should().BeTrue();
-        codeInfo.IsEmpty.Should().BeTrue();
-        delegationAddress.Should().BeNull();
+        Assert.That(ReferenceEquals(codeInfo, CodeInfo.Empty), Is.True);
+        Assert.That(codeInfo.IsEmpty, Is.True);
+        Assert.That(delegationAddress, Is.Null);
 
         TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
 
-        result.TransactionExecuted.Should().BeTrue();
-        virtualMachine.ExecuteTransactionCalls.Should().Be(0);
-        _stateProvider.GetBalance(recipient).Should().Be(1.Wei);
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+        Assert.That(_stateProvider.GetBalance(recipient), Is.EqualTo((UInt256)1.Wei));
     }
 
     [TestCaseSource(nameof(SimpleTransferFastPathCases))]
@@ -823,12 +823,12 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
 
-        result.TransactionExecuted.Should().BeTrue();
-        virtualMachine.ExecuteTransactionCalls.Should().Be(testCase.ExpectedVmCalls);
-        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(1);
-        tx.SpentGas.Should().Be(testCase.ExpectedSpentGas);
-        _stateProvider.GetBalance(TestItem.AddressA).Should().Be(senderBalanceBefore - testCase.ExpectedSenderDebit);
-        _stateProvider.GetBalance(recipient).Should().Be(recipientBalanceBefore + testCase.Value);
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(testCase.ExpectedVmCalls));
+        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)1));
+        Assert.That(tx.SpentGas, Is.EqualTo(testCase.ExpectedSpentGas));
+        Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore - testCase.ExpectedSenderDebit));
+        Assert.That(_stateProvider.GetBalance(recipient), Is.EqualTo(recipientBalanceBefore + testCase.Value));
     }
 
     [TestCase(false, 1ul, true, true)]
@@ -841,7 +841,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
         bool isTracingLogs,
         bool expectTransferLog)
     {
-        Address recipient = senderIsRecipient ? TestItem.AddressA : Address.FromNumber(1300);
+        Address recipient = senderIsRecipient ? TestItem.AddressA : Address.FromNumber((UInt256)1300);
         IReleaseSpec spec = Amsterdam.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
         _stateProvider.Commit(spec);
@@ -869,16 +869,16 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
 
-        result.TransactionExecuted.Should().BeTrue();
-        virtualMachine.ExecuteTransactionCalls.Should().Be(0);
-        tracer.ReceiptLogs.Should().HaveCount(expectTransferLog ? 1 : 0);
-        tracer.ReportLogCalls.Should().Be(expectTransferLog && isTracingLogs ? 1 : 0);
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+        Assert.That(tracer.ReceiptLogs, Has.Length.EqualTo(expectTransferLog ? 1 : 0));
+        Assert.That(tracer.ReportLogCalls, Is.EqualTo(expectTransferLog && isTracingLogs ? 1 : 0));
         if (expectTransferLog)
         {
-            tracer.ReceiptLogs[0].Should().BeEquivalentTo(ExpectedTransferLog(TestItem.AddressA, recipient, value));
+            AssertLog(tracer.ReceiptLogs[0], ExpectedTransferLog(TestItem.AddressA, recipient, value));
             if (isTracingLogs)
             {
-                tracer.ReportedLogs[0].Should().BeEquivalentTo(ExpectedTransferLog(TestItem.AddressA, recipient, value));
+                AssertLog(tracer.ReportedLogs[0], ExpectedTransferLog(TestItem.AddressA, recipient, value));
             }
         }
     }
@@ -964,6 +964,13 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
     private static LogEntry ExpectedTransferLog(Address sender, Address recipient, UInt256 value) =>
         new(TransferLog.Sender, value.ToBigEndian(), [TransferLog.TransferSignature, sender.ToHash().ToHash256(), recipient.ToHash().ToHash256()]);
+
+    private static void AssertLog(LogEntry actual, LogEntry expected)
+    {
+        Assert.That(actual.Address, Is.EqualTo(expected.Address));
+        Assert.That(actual.Data, Is.EqualTo(expected.Data));
+        Assert.That(actual.Topics, Is.EqualTo(expected.Topics));
+    }
 
     private sealed class SimpleTransferLogTracer(bool isTracingLogs) : TxTracer
     {
