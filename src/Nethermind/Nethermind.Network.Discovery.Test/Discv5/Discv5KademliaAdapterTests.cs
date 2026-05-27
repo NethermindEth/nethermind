@@ -116,6 +116,68 @@ public class Discv5KademliaAdapterTests
         Assert.That(handler.GetNodes(), Is.Empty);
     }
 
+    [Test]
+    public void IsAcceptableNodeRecord_ShouldRejectSpecialUseRecord()
+    {
+        NodeRecord documentationRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("192.0.2.1"));
+
+        Assert.That(
+            Discv5KademliaAdapter.IsAcceptableNodeRecord(
+                documentationRecord,
+                TestItem.PrivateKeyB.PublicKey.Hash,
+                allowNonRoutable: true),
+            Is.False);
+    }
+
+    [Test]
+    public void IsAcceptableNodeRecord_ShouldRejectNodeIdMismatch()
+    {
+        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.8.8"));
+
+        Assert.That(
+            Discv5KademliaAdapter.IsAcceptableNodeRecord(
+                record,
+                TestItem.PrivateKeyA.PublicKey.Hash,
+                allowNonRoutable: false),
+            Is.False);
+    }
+
+    [Test]
+    public void IsAcceptableNodeRecord_ShouldAllowNonRoutableWhenRequested()
+    {
+        NodeRecord loopbackRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
+
+        Assert.That(
+            Discv5KademliaAdapter.IsAcceptableNodeRecord(
+                loopbackRecord,
+                TestItem.PrivateKeyB.PublicKey.Hash,
+                allowNonRoutable: true),
+            Is.True);
+    }
+
+    [Test]
+    public void BoundedMap_ShouldRemoveInsertionOrderEntriesOnRemove()
+    {
+        Discv5KademliaAdapter.BoundedMap<int, string> map = new(2);
+        map.Set(1, "a");
+        map.Set(2, "b");
+
+        Assert.That(map.TryRemove(1, out string? removed), Is.True);
+        Assert.That(removed, Is.EqualTo("a"));
+
+        map.Set(3, "c");
+        map.Set(4, "d");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(map.Snapshot(), Has.Length.EqualTo(2));
+            Assert.That(map.TryGetValue(1, out _), Is.False);
+            Assert.That(map.TryGetValue(2, out _), Is.False);
+            Assert.That(map.TryGetValue(3, out _), Is.True);
+            Assert.That(map.TryGetValue(4, out _), Is.True);
+        }
+    }
+
     private Discv5KademliaAdapter CreateAdapter() => new(
         new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
         null!,

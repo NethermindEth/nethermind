@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
@@ -45,17 +44,12 @@ public class Discv5KademliaAdapter(
     private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
     private readonly TimeSpan _findNodeTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
     private readonly ILogger _logger = logManager.GetClassLogger<Discv5KademliaAdapter>();
-    private readonly ConcurrentDictionary<SessionKey, Discv5Session> _sessions = new();
-    private readonly ConcurrentQueue<SessionKey> _sessionKeys = new();
-    private readonly ConcurrentDictionary<ChallengeKey, SentChallenge> _sentChallenges = new();
-    private readonly ConcurrentQueue<ChallengeKey> _sentChallengeKeys = new();
+    private readonly BoundedMap<SessionKey, Discv5Session> _sessions = new(MaxSessions);
+    private readonly BoundedMap<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges);
     private long _lastSentChallengeTrimMilliseconds;
-    private readonly ConcurrentDictionary<PendingNonceKey, PendingRequest> _pendingByNonce = new();
-    private readonly ConcurrentQueue<PendingNonceKey> _pendingNonceKeys = new();
-    private readonly ConcurrentDictionary<ResponseKey, IResponseHandler> _responseHandlers = new();
-    private readonly ConcurrentQueue<ResponseKey> _responseHandlerKeys = new();
-    private readonly ConcurrentDictionary<Hash256, NodeRecord> _knownRecords = new();
-    private readonly ConcurrentQueue<Hash256> _knownRecordKeys = new();
+    private readonly BoundedMap<PendingNonceKey, PendingRequest> _pendingByNonce = new(MaxPendingRequests);
+    private readonly BoundedMap<ResponseKey, IResponseHandler> _responseHandlers = new(MaxResponseHandlers);
+    private readonly BoundedMap<Hash256, NodeRecord> _knownRecords = new(MaxKnownRecords);
     private readonly NodeFilter[] _challengeRateLimiters = CreateChallengeRateLimiters();
 
     /// <inheritdoc/>
@@ -154,7 +148,7 @@ public class Discv5KademliaAdapter(
         CancellationToken token)
     {
         ResponseKey responseKey = new(receiver.Id.Hash, RequestIdToString(request.RequestId), responseType);
-        SetBounded(_responseHandlers, _responseHandlerKeys, responseKey, responseHandler, MaxResponseHandlers);
+        _responseHandlers.Set(responseKey, responseHandler);
 
         using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeoutCts.CancelAfter(timeout);
@@ -193,7 +187,7 @@ public class Discv5KademliaAdapter(
         byte[] encryptionKey = cryptoRandom.GenerateRandomBytes(16);
         PendingRequest pendingRequest = new(receiver, message);
         PendingNonceKey pendingNonceKey = new(receiver.Address, NonceToString(nonce));
-        SetBounded(_pendingByNonce, _pendingNonceKeys, pendingNonceKey, pendingRequest, MaxPendingRequests);
+        _pendingByNonce.Set(pendingNonceKey, pendingRequest);
 
         byte[] initialPacket = packetCodec.EncodeOrdinary(receiver.Id, encryptionKey, message, nonce);
         try
@@ -307,6 +301,11 @@ public class Discv5KademliaAdapter(
 
         if (nodeRecord is not null)
         {
+            if (!IsAcceptableNodeRecord(nodeRecord, nodeId, NodeFilter.IsLoopbackOrPrivateOrLinkLocal(endpoint.Address)))
+            {
+                return;
+            }
+
             SetKnownRecord(nodeId, nodeRecord);
         }
 
@@ -434,7 +433,9 @@ public class Discv5KademliaAdapter(
                     continue;
                 }
 
-                NodeRecord? record = GetFindNodeRecord(node);
+                NodeRecord? record = GetFindNodeRecord(
+                    node,
+                    allowNonRoutableRelays: NodeFilter.IsLoopbackOrPrivateOrLinkLocal(requester.Address.Address));
                 if (record is not null)
                 {
                     result.Add(record);
@@ -445,16 +446,17 @@ public class Discv5KademliaAdapter(
         return [.. result];
     }
 
-    private NodeRecord? GetFindNodeRecord(Node node)
+    private NodeRecord? GetFindNodeRecord(Node node, bool allowNonRoutableRelays)
     {
         if (TryGetKnownRecord(node.Id.Hash, out NodeRecord? knownRecord))
         {
-            return knownRecord;
+            return IsAcceptableNodeRecord(knownRecord, node.Id.Hash, allowNonRoutableRelays) ? knownRecord : null;
         }
 
         try
         {
-            return NodeRecord.FromEnrString(node.Enr);
+            NodeRecord record = NodeRecord.FromEnrString(node.Enr);
+            return IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutableRelays) ? record : null;
         }
         catch (Exception e)
         {
@@ -472,7 +474,11 @@ public class Discv5KademliaAdapter(
 
         try
         {
-            SetKnownRecord(node.Id.Hash, NodeRecord.FromEnrString(node.Enr));
+            NodeRecord record = NodeRecord.FromEnrString(node.Enr);
+            if (IsAcceptableNodeRecord(record, node.Id.Hash, NodeFilter.IsLoopbackOrPrivateOrLinkLocal(node.Address.Address)))
+            {
+                SetKnownRecord(node.Id.Hash, record);
+            }
         }
         catch (Exception e)
         {
@@ -513,18 +519,22 @@ public class Discv5KademliaAdapter(
     private bool TryGetSession(SessionKey sessionKey, [NotNullWhen(true)] out Discv5Session? session) => _sessions.TryGetValue(sessionKey, out session);
 
     private void SetSession(SessionKey sessionKey, Discv5Session session)
-        => SetBounded(_sessions, _sessionKeys, sessionKey, session, MaxSessions);
+        => _sessions.Set(sessionKey, session);
 
     private bool TryGetKnownRecord(Hash256 nodeId, [NotNullWhen(true)] out NodeRecord? record) => _knownRecords.TryGetValue(nodeId, out record);
 
     private void SetKnownRecord(Hash256 nodeId, NodeRecord record)
-        => SetBounded(_knownRecords, _knownRecordKeys, nodeId, record, MaxKnownRecords);
+        => _knownRecords.Set(nodeId, record);
+
+    internal static bool IsAcceptableNodeRecord(NodeRecord record, Hash256 expectedNodeId, bool allowNonRoutable)
+        => Discv5NodeRecordConverter.TryGetNodeFromEnr(record, allowNonRoutable, out Node? node) &&
+            node.Id.Hash.Equals(expectedNodeId);
 
     private void SetSentChallenge(ChallengeKey challengeKey, Discv5Challenge challenge)
     {
         long now = Environment.TickCount64;
         TryTrimExpiredChallenges(now);
-        SetBounded(_sentChallenges, _sentChallengeKeys, challengeKey, new SentChallenge(challenge, now), MaxSentChallenges);
+        _sentChallenges.Set(challengeKey, new SentChallenge(challenge, now));
     }
 
     private void TryTrimExpiredChallenges(long now)
@@ -541,7 +551,7 @@ public class Discv5KademliaAdapter(
 
     private void TrimExpiredChallenges(long now)
     {
-        foreach (KeyValuePair<ChallengeKey, SentChallenge> kv in _sentChallenges)
+        foreach (KeyValuePair<ChallengeKey, SentChallenge> kv in _sentChallenges.Snapshot())
         {
             if (IsExpired(kv.Value, now))
             {
@@ -577,50 +587,84 @@ public class Discv5KademliaAdapter(
         return filters;
     }
 
-    private static void SetBounded<TKey, TValue>(
-        ConcurrentDictionary<TKey, TValue> dictionary,
-        ConcurrentQueue<TKey> insertionOrder,
-        TKey key,
-        TValue value,
-        int maxCount)
+    internal sealed class BoundedMap<TKey, TValue>(int maxCount)
         where TKey : notnull
+        where TValue : notnull
     {
-        if (dictionary.TryAdd(key, value))
-        {
-            insertionOrder.Enqueue(key);
-        }
-        else
-        {
-            dictionary[key] = value;
-        }
+        private readonly object _lock = new();
+        private readonly Dictionary<TKey, TValue> _items = [];
+        private readonly LinkedList<TKey> _insertionOrder = [];
+        private readonly Dictionary<TKey, LinkedListNode<TKey>> _insertionNodes = [];
 
-        TrimBounded(dictionary, insertionOrder, maxCount);
-    }
-
-    private static void TrimBounded<TKey, TValue>(
-        ConcurrentDictionary<TKey, TValue> dictionary,
-        ConcurrentQueue<TKey> insertionOrder,
-        int maxCount)
-        where TKey : notnull
-    {
-        while (dictionary.Count > maxCount && insertionOrder.TryDequeue(out TKey? key))
+        public bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
         {
-            dictionary.TryRemove(key, out _);
-        }
-
-        if (dictionary.Count <= maxCount)
-        {
-            return;
-        }
-
-        foreach (KeyValuePair<TKey, TValue> kv in dictionary)
-        {
-            if (dictionary.Count <= maxCount)
+            lock (_lock)
             {
-                return;
-            }
+                if (_items.TryGetValue(key, out TValue? found))
+                {
+                    value = found;
+                    return true;
+                }
 
-            dictionary.TryRemove(kv.Key, out _);
+                value = default;
+                return false;
+            }
+        }
+
+        public void Set(TKey key, TValue value)
+        {
+            lock (_lock)
+            {
+                if (_items.ContainsKey(key))
+                {
+                    _items[key] = value;
+                    return;
+                }
+
+                _items.Add(key, value);
+                _insertionNodes.Add(key, _insertionOrder.AddLast(key));
+                Trim();
+            }
+        }
+
+        public bool TryRemove(TKey key, [NotNullWhen(true)] out TValue? value)
+        {
+            lock (_lock)
+            {
+                if (!_items.TryGetValue(key, out TValue? found))
+                {
+                    value = default;
+                    return false;
+                }
+
+                _items.Remove(key);
+                if (_insertionNodes.Remove(key, out LinkedListNode<TKey>? node))
+                {
+                    _insertionOrder.Remove(node);
+                }
+
+                value = found;
+                return true;
+            }
+        }
+
+        public KeyValuePair<TKey, TValue>[] Snapshot()
+        {
+            lock (_lock)
+            {
+                return [.. _items];
+            }
+        }
+
+        private void Trim()
+        {
+            while (_items.Count > maxCount)
+            {
+                LinkedListNode<TKey> oldest = _insertionOrder.First!;
+                _insertionOrder.RemoveFirst();
+                _insertionNodes.Remove(oldest.Value);
+                _items.Remove(oldest.Value);
+            }
         }
     }
 
