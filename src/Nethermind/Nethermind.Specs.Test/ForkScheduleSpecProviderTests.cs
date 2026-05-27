@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
@@ -27,17 +26,17 @@ public class ForkScheduleSpecProviderTests
         {
             if (fork.Block is long block)
             {
-                previousTimestamp.Should().BeNull(
+                Assert.That(previousTimestamp, Is.Null,
                     "block-keyed forks must come before any timestamp-keyed fork");
-                block.Should().BeGreaterThanOrEqualTo(previousBlock,
+                Assert.That(block, Is.GreaterThanOrEqualTo(previousBlock),
                     "block-keyed forks must be declared in ascending block order");
                 previousBlock = block;
             }
             else
             {
-                fork.Timestamp.Should().NotBeNull();
+                Assert.That(fork.Timestamp, Is.Not.Null);
                 if (previousTimestamp is ulong previous)
-                    fork.Timestamp.Should().BeGreaterThanOrEqualTo(previous,
+                    Assert.That(fork.Timestamp, Is.GreaterThanOrEqualTo(previous),
                         "timestamp-keyed forks must be declared in ascending timestamp order");
                 previousTimestamp = fork.Timestamp;
             }
@@ -116,5 +115,5 @@ public class ForkScheduleSpecProviderTests
 
     [TestCaseSource(nameof(ExpectedTransitionActivations))]
     public void Transition_activations_match_expected(ForkScheduleSpecProvider provider, ForkActivation[] expected) =>
-        provider.TransitionActivations.Should().Equal(expected);
+        Assert.That(provider.TransitionActivations, Is.EqualTo(expected));
 }

@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -37,7 +36,7 @@ public class AuRaContractGasLimitOverrideTests
     {
         using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
         long gasLimit = chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
-        gasLimit.Should().Be(CorrectHeadGasLimit);
+        Assert.That(gasLimit, Is.EqualTo(CorrectHeadGasLimit));
     }
 
     [Test]
@@ -46,7 +45,7 @@ public class AuRaContractGasLimitOverrideTests
         using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
         chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
         long? gasLimit = chain.GasLimitOverrideCache.GasLimitCache.Get(chain.BlockTree.Head.Hash);
-        gasLimit.Should().Be(CorrectHeadGasLimit);
+        Assert.That(gasLimit, Is.EqualTo(CorrectHeadGasLimit));
     }
 
     [Test]
@@ -54,7 +53,7 @@ public class AuRaContractGasLimitOverrideTests
     {
         using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
         bool isValid = ((AuRaContractGasLimitOverride)chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, CorrectHeadGasLimit, out _);
-        isValid.Should().BeTrue();
+        Assert.That(isValid, Is.True);
     }
 
     [Test]
@@ -62,8 +61,8 @@ public class AuRaContractGasLimitOverrideTests
     {
         using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
         bool isValid = ((AuRaContractGasLimitOverride)chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, 100000001, out long? expectedGasLimit);
-        isValid.Should().BeFalse();
-        expectedGasLimit.Should().Be(CorrectHeadGasLimit);
+        Assert.That(isValid, Is.False);
+        Assert.That(expectedGasLimit, Is.EqualTo(CorrectHeadGasLimit));
     }
 
     [Test]
@@ -71,7 +70,7 @@ public class AuRaContractGasLimitOverrideTests
     {
         using TestGasLimitContractBlockchainLateBlockGasLimit chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchainLateBlockGasLimit, AuRaContractGasLimitOverrideTests>();
         bool isValid = ((AuRaContractGasLimitOverride)chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Genesis, 100000001, out _);
-        isValid.Should().BeTrue();
+        Assert.That(isValid, Is.True);
     }
 
     public class TestGasLimitContractBlockchain : TestContractBlockchain

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
-using FluentAssertions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using NSubstitute;
@@ -25,7 +24,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             fileSystemSub.File.ReadLines(FilePath).Returns(new[] { regex });
 
             RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger<RpcMethodFilterTests>());
-            filter.AcceptMethod(methodName).Should().Be(expectedResult);
+            Assert.That(filter.AcceptMethod(methodName), Is.EqualTo(expectedResult));
         }
 
         [Test]
@@ -36,8 +35,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             fileSystemSub.File.ReadLines(FilePath).Returns(new[] { "eth*", "debug*" });
 
             RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger<RpcMethodFilterTests>());
-            filter.AcceptMethod("eth_blockNumber").Should().BeTrue();
-            filter.AcceptMethod("debug_trace").Should().BeTrue();
+            Assert.That(filter.AcceptMethod("eth_blockNumber"), Is.True);
+            Assert.That(filter.AcceptMethod("debug_trace"), Is.True);
         }
 
         [TestCase("eth_blocknumber", "eth_blockNumber", true)]
@@ -50,7 +49,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             fileSystemSub.File.ReadLines(FilePath).Returns(new[] { regex });
 
             RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger<RpcMethodFilterTests>());
-            filter.AcceptMethod(method).Should().Be(expectedResult);
+            Assert.That(filter.AcceptMethod(method), Is.EqualTo(expectedResult));
         }
     }
 }

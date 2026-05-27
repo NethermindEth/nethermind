@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -63,7 +62,7 @@ public class HexWriterTests
     {
         byte[] data = HexBytes(inputHex);
         string actual = WriteToString(w => HexWriter.WriteFixed32HexRawValue(w, data, addHexPrefix: addPrefix));
-        actual.Should().Be(expected);
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [TestCase(0x0UL, true, true, "0x" + ZeroWord, TestName = "U256Raw_ZeroPaddedWithPrefix_Zero")]
@@ -80,14 +79,14 @@ public class HexWriterTests
     public void WriteUInt256HexRawValue_AllVariants(ulong value, bool zeroPadded, bool addPrefix, string expectedBody)
     {
         string actual = WriteToString(w => HexWriter.WriteUInt256HexRawValue(w, (UInt256)value, zeroPadded, addPrefix));
-        actual.Should().Be("\"" + expectedBody + "\"");
+        Assert.That(actual, Is.EqualTo("\"" + expectedBody + "\""));
     }
 
     [Test]
     public void WriteUInt256HexRawValue_ZeroPaddedMaxValue_NoPrefix_64f()
     {
         string actual = WriteToString(w => HexWriter.WriteUInt256HexRawValue(w, UInt256.MaxValue, zeroPadded: true, addHexPrefix: false));
-        actual.Should().Be("\"" + OnesWord + "\"");
+        Assert.That(actual, Is.EqualTo("\"" + OnesWord + "\""));
     }
 
     [TestCase("0", true, true, "0x" + ZeroWord, TestName = "U256Buffer_ZeroPaddedWithPrefix_Zero")]
@@ -103,7 +102,7 @@ public class HexWriterTests
     public void WriteUInt256HexString_AllVariants(string valueHex, bool zeroPadded, bool addPrefix, string expectedBody)
     {
         string actual = WriteToString(w => HexWriter.WriteUInt256HexString(w, UInt256FromHex(valueHex), zeroPadded, addPrefix));
-        actual.Should().Be("\"" + expectedBody + "\"");
+        Assert.That(actual, Is.EqualTo("\"" + expectedBody + "\""));
     }
 
     [TestCase(0x0UL, true, true, "0x" + ZeroWord, TestName = "U256Prop_ZeroPaddedWithPrefix_Zero")]
@@ -122,6 +121,6 @@ public class HexWriterTests
             w.WriteNumberValue(1);
             w.WriteEndObject();
         });
-        actual.Should().Be("{\"" + expectedKey + "\":1}");
+        Assert.That(actual, Is.EqualTo("{\"" + expectedKey + "\":1}"));
     }
 }

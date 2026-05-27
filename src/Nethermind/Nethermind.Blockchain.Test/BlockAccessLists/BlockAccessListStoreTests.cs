@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using FluentAssertions;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -29,9 +28,9 @@ public class BlockAccessListStoreTests
 
         store.Insert(blockNumber, blockHash, encoded);
 
-        store.Exists(blockNumber, blockHash).Should().BeTrue();
+        Assert.That(store.Exists(blockNumber, blockHash), Is.True);
         using MemoryManager<byte>? rlp = store.GetRlp(blockNumber, blockHash);
-        rlp!.Memory.ToArray().Should().Equal(encoded);
+        Assert.That(rlp!.Memory.ToArray(), Is.EqualTo(encoded));
     }
 
     [Test]
@@ -47,10 +46,10 @@ public class BlockAccessListStoreTests
         store.Insert(blockNumber, blockHash, bal);
 
         ReadOnlyBlockAccessList? retrieved = store.Get(blockNumber, blockHash);
-        retrieved.Should().NotBeNull();
+        Assert.That(retrieved, Is.Not.Null);
 
         using MemoryManager<byte>? rlp = store.GetRlp(blockNumber, blockHash);
-        rlp!.Memory.ToArray().Should().Equal(Rlp.Encode(bal).Bytes);
+        Assert.That(rlp!.Memory.ToArray(), Is.EqualTo(Rlp.Encode(bal).Bytes));
     }
 
     [Test]
@@ -66,9 +65,9 @@ public class BlockAccessListStoreTests
 
         store.Delete(blockNumber, blockHash);
 
-        store.Exists(blockNumber, blockHash).Should().BeFalse();
-        store.GetRlp(blockNumber, blockHash).Should().BeNull();
-        store.Get(blockNumber, blockHash).Should().BeNull();
+        Assert.That(store.Exists(blockNumber, blockHash), Is.False);
+        Assert.That(store.GetRlp(blockNumber, blockHash), Is.Null);
+        Assert.That(store.Get(blockNumber, blockHash), Is.Null);
     }
 
     [Test]
@@ -87,12 +86,12 @@ public class BlockAccessListStoreTests
         using MemoryManager<byte>? rlpLow = store.GetRlp(1, blockHash);
         using MemoryManager<byte>? rlpHigh = store.GetRlp(2, blockHash);
 
-        rlpLow!.Memory.ToArray().Should().Equal(balLow);
-        rlpHigh!.Memory.ToArray().Should().Equal(balHigh);
+        Assert.That(rlpLow!.Memory.ToArray(), Is.EqualTo(balLow));
+        Assert.That(rlpHigh!.Memory.ToArray(), Is.EqualTo(balHigh));
 
         store.Delete(1, blockHash);
-        store.Exists(1, blockHash).Should().BeFalse();
-        store.Exists(2, blockHash).Should().BeTrue();
+        Assert.That(store.Exists(1, blockHash), Is.False);
+        Assert.That(store.Exists(2, blockHash), Is.True);
     }
 
     [Test]
@@ -108,7 +107,7 @@ public class BlockAccessListStoreTests
         store.Insert(blockNumber, blockHash, encoded);
 
         byte[] expectedKey = Bytes.Concat(blockNumber.ToBigEndianByteArray(), blockHash.BytesToArray());
-        db[expectedKey].Should().Equal(encoded);
-        db[blockHash.Bytes].Should().BeNull();
+        Assert.That(db[expectedKey], Is.EqualTo(encoded));
+        Assert.That(db[blockHash.Bytes], Is.Null);
     }
 }

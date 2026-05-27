@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -38,7 +37,12 @@ public class Eip7708Tests(bool eip7708Enabled)
     private void AssertLogs(TxReceipt[] receipts, LogEntry[] expectedLogs, bool logCondition = true)
     {
         LogEntry[][] expected = [eip7708Enabled && logCondition ? expectedLogs : []];
-        receipts.Select(r => r.Logs).Should().BeEquivalentTo(expected);
+        Assert.That(receipts, Has.Length.EqualTo(expected.Length));
+
+        for (int i = 0; i < expected.Length; i++)
+        {
+            (receipts[i].Logs ?? []).AssertEquivalentTo(expected[i]);
+        }
     }
 
     [TestCase(1_000_000ul, 1, TestName = "transfer value > 0")]

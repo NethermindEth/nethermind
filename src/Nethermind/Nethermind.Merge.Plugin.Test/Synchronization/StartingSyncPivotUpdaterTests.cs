@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Blockchain;
@@ -97,8 +96,8 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             long storedPivotBlockNumber = ctx.DecodeLong();
             Hash256 storedFinalizedHash = ctx.DecodeKeccak()!;
 
-            storedFinalizedHash.Should().Be(expectedFinalizedHash);
-            storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
+            Assert.That(storedFinalizedHash, Is.EqualTo(expectedFinalizedHash));
+            Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
         }
 
         [TestCase(2, true, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
@@ -133,7 +132,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             {
                 _beaconSyncStrategy.DidNotReceive().AllowBeaconHeaderSync();
             }
-            _syncConfig.MaxAttemptsToUpdatePivot.Should().Be(expectedFinalConfigValue);
+            Assert.That(_syncConfig.MaxAttemptsToUpdatePivot, Is.EqualTo(expectedFinalConfigValue));
         }
 
         [Test]
@@ -162,8 +161,8 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             long storedPivotBlockNumber = ctx.DecodeLong();
             Hash256 storedPivotBlockHash = ctx.DecodeKeccak()!;
 
-            storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
-            storedPivotBlockHash.Should().Be(expectedPivotBlockHash);
+            Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(storedPivotBlockHash, Is.EqualTo(expectedPivotBlockHash));
         }
     }
 }
