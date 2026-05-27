@@ -14,13 +14,15 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public long NodeLookups { get; set; }
 
         /// <summary>
-        /// Subset of <see cref="NodeLookups"/> served from the in-process trie store cache.
+        /// Derived count: <see cref="NodeLookups"/> minus cache-miss fetches, clamped at zero.
+        /// Represents nodes served from the in-process trie store cache under the normal proof
+        /// code path where every cache miss is preceded by exactly one lookup.
         /// </summary>
         public long CacheHits { get; set; }
 
         /// <summary>
         /// Deepest level the visitor reached in the account or any storage trie, in nibbles.
         /// </summary>
-        public int MaxDepth { get; set; }
+        public long MaxDepth { get; set; }
     }
 }

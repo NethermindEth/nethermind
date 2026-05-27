@@ -121,7 +121,9 @@ public class ProofRpcModuleMetaTests
     }
 
     [Test]
-    public void Identical_queries_produce_identical_diagnostics()
+    // In production cacheHits depends on cache warmth and is not deterministic across calls.
+    // This test asserts stability only within an isolated in-memory store where cache state is fixed.
+    public void Repeated_queries_against_stable_store_produce_stable_diagnostics()
     {
         AccountProofWithMeta first = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressA, [], BlockParameter.Earliest).Data;
