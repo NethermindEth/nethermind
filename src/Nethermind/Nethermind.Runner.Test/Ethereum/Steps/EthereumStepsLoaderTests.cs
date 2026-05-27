@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa;
@@ -53,7 +52,7 @@ public class EthereumStepsLoaderTests
             }))
             .Build();
 
-        container.Resolve<IEnumerable<StepInfo>>().ToHashSet().Should().BeEquivalentTo(steps);
+        AssertStepInfosEquivalent(container.Resolve<IEnumerable<StepInfo>>(), steps);
     }
 
     [Test]
@@ -68,10 +67,8 @@ public class EthereumStepsLoaderTests
     }
 
     [Test]
-    public void LoadStepsFromHere() => LoadStepInfoFromAssembly(GetType().Assembly)
-            .ToArray()
-            .Should()
-            .BeEquivalentTo([
+    public void LoadStepsFromHere() => AssertStepInfosEquivalent(LoadStepInfoFromAssembly(GetType().Assembly),
+        [
                 new StepInfo(typeof(StepLong)),
                 new StepInfo(typeof(StepWithLogManagerInConstructor)),
                 new StepInfo(typeof(StepWithSameBaseStep)),
@@ -82,7 +79,7 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(StepCStandard)),
                 new StepInfo(typeof(StepE)),
                 new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep)),
-            ]);
+        ]);
 
     private void CheckPlugin(INethermindPlugin plugin)
     {
@@ -91,8 +88,18 @@ public class EthereumStepsLoaderTests
             .Build();
 
         StepInfo[] steps = container.Resolve<IList<StepInfo>>().ToArray();
-        steps.ToHashSet().Should().BeEquivalentTo(LoadStepInfoFromAssembly(plugin.GetType().Assembly));
+        AssertStepInfosEquivalent(steps, LoadStepInfoFromAssembly(plugin.GetType().Assembly));
     }
+
+    private static void AssertStepInfosEquivalent(IEnumerable<StepInfo> actual, IEnumerable<StepInfo> expected) =>
+        Assert.That(actual.Select(StepInfoKey).Order().ToArray(), Is.EqualTo(expected.Select(StepInfoKey).Order().ToArray()));
+
+    private static string StepInfoKey(StepInfo stepInfo) =>
+        string.Join("|",
+            stepInfo.StepType.FullName,
+            stepInfo.StepBaseType.FullName,
+            string.Join(",", stepInfo.Dependencies.Select(static t => t.FullName).Order()),
+            string.Join(",", stepInfo.Dependents.Select(static t => t.FullName).Order()));
 
     private static IEnumerable<StepInfo> LoadStepInfoFromAssembly(Assembly assembly)
     {

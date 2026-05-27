@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
@@ -56,7 +55,7 @@ namespace Nethermind.Evm.Test
             }
             else
             {
-                tracer.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
+                Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.BadInstruction.ToString()));
                 AssertStorage((UInt256)0, (UInt256)0);
             }
         }

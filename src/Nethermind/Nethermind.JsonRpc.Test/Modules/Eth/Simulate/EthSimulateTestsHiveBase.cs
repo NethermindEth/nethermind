@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -150,8 +149,8 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         BlockForRpc parent = chain.EthRpcModule.eth_getBlockByNumber(new BlockParameter(blockNumber)).Data;
         SimulateBlockResult<SimulateCallResult> simulated = chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(blockNumber)).Data[0];
 
-        simulated.ParentHash.Should().Be(parent.Hash!);
-        (simulated.Number - parent.Number).Should().Be(1);
-        (simulated.Timestamp - parent.Timestamp).Should().Be((UInt256)secondsPerSlot);
+        Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash!));
+        Assert.That((simulated.Number - parent.Number), Is.EqualTo(1));
+        Assert.That((simulated.Timestamp - parent.Timestamp), Is.EqualTo((UInt256)secondsPerSlot));
     }
 }

@@ -8,7 +8,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -44,8 +43,8 @@ public partial class DebugRpcModuleTests
 
         Pipe pipe = new();
 
-        Func<Task> writeAct = async () => await result.WriteToAsync(pipe.Writer, requestCts.Token);
-        await writeAct.Should().NotThrowAsync("WriteToAsync swallows OperationCanceledException so the HTTP layer can close the response cleanly");
+        Assert.That(async () => await result.WriteToAsync(pipe.Writer, requestCts.Token), Throws.Nothing,
+            "WriteToAsync swallows OperationCanceledException so the HTTP layer can close the response cleanly");
 
         await pipe.Writer.CompleteAsync();
 
@@ -53,10 +52,10 @@ public partial class DebugRpcModuleTests
         string body = Encoding.UTF8.GetString(readResult.Buffer.ToArray());
 
         Action parse = () => JToken.Parse(body);
-        parse.Should().NotThrow("the finally block must close the structLogs array and the outer object even when cancellation fires");
+        Assert.That(parse, Throws.Nothing, "the finally block must close the structLogs array and the outer object even when cancellation fires");
 
         JToken parsed = JToken.Parse(body);
-        parsed["failed"]!.Value<bool>().Should().BeTrue("a cancelled mid-trace is reported as failed");
+        Assert.That(parsed["failed"]!.Value<bool>(), Is.True, "a cancelled mid-trace is reported as failed");
     }
 
     [Test]
@@ -83,9 +82,9 @@ public partial class DebugRpcModuleTests
         writer.Flush();
 
         JToken parsed = JToken.Parse(Encoding.UTF8.GetString(bufferWriter.WrittenSpan));
-        parsed["failed"]!.Value<bool>().Should().BeTrue();
-        parsed["error"]!.Value<string>().Should().Contain("simulated mid-trace failure");
-        parsed["errorCode"]!.Value<int>().Should().Be(ErrorCodes.InternalError, "generic exceptions map to InternalError; InsufficientBalanceException maps to InvalidInput");
+        Assert.That(parsed["failed"]!.Value<bool>(), Is.True);
+        Assert.That(parsed["error"]!.Value<string>(), Does.Contain("simulated mid-trace failure"));
+        Assert.That(parsed["errorCode"]!.Value<int>(), Is.EqualTo(ErrorCodes.InternalError), "generic exceptions map to InternalError; InsufficientBalanceException maps to InvalidInput");
     }
 
     [Test]
@@ -108,11 +107,11 @@ public partial class DebugRpcModuleTests
         jsonWriter.Flush();
 
         JArray result = (JArray)JToken.Parse(Encoding.UTF8.GetString(outerBuffer.WrittenSpan));
-        result.Should().HaveCount(1, "Dispose must seal the in-flight per-tx envelope");
+        Assert.That(result, Has.Count.EqualTo(1), "Dispose must seal the in-flight per-tx envelope");
 
         JToken entry = result[0]!;
-        ((bool)entry["result"]!["failed"]!).Should().BeTrue();
-        ((string)entry["txHash"]!).Should().BeEquivalentTo(tx.Hash!.ToString(), "txHash must be present on every entry, including those closed by Dispose");
+        Assert.That((bool)entry["result"]!["failed"]!, Is.True);
+        Assert.That((string)entry["txHash"]!, Is.EqualTo(tx.Hash!.ToString()).IgnoreCase, "txHash must be present on every entry, including those closed by Dispose");
     }
 
     [Test]
@@ -129,10 +128,10 @@ public partial class DebugRpcModuleTests
         jsonWriter.WriteStartObject();
 
         Action firstDispose = tracer.Dispose;
-        firstDispose.Should().Throw<InvalidOperationException>();
+        Assert.That(firstDispose, Throws.TypeOf<InvalidOperationException>());
 
         Action secondDispose = tracer.Dispose;
-        secondDispose.Should().NotThrow("Dispose should not attempt to close the same malformed envelope twice");
+        Assert.That(secondDispose, Throws.Nothing, "Dispose should not attempt to close the same malformed envelope twice");
     }
 
     [Test]
@@ -160,18 +159,18 @@ public partial class DebugRpcModuleTests
 
         Pipe pipe = new();
 
-        Func<Task> writeAct = async () => await result.WriteToAsync(pipe.Writer, requestCts.Token);
-        await writeAct.Should().NotThrowAsync("cancellation is swallowed so the response can close cleanly");
+        Assert.That(async () => await result.WriteToAsync(pipe.Writer, requestCts.Token), Throws.Nothing,
+            "cancellation is swallowed so the response can close cleanly");
 
         await pipe.Writer.CompleteAsync();
         ReadResult readResult = await pipe.Reader.ReadAsync();
         string body = Encoding.UTF8.GetString(readResult.Buffer.ToArray());
 
         Action parse = () => JToken.Parse(body);
-        parse.Should().NotThrow("the finally block must close the outer array even when cancellation fires");
+        Assert.That(parse, Throws.Nothing, "the finally block must close the outer array even when cancellation fires");
 
         JArray parsed = (JArray)JToken.Parse(body);
-        parsed.Should().HaveCount(1, "the one entry written before cancellation must be present in a well-formed array");
+        Assert.That(parsed, Has.Count.EqualTo(1), "the one entry written before cancellation must be present in a well-formed array");
     }
 
     [Test]
@@ -203,10 +202,10 @@ public partial class DebugRpcModuleTests
         string body = Encoding.UTF8.GetString(readResult.Buffer.ToArray());
 
         JArray parsed = (JArray)JToken.Parse(body);
-        parsed.Should().HaveCount(2, "the array must contain the one good entry plus a sentinel error entry so clients can detect the mid-block failure");
+        Assert.That(parsed, Has.Count.EqualTo(2), "the array must contain the one good entry plus a sentinel error entry so clients can detect the mid-block failure");
 
         JToken sentinel = parsed[1]!;
-        ((string)sentinel["error"]!).Should().Contain("simulated mid-block failure", "the sentinel must carry the human-readable failure reason");
-        ((int)sentinel["errorCode"]!).Should().Be(ErrorCodes.InternalError, "the sentinel must carry the Geth-equivalent errorCode (generic exceptions map to InternalError)");
+        Assert.That((string)sentinel["error"]!, Does.Contain("simulated mid-block failure"), "the sentinel must carry the human-readable failure reason");
+        Assert.That((int)sentinel["errorCode"]!, Is.EqualTo(ErrorCodes.InternalError), "the sentinel must carry the Geth-equivalent errorCode (generic exceptions map to InternalError)");
     }
 }

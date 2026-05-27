@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -47,7 +46,7 @@ public class FlatSnapTreesTests
 
         using FlatSnapStateTree tree = NewStateTree(reader);
 
-        tree.IsPersisted(TreePath.FromHexString("12"), expectedHash ?? default).Should().Be(expected);
+        Assert.That(tree.IsPersisted(TreePath.FromHexString("12"), expectedHash ?? default), Is.EqualTo(expected));
     }
 
     [Test]
@@ -60,8 +59,8 @@ public class FlatSnapTreesTests
 
         using FlatSnapStorageTree tree = NewStorageTree(reader, addressHash);
 
-        tree.IsPersisted(TreePath.FromHexString("ab"), ValueKeccak.Compute(rlp)).Should().BeTrue();
-        tree.IsPersisted(TreePath.FromHexString("ab"), default).Should().BeFalse();
+        Assert.That(tree.IsPersisted(TreePath.FromHexString("ab"), ValueKeccak.Compute(rlp)), Is.True);
+        Assert.That(tree.IsPersisted(TreePath.FromHexString("ab"), default), Is.False);
     }
 
     private static IEnumerable<TestCaseData> DisposeCases()
@@ -99,7 +98,7 @@ public class FlatSnapTreesTests
         tree.BulkSetAndUpdateRootHash([new PathWithAccount(lowPath, account), new PathWithAccount(highPath, account)]);
         tree.Commit(PathHash("55"));
 
-        writer.SetAccountRawCalls.Should().ContainSingle().Which.Should().BeEquivalentTo((lowPath, account));
+        Assert.That(writer.SetAccountRawCalls, Has.One.EqualTo((lowPath, account)));
     }
 
     [Test]
