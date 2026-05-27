@@ -343,6 +343,22 @@ public static class PersistedSnapshotMerger
         }
     }
 
+    /// <summary>Per-key bloom callback for the inner 2-byte slot-suffix merge:
+    /// concatenates <c>slotKeyBuf[0..30) | innerKey</c> and adds the slot bloom
+    /// hash. <c>slotKeyBuf[0..30)</c> is populated by
+    /// <see cref="SlotPrefixValueMerger.MergeValues"/> from the outer 30-byte key
+    /// before invoking <see cref="HsstTwoByteSlotMerger.NWayMerge"/>.</summary>
+    private readonly struct SlotSuffixBloomCallback(
+        BloomFilter bloom, ulong addrBloomKey, byte[] slotKeyBuf)
+        : IHsstTwoByteSlotMergeCallback
+    {
+        public void OnKey(scoped ReadOnlySpan<byte> key)
+        {
+            key.CopyTo(slotKeyBuf.AsSpan(30, 2));
+            bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
+        }
+    }
+
     /// <summary>
     /// BTree value merger for the per-address slot-prefix column. Outer is a keyFirst
     /// 30-byte BTree of slot prefixes; each outer entry's value is a keys-first
@@ -405,52 +421,12 @@ public static class PersistedSnapshotMerger
             {
                 NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource> innerCursor = new(
                     innerSources, innerState, InnerKeyLen);
-
-                ArrayPoolList<byte> scratchValues = scratch.ScratchValues;
-                ArrayPoolList<byte> scratchKeys = scratch.ScratchKeys;
-                ArrayPoolList<int> scratchLens = scratch.ScratchLens;
-                scratchValues.Clear();
-                scratchKeys.Clear();
-                scratchLens.Clear();
-
-                while (innerCursor.MoveNext())
-                {
-                    Bound vb = innerCursor.MinValue;
-                    using NoOpPin valPin = innerCursor.CreateMinReader().PinBuffer(vb.Offset, vb.Length);
-                    ReadOnlySpan<byte> innerKey = innerCursor.MinKey;
-                    innerKey.CopyTo(slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
-                    bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
-                    scratchValues.AddRange(valPin.Buffer);
-                    scratchKeys.AddRange(innerKey);
-                    scratchLens.Add((int)vb.Length);
-                    innerCursor.AdvanceMatching();
-                }
-
-                ReadOnlySpan<byte> mergedValues = scratchValues.AsSpan();
-                ReadOnlySpan<byte> mergedKeys = scratchKeys.AsSpan();
-                ReadOnlySpan<int> mergedLens = scratchLens.AsSpan();
-                if (HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(mergedValues.Length))
-                {
-                    using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> innerBuilder = new(ref writer);
-                    int valOff = 0;
-                    for (int i = 0; i < mergedLens.Length; i++)
-                    {
-                        innerBuilder.Add(mergedKeys.Slice(i * InnerKeyLen, InnerKeyLen), mergedValues.Slice(valOff, mergedLens[i]));
-                        valOff += mergedLens[i];
-                    }
-                    innerBuilder.Build();
-                }
-                else
-                {
-                    using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> innerBuilder = new(ref writer);
-                    int valOff = 0;
-                    for (int i = 0; i < mergedLens.Length; i++)
-                    {
-                        innerBuilder.Add(mergedKeys.Slice(i * InnerKeyLen, InnerKeyLen), mergedValues.Slice(valOff, mergedLens[i]));
-                        valOff += mergedLens[i];
-                    }
-                    innerBuilder.Build();
-                }
+                HsstTwoByteSlotMerger.NWayMerge<
+                    PooledByteBufferWriter.Writer, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource,
+                    SlotSuffixBloomCallback>(
+                        ref writer, ref innerCursor,
+                        scratch.ScratchKeys, scratch.ScratchValues, scratch.ScratchLens,
+                        new SlotSuffixBloomCallback(bloom, addrBloomKey, scratch.SlotKeyBuf));
             }
             finally
             {
