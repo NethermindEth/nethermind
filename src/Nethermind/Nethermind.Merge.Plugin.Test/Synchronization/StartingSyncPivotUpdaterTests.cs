@@ -190,8 +190,8 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             _syncModeSelector!.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.FastSync, SyncMode.UpdatingPivot));
 
-            _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)
-                .Should().BeNull("a peer header at a number other than the requested one must not set the pivot");
+            Assert.That(_metadataDb!.Get(MetadataDbKeys.UpdatedPivotData), Is.Null,
+                "a peer header at a number other than the requested one must not set the pivot");
         }
     }
 }
