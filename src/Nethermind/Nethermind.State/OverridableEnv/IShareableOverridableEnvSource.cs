@@ -15,5 +15,8 @@ namespace Nethermind.State.OverridableEnv;
 /// </summary>
 public interface IShareableOverridableEnvSource<T> : IDisposable
 {
-    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null);
+    /// <summary>
+    /// Attempt to build a typed scope; returns <c>false</c> when the underlying state is unavailable.
+    /// </summary>
+    bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, out Scope<T> scope);
 }

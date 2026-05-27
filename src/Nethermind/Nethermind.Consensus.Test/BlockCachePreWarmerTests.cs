@@ -475,7 +475,7 @@ public class BlockCachePreWarmerTests
             FlagCapturingPolicy owner)
             : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            public bool TryBuild(BlockHeader? baseBlock, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
                 if (Interlocked.CompareExchange(ref owner._captured, 1, 0) == 0)
                 {
@@ -483,7 +483,7 @@ public class BlockCachePreWarmerTests
                     owner._observed.Set();
                 }
 
-                return inner.Build(baseBlock);
+                return inner.TryBuild(baseBlock, out scope);
             }
 
             public void Dispose() => inner.Dispose();
@@ -520,8 +520,8 @@ public class BlockCachePreWarmerTests
             ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
             : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
-                inner.Build(baseBlock);
+            public bool TryBuild(BlockHeader? baseBlock, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) =>
+                inner.TryBuild(baseBlock, out scope);
 
             public void Dispose()
             {

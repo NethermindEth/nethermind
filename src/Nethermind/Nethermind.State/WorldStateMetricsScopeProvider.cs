@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
@@ -16,7 +17,18 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     private double _stateMerkleizationTime;
 
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new MetricsScope(_baseProvider.BeginScope(baseBlock), this);
+
+    public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!_baseProvider.TryBeginScope(baseBlock, out IWorldStateScopeProvider.IScope? inner))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = new MetricsScope(inner, this);
+        return true;
+    }
 
     private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {

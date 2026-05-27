@@ -257,7 +257,12 @@ public partial class BlockAccessListManager
             IReadOnlyTxProcessorSource source = _parentReaderEnvPool.Get();
             try
             {
-                return new ParentReaderLease(source, _parentReaderEnvPool, source.Build(_parentStateHeader));
+                if (!source.TryBuild(_parentStateHeader, out IReadOnlyTxProcessingScope? scope))
+                {
+                    throw new InvalidOperationException(
+                        $"Missing state for parent {_parentStateHeader.ToString(BlockHeader.Format.Short)} when leasing block-access-list reader.");
+                }
+                return new ParentReaderLease(source, _parentReaderEnvPool, scope);
             }
             catch
             {

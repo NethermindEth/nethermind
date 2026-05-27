@@ -152,23 +152,49 @@ namespace Nethermind.Facade
             return blockHash is not null ? receiptStorage.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken) =>
-            HasOverrides(stateOverride, blobBaseFeeOverride)
-                ? CallExclusive(header, tx, stateOverride, blobBaseFeeOverride, cancellationToken)
-                : CallShareable(header, tx, cancellationToken);
+        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
+        {
+            try
+            {
+                return HasOverrides(stateOverride, blobBaseFeeOverride)
+                    ? CallExclusive(header, tx, stateOverride, blobBaseFeeOverride, cancellationToken)
+                    : CallShareable(header, tx, cancellationToken);
+            }
+            catch (MissingTrieNodeException)
+            {
+                // Trie backends do not pin state for the lifetime of a scope; a node can be missing
+                // (e.g. mid-sync, after pruning) and surface as MissingTrieNodeException deep inside the
+                // read path. Translate to the same "no state" outcome that the Flat backend reports
+                // through TryBuild, so the RPC layer returns ResourceUnavailable rather than a generic
+                // execution error.
+                return CallOutput.NoStateForBlock(header);
+            }
+        }
 
         private CallOutput CallShareable(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            using IReadOnlyTxProcessingScope scope = shareableTxProcessorSource.Build(header);
-            return RunCall(stateReader, scope.TransactionProcessor, header, tx, blobBaseFeeOverride: null, cancellationToken);
+            if (!shareableTxProcessorSource.TryBuild(header, out IReadOnlyTxProcessingScope? scope))
+            {
+                return CallOutput.NoStateForBlock(header);
+            }
+            using (scope)
+            {
+                return RunCall(stateReader, scope.TransactionProcessor, header, tx, blobBaseFeeOverride: null, cancellationToken);
+            }
         }
 
         private CallOutput CallExclusive(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
-            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
-            // Dual-write: RequestState feeds the VM-time decorator; RunCall applies it during pre-VM header prep.
-            scope.Component.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
-            return RunCall(scope.Component.StateReader, scope.Component.TransactionProcessor, header, tx, blobBaseFeeOverride, cancellationToken);
+            if (!processingEnv.TryBuildAndOverride(header, stateOverride, out Scope<BlockProcessingComponents> scope))
+            {
+                return CallOutput.NoStateForBlock(header);
+            }
+            using (scope)
+            {
+                // Dual-write: RequestState feeds the VM-time decorator; RunCall applies it during pre-VM header prep.
+                scope.Component.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
+                return RunCall(scope.Component.StateReader, scope.Component.TransactionProcessor, header, tx, blobBaseFeeOverride, cancellationToken);
+            }
         }
 
         private CallOutput RunCall(IStateReader nonceReader, ITransactionProcessor txProcessor, BlockHeader header, Transaction tx, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
@@ -199,23 +225,44 @@ namespace Nethermind.Facade
             return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken) =>
-            HasOverrides(stateOverride, blobBaseFeeOverride)
-                ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, cancellationToken)
-                : EstimateGasShareable(header, tx, errorMargin, cancellationToken);
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
+        {
+            try
+            {
+                return HasOverrides(stateOverride, blobBaseFeeOverride)
+                    ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, cancellationToken)
+                    : EstimateGasShareable(header, tx, errorMargin, cancellationToken);
+            }
+            catch (MissingTrieNodeException)
+            {
+                return CallOutput.NoStateForBlock(header);
+            }
+        }
 
         private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
-            using IReadOnlyTxProcessingScope scope = shareableTxProcessorSource.Build(header);
-            return RunEstimateGas(stateReader, scope.TransactionProcessor, scope.WorldState, header, tx, errorMargin, blobBaseFeeOverride: null, cancellationToken);
+            if (!shareableTxProcessorSource.TryBuild(header, out IReadOnlyTxProcessingScope? scope))
+            {
+                return CallOutput.NoStateForBlock(header);
+            }
+            using (scope)
+            {
+                return RunEstimateGas(stateReader, scope.TransactionProcessor, scope.WorldState, header, tx, errorMargin, blobBaseFeeOverride: null, cancellationToken);
+            }
         }
 
         private CallOutput EstimateGasExclusive(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
-            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
-            BlockProcessingComponents components = scope.Component;
-            components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
-            return RunEstimateGas(components.StateReader, components.TransactionProcessor, components.WorldState, header, tx, errorMargin, blobBaseFeeOverride, cancellationToken);
+            if (!processingEnv.TryBuildAndOverride(header, stateOverride, out Scope<BlockProcessingComponents> scope))
+            {
+                return CallOutput.NoStateForBlock(header);
+            }
+            using (scope)
+            {
+                BlockProcessingComponents components = scope.Component;
+                components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
+                return RunEstimateGas(components.StateReader, components.TransactionProcessor, components.WorldState, header, tx, errorMargin, blobBaseFeeOverride, cancellationToken);
+            }
         }
 
         private CallOutput RunEstimateGas(IStateReader nonceReader, ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader header, Transaction tx, int errorMargin, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
@@ -267,39 +314,60 @@ namespace Nethermind.Facade
             };
         }
 
-        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken) =>
-            HasOverrides(stateOverride, blobBaseFeeOverride)
-                ? CreateAccessListExclusive(header, tx, stateOverride, optimize, blobBaseFeeOverride, cancellationToken)
-                : CreateAccessListShareable(header, tx, optimize, cancellationToken);
+        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
+        {
+            try
+            {
+                return HasOverrides(stateOverride, blobBaseFeeOverride)
+                    ? CreateAccessListExclusive(header, tx, stateOverride, optimize, blobBaseFeeOverride, cancellationToken)
+                    : CreateAccessListShareable(header, tx, optimize, cancellationToken);
+            }
+            catch (MissingTrieNodeException)
+            {
+                return CallOutput.NoStateForBlock(header);
+            }
+        }
 
         private CallOutput CreateAccessListShareable(BlockHeader header, Transaction tx, bool optimize, CancellationToken cancellationToken)
         {
-            using IReadOnlyTxProcessingScope scope = shareableTxProcessorSource.Build(header);
-            AccessList? originalAccessList = tx.AccessList;
-            try
+            if (!shareableTxProcessorSource.TryBuild(header, out IReadOnlyTxProcessingScope? scope))
             {
-                return ConvergeAccessList(stateReader, scope.TransactionProcessor, blobBaseFeeOverride: null, header, tx, optimize, cancellationToken);
+                return CallOutput.NoStateForBlock(header);
             }
-            finally
+            using (scope)
             {
-                tx.AccessList = originalAccessList;
+                AccessList? originalAccessList = tx.AccessList;
+                try
+                {
+                    return ConvergeAccessList(stateReader, scope.TransactionProcessor, blobBaseFeeOverride: null, header, tx, optimize, cancellationToken);
+                }
+                finally
+                {
+                    tx.AccessList = originalAccessList;
+                }
             }
         }
 
         private CallOutput CreateAccessListExclusive(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
-            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
-            BlockProcessingComponents components = scope.Component;
-            components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
-
-            AccessList? originalAccessList = tx.AccessList;
-            try
+            if (!processingEnv.TryBuildAndOverride(header, stateOverride, out Scope<BlockProcessingComponents> scope))
             {
-                return ConvergeAccessList(components.StateReader, components.TransactionProcessor, blobBaseFeeOverride, header, tx, optimize, cancellationToken);
+                return CallOutput.NoStateForBlock(header);
             }
-            finally
+            using (scope)
             {
-                tx.AccessList = originalAccessList;
+                BlockProcessingComponents components = scope.Component;
+                components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
+
+                AccessList? originalAccessList = tx.AccessList;
+                try
+                {
+                    return ConvergeAccessList(components.StateReader, components.TransactionProcessor, blobBaseFeeOverride, header, tx, optimize, cancellationToken);
+                }
+                finally
+                {
+                    tx.AccessList = originalAccessList;
+                }
             }
         }
 
@@ -646,11 +714,12 @@ namespace Nethermind.Facade
             IOverridableEnv<BlockchainBridge.BlockProcessingComponents> inner,
             IDisposable scope) : IOverridableEnv<BlockchainBridge.BlockProcessingComponents>, IDisposable
         {
-            public Scope<BlockchainBridge.BlockProcessingComponents> BuildAndOverride(
+            public bool TryBuildAndOverride(
                 BlockHeader? header,
-                Dictionary<Address, AccountOverride>? stateOverride = null,
-                IReleaseSpec? specOverride = null) =>
-                inner.BuildAndOverride(header, stateOverride, specOverride);
+                Dictionary<Address, AccountOverride>? stateOverride,
+                IReleaseSpec? specOverride,
+                out Scope<BlockchainBridge.BlockProcessingComponents> built) =>
+                inner.TryBuildAndOverride(header, stateOverride, specOverride, out built);
 
             public void Dispose() => scope.Dispose();
         }

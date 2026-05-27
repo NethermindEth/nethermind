@@ -28,7 +28,13 @@ public class ShutterEon(
 
     public void Update(BlockHeader header)
     {
-        using IReadOnlyTxProcessingScope scope = txSource.Build(blockTree.Head?.Header);
+        BlockHeader? headHeader = blockTree.Head?.Header;
+        if (!txSource.TryBuild(headHeader, out IReadOnlyTxProcessingScope? scope))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot update Shutter eon: missing state for head {headHeader?.ToString(BlockHeader.Format.Short) ?? "null"}.");
+            return;
+        }
+        using IReadOnlyTxProcessingScope _scopeDisposer = scope;
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         try

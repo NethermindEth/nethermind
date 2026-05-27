@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
@@ -78,10 +79,16 @@ public class ContractBasedValidatorTests
         _stateProvider.IsContract(_contractAddress).Returns(true);
 
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(new ReadOnlyTxProcessingScope(
-            _transactionProcessor,
-            new Reactive.AnonymousDisposable(() => { }),
-            _stateProvider));
+        _readOnlyTxProcessorSource
+            .TryBuild(Arg.Any<BlockHeader>(), out Arg.Any<IReadOnlyTxProcessingScope?>())
+            .Returns(callInfo =>
+            {
+                callInfo[1] = new ReadOnlyTxProcessingScope(
+                    _transactionProcessor,
+                    new Reactive.AnonymousDisposable(() => { }),
+                    _stateProvider);
+                return true;
+            });
         _blockTree.Head.Returns(_block);
 
         _abiEncoder

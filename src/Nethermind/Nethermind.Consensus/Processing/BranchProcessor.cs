@@ -65,9 +65,10 @@ public class BranchProcessor(
                 throw new InvalidOperationException($"State must not be handled from outside of {nameof(IBranchProcessor)} except for genesis block.");
             }
         }
-        else
+        else if (!stateProvider.TryBeginScope(baseBlock, out worldStateCloser))
         {
-            worldStateCloser = stateProvider.BeginScope(baseBlock);
+            throw new InvalidOperationException(
+                $"Missing state for block {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} entering branch processor.");
         }
 
         CancellationTokenSource? backgroundCancellation = new();
@@ -157,7 +158,11 @@ public class BranchProcessor(
                     BlockHeader previousBranchStateRoot = suggestedBlock.Header;
 
                     worldStateCloser?.Dispose();
-                    worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);
+                    if (!stateProvider.TryBeginScope(previousBranchStateRoot, out worldStateCloser))
+                    {
+                        throw new InvalidOperationException(
+                            $"Missing state for block {previousBranchStateRoot.ToString(BlockHeader.Format.Short)} during branch processing.");
+                    }
                 }
 
                 preBlockBaseBlock = processedBlock.Header;

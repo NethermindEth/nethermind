@@ -29,10 +29,9 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>(
         if (searchResult.Value.IsError) return ResultWrapper<TResult>.Fail(searchResult.Value);
 
         BlockHeader header = searchResult.Value.Object!;
-        if (!_blockchainBridge.HasStateForBlock(header))
-        {
-            return ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
-        }
+        // State availability is checked atomically inside the bridge via TryBuild / TryBuildAndOverride:
+        // a "no state" outcome is surfaced through CallOutput.StateUnavailable so we can report
+        // ResourceUnavailable consistently without a racy HasStateForBlock pre-check.
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
         Result<TProcessing> prepareResult = Prepare(call, header);

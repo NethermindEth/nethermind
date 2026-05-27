@@ -168,8 +168,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         IReadOnlyTxProcessorSource env = state.EnvPool.Get();
                         try
                         {
-                            using IReadOnlyTxProcessingScope scope = env.Build(state.Parent);
-                            scope.WorldState.WarmUp(state.Block.Withdrawals![i].Address);
+                            if (env.TryBuild(state.Parent, out IReadOnlyTxProcessingScope? scope))
+                            {
+                                using IReadOnlyTxProcessingScope _scopeDisposer = scope;
+                                scope.WorldState.WarmUp(state.Block.Withdrawals![i].Address);
+                            }
                         }
                         catch (MissingTrieNodeException)
                         {
@@ -226,7 +229,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
                         try
                         {
-                            using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
+                            if (!env.TryBuild(blockState.Parent, out IReadOnlyTxProcessingScope? scope))
+                            {
+                                return tupleState;
+                            }
+                            using IReadOnlyTxProcessingScope _scopeDisposer = scope;
                             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
                             scope.TransactionProcessor.SetBlockExecutionContext(context);
 
@@ -378,11 +385,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     IReadOnlyTxProcessorSource env = envPool.Get();
                     try
                     {
-                        using IReadOnlyTxProcessingScope scope = env.Build(parent);
-
-                        foreach (AccessList list in SystemTxAccessLists.AsSpan())
+                        if (env.TryBuild(parent, out IReadOnlyTxProcessingScope? scope))
                         {
-                            scope.WorldState.WarmUp(list);
+                            using IReadOnlyTxProcessingScope _scopeDisposer = scope;
+                            foreach (AccessList list in SystemTxAccessLists.AsSpan())
+                            {
+                                scope.WorldState.WarmUp(list);
+                            }
                         }
                     }
                     finally
@@ -523,7 +532,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public WarmingState<TPayload> InitThreadState()
         {
             IReadOnlyTxProcessorSource env = EnvPool.Get();
-            return new(EnvPool, Payload, parent, env, scope: env.Build(parent));
+            if (!env.TryBuild(parent, out IReadOnlyTxProcessingScope? scope))
+            {
+                EnvPool.Return(env);
+                return new(EnvPool, Payload, parent);
+            }
+            return new(EnvPool, Payload, parent, env, scope: scope);
         }
 
         public void Dispose()

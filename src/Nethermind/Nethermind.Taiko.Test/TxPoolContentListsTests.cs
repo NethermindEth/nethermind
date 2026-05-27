@@ -12,6 +12,7 @@ using NUnit.Framework;
 using Nethermind.Core;
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
@@ -67,7 +68,13 @@ public class TxPoolContentListsTests
         scope.TransactionProcessor.Returns(transactionProcessor);
 
         IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
-        shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
+        shareableTxProcessor
+            .TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>())
+            .Returns(callInfo =>
+            {
+                callInfo[1] = scope;
+                return true;
+            });
 
         TaikoEngineRpcModule taikoAuthRpcModule = CreateRpcModule(txPool, blockFinder, shareableTxProcessor);
 
@@ -165,7 +172,13 @@ public class TxPoolContentListsTests
         scope.TransactionProcessor.Returns(transactionProcessor);
 
         IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
-        shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
+        shareableTxProcessor
+            .TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>())
+            .Returns(callInfo =>
+            {
+                callInfo[1] = scope;
+                return true;
+            });
 
         TaikoEngineRpcModule rpcModule = CreateRpcModule(txPool, blockFinder, shareableTxProcessor,
             new Config.SurgeConfig { MaxGasLimitRatio = maxGasLimitRatio });
@@ -224,7 +237,13 @@ public class TxPoolContentListsTests
         scope.TransactionProcessor.Returns(transactionProcessor);
 
         IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
-        shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
+        shareableTxProcessor
+            .TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>())
+            .Returns(callInfo =>
+            {
+                callInfo[1] = scope;
+                return true;
+            });
 
         TaikoEngineRpcModule rpcModule = CreateRpcModule(txPool, blockFinder, shareableTxProcessor,
             new Config.SurgeConfig { MaxGasLimitRatio = surgeMaxGasLimitRatio });

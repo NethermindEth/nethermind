@@ -71,8 +71,16 @@ namespace Nethermind.Blockchain.Contracts
             {
                 lock (_readOnlyTxProcessorSource)
                 {
-                    using IReadOnlyTxProcessingScope scope = _readOnlyTxProcessorSource.Build(callInfo.ParentHeader);
-                    return CallRaw(callInfo, scope);
+                    if (!_readOnlyTxProcessorSource.TryBuild(callInfo.ParentHeader, out IReadOnlyTxProcessingScope? scope))
+                    {
+                        throw new InvalidOperationException(
+                            $"Missing state for parent {callInfo.ParentHeader?.ToString(BlockHeader.Format.Short) ?? "null"} when calling {callInfo.FunctionName}.");
+                    }
+
+                    using (scope)
+                    {
+                        return CallRaw(callInfo, scope);
+                    }
                 }
             }
 

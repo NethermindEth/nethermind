@@ -7,6 +7,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Evm.State;

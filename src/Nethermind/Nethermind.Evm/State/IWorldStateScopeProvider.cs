@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -15,7 +16,17 @@ namespace Nethermind.Evm.State;
 public interface IWorldStateScopeProvider
 {
     bool HasRoot(BlockHeader? baseBlock);
-    IScope BeginScope(BlockHeader? baseBlock);
+
+    /// <summary>
+    /// Attempt to open a scope anchored at <paramref name="baseBlock"/>. Returns <c>false</c> when the state for
+    /// that block is unavailable (e.g. concurrently pruned between a prior <see cref="HasRoot"/> check and this call).
+    /// </summary>
+    /// <remarks>
+    /// This is the atomic replacement for a <c>HasRoot</c> + <c>BeginScope</c> sequence: implementations either
+    /// return a usable scope or report unavailability without throwing. Callers that require state to be present
+    /// (block processing, genesis loading) should throw locally when this returns <c>false</c>.
+    /// </remarks>
+    bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IScope? scope);
 
     public interface IScope : IDisposable
     {

@@ -75,7 +75,8 @@ public class FlatTrieVerifier
             stateId = reader.CurrentState;
         }
 
-        using ReadOnlySnapshotBundle bundle = _flatDbManager.GatherReadOnlySnapshotBundle(stateId);
+        using ReadOnlySnapshotBundle bundle = _flatDbManager.GatherReadOnlySnapshotBundle(stateId)
+            ?? throw new InvalidOperationException($"Unable to gather snapshot bundle for {stateId} when verifying trie.");
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
 
         return VerifyCore(reader, trieStore, stateId.StateRoot.ToCommitment(), cancellationToken);

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
@@ -11,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
@@ -802,7 +804,18 @@ public class StorageProviderTests(bool useFlat)
 
         public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock), writtenData);
+#nullable enable
+        public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+        {
+            if (!scopeProvider.TryBeginScope(baseBlock, out IWorldStateScopeProvider.IScope? inner))
+            {
+                scope = null;
+                return false;
+            }
+            scope = new ScopeDecorator(inner, writtenData);
+            return true;
+        }
+#nullable disable
 
         private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
         {

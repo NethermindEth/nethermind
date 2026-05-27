@@ -86,7 +86,13 @@ public static class StatelessExecutor
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance);
 
-        using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(parentHeader);
+        if (!blockProcessingEnv.WorldState.TryBeginScope(parentHeader, out IDisposable? scopeCloser))
+        {
+            throw new InvalidOperationException(
+                $"Stateless executor: missing state for parent {parentHeader?.ToString(BlockHeader.Format.Short) ?? "null"}.");
+        }
+
+        using IDisposable scope = scopeCloser;
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 

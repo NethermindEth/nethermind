@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -44,13 +45,18 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
     public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
+        // PruningTrieStore has no mechanism to keep the state pinned for the lifetime of a scope, so
+        // there is no point pre-checking HasRoot here: the race window the Flat backend cares about does
+        // not exist for the trie backend, and gating on HasRoot would break sync paths (healing trie)
+        // that legitimately open a scope before all nodes are present.
         IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
         _backingStateTree ??= CreateStateTree();
         _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
 
-        return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+        scope = new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+        return true;
     }
 
     protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);

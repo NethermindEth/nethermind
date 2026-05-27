@@ -97,7 +97,11 @@ public class GethStyleTracer(
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides);
+        if (!blockProcessingEnv.TryBuildAndOverride(block.Header, options.StateOverrides, specOverride: null, out Scope<BlockProcessingComponents> scope))
+        {
+            throw new StateUnavailableException(block.Header);
+        }
+        using Scope<BlockProcessingComponents> _scopeDisposer = scope;
         IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, scope.Component.WorldState, specProvider);
         try
         {
@@ -137,7 +141,11 @@ public class GethStyleTracer(
 
         BlockHeader? parent = FindParent(block);
 
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        if (!blockProcessingEnv.TryBuildAndOverride(parent, options.StateOverrides, specOverride: null, out Scope<BlockProcessingComponents> scope))
+        {
+            throw new StateUnavailableException(parent);
+        }
+        using Scope<BlockProcessingComponents> _scopeDisposer = scope;
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
         return tracer.BuildResult();
@@ -151,7 +159,11 @@ public class GethStyleTracer(
         Block block = blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
         BlockHeader parent = FindParent(block);
 
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        if (!blockProcessingEnv.TryBuildAndOverride(parent, options.StateOverrides, specOverride: null, out Scope<BlockProcessingComponents> scope))
+        {
+            throw new StateUnavailableException(parent);
+        }
+        using Scope<BlockProcessingComponents> _scopeDisposer = scope;
         GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
@@ -168,7 +180,11 @@ public class GethStyleTracer(
                         .FirstOrDefault(b => b.Hash == blockHash)
                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
         BlockHeader parent = FindParent(block);
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        if (!blockProcessingEnv.TryBuildAndOverride(parent, options.StateOverrides, specOverride: null, out Scope<BlockProcessingComponents> scope))
+        {
+            throw new StateUnavailableException(parent);
+        }
+        using Scope<BlockProcessingComponents> _scopeDisposer = scope;
         GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
@@ -189,7 +205,11 @@ public class GethStyleTracer(
             : block.Header;
 
         options.BlockOverrides?.ApplyOverrides(block.Header);
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
+        if (!blockProcessingEnv.TryBuildAndOverride(baseBlockHeader, options.StateOverrides, specOverride: null, out Scope<BlockProcessingComponents> scope))
+        {
+            throw new StateUnavailableException(baseBlockHeader);
+        }
+        using Scope<BlockProcessingComponents> _scopeDisposer = scope;
 
         GethTraceOptions filtered = options with { TxHash = txHash };
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
@@ -221,7 +241,11 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(block);
 
         BlockHeader parent = FindParent(block);
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        if (!blockProcessingEnv.TryBuildAndOverride(parent, options.StateOverrides, specOverride: null, out Scope<BlockProcessingComponents> scope))
+        {
+            throw new StateUnavailableException(parent);
+        }
+        using Scope<BlockProcessingComponents> _scopeDisposer = scope;
 
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
             ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider)

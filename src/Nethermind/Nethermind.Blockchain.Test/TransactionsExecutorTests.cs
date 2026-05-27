@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -444,8 +445,20 @@ namespace Nethermind.Blockchain.Test
     }
 
     public class WorldStateStab()
-        : WorldState(Substitute.For<IWorldStateScopeProvider>(), LimboLogs.Instance), IWorldState
+        : WorldState(MakeScopeProviderStub(), LimboLogs.Instance), IWorldState
     {
+        private static IWorldStateScopeProvider MakeScopeProviderStub()
+        {
+            IWorldStateScopeProvider stub = Substitute.For<IWorldStateScopeProvider>();
+            stub.TryBeginScope(Arg.Any<BlockHeader?>(), out Arg.Any<IWorldStateScopeProvider.IScope?>())
+                .Returns(callInfo =>
+                {
+                    callInfo[1] = Substitute.For<IWorldStateScopeProvider.IScope>();
+                    return true;
+                });
+            return stub;
+        }
+
         public new UInt256 GetBalance(Address address) => UInt256.MaxValue;
 
         public static IReadOnlyStateProvider GetUntrackedReader() => TestReadOnlyStateProvider.Instance;

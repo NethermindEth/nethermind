@@ -32,7 +32,13 @@ public class SingleCallWitnessCollector(
         // Uses blockHeader (not parentHeader) intentionally: for a single call we want the
         // post-state of the target block. Block-level witness uses parentHeader because it
         // needs the pre-state to re-execute the block's transactions.
-        using IDisposable? scope = worldState.BeginScope(blockHeader);
+        if (!worldState.TryBeginScope(blockHeader, out IDisposable? scopeCloser))
+        {
+            throw new InvalidOperationException(
+                $"Single-call witness collector: missing state for {blockHeader.ToString(BlockHeader.Format.Short)}.");
+        }
+
+        using IDisposable scope = scopeCloser;
 
         // Output is intentionally discarded — we only need the witness (state access record),
         // not the call result. Even if the call reverts, the witness captures all accessed state.

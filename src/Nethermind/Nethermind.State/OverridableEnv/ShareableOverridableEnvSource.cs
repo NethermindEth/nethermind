@@ -26,13 +26,14 @@ public sealed class ShareableOverridableEnvSource<T>(
     private int _activeCount;
     private volatile bool _disposed;
 
-    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null)
+    public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, out Scope<T> scope)
     {
         IOverridableEnv<T> env = Rent();
         Scope<T> innerScope;
+        bool ok;
         try
         {
-            innerScope = env.BuildAndOverride(header, stateOverride);
+            ok = env.TryBuildAndOverride(header, stateOverride, specOverride: null, out innerScope);
         }
         catch
         {
@@ -41,7 +42,16 @@ public sealed class ShareableOverridableEnvSource<T>(
             ReleasePoisoned(env);
             throw;
         }
-        return new Scope<T>(innerScope.Component, new ReturnOnDispose(env, innerScope, this));
+
+        if (!ok)
+        {
+            Release(env);
+            scope = default!;
+            return false;
+        }
+
+        scope = new Scope<T>(innerScope.Component, new ReturnOnDispose(env, innerScope, this));
+        return true;
     }
 
     public void Dispose()

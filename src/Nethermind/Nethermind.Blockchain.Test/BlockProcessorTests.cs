@@ -21,6 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
@@ -1223,12 +1224,13 @@ public class BlockProcessorTests
             TrackingReadOnlyTxProcessingEnvFactory factory,
             ITransactionProcessor transactionProcessor) : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            public bool TryBuild(BlockHeader? baseBlock, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
                 IWorldState worldState = Substitute.For<IWorldState>();
                 factory.BuiltHeaders.Add(baseBlock);
                 factory.BuiltWorldStates.Add(worldState);
-                return new Scope(factory, transactionProcessor, worldState);
+                scope = new Scope(factory, transactionProcessor, worldState);
+                return true;
             }
 
             public void Dispose() { }

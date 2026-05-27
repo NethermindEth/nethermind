@@ -146,6 +146,30 @@ public class FlatDbManagerTests
     }
 
     [Test]
+    public async Task GatherReadOnlySnapshotBundle_StateGoneNoMatchingPersistedState_ReturnsNull()
+    {
+        // Regression: when `HasStateForBlock` had returned true but pruning removed the snapshot
+        // before `GatherReadOnlySnapshotBundle`, the manager used to throw
+        // `InvalidOperationException("Unable to gather snapshots ...")`. RPC layers surfaced this as
+        // a confusing internal error. After the TryBeginScope refactor we return null so callers
+        // can map this cleanly to `ResourceUnavailable`.
+        StateId requestedStateId = CreateStateId(10, rootByte: 1);
+        StateId persistedStateId = CreateStateId(5, rootByte: 2);
+
+        IPersistence.IPersistenceReader mockReader = Substitute.For<IPersistence.IPersistenceReader>();
+        mockReader.CurrentState.Returns(persistedStateId);
+        _persistenceManager.LeaseReader().Returns(mockReader);
+        _snapshotRepository.AssembleSnapshots(requestedStateId, persistedStateId, Arg.Any<int>())
+            .Returns(new SnapshotPooledList(0));
+
+        await using FlatDbManager manager = CreateManager();
+        ReadOnlySnapshotBundle? bundle = manager.GatherReadOnlySnapshotBundle(requestedStateId);
+
+        Assert.That(bundle, Is.Null);
+        mockReader.Received().Dispose();
+    }
+
+    [Test]
     public async Task GatherReadOnlySnapshotBundle_CacheClearedPeriodically()
     {
         StateId stateId = CreateStateId(10);
@@ -160,11 +184,11 @@ public class FlatDbManagerTests
         await using FlatDbManager manager = CreateManager();
 
         // First call populates the cache
-        using (ReadOnlySnapshotBundle bundle1 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
+        using (ReadOnlySnapshotBundle bundle1 = manager.GatherReadOnlySnapshotBundle(stateId) ?? throw new InvalidOperationException("expected bundle")) { }
 
         // Second call should hit cache (no new LeaseReader call)
         _persistenceManager.ClearReceivedCalls();
-        using (ReadOnlySnapshotBundle bundle2 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
+        using (ReadOnlySnapshotBundle bundle2 = manager.GatherReadOnlySnapshotBundle(stateId) ?? throw new InvalidOperationException("expected bundle")) { }
         _persistenceManager.DidNotReceive().LeaseReader();
 
         // Wait for periodic clear (15s + margin)
@@ -172,7 +196,7 @@ public class FlatDbManagerTests
 
         // After cache clear, next call needs a new reader
         _persistenceManager.ClearReceivedCalls();
-        using (ReadOnlySnapshotBundle bundle3 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
+        using (ReadOnlySnapshotBundle bundle3 = manager.GatherReadOnlySnapshotBundle(stateId) ?? throw new InvalidOperationException("expected bundle")) { }
         _persistenceManager.Received(1).LeaseReader();
     }
 

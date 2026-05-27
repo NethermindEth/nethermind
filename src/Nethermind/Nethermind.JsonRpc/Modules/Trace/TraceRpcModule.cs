@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -168,12 +169,20 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         parityTypes, ParityTraceStreamMode.Replay, includeTxHash: false,
                         writer, pipeWriter, ct);
-                    using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
+                    if (!tracerEnv.TryBuildAndOverride(header, stateOverride, specOverride: null, out Scope<ITracer> env))
+                    {
+                        throw new StateUnavailableException(header);
+                    }
+                    using Scope<ITracer> _envDisposer = env;
                     env.Component.Trace(block, streamingTracer.WithCancellation(ct));
                 },
                 runBuffered: () =>
                 {
-                    using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
+                    if (!tracerEnv.TryBuildAndOverride(header, stateOverride, specOverride: null, out Scope<ITracer> env))
+                    {
+                        throw new StateUnavailableException(header);
+                    }
+                    using Scope<ITracer> _envDisposer = env;
                     IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlockDirect(env.Component, block, new(parityTypes));
                     return new ParityTxTraceFromReplay(result.SingleOrDefault());
                 });
@@ -462,7 +471,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer)
         {
-            using Scope<ITracer> env = tracerEnv.BuildAndOverride(block.Header);
+            if (!tracerEnv.TryBuildAndOverride(block.Header, stateOverride: null, specOverride: null, out Scope<ITracer> env))
+            {
+                throw new StateUnavailableException(block.Header);
+            }
+            using Scope<ITracer> _envDisposer = env;
             ITracer tracer2 = env.Component;
 
             return TraceBlockDirect(tracer2, block, tracer);
@@ -485,7 +498,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 blockToExecute = block.WithReplacedHeader(adjustedHeader);
             }
 
-            using Scope<ITracer> env = tracerEnv.BuildAndOverride(baseBlock, specOverride: specOverride);
+            if (!tracerEnv.TryBuildAndOverride(baseBlock, stateOverride: null, specOverride: specOverride, out Scope<ITracer> env))
+            {
+                throw new StateUnavailableException(baseBlock);
+            }
+            using Scope<ITracer> _envDisposer = env;
             ITracer tracer2 = env.Component;
 
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -611,7 +628,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private void TraceBlockStreaming(Block block, ParityLikeBlockTracer tracer, CancellationToken ct)
         {
-            using Scope<ITracer> env = tracerEnv.BuildAndOverride(block.Header);
+            if (!tracerEnv.TryBuildAndOverride(block.Header, stateOverride: null, specOverride: null, out Scope<ITracer> env))
+            {
+                throw new StateUnavailableException(block.Header);
+            }
+            using Scope<ITracer> _envDisposer = env;
             env.Component.Trace(block, tracer.WithCancellation(ct));
         }
 
@@ -622,7 +643,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 blockToExecute = block.WithReplacedHeader(AdjustHeaderForSpec(block.Header, baseHeader, specOverride));
             }
-            using Scope<ITracer> env = tracerEnv.BuildAndOverride(baseHeader, specOverride: specOverride);
+            if (!tracerEnv.TryBuildAndOverride(baseHeader, stateOverride: null, specOverride: specOverride, out Scope<ITracer> env))
+            {
+                throw new StateUnavailableException(baseHeader);
+            }
+            using Scope<ITracer> _envDisposer = env;
             env.Component.Execute(blockToExecute, tracer.WithCancellation(ct));
         }
 

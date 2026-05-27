@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -26,12 +27,17 @@ public class FlatScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         StateId currentState = new(baseBlock);
-        SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
+        SnapshotBundle? snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
+        if (snapshotBundle is null)
+        {
+            scope = null;
+            return false;
+        }
 
-        return new FlatWorldStateScope(
+        scope = new FlatWorldStateScope(
             currentState,
             snapshotBundle,
             _codeDb,
@@ -40,5 +46,6 @@ public class FlatScopeProvider(
             trieWarmer,
             logManager,
             isReadOnly: isReadOnly);
+        return true;
     }
 }

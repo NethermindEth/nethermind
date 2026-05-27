@@ -20,7 +20,11 @@ public class EvmWarmer(IOverridableEnvFactory envFactory, ILifetimeScope rootSco
     public Task Execute(CancellationToken cancellationToken)
     {
         IOverridableEnv env = envFactory.Create();
-        using IDisposable envScope = env.BuildAndOverride(null, null);
+        if (!env.TryBuildAndOverride(header: null, stateOverride: null, specOverride: null, out IDisposable? envScopeCloser))
+        {
+            throw new StateUnavailableException(null);
+        }
+        using IDisposable envScope = envScopeCloser;
 
         using ILifetimeScope childContainerScope = rootScope.BeginLifetimeScope((builder) =>
         {

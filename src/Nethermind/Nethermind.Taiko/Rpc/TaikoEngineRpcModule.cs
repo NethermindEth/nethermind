@@ -190,22 +190,30 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
 
-        using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(head);
-
-        return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
-                head.Hash!,
-                Keccak.OfAnEmptySequenceRlp,
-                beneficiary,
-                UInt256.Zero,
-                head!.Number + 1,
-                (long)blockMaxGasLimit,
-                head.Timestamp + 1,
-                [])
+        if (!txProcessorSource.TryBuild(head, out IReadOnlyTxProcessingScope? scope))
         {
-            BaseFeePerGas = baseFee,
-            StateRoot = head.StateRoot,
-            IsPostMerge = true,
-        }, txQueue, maxTransactionsLists, maxBytesPerTxList, minTip));
+            return ResultWrapper<PreBuiltTxList[]?>.Fail(
+                $"No state available for block {head.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceUnavailable);
+        }
+
+        using (scope)
+        {
+            return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
+                    head.Hash!,
+                    Keccak.OfAnEmptySequenceRlp,
+                    beneficiary,
+                    UInt256.Zero,
+                    head!.Number + 1,
+                    (long)blockMaxGasLimit,
+                    head.Timestamp + 1,
+                    [])
+            {
+                BaseFeePerGas = baseFee,
+                StateRoot = head.StateRoot,
+                IsPostMerge = true,
+            }, txQueue, maxTransactionsLists, maxBytesPerTxList, minTip));
+        }
     }
 
     private PreBuiltTxList[] ProcessTransactions(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader blockHeader, Transaction[] txSource, int maxBatchCount, ulong maxBytesPerTxList, ulong minTip)

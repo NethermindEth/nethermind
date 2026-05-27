@@ -196,7 +196,12 @@ public sealed class RetrospectiveExecutionTracer
         try
         {
             // Create isolated processing scope based on parent state
-            using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(parentHeader);
+            if (!txProcessorSource.TryBuild(parentHeader, out IReadOnlyTxProcessingScope? scope))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipping retrospective opcode trace: missing state for parent {parentHeader?.ToString(BlockHeader.Format.Short) ?? "null"}.");
+                return blockOpcodes;
+            }
+            using IReadOnlyTxProcessingScope _scopeDisposer = scope;
 
             // Clone the header to avoid mutating the shared cached instance from BlockTree
             BlockHeader tracingHeader = block.Header.Clone();

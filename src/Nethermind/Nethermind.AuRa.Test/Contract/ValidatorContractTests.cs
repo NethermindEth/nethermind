@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -41,10 +42,16 @@ namespace Nethermind.AuRa.Test.Contract
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _stateProvider = Substitute.For<IWorldState>();
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-            _readOnlyTxProcessorSource.Build(_block.Header).Returns(new ReadOnlyTxProcessingScope(
-                _transactionProcessor,
-                new Reactive.AnonymousDisposable(() => { }),
-                _stateProvider));
+            _readOnlyTxProcessorSource
+                .TryBuild(_block.Header, out Arg.Any<IReadOnlyTxProcessingScope?>())
+                .Returns(callInfo =>
+                {
+                    callInfo[1] = new ReadOnlyTxProcessingScope(
+                        _transactionProcessor,
+                        new Reactive.AnonymousDisposable(() => { }),
+                        _stateProvider);
+                    return true;
+                });
         }
 
         [Test]

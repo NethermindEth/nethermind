@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -36,7 +37,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
         private readonly IOverridableCodeInfoRepository _codeInfoRepository = childLifetimeScope.Resolve<IOverridableCodeInfoRepository>();
         private readonly IWorldState _worldState = childLifetimeScope.Resolve<IWorldState>();
 
-        public IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null)
+        public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out IDisposable? closer)
         {
             if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
 
@@ -45,7 +46,12 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
             if (specOverride is not null)
                 overridableSpecProvider.SetOverride(specOverride);
 
-            _worldScopeCloser = _worldState.BeginScope(header);
+            if (!_worldState.TryBeginScope(header, out _worldScopeCloser))
+            {
+                Reset();
+                closer = null;
+                return false;
+            }
 
             try
             {
@@ -55,7 +61,8 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
                     header.StateRoot = _worldState.StateRoot;
                 }
 
-                return new Scope(this);
+                closer = new Scope(this);
+                return true;
             }
             catch
             {

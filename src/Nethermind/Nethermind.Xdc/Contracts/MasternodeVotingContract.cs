@@ -100,7 +100,13 @@ internal class MasternodeVotingContract(
         Span<byte> input = [(byte)variableSlot];
         UInt256 slot = new(Keccak.Compute(input).Bytes);
         IReadOnlyTxProcessorSource txProcessorSource = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope source = txProcessorSource.Build(header);
+        if (!txProcessorSource.TryBuild(header, out IReadOnlyTxProcessingScope? source))
+        {
+            throw new InvalidOperationException(
+                $"Missing state for block {header.ToString(BlockHeader.Format.Short)} when reading masternode candidates.");
+        }
+
+        using IReadOnlyTxProcessingScope _scopeDisposer = source;
         IWorldState worldState = source.WorldState;
         ReadOnlySpan<byte> storageCell = worldState.Get(new StorageCell(ContractAddress, slot));
         UInt256 length = new(storageCell);

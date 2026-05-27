@@ -21,10 +21,16 @@ public class DisposableScopeOverridableEnv<T>(
     T resolvedComponents
 ) : IOverridableEnv<T>
 {
-    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null)
+    public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, out Scope<T> scope)
     {
-        IDisposable disposable = overridableEnv.BuildAndOverride(header, stateOverride, specOverride);
-        return new Scope<T>(resolvedComponents, disposable);
+        if (!overridableEnv.TryBuildAndOverride(header, stateOverride, specOverride, out IDisposable? disposable))
+        {
+            scope = default!;
+            return false;
+        }
+
+        scope = new Scope<T>(resolvedComponents, disposable);
+        return true;
     }
 }
 

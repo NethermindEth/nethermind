@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Flashbots.Data;
 using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Int256;

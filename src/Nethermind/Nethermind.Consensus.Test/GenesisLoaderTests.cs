@@ -10,6 +10,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -44,7 +45,13 @@ public class GenesisLoaderTests
 
         _worldState = Substitute.For<IWorldState>();
         _scopeDisposable = Substitute.For<IDisposable>();
-        _worldState.BeginScope(IWorldState.PreGenesis).Returns(_scopeDisposable);
+        _worldState
+            .TryBeginScope(IWorldState.PreGenesis, out Arg.Any<IDisposable>())
+            .Returns(callInfo =>
+            {
+                callInfo[1] = _scopeDisposable;
+                return true;
+            });
 
         _worldStateManager = Substitute.For<IWorldStateManager>();
 

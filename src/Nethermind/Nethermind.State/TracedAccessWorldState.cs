@@ -80,8 +80,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return res;
     }
 
-    public IDisposable BeginScope(BlockHeader? baseBlock)
-        => _innerWorldState.BeginScope(baseBlock);
+    public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        => _innerWorldState.TryBeginScope(baseBlock, out scopeCloser);
 
     public IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
 

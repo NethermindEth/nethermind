@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -14,15 +15,23 @@ namespace Nethermind.Evm.State;
 
 /// <summary>
 /// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
-/// <see cref="BeginScope"/> must be called before any other operation, or it will throw. The returned <see cref="IDisposable"/>
-/// must be disposed to close the <see cref="IWorldState"/>. Multiple block can be executed or saved within the same scope.
+/// <see cref="TryBeginScope"/> must be called before any other operation, or operations will throw.
+/// On success the returned <see cref="IDisposable"/> must be disposed to close the <see cref="IWorldState"/>.
+/// Multiple block can be executed or saved within the same scope.
 /// </summary>
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {
     // For scope to create genesis.
     const BlockHeader? PreGenesis = null;
 
-    IDisposable BeginScope(BlockHeader? baseBlock);
+    /// <summary>
+    /// Attempt to open a world-state scope anchored at <paramref name="baseBlock"/>. Returns <c>false</c> when
+    /// the underlying state is unavailable (e.g. pruned concurrently with this call) without throwing.
+    /// </summary>
+    /// <param name="baseBlock">The block header to anchor the scope at, or <see cref="PreGenesis"/>.</param>
+    /// <param name="scopeCloser">Disposable that closes the scope; only valid when the method returns <c>true</c>.</param>
+    /// <returns><c>true</c> on success; <c>false</c> if the state for <paramref name="baseBlock"/> is unavailable.</returns>
+    bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);

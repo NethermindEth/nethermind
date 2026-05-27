@@ -38,7 +38,14 @@ public class FlatSnapServer(
             return false;
         }
 
-        bundle = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
+        ReadOnlySnapshotBundle? maybeBundle = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
+        if (maybeBundle is null)
+        {
+            bundle = null!;
+            return false;
+        }
+
+        bundle = maybeBundle;
         return true;
     }
 

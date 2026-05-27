@@ -134,6 +134,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, token);
 
+                if (result.StateUnavailable)
+                {
+                    return ResultWrapper<HexBytes>.Fail(result.Error!, ErrorCodes.ResourceUnavailable);
+                }
+
                 if (!result.ExecutionReverted && result.Error is not null)
                 {
                     string message = result.InputError
@@ -181,6 +186,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, token);
 
+                if (result.StateUnavailable)
+                {
+                    return ResultWrapper<UInt256?>.Fail(result.Error!, ErrorCodes.ResourceUnavailable);
+                }
+
                 string? errorMessage = result.Error;
                 if (!result.ExecutionReverted && !result.InputError && errorMessage is not null)
                 {
@@ -197,6 +207,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, token);
+
+                if (result.StateUnavailable)
+                {
+                    return ResultWrapper<AccessListResultForRpc?>.Fail(result.Error!, ErrorCodes.ResourceUnavailable);
+                }
 
                 AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),

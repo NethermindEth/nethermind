@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -78,7 +79,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _resourcePool.ReturnCachedResource(ResourcePool.Usage.ReadOnlyProcessingEnv, transientResource);
     }
 
-    private SnapshotBundle GatherSnapshotBundle(BlockHeader? baseBlock)
+    private SnapshotBundle? GatherSnapshotBundle(BlockHeader? baseBlock)
     {
         StateId currentState = new(baseBlock);
 
@@ -91,7 +92,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         }
         snapshots.Reverse();
 
-        ReadOnlySnapshotBundle readOnlySnapshotBundle;
+        ReadOnlySnapshotBundle? readOnlySnapshotBundle;
         try
         {
             readOnlySnapshotBundle = _flatDbManager.GatherReadOnlySnapshotBundle(currentState);
@@ -100,6 +101,12 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         {
             snapshots.Dispose();
             throw;
+        }
+
+        if (readOnlySnapshotBundle is null)
+        {
+            snapshots.Dispose();
+            return null;
         }
 
         return new SnapshotBundle(
@@ -131,12 +138,17 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     {
         public bool HasRoot(BlockHeader? baseBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+        public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
         {
             StateId currentState = new(baseBlock);
-            SnapshotBundle snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);
+            SnapshotBundle? snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);
+            if (snapshotBundle is null)
+            {
+                scope = null;
+                return false;
+            }
 
-            return new FlatWorldStateScope(
+            scope = new FlatWorldStateScope(
                 currentState,
                 snapshotBundle,
                 codeDb,
@@ -144,6 +156,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 configuration,
                 trieWarmer,
                 logManager);
+            return true;
         }
     }
 
@@ -151,7 +164,12 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     {
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
         {
-            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+            using SnapshotBundle? snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+            if (snapshotBundle is null)
+            {
+                account = default;
+                return false;
+            }
             if (snapshotBundle.GetAccount(address) is { } acc)
             {
                 account = acc.ToStruct();
@@ -163,7 +181,8 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
 
         public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
         {
-            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+            using SnapshotBundle? snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+            if (snapshotBundle is null) return [];
             int selfDestructIdx = snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
             return snapshotBundle.GetSlot(address, index, selfDestructIdx) ?? [];
         }
@@ -177,7 +196,8 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
         {
             StateId stateId = new(baseBlock);
-            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock)
+                ?? throw new InvalidOperationException($"State at {baseBlock} not found");
 
             ConcurrencyController concurrency = new(1);
             StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle, concurrency);

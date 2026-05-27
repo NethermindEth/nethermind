@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Cpu;
 
 namespace Nethermind.Consensus.Processing;
@@ -25,11 +26,18 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
         new DefaultObjectPoolProvider { MaximumRetained = Math.Min(RuntimeInformation.ProcessorCount * 16, MaxRetainedAbsoluteCap) }
             .Create(new EnvPoolPolicy(envFactory));
 
-    public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+    public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
     {
-        IReadOnlyTxProcessorSource? source = _envPool.Get();
-        IReadOnlyTxProcessingScope? scope = source.Build(baseBlock);
-        return new ScopeWrapper(source, _envPool, scope);
+        IReadOnlyTxProcessorSource source = _envPool.Get();
+        if (!source.TryBuild(baseBlock, out IReadOnlyTxProcessingScope? inner))
+        {
+            _envPool.Return(source);
+            scope = null;
+            return false;
+        }
+
+        scope = new ScopeWrapper(source, _envPool, inner);
+        return true;
     }
 
     public void Dispose() => (_envPool as IDisposable)?.Dispose();

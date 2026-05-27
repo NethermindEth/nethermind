@@ -230,17 +230,20 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await jobTask;
     }
 
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+    public SnapshotBundle? GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
     {
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
+        ReadOnlySnapshotBundle? readOnly = GatherReadOnlySnapshotBundle(baseBlock);
+        if (readOnly is null) return null;
+
         return new SnapshotBundle(
-            GatherReadOnlySnapshotBundle(baseBlock),
+            readOnly,
             _trieNodeCache,
             _resourcePool,
             usage: usage);
     }
 
-    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+    public ReadOnlySnapshotBundle? GatherReadOnlySnapshotBundle(in StateId baseBlock)
     {
         // Note to self: The current verdict on trying to use a linked list of snapshots is that it is error prone and
         // hard to pull of due to the constantly moving chain making invalidation hard.
@@ -264,7 +267,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 if (Stopwatch.GetElapsedTime(sw) > GatherGiveUpDeadline)
                 {
-                    throw new InvalidOperationException($"Unable to gather {nameof(ReadOnlySnapshotBundle)} for block {baseBlock} in {Stopwatch.GetElapsedTime(sw)}");
+                    if (_logger.IsDebug) _logger.Debug($"Unable to gather {nameof(ReadOnlySnapshotBundle)} for block {baseBlock} in {Stopwatch.GetElapsedTime(sw)}");
+                    return null;
                 }
 
                 int delayMs = Math.Min(1 << Math.Min(attempt, 30), 100);  // 1, 2, 4, 8, 16, 32, 64, 100ms max
@@ -292,7 +296,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 if (persistenceReader.CurrentState != baseBlock)
                 {
                     persistenceReader.Dispose();
-                    throw new InvalidOperationException($"Unable to gather snapshots for state {baseBlock}.");
+                    if (_logger.IsDebug) _logger.Debug($"Unable to gather snapshots for state {baseBlock}.");
+                    return null;
                 }
             }
             else

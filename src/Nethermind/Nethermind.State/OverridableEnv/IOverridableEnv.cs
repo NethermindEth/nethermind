@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Autofac.Core;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -19,7 +20,15 @@ namespace Nethermind.State.OverridableEnv;
 /// </summary>
 public interface IOverridableEnv : IModule
 {
-    IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null);
+    /// <summary>
+    /// Attempt to build and apply overrides on top of the state anchored at <paramref name="header"/>.
+    /// Returns <c>false</c> when the state is no longer available (e.g. concurrently pruned).
+    /// </summary>
+    bool TryBuildAndOverride(
+        BlockHeader? header,
+        Dictionary<Address, AccountOverride>? stateOverride,
+        IReleaseSpec? specOverride,
+        [NotNullWhen(true)] out IDisposable? closer);
 }
 
 /// <summary>
@@ -32,5 +41,8 @@ public interface IOverridableEnv : IModule
 /// <typeparam name="T"></typeparam>
 public interface IOverridableEnv<T>
 {
-    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null);
+    /// <summary>
+    /// Attempt to build a typed scope; returns <c>false</c> when the underlying state is unavailable.
+    /// </summary>
+    bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, out Scope<T> scope);
 }

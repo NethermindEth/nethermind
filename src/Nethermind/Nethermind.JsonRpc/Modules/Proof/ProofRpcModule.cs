@@ -46,7 +46,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             BlockHeader sourceHeader = searchResult.Object;
-            using Scope<ITracer> scope = tracerEnv.BuildAndOverride(sourceHeader);
+            if (!tracerEnv.TryBuildAndOverride(sourceHeader, stateOverride: null, specOverride: null, out Scope<ITracer> scope))
+            {
+                return ResultWrapper<CallResultWithProof>.Fail(
+                    $"No state available for block {sourceHeader.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                    ErrorCodes.ResourceUnavailable);
+            }
+            using Scope<ITracer> _scopeDisposer = scope;
 
             BlockHeader callHeader = new(
                 sourceHeader.Hash,
@@ -143,7 +149,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             Block block = searchResult.Object;
-            using Scope<ITracer> scope = tracerEnv.BuildAndOverride(blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
+            BlockHeader? proofParent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+            if (!tracerEnv.TryBuildAndOverride(proofParent, stateOverride: null, specOverride: null, out Scope<ITracer> scope))
+            {
+                return ResultWrapper<ReceiptWithProof>.Fail(
+                    $"No state available for parent of block {block.Header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                    ErrorCodes.ResourceUnavailable);
+            }
+            using Scope<ITracer> _scopeDisposer = scope;
 
             TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
             BlockReceiptsTracer receiptsTracer = new();

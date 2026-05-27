@@ -30,75 +30,84 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             return ResultWrapper<Hash256>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
-        using IReadOnlyTxProcessingScope worldScope = txProcessorSource.Build(blockHeader);
-        IWorldState worldState = worldScope.WorldState;
-        IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
-
-        foreach (KeyValuePair<Address, AccountChange> kv in accountDiff)
+        if (!txProcessorSource.TryBuild(blockHeader, out IReadOnlyTxProcessingScope? worldScope))
         {
-            Address address = kv.Key;
-            AccountChange accountChange = kv.Value;
-
-            if (accountChange.SelfDestructed)
-            {
-                worldState.DeleteAccount(address);
-            }
-
-            bool hasAccountChange = accountChange.Balance is not null
-                                    || accountChange.Nonce is not null
-                                    || accountChange.CodeHash is not null
-                                    || accountChange.ChangedSlots?.Count > 0;
-            if (!hasAccountChange) continue;
-
-            if (worldState.TryGetAccount(address, out AccountStruct account))
-            {
-                // IWorldState does not actually have set nonce or set balance.
-                // Set, its either this or changing `IWorldState` which is somewhat risky.
-                if (accountChange.Nonce is not null)
-                {
-                    worldState.SetNonce(address, accountChange.Nonce.Value);
-                }
-
-                if (accountChange.Balance is not null)
-                {
-                    UInt256 originalBalance = account.Balance;
-                    if (accountChange.Balance.Value > originalBalance)
-                    {
-                        worldState.AddToBalance(address, accountChange.Balance.Value - originalBalance, releaseSpec);
-                    }
-                    else if (accountChange.Balance.Value == originalBalance)
-                    {
-                    }
-                    else
-                    {
-                        worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value, releaseSpec);
-                    }
-                }
-            }
-            else
-            {
-                worldState.CreateAccountIfNotExists(address, accountChange.Balance ?? 0, accountChange.Nonce ?? 0);
-            }
-
-            if (accountChange.CodeHash is not null)
-            {
-                // Note, this also set CodeDb, but since this is a read only world state, it should do nothing.
-                worldState.InsertCode(address, accountChange.CodeHash, Array.Empty<byte>(), releaseSpec, false);
-            }
-
-            if (accountChange.ChangedSlots is not null)
-            {
-                foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
-                {
-                    ReadOnlySpan<byte> bytes = changedSlot.Value.ToBigEndian().WithoutLeadingZeros();
-                    worldState.Set(new StorageCell(address, changedSlot.Key), bytes.ToArray());
-                }
-            }
+            return ResultWrapper<Hash256>.Fail(
+                $"No state available for block {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceUnavailable);
         }
 
-        worldState.Commit(releaseSpec);
-        worldState.CommitTree(blockHeader.Number + 1);
-        return ResultWrapper<Hash256>.Success(worldState.StateRoot);
+        using (worldScope)
+        {
+            IWorldState worldState = worldScope.WorldState;
+            IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
+
+            foreach (KeyValuePair<Address, AccountChange> kv in accountDiff)
+            {
+                Address address = kv.Key;
+                AccountChange accountChange = kv.Value;
+
+                if (accountChange.SelfDestructed)
+                {
+                    worldState.DeleteAccount(address);
+                }
+
+                bool hasAccountChange = accountChange.Balance is not null
+                                        || accountChange.Nonce is not null
+                                        || accountChange.CodeHash is not null
+                                        || accountChange.ChangedSlots?.Count > 0;
+                if (!hasAccountChange) continue;
+
+                if (worldState.TryGetAccount(address, out AccountStruct account))
+                {
+                    // IWorldState does not actually have set nonce or set balance.
+                    // Set, its either this or changing `IWorldState` which is somewhat risky.
+                    if (accountChange.Nonce is not null)
+                    {
+                        worldState.SetNonce(address, accountChange.Nonce.Value);
+                    }
+
+                    if (accountChange.Balance is not null)
+                    {
+                        UInt256 originalBalance = account.Balance;
+                        if (accountChange.Balance.Value > originalBalance)
+                        {
+                            worldState.AddToBalance(address, accountChange.Balance.Value - originalBalance, releaseSpec);
+                        }
+                        else if (accountChange.Balance.Value == originalBalance)
+                        {
+                        }
+                        else
+                        {
+                            worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value, releaseSpec);
+                        }
+                    }
+                }
+                else
+                {
+                    worldState.CreateAccountIfNotExists(address, accountChange.Balance ?? 0, accountChange.Nonce ?? 0);
+                }
+
+                if (accountChange.CodeHash is not null)
+                {
+                    // Note, this also set CodeDb, but since this is a read only world state, it should do nothing.
+                    worldState.InsertCode(address, accountChange.CodeHash, Array.Empty<byte>(), releaseSpec, false);
+                }
+
+                if (accountChange.ChangedSlots is not null)
+                {
+                    foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
+                    {
+                        ReadOnlySpan<byte> bytes = changedSlot.Value.ToBigEndian().WithoutLeadingZeros();
+                        worldState.Set(new StorageCell(address, changedSlot.Key), bytes.ToArray());
+                    }
+                }
+            }
+
+            worldState.Commit(releaseSpec);
+            worldState.CommitTree(blockHeader.Number + 1);
+            return ResultWrapper<Hash256>.Success(worldState.StateRoot);
+        }
     }
 
 

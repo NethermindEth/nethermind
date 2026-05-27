@@ -218,7 +218,7 @@ namespace Nethermind.State
 
         public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
-        public IDisposable BeginScope(BlockHeader? baseBlock)
+        public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
         {
             if (Interlocked.CompareExchange(ref _isInScope, true, false))
             {
@@ -227,11 +227,19 @@ namespace Nethermind.State
 
             if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
 
-            _currentScope = ScopeProvider.BeginScope(baseBlock);
+            if (!ScopeProvider.TryBeginScope(baseBlock, out IWorldStateScopeProvider.IScope? newScope))
+            {
+                _isInScope = false;
+                scopeCloser = null;
+                if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} unavailable.");
+                return false;
+            }
+
+            _currentScope = newScope;
             _stateProvider.SetScope(_currentScope);
             _persistentStorageProvider.SetBackendScope(_currentScope);
 
-            return new Reactive.AnonymousDisposable(() =>
+            scopeCloser = new Reactive.AnonymousDisposable(() =>
             {
                 Reset();
                 _stateProvider.SetScope(null);
@@ -240,6 +248,7 @@ namespace Nethermind.State
                 _isInScope = false;
                 if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
             });
+            return true;
         }
 
         public bool IsInScope => _currentScope is not null;

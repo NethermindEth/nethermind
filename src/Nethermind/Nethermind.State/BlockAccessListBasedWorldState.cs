@@ -91,8 +91,8 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         return !AccountExists(address);
     }
 
-    public IDisposable BeginScope(BlockHeader? baseBlock)
-        => _innerWorldState.BeginScope(baseBlock);
+    public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        => _innerWorldState.TryBeginScope(baseBlock, out scopeCloser);
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {

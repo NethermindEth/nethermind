@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Modules;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
@@ -118,10 +119,11 @@ public class ShareableOverridableEnvSourceTests
     {
         public bool IsDisposed { get; private set; }
 
-        public Scope<Marker> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null)
+        public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, out Scope<Marker> scope)
         {
             if (throwOnBuild) throw new InvalidOperationException("simulated build failure");
-            return new Scope<Marker>(new Marker(), new NoopDisposable());
+            scope = new Scope<Marker>(new Marker(), new NoopDisposable());
+            return true;
         }
 
         public void Dispose() => IsDisposed = true;

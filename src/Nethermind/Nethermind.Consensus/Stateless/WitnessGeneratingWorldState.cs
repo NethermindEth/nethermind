@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Collections.Pooled;
@@ -287,7 +288,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     public void ResetTransient() => inner.ResetTransient();
 
-    public IDisposable BeginScope(BlockHeader? baseBlock) => inner.BeginScope(baseBlock);
+    public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser) => inner.TryBeginScope(baseBlock, out scopeCloser);
 
     public void CreateEmptyAccountIfDeleted(Address address)
     {
