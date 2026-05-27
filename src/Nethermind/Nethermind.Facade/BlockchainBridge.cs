@@ -237,8 +237,6 @@ namespace Nethermind.Facade
                     tx.GasLimit = allowance;
             }
 
-            EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, header.GasLimit);
-
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(nonceReader, txProcessor, header, tx, true,
                 blobBaseFeeOverride, estimateGasTracer.WithCancellation(cancellationToken));
@@ -246,20 +244,16 @@ namespace Nethermind.Facade
             GasEstimator gasEstimator = new(txProcessor, worldState, specProvider, blocksConfig);
 
             string? error = ConstructError(tryCallResult, estimateGasTracer.Error);
-            bool initialProbeWasBelowStandardIntrinsicGas =
-                tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
-                && tx.GasLimit < intrinsicGas.Standard;
 
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
-            // Allowance errors take precedence over any earlier revert: the revert was an artifact
-            // of the gas cap, so surfacing it instead of the affordability error would be misleading.
             error = err switch
             {
-                null => initialProbeWasBelowStandardIntrinsicGas ? null : error,
+                // Probe failed only because gas hint was below standard intrinsic: if estimation succeeds, clear the probe error.
+                null when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => null,
+                null => error,
                 _ when error is null => err,
-                // The initial low-gas probe only establishes the search lower bound. If estimation later reaches
-                // a valid execution result, that later result is more informative than the probe's synthetic failure.
-                _ when initialProbeWasBelowStandardIntrinsicGas => err,
+                // Probe's low-gas failure is superseded by whatever the estimator found at full gas.
+                _ when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => err,
                 _ when err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) => err,
                 GasEstimator.InsufficientBalance => err,
                 GasEstimator.InsufficientFundsForGas => err,
