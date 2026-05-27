@@ -191,6 +191,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             $"SparseTime={sw.ElapsedMilliseconds}ms, Accounts={_sparseRootComputer.AccountChangeCount}, " +
                             $"ProofNodes={_sparseRootComputer.LastProofNodeCount}, PrevRoot={_sparseRootComputer.PreviousRoot}. " +
                             $"Falling back to Patricia.");
+
+                        if (mismatchCount <= 3)
+                            DiagnoseMismatch(logger, _sparseRootComputer);
+
                         _sparseComputedRoot = null;
                     }
                 }
@@ -226,6 +230,76 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         else
         {
             _stateTree.UpdateRootHash();
+        }
+    }
+
+    private void DiagnoseMismatch(ILogger logger, SparseRootComputer computer)
+    {
+        try
+        {
+            Hash256 prevRoot = computer.PreviousRoot;
+            ParentStateTrieNodeReader reader = new(_snapshotBundle);
+
+            byte[] rootRlp = reader.LoadStateRlp(TreePath.Empty, prevRoot);
+            Hash256 rootRlpHash = Keccak.Compute(rootRlp);
+            logger.Warn($"  DIAG: prevRoot={prevRoot}, rootRlp.Length={rootRlp.Length}, keccak(rootRlp)={rootRlpHash}, match={rootRlpHash == prevRoot}");
+            logger.Warn($"  DIAG: rootRlp[0..min(64,len)]={Convert.ToHexString(rootRlp.AsSpan(0, Math.Min(64, rootRlp.Length)))}");
+
+            SparseSubtrie subtrie = computer.Trie.AccountTrie.Subtrie;
+            if (subtrie.Root >= 0)
+            {
+                SparseTrieNode rootNode = subtrie.NodeAt(subtrie.Root);
+                logger.Warn($"  DIAG: sparseRoot kind={rootNode.Kind}, state={rootNode.State}, " +
+                    $"shortKey={rootNode.ShortKey?.Length ?? -1}, stateMask={rootNode.StateMask}, " +
+                    $"blindedMask={rootNode.BlindedMask}, childCount={rootNode.ChildCount()}");
+
+                if (rootNode.CachedRlp.IsNull)
+                    logger.Warn("  DIAG: sparseRoot CachedRlp is NULL (not computed?)");
+                else
+                {
+                    ReadOnlySpan<byte> cachedSpan = rootNode.CachedRlp.AsSpan();
+                    logger.Warn($"  DIAG: sparseRoot CachedRlp.Length={cachedSpan.Length}");
+                    logger.Warn($"  DIAG: sparseRoot CachedRlp[0..min(64,len)]={Convert.ToHexString(cachedSpan[..Math.Min(64, cachedSpan.Length)])}");
+                    Hash256 sparseCachedHash = Keccak.Compute(cachedSpan);
+                    logger.Warn($"  DIAG: keccak(sparseCachedRlp)={sparseCachedHash}");
+                }
+
+                if (rootNode.FullRlp is not null)
+                {
+                    logger.Warn($"  DIAG: sparseRoot FullRlp.Length={rootNode.FullRlp.Length}");
+                    if (rootNode.FullRlp.Length != rootNode.CachedRlp.Length)
+                        logger.Warn($"  DIAG: WARNING FullRlp.Length != CachedRlp.Length!");
+                }
+
+                int blindedCount = rootNode.BlindedMask.CountBits();
+                int totalChildren = rootNode.StateMask.CountBits();
+                logger.Warn($"  DIAG: root has {totalChildren} children, {blindedCount} still blinded");
+            }
+
+            DecodedMultiProof diagnosticProof = MultiProofReader.ReadAccountProofs(
+                reader, prevRoot, [Keccak.Zero]);
+            logger.Warn($"  DIAG: test proof read returned {diagnosticProof.AccountNodes.Count} nodes (no exception = reader works)");
+
+            // Re-do from scratch with a FRESH trie to confirm cross-block isn't the issue
+            if (computer.AccountChangeCount > 0 && computer.AccountChangeCount < 10000)
+            {
+                try
+                {
+                    ParentStateTrieNodeReader freshReader = new(_snapshotBundle);
+                    using SparseRootComputer freshComputer = new(freshReader, prevRoot);
+                    freshComputer.SetAccountChanges(computer.LastAccountChanges!);
+                    Hash256 freshRoot = freshComputer.ComputeStateRoot();
+                    logger.Warn($"  DIAG: FRESH sparse root={freshRoot}, matches_patricia={freshRoot == _stateTree.RootHash}");
+                }
+                catch (Exception freshEx)
+                {
+                    logger.Warn($"  DIAG: fresh recompute failed: {freshEx.GetType().Name}: {freshEx.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.Warn($"  DIAG: exception during diagnosis: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

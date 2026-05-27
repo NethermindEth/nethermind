@@ -1,15 +1,19 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.Trie.Sparse;
@@ -141,4 +145,124 @@ public class SparseRootComputerFlatDbTests
         Hash256 resultHash = Keccak.Compute(result);
         resultHash.Should().Be(rootHash, "Returned RLP must hash to the expected hash");
     }
+
+    /// <summary>
+    /// Reproduces the EXPB verification flow exactly:
+    /// - Patricia tree commits via StateTrieStoreAdapter to SnapshotBundle
+    /// - CollectAndApplySnapshot moves nodes to snapshot chain
+    /// - ParentStateTrieNodeReader reads proofs from the same SnapshotBundle
+    /// - SparseRootComputer computes root and compares
+    /// Blocks 1-5 match in EXPB but blocks 6+ mismatch. This test should reproduce that.
+    /// </summary>
+    [TestCase(500, 15, 50)]
+    [TestCase(1000, 20, 100)]
+    [TestCase(200, 10, 30)]
+    public void MultiBlock_SnapshotBundleReader_MatchesPatricia(int trieSize, int numBlocks, int changesPerBlock)
+    {
+        ResourcePool pool = new(new FlatDbConfig { CompactSize = 32 });
+        IPersistence.IPersistenceReader mockPersistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
+        ITrieNodeCache noopCache = Substitute.For<ITrieNodeCache>();
+
+        SnapshotPooledList initialSnapshots = new(1);
+        ReadOnlySnapshotBundle roBundle = new(initialSnapshots, mockPersistenceReader, false);
+        SnapshotBundle snapshotBundle = new(roBundle, noopCache, pool, ResourcePool.Usage.MainBlockProcessing);
+
+        ConcurrencyController concurrencyQuota = new(Environment.ProcessorCount);
+        StateTrieStoreAdapter storeAdapter = new(snapshotBundle, concurrencyQuota);
+        StateTree stateTree = new(storeAdapter, LimboLogs.Instance)
+        {
+            RootHash = Keccak.EmptyTreeHash
+        };
+
+        // Also build a reference Patricia tree in MemDb for comparison
+        MemDb refDb = new();
+        PatriciaTree refTree = new(new RawTrieStore(refDb).GetTrieStore(null), LimboLogs.Instance);
+
+        Hash256[] keys = new Hash256[trieSize];
+        for (int i = 0; i < trieSize; i++)
+            keys[i] = Keccak.Compute(System.BitConverter.GetBytes(i));
+
+        // Genesis: insert initial accounts into both trees
+        for (int i = 0; i < trieSize; i++)
+        {
+            byte[] rlp = TestItem.GenerateIndexedAccountRlp(i);
+            stateTree.Set(keys[i].Bytes, rlp);
+            refTree.Set(keys[i].Bytes, rlp);
+        }
+        stateTree.UpdateRootHash();
+        stateTree.Commit();
+        refTree.UpdateRootHash();
+        refTree.Commit();
+        Hash256 prevRoot = stateTree.RootHash;
+        prevRoot.Should().Be(refTree.RootHash, "Genesis roots should match");
+
+        // Move genesis nodes to snapshot
+        StateId genesisStateId = new(0, prevRoot.ValueHash256);
+        (Snapshot? genSnap, TransientResource? genRes) =
+            snapshotBundle.CollectAndApplySnapshot(StateId.PreGenesis, genesisStateId);
+        genRes?.Dispose();
+
+        // Create sparse trie components
+        SparseStateTrie sparseState = new();
+        Random rng = new(42);
+
+        for (int block = 1; block <= numBlocks; block++)
+        {
+            // Determine which accounts to update
+            int startIdx = rng.Next(0, trieSize - changesPerBlock);
+            Dictionary<Hash256, LeafUpdate> sparseUpdates = new(changesPerBlock);
+
+            for (int i = startIdx; i < startIdx + changesPerBlock; i++)
+            {
+                byte[] newRlp = TestItem.GenerateIndexedAccountRlp(10000 + block * changesPerBlock + i);
+                stateTree.Set(keys[i].Bytes, newRlp);
+                refTree.Set(keys[i].Bytes, newRlp);
+                sparseUpdates[keys[i]] = LeafUpdate.Changed(newRlp);
+            }
+
+            // Patricia: UpdateRootHash + Commit on the StateTree (SnapshotBundle-backed)
+            stateTree.UpdateRootHash();
+            Hash256 patriciaRoot = stateTree.RootHash;
+
+            // Reference tree for sanity
+            refTree.UpdateRootHash();
+            refTree.Commit();
+            Hash256 refRoot = refTree.RootHash;
+            patriciaRoot.Should().Be(refRoot, $"Block {block}: Patricia (SnapshotBundle) root should match ref tree");
+
+            // Sparse: read proofs from ParentStateTrieNodeReader, update, compute root
+            ParentStateTrieNodeReader proofReader = new(snapshotBundle);
+            using SparseRootComputer computer = new(sparseState, proofReader, prevRoot);
+            computer.SetAccountChanges(sparseUpdates);
+
+            Hash256 sparseRoot = computer.ComputeStateRoot();
+
+            TestContext.Out.WriteLine(
+                $"Block {block}: prev={Shorten(prevRoot)}, patricia={Shorten(patriciaRoot)}, " +
+                $"sparse={Shorten(sparseRoot)}, accounts={computer.AccountChangeCount}, " +
+                $"proofNodes={computer.LastProofNodeCount}");
+
+            sparseRoot.Should().Be(patriciaRoot,
+                $"Block {block}: sparse root must match Patricia " +
+                $"({changesPerBlock}/{trieSize} changes, ParentStateTrieNodeReader path)");
+
+            // Commit Patricia to snapshot chain (same as FlatWorldStateScope.Commit)
+            stateTree.Commit();
+            StateId newStateId = new(block, patriciaRoot.ValueHash256);
+            (Snapshot? snap, TransientResource? res) =
+                snapshotBundle.CollectAndApplySnapshot(
+                    new StateId(block - 1, prevRoot.ValueHash256), newStateId);
+            res?.Dispose();
+
+            // Reset stateTree root for next block
+            stateTree.RootHash = patriciaRoot;
+
+            prevRoot = patriciaRoot;
+        }
+
+        sparseState.Dispose();
+        snapshotBundle.Dispose();
+    }
+
+    private static string Shorten(Hash256 h) => h.ToString()[..10] + "...";
 }

@@ -588,4 +588,60 @@ public class SparseRevealTests
         sparseRoot.Should().Be(patriciaNewRoot,
             $"SparseRootComputer with {updateCount}/{trieSize} updates must match Patricia (arena resize regression)");
     }
+
+    /// <summary>
+    /// Multi-block test: process N sequential blocks, reusing the sparse trie across blocks.
+    /// Mirrors the EXPB verification flow where blocks 1-5 match but block 6+ mismatch.
+    /// Each block changes a random subset of accounts, commits Patricia, then verifies sparse root.
+    /// </summary>
+    [TestCase(1000, 10, 100)]
+    [TestCase(5000, 10, 300)]
+    [TestCase(10000, 15, 500)]
+    public void MultiBlock_CrossBlockReuse_MatchesPatricia(int trieSize, int numBlocks, int changesPerBlock)
+    {
+        MemDb db = new();
+        PatriciaTree tree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        Hash256[] keys = new Hash256[trieSize];
+        for (int i = 0; i < trieSize; i++)
+        {
+            keys[i] = Keccak.Compute(BitConverter.GetBytes(i));
+            tree.Set(keys[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
+        }
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 prevRoot = tree.RootHash;
+
+        Random rng = new(42);
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        SparseStateTrie sparseState = new();
+
+        for (int block = 0; block < numBlocks; block++)
+        {
+            Dictionary<Hash256, LeafUpdate> updates = [];
+            int startIdx = rng.Next(0, trieSize - changesPerBlock);
+            for (int i = startIdx; i < startIdx + changesPerBlock; i++)
+            {
+                byte[] newRlp = TestItem.GenerateIndexedAccountRlp(100000 + block * changesPerBlock + i);
+                tree.Set(keys[i].Bytes, newRlp);
+                updates[keys[i]] = LeafUpdate.Changed(newRlp);
+            }
+            tree.UpdateRootHash();
+            tree.Commit();
+            Hash256 patriciaRoot = tree.RootHash;
+
+            using State.Flat.SparseRootComputer computer = new(sparseState, reader, prevRoot);
+            computer.SetAccountChanges(updates);
+            Hash256 sparseRoot = computer.ComputeStateRoot();
+
+            TestContext.Out.WriteLine($"Block {block}: prev={Shorten(prevRoot)}, patricia={Shorten(patriciaRoot)}, sparse={Shorten(sparseRoot)}, changes={changesPerBlock}");
+
+            sparseRoot.Should().Be(patriciaRoot,
+                $"Block {block}: sparse root must match Patricia (cross-block reuse, {changesPerBlock}/{trieSize} changes)");
+
+            prevRoot = patriciaRoot;
+        }
+
+        sparseState.Dispose();
+        static string Shorten(Hash256 h) => h.ToString()[..10] + "...";
+    }
 }

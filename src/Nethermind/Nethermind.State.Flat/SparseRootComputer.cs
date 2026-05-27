@@ -89,6 +89,7 @@ public sealed class SparseRootComputer : IDisposable
     public Hash256 PreviousRoot => _previousStateRoot;
     public int AccountChangeCount => _accountChanges?.Count ?? 0;
     public int LastProofNodeCount { get; private set; }
+    internal Dictionary<Hash256, LeafUpdate>? LastAccountChanges => _accountChanges;
 
     /// <summary>The underlying trie for persistence and cross-block storage.</summary>
     internal SparseStateTrie Trie => _trie;
