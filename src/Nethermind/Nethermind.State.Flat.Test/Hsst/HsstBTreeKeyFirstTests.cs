@@ -7,7 +7,7 @@ using NUnit.Framework;
 using Nethermind.State.Flat.Hsst.BTree;
 using Nethermind.State.Flat.Hsst.TwoByteSlot;
 
-namespace Nethermind.State.Flat.Test;
+namespace Nethermind.State.Flat.Test.Hsst;
 
 [TestFixture]
 public class HsstBTreeKeyFirstTests

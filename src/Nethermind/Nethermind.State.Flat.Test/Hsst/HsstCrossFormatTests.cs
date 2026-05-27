@@ -11,7 +11,7 @@ using Nethermind.State.Flat.Hsst.PackedArray;
 using Nethermind.State.Flat.Hsst.DenseByteIndex;
 using Nethermind.State.Flat.Hsst.TwoByteSlot;
 
-namespace Nethermind.State.Flat.Test;
+namespace Nethermind.State.Flat.Test.Hsst;
 
 /// <summary>
 /// Canonical cross-format round-trip authority. The same per-format corpus must

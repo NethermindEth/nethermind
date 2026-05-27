@@ -9,7 +9,7 @@ using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst.PackedArray;
 
-namespace Nethermind.State.Flat.Test;
+namespace Nethermind.State.Flat.Test.Hsst;
 
 [TestFixture]
 public class HsstPackedArrayTests

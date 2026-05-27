@@ -7,7 +7,7 @@ using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst.TwoByteSlot;
 
-namespace Nethermind.State.Flat.Test;
+namespace Nethermind.State.Flat.Test.Hsst;
 
 /// <summary>
 /// Format-specific tests for the keys-first sub-slot builders

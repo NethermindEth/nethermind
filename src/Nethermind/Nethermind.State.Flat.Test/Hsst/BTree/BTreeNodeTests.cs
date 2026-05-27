@@ -10,7 +10,7 @@ using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst.BTree;
 
-namespace Nethermind.State.Flat.Test;
+namespace Nethermind.State.Flat.Test.Hsst.BTree;
 
 /// <summary>
 /// Unit tests for BTreeNodeReader (B-tree navigation) and BTreeNodeWriter (B-tree construction).
