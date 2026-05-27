@@ -86,7 +86,8 @@ public class PayloadAttributes
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
-        + (SlotNumber is null ? 0 : sizeof(ulong)); // slot number
+        + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
+        + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list digest (EIP-7805)
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -131,7 +132,51 @@ public class PayloadAttributes
             position += sizeof(ulong);
         }
 
+        if (InclusionListTransactions is not null)
+        {
+            // EIP-7805: distinct ILs MUST yield distinct payload ids. Without this, two FCUv5
+            // calls with the same parent/timestamp but different ILs collide on the cached
+            // payload and the second caller gets a block built for the first IL.
+            ComputeInclusionListDigest(InclusionListTransactions).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
+
         return position;
+    }
+
+    private static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
+    {
+        // Order-sensitive concatenation: the IL is an ordered list, and two different orderings
+        // are different inputs to the builder. Keccak over the concatenation is sufficient — we
+        // only need uniqueness as a cache key, not the Merkle structure of a state commitment.
+        int total = 0;
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+        {
+            total += inclusionListTransactions[i]?.Length ?? 0;
+        }
+
+        if (total == 0)
+        {
+            return ValueKeccak.Compute(ReadOnlySpan<byte>.Empty);
+        }
+
+        byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(total);
+        try
+        {
+            int offset = 0;
+            for (int i = 0; i < inclusionListTransactions.Length; i++)
+            {
+                byte[]? entry = inclusionListTransactions[i];
+                if (entry is null || entry.Length == 0) continue;
+                entry.CopyTo(buffer.AsSpan(offset));
+                offset += entry.Length;
+            }
+            return ValueKeccak.Compute(buffer.AsSpan(0, offset));
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     /// <summary>
