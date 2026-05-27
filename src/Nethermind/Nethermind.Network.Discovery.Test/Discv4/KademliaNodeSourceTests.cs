@@ -92,6 +92,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         public async Task DiscoverNodes_should_ping_nodes_that_have_not_received_pong(CancellationToken token)
         {
             Node node = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
+            int pingCount = 0;
+            _discv4Adapter.Ping(node, token)
+                .Returns(Task.CompletedTask)
+                .AndDoes(_ => Interlocked.Increment(ref pingCount));
             _lookup.Lookup(Arg.Any<PublicKey>(), token)
                 .Returns(CreateAsyncEnumerable(node));
 
@@ -99,10 +103,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
 
-            // Assert - Verify that ping was called
-            await _discv4Adapter.Received(2).Ping(
-                Arg.Is<Node>(n => n == node),
-                token);
+            // Each of the concurrent discovery jobs pings the node once. The node can be yielded before
+            // the other job has pinged it, so poll for the count instead of asserting it immediately.
+            Assert.That(() => Volatile.Read(ref pingCount), Is.GreaterThanOrEqualTo(2).After(5000, 50));
         }
 
         [Test]
@@ -144,8 +147,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
 
+            int node1PingCount = 0;
             _discv4Adapter.Ping(node1, token)
-                .Returns(Task.FromException(new OperationCanceledException()));
+                .Returns(Task.FromException(new OperationCanceledException()))
+                .AndDoes(_ => Interlocked.Increment(ref node1PingCount));
             _discv4Adapter.Ping(node2, token)
                 .Returns(Task.CompletedTask);
 
@@ -158,9 +163,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await enumerator.MoveNextAsync();
             Assert.That(enumerator.Current, Is.EqualTo(node2));
 
-            await _discv4Adapter.Received(2).Ping(
-                Arg.Is<Node>(n => n == node1),
-                token);
+            // Each of the concurrent discovery jobs pings node1 once; the ping timeout must not stop
+            // discovery. node2 can be yielded before the other job has pinged node1, so poll for the
+            // count instead of asserting it immediately (the immediate check is racy).
+            Assert.That(() => Volatile.Read(ref node1PingCount), Is.GreaterThanOrEqualTo(2).After(5000, 50));
         }
 
         [Test]
