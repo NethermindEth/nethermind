@@ -121,7 +121,6 @@ internal static class HsstBTreeMerger
                     valueMerger.MergeValues(ref inner, cursor.MinKey, ref cursor);
                     builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
                 }
-                valueMerger.OnKey(cursor.MinKey);
                 cursor.AdvanceMatching();
             }
             builder.Build();
@@ -189,7 +188,6 @@ internal static class HsstBTreeMerger
                     valueMerger.MergeValues(ref stagingWriter, cursor.MinKey, ref cursor);
                     builder.Add(cursor.MinKey, staging.WrittenSpan);
                 }
-                valueMerger.OnKey(cursor.MinKey);
                 cursor.AdvanceMatching();
             }
             builder.Build();

@@ -150,14 +150,12 @@ public static class PersistedSnapshotMerger
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
-        public void OnKey(scoped ReadOnlySpan<byte> key)
-            => bloom.Add(MemoryMarshal.Read<ulong>(key));
-
         public void OnFastCopy(scoped ReadOnlySpan<byte> key,
             scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory> cursor)
         {
             Bound vb = cursor.MinValue;
             ulong addrKey = MemoryMarshal.Read<ulong>(key);
+            bloom.Add(addrKey);
             WholeReadSessionReader srcReader = cursor.CreateMinReader();
             HsstReader<WholeReadSessionReader, NoOpPin> outer = new(in srcReader, vb);
             if (outer.TrySeek(PersistedSnapshotTags.SlotSubTag, out Bound slotBound))
@@ -168,6 +166,7 @@ public static class PersistedSnapshotMerger
             scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory> cursor)
         {
             ulong addrKey = MemoryMarshal.Read<ulong>(key);
+            bloom.Add(addrKey);
             ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
             int matchCount = matchingSources.Length;
             const int SubTagCount = PersistedSnapshotTags.PerAddrSubTagCount;
@@ -435,8 +434,6 @@ public static class PersistedSnapshotMerger
             private const int OuterKeyLen = 30;
             private const int InnerKeyLen = 2;
 
-            public void OnKey(scoped ReadOnlySpan<byte> key) { }
-
             public void OnFastCopy(scoped ReadOnlySpan<byte> key,
                 scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory> cursor)
             {
@@ -523,8 +520,6 @@ public static class PersistedSnapshotMerger
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
-        public void OnKey(scoped ReadOnlySpan<byte> key) { }
-
         public void OnFastCopy(scoped ReadOnlySpan<byte> key,
             scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory> cursor)
         {

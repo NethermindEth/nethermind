@@ -30,12 +30,6 @@ internal interface IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource, TFacto
     where TSource : struct, IHsstMergeSource<TReader, TPin>
     where TFactory : struct, IHsstEnumeratorFactory<TReader, TPin>
 {
-    /// <summary>Fired once per emitted key (single-source verbatim copy and multi-source
-    /// rebuild alike), AFTER the value has been written into the outer builder. Use for
-    /// path-independent outer-key bookkeeping (e.g. <c>bloom.Add(addrKey)</c>). Supply an
-    /// empty body when not needed.</summary>
-    void OnKey(scoped ReadOnlySpan<byte> key);
-
     /// <summary>Fired when matchCount==1 AND the source value was copied verbatim through
     /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.TryAddAligned"/>. The destination
     /// has no inner structure to walk, so this hook walks the SOURCE bytes for per-element
