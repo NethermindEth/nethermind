@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.State.Flat.Hsst;
 
@@ -94,20 +92,3 @@ public interface IByteBufferWriterWithReader<TReader, TPin> : IByteBufferWriter
     void DisposeActiveReader();
 }
 
-public unsafe struct SpanBufferWriter(Span<byte> buffer, long firstOffset = 0) : IByteBufferWriterWithReader<SpanByteReader, NoOpPin>
-{
-    private readonly byte* _buffer = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(buffer));
-    private readonly int _length = buffer.Length;
-    private readonly long _firstOffset = firstOffset;
-    private int _written;
-
-    public readonly Span<byte> GetSpan(int sizeHint) => new(_buffer + _written, _length - _written);
-    public void Advance(int count) => _written += count;
-    public readonly long Written => _written;
-    public readonly long FirstOffset => _firstOffset;
-
-    public readonly SpanByteReader OpenReader(long pastSize)
-        => new(new ReadOnlySpan<byte>(_buffer + (_written - pastSize), checked((int)pastSize)));
-
-    public readonly void DisposeActiveReader() { }
-}

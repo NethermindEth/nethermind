@@ -18,8 +18,8 @@ namespace Nethermind.State.Flat.Hsst.TwoByteSlot;
 /// </summary>
 internal static class HsstTwoByteSlotValueLargeReader
 {
-    public const int KeyLength = HsstTwoByteSlotValueLargeBuilder<SpanBufferWriter>.KeyLength;
-    public const int OffsetSize = HsstTwoByteSlotValueLargeBuilder<SpanBufferWriter>.OffsetSize;
+    public const int KeyLength = HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer>.KeyLength;
+    public const int OffsetSize = HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer>.OffsetSize;
 
     /// <summary>Parsed header of a TwoByteSlotValueLarge HSST.</summary>
     internal struct Layout

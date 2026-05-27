@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.Hsst.TwoByteSlot;
 /// </summary>
 internal static class HsstTwoByteSlotValueReader
 {
-    public const int KeyLength = HsstTwoByteSlotValueBuilder<SpanBufferWriter>.KeyLength;
+    public const int KeyLength = HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.KeyLength;
     private const int OffsetSize = 2;
 
     /// <summary>Parsed header of a TwoByteSlotValue HSST.</summary>

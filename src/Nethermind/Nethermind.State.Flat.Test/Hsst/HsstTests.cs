@@ -673,13 +673,13 @@ public class HsstTests
         byte[] realValue = "hello-padded-world"u8.ToArray();
         byte[] key = "k"u8.ToArray();
 
-        byte[] buffer = new byte[4096];
-        SpanBufferWriter writer = new(buffer);
+        using PooledByteBufferWriter pooled = new(4096);
+        ref PooledByteBufferWriter.Writer writer = ref pooled.GetWriter();
         using HsstBTreeBuilderBuffersContainer buffers = new();
-        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> b = new(ref writer, ref buffers.Buffers, keyLength: -1);
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b = new(ref writer, ref buffers.Buffers, keyLength: -1);
         try
         {
-            ref SpanBufferWriter w = ref b.BeginValueWrite();
+            ref PooledByteBufferWriter.Writer w = ref b.BeginValueWrite();
             // Pad with a recognisable filler so any leak into the value is obvious.
             Span<byte> pad = w.GetSpan(padLen);
             pad[..padLen].Fill(0xCC);
@@ -693,7 +693,7 @@ public class HsstTests
         }
         finally { b.Dispose(); }
 
-        ReadOnlySpan<byte> data = buffer.AsSpan(0, (int)writer.Written);
+        ReadOnlySpan<byte> data = pooled.WrittenSpan;
         Assert.That(CountEntries(data), Is.EqualTo(1));
         Assert.That(TryGet(data, key, out byte[] got), Is.True);
         Assert.That(got, Is.EqualTo(realValue));
@@ -703,16 +703,16 @@ public class HsstTests
     public void NestedBuilder_TwoLevel_RoundTrips()
     {
         // Outer HSST with one entry whose value is an inner HSST
-        byte[] buffer = new byte[4096];
-        SpanBufferWriter writer = new(buffer);
+        using PooledByteBufferWriter pooled = new(4096);
+        ref PooledByteBufferWriter.Writer writer = ref pooled.GetWriter();
         using HsstBTreeBuilderBuffersContainer outerBuffers = new();
-        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer, ref outerBuffers.Buffers, keyLength: -1);
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> outer = new(ref writer, ref outerBuffers.Buffers, keyLength: -1);
         try
         {
-            ref SpanBufferWriter innerWriter = ref outer.BeginValueWrite();
+            ref PooledByteBufferWriter.Writer innerWriter = ref outer.BeginValueWrite();
             long innerStart = innerWriter.Written;
             using HsstBTreeBuilderBuffersContainer innerBuffers = new();
-            using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref innerWriter, ref innerBuffers.Buffers, keyLength: -1);
+            using HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> inner = new(ref innerWriter, ref innerBuffers.Buffers, keyLength: -1);
             inner.Add("key1"u8, "val1"u8);
             inner.Add("key2"u8, "val2"u8);
             inner.Build();
@@ -723,9 +723,8 @@ public class HsstTests
         {
             outer.Dispose();
         }
-        int len = (int)writer.Written;
 
-        ReadOnlySpan<byte> outerSpan = buffer.AsSpan(0, len);
+        ReadOnlySpan<byte> outerSpan = pooled.WrittenSpan;
         Assert.That(CountEntries(outerSpan), Is.EqualTo(1));
         Assert.That(TryGet(outerSpan, "tag"u8, out byte[] innerData), Is.True);
         Assert.That(CountEntries(innerData), Is.EqualTo(2));
@@ -737,46 +736,45 @@ public class HsstTests
     public void NestedBuilder_MultipleColumns_SharedWriter_RoundTrips()
     {
         // Outer HSST with 3 columns, each an inner HSST built via shared writer
-        byte[] buffer = new byte[65536];
-        SpanBufferWriter writer = new(buffer);
+        using PooledByteBufferWriter pooled = new(65536);
+        ref PooledByteBufferWriter.Writer writer = ref pooled.GetWriter();
         using HsstBTreeBuilderBuffersContainer outerBuffers = new();
-        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer, ref outerBuffers.Buffers, keyLength: -1);
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> outer = new(ref writer, ref outerBuffers.Buffers, keyLength: -1);
         try
         {
             {
-                ref SpanBufferWriter iw = ref outer.BeginValueWrite();
+                ref PooledByteBufferWriter.Writer iw = ref outer.BeginValueWrite();
                 long start = iw.Written;
                 using HsstBTreeBuilderBuffersContainer innerBuffers = new();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
+                using HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
                 inner.Add("from"u8, "block0"u8);
                 inner.Add("to\0\0"u8, "block1"u8);
                 inner.Build();
                 outer.FinishValueWrite([0x00], iw.Written - start);
             }
             {
-                ref SpanBufferWriter iw = ref outer.BeginValueWrite();
+                ref PooledByteBufferWriter.Writer iw = ref outer.BeginValueWrite();
                 long start = iw.Written;
                 using HsstBTreeBuilderBuffersContainer innerBuffers = new();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
+                using HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
                 byte[] addr = new byte[20]; addr[0] = 0xAB;
                 inner.Add(addr, [0xC0, 0x80]);
                 inner.Build();
                 outer.FinishValueWrite([0x01], iw.Written - start);
             }
             {
-                ref SpanBufferWriter iw = ref outer.BeginValueWrite();
+                ref PooledByteBufferWriter.Writer iw = ref outer.BeginValueWrite();
                 long start = iw.Written;
                 using HsstBTreeBuilderBuffersContainer innerBuffers = new();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
+                using HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
                 inner.Build();
                 outer.FinishValueWrite([0x02], iw.Written - start);
             }
             outer.Build();
         }
         finally { outer.Dispose(); }
-        int len = (int)writer.Written;
 
-        ReadOnlySpan<byte> outerSpan = buffer.AsSpan(0, len);
+        ReadOnlySpan<byte> outerSpan = pooled.WrittenSpan;
         Assert.That(CountEntries(outerSpan), Is.EqualTo(3));
         Assert.That(TryGet(outerSpan, [0x00], out byte[] col0), Is.True, "col0");
         Assert.That(CountEntries(col0), Is.EqualTo(2));
