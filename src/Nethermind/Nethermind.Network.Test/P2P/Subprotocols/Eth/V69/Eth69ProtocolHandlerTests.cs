@@ -279,6 +279,10 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_disconnect_on_invalid_BlockRangeUpdate()
     {
+        HandleIncomingStatusMessage();
+        long headNumber = _handler.HeadNumber;
+        Hash256? headHash = _handler.HeadHash;
+
         using BlockRangeUpdateMessage msg = new()
         {
             EarliestBlock = 2,
@@ -286,15 +290,23 @@ public class Eth69ProtocolHandlerTests
             LatestBlockHash = Keccak.Compute("2")
         };
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth69MessageCode.BlockRangeUpdate);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+        using (Assert.EnterMultipleScope())
+        {
+            _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+            Assert.That(_handler.HeadNumber, Is.EqualTo(headNumber));
+            Assert.That(_handler.HeadHash, Is.EqualTo(headHash));
+        }
     }
 
     [Test]
     public void Should_disconnect_on_invalid_BlockRangeUpdate_empty_hash()
     {
+        HandleIncomingStatusMessage();
+        long headNumber = _handler.HeadNumber;
+        Hash256? headHash = _handler.HeadHash;
+
         using BlockRangeUpdateMessage msg = new()
         {
             EarliestBlock = 1,
@@ -302,10 +314,14 @@ public class Eth69ProtocolHandlerTests
             LatestBlockHash = Keccak.Zero
         };
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth69MessageCode.BlockRangeUpdate);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+        using (Assert.EnterMultipleScope())
+        {
+            _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+            Assert.That(_handler.HeadNumber, Is.EqualTo(headNumber));
+            Assert.That(_handler.HeadHash, Is.EqualTo(headHash));
+        }
     }
 
     [Test]

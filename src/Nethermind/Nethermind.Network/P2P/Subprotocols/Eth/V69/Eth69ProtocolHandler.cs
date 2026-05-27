@@ -122,6 +122,7 @@ public class Eth69ProtocolHandler(
                 DisconnectReason.InvalidBlockRangeUpdate,
                 $"BlockRangeUpdate with earliest ({blockRangeUpdate.EarliestBlock}) > latest ({blockRangeUpdate.LatestBlock})."
             );
+            return;
         }
 
         if (blockRangeUpdate.LatestBlockHash.IsZero)
@@ -130,6 +131,7 @@ public class Eth69ProtocolHandler(
                 DisconnectReason.InvalidBlockRangeUpdate,
                 "BlockRangeUpdate with latest block hash as zero."
             );
+            return;
         }
 
         _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
