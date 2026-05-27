@@ -6,7 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;

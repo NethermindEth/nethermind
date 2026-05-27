@@ -5,7 +5,7 @@ using System;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Config;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Tracing;

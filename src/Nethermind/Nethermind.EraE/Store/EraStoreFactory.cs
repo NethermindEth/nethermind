@@ -6,7 +6,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Config;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.EraE.Proofs;
 using Nethermind.Logging;
 

@@ -14,6 +14,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test.Modules.Eth;
 using NUnit.Framework;
+using Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 namespace Nethermind.JsonRpc.Test.Modules.Simulate;
 

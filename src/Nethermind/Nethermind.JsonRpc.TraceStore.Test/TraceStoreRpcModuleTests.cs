@@ -19,7 +19,7 @@ using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.TraceStore.Tests;
+namespace Nethermind.JsonRpc.TraceStore.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class TraceStoreRpcModuleTests
@@ -141,7 +141,7 @@ public class TraceStoreRpcModuleTests
             BlockFinder = Build.A.BlockTree().OfChainLength(3).TestObject;
             ReceiptFinder = Substitute.For<IReceiptFinder>();
             ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
-            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, LimboLogs.Instance, parallelization);
+            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, new JsonRpcConfig(), LimboLogs.Instance, parallelization);
             Hash256 dbTransaction = Build.A.Transaction.TestObject.Hash!;
             Hash256 dbBlock = BlockFinder.Head!.Hash!;
             DbTrace = new() { BlockHash = dbBlock, TransactionHash = dbTransaction };

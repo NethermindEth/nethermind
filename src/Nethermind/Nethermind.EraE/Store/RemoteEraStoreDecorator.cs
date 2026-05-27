@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Archive;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 
 namespace Nethermind.EraE.Store;
@@ -205,7 +205,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         if (!manifest.TryGetValue(epoch, out RemoteEraEntry entry))
             throw new EraException($"Epoch {epoch} is not available in the remote eraE manifest.");
 
-        string destinationPath = Path.Join(_downloadDir, entry.Filename);
+        string destinationPath = ResolveDestinationPath(entry.Filename);
 
         SemaphoreSlim epochLock = _epochLocks.GetOrAddDisposable(epoch, static _ => new SemaphoreSlim(1, 1));
         await epochLock.WaitAsync(cancellation).ConfigureAwait(false);
@@ -264,6 +264,17 @@ public sealed class RemoteEraStoreDecorator : IEraStore
             await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, _validator, cancellation).ConfigureAwait(false);
         if (_trustedAccumulators is not null && accumulatorRoot != default && !_trustedAccumulators.Contains(accumulatorRoot))
             throw new EraVerificationException($"AccumulatorRoot {accumulatorRoot} for epoch {epoch} is not trusted.");
+    }
+
+    private string ResolveDestinationPath(string filename)
+    {
+        string root = Path.GetFullPath(_downloadDir);
+        string destinationPath = Path.GetFullPath(Path.Join(root, filename));
+        string boundary = Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar;
+        if (!destinationPath.StartsWith(boundary, StringComparison.Ordinal))
+            throw new EraException($"Remote eraE manifest filename '{filename}' escapes the download directory.");
+
+        return destinationPath;
     }
 
     private static void VerifySha256(string filePath, byte[] expectedHash)

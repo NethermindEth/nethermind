@@ -13,6 +13,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
