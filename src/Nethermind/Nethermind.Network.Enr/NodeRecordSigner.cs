@@ -66,6 +66,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         Signature signature = new(sigBytes, 0);
 
         bool canVerify = true;
+        bool hasV4Id = false;
         ulong enrSequence = ctx.DecodeULong();
         while (ctx.Position < checkPosition)
         {
@@ -79,7 +80,13 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
             switch (key.Length)
             {
                 case 2 when key.SequenceEqual(EnrContentKey.IdU8):
-                    ctx.SkipItem();
+                    ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan();
+                    if (!id.SequenceEqual("v4"u8))
+                    {
+                        throw new RlpException("Unsupported ENR identity scheme.");
+                    }
+
+                    hasV4Id = true;
                     nodeRecord.SetEntry(IdEntry.Instance);
                     break;
                 case 2 when key.SequenceEqual(EnrContentKey.IpU8):
@@ -142,6 +149,11 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         }
 
         ctx.Check(checkPosition);
+        if (!hasV4Id)
+        {
+            throw new RlpException("ENR is missing id=v4.");
+        }
+
         int endPosition = ctx.Position;
         if (!canVerify)
         {
