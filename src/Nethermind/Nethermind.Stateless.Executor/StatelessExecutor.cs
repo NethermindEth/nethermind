@@ -8,13 +8,12 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Exceptions;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stateless.Execution.IO;
-using Nethermind.Trie;
 
 namespace Nethermind.Stateless.Execution;
 
@@ -23,22 +22,27 @@ public static class StatelessExecutor
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
         StatelessPayload payload = InputDecoder.Decode(data);
-        ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig);
-        IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
-        EthereumEcdsa ecdsa = new(payload.ChainConfig.ChainId);
+        ReadOnlySpan<SszPublicKeys> publicKeys = payload.PublicKeys.Span;
+        Transaction[] transactions = payload.Block.Transactions;
+        bool success = false;
+
+        if (transactions.Length == publicKeys.Length)
+        {
+            ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig);
+            IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
 
 #if !ZK_EVM
-        if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
-            KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
+            if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
+                KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
 #endif
 
-        // Recover sender addresses for transactions,
-        // as RLP-deserialized blocks don't have them
-        foreach (Transaction tx in payload.Block.Transactions)
-            tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+            for (int i = 0; i < transactions.Length; i++)
+                transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].Bytes.AsSpan(1));
 
-        using Witness witness = payload.Witness.ToWitness();
-        bool success = Execute(payload.Block, witness, specProvider);
+            using Witness witness = payload.Witness.ToWitness();
+            success = Execute(payload.Block, witness, specProvider);
+        }
+        
         StatelessValidationResult result = new()
         {
             NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
@@ -52,7 +56,17 @@ public static class StatelessExecutor
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
     {
         BlockHeader? parentHeader = null;
-        using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
+        ArrayPoolList<BlockHeader> headers;
+
+        try
+        {
+            headers = witness.DecodeHeaders();
+        }
+        catch (Exception ex)
+        {
+            Debug.Fail(ex.Message);
+            return false;
+        }
 
         foreach (BlockHeader header in headers)
         {
@@ -108,7 +122,7 @@ public static class StatelessExecutor
                 NullBlockTracer.Instance,
                 specProvider.GetSpec(suggestedBlock.Header));
         }
-        catch (Exception ex) when (ex is InvalidBlockException or MissingTrieNodeException)
+        catch (Exception ex)
         {
             Debug.Fail(ex.Message);
             return false;

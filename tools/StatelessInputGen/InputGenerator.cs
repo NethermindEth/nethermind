@@ -1,19 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+using System.Globalization;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stateless.Execution.IO;
 using Spectre.Console;
-using System.Buffers.Binary;
-using System.Globalization;
 
 namespace Nethermind.StatelessInputGen;
 
@@ -39,7 +41,8 @@ internal static class InputGenerator
                 ChainConfig = new()
                 {
                     ChainId = chainId
-                }
+                },
+                PublicKeys = RecoverPublicKeys(block.Transactions, chainId)
             };
         }
 
@@ -89,6 +92,7 @@ internal static class InputGenerator
                     ChainId = chainId.Value,
                     ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId.Value))
                 },
+                PublicKeys = RecoverPublicKeys(block.Transactions, chainId.Value)
             };
 
             byte[] encoded = StatelessInput<SszExecutionPayloadV3>.Encode(input);
@@ -228,14 +232,45 @@ internal static class InputGenerator
         BlockchainIds.Hoodi => "Hoodi",
         BlockchainIds.Mainnet => "Mainnet",
         BlockchainIds.Sepolia => "Sepolia",
-        _ => $"Not supported ({chainId})"
+        _ => $"Unknown ({chainId})"
     };
 
-    internal static ISpecProvider GetSpecProvider(ulong chainId) => chainId switch
+    internal static ISpecProvider GetSpecProvider(ulong chainId)
     {
-        BlockchainIds.Hoodi => HoodiSpecProvider.Instance,
-        BlockchainIds.Mainnet => MainnetSpecProvider.Instance,
-        BlockchainIds.Sepolia => SepoliaSpecProvider.Instance,
-        _ => throw new ArgumentException($"Unsupported chainId id: {chainId}", nameof(chainId))
-    };
+        if (!ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainId, out IForkAwareSpecProvider? specProvider))
+            throw new ArgumentException($"Unknown chain id: {chainId}", nameof(chainId));
+
+        return specProvider;
+    }
+
+    private static SszPublicKeys[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
+    {
+        EthereumEcdsa ecdsa = new(chainId);
+        SszPublicKeys[] publicKeys = new SszPublicKeys[transactions.Length];
+
+        static ValueHash256 ComputeSignatureHash(Transaction tx, ulong chainId)
+        {
+            ulong sigChainId = tx.Signature!.ChainId ?? chainId;
+            bool applyEip155 = tx.Type == TxType.Legacy && tx.Signature.ChainId.HasValue;
+
+            KeccakRlpStream stream = new();
+            TxDecoder.Instance.EncodeTx(stream, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, sigChainId);
+            return stream.GetValueHash();
+        }
+
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            Transaction tx = transactions[i];
+            ValueHash256 hash = ComputeSignatureHash(tx, chainId);
+            PublicKey publicKey = ecdsa.RecoverPublicKey(tx.Signature!, in hash)
+                ?? throw new InvalidOperationException($"Failed to recover public key for transaction {tx.Hash}");
+
+            publicKeys[i] = new()
+            {
+                Bytes = publicKey.PrefixedBytes
+            };
+        }
+
+        return publicKeys;
+    }
 }
