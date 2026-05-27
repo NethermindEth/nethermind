@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 /// </para>
 /// </summary>
 [JsonConverter(typeof(GethLikeTxTraceStreamingBundleResultConverter))]
-public sealed class GethLikeTxTraceStreamingBundleResult : StreamingResultBase, IEnumerable<IEnumerable<GethLikeTxTrace>>
+public sealed class GethLikeTxTraceStreamingBundleResult : JsonStreamingResultBase, IEnumerable<IEnumerable<GethLikeTxTrace>>
 {
     private readonly IDebugBridge _bridge;
     private readonly TransactionBundle[] _bundles;

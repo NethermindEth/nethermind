@@ -22,10 +22,11 @@ internal sealed class LogsStreamableResult(
     long? maxLogsResponseBodySize,
     long? maxBatchResponseBodySize,
     CancellationTokenSource timeoutCts,
-    ILogger logger) : IBatchAwareStreamableResultWithStatus, IEnumerable<FilterLog>, IDisposable
+    ILogger logger) : StreamingResultBase(timeoutCts, logger), IBatchAwareStreamableResultWithStatus, IEnumerable<FilterLog>
 {
     private const long EnvelopeEndReserveBytes = 128;
-    private static readonly JsonWriterOptions _itemWriterOptions = new() { SkipValidation = true };
+    private const string TimeoutLogMessage = "eth_getLogs streaming timed out mid-response; client receives a partial result with the JSON envelope closed.";
+    private const string CancellationLogMessage = "eth_getLogs streaming cancelled mid-response; client receives a partial result with the JSON envelope closed.";
 
     public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
         await WriteToWithStatusAsync(writer, isBatch: false, cancellationToken);
@@ -36,36 +37,29 @@ internal sealed class LogsStreamableResult(
     public ValueTask<StreamableResultStatus> WriteToWithStatusAsync(PipeWriter writer, CancellationToken cancellationToken) =>
         WriteToWithStatusAsync(writer, isBatch: false, cancellationToken);
 
-    public async ValueTask<StreamableResultStatus> WriteToWithStatusAsync(PipeWriter writer, bool isBatch, CancellationToken cancellationToken)
+    public ValueTask<StreamableResultStatus> WriteToWithStatusAsync(PipeWriter writer, bool isBatch, CancellationToken cancellationToken) =>
+        WriteToWithStatusAsync(
+            TimeoutToken,
+            Logger, 
+            combinedToken => EmitContentAsync(writer, isBatch, combinedToken),
+            cancellationToken,
+            TimeoutLogMessage,
+            CancellationLogMessage);
+
+    private async ValueTask<StreamableResultStatus> EmitContentAsync(PipeWriter writer, bool isBatch, CancellationToken cancellationToken)
     {
-        using CancellationTokenSource linkedCts =
-            CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken);
-        CancellationToken combinedToken = linkedCts.Token;
         long? maxResponseBodySize = GetMaxResponseBodySize(isBatch);
-        StreamableResultStatus status;
 
         writer.Write("["u8);
 
         try
         {
-            status = await WriteLogsAsync(writer, maxResponseBodySize, combinedToken);
-        }
-        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-        {
-            status = StreamableResultStatus.Timeout;
-            if (logger.IsDebug) logger.Debug("eth_getLogs streaming timed out mid-response; client receives a partial result with the JSON envelope closed.");
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            status = StreamableResultStatus.Cancelled;
-            if (logger.IsDebug) logger.Debug("eth_getLogs streaming cancelled mid-response; client receives a partial result with the JSON envelope closed.");
+            return await WriteLogsAsync(writer, maxResponseBodySize, cancellationToken);
         }
         finally
         {
             writer.Write("]"u8);
         }
-
-        return status;
     }
 
     public IEnumerator<FilterLog> GetEnumerator()
@@ -84,8 +78,6 @@ internal sealed class LogsStreamableResult(
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-    public void Dispose() => timeoutCts.Dispose();
 
     private async ValueTask<StreamableResultStatus> WriteLogsAsync(PipeWriter writer, long? maxResponseBodySize, CancellationToken cancellationToken)
     {
@@ -145,7 +137,7 @@ internal sealed class LogsStreamableResult(
                 }
 
                 itemBuffer.Clear();
-                using Utf8JsonWriter itemWriter = new(itemBuffer, _itemWriterOptions);
+                using Utf8JsonWriter itemWriter = new(itemBuffer, StreamingResultBase.WriterOptions);
                 JsonSerializer.Serialize(itemWriter, enumerator.Current, EthereumJsonSerializer.JsonOptions);
                 return null;
             }
@@ -155,7 +147,7 @@ internal sealed class LogsStreamableResult(
             }
             catch (Exception ex)
             {
-                if (logger.IsWarn) logger.Warn($"eth_getLogs streaming failed mid-response: {ex}");
+                if (Logger.IsWarn) Logger.Warn($"eth_getLogs streaming failed mid-response: {ex}");
                 return StreamableResultStatus.Failed;
             }
         }

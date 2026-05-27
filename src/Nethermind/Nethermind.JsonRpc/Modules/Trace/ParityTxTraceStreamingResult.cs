@@ -9,13 +9,12 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 [JsonConverter(typeof(ParityTxTraceStreamingResultConverterFactory))]
-public sealed class ParityTxTraceStreamingResult<T> : StreamingResultBase, IEnumerable<T>
+public sealed class ParityTxTraceStreamingResult<T> : JsonStreamingResultBase, IEnumerable<T>
 {
     private readonly Action<Utf8JsonWriter, PipeWriter?, CancellationToken> _runExecution;
 
