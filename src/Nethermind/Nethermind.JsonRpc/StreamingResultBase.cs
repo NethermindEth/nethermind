@@ -22,7 +22,7 @@ public abstract class StreamingResultBase(CancellationTokenSource timeoutCts, IL
     protected ILogger Logger { get; } = logger;
     protected CancellationToken TimeoutToken { get; } = timeoutCts.Token;
 
-    protected static async ValueTask WriteJsonToAsync(
+    internal static async ValueTask WriteJsonToAsync(
         CancellationToken timeoutToken,
         ILogger logger,
         PipeWriter writer,
