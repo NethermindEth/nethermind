@@ -105,7 +105,7 @@ public static class PersistedSnapshotMerger
     /// <c>matchCount</c> and <c>matchCount * subTagCount</c> respectively.</summary>
     private static void ResolvePerAddrAndSubTagBounds(
         scoped ref NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory> cursor,
-        Span<Bound> perAddrBounds, Span<Bound> subTagBounds, int subTagCount)
+        scoped Span<Bound> perAddrBounds, scoped Span<Bound> subTagBounds, int subTagCount)
     {
         ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
         Span<WholeReadSessionMergeSource> sources = cursor.Sources;
@@ -172,10 +172,8 @@ public static class PersistedSnapshotMerger
             int matchCount = matchingSources.Length;
             const int SubTagCount = PersistedSnapshotTags.PerAddrSubTagCount;
 
-            using NativeMemoryListRef<Bound> perAddrBoundsList = new(matchCount, matchCount);
-            using NativeMemoryListRef<Bound> subTagBoundsList = new(matchCount * SubTagCount, matchCount * SubTagCount);
-            Span<Bound> perAddrBounds = perAddrBoundsList.AsSpan();
-            Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
+            Span<Bound> perAddrBounds = stackalloc Bound[matchCount];
+            Span<Bound> subTagBounds = stackalloc Bound[matchCount * SubTagCount];
             ResolvePerAddrAndSubTagBounds(ref cursor, perAddrBounds, subTagBounds, SubTagCount);
 
             // perAddrBuilder is passed to several helpers by ref, so it can't be a `using`
@@ -210,7 +208,7 @@ public static class PersistedSnapshotMerger
         private void MergeSlots(
             ReadOnlySpan<WholeReadSessionMergeSource> sources,
             ReadOnlySpan<int> matchingSources, int matchCount,
-            ReadOnlySpan<Bound> subTagBounds,
+            scoped ReadOnlySpan<Bound> subTagBounds,
             scoped ref HsstDenseByteIndexBuilder<TWriter> perAddrBuilder,
             ulong addrKey)
         {
@@ -233,10 +231,8 @@ public static class PersistedSnapshotMerger
             int slotTag = PersistedSnapshotTags.SlotSubTag[0];
             int slotSourceCount = 0;
             int slotCapacity = matchCount - slotStart;
-            using NativeMemoryListRef<int> slotSourcesList = new(slotCapacity, slotCapacity);
-            using NativeMemoryListRef<Bound> slotBoundsList = new(slotCapacity, slotCapacity);
-            Span<int> slotSources = slotSourcesList.AsSpan();
-            Span<Bound> slotBounds = slotBoundsList.AsSpan();
+            Span<int> slotSources = stackalloc int[slotCapacity];
+            Span<Bound> slotBounds = stackalloc Bound[slotCapacity];
             for (int j = slotStart; j < matchCount; j++)
             {
                 Bound slotBound = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + slotTag];
@@ -284,7 +280,7 @@ public static class PersistedSnapshotMerger
         private void MergeSelfDestruct(
             ReadOnlySpan<WholeReadSessionMergeSource> sources,
             ReadOnlySpan<int> matchingSources, int matchCount,
-            ReadOnlySpan<Bound> subTagBounds,
+            scoped ReadOnlySpan<Bound> subTagBounds,
             scoped ref HsstDenseByteIndexBuilder<TWriter> perAddrBuilder)
         {
             int sdTag = PersistedSnapshotTags.SelfDestructSubTag[0];
@@ -330,7 +326,7 @@ public static class PersistedSnapshotMerger
         private void MergeAccount(
             ReadOnlySpan<WholeReadSessionMergeSource> sources,
             ReadOnlySpan<int> matchingSources, int matchCount,
-            ReadOnlySpan<Bound> subTagBounds,
+            scoped ReadOnlySpan<Bound> subTagBounds,
             scoped ref HsstDenseByteIndexBuilder<TWriter> perAddrBuilder)
         {
             int acctTag = PersistedSnapshotTags.AccountSubTag[0];
@@ -555,10 +551,8 @@ public static class PersistedSnapshotMerger
             int matchCount = matchingSources.Length;
             const int SubTagCount = PersistedSnapshotTags.StorageTrieSubTagCount;
 
-            using NativeMemoryListRef<Bound> perAddrBoundsList = new(matchCount, matchCount);
-            using NativeMemoryListRef<Bound> subTagBoundsList = new(matchCount * SubTagCount, matchCount * SubTagCount);
-            Span<Bound> perAddrBounds = perAddrBoundsList.AsSpan();
-            Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
+            Span<Bound> perAddrBounds = stackalloc Bound[matchCount];
+            Span<Bound> subTagBounds = stackalloc Bound[matchCount * SubTagCount];
             ResolvePerAddrAndSubTagBounds(ref cursor, perAddrBounds, subTagBounds, SubTagCount);
 
             HsstDenseByteIndexBuilder<TWriter> perAddrBuilder = new(ref writer);
@@ -591,7 +585,7 @@ public static class PersistedSnapshotMerger
         private void MergeStorageSubTag(
             ReadOnlySpan<WholeReadSessionMergeSource> sources,
             ReadOnlySpan<int> matchingSources, int matchCount,
-            ReadOnlySpan<Bound> subTagBounds,
+            scoped ReadOnlySpan<Bound> subTagBounds,
             scoped ref HsstDenseByteIndexBuilder<TWriter> perAddrBuilder,
             byte[] subTag, int innerKeySize,
             ulong addrKey)
@@ -599,10 +593,8 @@ public static class PersistedSnapshotMerger
             int subTagIdx = subTag[0];
             const int PerSourceStride = PersistedSnapshotTags.StorageTrieSubTagCount;
 
-            using NativeMemoryListRef<int> srcsList = new(matchCount, matchCount);
-            using NativeMemoryListRef<Bound> boundsList = new(matchCount, matchCount);
-            Span<int> srcs = srcsList.AsSpan();
-            Span<Bound> subBounds = boundsList.AsSpan();
+            Span<int> srcs = stackalloc int[matchCount];
+            Span<Bound> subBounds = stackalloc Bound[matchCount];
 
             int active = 0;
             for (int j = 0; j < matchCount; j++)
