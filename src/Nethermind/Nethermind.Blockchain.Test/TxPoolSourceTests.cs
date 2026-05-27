@@ -10,7 +10,6 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Core;
-using Nethermind.Core.Test;
 using System.Linq;
 using System.Collections.Generic;
 using Nethermind.Config;

@@ -134,7 +134,7 @@ public class HeaderStoreTests
         Assert.That(partial[^1].Hash, Is.EqualTo(chain[7].Hash!));
 
         // Fork: insert an extra header at the same number as chain[3] that is NOT in the main chain
-        BlockHeader fork = Build.A.BlockHeader.WithParent(chain[2]).TestObject;
+        BlockHeader fork = Build.A.BlockHeader.WithParent(chain[2]).WithExtraData([9]).TestObject;
         store.Insert(fork);
         // Re-insert chain[4] to restore the gap
         store.Insert(chain[4]);

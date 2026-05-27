@@ -162,6 +162,21 @@ public class BlockHeaderTests
     }
 
     [Test]
+    public void Equals_and_hash_code_ignore_total_difficulty_processing_field()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        BlockHeader headerFromBlockTree = header.Clone();
+        header.TotalDifficulty = null;
+        headerFromBlockTree.TotalDifficulty = UInt256.One;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(headerFromBlockTree, Is.EqualTo(header));
+            Assert.That(headerFromBlockTree.GetHashCode(), Is.EqualTo(header.GetHashCode()));
+        });
+    }
+
+    [Test]
     public void Eip_1559_CalculateBaseFee_should_returns_zero_when_eip1559_not_enabled()
     {
         IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();

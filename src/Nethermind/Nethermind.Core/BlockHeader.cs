@@ -218,7 +218,6 @@ public class BlockHeader : IEquatable<BlockHeader>
         MixHash == other.MixHash &&
         Nonce == other.Nonce &&
         Hash == other.Hash &&
-        TotalDifficulty == other.TotalDifficulty &&
         BytesEqual(AuRaSignature, other.AuRaSignature) &&
         AuRaStep == other.AuRaStep &&
         BaseFeePerGas == other.BaseFeePerGas &&
@@ -249,7 +248,6 @@ public class BlockHeader : IEquatable<BlockHeader>
         hashCode.Add(MixHash);
         hashCode.Add(Nonce);
         hashCode.Add(Hash);
-        hashCode.Add(TotalDifficulty);
         AddBytesHashCode(ref hashCode, AuRaSignature);
         hashCode.Add(AuRaStep);
         hashCode.Add(BaseFeePerGas);

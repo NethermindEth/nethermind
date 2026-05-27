@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Derivation;

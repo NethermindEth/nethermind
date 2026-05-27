@@ -141,13 +141,13 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
             Assert.That(tracer.InnerTracer, Is.SameAs(NullTxTracer.Instance));
-            previousOtherTracer.Received(1).StartNewBlockTrace(previousBlock);
-            previousOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);
-            nextOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);
+            previousOtherTracer.Received(1).StartNewBlockTrace(Arg.Is<Block>(block => ReferenceEquals(block, previousBlock)));
+            previousOtherTracer.DidNotReceive().StartNewBlockTrace(Arg.Is<Block>(block => ReferenceEquals(block, nextBlock)));
+            nextOtherTracer.DidNotReceive().StartNewBlockTrace(Arg.Any<Block>());
 
             tracer.StartNewTxTrace(nextBlock.Transactions[0]);
 
-            nextOtherTracer.Received(1).StartNewTxTrace(nextBlock.Transactions[0]);
+            nextOtherTracer.Received(1).StartNewTxTrace(Arg.Is<Transaction?>(transaction => ReferenceEquals(transaction, nextBlock.Transactions[0])));
         }
     }
 }

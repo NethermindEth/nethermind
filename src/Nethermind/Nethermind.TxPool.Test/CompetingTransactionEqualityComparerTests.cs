@@ -12,50 +12,27 @@ namespace Nethermind.TxPool.Test
     [Parallelizable(ParallelScope.All)]
     public class CompetingTransactionEqualityComparerTests
     {
-        public static IEnumerable TestCases
+        public static IEnumerable EqualsTestCases => TestCases(nameof(Equals_test));
+
+        public static IEnumerable HashCodeTestCases => TestCases(nameof(HashCode_test));
+
+        private static IEnumerable TestCases(string namePrefix)
         {
-            get
-            {
-                Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject;
+            Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject;
 
-                yield return new TestCaseData(null, null) { ExpectedResult = true };
-
-                yield return new TestCaseData(transaction, null)
-                {
-                    ExpectedResult = false
-                };
-
-                yield return new TestCaseData(null, transaction)
-                {
-                    ExpectedResult = false
-                };
-
-                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(2).TestObject)
-                {
-                    ExpectedResult = false
-                };
-
-                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(4).TestObject)
-                {
-                    ExpectedResult = false
-                };
-
-                yield return new TestCaseData(transaction, transaction)
-                {
-                    ExpectedResult = true
-                };
-
-                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject)
-                {
-                    ExpectedResult = true
-                };
-            }
+            yield return new TestCaseData(null, null).Returns(true).SetName($"{namePrefix}_Both_null");
+            yield return new TestCaseData(transaction, null).Returns(false).SetName($"{namePrefix}_Left_transaction_right_null");
+            yield return new TestCaseData(null, transaction).Returns(false).SetName($"{namePrefix}_Left_null_right_transaction");
+            yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(2).TestObject).Returns(false).SetName($"{namePrefix}_Different_sender");
+            yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(4).TestObject).Returns(false).SetName($"{namePrefix}_Different_nonce");
+            yield return new TestCaseData(transaction, transaction).Returns(true).SetName($"{namePrefix}_Same_instance");
+            yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject).Returns(true).SetName($"{namePrefix}_Same_sender_and_nonce");
         }
 
-        [TestCaseSource(nameof(TestCases))]
+        [TestCaseSource(nameof(EqualsTestCases))]
         public bool Equals_test(Transaction t1, Transaction t2) => CompetingTransactionEqualityComparer.Instance.Equals(t1, t2);
 
-        [TestCaseSource(nameof(TestCases))]
+        [TestCaseSource(nameof(HashCodeTestCases))]
         public bool HashCode_test(Transaction t1, Transaction t2) =>
             CompetingTransactionEqualityComparer.Instance.GetHashCode(t1) == CompetingTransactionEqualityComparer.Instance.GetHashCode(t2);
     }

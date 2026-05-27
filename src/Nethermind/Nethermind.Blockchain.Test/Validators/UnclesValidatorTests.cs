@@ -155,7 +155,8 @@ public class UnclesValidatorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Same_uncle_twice_returns_false()
     {
-        BlockHeader[] uncles = GetValidUncles(1).Union(GetValidUncles(1)).ToArray();
+        BlockHeader uncle = GetValidUncles(1)[0];
+        BlockHeader[] uncles = [uncle, uncle];
 
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
         Assert.That(unclesValidator.Validate(_block.Header, uncles), Is.False);
