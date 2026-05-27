@@ -717,8 +717,6 @@ internal static class SszCodecHelpers
         string body = property.Kind switch
         {
             Kind.Basic when property.Type.CustomFeedTemplate is not null => ConverterFeedStatement(property, expression),
-            Kind.Basic or Kind.BitVector => $"merkleizer.Feed({expression});",
-            Kind.BitList => $"merkleizer.Feed({expression} ?? new BitArray(0), {property.Limit});",
             _ => $"{MerkleizeRootStatement(property, expression, $"UInt256 {VarName(property.Name)}Root")} merkleizer.Feed({VarName(property.Name)}Root);",
         };
 

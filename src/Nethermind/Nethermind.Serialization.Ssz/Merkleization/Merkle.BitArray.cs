@@ -10,16 +10,17 @@ public static partial class Merkle
 {
     public static void Merkleize(out UInt256 root, BitArray value)
     {
-        Merkleizer merkleizer = new(0);
-        merkleizer.Feed(value);
-        merkleizer.CalculateRoot(out root);
+        byte[] bytes = new byte[(value.Length + 7) / 8];
+        value.CopyTo(bytes, 0);
+        Merkleize(out root, bytes);
     }
 
     public static void Merkleize(out UInt256 root, BitArray value, ulong limit)
     {
-        Merkleizer merkleizer = new(0);
-        merkleizer.Feed(value, limit);
-        merkleizer.CalculateRoot(out root);
+        ulong chunkCount = (limit + 255) / 256;
+        byte[] bytes = new byte[(value.Length + 7) / 8];
+        value.CopyTo(bytes, 0);
+        Merkleize(out root, bytes, chunkCount);
+        MixIn(ref root, value.Length);
     }
-
 }

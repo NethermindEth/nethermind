@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Int256;
 using Nethermind.Merkleization;
 
 namespace Nethermind.Serialization.Ssz.SszVectorConverters;
@@ -16,5 +17,5 @@ public sealed class ByteSszVectorConverter : ISszVectorConverter<byte>
 
     public static void ToSpan(Span<byte> span, byte value) => span[0] = value;
 
-    public static void Feed(ref Merkleizer merkleizer, byte value) => merkleizer.Feed(value);
+    public static void Feed(ref Merkleizer merkleizer, byte value) => merkleizer.Feed(new UInt256(value));
 }

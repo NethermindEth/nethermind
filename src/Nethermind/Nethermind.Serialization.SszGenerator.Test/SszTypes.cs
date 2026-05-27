@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Merkleization;
 using Nethermind.Serialization.Ssz;
 using System;
@@ -178,7 +179,7 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public static void Feed(ref Merkleizer merkleizer, TestBytes4 value)
         {
             FeedCallCount++;
-            merkleizer.Feed(value.Value);
+            merkleizer.Feed(new UInt256(value.Value));
         }
     }
 

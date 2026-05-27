@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -23,18 +23,33 @@ public class AccumulatorCalculator : IDisposable
     public void Add(Hash256 headerHash, UInt256 td)
     {
         Merkleizer merkleizer = new(Merkle.NextPowerOfTwoExponent(2));
-        merkleizer.Feed(headerHash.Bytes);
+        Merkle.Merkleize(out UInt256 headerHashRoot, headerHash.Bytes);
+        merkleizer.Feed(headerHashRoot);
         merkleizer.Feed(td);
-        _roots.Add(merkleizer.CalculateRoot().ToLittleEndian());
+        merkleizer.CalculateRoot(out UInt256 root);
+        _roots.Add(root.ToLittleEndian());
         _totalDifficulties.Add(td);
     }
 
     public ValueHash256 ComputeRoot()
     {
-        Merkleizer merkleizer = new(0);
-        merkleizer.Feed(_roots, EraWriter.MaxEra1Size);
-        UInt256 root = merkleizer.CalculateRoot();
-        return new ValueHash256(MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1)));
+        int count = _roots.Count;
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Merkle.Merkleize(out subRoots[i], _roots[i].Span);
+            }
+
+            Merkle.Merkleize(out UInt256 root, subRoots.AsSpan(0, count), EraWriter.MaxEra1Size);
+            Merkle.MixIn(ref root, count);
+            return new ValueHash256(root.ToLittleEndian());
+        }
+        finally
+        {
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }
     }
 
     public ValueHash256[] GetProof(int blockIndex)

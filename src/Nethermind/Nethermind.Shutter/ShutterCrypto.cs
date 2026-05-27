@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core;
@@ -325,14 +326,44 @@ public static class ShutterCrypto
         };
 
         Merkleizer merkleizer = new(Merkle.NextPowerOfTwoExponent(5));
-        merkleizer.Feed(container.InstanceID);
-        merkleizer.Feed(container.Eon);
-        merkleizer.Feed(container.Slot);
-        merkleizer.Feed(container.TxPointer);
-        merkleizer.Feed(container.IdentityPreimages, 1024);
+        merkleizer.Feed(new UInt256(container.InstanceID));
+        merkleizer.Feed(new UInt256(container.Eon));
+        merkleizer.Feed(new UInt256(container.Slot));
+        merkleizer.Feed(new UInt256(container.TxPointer));
+        MerkleizeByteMemoryList(container.IdentityPreimages, 1024, out UInt256 identityPreimagesRoot);
+        merkleizer.Feed(identityPreimagesRoot);
         merkleizer.CalculateRoot(out UInt256 root);
 
         return new(root.ToLittleEndian());
+    }
+
+    private static void MerkleizeByteMemoryList(IEnumerable<ReadOnlyMemory<byte>> value, ulong maxLength, out UInt256 root)
+    {
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(4);
+        int count = 0;
+
+        try
+        {
+            foreach (ReadOnlyMemory<byte> memory in value)
+            {
+                if (count == subRoots.Length)
+                {
+                    UInt256[] previous = subRoots;
+                    subRoots = ArrayPool<UInt256>.Shared.Rent(count * 2);
+                    previous.AsSpan(0, count).CopyTo(subRoots);
+                    ArrayPool<UInt256>.Shared.Return(previous);
+                }
+
+                Merkle.Merkleize(out subRoots[count++], memory.Span);
+            }
+
+            Merkle.Merkleize(out root, subRoots.AsSpan(0, count), maxLength);
+            Merkle.MixIn(ref root, count);
+        }
+        finally
+        {
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }
     }
 
     private static void Hash3(ReadOnlySpan<byte> bytes, out UInt256 res)

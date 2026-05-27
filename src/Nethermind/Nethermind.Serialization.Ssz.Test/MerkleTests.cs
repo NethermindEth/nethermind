@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Merkleization;
@@ -121,49 +119,6 @@ public class MerkleTests
     }
 
     [Test]
-    public void Merkleizer_Feed_list_produces_correct_root()
-    {
-        // List[uint8, 64] containing just [0xAB]
-        //   pack:        0xAB padded to 32 bytes = 1 chunk
-        //   chunk_limit: ceil(64 * 1 / 32) = 2
-        //   merkleize:   hash tree with 2 leaf slots (our chunk + 1 zero chunk)
-        //   mix_in:      SHA256(merkle_root || little_endian(actual_count = 1))
-        byte[] data = [0xAB];
-        int limit = 64;
-
-        // Manually compute expected root
-        // Step 1: merkleize(pack(data), chunk_limit=2)
-        ulong chunkCount = ((ulong)limit * sizeof(byte) + 31) / 32; // = 2
-        Merkle.Merkleize(out UInt256 expectedRoot, data, chunkCount);
-        // Step 2: mix_in_length(root, actual_count=1)
-        Merkle.MixIn(ref expectedRoot, data.Length);
-
-        // Compute via Merkleizer.Feed
-        Merkleizer merkleizer = new(0);
-        merkleizer.Feed((ReadOnlySpan<byte>)data, limit);
-        UInt256 actualRoot = merkleizer.CalculateRoot();
-
-        Assert.That(actualRoot, Is.EqualTo(expectedRoot));
-    }
-
-    [Test]
-    public void Feed_memory_enumerable_is_single_pass()
-    {
-        SinglePassReadOnlyMemoryEnumerable items = new(
-        [
-            new byte[] { 1 },
-            new byte[] { 2 },
-            new byte[] { 3 },
-        ]);
-
-        Merkleizer merkleizer = new(3);
-
-        merkleizer.Feed(items, 4);
-
-        Assert.That(items.EnumerationCount, Is.EqualTo(1));
-    }
-
-    [Test]
     public void Can_merkleize_bitvector()
     {
         Merkle.Merkleize(out UInt256 root, new byte[] { 123 });
@@ -209,7 +164,9 @@ public class MerkleTests
             merkleizer.Feed(Merkle.ZeroHashes[0]);
         }
 
-        Assert.That(merkleizer.CalculateRoot(), Is.EqualTo(Merkle.ZeroHashes[depth]));
+        merkleizer.CalculateRoot(out UInt256 actual);
+
+        Assert.That(actual, Is.EqualTo(Merkle.ZeroHashes[depth]));
     }
 
     [TestCase(2, 1)]
@@ -229,7 +186,7 @@ public class MerkleTests
                 merkleizer.Feed(Merkle.ZeroHashes[0]);
             }
 
-            result = merkleizer.CalculateRoot();
+            merkleizer.CalculateRoot(out result);
         }
 
         Assert.That(result, Is.EqualTo(Merkle.ZeroHashes[depth]));
@@ -244,26 +201,8 @@ public class MerkleTests
             merkleizer.Feed(Merkle.ZeroHashes[0]);
         }
 
-        UInt256 result = merkleizer.CalculateRoot();
+        merkleizer.CalculateRoot(out UInt256 result);
 
         Assert.That(result, Is.EqualTo(Merkle.ZeroHashes[6]));
-    }
-
-    private sealed class SinglePassReadOnlyMemoryEnumerable(byte[][] items) : IEnumerable<ReadOnlyMemory<byte>>
-    {
-        public int EnumerationCount { get; private set; }
-
-        public IEnumerator<ReadOnlyMemory<byte>> GetEnumerator()
-        {
-            EnumerationCount++;
-            Assert.That(EnumerationCount, Is.EqualTo(1));
-
-            foreach (byte[] item in items)
-            {
-                yield return item;
-            }
-        }
-
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }
