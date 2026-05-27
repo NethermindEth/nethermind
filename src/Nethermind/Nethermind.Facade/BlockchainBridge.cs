@@ -237,6 +237,8 @@ namespace Nethermind.Facade
                     tx.GasLimit = allowance;
             }
 
+            EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, header.GasLimit);
+
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(nonceReader, txProcessor, header, tx, true,
                 blobBaseFeeOverride, estimateGasTracer.WithCancellation(cancellationToken));
@@ -244,17 +246,20 @@ namespace Nethermind.Facade
             GasEstimator gasEstimator = new(txProcessor, worldState, specProvider, blocksConfig);
 
             string? error = ConstructError(tryCallResult, estimateGasTracer.Error);
+            bool initialProbeWasBelowStandardIntrinsicGas =
+                tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
+                && tx.GasLimit < intrinsicGas.Standard;
 
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             // Allowance errors take precedence over any earlier revert: the revert was an artifact
             // of the gas cap, so surfacing it instead of the affordability error would be misleading.
             error = err switch
             {
-                null => error,
+                null => initialProbeWasBelowStandardIntrinsicGas ? null : error,
                 _ when error is null => err,
-                // The gas=1 probe never executed the EVM, so a later top-level revert from estimation is more informative.
-                _ when error.StartsWith(TxErrorMessages.IntrinsicGasTooLow, StringComparison.Ordinal)
-                    && estimateGasTracer.TopLevelRevert => err,
+                // The initial low-gas probe only establishes the search lower bound. If estimation later reaches
+                // a valid execution result, that later result is more informative than the probe's synthetic failure.
+                _ when initialProbeWasBelowStandardIntrinsicGas => err,
                 _ when err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) => err,
                 GasEstimator.InsufficientBalance => err,
                 GasEstimator.InsufficientFundsForGas => err,
@@ -270,7 +275,7 @@ namespace Nethermind.Facade
                 Error = error,
                 GasSpent = estimate,
                 OutputData = estimateGasTracer.ReturnValue,
-                InputError = !executionReverted && (!tryCallResult.TransactionExecuted || err is not null),
+                InputError = !executionReverted && error is not null && (!tryCallResult.TransactionExecuted || err is not null),
                 ExecutionReverted = executionReverted
             };
         }

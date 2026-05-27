@@ -563,6 +563,43 @@ public partial class EthRpcModuleTests
         JToken.Parse(serialized).Should().BeEquivalentTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x"},"id":67}""");
     }
 
+    [Test]
+    public async Task Eth_estimateGas_returns_success_when_explicit_gas_is_below_intrinsic_but_target_is_simple_transfer()
+    {
+        // Regression for #11768 follow-up: the low-gas probe should not leak into the final response
+        // when estimation later succeeds at the intrinsic transfer cost.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700","to":"0x252568abdeb9de59fd8963dfcd87be2db65f1ce1","gas":"0x3e8","gasPrice":"0xBA43B7400","value":"0x1"}""",
+            JsonSerializerOptions.Default)!;
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700":{"balance":"0x56bc75e2d63100000"}}""",
+            JsonSerializerOptions.Default)!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+        JToken.Parse(serialized).Should().BeEquivalentTo("""{"jsonrpc":"2.0","result":"0x5208","id":67}""");
+    }
+
+    [Test]
+    public async Task Eth_estimateGas_keeps_allowance_error_when_affordability_cap_pushes_probe_below_intrinsic()
+    {
+        // The #11768 fix only applies when the user's explicit gas is below the standard intrinsic cost.
+        // If the balance/gasPrice allowance cap lowers the probe below intrinsic, the final result must still
+        // stay on the affordability path and return the allowance error.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700","to":"0x252568abdeb9de59fd8963dfcd87be2db65f1ce1","gas":"0x5208","gasPrice":"0xBA43B7400","value":"0x1"}""",
+            JsonSerializerOptions.Default)!;
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700":{"balance":"0x44867db30"}}""",
+            JsonSerializerOptions.Default)!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+        JToken.Parse(serialized).Should().BeEquivalentTo("""{"jsonrpc":"2.0","error":{"code":-32000,"message":"gas required exceeds allowance (0)"},"id":67}""");
+    }
+
     private static readonly OverridableReleaseSpec Eip7976Spec = new(Prague.Instance) { IsEip7976Enabled = true };
     private static readonly OverridableReleaseSpec Eip7981Spec = new(Amsterdam.Instance) { IsEip7976Enabled = true, IsEip7981Enabled = true };
 
