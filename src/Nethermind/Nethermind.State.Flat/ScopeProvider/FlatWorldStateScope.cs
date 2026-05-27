@@ -114,6 +114,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         WaitForOutstandingWarmups();
+
+        // Return the sparse trie to the preserved store if it was checked out but never
+        // stored back (e.g., scope disposed without Commit due to reorg or exception).
+        if (_preservedSparseTrie is not null && _sparseStateTrie is not null)
+        {
+            try { _preservedSparseTrie.StoreCleared(_sparseStateTrie); }
+            catch (InvalidOperationException) { }
+            _sparseStateTrie = null;
+        }
+
         _sparseRootComputer?.Dispose();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();

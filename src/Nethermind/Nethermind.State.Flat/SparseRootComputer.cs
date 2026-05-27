@@ -19,6 +19,8 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class SparseRootComputer : IDisposable
 {
+    private const int MaxRetries = 10;
+
     private readonly SparseStateTrie _trie;
     private readonly ITrieNodeReader _reader;
     private readonly Hash256 _previousStateRoot;
@@ -66,11 +68,14 @@ public sealed class SparseRootComputer : IDisposable
         }
 
         Dictionary<Hash256, LeafUpdate> updates = entry.Updates;
-        while (true)
+        for (int retry = 0; retry < MaxRetries; retry++)
         {
             List<Hash256> targets = [];
             storageTrie.UpdateLeaves(updates, (key, _) => targets.Add(key));
             if (targets.Count == 0) break;
+
+            if (retry == MaxRetries - 1)
+                throw new TrieException($"Sparse trie storage retry loop exceeded {MaxRetries} iterations for account {accountPathHash}. {targets.Count} blinded targets remain.");
 
             DecodedMultiProof proof = MultiProofReader.ReadStorageProofs(
                 _reader, accountPathHash, entry.PreviousStorageRoot, targets.ToArray());
@@ -100,11 +105,14 @@ public sealed class SparseRootComputer : IDisposable
 
         _trie.AccountTrie.RevealNodes(initialProof.AccountNodes);
 
-        while (true)
+        for (int retry = 0; retry < MaxRetries; retry++)
         {
             List<Hash256> targets = [];
             _trie.UpdateAccountLeaves(_accountChanges, (key, _) => targets.Add(key));
             if (targets.Count == 0) break;
+
+            if (retry == MaxRetries - 1)
+                throw new TrieException($"Sparse trie account retry loop exceeded {MaxRetries} iterations. {targets.Count} blinded targets remain.");
 
             DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
                 _reader, _previousStateRoot, targets.ToArray());
