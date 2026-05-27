@@ -416,8 +416,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         baseState.InitThreadState,
                     static (i, state) =>
                     {
+                        if (state.Scope is null) return state;
                         Transaction tx = state.Payload.Transactions[i];
-                        WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
+                        WarmupSender(tx.SenderAddress, tx.To, state.Scope.WorldState);
 
                         return state;
                     },
@@ -443,8 +444,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 baseState.InitThreadState,
                 static (i, state) =>
                 {
+                    if (state.Scope is null) return state;
                     ReadOnlyAccountChanges ac = state.Payload[i];
-                    IWorldState worldState = state.Scope!.WorldState;
+                    IWorldState worldState = state.Scope.WorldState;
 
                     WarmupBalAccount(ac, worldState);
 

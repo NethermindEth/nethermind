@@ -30,7 +30,6 @@ public class CallOutput
     public static CallOutput NoStateForBlock(BlockHeader header) => new()
     {
         Error = $"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
-        InputError = true,
         StateUnavailable = true,
     };
 }

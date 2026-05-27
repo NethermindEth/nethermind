@@ -584,7 +584,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             if (!jsonRpcConfig.EnableTracingStreamMode)
             {
-                return ResultWrapper<IEnumerable<T>>.Success(runBuffered());
+                try
+                {
+                    return ResultWrapper<IEnumerable<T>>.Success(runBuffered());
+                }
+                catch (StateUnavailableException ex)
+                {
+                    return ResultWrapper<IEnumerable<T>>.Fail(ex.Message, ErrorCodes.ResourceUnavailable);
+                }
             }
 
             CancellationTokenSource timeoutCts = BuildTimeoutCancellationTokenSource();
@@ -608,7 +615,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             if (!jsonRpcConfig.EnableTracingStreamMode)
             {
-                return ResultWrapper<ParityTxTraceFromReplay>.Success(runBuffered());
+                try
+                {
+                    return ResultWrapper<ParityTxTraceFromReplay>.Success(runBuffered());
+                }
+                catch (StateUnavailableException ex)
+                {
+                    return ResultWrapper<ParityTxTraceFromReplay>.Fail(ex.Message, ErrorCodes.ResourceUnavailable);
+                }
             }
 
             CancellationTokenSource timeoutCts = BuildTimeoutCancellationTokenSource();

@@ -15,7 +15,7 @@ namespace Nethermind.State;
 
 public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopeProvider, ILogManager logManager) : IWorldStateScopeProvider
 {
-    private ILogger _logger = logManager.GetClassLogger<WorldStateScopeOperationLogger>();
+    private readonly ILogger _logger = logManager.GetClassLogger<WorldStateScopeOperationLogger>();
     private long _currentScopeId = 0;
 
     public bool HasRoot(BlockHeader? baseBlock) =>
