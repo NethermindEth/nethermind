@@ -99,7 +99,7 @@ internal static class HsstBTreeReader
             }
 
             // Leaf or Intermediate — parse as a BSearchIndex node.
-            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, scopeEnd, parentSeparator, out HsstIndex node, out TPin pin))
+            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, scopeEnd, parentSeparator, out BSearchIndexReader node, out TPin pin))
                 return false;
             using (pin)
             {
@@ -198,7 +198,7 @@ internal static class HsstBTreeReader
 
     /// <summary>
     /// Load the index node whose first byte is at <paramref name="absStart"/> via the reader's
-    /// <see cref="IHsstByteReader{TPin}.PinBuffer"/>. On success outs the parsed <see cref="HsstIndex"/>
+    /// <see cref="IHsstByteReader{TPin}.PinBuffer"/>. On success outs the parsed <see cref="BSearchIndexReader"/>
     /// and the pin (whose <see cref="IBufferPin.Buffer"/> backs <paramref name="node"/>). The
     /// caller must dispose the pin once it's done with the node.
     ///
@@ -212,7 +212,7 @@ internal static class HsstBTreeReader
     internal static bool TryLoadNode<TReader, TPin>(
         scoped in TReader reader, long absStart, long scopeEnd,
         ReadOnlySpan<byte> parentSeparator,
-        out HsstIndex node, out TPin pin)
+        out BSearchIndexReader node, out TPin pin)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
@@ -250,7 +250,7 @@ internal static class HsstBTreeReader
             {
                 // Hot path: node fits in the speculative window. ReadFromStart parses the
                 // header at win[0..] and slices keys/values forward within the node range.
-                node = HsstIndex.ReadFromStart(win, 0, parentSeparator);
+                node = BSearchIndexReader.ReadFromStart(win, 0, parentSeparator);
                 pin = speculativePin;
                 keepSpeculative = true;
                 return true;
@@ -263,7 +263,7 @@ internal static class HsstBTreeReader
 
         // Cold path: node larger than the speculative window. Pin precisely.
         pin = reader.PinBuffer(absStart, totalNodeSize);
-        node = HsstIndex.ReadFromStart(pin.Buffer, 0, parentSeparator);
+        node = BSearchIndexReader.ReadFromStart(pin.Buffer, 0, parentSeparator);
         return true;
     }
 }

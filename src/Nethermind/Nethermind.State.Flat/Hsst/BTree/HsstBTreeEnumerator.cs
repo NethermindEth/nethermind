@@ -173,7 +173,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             }
 
             ReadOnlySpan<byte> parentSeparator = depth == 0 ? _rootPrefix : default;
-            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, scopeEndMinusTrailer, parentSeparator, out HsstIndex node, out TPin pin))
+            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, scopeEndMinusTrailer, parentSeparator, out BSearchIndexReader node, out TPin pin))
                 return false;
 
             using (pin)
@@ -241,7 +241,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     /// transition while the leaf pin is still live; subsequent in-leaf MoveNext
     /// calls index the array directly with no further node pinning.
     /// </summary>
-    private void BufferLeaf(HsstIndex leaf)
+    private void BufferLeaf(BSearchIndexReader leaf)
     {
         int n = leaf.EntryCount;
         if (_leafMetaStarts.Length < n)
@@ -272,7 +272,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             anc.LastIdx++;
 
             ReadOnlySpan<byte> parentSeparator = _depth == 0 ? _rootPrefix : default;
-            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, scopeEndMinusTrailer, parentSeparator, out HsstIndex parent, out TPin parentPin))
+            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, scopeEndMinusTrailer, parentSeparator, out BSearchIndexReader parent, out TPin parentPin))
             {
                 _depth = -2;
                 return false;
