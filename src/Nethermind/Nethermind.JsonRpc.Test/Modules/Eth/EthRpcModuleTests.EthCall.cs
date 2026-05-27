@@ -771,15 +771,13 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create(new SingleReleaseSpecProvider(Cancun.Instance, BlockchainIds.Mainnet, BlockchainIds.Mainnet));
 
-        byte[][] hashes = Enumerable.Range(0, 7)
-            .Select(static i =>
-            {
-                byte[] hash = new byte[32];
-                hash[0] = 0x01;
-                hash[31] = (byte)i;
-                return hash;
-            })
-            .ToArray();
+        byte[][] hashes = new byte[7][];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = new byte[32];
+            hashes[i][0] = 0x01;
+            hashes[i][31] = (byte)i;
+        }
 
         Transaction tx = Build.A.Transaction
             .WithGasLimit(100000)
