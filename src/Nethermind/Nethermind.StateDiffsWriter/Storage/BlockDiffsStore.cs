@@ -86,6 +86,18 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
         return length;
     }
 
+    /// <summary>
+    /// Force the BlockDiffs Default column family's memtable to flush to disk so
+    /// the bloating sidecar (RocksDB secondary mode) sees the newest block via
+    /// <c>TryCatchUpWithPrimary</c>. Without an explicit flush the diff sits in
+    /// the memtable indefinitely and the secondary's iterator cannot read it,
+    /// so the orchestrator's <c>waitSensorForBlock</c> times out at 2 s per poll.
+    /// A WAL-only sync was tried (commit 2026-05-27) but did not help: catchup
+    /// got fast, consume got slow — same wall-clock per block — because the
+    /// secondary iterator still can't materialise memtable contents.
+    /// </summary>
+    public void FlushDefault() => _blockDiffs.Flush();
+
     public BlockDiffRecord? ReadBlockDiff(long blockNumber)
     {
         Span<byte> key = stackalloc byte[BlockKeyLength];

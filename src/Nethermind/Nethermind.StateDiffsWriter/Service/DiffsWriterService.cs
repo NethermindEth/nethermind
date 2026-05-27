@@ -192,6 +192,13 @@ public sealed class DiffsWriterService : IDisposable
             {
                 payloadBytes = _store.WriteBlockDiff(record);
                 System.Threading.Volatile.Write(ref _lastWrittenBlock, record.BlockNumber);
+
+                // Flush the Default column family's memtable to disk so the
+                // sidecar (RocksDB secondary mode) sees this block via
+                // TryCatchUpWithPrimary. Without it the diff sits in the
+                // memtable indefinitely and the secondary's iterator can't
+                // read it, so the orchestrator's waitSensorForBlock times out.
+                _store.FlushDefault();
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
