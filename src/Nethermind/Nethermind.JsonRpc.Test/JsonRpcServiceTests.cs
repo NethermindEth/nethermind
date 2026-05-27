@@ -455,6 +455,16 @@ public class JsonRpcServiceTests
         ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
     }
 
+    [Test]
+    public void Required_state_block_parameter_rejects_null_via_json_element_path()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        AssertInvalidParamsWithoutData(
+            TestRequest(ethRpcModule, nameof(IEthRpcModule.eth_getBalance), "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6", null),
+            "missing value for required argument 1");
+        ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
+    }
+
     [TestCaseSource(nameof(InvalidRawUtf8ParamCases))]
     public void Raw_utf8_params_invalid_arguments_return_invalid_params_before_invocation(string method, string rawParameters, string expectedMessage)
     {

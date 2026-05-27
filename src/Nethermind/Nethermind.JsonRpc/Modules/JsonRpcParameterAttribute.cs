@@ -12,6 +12,12 @@ namespace Nethermind.JsonRpc.Modules
 
         public string? ExampleValue { get; set; }
 
+        /// <summary>
+        /// When <see langword="true"/>, the JSON-RPC binding layer treats this parameter as required even if the C# signature provides a default value.
+        /// </summary>
+        /// <remarks>
+        /// Omitted, <see langword="null"/>, and empty-string inputs still fail with a missing-required-argument error for parameters marked this way.
+        /// </remarks>
         public bool IsRequired { get; set; }
     }
 }
