@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -42,9 +41,9 @@ public class RecordedBalStoreTests
             store.Insert(block, bal);
             ReadOnlyBlockAccessList? result = store.Get(100);
 
-            result.Should().NotBeNull();
-            result!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
-            result.GetAccountChanges(TestItem.AddressB).Should().NotBeNull();
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
+            Assert.That(result.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -53,7 +52,7 @@ public class RecordedBalStoreTests
     public void Get_ReturnsNull_WhenFileDoesNotExist()
     {
         using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = TempDir() }, new InitConfig(), LimboLogs.Instance);
-        store.Get(999).Should().BeNull();
+        Assert.That(store.Get(999), Is.Null);
     }
 
     [Test]
@@ -67,7 +66,7 @@ public class RecordedBalStoreTests
             store.Insert(block1, MakeBal(TestItem.AddressA));
 
             // block 1 is in the same era file but was never written
-            store.Get(1).Should().BeNull();
+            Assert.That(store.Get(1), Is.Null);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -90,10 +89,10 @@ public class RecordedBalStoreTests
             ReadOnlyBlockAccessList? resultA = store.Get(0);
             ReadOnlyBlockAccessList? resultB = store.Get(1);
 
-            resultA!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
-            resultA.GetAccountChanges(TestItem.AddressB).Should().BeNull();
-            resultB!.GetAccountChanges(TestItem.AddressB).Should().NotBeNull();
-            resultB.GetAccountChanges(TestItem.AddressA).Should().BeNull();
+            Assert.That(resultA!.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
+            Assert.That(resultA.GetAccountChanges(TestItem.AddressB), Is.Null);
+            Assert.That(resultB!.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
+            Assert.That(resultB.GetAccountChanges(TestItem.AddressA), Is.Null);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -114,10 +113,10 @@ public class RecordedBalStoreTests
             store.Insert(block0, MakeBal(TestItem.AddressA));
             store.Insert(block1, MakeBal(TestItem.AddressB));
 
-            Directory.GetFiles(dir, "*.bal").Length.Should().Be(2);
+            Assert.That(Directory.GetFiles(dir, "*.bal").Length, Is.EqualTo(2));
 
-            store.Get(era0Block)!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
-            store.Get(era1Block)!.GetAccountChanges(TestItem.AddressB).Should().NotBeNull();
+            Assert.That(store.Get(era0Block)!.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
+            Assert.That(store.Get(era1Block)!.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -135,7 +134,7 @@ public class RecordedBalStoreTests
             store.Insert(block, MakeBal(TestItem.AddressB)); // no-op
 
             ReadOnlyBlockAccessList? result = store.Get(42);
-            result!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
+            Assert.That(result!.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -149,7 +148,7 @@ public class RecordedBalStoreTests
             using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig(), LimboLogs.Instance);
             Block block = Build.A.Block.WithNumber(7).TestObject;
             store.Insert(block, MakeBal(TestItem.AddressA));
-            store.Get(7).Should().NotBeNull();
+            Assert.That(store.Get(7), Is.Not.Null);
         }
         finally { Directory.Delete(dir, true); }
     }

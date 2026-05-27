@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
@@ -103,7 +102,7 @@ public static class RpcTest
         string serialized = Encoding.UTF8.GetString(writer.WrittenSpan);
         await TestContext.Out.WriteLineAsync(serialized);
 
-        writer.WrittenCount.Should().Be(serialized.Length);
+        Assert.That(writer.WrittenCount, Is.EqualTo(serialized.Length));
 
         return serialized;
     }

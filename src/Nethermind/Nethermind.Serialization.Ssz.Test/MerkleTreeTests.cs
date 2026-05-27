@@ -5,9 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 //using Nethermind.Core2.Types;
 using Nethermind.Merkleization;
 using NUnit.Framework;
@@ -40,7 +38,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Initially_count_is_0()
         {
             MerkleTree baselineTree = BuildATree();
-            baselineTree.Count.Should().Be(0);
+            Assert.That(baselineTree.Count, Is.EqualTo(0));
         }
 
         [TestCase(ulong.MinValue, null)]
@@ -58,7 +56,7 @@ namespace Nethermind.Serialization.Ssz.Test
             }
             else
             {
-                MerkleTree.GetLeafIndex(nodeIndex).Should().Be(leafIndex.Value);
+                Assert.That(MerkleTree.GetLeafIndex(nodeIndex), Is.EqualTo(leafIndex.Value));
             }
         }
 
@@ -84,7 +82,7 @@ namespace Nethermind.Serialization.Ssz.Test
             }
             else
             {
-                MerkleTree.GetNodeIndex(row, indexAtRow).Should().Be(nodeIndex.Value);
+                Assert.That(MerkleTree.GetNodeIndex(row, indexAtRow), Is.EqualTo(nodeIndex.Value));
             }
         }
 
@@ -110,7 +108,7 @@ namespace Nethermind.Serialization.Ssz.Test
             }
             else
             {
-                MerkleTree.GetIndexAtRow(row, nodeIndex).Should().Be(indexAtRow.Value);
+                Assert.That(MerkleTree.GetIndexAtRow(row, nodeIndex), Is.EqualTo(indexAtRow.Value));
             }
         }
 
@@ -129,7 +127,7 @@ namespace Nethermind.Serialization.Ssz.Test
             }
             else
             {
-                MerkleTree.GetRow(nodeIndex).Should().Be(expectedRow.Value);
+                Assert.That(MerkleTree.GetRow(nodeIndex), Is.EqualTo(expectedRow.Value));
             }
         }
 
@@ -150,8 +148,8 @@ namespace Nethermind.Serialization.Ssz.Test
             }
             else
             {
-                MerkleTree.GetSiblingIndex(row, indexAtRow).Should().Be(expectedSiblingIndex.Value);
-                MerkleTree.GetSiblingIndex(row, expectedSiblingIndex.Value).Should().Be(indexAtRow);
+                Assert.That(MerkleTree.GetSiblingIndex(row, indexAtRow), Is.EqualTo(expectedSiblingIndex.Value));
+                Assert.That(MerkleTree.GetSiblingIndex(row, expectedSiblingIndex.Value), Is.EqualTo(indexAtRow));
             }
         }
 
@@ -172,7 +170,7 @@ namespace Nethermind.Serialization.Ssz.Test
             }
             else
             {
-                MerkleTree.GetParentIndex(nodeIndex).Should().Be(parentIndex.Value);
+                Assert.That(MerkleTree.GetParentIndex(nodeIndex), Is.EqualTo(parentIndex.Value));
             }
         }
 
@@ -203,7 +201,7 @@ namespace Nethermind.Serialization.Ssz.Test
 
             await Task.WhenAll(tasks);
 
-            baselineTree.Count.Should().Be(concurrentTasksCount * iterations);
+            Assert.That(baselineTree.Count, Is.EqualTo(concurrentTasksCount * iterations));
         }
 
         [Test]
@@ -211,7 +209,7 @@ namespace Nethermind.Serialization.Ssz.Test
         {
             MerkleTree baselineTree = BuildATree();
             baselineTree.Insert(_testLeaves[0]);
-            baselineTree.Count.Should().Be(1);
+            Assert.That(baselineTree.Count, Is.EqualTo(1));
         }
 
         [TestCase(0u)]
@@ -228,7 +226,7 @@ namespace Nethermind.Serialization.Ssz.Test
             }
 
             MerkleTree baselineTreeRestored = BuildATree(memDb);
-            baselineTreeRestored.Count.Should().Be(leafCount);
+            Assert.That(baselineTreeRestored.Count, Is.EqualTo(leafCount));
         }
 
         [TestCase(2)]
@@ -240,7 +238,7 @@ namespace Nethermind.Serialization.Ssz.Test
             for (uint i = 0; i < numberOfLeaves; i++)
             {
                 baselineTree.Insert(_testLeaves[i]);
-                baselineTree.Count.Should().Be(i + 1);
+                Assert.That(baselineTree.Count, Is.EqualTo(i + 1));
             }
         }
 
@@ -256,17 +254,17 @@ namespace Nethermind.Serialization.Ssz.Test
             }
 
             IList<Bytes32> proof = baselineTree.GetProof(0);
-            proof.Should().HaveCount(MerkleTree.TreeHeight + 1);
+            Assert.That(proof.Count, Is.EqualTo(MerkleTree.TreeHeight + 1));
 
             for (int proofRow = 0; proofRow < MerkleTree.TreeHeight; proofRow++)
             {
                 if (nodesCount > 1 >> proofRow)
                 {
-                    proof[proofRow].Should().NotBe(Bytes32.Zero, proofRow.ToString());
+                    Assert.That(proof[proofRow], Is.Not.EqualTo(Bytes32.Zero), proofRow.ToString());
                 }
                 else
                 {
-                    proof[proofRow].Should().Be(ShaMerkleTree.ZeroHashes[proofRow], proofRow.ToString());
+                    Assert.That(proof[proofRow], Is.EqualTo(ShaMerkleTree.ZeroHashes[proofRow]), proofRow.ToString());
                 }
             }
         }
@@ -285,7 +283,7 @@ namespace Nethermind.Serialization.Ssz.Test
 
             for (int i = 0; i < nodesCount; i++)
             {
-                baselineTree.GetLeaf((uint)i).Hash.Should().NotBe(Keccak.Zero);
+                Assert.That(baselineTree.GetLeaf((uint)i).Hash, Is.Not.EqualTo(Bytes32.Zero));
             }
         }
 
@@ -305,7 +303,7 @@ namespace Nethermind.Serialization.Ssz.Test
             MerkleTreeNode[] result = baselineTree.GetLeaves(leafIndexes);
             for (int i = 0; i < result.Length; i++)
             {
-                result[i].Hash.Should().NotBe(Keccak.Zero);
+                Assert.That(result[i].Hash, Is.Not.EqualTo(Bytes32.Zero));
             }
         }
     }

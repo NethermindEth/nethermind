@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -40,7 +39,7 @@ public class PreimageRecordingPersistenceTests
         // CreateReader
         IPersistence.IPersistenceReader expectedReader = Substitute.For<IPersistence.IPersistenceReader>();
         _innerPersistence.CreateReader().Returns(expectedReader);
-        _sut.CreateReader().Should().BeSameAs(expectedReader);
+        Assert.That(_sut.CreateReader(), Is.SameAs(expectedReader));
 
         // CreateWriteBatch
         StateId from = StateId.PreGenesis;
@@ -79,15 +78,15 @@ public class PreimageRecordingPersistenceTests
 
         // Verify address preimages
         ValueHash256 addressAPath = addressA.ToAccountPath;
-        _preimageDb.Get(addressAPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressA.Bytes.ToArray());
+        Assert.That(_preimageDb.Get(addressAPath.BytesAsSpan[..PreimageLookupSize]), Is.EqualTo(addressA.Bytes.ToArray()));
 
         ValueHash256 addressBPath = addressB.ToAccountPath;
-        _preimageDb.Get(addressBPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressB.Bytes.ToArray());
+        Assert.That(_preimageDb.Get(addressBPath.BytesAsSpan[..PreimageLookupSize]), Is.EqualTo(addressB.Bytes.ToArray()));
 
         // Verify slot preimage
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
-        _preimageDb.Get(slotHash.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(slot.ToBigEndian());
+        Assert.That(_preimageDb.Get(slotHash.BytesAsSpan[..PreimageLookupSize]), Is.EqualTo(slot.ToBigEndian()));
     }
 
     [Test]
@@ -115,20 +114,18 @@ public class PreimageRecordingPersistenceTests
         }
 
         // Verify trie operations delegated
-        innerBatch.SetStateTrieNodeCalls.Should().ContainSingle().Which.Should().BeEquivalentTo((path, rlp));
-        innerBatch.SetStorageTrieNodeCalls.Should().ContainSingle().Which.Should().BeEquivalentTo((addrHash, path, rlp));
+        Assert.That(innerBatch.SetStateTrieNodeCalls, Has.One.EqualTo((path, rlp)));
+        Assert.That(innerBatch.SetStorageTrieNodeCalls, Has.One.EqualTo((addrHash, path, rlp)));
 
         // Without preimage, raw operations stay raw
         ValueHash256 addrHashValue = addrHash.ValueHash256;
         ValueHash256 slotHashValue = slotHash.ValueHash256;
-        innerBatch.SetStorageRawCalls.Should().ContainSingle()
-            .Which.Should().Match<(ValueHash256 Addr, ValueHash256 Slot, SlotValue? Value)>(c =>
-                c.Addr == addrHashValue && c.Slot == slotHashValue && c.Value != null);
-        innerBatch.SetAccountRawCalls.Should().ContainSingle()
-            .Which.Should().BeEquivalentTo((addrHashValue, account));
+        Assert.That(innerBatch.SetStorageRawCalls, Has.One.Matches<(ValueHash256 AddrHash, ValueHash256 SlotHash, SlotValue? Value)>(c =>
+            c.AddrHash == addrHashValue && c.SlotHash == slotHashValue && c.Value is not null));
+        Assert.That(innerBatch.SetAccountRawCalls, Has.One.EqualTo((addrHashValue, account)));
 
         // No preimages should be recorded for trie/raw operations
-        _preimageDb.Keys.Should().BeEmpty();
+        Assert.That(_preimageDb.Keys, Is.Empty);
     }
 
     [Test]
@@ -213,6 +210,6 @@ public class PreimageRecordingPersistenceTests
 
         // Preimages should be flushed after dispose
         ValueHash256 addressPath = TestItem.AddressA.ToAccountPath;
-        _preimageDb.Get(addressPath.BytesAsSpan[..PreimageLookupSize]).Should().NotBeNull();
+        Assert.That(_preimageDb.Get(addressPath.BytesAsSpan[..PreimageLookupSize]), Is.Not.Null);
     }
 }

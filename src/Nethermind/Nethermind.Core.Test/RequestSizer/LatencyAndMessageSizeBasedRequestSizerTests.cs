@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 using Nethermind.Core.RequestSizer;
 
@@ -40,6 +39,6 @@ public class LatencyAndMessageSizeBasedRequestSizerTests
         IReadOnlyList<int> modifiedRequestSize = await sizer.Run<IReadOnlyList<int>, int, int>(
             _sampleRequest, (cappedRequest) => Task.FromResult((cappedRequest, (long)0)));
 
-        modifiedRequestSize.Count.Should().Be(afterRequestSize);
+        Assert.That(modifiedRequestSize.Count, Is.EqualTo(afterRequestSize));
     }
 }

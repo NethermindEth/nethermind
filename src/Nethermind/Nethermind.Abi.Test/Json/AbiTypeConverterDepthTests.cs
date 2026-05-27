@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text;
 using System.Text.Json;
 using Nethermind.Blockchain.Contracts.Json;
@@ -16,7 +17,7 @@ public class AbiTypeConverterDepthTests
     {
         string payload = new StringBuilder("uint256").Insert("uint256".Length, "[]", depth).ToString();
 
-        TestDelegate act = () => JsonSerializer.Deserialize<AbiType>(
+        Action act = () => JsonSerializer.Deserialize<AbiType>(
             $"\"{payload}\"",
             new JsonSerializerOptions { Converters = { new AbiTypeConverter() } });
 

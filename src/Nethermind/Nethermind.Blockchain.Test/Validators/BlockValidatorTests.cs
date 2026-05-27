@@ -16,7 +16,6 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -85,8 +84,8 @@ public class BlockValidatorTests
             .WithParent(parent)
             .WithUncles(Build.A.BlockHeader.WithNumber(10).TestObject)
             .TestObject;
-        blockValidator.ValidateSuggestedBlock(block, parent, out _).Should().Be(false);
-        blockValidator.ValidateOrphanedBlock(block, out _).Should().Be(true);
+        Assert.That(blockValidator.ValidateSuggestedBlock(block, parent, out _), Is.EqualTo(false));
+        Assert.That(blockValidator.ValidateOrphanedBlock(block, out _), Is.EqualTo(true));
     }
 
     private static IEnumerable<TestCaseData> CorruptedBodyFieldCases()
