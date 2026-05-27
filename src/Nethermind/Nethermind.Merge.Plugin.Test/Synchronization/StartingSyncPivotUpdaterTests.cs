@@ -34,6 +34,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         private IBeaconSyncStrategy? _beaconSyncStrategy;
         private IDb? _metadataDb;
         private IBlockTree? _externalPeerBlockTree;
+        private ISyncPeer? _syncPeer;
 
         [SetUp]
         public void Setup()
@@ -55,6 +56,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
             fakePeer.Node.Returns(new Node(node));
+            _syncPeer = fakePeer;
 
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _syncPeerPool.InitializedPeers.Returns(new[] { new PeerInfo(fakePeer) });
@@ -164,6 +166,32 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
             storedPivotBlockHash.Should().Be(expectedPivotBlockHash);
+        }
+
+        [Test]
+        public void TrySetFreshPivot_for_unsafe_updater_ignores_peer_header_with_mismatched_number()
+        {
+            long requestedPivotNumber = _externalPeerBlockTree!.Head!.Number - 64;
+            Hash256 wrongNumberHash = _externalPeerBlockTree!.FindLevel(requestedPivotNumber + 5)!.BlockInfos[0].BlockHash;
+            _syncPeer!.GetBlockHeaders(requestedPivotNumber, 1, 0, default)
+                .ReturnsForAnyArgs(_ => _externalPeerBlockTree!.FindHeaders(wrongNumberHash, 1, 0, default));
+
+            _ = new UnsafeStartingSyncPivotUpdater(
+                _blockTree!,
+                _syncModeSelector!,
+                _syncPeerPool!,
+                _syncConfig!,
+                _blockCacheService!,
+                _beaconSyncStrategy!,
+                LimboLogs.Instance
+            );
+
+            _beaconSyncStrategy!.GetHeadBlockHash().Returns(_externalPeerBlockTree!.HeadHash);
+
+            _syncModeSelector!.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.FastSync, SyncMode.UpdatingPivot));
+
+            _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)
+                .Should().BeNull("a peer header at a number other than the requested one must not set the pivot");
         }
     }
 }

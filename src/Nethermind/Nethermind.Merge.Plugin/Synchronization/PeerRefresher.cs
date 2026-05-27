@@ -108,7 +108,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
             using IOwnedReadOnlyList<BlockHeader>? headAndParentHeaders = await getHeadParentHeaderTask;
             if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders!, out headBlockHeader, out headParentBlockHeader))
             {
-                _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: unexpected response length");
+                _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: unexpected head/parent response");
                 return;
             }
 
@@ -135,6 +135,12 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         if (finalizedBlockhash != Keccak.Zero && finalizedBlockHeader is null)
         {
             _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: no finalized block header");
+            return;
+        }
+
+        if (finalizedBlockHeader is not null && finalizedBlockHeader.Hash != finalizedBlockhash)
+        {
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: finalized block header hash mismatch");
             return;
         }
 
@@ -177,24 +183,26 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         headBlockHeader = null;
         headParentBlockHeader = null;
 
-        if (headers.Count > 2)
+        // No head/parent returned: the peer may simply not have them yet. Benign — the finalized
+        // header is requested and validated separately.
+        if (headers.Count == 0)
+        {
+            return true;
+        }
+
+        // Otherwise a correct peer returns [parent] or [parent, head] starting at exactly the
+        // requested parent. Any other shape or a different first header is a bad response.
+        if (headers.Count > 2 || headers[0].Hash != headParentBlockhash)
         {
             return false;
         }
 
-        if (headers.Count == 1 && headers[0].Hash == headParentBlockhash)
-        {
-            headParentBlockHeader = headers[0];
-        }
-        else if (headers.Count == 2)
-        {
-            // Maybe the head is not the same as we expected. In that case, leave it as null
-            if (headBlockhash == headers[1].Hash)
-            {
-                headBlockHeader = headers[1];
-            }
+        headParentBlockHeader = headers[0];
 
-            headParentBlockHeader = headers[0];
+        // The head may legitimately differ from what we expected; only accept it when it matches.
+        if (headers.Count == 2 && headBlockhash == headers[1].Hash)
+        {
+            headBlockHeader = headers[1];
         }
 
         return true;
