@@ -106,7 +106,7 @@ namespace Nethermind.Wallet
                 return false;
             }
 
-            signature = Sign(in message, key);
+            signature = WalletSigner.Sign(in message, key);
             return true;
         }
 
@@ -119,14 +119,8 @@ namespace Nethermind.Wallet
                 return false;
             }
 
-            signature = Sign(in message, key);
+            signature = WalletSigner.Sign(in message, key);
             return true;
-        }
-
-        private static Signature Sign(in ValueHash256 message, PrivateKey key)
-        {
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
-            return new Signature(rs, v);
         }
     }
 }
