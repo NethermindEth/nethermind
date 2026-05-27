@@ -255,10 +255,10 @@ namespace Nethermind.Evm.TransactionProcessing
             // the priority fee in the destroyed account's balance.
             if (spec.IsEip8037Enabled && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
             {
-                JournalSet<Address> destroyList = substate.DestroyList;
-                int count = destroyList.Count;
+                int count = substate.DestroyListCount;
                 if (count > 1)
                 {
+                    JournalSet<Address> destroyList = substate.DestroyList;
                     Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
                     try
                     {
@@ -274,9 +274,9 @@ namespace Nethermind.Evm.TransactionProcessing
                         SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                 }
-                else
+                else if (count == 1)
                 {
-                    foreach (Address toBeDestroyed in destroyList)
+                    foreach (Address toBeDestroyed in substate.DestroyList)
                     {
                         FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed);
                     }
@@ -354,7 +354,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : [];
+                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.LogsToArray() : [];
                     tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
                 }
             }
@@ -1025,7 +1025,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     // EIP-8037: defer destroy list processing to after PayFees so that
                     // burn logs include the priority fee in the balance.
                     bool deferFinalization = spec.IsEip7708Enabled && spec.IsEip8037Enabled;
-                    if (!deferFinalization)
+                    if (!deferFinalization && substate.DestroyListCount != 0)
                     {
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;
@@ -1268,7 +1268,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // n.b. destroyed accounts already set to zero balance
             // EIP-8037: always pay coinbase — deferred finalization will burn the balance
-            bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
+            bool gasBeneficiaryNotDestroyed = !substate.DestroyListContains(header.GasBeneficiary);
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed || spec.IsEip8037Enabled)
             {
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
@@ -1383,7 +1383,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long totalToRefund = codeInsertRegularRefund;
             if (!substate.IsError && !substate.ShouldRevert)
-                totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
+                totalToRefund += substate.Refund + substate.DestroyListCount * spec.GasCosts.DestroyRefund;
 
             return (spentGas, CalculateClaimableRefund(spentGas, totalToRefund, spec));
         }
