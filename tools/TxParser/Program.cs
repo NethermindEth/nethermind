@@ -38,7 +38,16 @@ while (true)
             continue;
         }
 
-        if (tx.Type != TxType.Legacy)
+        bool isReplayProtectedLegacyTx =
+            tx.Type == TxType.Legacy &&
+            tx.Signature is not null &&
+            tx.Signature.V >= 35; // EIP-155: v = chainId * 2 + 35/36
+
+        bool requiresChainIdValidation =
+            tx.Type != TxType.Legacy ||
+            isReplayProtectedLegacyTx;
+
+        if (requiresChainIdValidation)
         {
             signatureValidation = expectedChainIdTxValidator.IsWellFormed(tx, spec);
             if (!signatureValidation)
