@@ -245,11 +245,17 @@ public sealed class SparsePatriciaTree : IDisposable
     /// </summary>
     public Hash256 ComputeRoot()
     {
+        // UpdateCachedRlp returns CachedRlp (child-ref form) which for the root is either
+        // a 32-byte hash (already keccaked) or inline RLP < 32 bytes.
+        // For inline root, we keccak the inline bytes. For hash root, return the hash directly.
         RlpNode rootRlp = _subtrie.UpdateCachedRlp();
 
         if (rootRlp.IsNull || rootRlp.Length == 0 ||
             (rootRlp.Length == 1 && rootRlp.AsSpan()[0] == 0x80))
             return Keccak.EmptyTreeHash;
+
+        if (rootRlp.IsHash())
+            return rootRlp.AsHash();
 
         return Keccak.Compute(rootRlp.AsSpan());
     }

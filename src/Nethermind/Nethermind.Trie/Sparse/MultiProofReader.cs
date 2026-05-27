@@ -222,7 +222,7 @@ public static class MultiProofReader
 
             if (itemLen == 33 && rlp[itemStart] == 0xa0)
             {
-                childRlps[i] = RlpNode.FromHash(new Hash256(rlp.AsSpan(itemStart + 1, 32)));
+                childRlps[i] = RlpNode.FromHashSpan(rlp.AsSpan(itemStart + 1, 32));
             }
             else
             {

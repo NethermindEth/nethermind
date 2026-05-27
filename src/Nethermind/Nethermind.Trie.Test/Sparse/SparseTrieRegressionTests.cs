@@ -37,7 +37,7 @@ public class SparseTrieRegressionTests
         SparseSubtrie subtrie = new();
         subtrie.Root = subtrie.InsertLeaf(nibbles, value);
         RlpNode sparseRlp = subtrie.UpdateCachedRlp();
-        Hash256 sparseHash = Keccak.Compute(sparseRlp.AsSpan());
+        Hash256 sparseHash = sparseRlp.IsHash() ? sparseRlp.AsHash() : Keccak.Compute(sparseRlp.AsSpan());
 
         sparseHash.Should().Be(tree.RootHash);
     }
@@ -64,7 +64,7 @@ public class SparseTrieRegressionTests
         subtrie.Root = subtrie.InsertLeaf(nibA, valA);
         subtrie.UpdateSingleLeaf(nibB, LeafUpdate.Changed(valB), out _);
         RlpNode rootRlp = subtrie.UpdateCachedRlp();
-        Hash256 sparseHash = Keccak.Compute(rootRlp.AsSpan());
+        Hash256 sparseHash = rootRlp.IsHash() ? rootRlp.AsHash() : Keccak.Compute(rootRlp.AsSpan());
 
         sparseHash.Should().Be(tree.RootHash);
     }
@@ -143,7 +143,7 @@ public class SparseTrieRegressionTests
         subtrie.UpdateSingleLeaf(nibB, LeafUpdate.Deleted(), out _);
 
         RlpNode rlp = subtrie.UpdateCachedRlp();
-        Hash256 sparseHash = Keccak.Compute(rlp.AsSpan());
+        Hash256 sparseHash = rlp.IsHash() ? rlp.AsHash() : Keccak.Compute(rlp.AsSpan());
 
         // Should match single-leaf Patricia trie
         MemDb db = new();

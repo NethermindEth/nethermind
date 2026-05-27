@@ -26,6 +26,14 @@ public readonly struct RlpNode : IEquatable<RlpNode>
     public static RlpNode FromRlp(byte[] rlp) => new(rlp, isHash: false);
     public static RlpNode FromHash(Hash256 hash) => new(hash.Bytes.ToArray(), isHash: true);
 
+    /// <summary>Avoids the intermediate Hash256 class allocation when wrapping a 32-byte span.</summary>
+    public static RlpNode FromHashSpan(ReadOnlySpan<byte> hashBytes)
+    {
+        byte[] data = new byte[32];
+        hashBytes.CopyTo(data);
+        return new(data, isHash: true);
+    }
+
     public ReadOnlySpan<byte> AsSpan() => _data;
     public int Length => _data?.Length ?? 0;
     public bool IsNull => _data is null;

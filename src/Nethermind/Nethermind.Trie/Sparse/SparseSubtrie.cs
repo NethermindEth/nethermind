@@ -574,7 +574,12 @@ public sealed class SparseSubtrie : IDisposable
         Rlp.Encode(rlp, pos, value);
 
         _arena[nodeIdx].FullRlp = rlp;
-        _arena[nodeIdx].CachedRlp = RlpNode.FromRlp(rlp);
+        // CachedRlp is the child-ref form: hash for RLP >= 32 bytes, inline RLP otherwise.
+        // Storing the hash here avoids re-keccaking when the parent encodes this child
+        // (WriteChildRef on hash form just copies 32 bytes instead of computing keccak).
+        _arena[nodeIdx].CachedRlp = rlp.Length >= 32
+            ? RlpNode.FromHashSpan(Keccak.Compute(rlp).Bytes)
+            : RlpNode.FromRlp(rlp);
         _arena[nodeIdx].State = SparseNodeState.Cached;
     }
 
@@ -607,7 +612,10 @@ public sealed class SparseSubtrie : IDisposable
         rlp[pos] = 0x80;
 
         _arena[nodeIdx].FullRlp = rlp;
-        _arena[nodeIdx].CachedRlp = RlpNode.FromRlp(rlp);
+        // CachedRlp is the child-ref form (see EncodeLeaf comment).
+        _arena[nodeIdx].CachedRlp = rlp.Length >= 32
+            ? RlpNode.FromHashSpan(Keccak.Compute(rlp).Bytes)
+            : RlpNode.FromRlp(rlp);
         _arena[nodeIdx].State = SparseNodeState.Cached;
     }
 
@@ -634,7 +642,9 @@ public sealed class SparseSubtrie : IDisposable
         branchRlp.WriteChildRef(rlp.AsSpan(pos));
 
         _arena[nodeIdx].FullRlp = rlp; // extension wrapper is now the "full" RLP
-        _arena[nodeIdx].CachedRlp = RlpNode.FromRlp(rlp);
+        _arena[nodeIdx].CachedRlp = rlp.Length >= 32
+            ? RlpNode.FromHashSpan(Keccak.Compute(rlp).Bytes)
+            : RlpNode.FromRlp(rlp);
     }
 
     #endregion
