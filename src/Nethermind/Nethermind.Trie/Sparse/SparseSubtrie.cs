@@ -491,7 +491,6 @@ public sealed class SparseSubtrie : IDisposable
                         // and silently treats the delete as a no-op, leaving a partial branch
                         // with one child + one blinded sibling that encodes to the wrong RLP.
                         AddChildToBranch(nodeIdx, nibble, leafIdxToFree);
-                        Console.Error.WriteLine($"DIAG_SPARSE_COLLAPSE_ROLLBACK nibble={nibble} branchIdx={nodeIdx} leafIdx={leafIdxToFree}");
                         return (UpdateResult.NeedsProof, nodeIdx);
                     }
                     FreeNode(leafIdxToFree);
@@ -551,6 +550,15 @@ public sealed class SparseSubtrie : IDisposable
 
         if (_arena[nodeIdx].IsBranch())
         {
+            // Extension-only node: HasShortKey but empty StateMask. The single blinded child
+            // reference sits at _children[ChildrenStart]. Patricia encodes this as a 2-item
+            // extension (NOT extension wrapping a 17-item empty branch), so we must too.
+            if (_arena[nodeIdx].HasShortKey() && _arena[nodeIdx].StateMask == TrieMask.Empty)
+            {
+                EncodeExtensionOnly(nodeIdx);
+                return;
+            }
+
             TrieMask mask = _arena[nodeIdx].StateMask;
             int childrenStart = _arena[nodeIdx].ChildrenStart;
             for (int n = 0; n < 16; n++)
@@ -567,6 +575,34 @@ public sealed class SparseSubtrie : IDisposable
             EncodeBranch(nodeIdx);
             if (_arena[nodeIdx].HasShortKey()) WrapBranchWithExtension(nodeIdx);
         }
+    }
+
+    private void EncodeExtensionOnly(int nodeIdx)
+    {
+        byte[] key = _arena[nodeIdx].ShortKey ?? [];
+        int childrenStart = _arena[nodeIdx].ChildrenStart;
+        SparseChildEntry entry = _children[childrenStart];
+        RlpNode childRlp = entry.IsRevealed ? _arena[entry.ArenaIndex].CachedRlp : entry.BlindedRlp;
+
+        int hexLen = HexPrefix.ByteLength(key);
+        Span<byte> keyBytes = hexLen <= 128 ? stackalloc byte[hexLen] : new byte[hexLen];
+        HexPrefix.CopyToSpan(key, false, keyBytes);
+
+        int keyRlpLen = Rlp.LengthOf(keyBytes);
+        int childRefLen = childRlp.ChildRefLength;
+        int contentLen = keyRlpLen + childRefLen;
+        int totalLen = Rlp.LengthOfSequence(contentLen);
+
+        byte[] rlp = new byte[totalLen];
+        int pos = Rlp.StartSequence(rlp, 0, contentLen);
+        pos = Rlp.Encode(rlp, pos, keyBytes);
+        childRlp.WriteChildRef(rlp.AsSpan(pos));
+
+        _arena[nodeIdx].FullRlp = rlp;
+        _arena[nodeIdx].CachedRlp = rlp.Length >= 32
+            ? RlpNode.FromRlpHashed(rlp)
+            : RlpNode.FromRlp(rlp);
+        _arena[nodeIdx].State = SparseNodeState.Cached;
     }
 
     private void EncodeLeaf(int nodeIdx)

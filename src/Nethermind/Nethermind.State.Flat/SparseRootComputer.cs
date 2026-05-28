@@ -94,7 +94,6 @@ public sealed class SparseRootComputer : IDisposable
         {
             List<(Hash256 key, byte minLen)> targets = [];
             storageTrie.UpdateLeaves(updates, (key, minLen) => targets.Add((key, minLen)));
-            if (diag) Console.Error.WriteLine($"DIAG_STORAGE_RETRY_ITER {retry} targets.Count={targets.Count}");
             if (targets.Count == 0) break;
 
             // Detect deletion-with-blinded-sibling stalls: the proof reader walks only target
@@ -344,10 +343,6 @@ public sealed class SparseRootComputer : IDisposable
                 byte[] siblingRlp = _reader.LoadStorageRlp(accountPathHash, siblingPath, siblingHash);
                 ProofNode siblingProof = MultiProofReader.DecodeProofNode(siblingRlp, siblingPath);
                 storageTrie.RevealNodes([siblingProof]);
-                if (DiagDumpForContract is not null && accountPathHash == DiagDumpForContract)
-                {
-                    Console.Error.WriteLine($"DIAG_SIBLING_REVEAL path={siblingPath} hash={siblingHash} kind={siblingProof.Kind} rawRlp=0x{Convert.ToHexString(siblingRlp)}");
-                }
             }
             catch (Exception ex) when (ex is MissingTrieNodeException or TrieNodeHashMismatchException)
             {

@@ -192,25 +192,23 @@ public sealed class SparsePatriciaTree : IDisposable
 
             case ProofNodeKind.Extension:
                 {
-                    // Extensions are represented as branches with a ShortKey
-                    // The child nibble comes from the extension's child reference
-                    // For a proper extension, we need to decode what the child points to
-                    TrieMask mask = TrieMask.Empty;
-                    if (proofNode.ChildNibble >= 0)
-                        mask = mask.SetBit(proofNode.ChildNibble);
-
-                    int childStart = subtrie.AllocChildren(Math.Max(mask.CountBits(), 0));
-                    if (mask.CountBits() > 0)
-                    {
-                        RlpNode childRlp = proofNode.ChildRlps is not null && proofNode.ChildRlps.Length > 0
-                            ? proofNode.ChildRlps[0]
-                            : default;
-                        subtrie.ChildAt(childStart) = SparseChildEntry.Blinded(childRlp);
-                    }
+                    // Extensions are represented as branches with a ShortKey and an empty
+                    // StateMask. The extension's child reference (a hash or inline RLP) is
+                    // stored at ChildrenStart[0] as a blinded entry. Encoding detects this
+                    // shape (HasShortKey + empty StateMask) and emits a 2-item extension RLP,
+                    // NOT a 17-item branch RLP wrapped in an extension. Previously the child
+                    // ref was dropped when ChildNibble was -1, which made CollapseBranch
+                    // mutate ShortKey and re-encode as `extension(key, empty-17-element-branch)`
+                    // producing a non-canonical hash.
+                    RlpNode childRlp = proofNode.ChildRlps is not null && proofNode.ChildRlps.Length > 0
+                        ? proofNode.ChildRlps[0]
+                        : default;
+                    int childStart = subtrie.AllocChildren(1);
+                    subtrie.ChildAt(childStart) = SparseChildEntry.Blinded(childRlp);
 
                     SparseTrieNode node = SparseTrieNode.CreateBranchWithExtension(
-                        proofNode.Key ?? [], mask, childStart);
-                    node.BlindedMask = mask;
+                        proofNode.Key ?? [], TrieMask.Empty, childStart);
+                    node.BlindedMask = TrieMask.Empty;
                     node.CachedRlp = RlpNode.FromRlp(proofNode.RawRlp ?? []);
                     node.State = SparseNodeState.Cached;
                     return subtrie.AllocNode(node);
