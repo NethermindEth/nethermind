@@ -76,17 +76,20 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
             {
                 (StateId current, bool currentPersisted, int parentIdx) = queue.Dequeue();
 
-                // Expand up to 4 edges from `current`, in widest-jump-first order:
+                // Expand up to 4 edges from `current`, in-RAM-tier-first / widest-first:
                 //   0: in-memory compacted   — widest in-RAM hop, no disk read
-                //   1: persisted compacted   — >CompactSize merges and the CompactSize persistable
-                //   2: persisted base        — sub-CompactSize, narrowest persisted hop
-                //   3: in-memory base        — one-block hop, no disk read
+                //   1: in-memory base        — narrow in-RAM hop, no disk read
+                //   2: persisted compacted   — >CompactSize merges and the CompactSize persistable
+                //   3: persisted base        — sub-CompactSize, narrowest persisted hop
                 // Persisted snapshots only chain back to other persisted snapshots by
-                // construction, so once on a persisted edge the in-memory edges (0, 3)
-                // are guaranteed misses — gated below by the edgeIsInMemory check.
+                // construction, so once on a persisted edge the in-memory edges (0, 1)
+                // are guaranteed misses — gated below by the edgeIsInMemory check. The
+                // in-mem-base-before-persisted-base order matters: edge 3 winning would
+                // lock the rest of the BFS into the persisted tier (line 90), barring
+                // any wider in-mem compacted skip-pointer that might exist downstream.
                 for (int e = 0; e < 4; e++)
                 {
-                    bool edgeIsInMemory = e == 0 || e == 3;
+                    bool edgeIsInMemory = e < 2;
                     if (currentPersisted && edgeIsInMemory) continue;
 
                     IDisposable? snapshot;
@@ -98,17 +101,17 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
                             if (!TryLeaseCompactedState(current, out Snapshot? sc)) continue;
                             snapshot = sc; from = sc.From;
                             break;
-                        case 1: // persisted compacted (>CompactSize merges + the persistable)
+                        case 1: // in-memory base
+                            if (!TryLeaseState(current, out Snapshot? sb)) continue;
+                            snapshot = sb; from = sb.From;
+                            break;
+                        case 2: // persisted compacted (>CompactSize merges + the persistable)
                             if (!_persisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pc)) continue;
                             snapshot = pc; from = pc.From;
                             break;
-                        case 2: // persisted base (sub-CompactSize)
+                        case 3: // persisted base (sub-CompactSize)
                             if (!_persisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pb)) continue;
                             snapshot = pb; from = pb.From;
-                            break;
-                        case 3: // in-memory base
-                            if (!TryLeaseState(current, out Snapshot? sb)) continue;
-                            snapshot = sb; from = sb.From;
                             break;
                         default: continue;
                     }
