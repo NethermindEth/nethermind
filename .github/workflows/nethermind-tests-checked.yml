@@ -4,14 +4,40 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The "checked" variant catches Debug.Assert failures (only firing under
+# TRACE;DEBUG defines) and "no-intrinsics" catches SIMD-fallback bugs (only
+# firing with DOTNET_EnableHWIntrinsic=0). Both bug classes are confined to
+# EVM/state/crypto/consensus code, so the path filter is bounded by what the
+# variants can actually detect.
 on:
   pull_request:
+    paths:
+      # Use `*/**` so sub-modules (Nethermind.Evm.Precompiles, Nethermind.State.Flat,
+      # Nethermind.Consensus.AuRa/Clique/Ethash, etc.) also match.
+      - 'src/Nethermind/Nethermind.Evm*/**'
+      - 'src/Nethermind/Nethermind.State*/**'
+      - 'src/Nethermind/Nethermind.Trie*/**'
+      - 'src/Nethermind/Nethermind.Consensus*/**'
+      - 'src/Nethermind/Nethermind.Stateless*/**'
+      - 'src/Nethermind/Nethermind.Core/**'
+      - 'src/Nethermind/Nethermind.Crypto/**'
+      - 'src/Nethermind/Nethermind.Specs/**'
+      - 'src/Nethermind/Ethereum.Blockchain.Pyspec.Test/**'
+      - 'src/Nethermind/Ethereum.Legacy.Blockchain.Block.Test/**'
+      - 'src/Nethermind/Ethereum.Legacy.Blockchain.Test/**'
+      - 'src/Nethermind/Ethereum.Legacy.Transition.Test/**'
+      - 'src/Nethermind/Ethereum.Legacy.VM.Test/**'
+      - 'src/Nethermind/Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'global.json'
+      - '.github/workflows/nethermind-tests-checked.yml'
   push:
     branches: [master]
   workflow_dispatch:
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
   TERM: xterm
 
 defaults:
@@ -19,114 +45,140 @@ defaults:
     shell: bash
 
 jobs:
-  tests:
-    name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
+  # Build once per variant. The checked variant has different DefineConstants so
+  # its binaries differ from no-intrinsics; we keep them in separate artifacts.
+  build:
+    name: build [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         variant:
-          - label: checked
-            dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
-            hw-intrinsic: ''
-          - label: no-intrinsics
-            dotnet-args: ''
-            hw-intrinsic: 0
-        project:
-          - Ethereum.Abi.Test
-          - Ethereum.Basic.Test
-          - Ethereum.Blockchain.Block.Test
-          - Ethereum.Difficulty.Test
-          - Ethereum.HexPrefix.Test
-          - Ethereum.KeyAddress.Test
-          - Ethereum.KeyStore.Test
-          - Ethereum.Legacy.Blockchain.Block.Test
-          - Ethereum.Legacy.Transition.Test
-          - Ethereum.Legacy.VM.Test
-          - Ethereum.PoW.Test
-          - Ethereum.Rlp.Test
-          - Ethereum.Transaction.Test
-          - Ethereum.Trie.Test
-          - Nethermind.Abi.Test
-          - Nethermind.Api.Test
-          - Nethermind.AuRa.Test
-          - Nethermind.Blockchain.Test
-          - Nethermind.Clique.Test
-          - Nethermind.Config.Test
-          - Nethermind.Consensus.Test
-          - Nethermind.Core.Test
-          - Nethermind.Db.Test
-          - Nethermind.Era1.Test
-          - Nethermind.Ethash.Test
-          - Nethermind.EthStats.Test
-          - Nethermind.Evm.Test
-          - Nethermind.Facade.Test
-          - Nethermind.Flashbots.Test
-          - Nethermind.HealthChecks.Test
-          - Nethermind.History.Test
-          - Nethermind.Hive.Test
-          - Nethermind.JsonRpc.Test
-          - Nethermind.JsonRpc.TraceStore.Test
-          - Nethermind.KeyStore.Test
-          - Nethermind.Logging.NLog.Test
-          - Nethermind.Merge.AuRa.Test
-          - Nethermind.Merge.Plugin.Test
-          - Nethermind.Mining.Test
-          - Nethermind.Monitoring.Test
-          - Nethermind.Network.Discovery.Test
-          - Nethermind.Network.Dns.Test
-          - Nethermind.Network.Enr.Test
-          - Nethermind.Network.Test
-          - Nethermind.Optimism.Test
-          - Nethermind.Runner.Test
-          - Nethermind.Serialization.Ssz.Test
-          - Nethermind.Shutter.Test
-          - Nethermind.Sockets.Test
-          - Nethermind.Specs.Test
-          - Nethermind.State.Test
-          - Nethermind.State.Test.Runner.Test
-          - Nethermind.Synchronization.Test
-          - Nethermind.Taiko.Test
-          - Nethermind.Trie.Test
-          - Nethermind.TxPool.Test
-          - Nethermind.Wallet.Test
-          - Nethermind.Xdc.Test
+          - { label: checked, args: '-p:DefineConstants=TRACE%3BDEBUG' }
+          - { label: no-intrinsics, args: '' }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
+          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: ${{ matrix.project }}
-        id: test
-        working-directory: src/Nethermind/${{ matrix.project }}
-        env:
-          DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
+      - name: Build Nethermind + EthereumTests [${{ matrix.variant.label }}]
+        working-directory: src/Nethermind
         run: |
-          dotnet build ${{ matrix.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
+          dotnet build Nethermind.slnx -m -c release -v minimal ${{ matrix.variant.args }}
+          dotnet build EthereumTests.slnx -m -c release -v minimal ${{ matrix.variant.args }}
+          dotnet build-server shutdown || true
 
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-checked-${{ matrix.variant.label }}
+          path: src/Nethermind/artifacts/
+          retention-days: 1
+          if-no-files-found: error
 
+  tests:
+    name: tests ${{ matrix.group }} [${{ matrix.variant.label }}]
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        variant:
+          - { label: checked, hw: '' }
+          - { label: no-intrinsics, hw: '0' }
+        group:
+          - heavy
+          - core
+          - state
+          - consensus
+          - network
+          - rpc
+          - misc
+          - spec-core
+          - spec-tx-rlp-trie
+    env:
+      DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: build-checked-${{ matrix.variant.label }}
+          path: src/Nethermind/artifacts/
+
+      - name: Run ${{ matrix.group }} [${{ matrix.variant.label }}]
+        working-directory: src/Nethermind
+        env:
+          GROUP: ${{ matrix.group }}
+        run: |
+          case "$GROUP" in
+            heavy)
+              projects=(Nethermind.Synchronization.Test Nethermind.Merge.Plugin.Test Nethermind.Merge.AuRa.Test Nethermind.Blockchain.Test)
+              ;;
+            core)
+              projects=(Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Specs.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test)
+              ;;
+            state)
+              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.State.Test.Runner.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
+              ;;
+            consensus)
+              projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test)
+              ;;
+            network)
+              projects=(Nethermind.Network.Test Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Sockets.Test Nethermind.TxPool.Test Nethermind.EthStats.Test)
+              ;;
+            rpc)
+              projects=(Nethermind.JsonRpc.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Runner.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test)
+              ;;
+            misc)
+              # Note: EraE not covered by this workflow upstream.
+              projects=(Nethermind.Era1.Test Nethermind.History.Test Nethermind.Optimism.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
+              ;;
+            spec-core)
+              projects=(Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Blockchain.Block.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test)
+              ;;
+            spec-tx-rlp-trie)
+              projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test)
+              ;;
+            *)
+              echo "::error::Unknown group: $GROUP"
+              exit 1
+              ;;
+          esac
+
+          set -e
+          for project in "${projects[@]}"; do
+            echo "::group::$project [${{ matrix.variant.label }}]"
+            dotnet test --project "$project/$project.csproj" -c release \
+              --no-build --no-restore -v minimal
+            echo "::endgroup::"
+          done
+
+  # Heavy chunked tests under both variants. TEST_SKIP_HEAVY=1 limits each chunk.
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         variant:
-          - label: checked
-            dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
-            hw-intrinsic: ''
-          - label: no-intrinsics
-            dotnet-args: ''
-            hw-intrinsic: 0
+          - { label: checked, hw: '' }
+          - { label: no-intrinsics, hw: '0' }
         test:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
@@ -140,6 +192,8 @@ jobs:
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of4 }
+    env:
+      DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw }}
     steps:
       - name: Free up disk space
         if: startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
@@ -157,19 +211,21 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: build-checked-${{ matrix.variant.label }}
+          path: src/Nethermind/artifacts/
+
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
-        id: test
         working-directory: src/Nethermind/${{ matrix.test.project }}
         env:
-          DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
           TEST_CHUNK: ${{ matrix.test.chunk }}
           TEST_SKIP_HEAVY: 1
         run: |
-          dotnet build ${{ matrix.test.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
-
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
+          set -e
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release \
+            --no-build --no-restore -v minimal
 
   tests-summary:
     name: Tests summary

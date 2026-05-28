@@ -4,215 +4,196 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The Flat-DB variant exercises the alternative DB layout — only changes to
+# state/DB/trie/blockchain code (or shared base) can plausibly regress it.
 on:
   pull_request:
+    paths:
+      # Use `*/**` so sub-modules (Nethermind.Db.Rocks/Rpc, Nethermind.State.Flat,
+      # Nethermind.Evm.Precompiles, etc.) also match.
+      - 'src/Nethermind/Nethermind.Db*/**'
+      - 'src/Nethermind/Nethermind.State*/**'
+      - 'src/Nethermind/Nethermind.Trie*/**'
+      - 'src/Nethermind/Nethermind.Blockchain*/**'
+      - 'src/Nethermind/Nethermind.Evm*/**'
+      - 'src/Nethermind/Nethermind.Consensus*/**'
+      - 'src/Nethermind/Nethermind.Core/**'
+      - 'src/Nethermind/Nethermind.Crypto/**'
+      - 'src/Nethermind/Ethereum.Blockchain.Pyspec.Test/**'
+      - 'src/Nethermind/Ethereum.Legacy.Blockchain.Block.Test/**'
+      - 'src/Nethermind/Ethereum.Legacy.Blockchain.Test/**'
+      - 'src/Nethermind/Ethereum.Legacy.Transition.Test/**'
+      - 'src/Nethermind/Ethereum.Legacy.VM.Test/**'
+      - 'src/Nethermind/Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'global.json'
+      - '.github/workflows/nethermind-tests-flat.yml'
   push:
     branches: [master]
   workflow_dispatch:
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
   TERM: xterm
   TEST_USE_FLAT: 1
 
 jobs:
+  # Single build — TEST_USE_FLAT is a runtime env, not a build-time switch.
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Build Nethermind + EthereumTests
+        working-directory: src/Nethermind
+        run: |
+          dotnet build Nethermind.slnx -m -c release -v minimal
+          dotnet build EthereumTests.slnx -m -c release -v minimal
+          dotnet build-server shutdown || true
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-flat
+          path: src/Nethermind/artifacts/
+          retention-days: 1
+          if-no-files-found: error
+
+  # Base unit/spec projects (19 of them) collapse into 2 grouped jobs.
+  # Chunked Pyspec / Amsterdam variants stay as individual matrix entries.
   tests:
-    name: Run ${{ matrix.project }}${{ matrix.label && format(' [{0}]', matrix.label) || '' }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    name: tests ${{ matrix.group }}
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
-        project:
-          - Ethereum.Abi.Test
-          - Ethereum.Basic.Test
-          - Ethereum.Blockchain.Block.Test
-          - Ethereum.Difficulty.Test
-          - Ethereum.HexPrefix.Test
-          - Ethereum.KeyAddress.Test
-          - Ethereum.KeyStore.Test
-          - Ethereum.Legacy.Blockchain.Block.Test
-          - Ethereum.Legacy.Transition.Test
-          - Ethereum.Legacy.VM.Test
-          - Ethereum.PoW.Test
-          - Ethereum.Rlp.Test
-          - Ethereum.Transaction.Test
-          - Ethereum.Trie.Test
-          - Nethermind.Consensus.Test
-          - Nethermind.Core.Test
-          - Nethermind.Db.Test
-          - Nethermind.Merge.Plugin.Test
-          - Nethermind.Runner.Test
-        chunk: ['']
-        include:
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 1of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 2of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 3of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 4of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 5of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 6of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 7of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 8of8
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 1of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 2of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 3of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 4of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 5of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 6of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 7of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 8of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 9of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 10of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 11of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 12of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 13of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 14of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 15of16
-            label: Sequential
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 16of16
-            label: Sequential
-          # Amsterdam parallel-execution / batch-read variants — Linux x64 only via the
-          # CiRunnerGuard. Each fixture class is filtered to its own matrix entries so the
-          # default chunks above can exclude them via FullyQualifiedName!~ filters and
-          # avoid double-running the heavy Amsterdam fixture set. 16 chunks per variant
-          # mirrors the default Pyspec chunking density (~213 tests/shard).
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+        group:
+          - flat-spec
+          - flat-nethermind
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: build-flat
+          path: src/Nethermind/artifacts/
+
+      - name: Run ${{ matrix.group }}
+        working-directory: src/Nethermind
+        env:
+          GROUP: ${{ matrix.group }}
+        run: |
+          case "$GROUP" in
+            flat-spec)
+              projects=(Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Blockchain.Block.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test)
+              ;;
+            flat-nethermind)
+              projects=(Nethermind.Consensus.Test Nethermind.Core.Test Nethermind.Db.Test Nethermind.Merge.Plugin.Test Nethermind.Runner.Test)
+              ;;
+            *)
+              echo "::error::Unknown group: $GROUP"
+              exit 1
+              ;;
+          esac
+
+          set -e
+          for project in "${projects[@]}"; do
+            echo "::group::$project"
+            dotnet test --project "$project/$project.csproj" -c release \
+              --no-build --no-restore -v minimal
+            echo "::endgroup::"
+          done
+
+  # Legacy.Blockchain chunks — kept chunked because the suite is large.
+  tests-legacy-chunked:
+    name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        chunk: [1of8, 2of8, 3of8, 4of8, 5of8, 6of8, 7of8, 8of8]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: build-flat
+          path: src/Nethermind/artifacts/
+
+      - name: Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }})
+        working-directory: src/Nethermind/Ethereum.Legacy.Blockchain.Test
+        env:
+          TEST_CHUNK: ${{ matrix.chunk }}
+        run: |
+          set -e
+          dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release \
+            --no-build --no-restore -v minimal
+
+  # Pyspec runs: Sequential (default) + 6 Amsterdam fixture variants.
+  # Each variant is a filter-based pass over Pyspec.Test; chunked because each
+  # chunk is ~10 min wall-clock.
+  tests-pyspec:
+    name: Pyspec [${{ matrix.label }}] (${{ matrix.chunk }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        label:
+          - Sequential
+          - Parallel
+          - BatchRead
+          - ParallelFull
+          - ParallelEngine
+          - BatchReadEngine
+          - ParallelFullEngine
+        chunk:
+          - 1of16
+          - 2of16
+          - 3of16
+          - 4of16
+          - 5of16
+          - 6of16
+          - 7of16
+          - 8of16
+          - 9of16
+          - 10of16
+          - 11of16
+          - 12of16
+          - 13of16
+          - 14of16
+          - 15of16
+          - 16of16
     steps:
       - name: Free up disk space
-        if: startsWith(matrix.project, 'Ethereum.Blockchain.Pyspec')
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           large-packages: false
@@ -222,71 +203,66 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ startsWith(matrix.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+          submodules: false
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: ${{ matrix.project }}
-        id: test
-        working-directory: src/Nethermind/${{ matrix.project }}
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: build-flat
+          path: src/Nethermind/artifacts/
+
+      - name: Pyspec [${{ matrix.label }}] (${{ matrix.chunk }})
+        working-directory: src/Nethermind/Ethereum.Blockchain.Pyspec.Test
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
-          IS_PYSPEC: ${{ startsWith(matrix.project, 'Ethereum.Blockchain.Pyspec') }}
+          LABEL: ${{ matrix.label }}
         run: |
-          monitor_pid=""
-          stop_pyspec_monitor() {
-            if [ -n "$monitor_pid" ]; then
-              kill "$monitor_pid" 2>/dev/null || true
-              wait "$monitor_pid" 2>/dev/null || true
-            fi
-          }
+          # Sequential = default Pyspec sans Amsterdam variant fixtures.
+          # Other labels = a specific Amsterdam fixture class.
+          case "$LABEL" in
+            Sequential)         filter='FullyQualifiedName!~AmsterdamParallel&FullyQualifiedName!~AmsterdamBatchRead' ;;
+            Parallel)           filter='FullyQualifiedName~AmsterdamParallelBlockchainTests' ;;
+            BatchRead)          filter='FullyQualifiedName~AmsterdamBatchReadBlockchainTests' ;;
+            ParallelFull)       filter='FullyQualifiedName~AmsterdamParallelFullBlockchainTests' ;;
+            ParallelEngine)     filter='FullyQualifiedName~AmsterdamParallelEngineBlockchainTests' ;;
+            BatchReadEngine)    filter='FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests' ;;
+            ParallelFullEngine) filter='FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests' ;;
+            *)                  echo "::error::Unknown label: $LABEL"; exit 1 ;;
+          esac
 
-          if [ "$IS_PYSPEC" = "true" ]; then
-            (
-              while true; do
-                echo "::group::Pyspec resources $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-                free -h
-                df -h /
-                if [ -r /sys/fs/cgroup/memory.current ]; then
-                  echo "cgroup memory.current bytes: $(cat /sys/fs/cgroup/memory.current)"
-                fi
-                if [ -r /sys/fs/cgroup/memory.max ]; then
-                  echo "cgroup memory.max bytes: $(cat /sys/fs/cgroup/memory.max)"
-                fi
-                ps -eo pid,ppid,rss,vsz,pcpu,pmem,comm --sort=-rss | head -n 12
-                echo "::endgroup::"
-                sleep 60
-              done
-            ) &
-            monitor_pid=$!
-            trap stop_pyspec_monitor EXIT
-          fi
+          # Resource monitor for Pyspec — these chunks have hit memory/disk limits before.
+          (
+            while true; do
+              echo "::group::Pyspec resources $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+              free -h
+              df -h /
+              [ -r /sys/fs/cgroup/memory.current ] && echo "cgroup memory.current bytes: $(cat /sys/fs/cgroup/memory.current)"
+              [ -r /sys/fs/cgroup/memory.max ]     && echo "cgroup memory.max bytes: $(cat /sys/fs/cgroup/memory.max)"
+              ps -eo pid,ppid,rss,vsz,pcpu,pmem,comm --sort=-rss | head -n 12
+              echo "::endgroup::"
+              sleep 60
+            done
+          ) &
+          monitor_pid=$!
+          trap 'kill $monitor_pid 2>/dev/null || true; wait $monitor_pid 2>/dev/null || true' EXIT
 
-          run_test() {
-            if [ -n "${{ matrix.filter }}" ]; then
-              dotnet test --project ${{ matrix.project }}.csproj -c release "$@" --filter "${{ matrix.filter }}"
-            elif [ "${{ matrix.project }}" = "Ethereum.Blockchain.Pyspec.Test" ] && [ -n "${{ matrix.chunk }}" ]; then
-              dotnet test --project ${{ matrix.project }}.csproj -c release "$@" \
-                --filter "FullyQualifiedName!~AmsterdamParallel&FullyQualifiedName!~AmsterdamBatchRead"
-            else
-              dotnet test --project ${{ matrix.project }}.csproj -c release "$@"
-            fi
-          }
-
-          # Variant matrix entries set `matrix.filter` to scope to a specific Amsterdam
-          # parallel-variant fixture. Default Pyspec chunks instead exclude the variant
-          # classes by name so they don't double-run the heavy Amsterdam fixture set.
-          dotnet build ${{ matrix.project }}.csproj -c release
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          run_test --no-build --no-restore
+          set -e
+          dotnet test --project Ethereum.Blockchain.Pyspec.Test.csproj -c release \
+            --no-build --no-restore -v minimal --filter "$filter"
 
   tests-summary:
     name: Tests summary
-    needs: tests
+    needs: [tests, tests-legacy-chunked, tests-pyspec]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check result
         run: |
-          [[ "${{ needs.tests.result }}" == "success" ]]
+          [[ \
+            "${{ needs.tests.result }}" == "success" && \
+            "${{ needs.tests-legacy-chunked.result }}" == "success" && \
+            "${{ needs.tests-pyspec.result }}" == "success" \
+          ]]

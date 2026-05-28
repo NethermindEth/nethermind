@@ -1,11 +1,16 @@
 name: Sync PR Gate (Hoodi)
 
+# 3-hour self-hosted ARM job. Triggered AFTER the unit/spec tests workflow
+# completes, and runs only if that workflow succeeded — so a broken PR never
+# burns the sync runner. New pushes restart the upstream tests workflow, which
+# triggers a fresh workflow_run here; cancel-in-progress drops the stale sync.
 on:
-  pull_request:
-    branches: [master]
+  workflow_run:
+    workflows: ["Nethermind/Ethereum tests"]
+    types: [completed]
 
 concurrency:
-  group: sync-pr-${{ github.event.pull_request.number }}
+  group: sync-pr-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 env:
@@ -18,7 +23,11 @@ permissions:
 jobs:
   sync-hoodi:
     name: "Sync hoodi (${{ matrix.mode }})"
-    if: github.event.pull_request.head.repo.fork == false
+    # Only fire for successful PR runs from non-fork branches.
+    if: |
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.fork == false
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
     strategy:
@@ -43,7 +52,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
       - name: Checkout tests repository
@@ -92,7 +101,7 @@ jobs:
           docker build -t nethermind:pr-local \
             --build-arg BUILD_CONFIG=release \
             --build-arg CI=true \
-            --build-arg COMMIT_HASH=${{ github.event.pull_request.head.sha }} \
+            --build-arg COMMIT_HASH=${{ github.event.workflow_run.head_sha }} \
             .
 
       - name: Generate and run Sedge

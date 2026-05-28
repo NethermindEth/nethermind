@@ -19,6 +19,7 @@ on:
 env:
   COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
   TERM: xterm
 
 defaults:
@@ -26,152 +27,21 @@ defaults:
     shell: bash
 
 jobs:
-  tests:
-    name: Run ${{ matrix.project }} (${{ matrix.runner }})
+  # Build once per RID. The artifact carries Nethermind.slnx + EthereumTests.slnx
+  # outputs (artifacts/{bin,obj}). All downstream test jobs run `dotnet test
+  # --no-build --no-restore` against this — they don't compile anything.
+  build:
+    name: build (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    outputs:
-      collect_coverage: ${{ env.COLLECT_COVERAGE }}
+    timeout-minutes: 20
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         runner:
           - ubuntu-latest
           - ubuntu-24.04-arm
           - windows-latest
-        project:
-          - Nethermind.Abi.Test
-          - Nethermind.Api.Test
-          - Nethermind.AuRa.Test
-          - Nethermind.Blockchain.Test
-          - Nethermind.Clique.Test
-          - Nethermind.Config.Test
-          - Nethermind.Consensus.Test
-          - Nethermind.Core.Test
-          - Nethermind.Db.Test
-          - Nethermind.Era1.Test
-          - Nethermind.EraE.Test
-          - Nethermind.Ethash.Test
-          - Nethermind.EthStats.Test
-          - Nethermind.Evm.Test
-          - Nethermind.Facade.Test
-          - Nethermind.Flashbots.Test
-          - Nethermind.HealthChecks.Test
-          - Nethermind.History.Test
-          - Nethermind.Hive.Test
-          - Nethermind.JsonRpc.Test
-          - Nethermind.JsonRpc.TraceStore.Test
-          - Nethermind.KeyStore.Test
-          - Nethermind.Logging.NLog.Test
-          - Nethermind.Merge.AuRa.Test
-          - Nethermind.Merge.Plugin.Test
-          - Nethermind.Mining.Test
-          - Nethermind.Monitoring.Test
-          - Nethermind.Network.Discovery.Test
-          - Nethermind.Network.Dns.Test
-          - Nethermind.Network.Enr.Test
-          - Nethermind.Network.Test
-          - Nethermind.Optimism.Test
-          - Nethermind.Runner.Test
-          - Nethermind.Serialization.Ssz.Test
-          - Nethermind.Shutter.Test
-          - Nethermind.Sockets.Test
-          - Nethermind.Specs.Test
-          - Nethermind.State.Test
-          - Nethermind.State.Test.Runner.Test
-          - Nethermind.Synchronization.Test
-          - Nethermind.Taiko.Test
-          - Nethermind.Trie.Test
-          - Nethermind.TxPool.Test
-          - Nethermind.Wallet.Test
-          - Nethermind.Xdc.Test
-        include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
-          - { runner: macos-latest, project: Nethermind.Db.Test }
-          - { runner: macos-latest, project: Nethermind.JsonRpc.Test }
-          - { runner: macos-latest, project: Nethermind.KeyStore.Test }
-          - { runner: macos-latest, project: Nethermind.Network.Discovery.Test }
-          - { runner: macos-latest, project: Nethermind.Network.Dns.Test }
-          - { runner: macos-latest, project: Nethermind.Network.Enr.Test }
-          - { runner: macos-latest, project: Nethermind.Network.Test }
-          - { runner: macos-latest, project: Nethermind.Runner.Test }
-          - { runner: macos-latest, project: Nethermind.Sockets.Test }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test }
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-
-      - name: ${{ matrix.project }}
-        id: test
-        working-directory: src/Nethermind/${{ matrix.project }}
-        run: |
-          flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
-          dotnet build ${{ matrix.project }}.csproj -c release
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
-
-          set +e
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
-          rc=$?
-          set -e
-          if [[ $rc -eq 0 ]]; then
-            exit 0
-          elif [[ $rc -eq 1 ]]; then
-            exit 1
-          else
-            echo "::warning::Test process crashed (exit code $rc), retrying..."
-            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
-          fi
-
-      - name: Upload coverage report
-        if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.project }}-coverage
-          path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
-          retention-days: 1
-
-  tests-spec:
-    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        runner:
-          - ubuntu-latest
-          - ubuntu-24.04-arm
-        project:
-          - Ethereum.Abi.Test
-          - Ethereum.Basic.Test
-          - Ethereum.Blockchain.Block.Test
-          - Ethereum.Difficulty.Test
-          - Ethereum.HexPrefix.Test
-          - Ethereum.KeyAddress.Test
-          - Ethereum.KeyStore.Test
-          - Ethereum.Legacy.Blockchain.Block.Test
-          - Ethereum.Legacy.Transition.Test
-          - Ethereum.Legacy.VM.Test
-          - Ethereum.PoW.Test
-          - Ethereum.Rlp.Test
-          - Ethereum.Transaction.Test
-          - Ethereum.Trie.Test
-        chunk: ['']
-        exclude: # Legacy VM unchunked on ubuntu-latest is replaced by 8 chunks below (coverage makes it too slow)
-          - runner: ubuntu-latest
-            project: Ethereum.Legacy.VM.Test
-            chunk: ''
-        include:
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 1of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 2of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 3of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 4of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 5of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 6of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 7of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 8of8 }
+          - macos-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -181,44 +51,215 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
-        id: test
-        working-directory: src/Nethermind/${{ matrix.project }}
-        env:
-          TEST_CHUNK: ${{ matrix.chunk }}
+      - name: Build Nethermind + EthereumTests
+        working-directory: src/Nethermind
         run: |
-          flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
-          dotnet build ${{ matrix.project }}.csproj -c release
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
+          dotnet build Nethermind.slnx -m -c release -v minimal
+          dotnet build EthereumTests.slnx -m -c release -v minimal
+          dotnet build-server shutdown || true
 
-          set +e
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
-          rc=$?
-          set -e
-          if [[ $rc -eq 0 ]]; then
-            exit 0
-          elif [[ $rc -eq 1 ]]; then
-            exit 1
-          else
-            echo "::warning::Test process crashed (exit code $rc), retrying..."
-            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-${{ matrix.runner }}
+          path: src/Nethermind/artifacts/
+          retention-days: 1
+          if-no-files-found: error
+
+  # Unit tests as 7 grouped jobs per OS. Each group runs its projects
+  # sequentially against the pre-built artifact — no per-project rebuild.
+  tests:
+    name: tests ${{ matrix.group }} (${{ matrix.runner }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    outputs:
+      collect_coverage: ${{ env.COLLECT_COVERAGE }}
+    strategy:
+      fail-fast: true
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - windows-latest
+        group:
+          - heavy
+          - core
+          - state
+          - consensus
+          - network
+          - rpc
+          - misc
+        include:
+          # macOS only runs the OS-sensitive subset (I/O, networking, sockets) as one group.
+          - { runner: macos-latest, group: os-sensitive }
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: build-${{ matrix.runner }}
+          path: src/Nethermind/artifacts/
+
+      - name: Run ${{ matrix.group }}
+        working-directory: src/Nethermind
+        env:
+          GROUP: ${{ matrix.group }}
+        run: |
+          coverage_args=()
+          if [[ "${{ matrix.runner }}" == "ubuntu-latest" && "${{ env.COLLECT_COVERAGE }}" == "true" ]]; then
+            coverage_args=(--coverage --coverage-output-format cobertura --coverage-settings codecoverage.json)
           fi
+          # Per-group project lists. Heavy projects (Synchronization, Merge.Plugin,
+          # Blockchain) cluster together so they don't bottleneck a mixed group.
+          case "$GROUP" in
+            heavy)
+              projects=(Nethermind.Synchronization.Test Nethermind.Merge.Plugin.Test Nethermind.Merge.AuRa.Test Nethermind.Blockchain.Test)
+              ;;
+            core)
+              projects=(Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Specs.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test)
+              ;;
+            state)
+              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.State.Test.Runner.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
+              ;;
+            consensus)
+              projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test)
+              ;;
+            network)
+              projects=(Nethermind.Network.Test Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Sockets.Test Nethermind.TxPool.Test Nethermind.EthStats.Test)
+              ;;
+            rpc)
+              projects=(Nethermind.JsonRpc.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Runner.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test)
+              ;;
+            misc)
+              projects=(Nethermind.Era1.Test Nethermind.EraE.Test Nethermind.History.Test Nethermind.Optimism.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
+              ;;
+            os-sensitive)
+              # Curated macOS subset — I/O, networking, sockets, runner lifecycle.
+              projects=(Nethermind.Db.Test Nethermind.JsonRpc.Test Nethermind.KeyStore.Test Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Network.Test Nethermind.Runner.Test Nethermind.Sockets.Test Nethermind.Synchronization.Test)
+              ;;
+            *)
+              echo "::error::Unknown group: $GROUP"
+              exit 1
+              ;;
+          esac
 
-      - name: Upload coverage report
+          set -e
+          for project in "${projects[@]}"; do
+            echo "::group::$project"
+            dotnet test --project "$project/$project.csproj" -c release \
+              --no-build --no-restore -v minimal "${coverage_args[@]}"
+            echo "::endgroup::"
+          done
+
+      - name: Upload coverage reports
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-coverage
-          path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
+          name: ${{ matrix.group }}-coverage
+          path: src/Nethermind/artifacts/bin/*/release/TestResults/*.cobertura.xml
+          if-no-files-found: ignore
           retention-days: 1
 
-  tests-chunked:
-    name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
+  # Ethereum.* spec tests — 13 projects grouped into 2 groups × 2 OS.
+  # Legacy.VM chunked on ubuntu-latest only; linux-arm runs it unchunked.
+  tests-spec:
+    name: spec ${{ matrix.group }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
+    needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
-      fail-fast: false
+      fail-fast: true
+      matrix:
+        include:
+          - { runner: ubuntu-latest,    group: spec-core }
+          - { runner: ubuntu-latest,    group: spec-tx-rlp-trie }
+          - { runner: ubuntu-24.04-arm, group: spec-core }
+          - { runner: ubuntu-24.04-arm, group: spec-tx-rlp-trie }
+          - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 1of8 }
+          - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 2of8 }
+          - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 3of8 }
+          - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 4of8 }
+          - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 5of8 }
+          - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 6of8 }
+          - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 7of8 }
+          - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 8of8 }
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: build-${{ matrix.runner }}
+          path: src/Nethermind/artifacts/
+
+      - name: Run ${{ matrix.group }}
+        working-directory: src/Nethermind
+        env:
+          GROUP: ${{ matrix.group }}
+          TEST_CHUNK: ${{ matrix.chunk }}
+        run: |
+          coverage_args=()
+          if [[ "${{ matrix.runner }}" == "ubuntu-latest" && "${{ env.COLLECT_COVERAGE }}" == "true" ]]; then
+            coverage_args=(--coverage --coverage-output-format cobertura --coverage-settings codecoverage.json)
+          fi
+          case "$GROUP" in
+            spec-core)
+              projects=(Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Blockchain.Block.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test)
+              ;;
+            spec-tx-rlp-trie)
+              # Linux-arm absorbs the unchunked Legacy.VM.Test (covers what the ubuntu-latest chunks cover).
+              projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test)
+              if [[ "${{ matrix.runner }}" == "ubuntu-24.04-arm" ]]; then
+                projects+=(Ethereum.Legacy.VM.Test)
+              fi
+              ;;
+            spec-legacy-vm)
+              projects=(Ethereum.Legacy.VM.Test)
+              ;;
+            *)
+              echo "::error::Unknown group: $GROUP"
+              exit 1
+              ;;
+          esac
+
+          set -e
+          for project in "${projects[@]}"; do
+            echo "::group::$project${TEST_CHUNK:+ ($TEST_CHUNK)}"
+            dotnet test --project "$project/$project.csproj" -c release \
+              --no-build --no-restore -v minimal "${coverage_args[@]}"
+            echo "::endgroup::"
+          done
+
+      - name: Upload coverage reports
+        if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.group }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-coverage
+          path: src/Nethermind/artifacts/bin/*/release/TestResults/*.cobertura.xml
+          if-no-files-found: ignore
+          retention-days: 1
+
+  # Pyspec / Legacy.Blockchain — kept chunked (the chunks exist for parallelism on
+  # genuinely slow tests, not orchestration convenience).
+  tests-chunked:
+    name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
       matrix:
         runner:
           - ubuntu-latest
@@ -272,28 +313,20 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: build-${{ matrix.runner }}
+          path: src/Nethermind/artifacts/
+
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
-        id: test
         working-directory: src/Nethermind/${{ matrix.test.project }}
         env:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
-          dotnet build ${{ matrix.test.project }}.csproj -c release
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
-
-          set +e
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
-          rc=$?
           set -e
-          if [[ $rc -eq 0 ]]; then
-            exit 0
-          elif [[ $rc -eq 1 ]]; then
-            exit 1
-          else
-            echo "::warning::Test process crashed (exit code $rc), retrying..."
-            dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
-          fi
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release \
+            --no-build --no-restore -v minimal
 
   tests-summary:
     name: Tests summary
