@@ -7,7 +7,6 @@ using System.IO;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using FluentAssertions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -55,7 +54,7 @@ namespace Nethermind.JsonRpc.Test.Data
         public void It_supports_the_types_that_it_needs_to_support(Type type)
         {
             IdConverter converter = new();
-            converter.CanConvert(type).Should().Be(true);
+            Assert.That(converter.CanConvert(type), Is.EqualTo(true));
         }
 
         [TestCase(typeof(object))]
@@ -63,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Data
         public void It_supports_all_silly_types_and_we_can_live_with_it(Type type)
         {
             IdConverter converter = new();
-            converter.CanConvert(type).Should().Be(true);
+            Assert.That(converter.CanConvert(type), Is.EqualTo(true));
         }
 
         [TestCase("{\"id\":1234}")]
@@ -78,9 +77,9 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             JsonRpcId id = DeserializeId(idJson);
 
-            id.TryGetDecimal(out decimal value).Should().BeTrue();
-            value.Should().Be(decimal.Parse(expectedValue, CultureInfo.InvariantCulture));
-            Serialize(id).Should().Be(idJson);
+            Assert.That(id.TryGetDecimal(out decimal value), Is.True);
+            Assert.That(value, Is.EqualTo(decimal.Parse(expectedValue, CultureInfo.InvariantCulture)));
+            Assert.That(Serialize(id), Is.EqualTo(idJson));
         }
 
         [TestCase("2.1")]
@@ -88,17 +87,17 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             Action deserialize = () => DeserializeId(idJson);
 
-            deserialize.Should().Throw<NotSupportedException>();
+            Assert.That(deserialize, Throws.TypeOf<NotSupportedException>());
         }
 
         [Test]
         public void JsonRpcId_preserves_missing_and_explicit_null_states()
         {
-            JsonRpcId.Missing.IsMissing.Should().BeTrue();
-            JsonRpcId.Null.IsNull.Should().BeTrue();
-            JsonRpcId.Missing.Should().NotBe(JsonRpcId.Null);
-            Serialize(JsonRpcId.Missing).Should().Be("null");
-            Serialize(JsonRpcId.Null).Should().Be("null");
+            Assert.That(JsonRpcId.Missing.IsMissing, Is.True);
+            Assert.That(JsonRpcId.Null.IsNull, Is.True);
+            Assert.That(JsonRpcId.Missing, Is.Not.EqualTo(JsonRpcId.Null));
+            Assert.That(Serialize(JsonRpcId.Missing), Is.EqualTo("null"));
+            Assert.That(Serialize(JsonRpcId.Null), Is.EqualTo("null"));
         }
 
         [Test]
@@ -106,7 +105,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             SomethingWithJsonRpcId? value = JsonSerializer.Deserialize<SomethingWithJsonRpcId>("{}", _jsonRpcIdOptions);
 
-            value!.Id.IsMissing.Should().BeTrue();
+            Assert.That(value!.Id.IsMissing, Is.True);
         }
 
         [Test]
@@ -116,7 +115,7 @@ namespace Nethermind.JsonRpc.Test.Data
             JsonRpcId id = new(idValue);
 
             using JsonDocument document = JsonDocument.Parse(Serialize(id));
-            document.RootElement.GetString().Should().Be(idValue);
+            Assert.That(document.RootElement.GetString(), Is.EqualTo(idValue));
         }
 
         [Test]
@@ -124,29 +123,29 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             string stringId = new(['t', 'e', 's', 't']);
 
-            JsonRpcId.FromObject(null).Should().Be(JsonRpcId.Null);
-            JsonRpcId.FromObject(1).ToObject().Should().Be(1L);
-            JsonRpcId.FromObject(2L).ToObject().Should().Be(2L);
-            JsonRpcId.FromObject(3m).ToObject().Should().Be(3m);
-            JsonRpcId.FromObject(stringId).ToObject().Should().BeSameAs(stringId);
+            Assert.That(JsonRpcId.FromObject(null), Is.EqualTo(JsonRpcId.Null));
+            Assert.That(JsonRpcId.FromObject(1).ToObject(), Is.EqualTo(1L));
+            Assert.That(JsonRpcId.FromObject(2L).ToObject(), Is.EqualTo(2L));
+            Assert.That(JsonRpcId.FromObject(3m).ToObject(), Is.EqualTo(3m));
+            Assert.That(JsonRpcId.FromObject(stringId).ToObject(), Is.SameAs(stringId));
         }
 
         [Test]
         public void JsonRpcId_object_equals_never_matches_null()
         {
-            JsonRpcId.Missing.Equals((object?)null).Should().BeFalse();
-            JsonRpcId.Null.Equals((object?)null).Should().BeFalse();
+            Assert.That(JsonRpcId.Missing.Equals((object?)null), Is.False);
+            Assert.That(JsonRpcId.Null.Equals((object?)null), Is.False);
         }
 
         [TestCaseSource(nameof(JsonRpcIdEqualityCases))]
         public void JsonRpcId_equality_and_hashing(JsonRpcId left, JsonRpcId right, bool expected)
         {
-            left.Equals(right).Should().Be(expected);
-            right.Equals(left).Should().Be(expected);
+            Assert.That(left.Equals(right), Is.EqualTo(expected));
+            Assert.That(right.Equals(left), Is.EqualTo(expected));
 
             if (expected)
             {
-                left.GetHashCode().Should().Be(right.GetHashCode());
+                Assert.That(left.GetHashCode(), Is.EqualTo(right.GetHashCode()));
             }
         }
 

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -55,9 +54,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert
-        codeInfo.Should().NotBeNull();
-        codeInfo.Precompile.Should().NotBeSameAs(cachingPrecompile);
-        codeInfo.Precompile!.GetType().Name.Should().Contain("CachedPrecompile");
+        Assert.That(codeInfo, Is.Not.Null);
+        Assert.That(codeInfo.Precompile, Is.Not.SameAs(cachingPrecompile));
+        Assert.That(codeInfo.Precompile!.GetType().Name, Does.Contain("CachedPrecompile"));
     }
 
     [Test]
@@ -85,8 +84,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert
-        codeInfo.Should().NotBeNull();
-        codeInfo.Precompile.Should().BeSameAs(nonCachingPrecompile);
+        Assert.That(codeInfo, Is.Not.Null);
+        Assert.That(codeInfo.Precompile, Is.SameAs(nonCachingPrecompile));
     }
 
     [Test]
@@ -111,8 +110,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
         CodeInfo codeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
 
         // Assert
-        codeInfo.Should().NotBeNull();
-        codeInfo.Precompile.Should().BeSameAs(IdentityPrecompile.Instance);
+        Assert.That(codeInfo, Is.Not.Null);
+        Assert.That(codeInfo.Precompile, Is.SameAs(IdentityPrecompile.Instance));
     }
 
     [Test]
@@ -146,8 +145,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
         codeInfo.Precompile!.Run(input, Prague.Instance);
 
         // Assert - should only run once due to caching
-        runCount.Should().Be(1);
-        cache.Count.Should().Be(1);
+        Assert.That(runCount, Is.EqualTo(1));
+        Assert.That(cache.Count, Is.EqualTo(1));
     }
 
     [Test]
@@ -181,8 +180,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
         codeInfo.Precompile!.Run(input, Prague.Instance);
 
         // Assert - should run twice since caching is disabled
-        runCount.Should().Be(2);
-        cache.Count.Should().Be(0);
+        Assert.That(runCount, Is.EqualTo(2));
+        Assert.That(cache.Count, Is.EqualTo(0));
     }
 
     [Test]
@@ -209,8 +208,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert - precompile should not be wrapped
-        codeInfo.Should().NotBeNull();
-        codeInfo.Precompile.Should().BeSameAs(cachingPrecompile);
+        Assert.That(codeInfo, Is.Not.Null);
+        Assert.That(codeInfo.Precompile, Is.SameAs(cachingPrecompile));
     }
 
     [Test]
@@ -235,9 +234,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
         CodeInfo codeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
 
         // Assert - Sha256Precompile should be wrapped (unlike IdentityPrecompile)
-        codeInfo.Should().NotBeNull();
-        codeInfo.Precompile.Should().NotBeSameAs(Sha256Precompile.Instance);
-        codeInfo.Precompile!.GetType().Name.Should().Contain("CachedPrecompile");
+        Assert.That(codeInfo, Is.Not.Null);
+        Assert.That(codeInfo.Precompile, Is.Not.SameAs(Sha256Precompile.Instance));
+        Assert.That(codeInfo.Precompile!.GetType().Name, Does.Contain("CachedPrecompile"));
     }
 
     [Test]
@@ -269,10 +268,10 @@ public class PrecompileCachedCodeInfoRepositoryTests
         CodeInfo identityCodeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
 
         // Assert - Sha256 wrapped, Identity not wrapped
-        sha256CodeInfo.Precompile.Should().NotBeSameAs(Sha256Precompile.Instance);
-        sha256CodeInfo.Precompile!.GetType().Name.Should().Contain("CachedPrecompile");
+        Assert.That(sha256CodeInfo.Precompile, Is.Not.SameAs(Sha256Precompile.Instance));
+        Assert.That(sha256CodeInfo.Precompile!.GetType().Name, Does.Contain("CachedPrecompile"));
 
-        identityCodeInfo.Precompile.Should().BeSameAs(IdentityPrecompile.Instance);
+        Assert.That(identityCodeInfo.Precompile, Is.SameAs(IdentityPrecompile.Instance));
     }
 
     [Test]
@@ -309,8 +308,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
         codeInfo.Precompile!.Run(input2, Prague.Instance); // should hit cache
 
         // Assert - should run twice (once per unique input), cache should have 2 entries
-        runCount.Should().Be(2);
-        cache.Count.Should().Be(2);
+        Assert.That(runCount, Is.EqualTo(2));
+        Assert.That(cache.Count, Is.EqualTo(2));
     }
 
     [Test]
@@ -345,11 +344,11 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Result<byte[]> result2 = codeInfo.Precompile!.Run(input, Prague.Instance);
 
         // Assert - both results should be the same cached value
-        runCount.Should().Be(1);
-        ((bool)result1).Should().BeTrue();
-        ((bool)result2).Should().BeTrue();
-        result1.Data.Should().BeEquivalentTo(expectedOutput);
-        result2.Data.Should().BeEquivalentTo(expectedOutput);
+        Assert.That(runCount, Is.EqualTo(1));
+        Assert.That(((bool)result1), Is.True);
+        Assert.That(((bool)result2), Is.True);
+        Assert.That(result1.Data, Is.EqualTo(expectedOutput));
+        Assert.That(result2.Data, Is.EqualTo(expectedOutput));
     }
 
     [Test]
@@ -379,10 +378,10 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Result<byte[]> result2 = codeInfo.Precompile!.Run(input, Prague.Instance);
 
         // Assert - results should match and cache should have entry
-        ((bool)result1).Should().BeTrue();
-        ((bool)result2).Should().BeTrue();
-        result1.Data.Should().BeEquivalentTo(result2.Data);
-        cache.Count.Should().Be(1);
+        Assert.That(((bool)result1), Is.True);
+        Assert.That(((bool)result2), Is.True);
+        Assert.That(result1.Data, Is.EqualTo(result2.Data));
+        Assert.That(cache.Count, Is.EqualTo(1));
     }
 
     [Test]
@@ -412,10 +411,10 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Result<byte[]> result2 = codeInfo.Precompile!.Run(input, Prague.Instance);
 
         // Assert - results should match but cache should be empty (no caching for Identity)
-        ((bool)result1).Should().BeTrue();
-        ((bool)result2).Should().BeTrue();
-        result1.Data.Should().BeEquivalentTo(result2.Data);
-        cache.Count.Should().Be(0); // Key difference from Sha256 test
+        Assert.That(((bool)result1), Is.True);
+        Assert.That(((bool)result2), Is.True);
+        Assert.That(result1.Data, Is.EqualTo(result2.Data));
+        Assert.That(cache.Count, Is.EqualTo(0)); // Key difference from Sha256 test
     }
 
     [Test]

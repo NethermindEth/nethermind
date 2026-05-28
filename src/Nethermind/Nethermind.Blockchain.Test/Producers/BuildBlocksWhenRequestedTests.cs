@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using NUnit.Framework;
 
@@ -17,6 +16,6 @@ public class BuildBlocksWhenRequestedTests
         BuildBlocksWhenRequested trigger = new();
         trigger.TriggerBlockProduction += (s, e) => triggered = true;
         trigger.BuildBlock();
-        triggered.Should().BeTrue();
+        Assert.That(triggered, Is.True);
     }
 }

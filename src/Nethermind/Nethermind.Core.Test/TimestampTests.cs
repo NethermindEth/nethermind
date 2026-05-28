@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -27,8 +26,8 @@ namespace Nethermind.Core.Test
             ulong unixUtcUntilNowSeconds = (ulong)utcNow.Subtract(Jan1St1970).TotalSeconds;
             ulong unixUtcUntilNowMilliseconds = (ulong)utcNow.Subtract(Jan1St1970).TotalMilliseconds;
 
-            epochSeconds.Should().Be(unixUtcUntilNowSeconds);
-            epochMilliseconds.Should().Be(unixUtcUntilNowMilliseconds);
+            Assert.That(epochSeconds, Is.EqualTo(unixUtcUntilNowSeconds));
+            Assert.That(epochMilliseconds, Is.EqualTo(unixUtcUntilNowMilliseconds));
         }
     }
 }

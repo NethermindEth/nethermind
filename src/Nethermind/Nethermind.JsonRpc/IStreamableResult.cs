@@ -21,7 +21,7 @@ internal interface IBatchAwareStreamableResult : IStreamableResult
     ValueTask WriteToAsync(PipeWriter writer, bool isBatch, CancellationToken cancellationToken);
 }
 
-internal enum StreamableResultStatus
+public enum StreamableResultStatus
 {
     Complete,
     Timeout,

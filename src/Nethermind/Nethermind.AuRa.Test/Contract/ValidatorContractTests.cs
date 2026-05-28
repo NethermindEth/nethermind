@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
@@ -58,7 +57,7 @@ namespace Nethermind.AuRa.Test.Contract
                     _stateProvider,
                     _readOnlyTxProcessorSource,
                     new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
-            action.Should().Throw<ArgumentNullException>();
+            Assert.That(action, Throws.TypeOf<ArgumentNullException>());
         }
 
         [Test]
@@ -96,7 +95,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             try
             {
-                item.EqualToTransaction(expected);
+                Assert.That(item, Is.EqualTo(expected).UsingTransactionComparer());
                 return true;
             }
             catch
