@@ -82,7 +82,7 @@ public class HistoryPrunerTests
         ).SetName("Prunes_up_to_sync_pivot");
 
         // 5 epochs × 32 slots = 160 blocks of retention > chain length (100) — CalculateRollingCutoff
-        // clamps the would-be-negative cutoff to 0 and ShouldPruneHistory returns false (pointer 1 < 0 is false).
+        // Retention window (5 × 32 = 160 blocks) exceeds chain length (100), so the cutoff is clamped to 0 and no pruning occurs.
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 5, PruningInterval = 0 },
             /*syncPivot:*/ (long)blocks,
