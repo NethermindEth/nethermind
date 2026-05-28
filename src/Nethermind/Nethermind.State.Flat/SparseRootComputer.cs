@@ -344,6 +344,10 @@ public sealed class SparseRootComputer : IDisposable
                 byte[] siblingRlp = _reader.LoadStorageRlp(accountPathHash, siblingPath, siblingHash);
                 ProofNode siblingProof = MultiProofReader.DecodeProofNode(siblingRlp, siblingPath);
                 storageTrie.RevealNodes([siblingProof]);
+                if (DiagDumpForContract is not null && accountPathHash == DiagDumpForContract)
+                {
+                    Console.Error.WriteLine($"DIAG_SIBLING_REVEAL path={siblingPath} hash={siblingHash} kind={siblingProof.Kind} rawRlp=0x{Convert.ToHexString(siblingRlp)}");
+                }
             }
             catch (Exception ex) when (ex is MissingTrieNodeException or TrieNodeHashMismatchException)
             {
