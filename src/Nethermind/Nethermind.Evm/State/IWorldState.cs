@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -143,6 +144,23 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void ResetTransient();
 
     public void AddAccountRead(Address address) { }
+
+    [MustForwardOnDecorate]
+    public void RecordAccountAccess(Address address) { }
+
+    /// <summary>
+    /// Signals that <paramref name="address"/>'s code is being logically read at this call site.
+    /// </summary>
+    /// <remarks>
+    /// No-op default; only witness-generating decorators record it. Must be invoked from any code
+    /// path that resolves code by hash where the address is also in scope — including the
+    /// chokepoint at <c>CodeInfoRepository.GetCodeInfo</c> and any direct callers of
+    /// <c>worldState.GetCode(in ValueHash256)</c>. Without this call, the witness layer cannot
+    /// attribute the read back to the address, breaking the pre-state-collision recovery in
+    /// <c>WitnessGeneratingWorldState.GetWitness</c>.
+    /// </remarks>
+    [MustForwardOnDecorate]
+    public void RecordBytecodeAccess(Address address) { }
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 

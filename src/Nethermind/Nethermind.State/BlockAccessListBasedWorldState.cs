@@ -448,4 +448,10 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingStorage(in StorageCell storageCell)
         => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader!, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
+
+    public void RecordAccountAccess(Address address)
+        => _innerWorldState.RecordAccountAccess(address);
+
+    public void RecordBytecodeAccess(Address address)
+        => _innerWorldState.RecordBytecodeAccess(address);
 }

@@ -436,7 +436,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     // used by Arbitrum
     public void CreateEmptyAccountIfDeletedOrNew(Address address)
     {
-        if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+        if (_intraTxCache.TryGetValue(address, out StackList<int> value) && value.Count > 0)
         {
             //we only want to persist empty accounts if they were deleted or created as empty
             //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
@@ -767,10 +767,22 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         return account;
     }
 
-    internal Account? GetThroughCache(Address address) =>
-        _intraTxCache.TryGetValue(address, out StackList<int> value)
-            ? _changes[value.Peek()].Account
-            : GetAndAddToCache(address);
+    internal Account? GetThroughCache(Address address)
+    {
+        if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+        {
+            if (value.Count > 0)
+            {
+                return _changes[value.Peek()].Account;
+            }
+
+            if (_intraTxCache.Remove(address, out StackList<int>? removed))
+            {
+                removed.Return();
+            }
+        }
+        return GetAndAddToCache(address);
+    }
 
     private void PushJustCache(Address address, Account account)
         => Push(address, account, ChangeType.JustCache);
@@ -791,6 +803,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     {
         StackList<int> stack = SetupCache(address);
         if (changeType == ChangeType.Touch
+            && stack.Count > 0
             && _changes[stack.Peek()]!.ChangeType == ChangeType.Touch)
         {
             return;

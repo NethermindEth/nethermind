@@ -49,6 +49,8 @@ public class WitnessGeneratingWorldState(
     WitnessGeneratingHeaderFinder headerFinder,
     WitnessCapturingTrieStore? trieStore = null) : IWorldState
 {
+    private readonly object _lock = new();
+
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = [];
 
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes = [];
@@ -410,13 +412,24 @@ public class WitnessGeneratingWorldState(
         inner.CreateEmptyAccountIfDeleted(address);
     }
 
-    private void RecordSlot(in StorageCell storageCell) => RecordEmptySlots(storageCell.Address).Add(storageCell.Index);
+    private void RecordSlot(in StorageCell storageCell)
+    {
+        lock (_lock)
+        {
+            ref HashSet<UInt256>? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, storageCell.Address, out _);
+            slot ??= [];
+            slot.Add(storageCell.Index);
+        }
+    }
 
     private HashSet<UInt256> RecordEmptySlots(Address address)
     {
-        ref HashSet<UInt256>? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, address, out _);
-        slot ??= [];
-        return slot;
+        lock (_lock)
+        {
+            ref HashSet<UInt256>? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, address, out _);
+            slot ??= [];
+            return slot;
+        }
     }
 
     private void RecordBytecode(byte[]? code)
@@ -432,8 +445,11 @@ public class WitnessGeneratingWorldState(
             Hash256 codeHash = Keccak.Compute(code);
             // Skip bytecodes deployed in this block — a stateless verifier only needs
             // pre-existing code to validate the pre-state (EIP-7928).
-            if (!_deployedCodeHashes.Contains(codeHash))
-                _bytecodes.TryAdd(codeHash, code);
+            lock (_lock)
+            {
+                if (!_deployedCodeHashes.Contains(codeHash))
+                    _bytecodes.TryAdd(codeHash, code);
+            }
         }
     }
 
@@ -442,22 +458,32 @@ public class WitnessGeneratingWorldState(
         // Fast path: hash already known.
         // EIP-7702 delegation designators are 23-byte pointers, not executable bytecode.
         // Stateless verifiers do not need them in the witness codes section (EIP-7928).
-        if (code is { Length: > 0 } && !Eip7702Constants.IsDelegatedCode(code) && !_deployedCodeHashes.Contains(codeHash))
-            _bytecodes.TryAdd(codeHash, code);
+        if (code is { Length: > 0 } && !Eip7702Constants.IsDelegatedCode(code))
+        {
+            lock (_lock)
+            {
+                if (!_deployedCodeHashes.Contains(codeHash))
+                    _bytecodes.TryAdd(codeHash, code);
+            }
+        }
     }
 
     internal void RecordBlockAccessList(ReadOnlyBlockAccessList bal)
     {
-        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        lock (_lock)
         {
-            HashSet<UInt256> slots = RecordEmptySlots(accountChanges.Address);
-            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
+            foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
             {
-                slots.Add(slotChanges.Key);
-            }
-            foreach (UInt256 readSlot in accountChanges.StorageReads)
-            {
-                slots.Add(readSlot);
+                ref HashSet<UInt256>? slots = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, accountChanges.Address, out _);
+                slots ??= [];
+                foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
+                {
+                    slots.Add(slotChanges.Key);
+                }
+                foreach (UInt256 readSlot in accountChanges.StorageReads)
+                {
+                    slots.Add(readSlot);
+                }
             }
         }
     }
@@ -469,22 +495,52 @@ public class WitnessGeneratingWorldState(
             byte[] codeBytes = code.ToArray();
             Hash256 codeHash = Keccak.Compute(codeBytes);
             // Skip bytecodes deployed in this block (EIP-7928: only pre-state code is needed).
-            if (!_deployedCodeHashes.Contains(codeHash))
-                _bytecodes.TryAdd(codeHash, codeBytes);
+            lock (_lock)
+            {
+                if (!_deployedCodeHashes.Contains(codeHash))
+                    _bytecodes.TryAdd(codeHash, codeBytes);
+            }
         }
     }
 
     internal void RecordSystemContractAccess(Address address, UInt256 slotIndex, byte[]? code)
     {
-        RecordEmptySlots(address).Add(slotIndex);
-        RecordBytecode(code);
+        lock (_lock)
+        {
+            ref HashSet<UInt256>? slots = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, address, out _);
+            slots ??= [];
+            slots.Add(slotIndex);
+            RecordBytecode(code);
+        }
     }
 
     internal void RecordSystemContractAccountAccess(Address address, byte[]? code)
     {
-        RecordEmptySlots(address);
-        RecordBytecode(code);
+        lock (_lock)
+        {
+            ref HashSet<UInt256>? slots = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, address, out _);
+            slots ??= [];
+            RecordBytecode(code);
+        }
     }
 
-    internal void RecordAccountAccess(Address address) => RecordEmptySlots(address);
+    public void RecordAccountAccess(Address address)
+    {
+        RecordEmptySlots(address);
+        inner.RecordAccountAccess(address);
+    }
+
+    public void RecordBytecodeAccess(Address address)
+    {
+        RecordEmptySlots(address);
+        try
+        {
+            RecordBytecode(inner.GetCode(address));
+        }
+        catch (InvalidOperationException)
+        {
+            // Code is missing from the database (e.g. selfdestructed or not committed yet).
+        }
+        inner.RecordBytecodeAccess(address);
+    }
 }

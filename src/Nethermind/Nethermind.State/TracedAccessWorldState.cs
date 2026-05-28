@@ -215,6 +215,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         }
     }
 
+    public void RecordAccountAccess(Address address)
+        => _innerWorldState.RecordAccountAccess(address);
+
+    public void RecordBytecodeAccess(Address address)
+        => _innerWorldState.RecordBytecodeAccess(address);
+
     public void SetIndex(uint index)
         => _generatingBlockAccessList.Index = index;
 
@@ -251,60 +257,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return AccountExistsInternal(address);
     }
 
-    private IWorldState? TryFindWitnessProxy()
-    {
-        IWorldState? current = _innerWorldState;
-        while (current is not null)
-        {
-            if (current.GetType().FullName == "Nethermind.Consensus.Stateless.WitnessCapturingWorldStateProxy")
-            {
-                return current;
-            }
-
-            System.Reflection.FieldInfo? field = current.GetType().GetField("_innerWorldState", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            if (field is not null)
-            {
-                current = field.GetValue(current) as IWorldState;
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        return null;
-    }
-
     public bool IsContract(Address address)
     {
         AddAccountRead(address);
-        IWorldState? proxy = TryFindWitnessProxy();
-        if (proxy is not null)
-        {
-            if (parallel)
-            {
-                byte[]? code = _innerWorldState.GetCode(address);
-                if (code is { Length: > 0 })
-                {
-                    // RecordCodeBytes is internal on WitnessCapturingWorldStateProxy (Nethermind.Consensus assembly).
-                    // We avoid a compile-time assembly reference by invoking via reflection, consistent with
-                    // how TryFindWitnessProxy() locates the proxy without a hard dependency.
-                    proxy.GetType()
-                         .GetMethod("RecordCodeBytes",
-                             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)
-                         ?.Invoke(proxy, [new ReadOnlyMemory<byte>(code)]);
-                }
-                return code is { Length: > 0 };
-            }
-            else
-            {
-                byte[]? code = proxy.GetCode(address);
-                return code is { Length: > 0 };
-            }
-        }
+        _innerWorldState.RecordBytecodeAccess(address);
         return GetCodeHashInternal(address) != Keccak.OfAnEmptyString;
     }
-
 
     public bool IsStorageEmpty(Address address)
     {
