@@ -13,4 +13,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="Resources\usdt_22360025_proofs.csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

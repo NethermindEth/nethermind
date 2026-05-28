@@ -312,11 +312,17 @@ public sealed class SparseSubtrie : IDisposable
             return UpdateResult.Applied;
         }
 
+        int oldRoot = Root;
         (UpdateResult result, int newRoot) = UpdateNode(Root, nibblePath, update, out proofTarget);
         if (result == UpdateResult.Applied)
         {
             if (newRoot == DeletedSentinel)
+            {
+                // Root leaf being deleted â€” UpdateAtLeaf no longer frees, so we must
+                // (the leaf can't have a blinded sibling at this level, so no rollback needed).
+                FreeNode(oldRoot);
                 Root = AllocNode(SparseTrieNode.CreateEmpty());
+            }
             else if (newRoot != Root)
                 Root = newRoot;
         }
@@ -360,7 +366,14 @@ public sealed class SparseSubtrie : IDisposable
             // Exact match
             if (update.IsDelete)
             {
-                FreeNode(nodeIdx);
+                // Don't free yet. The caller (UpdateAtBranch) must run CollapseBranch first;
+                // if collapse fails because a sibling is blinded, the leaf has to remain
+                // available so the next retry — after the sibling proof is fetched — can
+                // re-execute the deletion. Freeing here leaves the branch in a partial state
+                // (StateMask cleared but no collapse) and the next UpdateLeaves call sees
+                // "leaf already gone" and returns NoChange without invoking the proof
+                // callback, so the retry loop exits and the wrong root gets computed.
+                // The matching FreeNode lives in UpdateAtBranch where DeletedSentinel is consumed.
                 return (UpdateResult.Applied, DeletedSentinel);
             }
             if (update.Kind == LeafUpdateKind.Touched) return (UpdateResult.NoChange, nodeIdx);
@@ -462,16 +475,29 @@ public sealed class SparseSubtrie : IDisposable
         {
             if (childReplacement == DeletedSentinel)
             {
-                // Child was deleted â€” remove from branch
+                // UpdateAtLeaf no longer frees the leaf; we own the free here so we can
+                // restore the branch atomically if CollapseBranch needs a proof.
+                int leafIdxToFree = childNodeIdx;
                 RemoveChildFromBranch(nodeIdx, nibble);
                 int remainingCount = _arena[nodeIdx].ChildCount();
                 if (remainingCount <= 1)
                 {
                     int collapsed = CollapseBranch(nodeIdx);
-                    if (collapsed == -1) return (UpdateResult.NeedsProof, nodeIdx);
+                    if (collapsed == -1)
+                    {
+                        // Sibling is blinded â€” roll back: re-attach the leaf so the retry
+                        // loop can re-execute the deletion after fetching the sibling proof.
+                        // Without this, the next UpdateLeaves walks past a missing-child slot
+                        // and silently treats the delete as a no-op, leaving a partial branch
+                        // with one child + one blinded sibling that encodes to the wrong RLP.
+                        AddChildToBranch(nodeIdx, nibble, leafIdxToFree);
+                        return (UpdateResult.NeedsProof, nodeIdx);
+                    }
+                    FreeNode(leafIdxToFree);
                     return (UpdateResult.Applied, collapsed);
                 }
                 // Branch still has 2+ children after removal
+                FreeNode(leafIdxToFree);
                 _arena[nodeIdx].MarkDirty();
                 return (UpdateResult.Applied, nodeIdx);
             }
