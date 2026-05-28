@@ -41,20 +41,23 @@ internal static class PosixReclaim
     [DllImport("libc", EntryPoint = "posix_fadvise", SetLastError = true)]
     private static extern int PosixFadvise(int fd, long offset, long len, int advice);
 
-    [DllImport("libc", EntryPoint = "fsync", SetLastError = true)]
-    private static extern int FsyncSyscall(int fd);
+    [DllImport("libc", EntryPoint = "fdatasync", SetLastError = true)]
+    private static extern int FdatasyncSyscall(int fd);
 
     /// <summary>
-    /// <c>fsync(2)</c> on <paramref name="fd"/> — block until every byte previously written
-    /// has reached durable storage. No-op on non-Linux (test environments only — durability
-    /// matters on the production Linux target). Throws <see cref="IOException"/> on errno.
+    /// <c>fdatasync(2)</c> on <paramref name="fd"/> — block until every byte previously
+    /// written has reached durable storage. Skips the mtime/ctime metadata flush that
+    /// <c>fsync(2)</c> would do but still flushes the file size (required for future reads
+    /// of the auto-grown blob file). No-op on non-Linux (test environments only —
+    /// durability matters on the production Linux target). Throws <see cref="IOException"/>
+    /// on errno.
     /// </summary>
     internal static void Fsync(int fd)
     {
         if (!OperatingSystem.IsLinux()) return;
-        if (FsyncSyscall(fd) == 0) return;
+        if (FdatasyncSyscall(fd) == 0) return;
         int err = Marshal.GetLastPInvokeError();
-        throw new IOException($"fsync failed: errno {err}");
+        throw new IOException($"fdatasync failed: errno {err}");
     }
 
     /// <summary>
