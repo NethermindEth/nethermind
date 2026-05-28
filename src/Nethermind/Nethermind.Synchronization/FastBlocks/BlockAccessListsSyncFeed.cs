@@ -55,7 +55,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? long.MaxValue) <= _barrier;
     private bool PivotHasNoBlockAccessLists => FindPivotHeader(out _, out _) is { BlockAccessListHash: null };
 
-    public override bool IsFinished => !_blockAccessListsEverEnabled || PivotHasNoBlockAccessLists || AllDownloaded;
+    public override bool IsFinished => !_syncConfig.DownloadBlockAccessListsInFastSync || !_blockAccessListsEverEnabled || AllDownloaded || PivotHasNoBlockAccessLists;
     public override string FeedName => nameof(BlockAccessListsSyncFeed);
 
     public BlockAccessListsSyncFeed(
