@@ -277,6 +277,8 @@ namespace Nethermind.Evm.TransactionProcessing
             Address? preloadedDelegationAddress)
         {
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
+            // Top-level CREATE tx; the opcode-level CREATE/CREATE2 path bumps this counter from EvmInstructions.Create.
+            if (tx.IsContractCreation) Metrics.IncrementCreates();
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
             int delegationRefunds = 0;
@@ -304,30 +306,27 @@ namespace Nethermind.Evm.TransactionProcessing
             // the priority fee in the destroyed account's balance.
             if (spec.IsEip8037Enabled && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
             {
-                int count = substate.DestroyListCount;
-                if (count > 1)
+                JournalSet<Address>? destroyList = substate.DestroyList;
+                if (destroyList is not null)
                 {
-                    JournalSet<Address> destroyList = substate.DestroyList;
-                    Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
-                    try
+                    int count = destroyList.Count;
+                    if (count > 1)
                     {
+                        Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
                         destroyList.CopyTo(buffer, 0);
                         buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
                         for (int i = 0; i < count; i++)
                         {
                             FinalizeDestroyedAccount(WorldState, in substate, buffer[i]);
                         }
-                    }
-                    finally
-                    {
                         SafeArrayPool<Address>.Shared.Return(buffer);
                     }
-                }
-                else if (count == 1)
-                {
-                    foreach (Address toBeDestroyed in substate.DestroyList)
+                    else if (count == 1)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed);
+                        foreach (Address toBeDestroyed in destroyList)
+                        {
+                            FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed);
+                        }
                     }
                 }
 
@@ -1219,11 +1218,12 @@ namespace Nethermind.Evm.TransactionProcessing
                     // EIP-8037: defer destroy list processing to after PayFees so that
                     // burn logs include the priority fee in the balance.
                     bool deferFinalization = spec.IsEip7708Enabled && spec.IsEip8037Enabled;
-                    if (!deferFinalization && substate.DestroyListCount != 0)
+                    JournalSet<Address>? destroyList = substate.DestroyList;
+                    if (!deferFinalization && destroyList is not null && destroyList.Count > 0)
                     {
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;
-                        foreach (Address toBeDestroyed in substate.DestroyList)
+                        foreach (Address toBeDestroyed in destroyList)
                         {
                             if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
 
@@ -1580,7 +1580,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long totalToRefund = codeInsertRegularRefund;
             if (!substate.IsError && !substate.ShouldRevert)
-                totalToRefund += substate.Refund + substate.DestroyListCount * spec.GasCosts.DestroyRefund;
+                totalToRefund += substate.Refund + (substate.DestroyList?.Count ?? 0) * spec.GasCosts.DestroyRefund;
 
             return (spentGas, CalculateClaimableRefund(spentGas, totalToRefund, spec));
         }

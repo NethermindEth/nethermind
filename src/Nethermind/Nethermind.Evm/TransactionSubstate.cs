@@ -53,8 +53,7 @@ public readonly ref struct TransactionSubstate
     public bool ShouldRevert { get; }
     public long Refund { get; }
     public JournalCollection<LogEntry> Logs => _logs;
-    public JournalSet<Address> DestroyList => _destroyList!;
-    public int DestroyListCount => _destroyList?.Count ?? 0;
+    public JournalSet<Address>? DestroyList => _destroyList;
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
