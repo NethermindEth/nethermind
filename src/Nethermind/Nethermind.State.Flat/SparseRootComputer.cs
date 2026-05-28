@@ -312,22 +312,31 @@ public sealed class SparseRootComputer : IDisposable
             if (!_trie.AccountTrie.Subtrie.TryFindBlindedSiblingForDeletion(nibbles, out TreePath siblingPath, out RlpNode siblingRlpNode))
                 continue;
 
-            if (!siblingRlpNode.IsHash())
-                continue; // inline siblings are already known via the parent's RLP
+            // Hash form: load from DB. Inline form: decode locally â€” the blinded entry
+            // holds the full RLP. Treating inline as "already known" without revealing leaves
+            // CollapseBranch stuck on the blinded sibling forever.
+            byte[] siblingRlp;
+            if (siblingRlpNode.IsHash())
+            {
+                try
+                {
+                    Hash256 siblingHash = siblingRlpNode.AsHash();
+                    siblingRlp = _reader.LoadStateRlp(siblingPath, siblingHash);
+                }
+                catch (Exception ex) when (ex is MissingTrieNodeException or TrieNodeHashMismatchException)
+                {
+                    // Best-effort: outer retry loop will hit the blinded sibling again and
+                    // rethrow with full diagnostics there.
+                    continue;
+                }
+            }
+            else
+            {
+                siblingRlp = siblingRlpNode.AsSpan().ToArray();
+            }
 
-            try
-            {
-                Hash256 siblingHash = siblingRlpNode.AsHash();
-                byte[] siblingRlp = _reader.LoadStateRlp(siblingPath, siblingHash);
-                ProofNode siblingProof = MultiProofReader.DecodeProofNode(siblingRlp, siblingPath);
-                _trie.AccountTrie.RevealNodes([siblingProof]);
-            }
-            catch (Exception ex) when (ex is MissingTrieNodeException or TrieNodeHashMismatchException)
-            {
-                // Best-effort sibling reveal. If the load fails, the outer retry loop will
-                // hit the blinded sibling again and rethrow with full diagnostics there.
-                continue;
-            }
+            ProofNode siblingProof = MultiProofReader.DecodeProofNode(siblingRlp, siblingPath);
+            _trie.AccountTrie.RevealNodes([siblingProof]);
         }
     }
 
@@ -352,20 +361,31 @@ public sealed class SparseRootComputer : IDisposable
             if (!storageTrie.Subtrie.TryFindBlindedSiblingForDeletion(nibbles, out TreePath siblingPath, out RlpNode siblingRlpNode))
                 continue;
 
-            if (!siblingRlpNode.IsHash())
-                continue;
+            // The sibling's blinded entry can hold either a 32-byte hash (load from DB) or an
+            // embedded RLP for inline nodes (< 32 bytes — typically a small Leaf). Both are
+            // valid blinded states; the inline case happens for leaves whose RLP fits below
+            // the keccak boundary and got embedded directly in the parent branch's slot.
+            // Decode inline locally; load hash form from DB.
+            byte[] siblingRlp;
+            if (siblingRlpNode.IsHash())
+            {
+                try
+                {
+                    Hash256 siblingHash = siblingRlpNode.AsHash();
+                    siblingRlp = _reader.LoadStorageRlp(accountPathHash, siblingPath, siblingHash);
+                }
+                catch (Exception ex) when (ex is MissingTrieNodeException or TrieNodeHashMismatchException)
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                siblingRlp = siblingRlpNode.AsSpan().ToArray();
+            }
 
-            try
-            {
-                Hash256 siblingHash = siblingRlpNode.AsHash();
-                byte[] siblingRlp = _reader.LoadStorageRlp(accountPathHash, siblingPath, siblingHash);
-                ProofNode siblingProof = MultiProofReader.DecodeProofNode(siblingRlp, siblingPath);
-                storageTrie.RevealNodes([siblingProof]);
-            }
-            catch (Exception ex) when (ex is MissingTrieNodeException or TrieNodeHashMismatchException)
-            {
-                continue;
-            }
+            ProofNode siblingProof = MultiProofReader.DecodeProofNode(siblingRlp, siblingPath);
+            storageTrie.RevealNodes([siblingProof]);
         }
     }
 
