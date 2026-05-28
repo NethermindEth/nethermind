@@ -65,6 +65,12 @@ public interface IFlatDbConfig : IConfig
         "Recommended only after extensive verification-mode validation.", DefaultValue = "false")]
     bool SparseTrieSkipPatricia { get; set; }
 
+    [ConfigItem(Description = "When true (default), sparse storage tries replace Patricia's at the per-contract " +
+        "level once authoritative. Set to false to keep Patricia storage running even with SkipPatricia=true; " +
+        "useful for isolating bugs in the sparse storage path while still benefiting from sparse account " +
+        "computation.", DefaultValue = "true")]
+    bool SparseTrieAuthoritativeStorage { get; set; }
+
     [ConfigItem(Description = "Selects which trie warmer implementation runs during execution. " +
         "'Legacy' (default) uses the Patricia-walking TrieWarmer which warms DB pages via real trie traversals. " +
         "'SparseProof' uses the sparse-aware proof prefetcher that hits only the paths the sparse trie will need. " +

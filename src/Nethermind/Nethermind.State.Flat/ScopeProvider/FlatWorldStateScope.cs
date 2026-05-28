@@ -43,11 +43,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     /// <summary>
     /// True when sparse storage roots should replace Patricia's: sparse trie is
-    /// authoritative for accounts AND SkipPatricia is configured AND not in verification mode.
+    /// authoritative for accounts AND SkipPatricia is configured AND not in verification mode
+    /// AND the explicit storage-authoritative flag is set. Decoupled from SkipPatricia so we
+    /// can isolate sparse storage bugs without disabling sparse account computation.
     /// </summary>
     internal bool UseSparseStorageRoot => _sparseRootComputer is not null
         && _sparseIsAuthoritative
         && _configuration.SparseTrieSkipPatricia
+        && _configuration.SparseTrieAuthoritativeStorage
         && !_configuration.SparseTrieVerificationMode;
     private SparseStateTrie? _sparseStateTrie;
     private Hash256? _sparseComputedRoot;

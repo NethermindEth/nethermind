@@ -24,5 +24,6 @@ public class FlatDbConfig : IFlatDbConfig
     public bool UseSparseRootComputation { get; set; } = false;
     public bool SparseTrieVerificationMode { get; set; } = false;
     public bool SparseTrieSkipPatricia { get; set; } = false;
+    public bool SparseTrieAuthoritativeStorage { get; set; } = true;
     public SparseTrieWarmerVariant SparseTrieWarmer { get; set; } = SparseTrieWarmerVariant.Legacy;
 }
