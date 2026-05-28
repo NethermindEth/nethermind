@@ -8,6 +8,13 @@ on:
         required: false
         default: master
         type: string
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or tag
+        required: true
+        default: master
+        type: string
 
 jobs:
   update-docs:

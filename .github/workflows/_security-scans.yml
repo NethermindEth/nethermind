@@ -8,6 +8,18 @@ on:
         required: false
         default: all
         type: string
+  workflow_dispatch:
+    inputs:
+      scans:
+        description: 'Which scan to run'
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - trivy
+          - codeql
+          - dependency-review
 
 permissions:
   contents: read

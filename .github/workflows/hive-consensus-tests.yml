@@ -8,6 +8,14 @@ on:
         required: false
         default: '8'
         type: string
+  workflow_dispatch:
+    inputs:
+      parallelism:
+        description: 'Number of concurrently running tests in each job.'
+        required: true
+        default: '8'
+        type: choice
+        options: ['1', '2', '3', '4', '8', '16']
 
 jobs:
   create_docker_image:

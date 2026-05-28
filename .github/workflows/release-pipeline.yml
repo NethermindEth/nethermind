@@ -17,4 +17,6 @@ jobs:
   update-docs:
     name: Update docs
     uses: ./.github/workflows/update-docs.yml
+    with:
+      ref: ${{ github.ref_name }}
     secrets: inherit

@@ -8,6 +8,18 @@ on:
         required: false
         default: all
         type: string
+  workflow_dispatch:
+    inputs:
+      which:
+        description: 'Which update job to run'
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - update-fast-sync
+          - update-superchain
+          - update-dockerfiles
 
 permissions:
   contents: write

@@ -20,26 +20,28 @@ permissions:
 jobs:
   paths:
     name: Detect changed paths
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       taiko: ${{ steps.filter.outputs.taiko }}
       evm: ${{ steps.filter.outputs.evm }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-      - name: Filter paths
+      - name: Detect changed paths
         id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            taiko:
-              - 'src/Nethermind/Nethermind.Taiko/**'
-              - '.github/workflows/_taiko-integration.yml'
-            evm:
-              - 'src/Nethermind/Nethermind.Evm/**'
-              - 'Directory.Packages.props'
-              - '.github/workflows/evm-opcode-benchmark-diff.yml'
-              - 'scripts/evm_benchmark_utils.py'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
+          match() { echo "$files" | grep -qE "$1"; }
+          match '^src/Nethermind/Nethermind\.Taiko/|^\.github/workflows/_taiko-integration\.yml' \
+            && taiko=true || taiko=false
+          match '^src/Nethermind/Nethermind\.Evm/|^Directory\.Packages\.props|^\.github/workflows/evm-opcode-benchmark-diff\.yml|^scripts/evm_benchmark_utils\.py' \
+            && evm=true || evm=false
+          echo "taiko=$taiko" >> "$GITHUB_OUTPUT"
+          echo "evm=$evm" >> "$GITHUB_OUTPUT"
 
   build-solutions:
     name: Build solutions
@@ -51,23 +53,28 @@ jobs:
 
   nethermind-tests:
     name: Nethermind/Ethereum tests
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/nethermind-tests.yml
     secrets: inherit
 
   nethermind-tests-checked:
     name: Nethermind extra test variants
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/nethermind-tests-checked.yml
 
   nethermind-tests-flat:
     name: Nethermind tests (Flat DB)
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/nethermind-tests-flat.yml
 
   code-quality:
     name: Code quality
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/_code-quality.yml
 
   security-scans:
     name: Security scans
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/_security-scans.yml
     with:
       scans: 'trivy,dependency-review'
@@ -78,6 +85,7 @@ jobs:
 
   sync-pr-gate:
     name: Sync PR Gate (Hoodi)
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/sync-pr-gate.yml
     secrets: inherit
 

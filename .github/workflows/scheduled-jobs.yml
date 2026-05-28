@@ -2,35 +2,15 @@ name: Scheduled jobs
 
 on:
   schedule:
-    # Weekly Sunday 00:00 UTC — codeql + update-fast-sync + update-superchain
+    # Weekly Sunday 00:00 UTC — codeql + weekly updates (fast-sync, superchain)
     - cron: '0 0 * * 0'
     # Daily 00:00 UTC — update-dockerfiles
     - cron: '0 0 * * *'
     # Thursday 19:29 UTC — trivy
     - cron: '29 19 * * 4'
+  # Re-scan with CodeQL on every release tag (preserves pre-refactor codeql.yml trigger).
   push:
-    # Re-scan with CodeQL on every release tag (preserves pre-refactor codeql.yml trigger)
     tags: ['*']
-  workflow_dispatch:
-    inputs:
-      job:
-        description: Which job to run (all = run every scheduled job)
-        required: true
-        default: all
-        type: choice
-        options:
-          - all
-          - codeql
-          - update-fast-sync
-          - update-superchain
-          - update-dockerfiles
-          - update-docs
-          - trivy
-      docs_ref:
-        description: 'Ref for update-docs (branch or tag); only used when job=update-docs'
-        required: false
-        default: master
-        type: string
 
 permissions:
   contents: write
@@ -41,39 +21,30 @@ permissions:
 jobs:
   codeql:
     name: CodeQL
-    if: github.event.schedule == '0 0 * * 0' || github.event_name == 'push' || inputs.job == 'codeql' || inputs.job == 'all'
+    if: github.event.schedule == '0 0 * * 0' || github.event_name == 'push'
     uses: ./.github/workflows/_security-scans.yml
     with:
       scans: 'codeql'
 
   trivy:
     name: Trivy
-    if: github.event.schedule == '29 19 * * 4' || inputs.job == 'trivy' || inputs.job == 'all'
+    if: github.event.schedule == '29 19 * * 4'
     uses: ./.github/workflows/_security-scans.yml
     with:
       scans: 'trivy'
 
   weekly-updates:
     name: Weekly updates
-    if: github.event.schedule == '0 0 * * 0' || inputs.job == 'update-fast-sync' || inputs.job == 'update-superchain' || inputs.job == 'all'
+    if: github.event.schedule == '0 0 * * 0'
     uses: ./.github/workflows/_scheduled-updates.yml
     with:
-      which: ${{ inputs.job == 'all' && 'update-fast-sync,update-superchain' || inputs.job || 'update-fast-sync,update-superchain' }}
+      which: 'update-fast-sync,update-superchain'
     secrets: inherit
 
   daily-updates:
     name: Daily updates
-    if: github.event.schedule == '0 0 * * *' || inputs.job == 'update-dockerfiles' || inputs.job == 'all'
+    if: github.event.schedule == '0 0 * * *'
     uses: ./.github/workflows/_scheduled-updates.yml
     with:
       which: 'update-dockerfiles'
-    secrets: inherit
-
-  update-docs:
-    name: Update docs
-    # Manual-only; excluded from 'all' since docs are normally regenerated via release-pipeline.yml on release events.
-    if: inputs.job == 'update-docs'
-    uses: ./.github/workflows/update-docs.yml
-    with:
-      ref: ${{ inputs.docs_ref || 'master' }}
     secrets: inherit
