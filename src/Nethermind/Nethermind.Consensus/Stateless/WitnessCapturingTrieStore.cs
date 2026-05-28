@@ -22,6 +22,12 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
 
     public IEnumerable<byte[]> TouchedNodesRlp => _rlpCollector.Select(static kvp => kvp.Value);
 
+    /// <summary>
+    /// Clears all previously captured trie node RLPs so this instance can be reused for a new block capture.
+    /// Called by <see cref="WitnessCapturingBlockProcessor"/> at the start of each <c>ProcessOne</c> capture.
+    /// </summary>
+    public void Reset() => _rlpCollector.Clear();
+
     public void Dispose() => baseStore.Dispose();
 
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)

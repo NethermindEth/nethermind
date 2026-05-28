@@ -25,9 +25,29 @@ namespace Nethermind.Consensus.Stateless;
 /// publishes it via <see cref="WitnessRendezvous"/>.
 /// </summary>
 /// <remarks>
-/// All capture state lives on the per-call recorder instance — there is no global armed/disarmed
-/// flag, no shared mutable dictionaries, and no nested-arming guard beyond the proxy's atomic
+/// <para>
+/// Two complementary capture layers are active during each witnessed <c>ProcessOne</c> call:
+/// </para>
+/// <list type="number">
+///   <item>
+///     <b><see cref="WitnessCapturingWorldStateProxy"/> / <see cref="WitnessGeneratingWorldState"/></b>
+///     — records every account/slot/bytecode access via <see cref="IWorldState"/> call hooks.
+///     Drives <see cref="WitnessProofCollector"/> which runs a tree visitor over the recorded keys
+///     to produce Merkle proofs.
+///   </item>
+///   <item>
+///     <b><see cref="WitnessCapturingTrieStore"/></b> — intercepts raw trie node reads at the
+///     storage layer. This catches sibling reads that occur during <c>RecalculateStateRoot()</c>
+///     when branch nodes collapse after account deletion or storage clearing. Those reads never
+///     surface at the <see cref="IWorldState"/> level, so layer (1) alone would silently omit
+///     them, producing a witness that stateless verifiers cannot use to reconstruct the post-state root.
+///   </item>
+/// </list>
+/// <para>
+/// All capture state lives on per-call instances — there is no global armed/disarmed flag, no
+/// shared mutable dictionaries, and no nested-arming guard beyond the proxy's atomic
 /// activate/deactivate. Blocks with no pending request bypass the recorder entirely.
+/// </para>
 /// </remarks>
 public sealed class WitnessCapturingBlockProcessor(
     IBlockProcessor inner,
@@ -35,6 +55,7 @@ public sealed class WitnessCapturingBlockProcessor(
     WitnessRendezvous rendezvous,
     IStateReader stateReader,
     IHeaderFinder headerFinder,
+    WitnessCapturingTrieStore trieStore,
     ILogManager? logManager = null) : IBlockProcessor
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<WitnessCapturingBlockProcessor>();
@@ -69,7 +90,13 @@ public sealed class WitnessCapturingBlockProcessor(
         long parentBlockNumber = suggestedBlock.Number - 1;
 
         WitnessGeneratingHeaderFinder perBlockHeaderFinder = new(headerFinder);
-        WitnessGeneratingWorldState recorder = new(proxy.InnerState, stateReader, perBlockHeaderFinder);
+
+        // Reset the shared trie store so only nodes touched during *this* block are captured.
+        // The trie store wraps the main pipeline's read-only store, intercepting every node load
+        // that RecalculateStateRoot() triggers (e.g. sibling reads during branch collapse on
+        // account deletion or storage clearing) — reads that never surface at the IWorldState level.
+        trieStore.Reset();
+        WitnessGeneratingWorldState recorder = new(proxy.InnerState, stateReader, perBlockHeaderFinder, trieStore);
 
         if (!proxy.TryActivate(recorder))
         {

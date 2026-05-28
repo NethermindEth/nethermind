@@ -8,6 +8,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -22,6 +23,9 @@ public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvi
     protected override void Load(ContainerBuilder builder)
     {
         if (!specProvider.GetFinalSpec().IsEip7928Enabled) return;
+
+        builder.AddSingleton<WitnessCapturingTrieStore>(ctx =>
+            new WitnessCapturingTrieStore(ctx.Resolve<IWorldStateManager>().CreateReadOnlyTrieStore()));
 
         builder.AddDecorator<IWorldState, WitnessCapturingWorldStateProxy>();
         // Expose the same proxy instance as a typed singleton so the block-processor decorator can
