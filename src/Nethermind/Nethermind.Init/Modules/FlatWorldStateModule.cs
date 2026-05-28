@@ -55,9 +55,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
-            // SparseTrieSkipPatricia bypasses Patricia BulkSet + Commit entirely, so the
-            // TrieWarmer (which preloads Patricia nodes) is pure waste under that mode.
-            .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0 || flatDbConfig.SparseTrieSkipPatricia
+            .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()
                 : ctx => ctx.Resolve<TrieWarmer>())
             .AddSingleton<TrieWarmer>()
