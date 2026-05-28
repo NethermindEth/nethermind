@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,18 +16,18 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void Test()
         {
             NullSigner signer = NullSigner.Instance;
-            signer.Address.Should().Be(Address.Zero);
-            signer.CanSign.Should().BeFalse();
+            Assert.That(signer.Address, Is.EqualTo(Address.Zero));
+            Assert.That(signer.CanSign, Is.False);
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]
         public void Test_signing()
         {
             NullSigner signer = NullSigner.Instance;
-            signer.TrySign((Transaction)null!).Should().BeFalse("null signer cannot sign");
+            Assert.That(signer.TrySign((Transaction)null!), Is.False, "null signer cannot sign");
             ValueHash256 hash = default;
-            signer.TrySign(in hash, out Signature signature).Should().BeFalse("null signer cannot sign a hash");
-            signature.Should().BeNull();
+            Assert.That(signer.TrySign(in hash, out Signature signature), Is.False, "null signer cannot sign a hash");
+            Assert.That(signature, Is.Null);
         }
     }
 }

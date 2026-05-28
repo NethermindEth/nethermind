@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
@@ -41,6 +40,6 @@ public class Eip7976Tests
     {
         Transaction transaction = new() { Data = data, To = to };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, spec);
-        cost.Should().Be(new EthereumIntrinsicGas(expectedStandard, expectedFloor));
+        Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(expectedStandard, expectedFloor)));
     }
 }

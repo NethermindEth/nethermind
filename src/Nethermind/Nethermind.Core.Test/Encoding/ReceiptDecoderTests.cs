@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -66,7 +65,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp.ValueDecoderContext valueContext = rlp.Bytes.AsRlpValueContext();
             TxReceipt deserialized = decoder.DecodeComplete(ref valueContext, RlpBehaviors.Storage);
 
-            deserialized.Should().BeEquivalentTo(GetExpected());
+            deserialized.AssertEquivalentTo(GetExpected());
         }
 
         [Test]
@@ -229,7 +228,7 @@ namespace Nethermind.Core.Test.Encoding
             using (NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts))
             {
                 byte[] nettyBytes = nettyRlpStream.AsSpan().ToArray();
-                nettyBytes.Should().BeEquivalentTo(rlp.Bytes);
+                Assert.That(nettyBytes, Is.EqualTo(rlp.Bytes));
             }
         }
 

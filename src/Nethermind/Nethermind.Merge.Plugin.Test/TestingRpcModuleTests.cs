@@ -7,7 +7,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -57,12 +56,12 @@ public class TestingRpcModuleTests
 
         ResultWrapper<object> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, [], []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().BeAssignableTo<GetPayloadV5Result>();
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Data, Is.AssignableTo<GetPayloadV5Result>());
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
-        payloadResult.ExecutionPayload.BlobGasUsed.Should().Be(0);
-        payloadResult.ExecutionPayload.ExcessBlobGas.Should().Be(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance));
-        suggestedWithdrawalsRoot.Should().Be(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash);
+        Assert.That(payloadResult.ExecutionPayload.BlobGasUsed, Is.EqualTo(0));
+        Assert.That(payloadResult.ExecutionPayload.ExcessBlobGas, Is.EqualTo(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance)));
+        Assert.That(suggestedWithdrawalsRoot, Is.EqualTo(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash));
     }
 
     [Test]
@@ -77,7 +76,7 @@ public class TestingRpcModuleTests
             CreateDefaultPayloadAttributes(parentHeader),
             (byte[][])[]);
 
-        response.Should().BeOfType<ResultWrapper<object>>();
+        Assert.That(response, Is.TypeOf<ResultWrapper<object>>());
     }
 
     [TestCaseSource(nameof(BuildBlockV1ForkCases))]
@@ -106,35 +105,35 @@ public class TestingRpcModuleTests
 
         using JsonDocument doc = JsonDocument.Parse(json);
         JsonElement root = doc.RootElement;
-        root.TryGetProperty("error", out _).Should().BeFalse();
+        Assert.That(root.TryGetProperty("error", out _), Is.False);
 
         JsonElement executionPayload = root.GetProperty("result").GetProperty("executionPayload");
         JsonElement transactionsJson = executionPayload.GetProperty("transactions");
 
-        transactionsJson.GetArrayLength().Should().Be(txHex.Length);
+        Assert.That(transactionsJson.GetArrayLength(), Is.EqualTo(txHex.Length));
         for (int i = 0; i < txHex.Length; i++)
         {
-            transactionsJson[i].GetString().Should().Be(txHex[i]);
+            Assert.That(transactionsJson[i].GetString(), Is.EqualTo(txHex[i]));
         }
 
         if (expectsBlockAccessList)
         {
-            executionPayload.TryGetProperty("blockAccessList", out JsonElement blockAccessList).Should().BeTrue();
-            blockAccessList.GetString().Should().NotBeNullOrEmpty();
+            Assert.That(executionPayload.TryGetProperty("blockAccessList", out JsonElement blockAccessList), Is.True);
+            Assert.That(blockAccessList.GetString(), Is.Not.Null.And.Not.Empty);
         }
         else
         {
-            executionPayload.TryGetProperty("blockAccessList", out _).Should().BeFalse();
+            Assert.That(executionPayload.TryGetProperty("blockAccessList", out _), Is.False);
         }
 
         if (expectsSlotNumber)
         {
-            executionPayload.TryGetProperty("slotNumber", out JsonElement slotNumberJson).Should().BeTrue();
-            slotNumberJson.GetString().Should().Be(slotNumber!.Value.ToHexString(skipLeadingZeros: true));
+            Assert.That(executionPayload.TryGetProperty("slotNumber", out JsonElement slotNumberJson), Is.True);
+            Assert.That(slotNumberJson.GetString(), Is.EqualTo(slotNumber!.Value.ToHexString(skipLeadingZeros: true)));
         }
         else
         {
-            executionPayload.TryGetProperty("slotNumber", out _).Should().BeFalse();
+            Assert.That(executionPayload.TryGetProperty("slotNumber", out _), Is.False);
         }
     }
 
@@ -161,8 +160,8 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(
             parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        ((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Should().HaveCount(expectedTxCount);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Length, Is.EqualTo(expectedTxCount));
 
         if (useNull)
             txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), true);
@@ -190,8 +189,8 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(
             parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, []);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("expected 2 transactions but only 1 were included");
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.Result.Error, Does.Contain("expected 2 transactions but only 1 were included"));
     }
 
     [Test]
@@ -203,8 +202,8 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(
             unknownHash, CreateDefaultPayloadAttributes(parentHeader), null);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("unknown parent block");
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.Result.Error, Does.Contain("unknown parent block"));
     }
 
     [Test]
@@ -218,14 +217,14 @@ public class TestingRpcModuleTests
             [],
             []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
 
         Block suggested = (Block)blockTree.ReceivedCalls()
             .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlock))
             .GetArguments()[0]!;
-        suggested.Header.Number.Should().Be(chainHeadHeader.Number + 1);
-        suggested.Hash.Should().NotBeNull();
-        result.Data.Should().Be(suggested.Hash!);
+        Assert.That(suggested.Header.Number, Is.EqualTo(chainHeadHeader.Number + 1));
+        Assert.That(suggested.Hash, Is.Not.Null);
+        Assert.That(result.Data, Is.EqualTo(suggested.Hash!));
     }
 
     [Test]
@@ -237,12 +236,12 @@ public class TestingRpcModuleTests
         ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
             CreateDefaultPayloadAttributes(chainHeadHeader), [], []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
 
         BlockTreeSuggestOptions suggestOptions = (BlockTreeSuggestOptions)blockTree.ReceivedCalls()
             .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlock))
             .GetArguments()[1]!;
-        suggestOptions.Should().Be(BlockTreeSuggestOptions.ForceDontSetAsMain,
+        Assert.That(suggestOptions, Is.EqualTo(BlockTreeSuggestOptions.ForceDontSetAsMain),
             "ShouldProcess would force the main BlockchainProcessor to re-execute every tx; " +
             "ForceDontSetAsMain leaves the main-chain write to UpdateMainChain (single writer).");
 
@@ -252,9 +251,9 @@ public class TestingRpcModuleTests
         IReadOnlyList<Block> updatedBlocks = (IReadOnlyList<Block>)updateMainChainArgs[0]!;
         bool wereProcessed = (bool)updateMainChainArgs[1]!;
         bool forceHeadBlock = (bool)updateMainChainArgs[2]!;
-        updatedBlocks.Count.Should().Be(1);
-        wereProcessed.Should().BeTrue("the producer already executed the block; the main chain must reflect that");
-        forceHeadBlock.Should().BeTrue(
+        Assert.That(updatedBlocks.Count, Is.EqualTo(1));
+        Assert.That(wereProcessed, Is.True, "the producer already executed the block; the main chain must reflect that");
+        Assert.That(forceHeadBlock, Is.True,
             "post-merge chains have TotalDifficulty=0; without forceHeadBlock MoveToMain skips UpdateHeadBlock and the next commit reads a stale head.");
     }
 
@@ -271,13 +270,13 @@ public class TestingRpcModuleTests
 
         await module.testing_commitBlockV1(CreateDefaultPayloadAttributes(chainHeadHeader), [], []);
 
-        observedOptions.Should().NotBeNull();
+        Assert.That(observedOptions, Is.Not.Null);
         ProcessingOptions opts = observedOptions!.Value;
-        opts.ContainsFlag(ProcessingOptions.StoreReceipts).Should().BeTrue();
-        opts.ContainsFlag(ProcessingOptions.NoValidation).Should().BeTrue();
-        opts.ContainsFlag(ProcessingOptions.ForceProcessing).Should().BeTrue();
-        opts.ContainsFlag(ProcessingOptions.DoNotUpdateHead).Should().BeTrue();
-        opts.ContainsFlag(ProcessingOptions.ReadOnlyChain).Should().BeFalse(
+        Assert.That(opts.ContainsFlag(ProcessingOptions.StoreReceipts), Is.True);
+        Assert.That(opts.ContainsFlag(ProcessingOptions.NoValidation), Is.True);
+        Assert.That(opts.ContainsFlag(ProcessingOptions.ForceProcessing), Is.True);
+        Assert.That(opts.ContainsFlag(ProcessingOptions.DoNotUpdateHead), Is.True);
+        Assert.That(opts.ContainsFlag(ProcessingOptions.ReadOnlyChain), Is.False,
             "ReadOnlyChain blocks FlatDb snapshot append; the producer must write FlatDb here");
     }
 
@@ -292,8 +291,8 @@ public class TestingRpcModuleTests
             [],
             null);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -307,8 +306,8 @@ public class TestingRpcModuleTests
             [],
             null);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -321,9 +320,9 @@ public class TestingRpcModuleTests
             new[] { new byte[] { 0xff, 0xff, 0xff } },
             null);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("invalid transaction RLP");
-        result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.Result.Error, Does.Contain("invalid transaction RLP"));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
     }
 
     private (TestingRpcModule module, IBlockTree blockTree, IBlockFinder blockFinder, BlockHeader parentHeader) CreateModuleWithMocks(
