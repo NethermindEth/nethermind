@@ -10,7 +10,10 @@ on:
     types: [completed]
 
 concurrency:
-  group: sync-pr-${{ github.event.workflow_run.head_branch }}
+  # Prefer the PR number (populated for non-fork PRs, which is the only case we
+  # run — see `if:` below). Fall back to head_branch if the array is empty so
+  # the key is never literally empty.
+  group: sync-pr-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 env:

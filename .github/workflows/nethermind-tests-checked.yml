@@ -108,7 +108,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: recursive
+          # Only the spec-* groups touch Ethereum.* projects that need the
+          # ethereum/tests submodule at runtime; pure Nethermind.* unit-test
+          # groups don't need it.
+          submodules: ${{ contains(fromJSON('["spec-core","spec-tx-rlp-trie"]'), matrix.group) && 'recursive' || 'false' }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
