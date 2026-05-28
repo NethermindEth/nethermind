@@ -72,6 +72,7 @@ namespace Nethermind.Core.Collections
         public bool IsReadOnly => false;
         void ICollection<T>.Add(T item) => Add(item);
         public bool Contains(T item) => _set.Contains(item);
+        public T this[int index] => _items[index];
         public void CopyTo(T[] array, int arrayIndex) => _set.CopyTo(array, arrayIndex);
     }
 }

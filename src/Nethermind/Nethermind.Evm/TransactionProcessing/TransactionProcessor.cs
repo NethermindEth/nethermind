@@ -331,10 +331,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                     else if (count == 1)
                     {
-                        foreach (Address toBeDestroyed in destroyList)
-                        {
-                            FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed);
-                        }
+                        FinalizeDestroyedAccount(WorldState, in substate, destroyList[0]);
                     }
                 }
 
