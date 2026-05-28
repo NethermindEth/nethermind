@@ -117,7 +117,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _proofReader = proofReader;
             _prevStateRoot = prevRoot;
             if (configuration.SparseTrieShadowStorageCompare && preservedSparseTrie is not null)
+            {
                 preservedSparseTrie.DiagLogger = logManager.GetClassLogger<PreservedSparseTrie>();
+                // Hardcoded: dump diagnostics for USDT, the contract that diverges at block 22360025.
+                SparseRootComputer.DiagDumpForContract ??= new Hash256("0xab14d68802a763f7db875346d03fbf86f137de55814b191c069e721f47474733");
+            }
 
             // M3: cross-block sparse trie reuse via PreservedSparseTrie. Combined with
             // dirty-path-only HashNode and minLen-aware proof reading, the next block

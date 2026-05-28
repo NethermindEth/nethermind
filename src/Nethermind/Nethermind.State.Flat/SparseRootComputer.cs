@@ -53,6 +53,11 @@ public sealed class SparseRootComputer : IDisposable
     public void SetAccountChanges(Dictionary<Hash256, LeafUpdate> accountUpdates) =>
         _accountChanges = accountUpdates;
 
+    // USDT contract hash — when DiagDumpForContract matches, we dump every proof read and
+    // every revealed node to console so the offline reproducer has the actual mainnet bytes.
+    private static readonly Hash256 _usdtHash = new("0xab14d68802a763f7db875346d03fbf86f137de55814b191c069e721f47474733");
+    public static Hash256? DiagDumpForContract { get; set; }
+
     public Hash256 ComputeStorageRoot(Hash256 accountPathHash)
     {
         if (!_storageChanges.TryGetValue(accountPathHash, out (Hash256 PreviousStorageRoot, Dictionary<Hash256, LeafUpdate> Updates) entry))
@@ -60,6 +65,10 @@ public sealed class SparseRootComputer : IDisposable
 
         if (entry.PreviousStorageRoot == Keccak.EmptyTreeHash && entry.Updates.Count == 0)
             return Keccak.EmptyTreeHash;
+
+        bool diag = DiagDumpForContract is not null && accountPathHash == DiagDumpForContract;
+        if (diag)
+            Console.Error.WriteLine($"DIAG_STORAGE_ROOT_BEGIN addr={accountPathHash} prevRoot={entry.PreviousStorageRoot} updates={entry.Updates.Count}");
 
         SparsePatriciaTree storageTrie = _trie.GetOrCreateStorageTrie(accountPathHash);
 
@@ -70,7 +79,12 @@ public sealed class SparseRootComputer : IDisposable
         {
             byte[] rootRlp = _reader.LoadStorageRlp(accountPathHash, TreePath.Empty, entry.PreviousStorageRoot);
             ProofNode rootProof = MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty);
+            if (diag) Console.Error.WriteLine($"DIAG_STORAGE_INITIAL_ROOT_RLP path=. hash={entry.PreviousStorageRoot} rlp=0x{Convert.ToHexString(rootRlp)}");
             storageTrie.RevealNodes([rootProof]);
+        }
+        else if (diag)
+        {
+            Console.Error.WriteLine($"DIAG_STORAGE_REUSE_EXISTING_TRIE subtrieRoot={storageTrie.Subtrie.Root} cachedRoot={(storageTrie.Subtrie.Root < 0 ? "empty" : storageTrie.ComputeRoot().ToString())}");
         }
 
         Dictionary<Hash256, LeafUpdate> updates = entry.Updates;
@@ -112,14 +126,34 @@ public sealed class SparseRootComputer : IDisposable
             }
             if (blinded.Count > 0)
             {
+                if (diag)
+                {
+                    Console.Error.WriteLine($"DIAG_STORAGE_RETRY {retry} blindedEntries={blinded.Count}");
+                    foreach (MultiProofReader.BlindedProofTarget b in blinded)
+                    {
+                        Console.Error.WriteLine($"DIAG_STORAGE_BLINDED path={b.BlindedPath} rlp=0x{Convert.ToHexString(b.BlindedRlp.AsSpan())} targetNibbles=0x{Convert.ToHexString(b.TargetNibbles)}");
+                    }
+                }
                 DecodedMultiProof proof = MultiProofReader.ReadProofsFromBlinded(
                     _reader, accountPathHash, blinded);
                 if (proof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? nodes))
+                {
+                    if (diag)
+                    {
+                        Console.Error.WriteLine($"DIAG_STORAGE_PROOF_NODES count={nodes.Count}");
+                        foreach (ProofNode pn in nodes)
+                        {
+                            Console.Error.WriteLine($"DIAG_STORAGE_PROOF_NODE path={pn.Path} kind={pn.Kind} rawRlp=0x{Convert.ToHexString(pn.RawRlp ?? [])}");
+                        }
+                    }
                     storageTrie.RevealNodes(nodes);
+                }
             }
         }
 
-        return _trie.ComputeStorageRoot(accountPathHash);
+        Hash256 result = _trie.ComputeStorageRoot(accountPathHash);
+        if (diag) Console.Error.WriteLine($"DIAG_STORAGE_ROOT_END addr={accountPathHash} computedRoot={result}");
+        return result;
     }
 
     public Hash256 PreviousRoot => _previousStateRoot;
