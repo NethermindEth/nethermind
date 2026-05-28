@@ -17,21 +17,10 @@ namespace Nethermind.Evm;
 public static partial class EvmInstructions
 {
     /// <summary>
-    /// Interface defining the properties for a call-like opcode.
-    /// Each implementation specifies whether the call is static and what its execution type is.
+    /// Interface defining the execution type for a call-like opcode.
     /// </summary>
     public interface IOpCall
     {
-        /// <summary>
-        /// Indicates if the call is static.
-        /// Static calls cannot modify state.
-        /// </summary>
-        virtual static bool IsStatic => false;
-
-        virtual static bool IsDelegateCall => false;
-
-        virtual static bool IsCallCode => false;
-
         /// <summary>
         /// Returns the specific execution type of the call.
         /// </summary>
@@ -51,7 +40,6 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpCallCode : IOpCall
     {
-        public static bool IsCallCode => true;
         public static ExecutionType ExecutionType => ExecutionType.CALLCODE;
     }
 
@@ -60,7 +48,6 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpDelegateCall : IOpCall
     {
-        public static bool IsDelegateCall => true;
         public static ExecutionType ExecutionType => ExecutionType.DELEGATECALL;
     }
 
@@ -69,7 +56,6 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpStaticCall : IOpCall
     {
-        public static bool IsStatic => true;
         public static ExecutionType ExecutionType => ExecutionType.STATICCALL;
     }
 
@@ -121,12 +107,12 @@ public static partial class EvmInstructions
         ExecutionEnvironment env = vm.VmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
-        if (TOpCall.IsStatic)
+        if (TOpCall.ExecutionType == ExecutionType.STATICCALL)
         {
             // Static calls cannot transfer value.
             callValue = default;
         }
-        else if (TOpCall.IsDelegateCall)
+        else if (TOpCall.ExecutionType == ExecutionType.DELEGATECALL)
         {
             // Delegate calls use the value from the current execution context.
             callValue = env.Value;
@@ -142,14 +128,14 @@ public static partial class EvmInstructions
             goto StackUnderflow;
         }
 
-        bool hasValueTransfer = !TOpCall.IsDelegateCall && !callValue.IsZero;
+        bool hasValueTransfer = TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
-        if (vm.VmState.IsStatic && hasValueTransfer && !TOpCall.IsCallCode)
+        if (vm.VmState.IsStatic && hasValueTransfer && TOpCall.ExecutionType != ExecutionType.CALLCODE)
             return EvmExceptionType.StaticCallViolation;
 
         // Determine caller and target based on the call type.
-        Address caller = TOpCall.IsDelegateCall ? env.Caller : env.ExecutingAccount;
-        Address target = !TOpCall.IsDelegateCall && !TOpCall.IsCallCode
+        Address caller = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.Caller : env.ExecutingAccount;
+        Address target = TOpCall.ExecutionType != ExecutionType.DELEGATECALL && TOpCall.ExecutionType != ExecutionType.CALLCODE
             ? codeSource
             : env.ExecutingAccount;
 
@@ -307,7 +293,7 @@ public static partial class EvmInstructions
             // Take a snapshot of the state for potential rollback.
             Snapshot snapshot = state.TakeSnapshot();
             // Subtract the transfer value from the caller's balance.
-            if (!TOpCall.IsDelegateCall && !callValue.IsZero) state.SubtractFromBalance(caller, in callValue, vm.Spec);
+            if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero) state.SubtractFromBalance(caller, in callValue, vm.Spec);
 
             // Load call data from memory.
             if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
@@ -335,7 +321,7 @@ public static partial class EvmInstructions
                 outputDestination: outputOffset.ToLong(),
                 outputLength: outputLength.ToLong(),
                 executionType: TOpCall.ExecutionType,
-                isStatic: TOpCall.IsStatic || vm.VmState.IsStatic,
+                isStatic: TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
                 isCreateOnPreExistingAccount: false,
                 env: callEnv,
                 stateForAccessLists: in vm.VmState.AccessTracker,
