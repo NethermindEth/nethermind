@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -36,7 +35,7 @@ public class ReorgDepthFinalizedStateProviderTests
         long result = _provider.FinalizedBlockNumber;
 
         // Assert
-        result.Should().Be(bestKnownNumber - Reorganization.MaxDepth);
+        Assert.That(result, Is.EqualTo(bestKnownNumber - Reorganization.MaxDepth));
     }
 
     [Test]
@@ -51,7 +50,7 @@ public class ReorgDepthFinalizedStateProviderTests
         Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
 
         // Assert
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
         _blockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
     }
 
@@ -71,7 +70,7 @@ public class ReorgDepthFinalizedStateProviderTests
         Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
 
         // Assert
-        result.Should().Be(expectedStateRoot);
+        Assert.That(result, Is.EqualTo(expectedStateRoot));
         _blockTree.Received(1).FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
     }
 
@@ -91,7 +90,7 @@ public class ReorgDepthFinalizedStateProviderTests
         Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
 
         // Assert
-        result.Should().Be(expectedStateRoot);
+        Assert.That(result, Is.EqualTo(expectedStateRoot));
         _blockTree.Received(1).FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
     }
 }

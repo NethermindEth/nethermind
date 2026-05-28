@@ -1142,7 +1142,7 @@ public class ChainSpecBasedSpecProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.GenesisSpec.IsEip6110Enabled, Is.True);
-            Assert.That(provider.GenesisSpec.DepositContractAddress, Is.EqualTo(Eip6110Constants.MainnetDepositContractAddress));
+            Assert.That(provider.GenesisSpec.DepositContractAddress, Is.EqualTo(Address.Zero));
         }
     }
 

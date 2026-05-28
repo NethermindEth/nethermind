@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -40,7 +39,7 @@ public class WorldStateManagerTests
     public void ShouldProxyGlobalWorldState()
     {
         (IWorldStateScopeProvider worldState, _, WorldStateManager manager) = CreateWorldStateManager();
-        manager.GlobalWorldState.Should().Be(worldState);
+        Assert.That(manager.GlobalWorldState, Is.EqualTo(worldState));
     }
 
     [Test]
@@ -52,7 +51,7 @@ public class WorldStateManagerTests
         manager.ReorgBoundaryReached += (sender, reached) => gotEvent = true;
         trieStore.ReorgBoundaryReached += Raise.EventWith<ReorgBoundaryReached>(new ReorgBoundaryReached(1));
 
-        gotEvent.Should().BeTrue();
+        Assert.That(gotEvent, Is.True);
     }
 
     [TestCase(INodeStorage.KeyScheme.Hash, true)]
@@ -66,11 +65,11 @@ public class WorldStateManagerTests
 
         if (hashSupported)
         {
-            manager.HashServer.Should().NotBeNull();
+            Assert.That(manager.HashServer, Is.Not.Null);
         }
         else
         {
-            manager.HashServer.Should().BeNull();
+            Assert.That(manager.HashServer, Is.Null);
         }
     }
 
@@ -167,11 +166,11 @@ public class WorldStateManagerTests
         if (rootNode.NodeType == NodeType.Unknown)
         {
             byte[] rlp = scopedStore.TryLoadRlp(TreePath.Empty, stateRoot);
-            rlp.Should().NotBeNull("state root trie node should be resolvable from read-only trie store");
+            Assert.That(rlp, Is.Not.Null, "state root trie node should be resolvable from read-only trie store");
         }
         else
         {
-            rootNode.NodeType.Should().NotBe(NodeType.Unknown, "state root should be resolvable");
+            Assert.That(rootNode.NodeType, Is.Not.EqualTo(NodeType.Unknown), "state root should be resolvable");
         }
     }
 }

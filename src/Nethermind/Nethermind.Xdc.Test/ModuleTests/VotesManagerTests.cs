@@ -18,8 +18,9 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Xdc.Test.Helpers;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
 [Parallelizable(ParallelScope.All)]
 public class VotesManagerTests
@@ -39,25 +40,29 @@ public class VotesManagerTests
         BlockRoundInfo info = new(header.Hash!, currentRound, header.Number);
 
         // Base case
-        yield return new TestCaseData(masternodes, header, currentRound, keysForMasternodes.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray(), info, 1);
+        yield return new TestCaseData(masternodes, header, currentRound, keysForMasternodes.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray(), info, 1)
+            .SetName("BaseCase");
 
         // Not enough valid signers
         Vote[] votes = keysForMasternodes.Take(12).Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
         Vote[] extraVotes = extraKeys.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
-        yield return new TestCaseData(masternodes, header, currentRound, votes.Concat(extraVotes).ToArray(), info, 0);
+        yield return new TestCaseData(masternodes, header, currentRound, votes.Concat(extraVotes).ToArray(), info, 0)
+            .SetName("NotEnoughValidSigners");
 
         // Wrong gap number generates different keys for the vote pool
         PrivateKey[] keysForVotes = keysForMasternodes.Take(14).ToArray();
         List<Vote> votesWithDiffGap = new(capacity: keysForVotes.Length);
         for (int i = 0; i < keysForVotes.Length - 3; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 450, keysForVotes[i]));
         for (int i = keysForVotes.Length - 3; i < keysForVotes.Length; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 451, keysForVotes[i]));
-        yield return new TestCaseData(masternodes, header, currentRound, votesWithDiffGap.ToArray(), info, 0);
+        yield return new TestCaseData(masternodes, header, currentRound, votesWithDiffGap.ToArray(), info, 0)
+            .SetName("WrongGapNumber");
 
         //N byte-distinct votes but only N-1 unique addresses (keys[0] signs twice via ECDSA malleability)
         Vote[] legitimateVotes = [.. keysForMasternodes.Take(quorumCount - 1).Select(k => XdcTestHelper.BuildSignedVote(info, 450, k))];
         Signature malleableSig = XdcTestHelper.CreateMalleableSignature(legitimateVotes[0].Signature!);
         Vote malleableVote = new(info, 450) { Signature = malleableSig, Signer = legitimateVotes[0].Signer };
-        yield return new TestCaseData(masternodes, header, currentRound, (Vote[])[.. legitimateVotes, malleableVote], info, 0);
+        yield return new TestCaseData(masternodes, header, currentRound, (Vote[])[.. legitimateVotes, malleableVote], info, 0)
+            .SetName("MalleableDuplicateSigner");
     }
 
     [TestCaseSource(nameof(HandleVoteCases))]
@@ -164,16 +169,20 @@ public class VotesManagerTests
 
         // Disqualified as the round does not match
         Vote vote = new(blockInfo, 450);
-        yield return new TestCaseData(15UL, masternodes, vote, false);
+        yield return new TestCaseData(15UL, masternodes, vote, false)
+            .SetName("RoundDoesNotMatch");
 
         // Invalid signature
-        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.Last()), false);
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.Last()), false)
+            .SetName("InvalidSignature");
 
         // Valid message
-        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.First()), true);
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.First()), true)
+            .SetName("ValidMessage");
 
         // If snapshot missing should return false
-        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 1350, keys.First()), false);
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 1350, keys.First()), false)
+            .SetName("SnapshotMissing");
 
     }
 
@@ -267,10 +276,12 @@ public class VotesManagerTests
         BlockRoundInfo blockInfo = new(headers[2].Hash!, 5, headers[2].Number);
 
         QuorumCertificate ancestorQc = new(new BlockRoundInfo(headers[0].Hash!, 3, headers[0].Number), null, 0);
-        yield return new TestCaseData(blockTree, ancestorQc, blockInfo, true);
+        yield return new TestCaseData(blockTree, ancestorQc, blockInfo, true)
+            .SetName("AncestorQc");
 
         QuorumCertificate nonRelatedQc = new(new BlockRoundInfo(nonRelatedHeader.Hash, 3, nonRelatedHeader.Number), null, 0);
-        yield return new TestCaseData(blockTree, nonRelatedQc, blockInfo, false);
+        yield return new TestCaseData(blockTree, nonRelatedQc, blockInfo, false)
+            .SetName("NonRelatedQc");
     }
 
     [TestCaseSource(nameof(ExtendingFromAncestorCases))]

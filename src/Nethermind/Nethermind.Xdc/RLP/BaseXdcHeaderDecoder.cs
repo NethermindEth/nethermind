@@ -7,7 +7,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using System;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RLP;
 
 public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeaderDecoder where TH : XdcBlockHeader
 {

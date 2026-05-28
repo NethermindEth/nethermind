@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -143,12 +142,12 @@ namespace Nethermind.Core.Test
             Hash256 keccakB = b is null ? null : new Hash256(b);
 #pragma warning restore CS8600
 #pragma warning disable CS8602
-            Math.Sign(keccakA.CompareTo(keccakB)).Should().Be(result);
+            Assert.That(Math.Sign(keccakA.CompareTo(keccakB)), Is.EqualTo(result));
 #pragma warning restore CS8602
         }
 
         [Test]
-        public void CompareSameInstance() => Keccak.Zero.CompareTo(Keccak.Zero).Should().Be(0);
+        public void CompareSameInstance() => Assert.That(Keccak.Zero.CompareTo(Keccak.Zero), Is.EqualTo(0));
 
         [Test]
         public void Span()
@@ -167,7 +166,7 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = Bytes.FromHexString(hexString);
             ValueHash256 h = ValueKeccak.Compute(bytes);
-            h.Bytes.ToHexString().Should().Be(expected);
+            Assert.That(h.Bytes.ToHexString(), Is.EqualTo(expected));
         }
 
         [TestCaseSource(nameof(KeccakCases))]
@@ -175,7 +174,7 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = Bytes.FromHexString(hexString);
             ValueHash256 h = ValueKeccak.Compute(bytes);
-            h.Bytes.ToHexString().Should().Be(expected);
+            Assert.That(h.Bytes.ToHexString(), Is.EqualTo(expected));
 
             KeccakRlpStream stream = new();
             for (int i = 0; i < bytes.Length; i++)
@@ -183,7 +182,7 @@ namespace Nethermind.Core.Test
                 stream.Write([bytes[i]]);
             }
 
-            stream.GetHash().Bytes.ToHexString().Should().Be(expected);
+            Assert.That(stream.GetHash().Bytes.ToHexString(), Is.EqualTo(expected));
         }
 
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000001", Description = "Normal increment")]

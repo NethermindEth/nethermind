@@ -7,7 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -583,7 +583,7 @@ public class SyncServerTests
                         .Select(a => (earliest: a[0], latest: a[1])).ToArray();
                     return arr.Length >= 2 ? arr[^2..] : arr;
                 },
-                Is.EquivalentTo(expectedUpdates).After(15000, 50) // Wait for background notifications to finish
+                Is.EqualTo(expectedUpdates).After(15000, 50) // Wait for background notifications to finish
             );
         }
     }
@@ -688,7 +688,7 @@ public class SyncServerTests
         ctx.BlockTree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
         if (shouldReadStore)
         {
-            blockAccessListStore.GetRlp(TestItem.KeccakA).Returns(ArrayMemoryManager.From(expectedRlp));
+            blockAccessListStore.GetRlp(header.Number, TestItem.KeccakA).Returns(ArrayMemoryManager.From(expectedRlp));
         }
 
         SyncServer syncServer = ctx.CreateSyncServer(blockAccessListStore);
@@ -705,11 +705,11 @@ public class SyncServerTests
 
         if (shouldReadStore)
         {
-            blockAccessListStore.Received(1).GetRlp(TestItem.KeccakA);
+            blockAccessListStore.Received(1).GetRlp(header.Number, TestItem.KeccakA);
         }
         else
         {
-            blockAccessListStore.DidNotReceive().GetRlp(Arg.Any<Hash256>());
+            blockAccessListStore.DidNotReceive().GetRlp(Arg.Any<long>(), Arg.Any<Hash256>());
         }
     }
 

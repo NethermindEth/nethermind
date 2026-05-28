@@ -14,7 +14,7 @@ using Nethermind.Evm.Tracing.Debugger;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 
-namespace Nethermind.Evm.Test;
+namespace Nethermind.Evm.Test.Tracing;
 
 public class DebugTracerTests : VirtualMachineTestsBase
 {

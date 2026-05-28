@@ -11,7 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.EraE.Exceptions;
 using Snappier;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using Entry = Nethermind.Era1.Entry;
 using EraWriter = Nethermind.EraE.Archive.EraWriter;
 

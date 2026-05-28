@@ -24,5 +24,9 @@ namespace Nethermind.Core
         public void Add(TimeSpan timeSpan) => UtcNow += timeSpan;
 
         public void Set(DateTime utcNow) => UtcNow = utcNow;
+
+        public DateTimeOffset UtcNowOffset => new(UtcNow);
+
+        public UnixTime UnixTime => new(UtcNow);
     }
 }

@@ -53,13 +53,26 @@ public static class TestWorldStateFactory
 
     public static (IWorldStateScopeProvider scopeProvider, IContainer container) CreateFlatScopeProvider()
     {
-        ConfigProvider configProvider = new();
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
-        IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(configProvider))
-            .Build();
+        IContainer container = BuildFlatContainer();
         IWorldStateManager wsm = container.Resolve<IWorldStateManager>();
         return (wsm.GlobalWorldState, container);
+    }
+
+    public static (IWorldState worldState, IStateReader reader, IContainer container) CreateFlatForTestWithStateReader(ILogManager? logManager = null)
+    {
+        logManager ??= LimboLogs.Instance;
+        IContainer container = BuildFlatContainer();
+        IWorldStateManager wsm = container.Resolve<IWorldStateManager>();
+        return (new WorldState(wsm.GlobalWorldState, logManager), wsm.GlobalStateReader, container);
+    }
+
+    private static IContainer BuildFlatContainer()
+    {
+        ConfigProvider configProvider = new();
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
+        return new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .Build();
     }
 
     public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager)
