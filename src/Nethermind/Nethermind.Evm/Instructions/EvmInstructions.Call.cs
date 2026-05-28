@@ -272,26 +272,17 @@ public static partial class EvmInstructions
             {
                 state.SubtractFromBalance(caller, in callValue, spec);
                 vm.AddTransferLog<TEip7708>(caller, target, in callValue);
-                state.AddToBalanceAndCreateIfNotExists(target, in callValue, spec);
             }
-            else
-            {
-                state.AddToBalanceAndCreateIfNotExists(target, in UInt256.Zero, spec);
-            }
+            state.AddToBalanceAndCreateIfNotExists(target, in hasValueTransfer ? ref callValue : ref UInt256.Zero, spec);
             Metrics.IncrementEmptyCalls();
             vm.ReturnData = null;
             return EvmExceptionType.None;
         }
 
-        // Take a snapshot of the state for potential rollback.
-        Snapshot snapshot = state.TakeSnapshot();
-        // Subtract the transfer value from the caller's balance.
-        if (hasValueTransfer) state.SubtractFromBalance(caller, in callValue, spec);
-
-        return SlowCall(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, in snapshot);
+        return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static EvmExceptionType SlowCall(
+        static EvmExceptionType CreateFullCallFrame(
             VirtualMachine<TGasPolicy> vm,
             ref TGasPolicy gas,
             in UInt256 dataOffset,
@@ -304,9 +295,14 @@ public static partial class EvmInstructions
             Address codeSource,
             ExecutionEnvironment env,
             in UInt256 callValue,
-            long gasLimitUl,
-            in Snapshot snapshot)
+            long gasLimitUl)
         {
+            IWorldState state = vm.WorldState;
+            // Take a snapshot of the state for potential rollback.
+            Snapshot snapshot = state.TakeSnapshot();
+            // Subtract the transfer value from the caller's balance.
+            if (!TOpCall.IsDelegateCall && !callValue.IsZero) state.SubtractFromBalance(caller, in callValue, vm.Spec);
+
             // Load call data from memory.
             if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
                 return EvmExceptionType.OutOfGas;
