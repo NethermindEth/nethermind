@@ -113,12 +113,22 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 return false;
             }
 
-            // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
-            // this is just to warm up the nodes.
             ValueHash256 key = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(index, ref key);
 
-            _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+            if (_config.SparseTrieWarmer == SparseTrieWarmerVariant.SparseProof
+                && _scope.SparseProofReader is not null && _tree.RootHash != Keccak.EmptyTreeHash)
+            {
+                // Sparse-aware prefetch: walk only the storage path the sparse trie will read.
+                _ = Nethermind.Trie.Sparse.MultiProofReader.ReadStorageProofs(
+                    _scope.SparseProofReader, _addressHash, _tree.RootHash, [key.ToCommitment()]);
+            }
+            else
+            {
+                // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
+                // this is just to warm up the nodes.
+                _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+            }
             return true;
         }
         finally

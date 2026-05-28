@@ -55,7 +55,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
-            .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
+            // SparseTrieWarmer=None turns warming off entirely. Otherwise the existing TrieWarmer
+            // (the queue + worker pool) runs; what each worker actually does is selected inside
+            // FlatWorldStateScope.WarmUpStateTrie / FlatStorageTree.WarmUpStorageTrie based on the
+            // SparseTrieWarmer variant (Legacy = Patricia walk, SparseProof = sparse proof prefetch).
+            .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0 || flatDbConfig.SparseTrieWarmer == SparseTrieWarmerVariant.None
                 ? _ => new NoopTrieWarmer()
                 : ctx => ctx.Resolve<TrieWarmer>())
             .AddSingleton<TrieWarmer>()

@@ -35,6 +35,12 @@ public sealed class SparseStateTrie : IDisposable
     public SparsePatriciaTree GetOrCreateStorageTrie(Hash256 accountPathHash) =>
         _storageTries.GetOrAdd(accountPathHash, static _ => new SparsePatriciaTree());
 
+    /// <summary>
+    /// Live view over storage tries. Caller must not mutate the dictionary during enumeration.
+    /// Used by the snapshot committer to persist dirty storage nodes.
+    /// </summary>
+    public ConcurrentDictionary<Hash256, SparsePatriciaTree> StorageTries => _storageTries;
+
     public void RevealMultiproof(DecodedMultiProof proof)
     {
         if (proof.AccountNodes.Count > 0)

@@ -38,6 +38,132 @@ public static class MultiProofReader
         return proof;
     }
 
+    /// <summary>
+    /// A blinded subtrie boundary identified by the sparse trie's UpdateLeaves callback.
+    /// </summary>
+    /// <param name="BlindedPath">Path from root to where blinding starts.</param>
+    /// <param name="BlindedRlp">Stored RLP for the blinded child (32-byte hash or inline RLP).</param>
+    /// <param name="TargetNibbles">Full hashed key as nibbles — its prefix equals BlindedPath.</param>
+    public readonly record struct BlindedProofTarget(
+        TreePath BlindedPath,
+        RlpNode BlindedRlp,
+        byte[] TargetNibbles);
+
+    /// <summary>
+    /// Reads proofs starting from each target's blinded subtrie boundary instead of from the
+    /// state/storage root. The sparse trie already has nodes above the boundary revealed, so
+    /// the proof reader does ONE DB load per blinded subtrie (zero for inline blinded RLPs)
+    /// instead of walking root-to-target.
+    /// <remarks>
+    /// Targets sharing the same blinded subtrie are coalesced and walked once.
+    /// Pass null <paramref name="accountPathHash"/> for the account trie; non-null for a
+    /// specific contract's storage trie.
+    /// </remarks>
+    /// </summary>
+    public static DecodedMultiProof ReadProofsFromBlinded(
+        ITrieNodeReader reader,
+        Hash256? accountPathHash,
+        List<BlindedProofTarget> blindedTargets)
+    {
+        DecodedMultiProof proof = new();
+        if (blindedTargets.Count == 0) return proof;
+
+        List<ProofNode> output;
+        if (accountPathHash is null)
+        {
+            output = proof.AccountNodes;
+            WalkBlindedGroups(new StateLoadRlp(reader), blindedTargets, output);
+        }
+        else
+        {
+            output = [];
+            WalkBlindedGroups(new StorageLoadRlp(reader, accountPathHash), blindedTargets, output);
+            if (output.Count > 0) proof.StorageNodes[accountPathHash] = output;
+        }
+        return proof;
+    }
+
+    private static void WalkBlindedGroups<T>(T loadRlp, List<BlindedProofTarget> blindedTargets, List<ProofNode> output)
+        where T : LoadRlpFunc
+    {
+        // Group by the blinded-RLP bytes so multiple targets sharing the same blinded subtrie
+        // require only one root load and one walk.
+        Dictionary<RlpBytesKey, List<BlindedProofTarget>> groups = [];
+        foreach (BlindedProofTarget target in blindedTargets)
+        {
+            RlpBytesKey key = new(target.BlindedRlp.AsSpan().ToArray());
+            if (!groups.TryGetValue(key, out List<BlindedProofTarget>? bucket))
+            {
+                bucket = [];
+                groups[key] = bucket;
+            }
+            bucket.Add(target);
+        }
+
+        foreach (KeyValuePair<RlpBytesKey, List<BlindedProofTarget>> grp in groups)
+        {
+            List<BlindedProofTarget> targets = grp.Value;
+            TreePath blindedPath = targets[0].BlindedPath;
+            RlpNode blindedRlp = targets[0].BlindedRlp;
+
+            // Resolve the blinded subtrie root: load from DB if it's a hash reference,
+            // decode inline RLP directly otherwise.
+            byte[] rootRlpBytes;
+            if (blindedRlp.IsHash())
+            {
+                rootRlpBytes = loadRlp.Load(blindedPath, blindedRlp.AsHash(), ReadFlags.None);
+            }
+            else
+            {
+                rootRlpBytes = blindedRlp.AsSpan().ToArray();
+            }
+            ProofNode rootProof = DecodeProofNode(rootRlpBytes, blindedPath);
+            output.Add(rootProof);
+
+            int startDepth = blindedPath.Length;
+            byte[][] sortedTargets = new byte[targets.Count][];
+            for (int i = 0; i < targets.Count; i++) sortedTargets[i] = targets[i].TargetNibbles;
+            Array.Sort(sortedTargets, NibbleCompare);
+
+            // All targets in this group want nodes at depth >= startDepth + 1.
+            byte[] minLens = new byte[sortedTargets.Length];
+            byte boundaryDepth = (byte)Math.Min(startDepth + 1, byte.MaxValue);
+            for (int i = 0; i < minLens.Length; i++) minLens[i] = boundaryDepth;
+
+            WalkNode(loadRlp, rootProof, blindedPath, sortedTargets, minLens,
+                0, sortedTargets.Length, startDepth, output);
+        }
+    }
+
+    private static int NibbleCompare(byte[] a, byte[] b)
+    {
+        int n = Math.Min(a.Length, b.Length);
+        for (int i = 0; i < n; i++)
+        {
+            int c = a[i] - b[i];
+            if (c != 0) return c;
+        }
+        return a.Length - b.Length;
+    }
+
+    /// <summary>
+    /// Wrapper that gives byte[] structural equality for use as a Dictionary key.
+    /// Used to coalesce blinded targets sharing the same RLP (hash or inline).
+    /// </summary>
+    private readonly struct RlpBytesKey(byte[] bytes) : IEquatable<RlpBytesKey>
+    {
+        private readonly byte[] _bytes = bytes;
+        public bool Equals(RlpBytesKey other) => _bytes.AsSpan().SequenceEqual(other._bytes);
+        public override bool Equals(object? obj) => obj is RlpBytesKey k && Equals(k);
+        public override int GetHashCode()
+        {
+            // FNV-1a 32-bit; good enough for proof-batch coalescing dictionaries.
+            uint h = 2166136261u;
+            foreach (byte b in _bytes) { h ^= b; h *= 16777619u; }
+            return (int)h;
+        }
+    }
+
     public static DecodedMultiProof ReadStorageProofs(
         ITrieNodeReader reader, Hash256 accountPathHash, Hash256 storageRoot, Hash256[] hashedSlots)
         => ReadStorageProofs(reader, accountPathHash, storageRoot, hashedSlots, null);

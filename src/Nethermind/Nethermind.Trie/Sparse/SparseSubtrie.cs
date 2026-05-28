@@ -660,6 +660,85 @@ public sealed class SparseSubtrie : IDisposable
     /// needed when a deletion would collapse the parent and we need the sibling's content.
     /// Returns false if no such blinded sibling exists or path can't be walked.
     /// </summary>
+    /// <summary>
+    /// Walks the subtrie along <paramref name="targetNibbles"/> until it hits a blinded boundary
+    /// (either a blinded branch child on the target's nibble or an extension-only branch whose
+    /// inner branch hasn't been revealed). Returns the blinded RLP and where it sits so the proof
+    /// reader can start from there instead of re-walking from root.
+    /// </summary>
+    /// <param name="targetNibbles">The full hashed key as nibbles.</param>
+    /// <param name="blindedPath">Path from root to the blinded node.</param>
+    /// <param name="blindedRlp">The blinded child's stored RLP (32-byte hash or inline).</param>
+    /// <param name="remainingNibbleLen">How many nibbles of <paramref name="targetNibbles"/> remain past the blinded boundary.</param>
+    /// <returns>True if a blinded boundary was found on the target's path; false if the path is fully revealed (no proof needed) or diverges.</returns>
+    public bool TryFindBlindedEntryOnPath(
+        ReadOnlySpan<byte> targetNibbles,
+        out TreePath blindedPath,
+        out RlpNode blindedRlp,
+        out int remainingNibbleLen)
+    {
+        blindedPath = default;
+        blindedRlp = default;
+        remainingNibbleLen = 0;
+        if (Root < 0) return false;
+
+        TreePath currentPath = TreePath.Empty;
+        int nodeIdx = Root;
+        int nibblePos = 0;
+        int safety = 0;
+        while (safety++ < 128 && nibblePos < targetNibbles.Length)
+        {
+            ref SparseTrieNode node = ref _arena[nodeIdx];
+            if (!node.IsBranch())
+            {
+                // Hit a leaf — no blinded boundary on this path.
+                return false;
+            }
+
+            byte[] shortKey = node.ShortKey ?? [];
+            if (shortKey.Length > 0)
+            {
+                int sharedLen = 0;
+                int limit = Math.Min(shortKey.Length, targetNibbles.Length - nibblePos);
+                while (sharedLen < limit && targetNibbles[nibblePos + sharedLen] == shortKey[sharedLen]) sharedLen++;
+                if (sharedLen < shortKey.Length) return false; // path diverges within shortKey
+                currentPath = currentPath.Append(shortKey);
+                nibblePos += shortKey.Length;
+            }
+
+            // Extension-only state: BranchWithExtension whose inner branch is unrevealed.
+            // The whole node is effectively blinded for descent purposes — but the inner-branch
+            // hash lives in the cached RLP. Treat the current node as the blinded boundary.
+            if (node.StateMask == TrieMask.Empty)
+            {
+                blindedPath = currentPath;
+                blindedRlp = node.CachedRlp;
+                remainingNibbleLen = targetNibbles.Length - nibblePos;
+                return true;
+            }
+
+            if (nibblePos >= targetNibbles.Length) return false;
+            byte targetNibble = targetNibbles[nibblePos];
+            if (!node.StateMask.IsBitSet(targetNibble)) return false; // empty slot, absence
+
+            int denseIdx = node.DenseChildIndex(targetNibble);
+            SparseChildEntry childEntry = _children[denseIdx];
+
+            if (childEntry.IsBlinded)
+            {
+                blindedPath = currentPath.Append(targetNibble);
+                blindedRlp = childEntry.BlindedRlp;
+                remainingNibbleLen = targetNibbles.Length - nibblePos - 1;
+                return true;
+            }
+
+            currentPath = currentPath.Append(targetNibble);
+            nodeIdx = childEntry.ArenaIndex;
+            nibblePos++;
+        }
+        return false;
+    }
+
     public bool TryFindBlindedSiblingForDeletion(
         ReadOnlySpan<byte> targetNibbles,
         out TreePath siblingPath,

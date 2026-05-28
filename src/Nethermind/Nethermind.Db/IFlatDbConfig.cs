@@ -64,4 +64,18 @@ public interface IFlatDbConfig : IConfig
         "UseSparseRootComputation=true and SparseTrieVerificationMode=false. " +
         "Recommended only after extensive verification-mode validation.", DefaultValue = "false")]
     bool SparseTrieSkipPatricia { get; set; }
+
+    [ConfigItem(Description = "Selects which trie warmer implementation runs during execution. " +
+        "'Legacy' (default) uses the Patricia-walking TrieWarmer which warms DB pages via real trie traversals. " +
+        "'SparseProof' uses the sparse-aware proof prefetcher that hits only the paths the sparse trie will need. " +
+        "'None' disables warming entirely. Only meaningful when UseSparseRootComputation=true.",
+        DefaultValue = "Legacy")]
+    SparseTrieWarmerVariant SparseTrieWarmer { get; set; }
+}
+
+public enum SparseTrieWarmerVariant
+{
+    Legacy,
+    SparseProof,
+    None,
 }

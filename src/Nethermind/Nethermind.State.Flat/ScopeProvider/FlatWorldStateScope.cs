@@ -38,6 +38,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     /// </summary>
     internal SparseRootComputer? SparseRootComputerInternal => _sparseRootComputer;
 
+    /// <summary>Exposes the proof reader so storage trees can issue sparse-aware warmup reads.</summary>
+    internal ParentStateTrieNodeReader? SparseProofReader => _proofReader;
+
     /// <summary>
     /// True when sparse storage roots should replace Patricia's: sparse trie is
     /// authoritative for accounts AND SkipPatricia is configured AND not in verification mode.
@@ -49,6 +52,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private SparseStateTrie? _sparseStateTrie;
     private Hash256? _sparseComputedRoot;
     private bool _sparseIsAuthoritative;
+    // Stored for the SparseProof warmer variant: ReadAccountProofs needs both.
+    private ParentStateTrieNodeReader? _proofReader;
+    private Hash256? _prevStateRoot;
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -105,6 +111,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             Hash256 prevRoot = currentStateId.StateRoot.ToCommitment();
             ParentStateTrieNodeReader proofReader = new(snapshotBundle);
+            _proofReader = proofReader;
+            _prevStateRoot = prevRoot;
 
             // M3: cross-block sparse trie reuse via PreservedSparseTrie. Combined with
             // dirty-path-only HashNode and minLen-aware proof reading, the next block
@@ -294,7 +302,23 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         try
         {
             if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
-            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+
+            // Variant selection: legacy walks Patricia (also warms transient cache via the
+            // adapter); SparseProof issues a sparse-style proof read that warms the same DB
+            // pages sparse will read later. None is gated at DI by NoopTrieWarmer.
+            if (_configuration.SparseTrieWarmer == SparseTrieWarmerVariant.SparseProof
+                && _proofReader is not null && _prevStateRoot is not null)
+            {
+                // Discard result — purpose is RocksDB/OS page-cache warming for paths the
+                // sparse trie will hit during ComputeStateRoot. ReadAccountProofs from a single
+                // target walks the same subtrie sparse will request.
+                _ = Nethermind.Trie.Sparse.MultiProofReader.ReadAccountProofs(
+                    _proofReader, _prevStateRoot, [Keccak.Compute(address.Bytes)]);
+            }
+            else
+            {
+                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+            }
             return true;
         }
         finally
@@ -342,6 +366,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 SparseStateTrie trie = _sparseRootComputer.Trie;
                 SparseTrieSnapshotCommitter.CommitAccountTrie(trie.AccountTrie.Subtrie, _snapshotBundle);
+
+                // P1: persist sparse storage trie nodes. Without this, block N's sparse storage
+                // roots reference nodes that exist only in memory; block N+1's proof reader hits
+                // the DB for those paths and finds nothing. CommitStorageTrie skips clean subtrees
+                // (FullRlp null) so it's cheap when nothing changed.
+                foreach (KeyValuePair<Hash256, SparsePatriciaTree> kvp in trie.StorageTries)
+                {
+                    SparseTrieSnapshotCommitter.CommitStorageTrie(kvp.Value.Subtrie, _snapshotBundle, kvp.Key);
+                }
                 usedSparseCommit = true;
             }
             catch (Exception ex)
