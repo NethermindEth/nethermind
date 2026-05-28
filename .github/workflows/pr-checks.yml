@@ -102,11 +102,16 @@ jobs:
           }
           PROJECT_RE = re.compile(r'\A[A-Za-z][A-Za-z0-9_.]{0,127}\Z')
 
-          files = subprocess.check_output(
-              ['gh', 'api', f"repos/{os.environ['REPO']}/pulls/{os.environ['PR']}/files",
-               '--paginate', '--jq', '.[].filename'],
-              text=True,
-          ).strip().splitlines()
+          try:
+              files = subprocess.check_output(
+                  ['gh', 'api', f"repos/{os.environ['REPO']}/pulls/{os.environ['PR']}/files",
+                   '--paginate', '--jq', '.[].filename'],
+                  text=True,
+              ).strip().splitlines()
+          except subprocess.CalledProcessError as e:
+              print(f'::warning::gh api failed enumerating PR files: {e}. Falling back to full matrix.', flush=True)
+              files = []
+              fallback_full = True
 
           labels = set(json.loads(os.environ.get('LABELS_JSON') or 'null') or [])
 
@@ -181,8 +186,8 @@ jobs:
           deep_ci = 'deep-ci' in labels
           needs_variants = 'needs-variants' in labels
 
-          docs_only = bool(files) and all(matches_any(f, docs_only_paths) for f in files)
-          run_full = deep_ci or any(matches_any(f, full_matrix_paths) for f in files)
+          docs_only = (not fallback_full) and bool(files) and all(matches_any(f, docs_only_paths) for f in files)
+          run_full = fallback_full or deep_ci or any(matches_any(f, full_matrix_paths) for f in files)
 
           selected_projects = set(baseline_projects)
           variants = set()

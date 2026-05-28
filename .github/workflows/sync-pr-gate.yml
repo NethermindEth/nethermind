@@ -175,4 +175,4 @@ jobs:
         run: |
           docker compose down -v --remove-orphans || true
           rm -rf execution-data || true
-          docker system prune -f --volumes || true
+          docker system prune -f || true

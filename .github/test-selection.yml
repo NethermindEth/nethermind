@@ -40,9 +40,6 @@ rules:
   - paths: ['src/Nethermind/Nethermind.Abi/**']
     projects: [Nethermind.Abi.Test, Ethereum.Abi.Test]
 
-  - paths: ['src/Nethermind/Nethermind.Analyzers/**']
-    projects: [Nethermind.Abi.Test]  # analyzers run during build of every test project
-
   - paths: ['src/Nethermind/Nethermind.Api/**']
     projects: [Nethermind.Api.Test, Nethermind.Runner.Test]
 
@@ -314,6 +311,7 @@ full_matrix_paths:
   - 'src/Nethermind/Nethermind.Runner/**'
   - 'src/Nethermind/Nethermind.Init/**'
   - 'src/Nethermind/Nethermind.Init.Snapshot/**'
+  - 'src/Nethermind/Nethermind.Analyzers/**'
   - 'src/Nethermind/Ethereum.Test.Base/**'
   - '.github/workflows/pr-checks.yml'
   - '.github/workflows/build-solutions.yml'
