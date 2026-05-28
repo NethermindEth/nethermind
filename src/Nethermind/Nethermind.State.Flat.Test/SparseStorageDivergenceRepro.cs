@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -158,6 +159,97 @@ public class SparseStorageDivergenceRepro
         byte[] b = new byte[len];
         rng.NextBytes(b);
         return b;
+    }
+
+    /// <summary>
+    /// Hypothesis test: is sparse storage UpdateLeaves order-dependent? Apply the same 30
+    /// updates in 5 different shuffled orders and assert the resulting root is identical.
+    /// If sparse is canonical (as it should be), all 5 roots match. If a specific ordering
+    /// produces a different root, we have an order-dependency bug.
+    /// </summary>
+    [Test]
+    public void Sparse_UpdateOrder_MustBeCanonical()
+    {
+        MemDb db = new();
+        Hash256 accountPathHash = TestItem.AddressA.ToAccountPath.ToHash256();
+        StorageTree storage = new(new RawTrieStore(db).GetTrieStore(accountPathHash), LimboLogs.Instance);
+
+        // Seed with 1000 random slots to give complex structure
+        Random rng = new(42);
+        for (int i = 0; i < 1000; i++)
+        {
+            byte[] keyBytes = new byte[32];
+            rng.NextBytes(keyBytes);
+            UInt256 seedSlot = new(keyBytes);
+            byte[] seedValue = SeededBytes(rng, 4);
+            storage.Set(seedSlot, seedValue);
+        }
+        storage.UpdateRootHash();
+        storage.Commit();
+        Hash256 seedRoot = storage.RootHash;
+
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+
+        Hash256? firstRoot = null;
+
+        // Try 5 different orderings of the 30 USDT updates
+        for (int shuffleSeed = 100; shuffleSeed < 105; shuffleSeed++)
+        {
+            (UInt256, byte[])[] shuffled = (((UInt256 Slot, byte[] Value)[])UsdtUpdates.Clone())
+                .Select(t => (t.Slot, t.Value))
+                .ToArray();
+            Random shuffleRng = new(shuffleSeed);
+            for (int i = shuffled.Length - 1; i > 0; i--)
+            {
+                int j = shuffleRng.Next(i + 1);
+                (shuffled[i], shuffled[j]) = (shuffled[j], shuffled[i]);
+            }
+
+            using SparsePatriciaTree sparse = new();
+
+            ValueHash256 firstKeyBuf = default;
+            StorageTree.ComputeKeyWithLookup(shuffled[0].Item1, ref firstKeyBuf);
+            DecodedMultiProof seedProof = MultiProofReader.ReadStorageProofs(
+                reader, accountPathHash, seedRoot, [firstKeyBuf.ToCommitment()]);
+            if (seedProof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? seedNodes))
+                sparse.RevealNodes(seedNodes);
+
+            Dictionary<Hash256, LeafUpdate> updates = [];
+            ValueHash256 keyBuf = default;
+            foreach ((UInt256 slot, byte[] value) in shuffled)
+            {
+                StorageTree.ComputeKeyWithLookup(slot, ref keyBuf);
+                Hash256 slotHash = keyBuf.ToCommitment();
+                if (value.AsSpan().IndexOfAnyExcept((byte)0) < 0)
+                {
+                    updates[slotHash] = LeafUpdate.Deleted();
+                }
+                else
+                {
+                    Rlp rlpEncoded = Rlp.Encode(value);
+                    byte[]? encoded = rlpEncoded?.Bytes;
+                    updates[slotHash] = encoded is null || encoded.Length == 0
+                        ? LeafUpdate.Deleted()
+                        : LeafUpdate.Changed(encoded);
+                }
+            }
+
+            for (int retry = 0; retry < 10; retry++)
+            {
+                List<Hash256> targets = [];
+                sparse.UpdateLeaves(updates, (key, _) => targets.Add(key));
+                if (targets.Count == 0) break;
+                DecodedMultiProof proof = MultiProofReader.ReadStorageProofs(
+                    reader, accountPathHash, seedRoot, targets.ToArray());
+                if (proof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? nodes))
+                    sparse.RevealNodes(nodes);
+            }
+
+            Hash256 sparseRoot = sparse.ComputeRoot();
+            if (firstRoot is null) firstRoot = sparseRoot;
+            else sparseRoot.Should().Be(firstRoot,
+                $"shuffleSeed={shuffleSeed}: sparse root must be order-independent");
+        }
     }
 
     /// <summary>
