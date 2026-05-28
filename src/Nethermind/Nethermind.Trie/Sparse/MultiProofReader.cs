@@ -86,12 +86,15 @@ public static class MultiProofReader
     private static void WalkBlindedGroups<T>(T loadRlp, List<BlindedProofTarget> blindedTargets, List<ProofNode> output)
         where T : LoadRlpFunc
     {
-        // Group by the blinded-RLP bytes so multiple targets sharing the same blinded subtrie
-        // require only one root load and one walk.
-        Dictionary<RlpBytesKey, List<BlindedProofTarget>> groups = [];
+        // Group by (blindedPath, blindedRlp) — coalesce only when BOTH match. Earlier versions
+        // keyed by RLP bytes alone, which would merge two distinct blinded boundaries that
+        // happened to share the same subtrie content (e.g., empty/canonical subtries, or two
+        // contracts with identical storage). The walker then emitted the proof at one path
+        // only, leaving the other position un-revealed and producing a wrong root.
+        Dictionary<(TreePath, RlpBytesKey), List<BlindedProofTarget>> groups = [];
         foreach (BlindedProofTarget target in blindedTargets)
         {
-            RlpBytesKey key = new(target.BlindedRlp.AsSpan().ToArray());
+            (TreePath, RlpBytesKey) key = (target.BlindedPath, new RlpBytesKey(target.BlindedRlp.AsSpan().ToArray()));
             if (!groups.TryGetValue(key, out List<BlindedProofTarget>? bucket))
             {
                 bucket = [];
@@ -100,7 +103,7 @@ public static class MultiProofReader
             bucket.Add(target);
         }
 
-        foreach (KeyValuePair<RlpBytesKey, List<BlindedProofTarget>> grp in groups)
+        foreach (KeyValuePair<(TreePath, RlpBytesKey), List<BlindedProofTarget>> grp in groups)
         {
             List<BlindedProofTarget> targets = grp.Value;
             TreePath blindedPath = targets[0].BlindedPath;
