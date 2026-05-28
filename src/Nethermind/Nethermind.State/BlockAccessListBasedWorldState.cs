@@ -316,6 +316,12 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public void CreateEmptyAccountIfDeleted(Address address)
         => _innerWorldState.CreateEmptyAccountIfDeleted(address);
 
+    public void RecordAccountAccess(Address address)
+        => _innerWorldState.RecordAccountAccess(address);
+
+    public void RecordBytecodeAccess(Address address)
+        => _innerWorldState.RecordBytecodeAccess(address);
+
     private void CheckInitialized()
     {
         if (_suggestedBlockAccessList is null)

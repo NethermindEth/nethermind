@@ -47,15 +47,16 @@ public class BlockAccessListManager(
     IWithdrawalProcessorFactory withdrawalProcessorFactory,
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
-    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
+    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
+    bool witnessMode = false)
     : IBlockAccessListManager, IDisposable
 {
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, witnessMode));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, witnessMode));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
@@ -67,6 +68,7 @@ public class BlockAccessListManager(
     private int _generatedChargeableStorageReads;
     private bool _hasGeneratedValidationIndexUpdates;
     private bool _hasGeneratedRequiredReadAccountMismatch;
+    private bool _witnessMode = witnessMode;
 
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(
@@ -742,6 +744,7 @@ public class BlockAccessListManager(
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
         private int _processorCount;
         private BlockHeader? _parentStateHeader;
+        private bool _witnessMode;
 
         public ParallelTxProcessorWithWorldStateManager(
             IBlockhashProvider blockHashProvider,
@@ -750,12 +753,14 @@ public class BlockAccessListManager(
             ILogManager logManager,
             PrewarmerEnvFactory? prewarmerEnvFactory,
             PreBlockCaches? preBlockCaches,
-            IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory)
+            IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory,
+            bool witnessMode)
         {
             _blockHashProvider = blockHashProvider;
             _specProvider = specProvider;
             _stateProvider = stateProvider;
             _logManager = logManager;
+            _witnessMode = witnessMode;
             _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);
             for (int i = 0; i < ProcessorPoolSize; i++)
             {
@@ -871,7 +876,7 @@ public class BlockAccessListManager(
             => uint.Min(balIndex, _lastBalIndex);
 
         private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager);
+            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _witnessMode);
 
         private ParentReaderLease? RentParentReader()
         {
@@ -989,9 +994,10 @@ public class BlockAccessListManager(
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,
             IWorldState stateProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            bool witnessMode)
         {
-            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager);
+            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, witnessMode);
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
@@ -1035,7 +1041,8 @@ public class BlockAccessListManager(
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,
             IWorldState stateProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            bool witnessMode)
         {
 
             VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -1046,7 +1053,9 @@ public class BlockAccessListManager(
                 worldState = _balWorldState;
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
-            EthereumCodeInfoRepository codeInfoRepository = new(WorldState);
+            ICodeInfoRepository codeInfoRepository = witnessMode
+                ? new CodeInfoRepository(WorldState, new EthereumPrecompileProvider())
+                : new EthereumCodeInfoRepository(WorldState);
             TxProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
             TxProcessorAdapter = new(TxProcessor);
         }

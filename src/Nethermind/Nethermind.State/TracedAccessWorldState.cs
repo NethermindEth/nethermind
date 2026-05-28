@@ -191,6 +191,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         }
     }
 
+    public void RecordAccountAccess(Address address)
+        => _innerWorldState.RecordAccountAccess(address);
+
+    public void RecordBytecodeAccess(Address address)
+        => _innerWorldState.RecordBytecodeAccess(address);
+
     public void SetIndex(uint index)
         => _generatingBlockAccessList.Index = index;
 

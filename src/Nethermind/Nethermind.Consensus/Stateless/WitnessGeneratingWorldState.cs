@@ -22,11 +22,9 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder) : IWorldState
+public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessCapturingCodeDb codeDb, WitnessGeneratingHeaderFinder headerFinder) : IWorldState
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
-
-    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new();
 
     public Witness GetWitness(BlockHeader parentHeader)
     {
@@ -71,8 +69,8 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
             stateNodes.AddRange(storageProof.SelectMany(p => p));
         }
 
-        ArrayPoolList<byte[]> codes = new(_bytecodes.Count);
-        foreach (byte[] code in _bytecodes.Values)
+        ArrayPoolList<byte[]> codes = new(codeDb.Count);
+        foreach (byte[] code in codeDb.CapturedCodes)
             codes.Add(code);
 
         ArrayPoolList<byte[]> state = new(stateNodes.Count);
@@ -126,14 +124,14 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     {
         RecordEmptySlots(address);
         byte[] code = inner.GetCode(address);
-        RecordBytecode(code);
+        Nethermind.Core.WitDebug.Log($"WitnessGeneratingWorldState.GetCode(addr={address}) -> {(code?.Length ?? -1)} bytes");
         return code;
     }
 
     public byte[]? GetCode(in ValueHash256 codeHash)
     {
         byte[] code = inner.GetCode(in codeHash);
-        RecordBytecode(code);
+        Nethermind.Core.WitDebug.Log($"WitnessGeneratingWorldState.GetCode(hash={codeHash}) -> {(code?.Length ?? -1)} bytes");
         return code;
     }
 
@@ -164,7 +162,8 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     public ValueHash256 GetCodeHash(Address address)
     {
         RecordEmptySlots(address);
-        return inner.GetCodeHash(address);
+        ValueHash256 hash = inner.GetCodeHash(address);
+        return hash;
     }
 
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
@@ -295,6 +294,17 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         inner.CreateEmptyAccountIfDeleted(address);
     }
 
+    public void RecordAccountAccess(Address address)
+        => RecordEmptySlots(address);
+
+    public void RecordBytecodeAccess(Address address)
+    {
+        ValueHash256 codeHash = GetCodeHash(address);
+        if (codeHash == ValueKeccak.OfAnEmptyString) return;
+        // Force the code load so the wrapped codeDb captures it
+        _ = GetCode(in codeHash);
+    }
+
     private void RecordSlot(in StorageCell storageCell) => RecordEmptySlots(storageCell.Address).Add(storageCell.Index);
 
     private HashSet<UInt256> RecordEmptySlots(Address address)
@@ -302,15 +312,5 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         ref HashSet<UInt256>? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, address, out _);
         slot ??= new HashSet<UInt256>();
         return slot;
-    }
-
-    private void RecordBytecode(byte[]? code)
-    {
-        // Unnecessary to record empty code
-        if (code?.Length > 0)
-        {
-            Hash256 codeHash = Keccak.Compute(code);
-            _bytecodes.TryAdd(codeHash, code);
-        }
     }
 }
