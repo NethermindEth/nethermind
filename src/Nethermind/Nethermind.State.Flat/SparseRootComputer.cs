@@ -83,25 +83,20 @@ public sealed class SparseRootComputer : IDisposable
             if (retry == MaxRetries - 1)
                 throw new TrieException($"Sparse trie storage retry loop exceeded {MaxRetries} iterations for account {accountPathHash}. {targets.Count} blinded targets remain.");
 
-            // P0: same blinded-boundary optimization as the account loop. Look up each target's
-            // blinded entry in the per-contract sparse storage trie; read from THAT subtrie.
-            List<MultiProofReader.BlindedProofTarget> blinded = [];
-            foreach ((Hash256 key, byte _) in targets)
+            // ISOLATION: temporarily reverted to the old root-walking proof reader so we can
+            // bisect whether ReadProofsFromBlinded is responsible for the InvalidStateRoot at the
+            // first authoritative block. minLens still serves as an output-filter (no I/O save).
+            Hash256[] tArr = new Hash256[targets.Count];
+            byte[] minLens = new byte[targets.Count];
+            for (int j = 0; j < targets.Count; j++)
             {
-                byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
-                if (storageTrie.Subtrie.TryFindBlindedEntryOnPath(
-                    nibbles, out TreePath bPath, out RlpNode bRlp, out int _))
-                {
-                    blinded.Add(new MultiProofReader.BlindedProofTarget(bPath, bRlp, nibbles));
-                }
+                tArr[j] = targets[j].key;
+                minLens[j] = targets[j].minLen;
             }
-            if (blinded.Count > 0)
-            {
-                DecodedMultiProof proof = MultiProofReader.ReadProofsFromBlinded(
-                    _reader, accountPathHash, blinded);
-                if (proof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? nodes))
-                    storageTrie.RevealNodes(nodes);
-            }
+            DecodedMultiProof proof = MultiProofReader.ReadStorageProofs(
+                _reader, accountPathHash, entry.PreviousStorageRoot, tArr, minLens);
+            if (proof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? nodes))
+                storageTrie.RevealNodes(nodes);
         }
 
         return _trie.ComputeStorageRoot(accountPathHash);
@@ -188,34 +183,24 @@ public sealed class SparseRootComputer : IDisposable
                     $"{targets.Count} blinded targets remain. firstTarget={firstTarget}, " +
                     $"prevRoot={_previousStateRoot}, totalChanges={_accountChanges.Count}");
 
-            // P0: real minLen optimization. For each target, look up the blinded subtrie boundary
-            // already known by the sparse trie. The proof reader then starts from that subtrie's
-            // hash (or decodes its inline RLP) — ONE DB load per blinded subtrie, not a root-to-leaf
-            // walk. Multiple targets sharing the same blinded subtrie are coalesced inside
-            // ReadProofsFromBlinded.
-            List<MultiProofReader.BlindedProofTarget> blinded = [];
-            foreach ((Hash256 key, byte _) in targets)
+            // ISOLATION: reverted to root-walking proof reader to bisect whether
+            // ReadProofsFromBlinded is the source of the wrong-root failure.
+            Hash256[] tArr = new Hash256[targets.Count];
+            byte[] minLens = new byte[targets.Count];
+            for (int i = 0; i < targets.Count; i++)
             {
-                byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
-                if (_trie.AccountTrie.Subtrie.TryFindBlindedEntryOnPath(
-                    nibbles, out TreePath bPath, out RlpNode bRlp, out int _))
-                {
-                    blinded.Add(new MultiProofReader.BlindedProofTarget(bPath, bRlp, nibbles));
-                }
+                tArr[i] = targets[i].key;
+                minLens[i] = targets[i].minLen;
             }
-            if (blinded.Count > 0)
-            {
-                long tRead = System.Diagnostics.Stopwatch.GetTimestamp();
-                DecodedMultiProof proof = MultiProofReader.ReadProofsFromBlinded(
-                    _reader, accountPathHash: null, blinded);
-                long tReveal = System.Diagnostics.Stopwatch.GetTimestamp();
-                _trie.AccountTrie.RevealNodes(proof.AccountNodes);
-                long tDone = System.Diagnostics.Stopwatch.GetTimestamp();
-
-                LastProofReadMs += (tReveal - tRead) * 1000 / System.Diagnostics.Stopwatch.Frequency;
-                LastRevealMs += (tDone - tReveal) * 1000 / System.Diagnostics.Stopwatch.Frequency;
-                LastProofNodeCount += proof.AccountNodes.Count;
-            }
+            long tRead = System.Diagnostics.Stopwatch.GetTimestamp();
+            DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
+                _reader, _previousStateRoot, tArr, minLens);
+            long tReveal = System.Diagnostics.Stopwatch.GetTimestamp();
+            _trie.AccountTrie.RevealNodes(proof.AccountNodes);
+            long tDone = System.Diagnostics.Stopwatch.GetTimestamp();
+            LastProofReadMs += (tReveal - tRead) * 1000 / System.Diagnostics.Stopwatch.Frequency;
+            LastRevealMs += (tDone - tReveal) * 1000 / System.Diagnostics.Stopwatch.Frequency;
+            LastProofNodeCount += proof.AccountNodes.Count;
         }
 
         LastUpdateLeavesMs = updateMsAccum;
