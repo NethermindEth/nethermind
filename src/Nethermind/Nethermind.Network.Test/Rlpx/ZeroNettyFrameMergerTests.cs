@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
@@ -178,6 +179,62 @@ public class ZeroNettyFrameMergerTests
         finally
         {
             output?.Release();
+        }
+    }
+
+    [Test]
+    public void Throws_on_continuation_frame_with_no_in_progress_packet()
+    {
+        ZeroFrameMergerTestWrapper wrapper = new();
+
+        using DisposableByteBuffer firstPacket = BuildFrames(3).AsDisposable();
+        ZeroPacket completed = null;
+        try
+        {
+            completed = wrapper.Decode(firstPacket);
+            Assert.That(completed, Is.Not.Null);
+
+            using DisposableByteBuffer orphanSource = BuildFrames(3).AsDisposable();
+            const int continuationOffset = Frame.HeaderSize + Frame.DefaultMaxFrameSize;
+            using DisposableByteBuffer orphanFrame = PooledByteBufferAllocator.Default.Buffer(continuationOffset).AsDisposable();
+            orphanFrame.WriteBytes(orphanSource, continuationOffset, continuationOffset);
+
+            Assert.That(() => wrapper.Decode(orphanFrame),
+                Throws.InstanceOf<CorruptedFrameException>(),
+                "continuation frame without an in-progress packet must be rejected");
+        }
+        finally
+        {
+            completed?.Release();
+        }
+    }
+
+    [Test]
+    public void Throws_and_recovers_when_new_first_chunk_arrives_before_previous_completes()
+    {
+        const int firstFrameLength = Frame.HeaderSize + Frame.DefaultMaxFrameSize;
+
+        using DisposableByteBuffer packetA = BuildFrames(3).AsDisposable();
+        using DisposableByteBuffer packetB = BuildFrames(3).AsDisposable();
+        using DisposableByteBuffer interleaved = PooledByteBufferAllocator.Default.Buffer(firstFrameLength * 2).AsDisposable();
+        interleaved.WriteBytes(packetA, 0, firstFrameLength);
+        interleaved.WriteBytes(packetB, 0, firstFrameLength);
+
+        ZeroFrameMergerTestWrapper wrapper = new();
+
+        Assert.That(() => wrapper.Decode(interleaved),
+            Throws.InstanceOf<CorruptedFrameException>(),
+            "a new first chunk arriving mid-packet must be rejected");
+
+        using DisposableByteBuffer recoveryInput = BuildFrames(1).AsDisposable();
+        ZeroPacket recovered = wrapper.Decode(recoveryInput);
+        try
+        {
+            Assert.That(recovered, Is.Not.Null, "merger must accept a fresh packet after recovery from the throw");
+        }
+        finally
+        {
+            recovered?.Release();
         }
     }
 }
