@@ -235,6 +235,34 @@ public class HistoryPrunerTests
         CheckHeadPreserved(testBlockchain, blocks);
     }
 
+    [Test]
+    public async Task Rolling_mode_with_retention_larger_than_chain_age_does_not_prune()
+    {
+        // 5 epochs × 32 slots = 160 blocks of retention, larger than the chain (50 blocks).
+        // CalculateRollingCutoff clamps a would-be-negative cutoff to 0 → nothing should be pruned.
+        const int blocks = 50;
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 5,
+            PruningInterval = 0
+        };
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, blockHashes: blockHashes);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        CheckGenesisPreserved(testBlockchain, blockHashes[0]);
+        for (int i = 1; i <= blocks; i++)
+        {
+            CheckBlockPreserved(testBlockchain, blockHashes, i);
+        }
+        CheckHeadPreserved(testBlockchain, blocks);
+        CheckOldestAndCutoff(oldest: 1, cutoff: 0, historyPruner);
+    }
+
     [TestCase(0, 100000u, 0L, 3533u, false)]
     [TestCase(100, 10u, 0L, 3533u, true)]      // block retention below min
     [TestCase(0, 100000u, 3533L, 3000u, true)] // BAL retention below min
