@@ -259,7 +259,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
             if (!_wasSetCalled)
             {
-                _storageTree._tree.RootHash = Keccak.EmptyTreeHash;
+                _storageTree._tree.SetRootHash(Keccak.EmptyTreeHash, resetObjects: false);
                 _onRootUpdated(_storageTree._address, Keccak.EmptyTreeHash);
                 return;
             }
@@ -269,7 +269,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
             // Keep FlatStorageTree.RootHash in sync so subsequent same-block reads via Get
             // (and the eventual account encoding) see the post-batch root.
-            _storageTree._tree.RootHash = newRoot;
+            // Use SetRootHash(false) to skip RootRef re-lookup. The property setter calls
+            // SetRootHash(true), which hits StorageTrieStoreAdapter.FindCachedOrUnknown and
+            // throws NodeHashMismatchException when the transient cache has a stale entry
+            // at (address, EmptyPath). In sparse-authoritative mode Patricia's RootRef is
+            // unused so we don't need to keep it in sync.
+            _storageTree._tree.SetRootHash(newRoot, resetObjects: false);
             _onRootUpdated(_storageTree._address, newRoot);
         }
     }
