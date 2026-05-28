@@ -40,13 +40,21 @@ public static class MultiProofReader
 
     public static DecodedMultiProof ReadStorageProofs(
         ITrieNodeReader reader, Hash256 accountPathHash, Hash256 storageRoot, Hash256[] hashedSlots)
+        => ReadStorageProofs(reader, accountPathHash, storageRoot, hashedSlots, null);
+
+    /// <summary>
+    /// Reads storage multi-proofs with optional per-target minLen filtering, matching the
+    /// account proof reader. Use null minLens to fetch full root-to-leaf proofs.
+    /// </summary>
+    public static DecodedMultiProof ReadStorageProofs(
+        ITrieNodeReader reader, Hash256 accountPathHash, Hash256 storageRoot, Hash256[] hashedSlots, byte[]? minLens)
     {
         DecodedMultiProof proof = new();
         if (storageRoot == Keccak.EmptyTreeHash || hashedSlots.Length == 0)
             return proof;
 
         List<ProofNode> storageNodes = [];
-        (byte[][] targets, byte[] sortedMinLens) = SortTargetsWithMinLen(hashedSlots, null);
+        (byte[][] targets, byte[] sortedMinLens) = SortTargetsWithMinLen(hashedSlots, minLens);
         LoadRlpFunc loadRlp = new StorageLoadRlp(reader, accountPathHash);
         WalkTrie(loadRlp, storageRoot, targets, sortedMinLens, storageNodes);
 

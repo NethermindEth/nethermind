@@ -38,6 +38,16 @@ public sealed class SparseTrieTask(
     private readonly Dictionary<Hash256, Dictionary<Hash256, LeafUpdate>> _storageAccumulator = [];
     private readonly Dictionary<Hash256, Hash256> _prevStorageRoots = [];
 
+    /// <summary>
+    /// Computed new storage roots per contract. Caller must merge these into account updates
+    /// (by reading existing account, calling WithChangedStorageRoot, re-encoding as LeafUpdate)
+    /// because re-encoding requires Account fields not present on this side.
+    /// </summary>
+    private readonly Dictionary<Hash256, Hash256> _accountStorageRootOverride = [];
+
+    /// <summary>Exposes the computed storage root overrides for the caller to merge into account updates.</summary>
+    public IReadOnlyDictionary<Hash256, Hash256> AccountStorageRootOverrides => _accountStorageRootOverride;
+
     public Task<Hash256> RootTask => _rootResult.Task;
 
     public async Task RunAsync()
@@ -79,11 +89,33 @@ public sealed class SparseTrieTask(
                 if (finished) break;
             }
 
-            // Flush accumulated updates into the computer ONCE before computing root.
-            computer.SetAccountChanges(_accountAccumulator);
+            // Register storage changes, compute each contract's new storage root, and PROMOTE
+            // those storage roots into the account leaves (re-encode account RLP with the new
+            // storageRoot). Without this, storage-only changes can't affect the state root
+            // because ComputeStateRoot only looks at account updates.
             foreach (KeyValuePair<Hash256, Dictionary<Hash256, LeafUpdate>> kvp in _storageAccumulator)
                 computer.AddStorageChanges(kvp.Key, _prevStorageRoots[kvp.Key], kvp.Value);
 
+            foreach (KeyValuePair<Hash256, Dictionary<Hash256, LeafUpdate>> kvp in _storageAccumulator)
+            {
+                Hash256 newStorageRoot = computer.ComputeStorageRoot(kvp.Key);
+                // Promote: if the contract's account is in our account updates, re-encode with
+                // the new storageRoot. If it's NOT in account updates, we must fetch the account,
+                // update its storageRoot, and add it as an account update — otherwise storage-only
+                // changes are invisible to the state root.
+                if (_accountStorageRootOverride.TryGetValue(kvp.Key, out _))
+                    _accountStorageRootOverride[kvp.Key] = newStorageRoot;
+                else
+                    _accountStorageRootOverride.Add(kvp.Key, newStorageRoot);
+            }
+
+            // The caller must merge _accountStorageRootOverride into account updates before
+            // flushing. Most callers do this by reading the existing account, calling
+            // account.WithChangedStorageRoot(newStorageRoot), and writing it as a Changed update.
+            // We expose the overrides; we do NOT mutate account RLPs here because re-encoding
+            // requires knowledge of the full Account fields not present on this side.
+
+            computer.SetAccountChanges(_accountAccumulator);
             Hash256 root = computer.ComputeStateRoot();
             _rootResult.TrySetResult(root);
         }

@@ -58,29 +58,35 @@ public sealed class SparseRootComputer : IDisposable
 
         SparsePatriciaTree storageTrie = _trie.GetOrCreateStorageTrie(accountPathHash);
 
-        if (entry.PreviousStorageRoot != Keccak.EmptyTreeHash)
+        // Reth-style: try the cached sparse storage trie first. For empty trie (cold start),
+        // reveal just the storage root node so UpdateLeaves has a starting point. The retry
+        // loop then drives proof fetches for blinded targets only, using minLen.
+        if (storageTrie.Subtrie.Root < 0 && entry.PreviousStorageRoot != Keccak.EmptyTreeHash)
         {
-            Hash256[] targetKeys = new Hash256[entry.Updates.Count];
-            int i = 0;
-            foreach (Hash256 k in entry.Updates.Keys) targetKeys[i++] = k;
-            DecodedMultiProof initialProof = MultiProofReader.ReadStorageProofs(
-                _reader, accountPathHash, entry.PreviousStorageRoot, targetKeys);
-            if (initialProof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? initialNodes))
-                storageTrie.RevealNodes(initialNodes);
+            byte[] rootRlp = _reader.LoadStorageRlp(accountPathHash, TreePath.Empty, entry.PreviousStorageRoot);
+            ProofNode rootProof = MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty);
+            storageTrie.RevealNodes([rootProof]);
         }
 
         Dictionary<Hash256, LeafUpdate> updates = entry.Updates;
         for (int retry = 0; retry < MaxRetries; retry++)
         {
-            List<Hash256> targets = [];
-            storageTrie.UpdateLeaves(updates, (key, _) => targets.Add(key));
+            List<(Hash256 key, byte minLen)> targets = [];
+            storageTrie.UpdateLeaves(updates, (key, minLen) => targets.Add((key, minLen)));
             if (targets.Count == 0) break;
 
             if (retry == MaxRetries - 1)
                 throw new TrieException($"Sparse trie storage retry loop exceeded {MaxRetries} iterations for account {accountPathHash}. {targets.Count} blinded targets remain.");
 
+            Hash256[] tArr = new Hash256[targets.Count];
+            byte[] minLens = new byte[targets.Count];
+            for (int j = 0; j < targets.Count; j++)
+            {
+                tArr[j] = targets[j].key;
+                minLens[j] = targets[j].minLen;
+            }
             DecodedMultiProof proof = MultiProofReader.ReadStorageProofs(
-                _reader, accountPathHash, entry.PreviousStorageRoot, targets.ToArray());
+                _reader, accountPathHash, entry.PreviousStorageRoot, tArr, minLens);
             if (proof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? nodes))
                 storageTrie.RevealNodes(nodes);
         }
@@ -106,22 +112,32 @@ public sealed class SparseRootComputer : IDisposable
         if (_accountChanges is null || _accountChanges.Count == 0)
             return _previousStateRoot;
 
-        Hash256[] targetKeys = new Hash256[_accountChanges.Count];
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        // Reth-style: TRY THE CACHED SPARSE TRIE FIRST. Don't issue an unconditional
+        // root-to-leaf proof read for every changed account. The first UpdateLeaves call
+        // will report which accounts hit blinded nodes (and at what depth) via the minLen
+        // callback. We fetch proofs only for those misses, starting at minLen — so warm
+        // cross-block paths cost nothing.
+        // Cold start (empty trie): the first retry will collect all targets at minLen=0
+        // and fetch the same proofs the old initial call would have.
+        if (_trie.AccountTrie.Subtrie.Root < 0)
         {
-            int i = 0;
-            foreach (Hash256 k in _accountChanges.Keys) targetKeys[i++] = k;
+            // Empty sparse trie — reveal the prevRoot node so UpdateLeaves has a starting point
+            // (otherwise UpdateSingleLeaf would just InsertLeaf and skip the proof flow).
+            byte[] rootRlp = _reader.LoadStateRlp(TreePath.Empty, _previousStateRoot);
+            ProofNode rootProof = MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty);
+            _trie.AccountTrie.RevealNodes([rootProof]);
+            LastProofNodeCount = 1;
+        }
+        else
+        {
+            LastProofNodeCount = 0;
         }
 
-        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        DecodedMultiProof initialProof = MultiProofReader.ReadAccountProofs(
-            _reader, _previousStateRoot, targetKeys);
         long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
         LastProofReadMs = (t1 - t0) * 1000 / System.Diagnostics.Stopwatch.Frequency;
-        LastProofNodeCount = initialProof.AccountNodes.Count;
-
-        _trie.AccountTrie.RevealNodes(initialProof.AccountNodes);
-        long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
-        LastRevealMs = (t2 - t1) * 1000 / System.Diagnostics.Stopwatch.Frequency;
+        LastRevealMs = 0;
 
         long updateMsAccum = 0;
         Hash256? lastTarget = null;

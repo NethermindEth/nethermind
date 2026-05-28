@@ -332,8 +332,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             catch (Exception ex)
             {
                 ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                if (logger.IsWarn) logger.Warn($"SparseTrieSnapshotCommitter failed: {ex.Message}. Falling back to Patricia Commit.");
+                if (logger.IsWarn) logger.Warn($"SparseTrieSnapshotCommitter failed: {ex.Message}.");
                 Interlocked.Exchange(ref _consecutiveMatches, 0);
+
+                // CRITICAL: in SkipPatricia mode, the Patricia tree was never populated via BulkSet,
+                // so falling back to Patricia.Commit() would persist STALE state under the sparse
+                // root. Mirrors the UpdateRootHash skip-mode rethrow contract.
+                if (_configuration.SparseTrieSkipPatricia) throw;
             }
         }
 
