@@ -5,4 +5,7 @@ using System;
 
 namespace Nethermind.Core.Exceptions;
 
+/// <summary>
+/// A <see cref="FormatException"/> whose <see cref="Exception.Message"/> is safe to propagate to external callers.
+/// </summary>
 public sealed class SafePublicMessageFormatException(string message) : FormatException(message), IExceptionWithSafePublicMessage;

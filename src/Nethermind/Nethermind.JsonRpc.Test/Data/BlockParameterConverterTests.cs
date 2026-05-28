@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Data
                 Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
 
                 if (throws)
-                    Assert.That(action, Throws.TypeOf<FormatException>());
+                    Assert.That(action, Throws.InstanceOf<FormatException>());
                 else
                     Assert.That(action, Throws.Nothing);
             }
@@ -84,7 +84,8 @@ namespace Nethermind.JsonRpc.Test.Data
 
             Action action = () => serializer.Deserialize<BlockParameter>(input);
 
-            action.Should().Throw<FormatException>().WithMessage(expectedMessage);
+            FormatException exception = Assert.Catch<FormatException>(action)!;
+            Assert.That(exception.Message, Is.EqualTo(expectedMessage));
         }
 
         [TestCase("null", BlockParameterType.Latest)]

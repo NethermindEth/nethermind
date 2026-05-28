@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
