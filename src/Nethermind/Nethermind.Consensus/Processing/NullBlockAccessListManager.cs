@@ -18,10 +18,11 @@ public class NullBlockAccessListManager : IBlockAccessListManager
 
     private NullBlockAccessListManager() { }
 
-    public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+    public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled => false;
     public bool ParallelExecutionEnabled => false;
     public bool BatchReadEnabled => false;
+    public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options) { }
     public void Setup(Block block) { }

@@ -19,6 +19,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -353,13 +354,13 @@ public abstract class BlockchainTestBase
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, "engine_newPayloadV" + newPayloadVersion, paramsJson);
 
             // RPC-level errors (e.g. wrong payload version) are valid for negative tests
-            if (npResponse is JsonRpcErrorResponse errorResponse)
+            if (TryGetRpcError(npResponse, out int errorCode, out string? errorMessage))
             {
-                AssertExpectedRpcError(errorResponse, validationError, newPayloadVersion);
+                AssertExpectedRpcError(errorCode, errorMessage, validationError, newPayloadVersion);
             }
             else
             {
-                PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
+                PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
                 AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
 
                 if (payloadStatus.Status == PayloadStatus.Valid)
@@ -371,8 +372,35 @@ public abstract class BlockchainTestBase
         }
     }
 
-    private static void AssertExpectedRpcError(JsonRpcErrorResponse errorResponse, string? validationError, int payloadVersion) =>
-        Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
+    private static bool TryGetRpcError(JsonRpcResponse response, out int errorCode, out string? errorMessage)
+    {
+        switch (response)
+        {
+            case JsonRpcErrorResponse errorResponse:
+                errorCode = errorResponse.Error?.Code ?? ErrorCodes.InternalError;
+                errorMessage = errorResponse.Error?.Message;
+                return true;
+            case IResultWrapper { Result.ResultType: ResultType.Failure } resultWrapper:
+                errorCode = resultWrapper.ErrorCode;
+                errorMessage = resultWrapper.Result.Error;
+                return true;
+            default:
+                errorCode = 0;
+                errorMessage = null;
+                return false;
+        }
+    }
+
+    private static PayloadStatusV1 GetPayloadStatus(JsonRpcResponse response, int payloadVersion) =>
+        response switch
+        {
+            ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
+            JsonRpcSuccessResponse { Result: PayloadStatusV1 payloadStatus } => payloadStatus,
+            _ => throw new AssertionException($"engine_newPayloadV{payloadVersion} returned unexpected response type {response.GetType().FullName}")
+        };
+
+    private static void AssertExpectedRpcError(int errorCode, string? errorMessage, string? validationError, int payloadVersion) =>
+        Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorCode} {errorMessage}");
 
     private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion)
     {
@@ -427,14 +455,17 @@ public abstract class BlockchainTestBase
         ("TransactionException.TYPE_3_TX_ZERO_BLOBS", "blob transaction must have at least 1 blob"),
         ("TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH", "InvalidBlobVersionedHashVersion: Blob version not supported"),
         ("TransactionException.TYPE_3_TX_CONTRACT_CREATION", "blob transaction of type create"),
-        ("TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST", "MissingAuthorizationList: Must be set"),
-        ("TransactionException.TYPE_4_TX_CONTRACT_CREATION", "NotAllowedCreateTransaction: To must be set"),
+        ("TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST", "EIP-7702 transaction with empty auth list"),
+        ("TransactionException.TYPE_4_TX_CONTRACT_CREATION", "EIP-7702 transaction cannot be used to create contract"),
         ("TransactionException.TYPE_4_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
-        ("BlockException.INCORRECT_BLOB_GAS_USED", "HeaderBlobGasMismatch: Blob gas in header does not match calculated"),
-        ("BlockException.BLOB_GAS_USED_ABOVE_LIMIT", "HeaderBlobGasMismatch: Blob gas in header does not match calculated"),
+        // HeaderBlobGasMismatch covers both wrong header.BlobGasUsed and an
+        // inflated header value when real tx blob gas stays below the limit.
+        // Real tx overflow is handled by the BlockBlobGasExceeded regex below.
+        ("BlockException.INCORRECT_BLOB_GAS_USED", "HeaderBlobGasMismatch:"),
+        ("BlockException.BLOB_GAS_USED_ABOVE_LIMIT", "HeaderBlobGasMismatch:"),
         ("BlockException.INVALID_REQUESTS", "InvalidRequestsHash: Requests hash mismatch in block"),
-        ("BlockException.INVALID_GAS_USED_ABOVE_LIMIT", "ExceededGasLimit: Gas used exceeds gas limit."),
-        ("BlockException.GAS_USED_OVERFLOW", "ExceededGasLimit: Gas used exceeds gas limit."),
+        ("BlockException.INVALID_GAS_USED_ABOVE_LIMIT", "ExceededGasLimit:"),
+        ("BlockException.GAS_USED_OVERFLOW", "ExceededGasLimit:"),
         ("BlockException.RLP_BLOCK_LIMIT_EXCEEDED", "ExceededBlockSizeLimit: Exceeded block size limit"),
         ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", "DepositsInvalid: Invalid deposit event layout:"),
         ("BlockException.INVALID_BASEFEE_PER_GAS", "InvalidBaseFeePerGas: Does not match calculated"),
@@ -459,13 +490,15 @@ public abstract class BlockchainTestBase
         ("TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"BlockBlobGasExceeded: A block cannot have more than \d+ blob gas, blobs count \d+, blobs gas used: \d+")),
         ("TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED", ValidationErrorRegex(@"BlobTxGasLimitExceeded: Transaction's totalDataGas=\d+ exceeded MaxBlobGas per transaction=\d+")),
         ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
+        ("TransactionException.INTRINSIC_GAS_TOO_LOW", ValidationErrorRegex(@"TxGasLimitCapExceeded: Intrinsic gas")),
         ("BlockException.INCORRECT_EXCESS_BLOB_GAS", ValidationErrorRegex(@"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated|Overflow in excess blob gas")),
         ("BlockException.INVALID_BLOCK_HASH", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
+        ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
         ("BlockException.SYSTEM_CONTRACT_EMPTY", ValidationErrorRegex(@"(Withdrawals|Consolidations)Empty: Contract is not deployed\.")),
         ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"(Withdrawals|Consolidations)Failed: Contract execution failed\.")),
         ("BlockException.INVALID_BAL_HASH", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:")),
-        ("BlockException.INVALID_BLOCK_ACCESS_LIST", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:|InvalidBlockLevelAccessList:|BlockLevelAccessListIndexOutOfRange:|could not be parsed as a block: Error decoding block access list:|Error decoding block access list:")),
-        ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"could not be parsed as a block: Error decoding block access list:|Error decoding block access list:")),
+        ("BlockException.INVALID_BLOCK_ACCESS_LIST", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:|InvalidBlockLevelAccessList:|Error decoding block access list:")),
+        ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"Error decoding block access list:")),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
         ("BlockException.INVALID_BAL_EXTRA_ACCOUNT", ValidationErrorRegex(@"Error decoding block access list:.*Account changes were in incorrect order")),
         ("BlockException.INVALID_BAL_MISSING_ACCOUNT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
@@ -496,8 +529,11 @@ public abstract class BlockchainTestBase
     private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
         SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion, $$"""[{"headBlockHash":"{{blockHash}}","safeBlockHash":"{{blockHash}}","finalizedBlockHash":"{{blockHash}}"},null]""");
 
-    private static void AssertRpcSuccess(JsonRpcResponse response) =>
-        Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>(), response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
+    private static void AssertRpcSuccess(JsonRpcResponse response)
+    {
+        Assert.That(response, Is.InstanceOf<IResultWrapper>(), response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
+        Assert.That(((IResultWrapper)response).Result.ResultType, Is.EqualTo(ResultType.Success));
+    }
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
     {

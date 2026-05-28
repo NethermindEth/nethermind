@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
@@ -21,12 +22,24 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager) : IWorldStateScopeProvider
+/// <param name="codeDbIsPersistent">
+/// Default <c>false</c> is the safe, fail-closed setting: the wrapping ICodeDb assumes
+/// nothing about durability and never reports cached "already persisted" hints.
+/// Callers MUST explicitly pass <c>true</c> when <paramref name="codeDb"/> is durable
+/// production storage (i.e. backed directly by RocksDB or equivalent) so the persisted-code
+/// hint cache used by <c>StateProvider.InsertCode</c> can short-circuit redundant writes
+/// of popular contract bytecode (factory contracts etc.).
+/// Leaving it <c>false</c> for transient overlays is mandatory — otherwise the hint cache
+/// would remember writes that get discarded with the overlay, and a subsequent scope on
+/// the same StateProvider would skip re-inserting the bytes, throwing
+/// "Code 0x… is missing from the database" on the next read.
+/// </param>
+public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager, bool codeDbIsPersistent = false) : IWorldStateScopeProvider
 {
     private readonly ITrieStore _trieStore = trieStore;
     private readonly ILogManager _logManager = logManager;
     protected StateTree _backingStateTree;
-    private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb);
+    private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
 
     protected virtual StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
 
@@ -88,14 +101,16 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
-        public Task HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
             // Legacy trie-store path: no trie warmer, so HintBal only does work when a sink is given.
             if (sink is null) return Task.CompletedTask;
 
-            AccountChanges[]? accountChanges = bal.AccountChangesByAddressOrNull;
-            if (accountChanges is null || accountChanges.Length == 0) return Task.CompletedTask;
-            int accountCount = accountChanges.Length;
+            int accountCount = bal.AccountChanges.Count;
+            if (accountCount == 0) return Task.CompletedTask;
+
+            // Copy the span into a pooled array so the Parallel.For body can capture it.
+            ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
 
             CancelHintBal();
             _hintBalCts = new CancellationTokenSource();
@@ -112,7 +127,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     Parallel.For(0, accountCount, parallelOptions, (i) =>
                     {
                         if (token.IsCancellationRequested) return;
-                        AccountChanges ac = accountChanges[i];
+                        ReadOnlyAccountChanges ac = accountChanges[i];
                         Address address = ac.Address;
 
                         StateTree privateStateTree = _scopeProvider.CreateStateTree();
@@ -133,43 +148,39 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                         Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                         if (storageRoot == Keccak.EmptyTreeHash) return;
 
-                        SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
-                        UInt256[]? storageReads = ac.SortedStorageReadsOrNull;
-                        int storageChangeCount = storageChanges?.Length ?? 0;
-                        int storageReadCount = storageReads?.Length ?? 0;
-                        if (storageChangeCount + storageReadCount == 0) return;
+                        ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
+                        UInt256[] storageReads = ac.StorageReads;
+                        if (storageChanges.Length + storageReads.Length == 0) return;
 
                         StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
-                        if (storageChanges is not null)
+                        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
                         {
-                            foreach (SlotChanges slotChanges in storageChanges)
-                            {
-                                UInt256 key = slotChanges.Key;
-                                StorageCell cell = new(address, in key);
-                                if (!sink.StillNeeded(in cell)) continue;
-                                sink.OnStorageRead(in cell, storageTree.Get(in key));
-                            }
+                            UInt256 key = slotChanges.Key;
+                            StorageCell cell = new(address, in key);
+                            if (!sink.StillNeeded(in cell)) continue;
+                            sink.OnStorageRead(in cell, storageTree.Get(in key));
                         }
-                        if (storageReads is not null)
+                        foreach (UInt256 readKey in storageReads)
                         {
-                            foreach (UInt256 readKey in storageReads)
-                            {
-                                StorageCell cell = new(address, in readKey);
-                                if (!sink.StillNeeded(in cell)) continue;
-                                sink.OnStorageRead(in cell, storageTree.Get(in readKey));
-                            }
+                            StorageCell cell = new(address, in readKey);
+                            if (!sink.StillNeeded(in cell)) continue;
+                            sink.OnStorageRead(in cell, storageTree.Get(in readKey));
                         }
                     });
                 }
                 catch (OperationCanceledException) { }
+                finally
+                {
+                    accountChanges.Dispose();
+                }
             }, token);
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree = backingStateTree;
-        private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
-        private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = new();
+        private readonly Dictionary<AddressAsKey, StorageTree> _storages = [];
+        private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = [];
         private readonly TrieStoreScopeProvider _scopeProvider = scopeProvider;
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1 = codeDb;
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
@@ -258,8 +269,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 if (account is null) continue;
                 account = account.WithChangedStorageRoot(storageRoot);
                 _dirtyAccounts[key] = account;
-                OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
-                if (logger.IsTrace) Trace(key, storageRoot, account);
+                Address address = key.Value;
+                OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
+                if (logger.IsTrace) Trace(address, storageRoot, account);
             }
 
             using (StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
@@ -355,11 +367,24 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         }
     }
 
-    public class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
+    public class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb, bool isPersistent = false) : IWorldStateScopeProvider.ICodeDb
     {
+        // Persisted-code hint cache. Non-null only for durable codeDbs (production).
+        // Overlay codeDbs leave this null — overlay writes are not durable and must never
+        // populate a hint that survives the overlay's reset.
+        // Capacity 1_024: 4x the per-block filter (256) to cover hot factory-deployed
+        // bytecode across multiple recent blocks. False negatives just cause a redundant
+        // write; false positives would lose the just-deployed code (the bug being prevented).
+        private readonly AssociativeKeyCache<ValueHash256>? _persistedHint
+            = isPersistent ? new AssociativeKeyCache<ValueHash256>(1_024) : null;
+
         public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes]?.ToArray();
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CodeSetter(codeDb.StartWriteBatch());
+
+        public bool ContainsCode(in ValueHash256 codeHash) => _persistedHint?.Get(codeHash) ?? false;
+
+        public void MarkCodePersisted(in ValueHash256 codeHash) => _persistedHint?.Set(codeHash);
 
         private class CodeSetter(IWriteBatch writeBatch) : IWorldStateScopeProvider.ICodeSetter
         {

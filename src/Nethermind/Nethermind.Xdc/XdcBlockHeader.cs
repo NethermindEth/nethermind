@@ -97,6 +97,26 @@ public class XdcBlockHeader(
         return rlpStream.GetHash();
     }
 
+    /// <inheritdoc />
+    public override BlockHeader CreateSimulatedChild(ulong timestamp)
+    {
+        Hash256? requestsHash = RequestsHash;
+        return new XdcBlockHeader(
+            Hash!,
+            Keccak.OfAnEmptySequenceRlp,
+            Beneficiary!,
+            UInt256.Zero,
+            Number + 1,
+            GasLimit,
+            timestamp,
+            [],
+            IsSelfMined)
+        {
+            MixHash = Hash256.Zero,
+            RequestsHash = requestsHash,
+        };
+    }
+
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)
     {
         XdcBlockHeader x = new(

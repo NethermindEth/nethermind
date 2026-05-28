@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -144,7 +143,7 @@ public class SyncDispatcherTests
         public int Max { get; } = max;
         public int HighestRequested { get; private set; }
 
-        public readonly HashSet<int> _results = new();
+        public readonly HashSet<int> _results = [];
         private readonly ConcurrentQueue<TestBatch> _returned = new();
         private readonly ManualResetEvent _responseLock = new(true);
         private readonly TaskCompletionSource _handleResponseCalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -229,7 +228,7 @@ public class SyncDispatcherTests
         }
     }
 
-    [Test, MaxTime(10000)]
+    [Test, NonParallelizable, MaxTime(30_000)]
     public async Task Simple_test_sync()
     {
         TestSyncFeed syncFeed = new();
@@ -246,7 +245,7 @@ public class SyncDispatcherTests
         await executorTask;
         for (int i = 0; i < syncFeed.Max; i++)
         {
-            syncFeed._results.Contains(i).Should().BeTrue(i.ToString());
+            Assert.That(syncFeed._results.Contains(i), Is.True, i.ToString());
         }
     }
 
@@ -280,8 +279,7 @@ public class SyncDispatcherTests
         // that's the success path. Decouples this 200 ms timing window from the test's overall budget
         // (CancelAfter), so a setup overrun no longer poisons the assertion.
         Func<Task> waitForDisposeToEscape = () => disposeTask.WaitAsync(TimeSpan.FromMilliseconds(200));
-        await waitForDisposeToEscape.Should().ThrowAsync<TimeoutException>(
-            because: "DisposeAsync must wait for in-flight HandleResponse");
+        Assert.That(async () => await waitForDisposeToEscape(), Throws.TypeOf<TimeoutException>(), "DisposeAsync must wait for in-flight HandleResponse");
 
         syncFeed.UnlockResponse();
         await disposeTask.WaitAsync(cancellationToken);

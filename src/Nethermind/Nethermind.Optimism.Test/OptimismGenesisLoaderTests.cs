@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -74,9 +73,9 @@ public class OptimismGenesisLoaderTests
         Block actualGenesis = loader.Build();
 
         Hash256? genesisHash = actualGenesis.Hash;
-        genesisHash.Should().Be(new Hash256("0xab1c80ef327bcd962e1e8569d918702dd7e3888d3483869083528c9e0bde5890"));
+        Assert.That(genesisHash, Is.EqualTo(new Hash256("0xab1c80ef327bcd962e1e8569d918702dd7e3888d3483869083528c9e0bde5890")));
 
         Hash256? withdrawalsRoot = actualGenesis.WithdrawalsRoot;
-        withdrawalsRoot.Should().Be(new Hash256(storageRoot));
+        Assert.That(withdrawalsRoot, Is.EqualTo(new Hash256(storageRoot)));
     }
 }

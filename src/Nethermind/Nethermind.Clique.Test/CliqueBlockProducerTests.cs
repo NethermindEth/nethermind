@@ -27,7 +27,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Modules;
 
@@ -43,13 +42,13 @@ public class CliqueBlockProducerTests
         private static readonly ITimestamper _timestamper = Timestamper.Default;
         private readonly CliqueConfig _cliqueConfig;
         private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Sepolia);
-        private readonly Dictionary<PrivateKey, ILogManager> _logManagers = new();
-        private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
-        private readonly Dictionary<PrivateKey, IBlockTree> _blockTrees = new();
-        private readonly Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new();
-        private readonly Dictionary<PrivateKey, CliqueBlockProducerRunner> _producers = new();
-        private readonly Dictionary<PrivateKey, ITxPool> _pools = new();
-        private readonly Dictionary<PrivateKey, IContainer> _containers = new();
+        private readonly Dictionary<PrivateKey, ILogManager> _logManagers = [];
+        private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = [];
+        private readonly Dictionary<PrivateKey, IBlockTree> _blockTrees = [];
+        private readonly Dictionary<PrivateKey, AutoResetEvent> _blockEvents = [];
+        private readonly Dictionary<PrivateKey, CliqueBlockProducerRunner> _producers = [];
+        private readonly Dictionary<PrivateKey, ITxPool> _pools = [];
+        private readonly Dictionary<PrivateKey, IContainer> _containers = [];
 
         private On()
             : this(15)
@@ -280,7 +279,7 @@ public class CliqueBlockProducerTests
         {
             using IDisposable _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
             if (_logger.IsInfo) _logger.Info($"SUGGESTING GENESIS ON {nodeKey.Address}");
-            _blockTrees[nodeKey].SuggestBlock(_genesis).Should().Be(AddBlockResult.Added);
+            Assert.That(_blockTrees[nodeKey].SuggestBlock(_genesis), Is.EqualTo(AddBlockResult.Added));
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;
         }

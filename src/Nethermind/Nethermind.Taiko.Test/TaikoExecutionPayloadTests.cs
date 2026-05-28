@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs;
 using Nethermind.Taiko.TaikoSpec;
 using NUnit.Framework;
@@ -49,8 +47,9 @@ public class TaikoExecutionPayloadTests
 
         Action act = () => payload.TryGetBlock();
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*AttachSpecProvider*TryGetBlock*");
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>()
+            .With.Message.Contains(nameof(TaikoExecutionPayload.AttachSpecProvider))
+            .And.Message.Contains(nameof(TaikoExecutionPayload.TryGetBlock)));
     }
 
     [Test]
@@ -59,23 +58,46 @@ public class TaikoExecutionPayloadTests
         TaikoExecutionPayload payload = BuildEmptyPayload();
         payload.AttachSpecProvider(new TestSpecProvider(new TaikoReleaseSpec { IsUnzenEnabled = true, TaikoL2Address = Address.Zero }));
 
-        BlockDecodingResult result = payload.TryGetBlock();
+        Result<Block> result = payload.TryGetBlock();
 
-        result.Block.Should().NotBeNull();
-        result.Block!.Header.ParentBeaconBlockRoot.Should().Be(Keccak.Zero);
-        result.Block.Header.RequestsHash.Should().Be(Nethermind.Core.ExecutionRequest.ExecutionRequestExtensions.EmptyRequestsHash);
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.Header.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
+        Assert.That(result.Data.Header.RequestsHash, Is.EqualTo(Nethermind.Core.ExecutionRequest.ExecutionRequestExtensions.EmptyRequestsHash));
+        // A strict V2 driver (Rust) omits the blob gas fields; Unzen must still pin them to 0
+        // so the reconstructed hash matches the producer's.
+        Assert.That(result.Data.Header.BlobGasUsed, Is.EqualTo(0UL));
+        Assert.That(result.Data.Header.ExcessBlobGas, Is.EqualTo(0UL));
+    }
+
+    [Test]
+    public void TryGetBlock_normalizes_nonzero_blob_gas_to_zero_when_Unzen_active()
+    {
+        TaikoExecutionPayload payload = BuildEmptyPayload();
+        payload.BlobGasUsed = 5;
+        payload.ExcessBlobGas = 7;
+        payload.AttachSpecProvider(new TestSpecProvider(new TaikoReleaseSpec { IsUnzenEnabled = true, TaikoL2Address = Address.Zero }));
+
+        Result<Block> result = payload.TryGetBlock();
+
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.Header.BlobGasUsed, Is.EqualTo(0UL));
+        Assert.That(result.Data.Header.ExcessBlobGas, Is.EqualTo(0UL));
     }
 
     [Test]
     public void TryGetBlock_does_not_pin_Unzen_fields_when_spec_inactive()
     {
         TaikoExecutionPayload payload = BuildEmptyPayload();
+        payload.BlobGasUsed = 5;
+        payload.ExcessBlobGas = 7;
         payload.AttachSpecProvider(new TestSpecProvider(new TaikoReleaseSpec { IsUnzenEnabled = false, TaikoL2Address = Address.Zero }));
 
-        BlockDecodingResult result = payload.TryGetBlock();
+        Result<Block> result = payload.TryGetBlock();
 
-        result.Block.Should().NotBeNull();
-        result.Block!.Header.ParentBeaconBlockRoot.Should().BeNull();
-        result.Block.Header.RequestsHash.Should().BeNull();
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.Header.ParentBeaconBlockRoot, Is.Null);
+        Assert.That(result.Data.Header.RequestsHash, Is.Null);
+        Assert.That(result.Data.Header.BlobGasUsed, Is.Null);
+        Assert.That(result.Data.Header.ExcessBlobGas, Is.Null);
     }
 }

@@ -16,8 +16,8 @@ internal static class ConfigGenerator
 
         string startMark = "<!--[start autogen]-->";
         string endMark = "<!--[end autogen]-->";
-        var excluded = Enumerable.Empty<string>();
-        var types = Directory
+        IEnumerable<string> excluded = Enumerable.Empty<string>();
+        IOrderedEnumerable<Type> types = Directory
             .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
             .SelectMany(a => Assembly.LoadFrom(a).GetExportedTypes())
             .Where(t => t.IsInterface && typeof(IConfig).IsAssignableFrom(t) &&
@@ -29,8 +29,8 @@ internal static class ConfigGenerator
         // Delete the temp file if it exists
         File.Delete(tempFileName);
 
-        using var readStream = new StreamReader(File.OpenRead(fileName));
-        using var writeStream = new StreamWriter(File.OpenWrite(tempFileName));
+        using StreamReader readStream = new(File.OpenRead(fileName));
+        using StreamWriter writeStream = new(File.OpenWrite(tempFileName));
 
         writeStream.NewLine = "\n";
 
@@ -46,7 +46,7 @@ internal static class ConfigGenerator
 
         writeStream.WriteLine();
 
-        foreach (var type in types)
+        foreach (Type type in types)
             WriteMarkdown(writeStream, type);
 
         bool skip = true;
@@ -74,12 +74,12 @@ internal static class ConfigGenerator
 
     private static void WriteMarkdown(StreamWriter file, Type configType)
     {
-        var categoryAttr = configType.GetCustomAttribute<ConfigCategoryAttribute>();
+        ConfigCategoryAttribute? categoryAttr = configType.GetCustomAttribute<ConfigCategoryAttribute>();
 
         if (categoryAttr?.HiddenFromDocs ?? false)
             return;
 
-        var props = configType.GetProperties(BindingFlags.Instance | BindingFlags.Public).OrderBy(p => p.Name);
+        IOrderedEnumerable<PropertyInfo> props = configType.GetProperties(BindingFlags.Instance | BindingFlags.Public).OrderBy(p => p.Name);
 
         if (!props.Any())
             return;
@@ -94,9 +94,9 @@ internal static class ConfigGenerator
 
             """);
 
-        foreach (var prop in props)
+        foreach (PropertyInfo prop in props)
         {
-            var configAttr = prop.GetCustomAttribute<ConfigItemAttribute>();
+            ConfigItemAttribute? configAttr = prop.GetCustomAttribute<ConfigItemAttribute>();
 
             if (configAttr?.HiddenFromDocs ?? true)
                 continue;
@@ -165,11 +165,11 @@ internal static class ConfigGenerator
 
                 """);
 
-            var fields = type.GetFields(BindingFlags.Static | BindingFlags.Public);
+            FieldInfo[] fields = type.GetFields(BindingFlags.Static | BindingFlags.Public);
 
-            foreach (var field in fields)
+            foreach (FieldInfo field in fields)
             {
-                var attr = field.GetCustomAttribute<DescriptionAttribute>();
+                DescriptionAttribute? attr = field.GetCustomAttribute<DescriptionAttribute>();
                 string? description = string.IsNullOrEmpty(attr?.Description) ? null : $": {attr.Description}";
 
                 file.WriteLine($"    - `{field.Name}`{description}");

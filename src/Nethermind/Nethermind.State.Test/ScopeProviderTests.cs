@@ -4,13 +4,13 @@
 using System;
 using System.Collections.Concurrent;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using NUnit.Framework;
@@ -54,7 +54,7 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
-            scope.Get(TestItem.AddressA).Should().Be(null);
+            Assert.That(scope.Get(TestItem.AddressA), Is.EqualTo(null));
             using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
@@ -64,12 +64,12 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        stateRoot.Should().NotBe(Keccak.EmptyTreeHash);
-        if (!useFlat) ctx.Kv.WritesCount.Should().Be(1);
+        Assert.That(stateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+        if (!useFlat) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(1));
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
-            scope.Get(TestItem.AddressA).Balance.Should().Be(100);
+            Assert.That(scope.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
         }
     }
 
@@ -81,7 +81,7 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
-            scope.Get(TestItem.AddressA).Should().Be(null);
+            Assert.That(scope.Get(TestItem.AddressA), Is.EqualTo(null));
 
             using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
             {
@@ -97,13 +97,13 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        stateRoot.Should().NotBe(Keccak.EmptyTreeHash);
-        if (!useFlat) ctx.Kv.WritesCount.Should().Be(2);
+        Assert.That(stateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+        if (!useFlat) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(2));
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
-            storage.Get(1).Should().BeEquivalentTo([1, 2, 3]);
+            Assert.That(storage.Get(1), Is.EqualTo([1, 2, 3]));
         }
     }
 
@@ -122,12 +122,12 @@ public class ScopeProviderTests(bool useFlat)
 
         if (!useFlat)
         {
-            ctx.CodeKv.WritesCount.Should().Be(1);
+            Assert.That(ctx.CodeKv.WritesCount, Is.EqualTo(1));
         }
         else
         {
             using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
-            scope.CodeDb.GetCode(TestItem.KeccakA).Should().BeEquivalentTo([1, 2, 3]);
+            Assert.That(scope.CodeDb.GetCode(TestItem.KeccakA), Is.EqualTo([1, 2, 3]));
         }
     }
 
@@ -182,20 +182,12 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         // Build a BAL referencing these accounts and storage slots
-        BlockAccessList bal = new();
-        bal.AddAccountRead(TestItem.AddressA);
-        bal.AddAccountRead(TestItem.AddressB);
-        bal.AddAccountRead(TestItem.AddressC); // not in state — should be null
-        bal.AddStorageRead(TestItem.AddressA, 1);
-        bal.AddStorageRead(TestItem.AddressA, 2);
-        bal.AddStorageRead(TestItem.AddressB, 5);
-
-        // HintBal consumes the BAL's pre-sorted arrays; force the sort once (mirrors RLP-decode).
-        foreach (AccountChanges ac in bal.AccountChangesByAddress)
-        {
-            _ = ac.StorageChanges;
-            _ = ac.SortedStorageReads;
-        }
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1, 2).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(5).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressC).TestObject) // not in state — should be null
+            .TestObject;
 
         // Collect results via HintBal(bal, sink) — the merged trie warmup + BAL read pass
         CollectingBalSink sink = new();
@@ -203,16 +195,14 @@ public class ScopeProviderTests(bool useFlat)
         {
             scope.HintBal(bal, sink).Wait();
 
-            // Verify accounts match individual reads
-            sink.Accounts.Should().ContainKey(TestItem.AddressA);
-            sink.Accounts[TestItem.AddressA]!.Balance.Should().Be(100);
+            Assert.That(sink.Accounts.ContainsKey(TestItem.AddressA), Is.True);
+            Assert.That(sink.Accounts[TestItem.AddressA]!.Balance, Is.EqualTo((UInt256)100));
 
-            sink.Accounts.Should().ContainKey(TestItem.AddressB);
-            sink.Accounts[TestItem.AddressB]!.Balance.Should().Be(200);
+            Assert.That(sink.Accounts.ContainsKey(TestItem.AddressB), Is.True);
+            Assert.That(sink.Accounts[TestItem.AddressB]!.Balance, Is.EqualTo((UInt256)200));
 
-            sink.NullAccounts.Should().ContainKey(TestItem.AddressC);
+            Assert.That(sink.NullAccounts.ContainsKey(TestItem.AddressC), Is.True);
 
-            // Verify storage matches individual reads
             IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
             IWorldStateScopeProvider.IStorageTree storageTreeB = scope.CreateStorageTree(TestItem.AddressB);
 
@@ -220,14 +210,14 @@ public class ScopeProviderTests(bool useFlat)
             StorageCell cellA2 = new(TestItem.AddressA, 2);
             StorageCell cellB5 = new(TestItem.AddressB, 5);
 
-            sink.Storage.Should().ContainKey(cellA1);
-            sink.Storage[cellA1].Should().BeEquivalentTo(storageTreeA.Get(1));
+            Assert.That(sink.Storage.ContainsKey(cellA1), Is.True);
+            Assert.That(sink.Storage[cellA1], Is.EqualTo(storageTreeA.Get(1)));
 
-            sink.Storage.Should().ContainKey(cellA2);
-            sink.Storage[cellA2].Should().BeEquivalentTo(storageTreeA.Get(2));
+            Assert.That(sink.Storage.ContainsKey(cellA2), Is.True);
+            Assert.That(sink.Storage[cellA2], Is.EqualTo(storageTreeA.Get(2)));
 
-            sink.Storage.Should().ContainKey(cellB5);
-            sink.Storage[cellB5].Should().BeEquivalentTo(storageTreeB.Get(5));
+            Assert.That(sink.Storage.ContainsKey(cellB5), Is.True);
+            Assert.That(sink.Storage[cellB5], Is.EqualTo(storageTreeB.Get(5)));
         }
     }
 
@@ -254,10 +244,11 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        BlockAccessList bal = new();
-        bal.AddAccountRead(TestItem.AddressA);
-        bal.AddAccountRead(TestItem.AddressB);
-        bal.AddStorageRead(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject)
+            .TestObject;
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
@@ -291,9 +282,10 @@ public class ScopeProviderTests(bool useFlat)
         PreBlockCaches caches = new();
         PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, populatePreBlockCache: false);
 
-        BlockAccessList bal = new();
-        bal.AddAccountRead(TestItem.AddressA);
-        bal.AddStorageRead(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1).TestObject)
+            .TestObject;
 
         using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {

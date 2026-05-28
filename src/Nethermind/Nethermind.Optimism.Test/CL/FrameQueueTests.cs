@@ -4,7 +4,6 @@
 using System;
 using System.IO;
 using System.IO.Compression;
-using FluentAssertions;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
 using NUnit.Framework;
@@ -27,7 +26,7 @@ public class FrameQueueTests
             FrameData = [0x77, 0x77, 0x77],
             IsLast = false,
         };
-        queue.ConsumeFrame(staleFrame).Should().BeNull();
+        Assert.That(queue.ConsumeFrame(staleFrame), Is.Null);
 
         queue.Clear();
 
@@ -50,8 +49,8 @@ public class FrameQueueTests
         // throw "Unsupported compression algorithm 119" before the fresh payload is read.
         BatchV1[]? result = null;
         Action consume = () => result = queue.ConsumeFrame(freshFrame);
-        consume.Should().NotThrow();
-        result.Should().NotBeNull();
+        Assert.That(consume, Throws.Nothing);
+        Assert.That(result, Is.Not.Null);
     }
 
     private static byte[] BrotliCompress(ReadOnlySpan<byte> data)

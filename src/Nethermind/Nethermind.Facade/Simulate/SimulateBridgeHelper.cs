@@ -11,7 +11,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.Int256;
 using Nethermind.State;
 using System;
 using System.Collections.Generic;
@@ -60,7 +59,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         long gasCapLimit,
         CancellationToken cancellationToken)
     {
-        List<SimulateBlockResult<TTrace>> list = new();
+        List<SimulateBlockResult<TTrace>> list = [];
         SimulateOutput<TTrace> result = new()
         {
             Items = list
@@ -109,7 +108,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (payload.BlockStateCalls is not null)
         {
-            Dictionary<Address, ulong> nonceCache = new();
+            Dictionary<Address, ulong> nonceCache = [];
             IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
@@ -250,24 +249,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockHeader parent,
         bool validate)
     {
-        BlockHeader result = new(
-            parent.Hash!,
-            Keccak.OfAnEmptySequenceRlp,
-            parent.Beneficiary,
-            UInt256.Zero,
-            parent.Number + 1,
-            parent.GasLimit,
-            parent.Timestamp + blocksConfig.SecondsPerSlot,
-            [],
-            requestsHash: parent.RequestsHash)
-        {
-            MixHash = Hash256.Zero,
-            RequestsHash = parent.RequestsHash,
-        };
+        BlockHeader result = parent.CreateSimulatedChild(parent.Timestamp + blocksConfig.SecondsPerSlot);
 
         if ((ForkActivation)result.Number >= specProvider.MergeBlockNumber)
         {
-            result.Difficulty = UInt256.Zero;
             result.IsPostMerge = true;
         }
         else

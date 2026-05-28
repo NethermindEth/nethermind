@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -74,7 +73,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             StatusMessageSerializer serializer = new();
             using StatusMessage message = new();
             message.ForkId = new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(forkHash)), next.Value);
-            serializer.Serialize(message).ToHexString().Should().EndWith(expected);
+            Assert.That(serializer.Serialize(message).ToHexString(), Does.EndWith(expected));
         }
 
         [TestCase("f857408314095a8825a025ab40783547a0a161191097c73a00cc6ff0942d3827695241727a5939782d130b0138914211dea070cefc67ff52eb3e1ea9fc9e721d0458a952632927d2d7cb435b250c0c32e653c684e615830180")]
@@ -93,7 +92,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             StatusMessageSerializer serializer = new();
             using StatusMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
-            serialized.Should().BeEquivalentTo(bytes);
+            Assert.That(serialized, Is.EqualTo(bytes));
             Assert.That(message.ProtocolVersion, Is.EqualTo(64), "ProtocolVersion");
         }
 
@@ -114,7 +113,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             StatusMessageSerializer serializer = new();
             using StatusMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
-            serialized.Should().BeEquivalentTo(bytes);
+            Assert.That(serialized, Is.EqualTo(bytes));
             Assert.That(message.ProtocolVersion, Is.EqualTo(64), "ProtocolVersion");
         }
 

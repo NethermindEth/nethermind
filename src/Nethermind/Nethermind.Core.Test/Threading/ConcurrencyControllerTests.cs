@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Threading;
 using NUnit.Framework;
 
@@ -14,14 +13,14 @@ public class ConcurrencyControllerTests
     {
         ConcurrencyController limiter = new(3);
 
-        limiter.TryTakeSlot(out _).Should().Be(true);
-        limiter.TryTakeSlot(out _).Should().Be(true);
-        limiter.TryTakeSlot(out ConcurrencyController.Slot returner).Should().Be(false);
+        Assert.That(limiter.TryTakeSlot(out _), Is.EqualTo(true));
+        Assert.That(limiter.TryTakeSlot(out _), Is.EqualTo(true));
+        Assert.That(limiter.TryTakeSlot(out ConcurrencyController.Slot returner), Is.EqualTo(false));
 
         returner.Dispose();
 
-        limiter.TryTakeSlot(out _).Should().Be(true);
-        limiter.TryTakeSlot(out _).Should().Be(false);
+        Assert.That(limiter.TryTakeSlot(out _), Is.EqualTo(true));
+        Assert.That(limiter.TryTakeSlot(out _), Is.EqualTo(false));
     }
 
     [Test]
@@ -29,13 +28,13 @@ public class ConcurrencyControllerTests
     {
         ConcurrencyController limiter = new(3);
 
-        limiter.TryRequestConcurrencyQuota().Should().Be(true);
-        limiter.TryRequestConcurrencyQuota().Should().Be(true);
-        limiter.TryRequestConcurrencyQuota().Should().Be(false);
+        Assert.That(limiter.TryRequestConcurrencyQuota(), Is.EqualTo(true));
+        Assert.That(limiter.TryRequestConcurrencyQuota(), Is.EqualTo(true));
+        Assert.That(limiter.TryRequestConcurrencyQuota(), Is.EqualTo(false));
 
         limiter.ReturnConcurrencyQuota();
 
-        limiter.TryRequestConcurrencyQuota().Should().Be(true);
-        limiter.TryRequestConcurrencyQuota().Should().Be(false);
+        Assert.That(limiter.TryRequestConcurrencyQuota(), Is.EqualTo(true));
+        Assert.That(limiter.TryRequestConcurrencyQuota(), Is.EqualTo(false));
     }
 }

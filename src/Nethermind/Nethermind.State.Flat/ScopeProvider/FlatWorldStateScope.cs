@@ -30,7 +30,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
-    private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
+    private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -161,11 +161,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public Task HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+    public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
-        AccountChanges[]? accountChanges = bal.AccountChangesByAddressOrNull;
-        if (accountChanges is null || accountChanges.Length == 0) return Task.CompletedTask;
-        int accountCount = accountChanges.Length;
+        int accountCount = bal.AccountChanges.Count;
+        if (accountCount == 0) return Task.CompletedTask;
+
+        // Copy the span into a pooled array so the Task.Run body can capture it.
+        ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
 
         CancelHintBal();
 
@@ -188,15 +190,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 {
                     if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
-                    AccountChanges ac = accountChanges[i];
+                    ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
                     if (_snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
-                    SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
-                    int storageChangeCount = storageChanges?.Length ?? 0;
+                    ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
+                    int storageChangeCount = storageChanges.Length;
 
                     Account? account = sink is null && storageChangeCount == 0
                         ? null
@@ -209,7 +211,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                     if (storageRoot == Keccak.EmptyTreeHash) return;
 
-                    if (storageChanges is not null && storageChangeCount > 0)
+                    if (storageChangeCount > 0)
                     {
                         FlatStorageTree storageWarmer = new(
                             this,
@@ -221,7 +223,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             address,
                             _logManager);
 
-                        foreach (SlotChanges slotChanges in storageChanges)
+                        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
                         {
                             UInt256 key = slotChanges.Key;
                             if (_snapshotBundle.ShouldQueuePrewarm(address, key)
@@ -240,46 +242,42 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
             }
             catch (OperationCanceledException) { }
+            finally
+            {
+                accountChanges.Dispose();
+            }
         }, token);
     }
 
     private void RunSinkSlotReads(
-        AccountChanges[] accountChanges,
+        ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
         Account?[] accounts,
         int[] selfDestructIdxs,
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
         int totalSlots = 0;
-        for (int i = 0; i < accountChanges.Length; i++)
+        for (int i = 0; i < accountChanges.Count; i++)
         {
             if (accounts[i] is null) continue;
-            totalSlots += (accountChanges[i].StorageChangesOrNull?.Length ?? 0)
-                       + (accountChanges[i].SortedStorageReadsOrNull?.Length ?? 0);
+            totalSlots += accountChanges[i].StorageChanges.Length
+                       + accountChanges[i].StorageReads.Length;
         }
 
         if (totalSlots == 0) return;
 
         using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
         int idx = 0;
-        for (int i = 0; i < accountChanges.Length; i++)
+        for (int i = 0; i < accountChanges.Count; i++)
         {
             if (accounts[i] is null) continue;
-            AccountChanges ac = accountChanges[i];
+            ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
-            SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
-            UInt256[]? storageReads = ac.SortedStorageReadsOrNull;
-            if (storageChanges is not null)
-            {
-                foreach (SlotChanges slotChanges in storageChanges)
-                    jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
-            }
-            if (storageReads is not null)
-            {
-                foreach (UInt256 readKey in storageReads)
-                    jobs[idx++] = (address, selfDestructIdx, readKey);
-            }
+            foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
+                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
+            foreach (UInt256 readKey in ac.StorageReads)
+                jobs[idx++] = (address, selfDestructIdx, readKey);
         }
 
         Parallel.For(0, idx, parallelOptions, (j) =>
@@ -429,7 +427,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (account is null)
                     {
                         if (storageRoot == Keccak.EmptyTreeHash) continue;
-                        using IWorldStateScopeProvider.IStorageWriteBatch wb = CreateStorageWriteBatch(entry.Item1, 0);
+                        using IWorldStateScopeProvider.IStorageWriteBatch wb = CreateStorageWriteBatch(key.Value, 0);
                         wb.Clear();
                         continue;
                     }
@@ -438,8 +436,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                     scope._snapshotBundle.SetAccount(key, account);
 
-                    OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
-                    if (logger.IsTrace) Trace(key, storageRoot, account);
+                    Address address = key.Value;
+                    OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
+                    if (logger.IsTrace) Trace(address, storageRoot, account);
                 }
 
                 using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);

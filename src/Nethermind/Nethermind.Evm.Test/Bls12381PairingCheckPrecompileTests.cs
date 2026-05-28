@@ -8,9 +8,9 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 // Test data from https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
-public class Bls12381PairingCheckPrecompileTests : PrecompileTests<Bls12381PairingCheckPrecompile, Bls12381PairingCheckPrecompileTests>
+public class Bls12381PairingCheckPrecompileTests : PrecompileTests<Bls12381PairingCheckPrecompile, Bls12381PairingCheckPrecompileTests>, IPrecompileTests
 {
-    public static IEnumerable<string> TestFiles()
+    static IEnumerable<string> IPrecompileTests.TestFiles()
     {
         yield return "Bls/pairing_check_bls.json";
         yield return "Bls/fail-pairing_check_bls.json";

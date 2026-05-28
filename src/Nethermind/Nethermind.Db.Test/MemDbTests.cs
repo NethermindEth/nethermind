@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -22,7 +21,7 @@ namespace Nethermind.Db.Test
             byte[] bytes = new byte[] { 1, 2, 3 };
             memDb.Set(TestItem.KeccakA, bytes);
             byte[] retrievedBytes = memDb.Get(TestItem.KeccakA);
-            retrievedBytes.Should().BeEquivalentTo(bytes);
+            Assert.That(retrievedBytes, Is.EqualTo(bytes));
         }
 
         private readonly byte[] _sampleValue = { 1, 2, 3 };
@@ -42,7 +41,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new("desc");
             memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
             memDb.Get(TestItem.KeccakA);
-            memDb.Name.Should().Be("desc");
+            Assert.That(memDb.Name, Is.EqualTo("desc"));
         }
 
         [Test]
@@ -63,7 +62,7 @@ namespace Nethermind.Db.Test
             }
 
             byte[] retrieved = memDb.Get(TestItem.KeccakA);
-            retrieved.Should().BeEquivalentTo(_sampleValue);
+            Assert.That(retrieved, Is.EqualTo(_sampleValue));
         }
 
         [Test]
@@ -73,7 +72,7 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
             memDb.Clear();
-            memDb.Keys.Should().HaveCount(0);
+            Assert.That(memDb.Keys, Has.Count.EqualTo(0));
         }
 
         [Test]
@@ -81,8 +80,8 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
-            memDb.KeyExists(TestItem.KeccakA).Should().BeTrue();
-            memDb.KeyExists(TestItem.KeccakB).Should().BeFalse();
+            Assert.That(memDb.KeyExists(TestItem.KeccakA), Is.True);
+            Assert.That(memDb.KeyExists(TestItem.KeccakB), Is.False);
         }
 
         [Test]
@@ -91,7 +90,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Remove(TestItem.KeccakA.Bytes);
-            memDb.KeyExists(TestItem.KeccakA).Should().BeFalse();
+            Assert.That(memDb.KeyExists(TestItem.KeccakA), Is.False);
         }
 
         [Test]
@@ -100,7 +99,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            memDb.Keys.Should().HaveCount(2);
+            Assert.That(memDb.Keys, Has.Count.EqualTo(2));
         }
 
         [Test]
@@ -110,10 +109,10 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
             KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() }];
-            result.Should().HaveCount(3);
-            result[0].Value.Should().NotBeNull();
-            result[1].Value.Should().NotBeNull();
-            result[2].Value.Should().BeNull();
+            Assert.That(result, Has.Length.EqualTo(3));
+            Assert.That(result[0].Value, Is.Not.Null);
+            Assert.That(result[1].Value, Is.Not.Null);
+            Assert.That(result[2].Value, Is.Null);
         }
 
         [Test]
@@ -122,7 +121,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            memDb.GetAllValues().Should().HaveCount(2);
+            Assert.That(System.Linq.Enumerable.Count(memDb.GetAllValues()), Is.EqualTo(2));
         }
 
         [Test]
@@ -131,7 +130,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            memDb.Values.Should().HaveCount(2);
+            Assert.That(memDb.Values, Has.Count.EqualTo(2));
         }
 
         [Test]
@@ -161,13 +160,12 @@ namespace Nethermind.Db.Test
 
             IEnumerable<KeyValuePair<byte[], byte[]?>> orderedItems = memDb.GetAll(true);
 
-            orderedItems.Should().HaveCount(5);
+            Assert.That(System.Linq.Enumerable.Count(orderedItems), Is.EqualTo(5));
 
             byte[][] keys = [.. orderedItems.Select(kvp => kvp.Key)];
             for (int i = 0; i < keys.Length - 1; i++)
             {
-                Bytes.BytesComparer.Compare(keys[i], keys[i + 1]).Should().BeLessThan(0,
-                    $"Keys should be in ascending order at position {i}");
+                Assert.That(Bytes.BytesComparer.Compare(keys[i], keys[i + 1]), Is.LessThan(0), $"Keys should be in ascending order at position {i}");
             }
         }
     }

@@ -3,16 +3,15 @@
 
 using System;
 
-namespace Nethermind.Core
-{
-    public class BlockchainException : Exception
-    {
-        public BlockchainException(string message) : base(message)
-        {
-        }
+namespace Nethermind.Core.Exceptions;
 
-        public BlockchainException(string message, Exception? innerException) : base(message, innerException)
-        {
-        }
+public class BlockchainException : Exception
+{
+    public BlockchainException(string message) : base(message)
+    {
+    }
+
+    public BlockchainException(string message, Exception? innerException) : base(message, innerException)
+    {
     }
 }

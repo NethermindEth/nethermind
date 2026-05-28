@@ -13,12 +13,14 @@ namespace Nethermind.Network.Discovery.Serializers;
 
 public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PingMsg>
 {
+    protected virtual byte MsgTypeByte => (byte)MsgType.Ping;
+
     public void Serialize(IByteBuffer byteBuffer, PingMsg msg)
     {
         (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(msg);
 
         byteBuffer.MarkIndex();
-        PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
+        PrepareBufferForSerialization(byteBuffer, totalLength, MsgTypeByte);
         NettyRlpStream stream = new(byteBuffer);
         stream.StartSequence(contentLength);
         stream.Encode(msg.Version);

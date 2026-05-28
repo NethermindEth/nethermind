@@ -28,7 +28,7 @@ public class GethLikeTxTrace : IDisposable
 
     public Hash256? TxHash { get; set; }
 
-    public List<GethTxTraceEntry> Entries { get; set; } = new();
+    public List<GethTxTraceEntry> Entries { get; set; } = [];
 
     public GethLikeCustomTrace? CustomTracerResult { get; set; }
 

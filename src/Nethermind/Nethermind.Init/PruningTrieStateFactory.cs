@@ -64,7 +64,8 @@ public class PruningTrieStateFactory(
             : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
                 codeDb,
-                logManager);
+                logManager,
+                codeDbIsPersistent: true);
 
         IWorldStateManager stateManager = new WorldStateManager(
             scopeProvider,
@@ -72,11 +73,6 @@ public class PruningTrieStateFactory(
             dbProvider,
             logManager,
             new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
-
-        // NOTE: Don't forget this! Very important!
-        TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, blockTree!, logManager);
-        // Must be disposed after main trie store or the final persist on dispose will not set persisted state on blocktree.
-        disposeStack.Push(trieStoreBoundaryWatcher);
 
         disposeStack.Push(mainWorldTrieStore);
 

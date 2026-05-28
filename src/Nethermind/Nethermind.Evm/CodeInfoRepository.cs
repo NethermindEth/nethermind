@@ -77,6 +77,13 @@ public class CodeInfoRepository : ICodeInfoRepository
             MissingCode(in codeHash);
         }
 
+        // Counts code reads that miss the in-memory code cache (i.e. require a DB fetch via
+        // IWorldState.GetCode). Cache hits served by CacheCodeInfoRepository.GetOrCacheCodeInfo
+        // are counted separately as Metrics.CodeDbCache, so state_reads.code in the slow-block
+        // JSON tracks DB-backed code reads only and equals cache.code.misses by construction.
+        Metrics.IncrementCodeReads();
+        Metrics.IncrementCodeBytesRead(code.Length);
+
         return CodeInfoFactory.CreateCodeInfo(code);
 
         [DoesNotReturn, StackTraceHidden]
@@ -117,9 +124,30 @@ public class CodeInfoRepository : ICodeInfoRepository
             codeHash = ValueKeccak.OfAnEmptyString;
         }
 
-        return worldState.InsertCode(authority, codeHash, authorizedBuffer, spec);
+        bool result = worldState.InsertCode(authority, codeHash, authorizedBuffer, spec);
+        if (result)
+        {
+            if (codeSource != Address.Zero)
+            {
+                Metrics.IncrementEip7702DelegationsSet();
+            }
+            else
+            {
+                Metrics.IncrementEip7702DelegationsCleared();
+            }
+        }
+
+        return result;
     }
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address, spec).CodeSpan, out delegatedAddress);
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        if (!_worldState.HasCode(address))
+        {
+            delegatedAddress = null;
+            return false;
+        }
+
+        return ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address, spec).CodeSpan, out delegatedAddress);
+    }
 }

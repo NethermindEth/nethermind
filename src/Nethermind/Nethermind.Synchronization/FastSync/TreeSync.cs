@@ -59,6 +59,7 @@ namespace Nethermind.Synchronization.FastSync
         public bool IsRootSaved => _rootSaved == 1;
         public bool IsRootComplete => _rootSaved == 1 || _rootNode == Keccak.EmptyTreeHash
             || _store.NodeExists(null, TreePath.Empty, _rootNode);
+        public bool CanFinalize(BlockHeader roundPivot) => IsRootComplete && _stateSyncPivot.CanFinalize(roundPivot);
 
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
@@ -69,7 +70,7 @@ namespace Nethermind.Synchronization.FastSync
         // SimpleDispatcher.Run drains in-flight workers before returning, and StateSyncRunner
         // only resets / cleans up outside dispatcher.Run — the drain is the sole barrier.
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _ongoingRequests = new();
-        private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = new();
+        private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = [];
         private readonly LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
         private readonly LruKeyCache<ValueHash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
         private ConcurrentDictionary<StateSyncItem.NodeKey, byte[]> _previouslyPendingItems = new();
@@ -575,7 +576,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void PossiblySaveDependentNodes(StateSyncItem.NodeKey key)
         {
-            List<DependentItem> nodesToSave = new();
+            List<DependentItem> nodesToSave = [];
             lock (_dependencies)
             {
                 if (_dependencies.TryGetValue(key, out HashSet<DependentItem> value))
@@ -751,7 +752,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
                 }
 
-                _dependencies = new Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>>();
+                _dependencies = [];
             }
 
             if (_pendingItems.Count != 0)

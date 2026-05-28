@@ -9,6 +9,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 

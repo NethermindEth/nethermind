@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -28,6 +27,7 @@ using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Precompiles;
 using Nethermind.State;
 
 namespace Nethermind.Facade.Test;
@@ -76,16 +76,16 @@ public class BlockchainBridgeTests
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
     {
-        _blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result).Should().BeFalse();
-        result.Should().BeNull();
+        Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
+        Assert.That(result, Is.Null);
     }
 
     [Test]
     public void get_transaction_returns_null_when_block_not_found()
     {
         _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-        _blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result).Should().BeFalse();
-        result.Should().BeNull();
+        Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
+        Assert.That(result, Is.Null);
     }
 
     // regression test - was throwing NRE before
@@ -135,16 +135,20 @@ public class BlockchainBridgeTests
             _receiptStorage.FindBlockHash(receipt.TxHash!).Returns(TestItem.KeccakB);
         }
         _receiptStorage.Get(block).Returns(receipts);
-        _blockchainBridge.TryGetTransaction(transactions[index].Hash!, out TransactionLookupResult? result).Should().BeTrue();
-        result!.Value.Transaction.Should().BeEquivalentTo(Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject);
-        result.Value.ExtraData.Should().BeEquivalentTo(new TransactionForRpcContext(
+        Assert.That(_blockchainBridge.TryGetTransaction(transactions[index].Hash!, out TransactionLookupResult? result), Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result!.Value.Transaction.Nonce, Is.EqualTo((UInt256)index));
+            Assert.That(result.Value.Transaction.Hash, Is.EqualTo(TestItem.Keccaks[index]));
+        });
+        Assert.That(result.Value.ExtraData, Is.EqualTo(new TransactionForRpcContext(
             chainId: _specProvider.ChainId,
             blockHash: block.Hash,
             blockNumber: block.Number,
             txIndex: receipts[index].Index,
             blockTimestamp: block.Timestamp,
             baseFee: UInt256.Zero,
-            receipt: receipts[index]));
+            receipt: receipts[index])));
     }
 
     [Test]
@@ -223,7 +227,7 @@ public class BlockchainBridgeTests
         _blockTree.Head.Returns(head);
         _blockTree.BestSuggestedBody.Returns(bestSuggested);
 
-        _blockchainBridge.HeadBlock.Should().Be(head);
+        Assert.That(_blockchainBridge.HeadBlock, Is.EqualTo(head));
     }
 
     [TestCase(true, true)]
@@ -281,7 +285,7 @@ public class BlockchainBridgeTests
             result = (null, 0, null, 0);
         }
 
-        _blockchainBridge.GetTxReceiptInfo(txHash).Should().BeEquivalentTo(result);
+        Assert.That(_blockchainBridge.GetTxReceiptInfo(txHash), Is.EqualTo(result));
     }
 
     [Test]
@@ -335,6 +339,55 @@ public class BlockchainBridgeTests
             Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.BlobBaseFee == expectedBlobBaseFeeHash));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys(bool optimize)
+    {
+        CallOutput callOutput = InvokeCreateAccessListWithMockedAccess(
+            optimize,
+            [PrecompiledAddresses.ECRecover, TestItem.AddressC],
+            [new StorageCell(TestItem.AddressC, UInt256.One)]);
+
+        Assert.That(callOutput.AccessList, Is.Not.Null);
+        Assert.That(callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover), Is.False);
+        Assert.That(callOutput.AccessList.Any(e => e.Address == TestItem.AddressC), Is.True);
+    }
+
+    [Test]
+    public void CreateAccessList_keeps_precompile_address_when_storage_key_is_present()
+    {
+        CallOutput callOutput = InvokeCreateAccessListWithMockedAccess(
+            optimize: false,
+            [PrecompiledAddresses.ECRecover],
+            [new StorageCell(PrecompiledAddresses.ECRecover, UInt256.One)]);
+
+        Assert.That(callOutput.AccessList, Is.Not.Null);
+        Assert.That(callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover), Is.True);
+    }
+
+    private CallOutput InvokeCreateAccessListWithMockedAccess(
+        bool optimize,
+        Address[] accessedAddresses,
+        StorageCell[] accessedCells)
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        Transaction tx = Build.A.Transaction
+            .WithSenderAddress(TestItem.AddressA)
+            .WithTo(TestItem.AddressB)
+            .TestObject;
+
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(callInfo =>
+            {
+                ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
+                tracer.ReportAccess(accessedAddresses, accessedCells);
+                tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 0), Array.Empty<byte>(), Array.Empty<LogEntry>());
+                return TransactionResult.Ok;
+            });
+
+        return _blockchainBridge.CreateAccessList(header, tx, null, optimize, null, default);
+    }
+
     [Test]
     public void Call_tx_returns_InsufficientSenderBalanceError()
     {
@@ -346,7 +399,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for transfer"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance for transfer"));
     }
 
     [Test]
@@ -360,7 +413,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for transfer"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance for transfer"));
     }
 
     [Test]
@@ -752,7 +805,7 @@ public class BlockchainBridgeTests
 
         _stateReader.HasStateForBlock(header).Returns(true);
 
-        _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
+        Assert.That(_blockchainBridge.HasStateForBlock(header), Is.True);
     }
 
     [Test]
@@ -762,7 +815,7 @@ public class BlockchainBridgeTests
 
         _stateReader.HasStateForBlock(header).Returns(false);
 
-        _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
+        Assert.That(_blockchainBridge.HasStateForBlock(header), Is.False);
     }
 
     [Test]
@@ -792,7 +845,7 @@ public class BlockchainBridgeTests
 
         adapter.Execute(transaction, Substitute.For<ITxTracer>());
 
-        simulateRequestState.TotalGasLeft.Should().Be(50_000);
-        simulateRequestState.BlockGasLeft.Should().Be(30_000);
+        Assert.That(simulateRequestState.TotalGasLeft, Is.EqualTo(50_000));
+        Assert.That(simulateRequestState.BlockGasLeft, Is.EqualTo(30_000));
     }
 }

@@ -21,6 +21,10 @@ permissions:
 jobs:
   check-trigger:
     name: Check if EVM benchmark needed
+    # Fork-author guard: block fork PRs from dispatching downstream jobs to the
+    # self-hosted `benchmark` runner pool. Matches the guard used by sibling
+    # benchmark workflows (run-block-processing-benchmark.yml, run-expb-reproducible-benchmarks.yml).
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.check.outputs.should_run }}
@@ -91,6 +95,7 @@ jobs:
         with:
           large-packages: false
           tool-cache: false
+          swap-storage: false
 
       - name: Check out PR head
         uses: actions/checkout@v6

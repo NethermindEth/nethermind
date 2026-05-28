@@ -84,7 +84,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
-                BlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
+                // BAL makes speculative tx execution redundant — when BAL-based read warming
+                // is in use, drive warmup directly off the suggested block's access list.
+                ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
                 AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
@@ -253,7 +255,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
     {
-        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new();
+        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
@@ -306,12 +308,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, BlockAccessList? bal = null)
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
         : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
-        private readonly BlockAccessList? Bal = bal;
+        private readonly ReadOnlyBlockAccessList? Bal = bal;
         private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
@@ -382,8 +384,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     }
                 }
 
-                // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
-                if (Bal is null)
+                if (Bal is not null && Bal.AccountChanges.Count > 0)
+                {
+                    WarmupFromBal(parallelOptions, envPool);
+                }
+                else
                 {
                     WarmingState<Block> baseState = new(envPool, block, parent);
 
@@ -407,6 +412,71 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // Ignore, block completed cancel
             }
         }
+
+        private void WarmupFromBal(ParallelOptions parallelOptions, ObjectPool<IReadOnlyTxProcessorSource> envPool)
+        {
+            using ArrayPoolList<ReadOnlyAccountChanges> accounts = new(Bal!.AccountChanges.AsSpan());
+
+            WarmingState<ArrayPoolList<ReadOnlyAccountChanges>> baseState = new(envPool, accounts, parent);
+
+            ParallelUnbalancedWork.For(
+                0,
+                accounts.Count,
+                parallelOptions,
+                baseState.InitThreadState,
+                static (i, state) =>
+                {
+                    ReadOnlyAccountChanges ac = state.Payload[i];
+                    IWorldState worldState = state.Scope!.WorldState;
+
+                    WarmupBalAccount(ac, worldState);
+
+                    return state;
+                },
+                WarmingState<ArrayPoolList<ReadOnlyAccountChanges>>.FinallyAction);
+        }
+
+        private static void WarmupBalAccount(ReadOnlyAccountChanges ac, IWorldState worldState)
+        {
+            try
+            {
+                Address address = ac.Address;
+                worldState.WarmUp(address);
+
+                // Merge two sorted sequences (ChangedSlots, StorageReads) into one
+                // ascending pass for better trie path locality
+                ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
+                ReadOnlySpan<UInt256> reads = ac.StorageReads;
+                int slotIndex = 0;
+                int readIndex = 0;
+
+                while (slotIndex < changed.Length || readIndex < reads.Length)
+                {
+                    UInt256 slot;
+                    if (readIndex >= reads.Length)
+                    {
+                        slot = changed[slotIndex++];
+                    }
+                    else
+                    {
+                        slot = reads[readIndex];
+                        if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
+                        {
+                            slot = changed[slotIndex++];
+                        }
+                        else
+                        {
+                            readIndex++;
+                        }
+                    }
+                    worldState.Get(new StorageCell(address, slot));
+                }
+            }
+            catch (MissingTrieNodeException)
+            {
+            }
+        }
+
 
         private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
         {

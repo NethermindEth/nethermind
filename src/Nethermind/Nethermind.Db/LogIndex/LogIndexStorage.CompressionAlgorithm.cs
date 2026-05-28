@@ -22,7 +22,7 @@ partial class LogIndexStorage
         public delegate nuint CompressFunc(ReadOnlySpan<int> @in, nuint n, Span<byte> @out);
         public delegate nuint DecompressFunc(ReadOnlySpan<byte> @in, nuint n, Span<int> @out);
 
-        private static readonly Dictionary<string, CompressionAlgorithm> SupportedMap = new();
+        private static readonly Dictionary<string, CompressionAlgorithm> SupportedMap = [];
 
         public static IReadOnlyDictionary<string, CompressionAlgorithm> Supported => SupportedMap;
 
