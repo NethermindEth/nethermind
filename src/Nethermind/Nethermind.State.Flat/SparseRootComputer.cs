@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Sparse;
@@ -121,10 +120,12 @@ public sealed class SparseRootComputer : IDisposable
         // cross-block paths cost nothing.
         // Cold start (empty trie): the first retry will collect all targets at minLen=0
         // and fetch the same proofs the old initial call would have.
-        if (_trie.AccountTrie.Subtrie.Root < 0)
+        if (_trie.AccountTrie.Subtrie.Root < 0 && _previousStateRoot != Keccak.EmptyTreeHash)
         {
-            // Empty sparse trie — reveal the prevRoot node so UpdateLeaves has a starting point
-            // (otherwise UpdateSingleLeaf would just InsertLeaf and skip the proof flow).
+            // Empty sparse trie with a non-empty parent — reveal the prevRoot node so
+            // UpdateLeaves has a starting point. For Keccak.EmptyTreeHash the persistent
+            // trie has no root node to load; UpdateLeaves will InsertLeaf directly into
+            // the empty sparse trie.
             byte[] rootRlp = _reader.LoadStateRlp(TreePath.Empty, _previousStateRoot);
             ProofNode rootProof = MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty);
             _trie.AccountTrie.RevealNodes([rootProof]);
@@ -225,8 +226,12 @@ public sealed class SparseRootComputer : IDisposable
                 ProofNode siblingProof = MultiProofReader.DecodeProofNode(siblingRlp, siblingPath);
                 _trie.AccountTrie.RevealNodes([siblingProof]);
             }
-            catch (MissingTrieNodeException) { /* sibling missing in DB — outer retry will throw with diagnostics */ }
-            catch (TrieNodeHashMismatchException) { /* same as above */ }
+            catch (Exception ex) when (ex is MissingTrieNodeException or TrieNodeHashMismatchException)
+            {
+                // Best-effort sibling reveal. If the load fails, the outer retry loop will
+                // hit the blinded sibling again and rethrow with full diagnostics there.
+                continue;
+            }
         }
     }
 

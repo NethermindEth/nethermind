@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -39,7 +39,6 @@ public sealed class SparseSubtrie : IDisposable
 
     public bool IsEmpty => Root == -1 || _arena[Root].IsEmpty();
 
-    #region Arena Management
 
     public int AllocNode(SparseTrieNode node)
     {
@@ -105,9 +104,7 @@ public sealed class SparseSubtrie : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public byte[]? ValueAt(int idx) => idx >= 0 && idx < _values.Length ? _values[idx] : null;
 
-    #endregion
 
-    #region Leaf Operations
 
     public int InsertLeaf(byte[] nibbleKey, byte[] value)
     {
@@ -130,9 +127,7 @@ public sealed class SparseSubtrie : IDisposable
         node.MarkDirty();
     }
 
-    #endregion
 
-    #region Branch Operations
 
     public int CreateBranchWithTwoChildren(
         byte[]? extensionKey, int nibbleA, int childA, int nibbleB, int childB)
@@ -206,9 +201,7 @@ public sealed class SparseSubtrie : IDisposable
         branch.MarkDirty();
     }
 
-    #endregion
 
-    #region Split and Collapse
 
     public int SplitAndInsertLeaf(int existingNodeIdx, byte[] existingKey,
         int commonPrefixLength, byte[] newLeafKey, byte[] newLeafValue)
@@ -302,9 +295,7 @@ public sealed class SparseSubtrie : IDisposable
         return -1;
     }
 
-    #endregion
 
-    #region Update Leaves
 
     public const int DeletedSentinel = -3;
 
@@ -385,7 +376,7 @@ public sealed class SparseSubtrie : IDisposable
         if (update.IsDelete || update.Kind == LeafUpdateKind.Touched)
             return (UpdateResult.NoChange, nodeIdx);
 
-        // Diverged — split
+        // Diverged â€” split
         int newBranch = SplitAndInsertLeaf(nodeIdx, nodeKey, commonLen, path.ToArray(), update.Value!);
         return (UpdateResult.Applied, newBranch);
     }
@@ -398,7 +389,7 @@ public sealed class SparseSubtrie : IDisposable
 
         // Extension-only state: BranchWithExtension was revealed from an Extension proof
         // but the underlying Branch's children were never revealed (stateMask == 0 with shortKey).
-        // We cannot split or insert through this — the underlying Branch's structure is unknown.
+        // We cannot split or insert through this â€” the underlying Branch's structure is unknown.
         // Request a proof so the inner Branch gets revealed via MergeChildIntoBranchWithExtension.
         bool isExtensionOnly = shortKey.Length > 0 && _arena[nodeIdx].StateMask == TrieMask.Empty;
         if (isExtensionOnly && !(update.IsDelete || update.Kind == LeafUpdateKind.Touched))
@@ -466,12 +457,12 @@ public sealed class SparseSubtrie : IDisposable
 
         if (result != UpdateResult.Applied) return (result, nodeIdx);
 
-        // Child changed — update our reference and handle structural changes
+        // Child changed â€” update our reference and handle structural changes
         if (childReplacement != childNodeIdx)
         {
             if (childReplacement == DeletedSentinel)
             {
-                // Child was deleted — remove from branch
+                // Child was deleted â€” remove from branch
                 RemoveChildFromBranch(nodeIdx, nibble);
                 int remainingCount = _arena[nodeIdx].ChildCount();
                 if (remainingCount <= 1)
@@ -511,9 +502,7 @@ public sealed class SparseSubtrie : IDisposable
         return CreateBranchWithTwoChildren(wrapExtKey, existingNibble, existingBranchIdx, newNibble, newLeafIdx);
     }
 
-    #endregion
 
-    #region Incremental Hashing
 
     public RlpNode UpdateCachedRlp()
     {
@@ -621,7 +610,7 @@ public sealed class SparseSubtrie : IDisposable
 
     private void WrapBranchWithExtension(int nodeIdx)
     {
-        // Save the inner branch RLP before wrapping with extension — both may need DB entries
+        // Save the inner branch RLP before wrapping with extension â€” both may need DB entries
         _arena[nodeIdx].InnerBranchRlp = _arena[nodeIdx].FullRlp;
 
         byte[] extKey = _arena[nodeIdx].ShortKey!;
@@ -647,9 +636,7 @@ public sealed class SparseSubtrie : IDisposable
             : RlpNode.FromRlp(rlp);
     }
 
-    #endregion
 
-    #region Wipe
 
     public void Wipe()
     {
@@ -665,7 +652,6 @@ public sealed class SparseSubtrie : IDisposable
         Root = AllocNode(SparseTrieNode.CreateEmpty());
     }
 
-    #endregion
 
     /// <summary>
     /// Walks the trie along the target's nibble path. If the target's path reaches a Branch

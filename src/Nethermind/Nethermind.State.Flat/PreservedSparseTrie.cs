@@ -77,4 +77,22 @@ public sealed class PreservedSparseTrie
             _state = State.Cleared;
         }
     }
+
+    /// <summary>
+    /// Best-effort store: returns false if the trie was already stored back
+    /// (Anchored or Cleared) rather than throwing. Used by scope disposal where
+    /// Commit may have already returned the trie via Store*().
+    /// </summary>
+    public bool TryStoreCleared(SparseStateTrie trie)
+    {
+        lock (_lock)
+        {
+            if (_state != State.CheckedOut) return false;
+            trie.Clear();
+            _trie = trie;
+            _anchorStateRoot = null;
+            _state = State.Cleared;
+            return true;
+        }
+    }
 }

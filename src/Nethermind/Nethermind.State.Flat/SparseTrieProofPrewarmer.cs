@@ -26,14 +26,16 @@ public sealed class SparseTrieProofPrewarmer(Channel<HashedStateUpdate> sparseTr
         ValueHash256 slotKey = default;
         Nethermind.State.StorageTree.ComputeKeyWithLookup(index.Value, ref slotKey);
         Hash256 slotHash = slotKey.ToCommitment();
-        // IMPORTANT: only return true when actually enqueued. The caller (FlatStorageTree.HintSet)
-        // increments _outstandingWarmups based on our return — if we return true on a full channel,
-        // the increment is never matched and scope disposal stalls.
-        return sparseTrieChannel.Writer.TryWrite(new HashedStateUpdate
+        sparseTrieChannel.Writer.TryWrite(new HashedStateUpdate
         {
             StorageUpdates = new() { [flatTree.AccountPathHash] = new() { [slotHash] = LeafUpdate.Touched() } },
             PreviousStorageRoots = new() { [flatTree.AccountPathHash] = flatTree.RootHash },
         });
+        // Return false: the caller increments _outstandingWarmups on true and expects a
+        // matching WarmUp* callback to decrement. We never invoke those callbacks (the
+        // sparse trie task owns the enqueued work), so we must not contribute to the counter
+        // or scope disposal will stall on the 1s WaitForOutstandingWarmups timeout.
+        return false;
     }
 
     public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
@@ -41,10 +43,12 @@ public sealed class SparseTrieProofPrewarmer(Channel<HashedStateUpdate> sparseTr
         if (path is null) return false;
 
         Hash256 hashedAddress = Keccak.Compute(path.Bytes);
-        return sparseTrieChannel.Writer.TryWrite(new HashedStateUpdate
+        sparseTrieChannel.Writer.TryWrite(new HashedStateUpdate
         {
             AccountUpdates = new() { [hashedAddress] = LeafUpdate.Touched() },
         });
+        // See PushSlotJob for why this returns false.
+        return false;
     }
 
     public void OnEnterScope() { }

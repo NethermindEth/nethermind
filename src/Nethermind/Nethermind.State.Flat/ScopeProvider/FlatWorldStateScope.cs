@@ -120,10 +120,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Return the sparse trie to the preserved store if it was checked out but never
         // stored back (e.g., scope disposed without Commit due to reorg or exception).
+        // TryStoreCleared is a no-op if Commit already returned ownership.
         if (_preservedSparseTrie is not null && _sparseStateTrie is not null)
         {
-            try { _preservedSparseTrie.StoreCleared(_sparseStateTrie); }
-            catch (InvalidOperationException) { }
+            _preservedSparseTrie.TryStoreCleared(_sparseStateTrie);
             _sparseStateTrie = null;
         }
 
