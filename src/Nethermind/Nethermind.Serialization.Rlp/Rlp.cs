@@ -233,8 +233,9 @@ namespace Nethermind.Serialization.Rlp
             {
                 throw;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OutOfMemoryException)
             {
+                // OOM must propagate unwrapped — wrapping it as RlpException misreports the cause.
                 throw new RlpException($"Error decoding {typeof(T).Name}.", e);
             }
 
