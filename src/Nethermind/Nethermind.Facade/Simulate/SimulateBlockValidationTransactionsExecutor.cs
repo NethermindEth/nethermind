@@ -56,6 +56,4 @@ public class SimulateBlockValidationTransactionsExecutor(
 
         return result;
     }
-
-    public bool IsTransactionInBlock(Transaction tx) => baseTransactionExecutor.IsTransactionInBlock(tx);
 }

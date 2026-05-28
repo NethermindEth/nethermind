@@ -154,7 +154,4 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         block.TrySetTransactions([.. correctTransactions]);
         return [.. receiptsTracer.TxReceipts];
     }
-
-    public bool IsTransactionInBlock(Transaction tx)
-        => throw new NotImplementedException();
 }

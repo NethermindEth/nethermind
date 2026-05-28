@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
@@ -9,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -55,12 +57,18 @@ public partial class EngineRpcModule : IEngineRpcModule
             // EIP-7805 §"Validation" treats unparsable IL items as a no-op rather than a
             // protocol error. The decoder already skips entries it can't read, but a single
             // bad item early in the array can still surface as e.g. an
-            // IndexOutOfRangeException from the RLP context. Swallow it: the IL store ends
-            // up with whatever subset decoded cleanly (possibly empty), and the FCU
-            // proceeds. The CL retries with a different builder if the resulting block fails
-            // the IL constraint downstream.
-            try { inclusionListTxSource.Set(ilTxs, spec); }
-            catch (System.Exception) { /* see remarks above */ }
+            // IndexOutOfRangeException from the RLP context, or an ArgumentException from
+            // the RLP buffer-bounds guards. Narrow the catch to those expected decode faults
+            // so genuine bugs (NRE, OOM, …) still surface; log so anomalous IL traffic from a
+            // misbehaving CL is observable rather than silent.
+            try
+            {
+                inclusionListTxSource.Set(ilTxs, spec);
+            }
+            catch (Exception ex) when (ex is RlpException or ArgumentException or IndexOutOfRangeException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"engine_forkchoiceUpdatedV5: discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message})");
+            }
         }
         // custodyColumns: a 16-byte bitarray indicating column custody set (EIP-7805 §IL committee).
         // No EL-side processing required today; recorded here for future blob-column gating.

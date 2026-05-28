@@ -25,22 +25,25 @@ namespace Nethermind.Consensus.Processing
         public void RecoverData(Block block)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-            RecoverData(block.Transactions, spec, true);
+            RecoverData(block.Transactions, spec);
             if (block.InclusionListTransactions is not null)
             {
-                RecoverData(block.InclusionListTransactions, spec, false);
+                RecoverData(block.InclusionListTransactions, spec);
             }
         }
 
-        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool checkFirst)
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec)
         {
             if (txs.Length == 0)
                 return;
 
+            // Short-circuit only when both signature AND sender are present — RLP decode
+            // populates the signature but leaves SenderAddress null, so a freshly decoded
+            // batch (block txs on first call, IL txs from the decoder) still falls through
+            // to recovery. Once recovered, a re-entry on the same array naturally returns
+            // here because every entry has both fields.
             Transaction firstTx = txs[0];
-            if (checkFirst && firstTx.IsSigned && firstTx.SenderAddress is not null)
-                // already recovered a sender for a signed tx in this block,
-                // so we assume the rest of txs in the block are already recovered
+            if (firstTx.IsSigned && firstTx.SenderAddress is not null)
                 return;
 
             bool useSignatureChainId = !releaseSpec.ValidateChainId;

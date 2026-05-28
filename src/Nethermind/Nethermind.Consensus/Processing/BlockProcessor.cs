@@ -91,7 +91,7 @@ public partial class BlockProcessor(
         if (spec.InclusionListsEnabled && !options.ContainsFlag(ProcessingOptions.NoValidation))
         {
             block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
-            suggestedBlock.InclusionListUnsatisfied = !_inclusionListValidator.ValidateInclusionList(block, _blockTransactionsExecutor.IsTransactionInBlock);
+            suggestedBlock.InclusionListUnsatisfied = !_inclusionListValidator.ValidateInclusionList(block);
         }
 
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))

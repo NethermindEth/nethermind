@@ -31,39 +31,6 @@ namespace Nethermind.Consensus.Processing
         {
             private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
 
-            // public BlockProductionTransactionsExecutor(
-            //     IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
-            //     ISpecProvider specProvider,
-            //     ILogManager logManager,
-            //     long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes)
-            //     : this(
-            //         readOnlyTxProcessingEnv.TransactionProcessor,
-            //         readOnlyTxProcessingEnv.WorldState,
-            //         specProvider,
-            //         logManager,
-            //         maxTxLengthKilobytes)
-            // {
-            // }
-
-            // public BlockProductionTransactionsExecutor(
-            //     ITransactionProcessor transactionProcessor,
-            //     IWorldState stateProvider,
-            //     ISpecProvider specProvider,
-            //     ILogManager logManager,
-            //     long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes) : this(transactionProcessor, stateProvider,
-            //     new BlockProductionTransactionPicker(specProvider, maxTxLengthKilobytes), logManager)
-            // {
-            // }
-
-            // The production executor doesn't track which txs ended up in the block — the
-            // EIP-7805 IL validator only consults this method when validating an incoming
-            // block (ProcessingOptions.NoValidation is set during production, gating the
-            // call out). Returning false rather than throwing keeps the contract well-defined
-            // if a future refactor reaches this code path: a "not in block" answer at worst
-            // makes the validator do redundant CouldIncludeTx work, never produces an
-            // incorrect verdict.
-            public bool IsTransactionInBlock(Transaction tx) => false;
-
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
             event EventHandler<AddingTxEventArgs>? IBlockProductionTransactionsExecutor.AddingTransaction

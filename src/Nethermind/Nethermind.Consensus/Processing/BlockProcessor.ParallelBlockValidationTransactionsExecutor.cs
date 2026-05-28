@@ -44,8 +44,6 @@ public partial class BlockProcessor
             inner.SetBlockExecutionContext(blockExecutionContext);
         }
 
-        public bool IsTransactionInBlock(Transaction tx) => inner.IsTransactionInBlock(tx);
-
         public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             if (!balManager.Enabled)

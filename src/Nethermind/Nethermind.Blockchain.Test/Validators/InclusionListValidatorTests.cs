@@ -59,7 +59,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, _ => false), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block), Is.True);
     }
 
     [Test]
@@ -72,7 +72,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, tx => tx == _validTx), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block), Is.True);
     }
 
     [Test]
@@ -84,7 +84,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, _ => false), Is.False);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block), Is.False);
     }
 
     [Test]
@@ -95,7 +95,7 @@ public class InclusionListValidatorTests
             .WithGasUsed(1_000_000)
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, _ => false), Is.False);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block), Is.False);
     }
 
     [Test]
@@ -110,7 +110,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(preBogotaValidator.ValidateInclusionList(block, _ => false), Is.True);
+        Assert.That(preBogotaValidator.ValidateInclusionList(block), Is.True);
     }
 
     [Test]
@@ -131,7 +131,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([expensiveTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, _ => false), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block), Is.True);
     }
 
     [Test]
@@ -152,7 +152,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([futureNonceTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, _ => false), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block), Is.True);
     }
 
     [Test]
@@ -174,7 +174,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([lowGasPriceTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, _ => false), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block), Is.True);
     }
 
     [Test]
@@ -195,7 +195,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([wideTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, _ => false), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block), Is.True);
     }
 
     [Test]
@@ -219,7 +219,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx, invalidTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, tx => tx == _validTx), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block), Is.True);
     }
 
     [Test]
@@ -231,6 +231,6 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, _ => false), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block), Is.True);
     }
 }

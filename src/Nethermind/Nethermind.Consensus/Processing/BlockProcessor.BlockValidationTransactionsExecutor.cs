@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -9,12 +8,10 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.TxPool.Comparison;
 using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing;
@@ -38,17 +35,12 @@ public partial class BlockProcessor
 
         public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
-        private readonly HashSet<Transaction> _transactionsInBlock = new(ByHashTxComparer.Instance);
-
         public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             Metrics.ResetBlockStats();
             SetupTxTimingMetrics(block);
 
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
-
-            _transactionsInBlock.Clear();
-            _transactionsInBlock.AddRange(block.Transactions);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
@@ -68,8 +60,6 @@ public partial class BlockProcessor
             [DoesNotReturn]
             static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, Core.Messages.BlockErrorMessages.ExceededGasLimit);
         }
-
-        public bool IsTransactionInBlock(Transaction tx) => _transactionsInBlock.Contains(tx);
 
         protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
         {

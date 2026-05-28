@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -17,17 +18,16 @@ namespace Nethermind.Consensus.Validators;
 /// </summary>
 /// <remarks>
 /// State access is single-threaded: <see cref="IWorldState"/> backs onto a Patricia trie
-/// with mutable caches, so reads MUST be serialised. The earlier <c>.AsParallel()</c>
-/// version raced on those caches and could corrupt them under contention.
+/// with mutable caches, so reads MUST be serialised.
 /// </remarks>
 public class InclusionListValidator(
     ISpecProvider specProvider,
     IWorldState worldState) : IInclusionListValidator
 {
-    public bool ValidateInclusionList(Block block, Func<Transaction, bool> isTransactionInBlock) =>
-        ValidateInclusionList(block, isTransactionInBlock, specProvider.GetSpec(block.Header));
+    public bool ValidateInclusionList(Block block) =>
+        ValidateInclusionList(block, specProvider.GetSpec(block.Header));
 
-    private bool ValidateInclusionList(Block block, Func<Transaction, bool> isTransactionInBlock, IReleaseSpec spec)
+    private bool ValidateInclusionList(Block block, IReleaseSpec spec)
     {
         if (!spec.InclusionListsEnabled)
         {
@@ -46,10 +46,15 @@ public class InclusionListValidator(
             return true;
         }
 
+        // Build the included-tx set once: O(n) construction trades a hash for the O(n*m)
+        // worst case of scanning block.Transactions per IL tx. ByHashTxComparer matches what
+        // the executor uses elsewhere so cross-instance hash collisions can't false-match.
+        HashSet<Transaction> includedTxs = new(block.Transactions, ByHashTxComparer.Instance);
+
         // Serial scan — worldState is not thread-safe (see <remarks> on the class).
         foreach (Transaction tx in block.InclusionListTransactions)
         {
-            if (!isTransactionInBlock(tx) && CouldIncludeTx(tx, block))
+            if (!includedTxs.Contains(tx) && CouldIncludeTx(tx, block))
             {
                 return false;
             }
