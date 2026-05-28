@@ -402,13 +402,26 @@ public sealed class SparseSubtrie : IDisposable
 
         // Extension-only state: BranchWithExtension was revealed from an Extension proof
         // but the underlying Branch's children were never revealed (stateMask == 0 with shortKey).
-        // We cannot split or insert through this â€” the underlying Branch's structure is unknown.
-        // Request a proof so the inner Branch gets revealed via MergeChildIntoBranchWithExtension.
+        // Two sub-cases for a non-delete update:
+        //   1) The update's path matches the full shortKey (continues INTO the inner branch) â€”
+        //      we cannot insert through without knowing the inner branch's structure, so we
+        //      request a proof to be revealed via MergeChildIntoBranchWithExtension.
+        //   2) The update's path diverges WITHIN the shortKey â€” we can split locally without
+        //      knowing the inner branch's structure: the original extension keeps its blinded
+        //      inner-branch reference, just under a shorter shortKey, while a new leaf joins
+        //      it under a new parent branch. Falling through to the shared shortKey path
+        //      handles this case in SplitExtensionAndInsert.
         bool isExtensionOnly = shortKey.Length > 0 && _arena[nodeIdx].StateMask == TrieMask.Empty;
         if (isExtensionOnly && !(update.IsDelete || update.Kind == LeafUpdateKind.Touched))
         {
-            proofTarget = TreePath.FromNibble(path);
-            return (UpdateResult.NeedsProof, nodeIdx);
+            int commonLenForExt = CommonPrefixLength(path, shortKey);
+            // Diverges within shortKey â€” split is local; let the shortKey block below handle it.
+            // Continues through full shortKey â€” we'd descend into a blinded inner branch, request a proof.
+            if (commonLenForExt >= shortKey.Length)
+            {
+                proofTarget = TreePath.FromNibble(path);
+                return (UpdateResult.NeedsProof, nodeIdx);
+            }
         }
 
         if (shortKey.Length > 0)
@@ -516,15 +529,42 @@ public sealed class SparseSubtrie : IDisposable
     {
         int existingNibble = extensionKey[commonPrefixLength];
         int newNibble = newLeafPath[commonPrefixLength];
-
         byte[] remainingExtKey = extensionKey[(commonPrefixLength + 1)..];
-        _arena[existingBranchIdx].ShortKey = remainingExtKey.Length > 0 ? remainingExtKey : null;
-        _arena[existingBranchIdx].MarkDirty();
 
         byte[] newKey = newLeafPath[(commonPrefixLength + 1)..];
         int newLeafIdx = InsertLeaf(newKey, newLeafValue);
-
         byte[]? wrapExtKey = commonPrefixLength > 0 ? extensionKey[..commonPrefixLength] : null;
+
+        // Special case: extension-only node (StateMask == Empty, one blinded child) whose ShortKey
+        // would shrink to empty after the split. We can't keep an "empty ShortKey + empty StateMask
+        // + one blinded child" node â€” HashNode's extension-only check requires a non-empty ShortKey,
+        // so it would fall through to EncodeBranch and emit a 17-element empty branch. Instead,
+        // promote the blinded child reference directly into the new parent branch's slot, freeing
+        // the old extension node.
+        if (remainingExtKey.Length == 0
+            && _arena[existingBranchIdx].StateMask == TrieMask.Empty
+            && _arena[existingBranchIdx].ChildrenStart >= 0)
+        {
+            RlpNode blindedChild = _children[_arena[existingBranchIdx].ChildrenStart].BlindedRlp;
+            FreeNode(existingBranchIdx);
+
+            TrieMask mask = TrieMask.Empty.SetBit(existingNibble).SetBit(newNibble);
+            int childStart = AllocChildren(2);
+            int denseExisting = mask.DenseIndex(existingNibble);
+            int denseNew = mask.DenseIndex(newNibble);
+            _children[childStart + denseExisting] = SparseChildEntry.Blinded(blindedChild);
+            _children[childStart + denseNew] = SparseChildEntry.Revealed(newLeafIdx);
+
+            SparseTrieNode parent = wrapExtKey is { Length: > 0 }
+                ? SparseTrieNode.CreateBranchWithExtension(wrapExtKey, mask, childStart)
+                : SparseTrieNode.CreateBranch(mask, childStart);
+            parent.BlindedMask = TrieMask.Empty.SetBit(existingNibble);
+            return AllocNode(parent);
+        }
+
+        _arena[existingBranchIdx].ShortKey = remainingExtKey.Length > 0 ? remainingExtKey : null;
+        _arena[existingBranchIdx].MarkDirty();
+
         return CreateBranchWithTwoChildren(wrapExtKey, existingNibble, existingBranchIdx, newNibble, newLeafIdx);
     }
 
