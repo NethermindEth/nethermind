@@ -71,6 +71,12 @@ public interface IFlatDbConfig : IConfig
         "computation.", DefaultValue = "true")]
     bool SparseTrieAuthoritativeStorage { get; set; }
 
+    [ConfigItem(Description = "Diagnostic-only. When true AND SparseTrieAuthoritativeStorage=true, every " +
+        "sparse-computed per-contract storage root is shadow-compared against the same root computed via " +
+        "Patricia in parallel. First divergence is logged with full slot-update context for offline analysis. " +
+        "Significant CPU cost — use only for bug-hunting.", DefaultValue = "false")]
+    bool SparseTrieShadowStorageCompare { get; set; }
+
     [ConfigItem(Description = "Selects which trie warmer implementation runs during execution. " +
         "'Legacy' (default) uses the Patricia-walking TrieWarmer which warms DB pages via real trie traversals. " +
         "'SparseProof' uses the sparse-aware proof prefetcher that hits only the paths the sparse trie will need. " +
