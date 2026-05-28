@@ -50,6 +50,8 @@
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.4.1" />
+    <!-- Pinned to fix a crash with [Repeat] + parallel tests in MTP 2.1.0 (https://github.com/microsoft/testfx/issues/7442), fixed in 2.2.1. Update when NUnit3TestAdapter pulls in >= 2.2.1 transitively. -->
+    <PackageVersion Include="Microsoft.Testing.Platform" Version="2.2.3" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
     <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.5" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.6.0" />
@@ -73,7 +75,7 @@
     <PackageVersion Include="NSubstitute" Version="5.3.0" />
     <PackageVersion Include="NUnit" Version="4.6.1" />
     <PackageVersion Include="NUnit.Analyzers" Version="4.13.0" />
-    <PackageVersion Include="NUnit3TestAdapter" Version="6.1.0" />
+    <PackageVersion Include="NUnit3TestAdapter" Version="6.2.0" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
     <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.8" />
     <PackageVersion Include="Polly" Version="8.6.6" />
