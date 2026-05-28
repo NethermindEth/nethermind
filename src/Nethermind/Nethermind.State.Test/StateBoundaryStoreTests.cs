@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Test;
 using Nethermind.State;
 using NUnit.Framework;
@@ -12,14 +11,14 @@ public class StateBoundaryStoreTests
 {
     [Test]
     public void Reads_null_when_key_absent() =>
-        new StateBoundaryStore(new TestMemDb()).OldestStateBlock.Should().BeNull();
+        Assert.That(new StateBoundaryStore(new TestMemDb()).OldestStateBlock, Is.Null);
 
     [Test]
     public void Round_trips_value_through_kv_store()
     {
         TestMemDb kv = new();
         new StateBoundaryStore(kv).OldestStateBlock = 1234;
-        new StateBoundaryStore(kv).OldestStateBlock.Should().Be(1234);
+        Assert.That(new StateBoundaryStore(kv).OldestStateBlock, Is.EqualTo(1234));
     }
 
     [TestCase(100L, 200L, 200L, TestName = "Forward write advances the floor")]
@@ -32,8 +31,8 @@ public class StateBoundaryStoreTests
 
         store.OldestStateBlock = attempted;
 
-        store.OldestStateBlock.Should().Be(expected);
-        new StateBoundaryStore(kv).OldestStateBlock.Should().Be(expected);
+        Assert.That(store.OldestStateBlock, Is.EqualTo(expected));
+        Assert.That(new StateBoundaryStore(kv).OldestStateBlock, Is.EqualTo(expected));
     }
 
     [Test]
@@ -45,7 +44,7 @@ public class StateBoundaryStoreTests
 
         store.OldestStateBlock = 42;
 
-        kv.Count.Should().Be(0);
+        Assert.That(kv.Count, Is.EqualTo(0));
     }
 
     [Test]
@@ -55,10 +54,10 @@ public class StateBoundaryStoreTests
         StateBoundaryStore store = new(kv) { OldestStateBlock = 200 };
 
         store.OldestStateBlock = null;
-        store.OldestStateBlock.Should().BeNull();
-        new StateBoundaryStore(kv).OldestStateBlock.Should().BeNull();
+        Assert.That(store.OldestStateBlock, Is.Null);
+        Assert.That(new StateBoundaryStore(kv).OldestStateBlock, Is.Null);
 
         store.OldestStateBlock = 50;
-        store.OldestStateBlock.Should().Be(50, "after reset a smaller floor is acceptable");
+        Assert.That(store.OldestStateBlock, Is.EqualTo(50), "after reset a smaller floor is acceptable");
     }
 }
