@@ -4,7 +4,7 @@
 using System;
 using Nethermind.Int256;
 
-namespace Nethermind.Merkleization;
+namespace Nethermind.Serialization.Ssz.Merkleization;
 
 public ref struct Merkleizer
 {

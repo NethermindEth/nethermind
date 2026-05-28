@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -11,8 +12,9 @@ using System.Security.Cryptography;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
 using Nethermind.Serialization.Ssz;
+using Nethermind.Serialization.Ssz.Merkleization;
+using Nethermind.Serialization.Ssz.SszVectorConverters;
 using NUnit.Framework;
 
 namespace Nethermind.Serialization.SszGenerator.Test;
@@ -96,6 +98,7 @@ public class EncodingTest
             Bools = [true, false, true],
             Ints = [-1, int.MaxValue],
             Longs = [long.MinValue, 7],
+            Wides = [UInt128.One, UInt128.MaxValue],
         };
 
         byte[] encoded = Encode(container);
@@ -104,6 +107,52 @@ public class EncodingTest
         Assert.That(decoded.Bools, Is.EqualTo(container.Bools));
         Assert.That(decoded.Ints, Is.EqualTo(container.Ints));
         Assert.That(decoded.Longs, Is.EqualTo(container.Longs));
+        Assert.That(decoded.Wides, Is.EqualTo(container.Wides));
+    }
+
+    [Test]
+    public void Merkleize_uint128_vector_matches_encoded_bytes()
+    {
+        UInt128VectorContainer container = new()
+        {
+            Wides =
+            [
+                UInt128.One,
+                new UInt128(0x0102030405060708UL, 0x1112131415161718UL),
+                UInt128.MaxValue,
+            ],
+        };
+
+        byte[] expectedBytes = new byte[3 * UInt128SszVectorConverter.Length];
+        UInt128SszVectorConverter.ToSpan(expectedBytes, container.Wides);
+
+        Merkleize(container, out UInt256 actual);
+        Merkle.Merkleize(out UInt256 expected, expectedBytes, 2);
+
+        Assert.That(Encode(container), Is.EqualTo(expectedBytes));
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Encode_decode_and_merkleize_enum_vector_uses_underlying_converter()
+    {
+        PrimitiveEnumVectorContainer container = new()
+        {
+            Items = [PrimitiveEnum.One, PrimitiveEnum.Max, PrimitiveEnum.Two],
+        };
+        byte[] expectedBytes = new byte[3 * sizeof(uint)];
+        BinaryPrimitives.WriteUInt32LittleEndian(expectedBytes.AsSpan(0, sizeof(uint)), (uint)PrimitiveEnum.One);
+        BinaryPrimitives.WriteUInt32LittleEndian(expectedBytes.AsSpan(sizeof(uint), sizeof(uint)), (uint)PrimitiveEnum.Max);
+        BinaryPrimitives.WriteUInt32LittleEndian(expectedBytes.AsSpan(2 * sizeof(uint), sizeof(uint)), (uint)PrimitiveEnum.Two);
+
+        byte[] encoded = Encode(container);
+        Decode(encoded, out PrimitiveEnumVectorContainer decoded);
+        Merkleize(container, out UInt256 actual);
+        Merkle.Merkleize(out UInt256 expected, expectedBytes, 1);
+
+        Assert.That(encoded, Is.EqualTo(expectedBytes));
+        Assert.That(decoded.Items, Is.EqualTo(container.Items));
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [Test]
@@ -199,6 +248,98 @@ public class EncodingTest
     }
 
     [Test]
+    public void Nullable_array_pool_list_encodes_null_as_empty_list()
+    {
+        NullableArrayPoolListContainer container = new() { Items = null };
+
+        byte[] encoded = Encode(container);
+        Merkleize(container, out UInt256 root);
+        Decode(encoded, out NullableArrayPoolListContainer decoded);
+        Merkleize(decoded, out UInt256 decodedRoot);
+
+        try
+        {
+            Assert.That(encoded, Is.EqualTo(new byte[] { 4, 0, 0, 0 }));
+            Assert.That(decoded.Items, Is.Not.Null);
+            Assert.That(decoded.Items, Is.Empty);
+            Assert.That(root, Is.EqualTo(decodedRoot));
+        }
+        finally
+        {
+            decoded.Items?.Dispose();
+        }
+    }
+
+    [Test]
+    public void Nullable_fixed_array_pool_list_encodes_null_as_empty_list()
+    {
+        NullableFixedArrayPoolListContainer container = new() { Items = null };
+
+        byte[] encoded = Encode(container);
+        Merkleize(container, out UInt256 root);
+        Decode(encoded, out NullableFixedArrayPoolListContainer decoded);
+        Merkleize(decoded, out UInt256 decodedRoot);
+
+        try
+        {
+            Assert.That(encoded, Is.EqualTo(new byte[] { 4, 0, 0, 0 }));
+            Assert.That(decoded.Items, Is.Not.Null);
+            Assert.That(decoded.Items, Is.Empty);
+            Assert.That(root, Is.EqualTo(decodedRoot));
+        }
+        finally
+        {
+            decoded.Items?.Dispose();
+        }
+    }
+
+    [Test]
+    public void Nullable_compatible_union_array_pool_list_encodes_null_as_empty_list()
+    {
+        NullableCompatibleUnionArrayPoolListContainer container = new() { Items = null };
+
+        byte[] encoded = Encode(container);
+        Merkleize(container, out UInt256 root);
+        Decode(encoded, out NullableCompatibleUnionArrayPoolListContainer decoded);
+        Merkleize(decoded, out UInt256 decodedRoot);
+
+        try
+        {
+            Assert.That(encoded, Is.EqualTo(new byte[] { 4, 0, 0, 0 }));
+            Assert.That(decoded.Items, Is.Not.Null);
+            Assert.That(decoded.Items, Is.Empty);
+            Assert.That(root, Is.EqualTo(decodedRoot));
+        }
+        finally
+        {
+            decoded.Items?.Dispose();
+        }
+    }
+
+    [Test]
+    public void Nullable_collection_itself_encodes_null_as_empty_list()
+    {
+        NullableArrayPoolListItself container = new() { Items = null };
+
+        byte[] encoded = Encode(container);
+        Merkleize(container, out UInt256 root);
+        Decode(encoded, out NullableArrayPoolListItself decoded);
+        Merkleize(decoded, out UInt256 decodedRoot);
+
+        try
+        {
+            Assert.That(encoded, Is.Empty);
+            Assert.That(decoded.Items, Is.Not.Null);
+            Assert.That(decoded.Items, Is.Empty);
+            Assert.That(root, Is.EqualTo(decodedRoot));
+        }
+        finally
+        {
+            decoded.Items?.Dispose();
+        }
+    }
+
+    [Test]
     public void Merkleize_nullable_list_matches_empty_decoded_list()
     {
         SingleListContainer container = new() { Items = null };
@@ -213,13 +354,147 @@ public class EncodingTest
     }
 
     [Test]
+    public void Merkleize_nullable_vector_matches_zero_decoded_vector()
+    {
+        NullableByteVectorContainer container = new() { Bytes = null };
+
+        byte[] encoded = Encode(container);
+        byte[] reusedBuffer = Enumerable.Repeat((byte)0xFF, 64).ToArray();
+        NullableByteVectorContainer.Encode(reusedBuffer, container);
+        Merkleize(container, out UInt256 root);
+        Decode(encoded, out NullableByteVectorContainer decoded);
+        Merkleize(decoded, out UInt256 decodedRoot);
+        Merkle.Merkleize(out UInt256 expected, ReadOnlySpan<byte>.Empty, 2);
+
+        Assert.That(encoded, Is.EqualTo(new byte[64]));
+        Assert.That(reusedBuffer, Is.EqualTo(new byte[64]));
+        Assert.That(decoded.Bytes, Is.EqualTo(new byte[64]));
+        Assert.That(root, Is.EqualTo(expected));
+        Assert.That(root, Is.EqualTo(decodedRoot));
+    }
+
+    [Test]
+    public void Merkleize_nullable_static_container_matches_zero_decoded_container()
+    {
+        const int childLength = 2 * sizeof(ulong);
+        NullableStaticChildContainer container = new() { Child = null };
+
+        byte[] encoded = Encode(container);
+        byte[] reusedBuffer = Enumerable.Repeat((byte)0xFF, childLength).ToArray();
+        NullableStaticChildContainer.Encode(reusedBuffer, container);
+        Merkleize(container, out UInt256 root);
+        Decode(encoded, out NullableStaticChildContainer decoded);
+        Merkleize(decoded, out UInt256 decodedRoot);
+
+        Assert.That(decoded.Child, Is.Not.Null);
+        Assert.That(root, Is.EqualTo(decodedRoot));
+        Assert.That(encoded, Is.EqualTo(new byte[childLength]));
+        Assert.That(reusedBuffer, Is.EqualTo(new byte[childLength]));
+    }
+
+    [Test]
+    public void Nullable_variable_container_without_decodable_default_is_rejected()
+    {
+        NullableVariableChildContainer container = new() { Child = null };
+
+        Assert.Throws<InvalidDataException>(() => NullableVariableChildContainer.GetLength(container));
+        Assert.Throws<InvalidDataException>(() => Encode(container));
+        Assert.Throws<InvalidDataException>(() => Merkleize(container, out _));
+    }
+
+    [Test]
+    public void Merkleize_nullable_converter_vector_uses_default_item_root()
+    {
+        NullableLongConverterVectorContainer container = new() { Items = null };
+
+        byte[] encoded = Encode(container);
+        Merkleize(container, out UInt256 root);
+        Decode(encoded, out NullableLongConverterVectorContainer decoded);
+        Merkleize(decoded, out UInt256 decodedRoot);
+
+        Span<byte> zeroItem = stackalloc byte[TestBytes48SszVectorConverter.Length];
+        Merkle.Merkleize(out UInt256 itemRoot, zeroItem);
+        Span<UInt256> itemRoots = stackalloc UInt256[2];
+        itemRoots[0] = itemRoot;
+        itemRoots[1] = itemRoot;
+        Merkle.Merkleize(out UInt256 expected, itemRoots);
+
+        Assert.That(encoded, Is.EqualTo(new byte[TestBytes48SszVectorConverter.Length * 2]));
+        Assert.That(decoded.Items, Has.Length.EqualTo(2));
+        Assert.That(root, Is.EqualTo(expected));
+        Assert.That(root, Is.EqualTo(decodedRoot));
+    }
+
+    [Test]
+    public void Merkleize_progressive_nullable_vector_matches_zero_decoded_vector()
+    {
+        ProgressiveNullableByteVectorContainer container = new() { Bytes = null };
+
+        byte[] encoded = Encode(container);
+        Merkleize(container, out UInt256 root);
+        Decode(encoded, out ProgressiveNullableByteVectorContainer decoded);
+        Merkleize(decoded, out UInt256 decodedRoot);
+
+        Assert.That(encoded, Is.EqualTo(new byte[64]));
+        Assert.That(decoded.Bytes, Is.EqualTo(new byte[64]));
+        Assert.That(root, Is.EqualTo(decodedRoot));
+    }
+
+    [Test]
+    public void Compatible_union_nullable_vector_clears_and_merkleizes_default_root()
+    {
+        CompatibleNullableVectorUnion container = new() { Selector = CompatibleNullableVectorUnionSelector.Items, Items = null };
+
+        byte[] encoded = Encode(container);
+        byte[] reusedBuffer = Enumerable.Repeat((byte)0xFF, 1 + TestBytes48SszVectorConverter.Length * 2).ToArray();
+        CompatibleNullableVectorUnion.Encode(reusedBuffer, container);
+        Merkleize(container, out UInt256 root);
+        Decode(encoded, out CompatibleNullableVectorUnion decoded);
+        Merkleize(decoded, out UInt256 decodedRoot);
+
+        Span<byte> zeroItem = stackalloc byte[TestBytes48SszVectorConverter.Length];
+        Merkle.Merkleize(out UInt256 itemRoot, zeroItem);
+        Span<UInt256> itemRoots = stackalloc UInt256[2];
+        itemRoots[0] = itemRoot;
+        itemRoots[1] = itemRoot;
+        Merkle.Merkleize(out UInt256 expected, itemRoots);
+        Merkle.MixIn(ref expected, (byte)container.Selector);
+
+        byte[] expectedBytes = new byte[1 + TestBytes48SszVectorConverter.Length * 2];
+        expectedBytes[0] = (byte)container.Selector;
+        Assert.That(encoded, Is.EqualTo(expectedBytes));
+        Assert.That(reusedBuffer, Is.EqualTo(expectedBytes));
+        Assert.That(decoded.Items, Has.Length.EqualTo(2));
+        Assert.That(root, Is.EqualTo(expected));
+        Assert.That(root, Is.EqualTo(decodedRoot));
+    }
+
+    [Test]
+    public void Nullable_non_basic_vector_without_zero_item_encoding_is_rejected()
+    {
+        NullableCompatibleUnionVectorContainer container = new() { Items = null };
+
+        Assert.That(() => Encode(container), Throws.InstanceOf<InvalidDataException>());
+        Assert.That(() => Merkleize(container, out UInt256 _), Throws.InstanceOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void Nullable_non_basic_vector_collection_without_zero_item_encoding_is_rejected()
+    {
+        NullableCompatibleUnionArrayPoolListVectorContainer container = new() { Items = null };
+
+        Assert.That(() => Encode(container), Throws.InstanceOf<InvalidDataException>());
+        Assert.That(() => Merkleize(container, out UInt256 _), Throws.InstanceOf<InvalidDataException>());
+    }
+
+    [Test]
     public void Merkleize_compatible_union_matches_the_selected_value_root()
     {
         CompatibleNumberUnion container = new() { Selector = CompatibleNumberUnionSelector.PreviousValue, PreviousValue = 123UL };
 
         Merkleize(container, out UInt256 actual);
 
-        Merkle.Merkleize(out UInt256 expected, container.PreviousValue);
+        UInt256 expected = MerkleizeWithConverter(container.PreviousValue, UInt64SszVectorConverter.Feed);
         Merkle.MixIn(ref expected, (byte)container.Selector);
 
         Assert.That(actual, Is.EqualTo(expected));
@@ -249,8 +524,8 @@ public class EncodingTest
 
         Merkleize(container, out UInt256 actual);
 
-        Merkle.Merkleize(out UInt256 headRoot, container.Head);
-        Merkle.Merkleize(out UInt256 tailRoot, container.Tail);
+        UInt256 headRoot = MerkleizeWithConverter(container.Head, UInt64SszVectorConverter.Feed);
+        UInt256 tailRoot = MerkleizeWithConverter(container.Tail, UInt64SszVectorConverter.Feed);
         MerkleizeProgressiveSpec([headRoot, tailRoot], out UInt256 expected);
         expected = MixInActiveFieldsSpec(expected, 0b00000101);
 
@@ -524,5 +799,15 @@ public class EncodingTest
         values[0] = left;
         values[1] = right;
         return new UInt256(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(values)));
+    }
+
+    private delegate void FeedItem<T>(ref Merkleizer merkleizer, T value);
+
+    private static UInt256 MerkleizeWithConverter<T>(T value, FeedItem<T> feed)
+    {
+        Merkleizer merkleizer = new(0);
+        feed(ref merkleizer, value);
+        merkleizer.CalculateRoot(out UInt256 root);
+        return root;
     }
 }

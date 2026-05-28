@@ -4,7 +4,7 @@
 using System;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Shutter;
@@ -28,16 +28,23 @@ public partial struct IdentityPreimage(ReadOnlyMemory<byte> data)
     public ReadOnlyMemory<byte> Data { get; set; } = data;
 }
 
-public sealed class IdentityPreimageSszVectorConverter : ISszVectorConverter<IdentityPreimage>
+[SszVectorConverter<IdentityPreimage>]
+public static class IdentityPreimageSszVectorConverter
 {
     public const int Length = IdentityPreimage.Length;
-
-    private IdentityPreimageSszVectorConverter() { }
 
     public static IdentityPreimage FromSpan(ReadOnlySpan<byte> span)
     {
         Validate(span);
         return new(span.ToArray());
+    }
+
+    public static void FromSpan(ReadOnlySpan<byte> span, Span<IdentityPreimage> values)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = FromSpan(span.Slice(i * Length, Length));
+        }
     }
 
     public static void ToSpan(Span<byte> span, IdentityPreimage value)
@@ -46,15 +53,17 @@ public sealed class IdentityPreimageSszVectorConverter : ISszVectorConverter<Ide
         value.Data.Span.CopyTo(span);
     }
 
+    public static void ToSpan(Span<byte> span, ReadOnlySpan<IdentityPreimage> values)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            ToSpan(span.Slice(i * Length, Length), values[i]);
+        }
+    }
+
     public static void Feed(ref Merkleizer merkleizer, IdentityPreimage value)
     {
         ReadOnlySpan<byte> data = value.Data.Span;
-        if (data.IsEmpty)
-        {
-            merkleizer.Feed(default);
-            return;
-        }
-
         Validate(data);
         Merkle.Merkleize(out UInt256 root, data);
         merkleizer.Feed(root);

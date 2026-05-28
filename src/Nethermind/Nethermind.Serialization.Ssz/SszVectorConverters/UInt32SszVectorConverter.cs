@@ -3,20 +3,58 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.Serialization.Ssz.SszVectorConverters;
 
-public sealed class UInt32SszVectorConverter : ISszVectorConverter<uint>
+[SszVectorConverter<uint>]
+public static class UInt32SszVectorConverter
 {
     public const int Length = sizeof(uint);
-
-    private UInt32SszVectorConverter() { }
+    public const bool PacksItems = true;
 
     public static uint FromSpan(ReadOnlySpan<byte> span) => BinaryPrimitives.ReadUInt32LittleEndian(span);
 
+    public static void FromSpan(ReadOnlySpan<byte> span, Span<uint> values)
+    {
+        if (BitConverter.IsLittleEndian)
+        {
+            MemoryMarshal.Cast<byte, uint>(span).CopyTo(values);
+            return;
+        }
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = FromSpan(span.Slice(i * Length, Length));
+        }
+    }
+
     public static void ToSpan(Span<byte> span, uint value) => BinaryPrimitives.WriteUInt32LittleEndian(span, value);
 
+    public static void ToSpan(Span<byte> span, ReadOnlySpan<uint> values)
+    {
+        if (BitConverter.IsLittleEndian)
+        {
+            MemoryMarshal.AsBytes(values).CopyTo(span);
+            return;
+        }
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            ToSpan(span.Slice(i * Length, Length), values[i]);
+        }
+    }
+
     public static void Feed(ref Merkleizer merkleizer, uint value) => merkleizer.Feed(new UInt256(value));
+
+    public static void MerkleizeVector(ReadOnlySpan<uint> values, ulong length, out UInt256 root) =>
+        PackedSszVectorConverterMerkle.MerkleizeVector(values, Length, length, ToSpan, out root);
+
+    public static void MerkleizeList(ReadOnlySpan<uint> values, ulong limit, out UInt256 root) =>
+        PackedSszVectorConverterMerkle.MerkleizeList(values, Length, limit, ToSpan, out root);
+
+    public static void MerkleizeProgressiveList(ReadOnlySpan<uint> values, out UInt256 root) =>
+        PackedSszVectorConverterMerkle.MerkleizeProgressiveList(values, Length, ToSpan, out root);
 }

@@ -4,7 +4,7 @@
 using System.Collections;
 using Nethermind.Int256;
 
-namespace Nethermind.Merkleization;
+namespace Nethermind.Serialization.Ssz.Merkleization;
 
 public static partial class Merkle
 {

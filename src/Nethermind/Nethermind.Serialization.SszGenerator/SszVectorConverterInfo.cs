@@ -6,6 +6,10 @@ using Microsoft.CodeAnalysis;
 internal sealed class SszVectorConverterInfo
 {
     private const string LengthMemberName = "Length";
+    private const string PacksItemsMemberName = "PacksItems";
+    private const string MerkleizeVectorMemberName = "MerkleizeVector";
+    private const string MerkleizeListMemberName = "MerkleizeList";
+    private const string MerkleizeProgressiveListMemberName = "MerkleizeProgressiveList";
 
     public required string TargetName { get; init; }
     public required string TargetNamespace { get; init; }
@@ -14,12 +18,15 @@ internal sealed class SszVectorConverterInfo
     public required string ConverterStaticMemberAccess { get; init; }
     public required string ConverterDisplayName { get; init; }
     public required int Length { get; init; }
-    public required bool IsSszPrimitive { get; init; }
+    public required bool PacksItems { get; init; }
+    public required bool CanMerkleizeVector { get; init; }
+    public required bool CanMerkleizeList { get; init; }
+    public required bool CanMerkleizeProgressiveList { get; init; }
 
     public static IEnumerable<SszVectorConverterInfo> Find(Compilation compilation)
     {
-        INamedTypeSymbol? converterInterface = compilation.GetTypeByMetadataName("Nethermind.Serialization.Ssz.ISszVectorConverter`1");
-        if (converterInterface is null)
+        INamedTypeSymbol? converterAttribute = compilation.GetTypeByMetadataName("Nethermind.Serialization.Ssz.SszVectorConverterAttribute`1");
+        if (converterAttribute is null)
         {
             return [];
         }
@@ -27,7 +34,7 @@ internal sealed class SszVectorConverterInfo
         Dictionary<string, SszVectorConverterInfo> result = new(StringComparer.Ordinal);
         foreach (INamedTypeSymbol converterType in EnumerateAvailableTypes(compilation))
         {
-            SszVectorConverterInfo? converter = TryCreate(converterInterface, converterType);
+            SszVectorConverterInfo? converter = TryCreate(converterAttribute, converterType);
             if (converter is not null)
             {
                 string key = converter.TargetNamespace + "." + converter.TargetTypeReferenceName;
@@ -93,16 +100,26 @@ internal sealed class SszVectorConverterInfo
         }
     }
 
-    private static SszVectorConverterInfo? TryCreate(INamedTypeSymbol converterInterface, INamedTypeSymbol converterType)
+    private static SszVectorConverterInfo? TryCreate(INamedTypeSymbol converterAttribute, INamedTypeSymbol converterType)
     {
-        INamedTypeSymbol? implementedInterface = converterType.AllInterfaces.FirstOrDefault(
-            i => SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, converterInterface));
-        if (implementedInterface is null || converterType.DeclaredAccessibility != Accessibility.Public)
+        AttributeData? attribute = converterType.GetAttributes().FirstOrDefault(
+            a => SymbolEqualityComparer.Default.Equals(a.AttributeClass?.OriginalDefinition, converterAttribute));
+        if (attribute is null)
         {
             return null;
         }
 
-        ITypeSymbol targetType = implementedInterface.TypeArguments[0].WithNullableAnnotation(NullableAnnotation.NotAnnotated);
+        if (converterType.DeclaredAccessibility != Accessibility.Public || !converterType.IsStatic)
+        {
+            throw new InvalidOperationException($"SSZ converter {converterType.ToDisplayString()} must be a public static class.");
+        }
+
+        if (attribute.AttributeClass is not INamedTypeSymbol attributeClass || attributeClass.TypeArguments.Length != 1)
+        {
+            return null;
+        }
+
+        ITypeSymbol targetType = attributeClass.TypeArguments[0].WithNullableAnnotation(NullableAnnotation.NotAnnotated);
         if (!TryGetLength(converterType, out int length, out string? lengthError))
         {
             throw new InvalidOperationException(lengthError!);
@@ -113,9 +130,19 @@ internal sealed class SszVectorConverterInfo
             throw new InvalidOperationException($"SSZ converter {converterType.ToDisplayString()} must declare public static {targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} FromSpan(ReadOnlySpan<byte> span).");
         }
 
+        if (!HasCollectionFromSpanMethod(converterType, targetType))
+        {
+            throw new InvalidOperationException($"SSZ converter {converterType.ToDisplayString()} must declare public static void FromSpan(ReadOnlySpan<byte> span, Span<{targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}> values).");
+        }
+
         if (!HasToSpanMethod(converterType, targetType))
         {
             throw new InvalidOperationException($"SSZ converter {converterType.ToDisplayString()} must declare public static void ToSpan(Span<byte> span, {targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} value).");
+        }
+
+        if (!HasCollectionToSpanMethod(converterType, targetType))
+        {
+            throw new InvalidOperationException($"SSZ converter {converterType.ToDisplayString()} must declare public static void ToSpan(Span<byte> span, ReadOnlySpan<{targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}> values).");
         }
 
         if (!HasFeedMethod(converterType, targetType))
@@ -132,7 +159,10 @@ internal sealed class SszVectorConverterInfo
             ConverterStaticMemberAccess = converterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             ConverterDisplayName = converterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             Length = length,
-            IsSszPrimitive = IsPackedSszPrimitive(targetType),
+            PacksItems = GetPacksItems(converterType),
+            CanMerkleizeVector = HasMerkleizeVectorMethod(converterType, targetType),
+            CanMerkleizeList = HasMerkleizeListMethod(converterType, targetType),
+            CanMerkleizeProgressiveList = HasMerkleizeProgressiveListMethod(converterType, targetType),
         };
     }
 
@@ -155,12 +185,29 @@ internal sealed class SszVectorConverterInfo
         return false;
     }
 
+    private static bool GetPacksItems(INamedTypeSymbol converterType)
+    {
+        IFieldSymbol? field = converterType.GetMembers(PacksItemsMemberName)
+            .OfType<IFieldSymbol>()
+            .FirstOrDefault(f => f is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, HasConstantValue: true }
+                && f.Type.SpecialType == SpecialType.System_Boolean);
+
+        return field?.ConstantValue is true;
+    }
+
     private static bool HasFromSpanMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
         converterType.GetMembers("FromSpan")
             .OfType<IMethodSymbol>()
             .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, Parameters.Length: 1 }
                 && SymbolEqualityComparer.Default.Equals(m.ReturnType, targetType)
                 && IsSpanOfByte(m.Parameters[0].Type, nameof(ReadOnlySpan<byte>)));
+
+    private static bool HasCollectionFromSpanMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
+        converterType.GetMembers("FromSpan")
+            .OfType<IMethodSymbol>()
+            .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 2 }
+                && IsSpanOfByte(m.Parameters[0].Type, nameof(ReadOnlySpan<byte>))
+                && IsSpanOfType(m.Parameters[1].Type, nameof(Span<byte>), targetType));
 
     private static bool HasToSpanMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
         converterType.GetMembers("ToSpan")
@@ -169,32 +216,61 @@ internal sealed class SszVectorConverterInfo
                 && IsSpanOfByte(m.Parameters[0].Type, nameof(Span<byte>))
                 && SymbolEqualityComparer.Default.Equals(m.Parameters[1].Type, targetType));
 
+    private static bool HasCollectionToSpanMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
+        converterType.GetMembers("ToSpan")
+            .OfType<IMethodSymbol>()
+            .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 2 }
+                && IsSpanOfByte(m.Parameters[0].Type, nameof(Span<byte>))
+                && IsSpanOfType(m.Parameters[1].Type, nameof(ReadOnlySpan<byte>), targetType));
+
     private static bool HasFeedMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
         converterType.GetMembers("Feed")
             .OfType<IMethodSymbol>()
             .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 2 }
                 && m.Parameters[0].RefKind == RefKind.Ref
-                && m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::Nethermind.Merkleization.Merkleizer"
+                && m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::Nethermind.Serialization.Ssz.Merkleization.Merkleizer"
                 && SymbolEqualityComparer.Default.Equals(m.Parameters[1].Type, targetType));
+
+    private static bool HasMerkleizeVectorMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
+        converterType.GetMembers(MerkleizeVectorMemberName)
+            .OfType<IMethodSymbol>()
+            .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 3 }
+                && IsSpanOfType(m.Parameters[0].Type, nameof(ReadOnlySpan<byte>), targetType)
+                && m.Parameters[1].Type.SpecialType == SpecialType.System_UInt64
+                && IsOutUInt256(m.Parameters[2]));
+
+    private static bool HasMerkleizeListMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
+        converterType.GetMembers(MerkleizeListMemberName)
+            .OfType<IMethodSymbol>()
+            .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 3 }
+                && IsSpanOfType(m.Parameters[0].Type, nameof(ReadOnlySpan<byte>), targetType)
+                && m.Parameters[1].Type.SpecialType == SpecialType.System_UInt64
+                && IsOutUInt256(m.Parameters[2]));
+
+    private static bool HasMerkleizeProgressiveListMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
+        converterType.GetMembers(MerkleizeProgressiveListMemberName)
+            .OfType<IMethodSymbol>()
+            .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 2 }
+                && IsSpanOfType(m.Parameters[0].Type, nameof(ReadOnlySpan<byte>), targetType)
+                && IsOutUInt256(m.Parameters[1]));
+
+    private static bool IsOutUInt256(IParameterSymbol parameter) =>
+        parameter.RefKind == RefKind.Out
+        && parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::Nethermind.Int256.UInt256";
 
     private static bool IsSpanOfByte(ITypeSymbol type, string name) =>
         type is INamedTypeSymbol { IsGenericType: true, ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true }, TypeArguments.Length: 1 } named
         && named.Name == name
         && named.TypeArguments[0].SpecialType == SpecialType.System_Byte;
 
+    private static bool IsSpanOfType(ITypeSymbol type, string name, ITypeSymbol elementType) =>
+        type is INamedTypeSymbol { IsGenericType: true, ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true }, TypeArguments.Length: 1 } named
+        && named.Name == name
+        && SymbolEqualityComparer.Default.Equals(named.TypeArguments[0], elementType);
+
     private static string GetNamespace(ITypeSymbol type) =>
         type.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToString() : string.Empty;
 
     private static string GetTypeName(ITypeSymbol type) =>
         string.IsNullOrEmpty(type.ContainingNamespace?.ToString()) ? type.ToString() : type.Name;
-
-    private static bool IsPackedSszPrimitive(ITypeSymbol type) =>
-        type.SpecialType
-            is SpecialType.System_Byte
-            or SpecialType.System_UInt16
-            or SpecialType.System_Int32
-            or SpecialType.System_UInt32
-            or SpecialType.System_Int64
-            or SpecialType.System_UInt64
-            or SpecialType.System_Boolean;
 }

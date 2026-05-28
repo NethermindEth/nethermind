@@ -6,7 +6,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Int256;
 
-namespace Nethermind.Merkleization;
+namespace Nethermind.Serialization.Ssz.Merkleization;
 
 using SHA256 =
 #if ZK_EVM
@@ -93,32 +93,6 @@ public static partial class Merkle
         Merkleize(out UInt256 right, chunks[..rightChunkCount], numLeaves);
         root = HashConcatenation(left, right, 0);
     }
-
-    public static void Merkleize(out UInt256 root, bool value) => root = value ? UInt256.One : UInt256.Zero;
-
-    public static void Merkleize(out UInt256 root, byte value) => root = new UInt256(value);
-
-    public static void Merkleize(out UInt256 root, ushort value) => root = new UInt256(value);
-
-    public static void Merkleize(out UInt256 root, int value)
-    {
-        ulong v = value < 0 ? ulong.MaxValue : 0L;
-        root = new UInt256((ulong)value, v, v, v);
-    }
-
-    public static void Merkleize(out UInt256 root, uint value) => root = new UInt256(value);
-
-    public static void Merkleize(out UInt256 root, long value)
-    {
-        ulong v = value < 0 ? ulong.MaxValue : 0L;
-        root = new UInt256((ulong)value, v, v, v);
-    }
-
-    public static void Merkleize(out UInt256 root, ulong value) => root = new UInt256(value);
-
-    public static void Merkleize(out UInt256 root, UInt128 value) => root = new UInt256((ulong)(value & ulong.MaxValue), (ulong)(value >> 64));
-
-    public static void Merkleize(out UInt256 root, UInt256 value) => root = value;
 
     public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value)
     {

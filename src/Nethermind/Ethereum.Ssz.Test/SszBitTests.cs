@@ -6,7 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
 using NUnit.Framework;
 using SszEncoder = Nethermind.Serialization.Ssz.Ssz;
 
@@ -28,7 +28,7 @@ public class SszBitTests
 
         int byteLength = (bitLength + 7) / 8;
         byte[] reEncoded = new byte[byteLength];
-        SszEncoder.EncodeVector(reEncoded, decoded);
+        SszEncoder.Encode(reEncoded, decoded);
         Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded bitvector does not match original SSZ bytes");
 
         Merkle.Merkleize(out UInt256 actualRoot, (ReadOnlySpan<byte>)ssz);
@@ -55,7 +55,7 @@ public class SszBitTests
 
         int encodedByteLength = (decoded.Length + 8) / 8;
         byte[] reEncoded = new byte[encodedByteLength];
-        SszEncoder.EncodeList(reEncoded, decoded);
+        SszEncoder.Encode(reEncoded, decoded, maxBitLength);
         Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded bitlist does not match original SSZ bytes");
 
         Merkle.Merkleize(out UInt256 actualRoot, decoded, (ulong)maxBitLength);

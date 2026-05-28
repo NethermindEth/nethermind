@@ -6,10 +6,9 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz.SszVectorConverters;
 using NUnit.Framework;
-using SszEncoder = Nethermind.Serialization.Ssz.Ssz;
 
 namespace Ethereum.Ssz.Test;
 
@@ -141,43 +140,31 @@ public class SszBasicVectorTests
         {
             case TypeBool:
                 bool[] decodedBools = new bool[ssz.Length];
-                for (int i = 0; i < decodedBools.Length; i++)
-                {
-                    decodedBools[i] = BooleanSszVectorConverter.FromSpan(ssz.AsSpan(i, 1));
-                }
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedBools.AsSpan());
+                BooleanSszVectorConverter.FromSpan(ssz, decodedBools);
+                BooleanSszVectorConverter.ToSpan(reEncoded, decodedBools);
                 break;
             case TypeUint8:
-                SszEncoder.Encode(reEncoded.AsSpan(), (ReadOnlySpan<byte>)ssz);
+                ByteSszVectorConverter.ToSpan(reEncoded, ssz);
                 break;
             case TypeUint16:
                 ushort[] decodedUshorts = new ushort[ssz.Length / UInt16SszVectorConverter.Length];
-                for (int i = 0; i < decodedUshorts.Length; i++)
-                {
-                    decodedUshorts[i] = UInt16SszVectorConverter.FromSpan(ssz.AsSpan(i * UInt16SszVectorConverter.Length, UInt16SszVectorConverter.Length));
-                }
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUshorts.AsSpan());
+                UInt16SszVectorConverter.FromSpan(ssz, decodedUshorts);
+                UInt16SszVectorConverter.ToSpan(reEncoded, decodedUshorts);
                 break;
             case TypeUint32:
                 uint[] decodedUints = new uint[ssz.Length / UInt32SszVectorConverter.Length];
-                for (int i = 0; i < decodedUints.Length; i++)
-                {
-                    decodedUints[i] = UInt32SszVectorConverter.FromSpan(ssz.AsSpan(i * UInt32SszVectorConverter.Length, UInt32SszVectorConverter.Length));
-                }
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUints.AsSpan());
+                UInt32SszVectorConverter.FromSpan(ssz, decodedUints);
+                UInt32SszVectorConverter.ToSpan(reEncoded, decodedUints);
                 break;
             case TypeUint64:
                 ulong[] decodedUlongs = new ulong[ssz.Length / UInt64SszVectorConverter.Length];
-                for (int i = 0; i < decodedUlongs.Length; i++)
-                {
-                    decodedUlongs[i] = UInt64SszVectorConverter.FromSpan(ssz.AsSpan(i * UInt64SszVectorConverter.Length, UInt64SszVectorConverter.Length));
-                }
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUlongs.AsSpan());
+                UInt64SszVectorConverter.FromSpan(ssz, decodedUlongs);
+                UInt64SszVectorConverter.ToSpan(reEncoded, decodedUlongs);
                 break;
             case TypeUint128:
-                SszEncoder.Decode(ssz, out ReadOnlySpan<UInt128> decodedUint128Span);
-                UInt128[] decodedUint128S = decodedUint128Span.ToArray();
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUint128S);
+                UInt128[] decodedUint128s = new UInt128[ssz.Length / UInt128SszVectorConverter.Length];
+                UInt128SszVectorConverter.FromSpan(ssz, decodedUint128s);
+                UInt128SszVectorConverter.ToSpan(reEncoded, decodedUint128s);
                 break;
             case TypeUint256:
                 int itemCount = ssz.Length / UInt256SszVectorConverter.Length;

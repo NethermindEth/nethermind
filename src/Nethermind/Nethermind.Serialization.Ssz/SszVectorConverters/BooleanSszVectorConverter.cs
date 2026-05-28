@@ -4,15 +4,15 @@
 using System;
 using System.IO;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.Serialization.Ssz.SszVectorConverters;
 
-public sealed class BooleanSszVectorConverter : ISszVectorConverter<bool>
+[SszVectorConverter<bool>]
+public static class BooleanSszVectorConverter
 {
     public const int Length = sizeof(byte);
-
-    private BooleanSszVectorConverter() { }
+    public const bool PacksItems = true;
 
     public static bool FromSpan(ReadOnlySpan<byte> span) =>
         span[0] switch
@@ -22,7 +22,23 @@ public sealed class BooleanSszVectorConverter : ISszVectorConverter<bool>
             byte value => throw new InvalidDataException($"SSZ bool must be 0 or 1, got {value}")
         };
 
+    public static void FromSpan(ReadOnlySpan<byte> span, Span<bool> values)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = FromSpan(span.Slice(i, Length));
+        }
+    }
+
     public static void ToSpan(Span<byte> span, bool value) => span[0] = value ? (byte)1 : (byte)0;
+
+    public static void ToSpan(Span<byte> span, ReadOnlySpan<bool> values)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            span[i] = values[i] ? (byte)1 : (byte)0;
+        }
+    }
 
     public static void Feed(ref Merkleizer merkleizer, bool value) => merkleizer.Feed(value ? UInt256.One : UInt256.Zero);
 }

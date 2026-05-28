@@ -6,10 +6,10 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
-using NUnit.Framework;
-using SszEncoder = Nethermind.Serialization.Ssz.Ssz;
+using Nethermind.Serialization.Ssz;
+using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz.SszVectorConverters;
+using NUnit.Framework;
 using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.Ssz.Test;
@@ -32,7 +32,7 @@ public class SszBasicTypeTests
         BooleanSszVectorConverter.ToSpan(reencoded, decoded);
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
-        Merkle.Merkleize(out UInt256 root, decoded);
+        UInt256 root = MerkleizeWithConverter(decoded, BooleanSszVectorConverter.Feed);
         Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
@@ -59,7 +59,7 @@ public class SszBasicTypeTests
         ByteSszVectorConverter.ToSpan(reencoded, decoded);
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
-        Merkle.Merkleize(out UInt256 root, decoded);
+        UInt256 root = MerkleizeWithConverter(decoded, ByteSszVectorConverter.Feed);
         Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
@@ -85,7 +85,7 @@ public class SszBasicTypeTests
         UInt16SszVectorConverter.ToSpan(reencoded, decoded);
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
-        Merkle.Merkleize(out UInt256 root, decoded);
+        UInt256 root = MerkleizeWithConverter(decoded, UInt16SszVectorConverter.Feed);
         Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
@@ -111,7 +111,7 @@ public class SszBasicTypeTests
         UInt32SszVectorConverter.ToSpan(reencoded, decoded);
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
-        Merkle.Merkleize(out UInt256 root, decoded);
+        UInt256 root = MerkleizeWithConverter(decoded, UInt32SszVectorConverter.Feed);
         Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
@@ -137,7 +137,7 @@ public class SszBasicTypeTests
         UInt64SszVectorConverter.ToSpan(reencoded, decoded);
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
-        Merkle.Merkleize(out UInt256 root, decoded);
+        UInt256 root = MerkleizeWithConverter(decoded, UInt64SszVectorConverter.Feed);
         Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
@@ -160,10 +160,10 @@ public class SszBasicTypeTests
         Assert.That(decoded, Is.EqualTo(expected));
 
         Span<byte> reencoded = stackalloc byte[16];
-        SszEncoder.Encode(reencoded, decoded);
+        UInt128SszVectorConverter.ToSpan(reencoded, decoded);
         Assert.That(reencoded.ToArray(), Is.EqualTo(ssz));
 
-        Merkle.Merkleize(out UInt256 root, decoded);
+        UInt256 root = MerkleizeWithConverter(decoded, UInt128SszVectorConverter.Feed);
         Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
@@ -189,7 +189,7 @@ public class SszBasicTypeTests
         UInt256SszVectorConverter.ToSpan(reencoded.AsSpan(), decoded);
         Assert.That(reencoded, Is.EqualTo(ssz));
 
-        Merkle.Merkleize(out UInt256 root, decoded);
+        UInt256 root = MerkleizeWithConverter(decoded, UInt256SszVectorConverter.Feed);
         Assert.That(root, Is.EqualTo(expectedRoot));
     }
 
@@ -243,9 +243,8 @@ public class SszBasicTypeTests
 
     private static UInt128 DecodeUInt128(ReadOnlySpan<byte> span)
     {
-        ValidateLength(span, 16);
-        SszEncoder.Decode(span, out UInt128 result);
-        return result;
+        ValidateLength(span, UInt128SszVectorConverter.Length);
+        return UInt128SszVectorConverter.FromSpan(span);
     }
 
     private static void ValidateLength(ReadOnlySpan<byte> span, int expectedLength)
@@ -255,6 +254,16 @@ public class SszBasicTypeTests
             throw new InvalidDataException(
                 $"SSZ decode expects input of length {expectedLength} and received {span.Length}");
         }
+    }
+
+    private delegate void FeedItem<T>(ref Merkleizer merkleizer, T value);
+
+    private static UInt256 MerkleizeWithConverter<T>(T value, FeedItem<T> feed)
+    {
+        Merkleizer merkleizer = new(0);
+        feed(ref merkleizer, value);
+        merkleizer.CalculateRoot(out UInt256 root);
+        return root;
     }
 
     private static string ReadYamlValue(string filePath)

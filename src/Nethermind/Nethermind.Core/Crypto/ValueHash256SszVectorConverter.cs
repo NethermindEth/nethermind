@@ -3,20 +3,35 @@
 
 using System;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Core.Crypto;
 
-public sealed class ValueHash256SszVectorConverter : ISszVectorConverter<ValueHash256>
+[SszVectorConverter<ValueHash256>]
+public static class ValueHash256SszVectorConverter
 {
     public const int Length = ValueHash256.MemorySize;
 
-    private ValueHash256SszVectorConverter() { }
-
     public static ValueHash256 FromSpan(ReadOnlySpan<byte> span) => new(span);
 
+    public static void FromSpan(ReadOnlySpan<byte> span, Span<ValueHash256> values)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = FromSpan(span.Slice(i * Length, Length));
+        }
+    }
+
     public static void ToSpan(Span<byte> span, ValueHash256 value) => value.Bytes.CopyTo(span);
+
+    public static void ToSpan(Span<byte> span, ReadOnlySpan<ValueHash256> values)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            ToSpan(span.Slice(i * Length, Length), values[i]);
+        }
+    }
 
     public static void Feed(ref Merkleizer merkleizer, ValueHash256 value)
     {

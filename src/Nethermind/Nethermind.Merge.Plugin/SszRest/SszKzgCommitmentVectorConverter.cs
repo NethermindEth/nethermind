@@ -3,20 +3,35 @@
 
 using System;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
-public sealed class SszKzgCommitmentVectorConverter : ISszVectorConverter<SszKzgCommitment>
+[SszVectorConverter<SszKzgCommitment>]
+public static class SszKzgCommitmentVectorConverter
 {
     public const int Length = SszKzgCommitment.KzgCommitmentLength;
 
-    private SszKzgCommitmentVectorConverter() { }
-
     public static SszKzgCommitment FromSpan(ReadOnlySpan<byte> span) => SszKzgCommitment.FromSpan(span);
 
+    public static void FromSpan(ReadOnlySpan<byte> span, Span<SszKzgCommitment> values)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = FromSpan(span.Slice(i * Length, Length));
+        }
+    }
+
     public static void ToSpan(Span<byte> span, SszKzgCommitment value) => value.AsSpan().CopyTo(span);
+
+    public static void ToSpan(Span<byte> span, ReadOnlySpan<SszKzgCommitment> values)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            ToSpan(span.Slice(i * Length, Length), values[i]);
+        }
+    }
 
     public static void Feed(ref Merkleizer merkleizer, SszKzgCommitment value)
     {

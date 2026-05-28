@@ -60,7 +60,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_uin128_0()
         {
             Span<byte> output = stackalloc byte[16];
-            Ssz.Encode(output, UInt128.Zero);
+            UInt128SszVectorConverter.ToSpan(output, UInt128.Zero);
             Assert.That(output.ToHexString(), Is.EqualTo("00000000000000000000000000000000"));
         }
 
@@ -68,7 +68,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_uin128_1()
         {
             Span<byte> output = stackalloc byte[16];
-            Ssz.Encode(output, UInt128.One);
+            UInt128SszVectorConverter.ToSpan(output, UInt128.One);
             Assert.That(output.ToHexString(), Is.EqualTo("01000000000000000000000000000000"));
         }
 
@@ -76,7 +76,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_uin128_max()
         {
             Span<byte> output = stackalloc byte[16];
-            Ssz.Encode(output, UInt128.MaxValue);
+            UInt128SszVectorConverter.ToSpan(output, UInt128.MaxValue);
             Assert.That(output.ToHexString(), Is.EqualTo("ffffffffffffffffffffffffffffffff"));
         }
 
@@ -109,20 +109,18 @@ namespace Nethermind.Serialization.Ssz.Test
         {
             UInt128 value = new(0x0000000000000001, 0x0000000000000002);
             Span<byte> output = stackalloc byte[16];
-            Ssz.Encode(output, value);
+            UInt128SszVectorConverter.ToSpan(output, value);
             Assert.That(output.ToHexString(), Is.EqualTo("02000000000000000100000000000000"));
-            Ssz.Decode((ReadOnlySpan<byte>)output, out UInt128 decoded);
+            UInt128 decoded = UInt128SszVectorConverter.FromSpan(output);
             Assert.That(decoded, Is.EqualTo(value));
         }
 
         [Test]
-        public void Decode_uint128_multisegment_rejects_short_input()
+        public void Decode_uint128_rejects_short_input()
         {
-            ReadOnlySequence<byte> sequence = CreateSequence(
-                new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },
-                new byte[] { 9, 10, 11, 12, 13, 14, 15 });
+            byte[] data = new byte[15];
 
-            Assert.Throws<InvalidDataException>(() => Ssz.Decode(sequence, out UInt128 _));
+            Assert.Throws<ArgumentOutOfRangeException>(() => UInt128SszVectorConverter.FromSpan(data));
         }
 
         [TestCase(true, "0x01")]

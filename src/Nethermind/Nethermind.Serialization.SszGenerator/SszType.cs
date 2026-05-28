@@ -20,13 +20,17 @@ class SszType
                 TypeReferenceName = converter.TargetTypeReferenceName,
                 Kind = Kind.Basic,
                 StaticLength = converter.Length,
-                IsRefType = !converter.IsSszPrimitive,
-                IsSszPrimitive = converter.IsSszPrimitive,
-                AdditionalNamespaces = { converter.ConverterNamespace },
+                PacksItems = converter.PacksItems,
+                CustomConverterType = converter.ConverterStaticMemberAccess,
+                CustomEncodeMethod = $"{converter.ConverterStaticMemberAccess}.ToSpan",
+                CustomDecodeMethod = $"{converter.ConverterStaticMemberAccess}.FromSpan",
                 CustomEncodeTemplate = $"{converter.ConverterStaticMemberAccess}.ToSpan({{0}}, {{1}});",
                 CustomDecodeTemplate = $"{{1}} = {converter.ConverterStaticMemberAccess}.FromSpan({{0}});",
                 CustomFeedMethod = $"{converter.ConverterStaticMemberAccess}.Feed",
                 CustomFeedTemplate = $"{converter.ConverterStaticMemberAccess}.Feed(ref {{0}}, {{1}});",
+                CustomMerkleizeVectorMethod = converter.CanMerkleizeVector ? $"{converter.ConverterStaticMemberAccess}.MerkleizeVector" : null,
+                CustomMerkleizeListMethod = converter.CanMerkleizeList ? $"{converter.ConverterStaticMemberAccess}.MerkleizeList" : null,
+                CustomMerkleizeProgressiveListMethod = converter.CanMerkleizeProgressiveList ? $"{converter.ConverterStaticMemberAccess}.MerkleizeProgressiveList" : null,
             });
         }
 
@@ -96,14 +100,19 @@ class SszType
     public int ActiveFieldsBitLength { get; set; }
 
     public bool IsStruct { get; set; }
-    public bool IsRefType { get; init; }
-    public bool IsSszPrimitive { get; set; }
+    public bool PacksItems { get; set; }
     public SszType? EnumType { get; set; }
 
+    public string? CustomConverterType { get; init; }
+    public string? CustomEncodeMethod { get; init; }
+    public string? CustomDecodeMethod { get; init; }
     public string? CustomEncodeTemplate { get; init; }
     public string? CustomDecodeTemplate { get; init; }
     public string? CustomFeedMethod { get; init; }
     public string? CustomFeedTemplate { get; init; }
+    public string? CustomMerkleizeVectorMethod { get; init; }
+    public string? CustomMerkleizeListMethod { get; init; }
+    public string? CustomMerkleizeProgressiveListMethod { get; init; }
     public bool HasCustomInlineCodec => CustomEncodeTemplate is not null;
     public IEnumerable<SszProperty>? CompatibleUnionMembers => Kind == Kind.CompatibleUnion ? Members?.Where(x => x.Name != SelectorPropertyName) : null;
     public SszProperty? Selector => Members?.FirstOrDefault(x => x.Name == SelectorPropertyName);
@@ -158,7 +167,7 @@ class SszType
             string? enumNamespace = GetNamespace(enumType);
             result.EnumType = types.First(x => x.Namespace == enumNamespace && x.Name == enumType.Name);
             result.StaticLength = result.EnumType.StaticLength;
-            result.IsSszPrimitive = result.EnumType.IsSszPrimitive;
+            result.PacksItems = result.EnumType.PacksItems;
         }
 
         result.Members = kind switch
@@ -329,7 +338,7 @@ class SszType
 
         if (!isContainer)
         {
-            throw new InvalidOperationException($"Type {type.ToDisplayString()} is not SSZ serializable. Mark it with SszContainer or SszCompatibleUnion, or provide an ISszVectorConverter<{type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}>.");
+            throw new InvalidOperationException($"Type {type.ToDisplayString()} is not SSZ serializable. Mark it with SszContainer or SszCompatibleUnion, or provide an SszVectorConverter<{type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}>.");
         }
 
         return isProgressiveContainer ? Kind.ProgressiveContainer : Kind.Container;

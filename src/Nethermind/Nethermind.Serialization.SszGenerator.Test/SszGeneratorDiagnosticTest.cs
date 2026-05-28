@@ -19,7 +19,7 @@ public class SszGeneratorDiagnosticTest
     {
         const string source = """
             using System;
-            using Nethermind.Merkleization;
+            using Nethermind.Serialization.Ssz.Merkleization;
             using Nethermind.Serialization.Ssz;
 
             [SszContainer]
@@ -32,13 +32,22 @@ public class SszGeneratorDiagnosticTest
             {
             }
 
-            public sealed class BadFixedBytesConverter : ISszVectorConverter<BadFixedBytes>
+            [SszVectorConverter<BadFixedBytes>]
+            public static class BadFixedBytesConverter
             {
                 public static int Length => 4;
 
                 public static BadFixedBytes FromSpan(ReadOnlySpan<byte> span) => default;
 
+                public static void FromSpan(ReadOnlySpan<byte> span, Span<BadFixedBytes> values)
+                {
+                }
+
                 public static void ToSpan(Span<byte> span, BadFixedBytes value)
+                {
+                }
+
+                public static void ToSpan(Span<byte> span, ReadOnlySpan<BadFixedBytes> values)
                 {
                 }
 
@@ -58,7 +67,7 @@ public class SszGeneratorDiagnosticTest
     {
         const string source = """
             using System;
-            using Nethermind.Merkleization;
+            using Nethermind.Serialization.Ssz.Merkleization;
             using Nethermind.Serialization.Ssz;
 
             [SszContainer]
@@ -71,11 +80,16 @@ public class SszGeneratorDiagnosticTest
             {
             }
 
-            public sealed class BadFixedBytesConverter : ISszVectorConverter<BadFixedBytes>
+            [SszVectorConverter<BadFixedBytes>]
+            public static class BadFixedBytesConverter
             {
                 public const int Length = 4;
 
                 public static void ToSpan(Span<byte> span, BadFixedBytes value)
+                {
+                }
+
+                public static void ToSpan(Span<byte> span, ReadOnlySpan<BadFixedBytes> values)
                 {
                 }
 
@@ -107,13 +121,22 @@ public class SszGeneratorDiagnosticTest
             {
             }
 
-            public sealed class BadFixedBytesConverter : ISszVectorConverter<BadFixedBytes>
+            [SszVectorConverter<BadFixedBytes>]
+            public static class BadFixedBytesConverter
             {
                 public const int Length = 4;
 
                 public static BadFixedBytes FromSpan(ReadOnlySpan<byte> span) => default;
 
+                public static void FromSpan(ReadOnlySpan<byte> span, Span<BadFixedBytes> values)
+                {
+                }
+
                 public static void ToSpan(Span<byte> span, BadFixedBytes value)
+                {
+                }
+
+                public static void ToSpan(Span<byte> span, ReadOnlySpan<BadFixedBytes> values)
                 {
                 }
             }
@@ -129,7 +152,7 @@ public class SszGeneratorDiagnosticTest
     {
         const string source = """
             using System;
-            using Nethermind.Merkleization;
+            using Nethermind.Serialization.Ssz.Merkleization;
             using Nethermind.Serialization.Ssz;
 
             [SszContainer]
@@ -142,13 +165,22 @@ public class SszGeneratorDiagnosticTest
             {
             }
 
-            public sealed class FirstDuplicateFixedBytesConverter : ISszVectorConverter<DuplicateFixedBytes>
+            [SszVectorConverter<DuplicateFixedBytes>]
+            public static class FirstDuplicateFixedBytesConverter
             {
                 public const int Length = 4;
 
                 public static DuplicateFixedBytes FromSpan(ReadOnlySpan<byte> span) => default;
 
+                public static void FromSpan(ReadOnlySpan<byte> span, Span<DuplicateFixedBytes> values)
+                {
+                }
+
                 public static void ToSpan(Span<byte> span, DuplicateFixedBytes value)
+                {
+                }
+
+                public static void ToSpan(Span<byte> span, ReadOnlySpan<DuplicateFixedBytes> values)
                 {
                 }
 
@@ -157,13 +189,22 @@ public class SszGeneratorDiagnosticTest
                 }
             }
 
-            public sealed class SecondDuplicateFixedBytesConverter : ISszVectorConverter<DuplicateFixedBytes>
+            [SszVectorConverter<DuplicateFixedBytes>]
+            public static class SecondDuplicateFixedBytesConverter
             {
                 public const int Length = 4;
 
                 public static DuplicateFixedBytes FromSpan(ReadOnlySpan<byte> span) => default;
 
+                public static void FromSpan(ReadOnlySpan<byte> span, Span<DuplicateFixedBytes> values)
+                {
+                }
+
                 public static void ToSpan(Span<byte> span, DuplicateFixedBytes value)
+                {
+                }
+
+                public static void ToSpan(Span<byte> span, ReadOnlySpan<DuplicateFixedBytes> values)
                 {
                 }
 
@@ -178,7 +219,99 @@ public class SszGeneratorDiagnosticTest
         Assert.That(diagnostic.GetMessage(), Does.Contain("Multiple SSZ converters"));
     }
 
+    [Test]
+    public void Converter_backed_primitive_collections_emit_converter_calls()
+    {
+        const string source = """
+            using System;
+            using Nethermind.Serialization.Ssz;
+
+            [SszContainer]
+            public partial struct PrimitiveCollectionContainer
+            {
+                [SszVector(3)]
+                public bool[]? Bools { get; set; }
+
+                [SszVector(2)]
+                public int[]? Ints { get; set; }
+
+                [SszList(2)]
+                public long[]? Longs { get; set; }
+
+                [SszVector(2)]
+                public UInt128[]? Wides { get; set; }
+
+                [SszVector(2)]
+                public PrimitiveEnum[]? Enums { get; set; }
+            }
+
+            public enum PrimitiveEnum : uint
+            {
+                A = 1,
+                B = 2,
+            }
+            """;
+
+        CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        string generated = GetGeneratedSource(source, parseOptions, nameof(Converter_backed_primitive_collections_emit_converter_calls), "Serialization.SszCodec.PrimitiveCollectionContainer.cs");
+
+        Assert.That(generated, Does.Contain("BooleanSszVectorConverter.ToSpan"));
+        Assert.That(generated, Does.Contain("BooleanSszVectorConverter.FromSpan"));
+        Assert.That(generated, Does.Contain("Int32SszVectorConverter.ToSpan"));
+        Assert.That(generated, Does.Contain("Int32SszVectorConverter.FromSpan"));
+        Assert.That(generated, Does.Contain("Int32SszVectorConverter.MerkleizeVector"));
+        Assert.That(generated, Does.Contain("Int64SszVectorConverter.ToSpan"));
+        Assert.That(generated, Does.Contain("Int64SszVectorConverter.FromSpan"));
+        Assert.That(generated, Does.Contain("Int64SszVectorConverter.MerkleizeList"));
+        Assert.That(generated, Does.Contain("UInt128SszVectorConverter.ToSpan"));
+        Assert.That(generated, Does.Contain("UInt128SszVectorConverter.FromSpan"));
+        Assert.That(generated, Does.Contain("UInt128SszVectorConverter.MerkleizeVector"));
+        Assert.That(generated, Does.Contain("UInt32SszVectorConverter.ToSpan"));
+        Assert.That(generated, Does.Contain("UInt32SszVectorConverter.FromSpan"));
+        Assert.That(generated, Does.Contain("UInt32SszVectorConverter.MerkleizeVector"));
+        Assert.That(generated, Does.Contain("MemoryMarshal.Cast<PrimitiveEnum, uint>"));
+        Assert.That(generated, Does.Not.Contain("EncodeItemsWithConverter"));
+        Assert.That(generated, Does.Not.Contain("DecodeItemsWithConverter"));
+        Assert.That(generated, Does.Not.Contain("SszLib.Encode"));
+        Assert.That(generated, Does.Not.Contain("SszLib.Decode"));
+        Assert.That(generated, Does.Not.Contain("using Nethermind.Core;"));
+        Assert.That(generated, Does.Not.Contain("using Nethermind.Core.Crypto;"));
+        Assert.That(generated, Does.Not.Contain("using Nethermind.Serialization.Ssz.SszVectorConverters;"));
+    }
+
     private static Diagnostic GetSsz003Diagnostic(string source, CSharpParseOptions parseOptions, string assemblyName)
+    {
+        GeneratorDriverRunResult result = RunGenerator(source, parseOptions, assemblyName);
+
+        foreach (Diagnostic candidate in result.Diagnostics)
+        {
+            if (candidate.Id == "SSZ003")
+            {
+                return candidate;
+            }
+        }
+
+        Assert.Fail("Expected SSZ003 diagnostic.");
+        return null!;
+    }
+
+    private static string GetGeneratedSource(string source, CSharpParseOptions parseOptions, string assemblyName, string hintName)
+    {
+        GeneratorDriverRunResult result = RunGenerator(source, parseOptions, assemblyName);
+
+        foreach (SyntaxTree generatedTree in result.GeneratedTrees)
+        {
+            if (Path.GetFileName(generatedTree.FilePath) == hintName)
+            {
+                return generatedTree.GetText().ToString();
+            }
+        }
+
+        Assert.Fail($"Expected generated source {hintName}.");
+        return string.Empty;
+    }
+
+    private static GeneratorDriverRunResult RunGenerator(string source, CSharpParseOptions parseOptions, string assemblyName)
     {
         SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
         CSharpCompilation compilation = CSharpCompilation.Create(
@@ -191,16 +324,7 @@ public class SszGeneratorDiagnosticTest
             .WithUpdatedParseOptions(parseOptions);
         driver = driver.RunGenerators(compilation);
 
-        foreach (Diagnostic candidate in driver.GetRunResult().Diagnostics)
-        {
-            if (candidate.Id == "SSZ003")
-            {
-                return candidate;
-            }
-        }
-
-        Assert.Fail("Expected SSZ003 diagnostic.");
-        return null!;
+        return driver.GetRunResult();
     }
 
     private static IIncrementalGenerator CreateSszGenerator()
@@ -232,7 +356,7 @@ public class SszGeneratorDiagnosticTest
         }
 
         references[^3] = MetadataReference.CreateFromFile(typeof(SszContainerAttribute).Assembly.Location);
-        references[^2] = MetadataReference.CreateFromFile(typeof(ISszVectorConverter<>).Assembly.Location);
+        references[^2] = MetadataReference.CreateFromFile(typeof(SszVectorConverterAttribute<>).Assembly.Location);
         references[^1] = MetadataReference.CreateFromFile(typeof(UInt256).Assembly.Location);
         return references;
     }

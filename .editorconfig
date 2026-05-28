@@ -137,10 +137,6 @@ dotnet_diagnostic.IDE0130.severity = none
 [src/Nethermind/Nethermind.Serialization.Rlp/{NettyBufferMemoryOwner,OwnedBlockBodies,Eip7702/AuthorizationTupleDecoder}.cs]
 dotnet_diagnostic.IDE0130.severity = none
 
-# IDE0130: Merkleization remains exposed under Nethermind.Merkleization after moving into the SSZ assembly.
-[src/Nethermind/Nethermind.Serialization.Ssz/Merkleization/*.cs]
-dotnet_diagnostic.IDE0130.severity = none
-
 # IDE0130: Network.Contract config interfaces are exposed under Nethermind.Network.Config
 # so consumers can find them alongside concrete config types.
 [src/Nethermind/Nethermind.Network.Contract/Config/*.cs]
@@ -185,4 +181,3 @@ dotnet_diagnostic.IDE0130.severity = none
 # IDE0130: Xdc test builders intentionally exposed under Nethermind.Core.Test.Builders for discoverability.
 [src/Nethermind/Nethermind.Xdc.Test/{BuildExtensions,Helpers/XdcBlockHeaderBuilder,Helpers/XdcSubnetBlockHeaderBuilder}.cs]
 dotnet_diagnostic.IDE0130.severity = none
-
