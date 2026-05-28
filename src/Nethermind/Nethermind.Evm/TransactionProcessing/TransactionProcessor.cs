@@ -77,7 +77,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected IWorldState WorldState { get; }
         protected IVirtualMachine<TGasPolicy> VirtualMachine { get; }
         private readonly ICodeInfoRepository _codeInfoRepository;
-        private readonly bool _isOverridableCodeInfoRepository;
+        private readonly bool _isCodeOverridable;
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
@@ -107,7 +107,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
-            _isOverridableCodeInfoRepository = codeInfoRepository is IOverridableCodeInfoRepository;
+            _isCodeOverridable = codeInfoRepository.IsCodeOverridable;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -242,8 +242,8 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsSimpleTransferFastPathCandidate(Transaction tx, bool isOverridableCodeInfoRepository)
-            => !isOverridableCodeInfoRepository && tx.To is not null && tx.AuthorizationList is null;
+        private static bool IsSimpleTransferFastPathCandidate(Transaction tx, bool isCodeOverridable)
+            => !isCodeOverridable && tx.To is not null && tx.AuthorizationList is null;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress)
@@ -258,7 +258,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             preloadedCodeInfo = null;
             preloadedDelegationAddress = null;
-            if (!IsSimpleTransferFastPathCandidate(tx, _isOverridableCodeInfoRepository)) return false;
+            if (!IsSimpleTransferFastPathCandidate(tx, _isCodeOverridable)) return false;
 
             preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(tx.To!, followDelegation: true, spec, out preloadedDelegationAddress);
             return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress);
