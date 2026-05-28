@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NSubstitute;
@@ -129,10 +130,25 @@ public class LongFinalityIntegrationTests
         StateId s1 = new(1, Keccak.Compute("1"));
         StateId s2 = new(2, Keccak.Compute("2"));
 
-        TreePath path1 = new(Keccak.Compute("path1"), 4);
-        TreePath path2 = new(Keccak.Compute("path2"), 4);
-        byte[] rlp1 = [0xC0];
-        byte[] rlp2 = [0xC1, 0x80];
+        // Per-snapshot trie nodes are capped at 568 bytes (MaxTrieNodeRlpBytes), so use
+        // many smaller RLPs per snapshot to push the cumulative blob frontier well past
+        // 1 OS page (4 KiB). Without enough total blob bytes, a stray
+        // BlobArenaManager.TryResetOrphanedFrontier punch over [0, frontier) is a no-op
+        // on tmpfs (sub-page punches are dropped), letting the test silently pass with
+        // the bug present. 10 × ~500 bytes per snap = ~5 KiB per snap = ~10 KiB shared
+        // blob frontier → punch reliably zeros page 0.
+        const int nodesPerSnap = 10;
+        byte[] body1 = new byte[500]; Array.Fill(body1, (byte)0xAA);
+        byte[] body2 = new byte[500]; Array.Fill(body2, (byte)0xBB);
+        byte[] rlp1 = Rlp.Encode(body1).Bytes;   // ~503 bytes — under MaxTrieNodeRlpBytes
+        byte[] rlp2 = Rlp.Encode(body2).Bytes;
+        TreePath[] paths1 = new TreePath[nodesPerSnap];
+        TreePath[] paths2 = new TreePath[nodesPerSnap];
+        for (int i = 0; i < nodesPerSnap; i++)
+        {
+            paths1[i] = new TreePath(Keccak.Compute($"path1_{i}"), 4);
+            paths2[i] = new TreePath(Keccak.Compute($"path2_{i}"), 4);
+        }
         MemDb catalogDb = new();
 
         // Session 1: persist two snapshots
@@ -144,13 +160,13 @@ public class LongFinalityIntegrationTests
 
             repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s0, s1, c =>
             {
-                c.StateNodes[path1] = new TrieNode(NodeType.Leaf, rlp1);
+                foreach (TreePath p in paths1) c.StateNodes[p] = new TrieNode(NodeType.Leaf, rlp1);
                 c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
             })).Dispose();
 
             repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s1, s2, c =>
             {
-                c.StateNodes[path2] = new TrieNode(NodeType.Leaf, rlp2);
+                foreach (TreePath p in paths2) c.StateNodes[p] = new TrieNode(NodeType.Leaf, rlp2);
                 c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
             })).Dispose();
         }
@@ -174,23 +190,32 @@ public class LongFinalityIntegrationTests
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(2));
 
-            // s0→s1 carries path1 + AddressA; s1→s2 carries path2 + AddressB. The
-            // cross-snapshot misses verify the snapshot boundary survives reload
-            // (i.e. AddressB does NOT bleed into snap1's view, and vice versa).
+            // s0→s1 carries paths1[] + AddressA; s1→s2 carries paths2[] + AddressB. Every
+            // state node round-trips intact — a stray BlobArenaManager.TryResetOrphanedFrontier
+            // punch during the session-1 dispose would zero at least the first 4 KiB of the
+            // blob, so the early-index nodes' RLPs would either not decode or read as zeros.
+            // The cross-snapshot misses verify the snapshot boundary survives reload (i.e.
+            // AddressB does NOT bleed into snap1's view, and vice versa).
             Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? snap1), Is.True);
-            Assert.That(snap1!.TryLoadStateNodeRlp(path1, out byte[]? r1), Is.True);
-            Assert.That(snap1.TryGetAccount(TestItem.AddressA, out Account? a1), Is.True);
+            foreach (TreePath p in paths1)
+            {
+                Assert.That(snap1!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap1 missing {p}");
+                Assert.That(r, Is.EqualTo(rlp1), $"snap1 state node at {p} read back corrupted");
+            }
+            Assert.That(snap1!.TryGetAccount(TestItem.AddressA, out Account? a1), Is.True);
             Assert.That(snap1.TryGetAccount(TestItem.AddressB, out Account? snap1MissB), Is.False);
             snap1.Dispose();
 
             Assert.That(repo.TryLeaseSnapshotTo(s2, out PersistedSnapshot? snap2), Is.True);
-            Assert.That(snap2!.TryLoadStateNodeRlp(path2, out byte[]? r2), Is.True);
-            Assert.That(snap2.TryGetAccount(TestItem.AddressB, out Account? a2), Is.True);
+            foreach (TreePath p in paths2)
+            {
+                Assert.That(snap2!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap2 missing {p}");
+                Assert.That(r, Is.EqualTo(rlp2), $"snap2 state node at {p} read back corrupted");
+            }
+            Assert.That(snap2!.TryGetAccount(TestItem.AddressB, out Account? a2), Is.True);
             Assert.That(snap2.TryGetAccount(TestItem.AddressA, out Account? snap2MissA), Is.False);
             snap2.Dispose();
 
-            Assert.That(r1, Is.EqualTo(rlp1));
-            Assert.That(r2, Is.EqualTo(rlp2));
             Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
             Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
             Assert.That(snap1MissB, Is.Null);

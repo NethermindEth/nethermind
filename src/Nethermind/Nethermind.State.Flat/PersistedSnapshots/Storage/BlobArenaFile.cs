@@ -89,6 +89,14 @@ public sealed class BlobArenaFile : RefCountingDisposable
     public void PersistOnShutdown() => Interlocked.Exchange(ref _preserveOnDispose, 1);
 
     /// <summary>
+    /// True iff <see cref="PersistOnShutdown"/> has been called for this file. Read by
+    /// <see cref="BlobArenaManager.TryResetOrphanedFrontier"/> so an orphan-frontier reset
+    /// does not punch a hole over a file the caller has promised to preserve across
+    /// the next session — the file would survive on disk, but its bytes would be zeroed.
+    /// </summary>
+    internal bool IsShutdownPreserved => Volatile.Read(ref _preserveOnDispose) != 0;
+
+    /// <summary>
     /// Defensive lease acquisition; returns false when the file has already entered
     /// <see cref="CleanUp"/>. Promotes <see cref="RefCountingDisposable.TryAcquireLease"/>
     /// from protected to internal so the owning manager can lease under its lock.

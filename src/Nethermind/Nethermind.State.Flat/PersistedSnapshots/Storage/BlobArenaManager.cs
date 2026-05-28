@@ -273,6 +273,13 @@ public sealed class BlobArenaManager : IBlobArenaManager
             // have bumped the refcount in the window between the caller's
             // HasOnlyManagerLease probe and us taking the lock.
             if (!file.HasOnlyManagerLease) return;
+            // PersistedSnapshotRepository.Dispose flags every loaded blob with
+            // PersistOnShutdown before disposing snapshots. The last snapshot's CleanUp
+            // arrives here with HasOnlyManagerLease=true — without this guard we'd punch
+            // a hole over the WHOLE [0, prev) range of a file the next session needs to
+            // rehydrate intact (BlobArenaFile.CleanUp would keep the file on disk, but
+            // its bytes would all read as zeros).
+            if (file.IsShutdownPreserved) return;
             long prev = file.ReportedFrontier;
             if (prev == 0)
             {
