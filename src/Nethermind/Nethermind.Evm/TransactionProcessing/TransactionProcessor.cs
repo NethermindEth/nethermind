@@ -413,16 +413,17 @@ namespace Nethermind.Evm.TransactionProcessing
             Metrics.IncrementEmptyCalls();
 
             ref readonly UInt256 value = ref tx.ValueRef;
+            bool hasValueTransfer = !value.IsZero;
             if (tracer.IsTracingActions)
             {
                 TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
             }
 
-            PayValue(tx, spec, opts);
-            WorldState.AddToBalanceAndCreateIfNotExists(recipient, in value, spec);
+            if (hasValueTransfer) PayValue(tx, spec, opts);
+            WorldState.AddToBalanceAndCreateIfNotExists(recipient, in hasValueTransfer ? ref value : ref UInt256.Zero, spec);
 
             JournalCollection<LogEntry>? logs = null;
-            if (spec.IsEip7708Enabled && !value.IsZero && tx.SenderAddress != recipient)
+            if (spec.IsEip7708Enabled && hasValueTransfer && tx.SenderAddress != recipient)
             {
                 LogEntry transferLog = TransferLog.CreateTransfer(tx.SenderAddress!, recipient, in value);
                 logs = [transferLog];
