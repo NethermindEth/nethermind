@@ -28,30 +28,24 @@ namespace Nethermind.Core
         private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
-        public static Address Zero { get; } = new(default(AddressBytes));
+        public static Address Zero { get; } = new(default(ValueAddress));
         public static Address MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffff");
 
         public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
         public static Address SystemUser { get; } = new(SystemUserHex);
 
-        private AddressBytes _bytes;
+        private readonly ValueAddress _bytes;
 
         public ReadOnlySpan<byte> Bytes
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in FirstByte), Size);
-        }
-
-        [InlineArray(Size)]
-        internal struct AddressBytes
-        {
-            private byte _element0;
+            get => _bytes.AsSpan;
         }
 
         private ref readonly byte FirstByte
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ref Unsafe.As<AddressBytes, byte>(ref Unsafe.AsRef(in _bytes));
+            get => ref MemoryMarshal.GetReference(_bytes.AsSpan);
         }
 
         public Address(Hash256 hash) : this(hash.Bytes.Slice(12, Size)) { }
@@ -152,10 +146,10 @@ namespace Nethermind.Core
                     nameof(bytes));
             }
 
-            bytes.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.As<AddressBytes, byte>(ref _bytes), Size));
+            _bytes = new ValueAddress(bytes);
         }
 
-        internal Address(AddressBytes bytes) => _bytes = bytes;
+        internal Address(in ValueAddress bytes) => _bytes = bytes;
 
         public bool Equals(Address? other)
         {

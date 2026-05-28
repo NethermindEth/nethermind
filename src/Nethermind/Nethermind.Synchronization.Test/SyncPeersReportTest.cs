@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -152,7 +151,7 @@ namespace Nethermind.Synchronization.Test
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             string reportStr = report.MakeReportForPeers(peers, "== Header ==");
-            reportStr.Should().Be(expectedResult);
+            Assert.That(reportStr, Is.EqualTo(expectedResult));
         }
 
         private class StubSyncPeer : SyncPeerProtocolHandlerBase
@@ -180,7 +179,7 @@ namespace Nethermind.Synchronization.Test
             public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = static delegate { };
             public override void Init() =>
                 throw new NotImplementedException();
-            protected override void HandleMessageCore(ZeroPacket message) =>
+            protected override bool HandleMessageCore(ZeroPacket message) =>
                 throw new NotImplementedException();
             public override void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
                 throw new NotImplementedException();

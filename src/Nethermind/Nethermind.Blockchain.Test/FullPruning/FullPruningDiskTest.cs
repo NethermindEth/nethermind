@@ -9,7 +9,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
@@ -171,7 +170,7 @@ public class FullPruningDiskTest
         chain.DriveInfo.AvailableFreeSpace.Returns(availableSpace);
         PruningTriggerEventArgs args = new();
         chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
-        args.Status.Should().Be(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace);
+        Assert.That(args.Status, Is.EqualTo(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace));
     }
 
     private static async Task RunPruning(PruningTestBlockchain chain, int time, bool onlyFirstRuns)
@@ -195,7 +194,7 @@ public class FullPruningDiskTest
 
         if (!onlyFirstRuns || time == 0)
         {
-            pruningFinished.Should().BeTrue();
+            Assert.That(pruningFinished, Is.True);
 
             await WriteFileStructure(chain);
 
@@ -205,8 +204,8 @@ public class FullPruningDiskTest
                 );
 
             HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
-            currentItems.IsSubsetOf(allItems).Should().BeTrue();
-            currentItems.Count.Should().BeGreaterThan(0);
+            Assert.That(currentItems.IsSubsetOf(allItems), Is.True);
+            Assert.That(currentItems.Count, Is.GreaterThan(0));
         }
     }
 

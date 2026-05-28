@@ -1,6 +1,6 @@
+#pragma warning disable IDE0130 // .NET standard 2.0 polyfill — namespace dictated by the runtime
 namespace System.Runtime.CompilerServices;
-
-// .NET standard 2.0 needs these types to allow modern C# features
+#pragma warning restore IDE0130
 
 internal static class IsExternalInit;
 

@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
@@ -81,10 +80,10 @@ public class EncodingExtensionsTests
         string expected = charsLimit > text.Length ? text : text[..charsLimit];
         ReadOnlySequence<byte> sequence = new(encoding.GetBytes(text));
 
-        encoding.TryGetStringSlice(sequence, charsLimit, out bool completed, out string? result).Should().BeTrue();
+        Assert.That(encoding.TryGetStringSlice(sequence, charsLimit, out bool completed, out string? result), Is.True);
 
-        result.Should().Be(expected);
-        completed.Should().Be(charsLimit >= text.Length);
+        Assert.That(result, Is.EqualTo(expected));
+        Assert.That(completed, Is.EqualTo(charsLimit >= text.Length));
     }
 
     [Test]
@@ -107,9 +106,9 @@ public class EncodingExtensionsTests
             .WithSegment(new ReadOnlySequence<byte>(segment2))
             .Build();
 
-        encoding.TryGetStringSlice(sequence, charsLimit, out bool completed, out string? result).Should().BeTrue();
+        Assert.That(encoding.TryGetStringSlice(sequence, charsLimit, out bool completed, out string? result), Is.True);
 
-        result.Should().Be(expected);
-        completed.Should().Be(charsLimit >= text.Length);
+        Assert.That(result, Is.EqualTo(expected));
+        Assert.That(completed, Is.EqualTo(charsLimit >= text.Length));
     }
 }
