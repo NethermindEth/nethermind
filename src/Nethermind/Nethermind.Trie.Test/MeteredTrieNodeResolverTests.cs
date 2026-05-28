@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Trie.Pruning;
@@ -29,8 +28,8 @@ public class MeteredTrieNodeResolverTests
         TreePath deeper = TreePath.FromNibble(stackalloc byte[] { 1, 2, 3, 4, 5 });
         resolver.FindCachedOrUnknown(deeper, TestItem.KeccakB);
 
-        diag.NodeLookups.Should().Be(2);
-        diag.MaxDepth.Should().Be(5);
+        Assert.That(diag.NodeLookups, Is.EqualTo(2));
+        Assert.That(diag.MaxDepth, Is.EqualTo(5));
     }
 
     [Test]
@@ -49,9 +48,9 @@ public class MeteredTrieNodeResolverTests
         resolver.FindCachedOrUnknown(path, TestItem.KeccakA);
         resolver.LoadRlp(path, TestItem.KeccakA);
 
-        diag.NodeLookups.Should().Be(2);
-        diag.CacheMisses.Should().Be(1);
-        diag.CacheHits.Should().Be(1);
+        Assert.That(diag.NodeLookups, Is.EqualTo(2));
+        Assert.That(diag.CacheMisses, Is.EqualTo(1));
+        Assert.That(diag.CacheHits, Is.EqualTo(1));
     }
 
     [Test]
@@ -67,9 +66,9 @@ public class MeteredTrieNodeResolverTests
         MeteredTrieNodeResolver resolver = new(inner, diag);
 
         ITrieNodeResolver storageResolver = resolver.GetStorageTrieNodeResolver(Keccak.Zero);
-        storageResolver.Should().BeOfType<MeteredTrieNodeResolver>();
+        Assert.That(storageResolver, Is.TypeOf<MeteredTrieNodeResolver>());
         storageResolver.FindCachedOrUnknown(TreePath.Empty, TestItem.KeccakA);
 
-        diag.NodeLookups.Should().Be(1, "the wrapped storage resolver shares the original diagnostics object");
+        Assert.That(diag.NodeLookups, Is.EqualTo(1), "the wrapped storage resolver shares the original diagnostics object");
     }
 }

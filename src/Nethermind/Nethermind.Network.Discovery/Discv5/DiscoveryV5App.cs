@@ -102,7 +102,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
                 UdpPort = networkConfig.DiscoveryPort
             })
             .WithSessionOptions(_sessionOptions)
-            .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
+            .WithTableOptions(new TableOptions([.. bootstrapEnrs.Select(enr => enr.ToString())]))
             .WithEnrBuilder(enrBuilder)
             .WithTalkResponder(new TalkReqAndRespHandler())
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true, Microsoft.Extensions.Logging.LogLevel.Debug))

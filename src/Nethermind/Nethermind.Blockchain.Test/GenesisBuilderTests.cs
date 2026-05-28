@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -49,13 +48,13 @@ public class GenesisBuilderTests
 
         FunctionalGenesisPostProcessor genesisPostProcessor = new((block) =>
         {
-            chainSpec.Allocations.Should().NotBeNull();
+            Assert.That(chainSpec.Allocations, Is.Not.Null);
         });
         (GenesisBuilder genesisLoader, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec, genesisPostProcessor);
 
         using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         genesisLoader.Build();
-        chainSpec.Allocations.Should().BeNull();
+        Assert.That(chainSpec.Allocations, Is.Null);
     }
 
     private void AssertBlockHash(string expectedHash, string chainspecFilePath)

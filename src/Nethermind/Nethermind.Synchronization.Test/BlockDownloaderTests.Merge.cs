@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -81,8 +80,8 @@ public partial class BlockDownloaderTests
             long expectedDownloadStart = notSyncedTreeStartingBlockNumber;
             long expectedDownloadEnd = Math.Min(headNumber, insertedBeaconBlocks - fastSyncLag);
 
-            ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd));
-            ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd));
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
+            Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
 
             int receiptCount = 0;
             for (long i = expectedDownloadStart; i < expectedDownloadEnd; i++)
@@ -93,12 +92,12 @@ public partial class BlockDownloaderTests
                 }
             }
 
-            ctx.ReceiptStorage.Count.Should().Be(withReceipts ? receiptCount : 0);
-            ctx.BeaconPivot.ProcessDestination?.Number.Should().Be(Math.Max(insertedBeaconBlocks - fastSyncLag, beaconPivot));
+            Assert.That(ctx.ReceiptStorage.Count, Is.EqualTo(withReceipts ? receiptCount : 0));
+            Assert.That(ctx.BeaconPivot.ProcessDestination?.Number, Is.EqualTo(Math.Max(insertedBeaconBlocks - fastSyncLag, beaconPivot)));
         }
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(insertedBeaconBlocks);
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(insertedBeaconBlocks));
     }
 
     [TestCase(32L, DownloaderOptions.Insert, 32, false)]
@@ -162,7 +161,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FullSyncUntilNoRequest(peerInfo);
-        notSyncedTree.BestKnownNumber.Should().Be(expectedBestKnownNumber);
+        Assert.That(notSyncedTree.BestKnownNumber, Is.EqualTo(expectedBestKnownNumber));
     }
 
     [TestCase(32L, 32L, 0, 32)]
@@ -192,7 +191,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FastSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(0, expectedBestKnownNumber));
+        Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(Math.Max(0, expectedBestKnownNumber)));
     }
 
     [Test]
@@ -250,8 +249,8 @@ public partial class BlockDownloaderTests
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
 
-        lastBestSuggestedBlock!.Hash.Should().Be(lastHeader.Hash!);
-        lastBestSuggestedBlock.TotalDifficulty.Should().NotBeEquivalentTo(UInt256.Zero);
+        Assert.That(lastBestSuggestedBlock!.Hash, Is.EqualTo(lastHeader.Hash!));
+        Assert.That(lastBestSuggestedBlock.TotalDifficulty, Is.Not.EqualTo(UInt256.Zero));
     }
 
     [Test]
@@ -293,7 +292,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FastSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag)));
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag))));
 
         syncPeerInternal.ExtendTree(chainLength * 2);
         await ctx.FullSyncUntilNoRequest(peerInfo);
@@ -382,6 +381,6 @@ public partial class BlockDownloaderTests
             // With post merge, best suggested header always follow beacon pivot but not necessarily synced.
             // But BestSuggestedBody is updated, unlike PreMerge.
             // I don't make the rules
-            BlockTree.BestSuggestedBody!.Number.Should().Be(blockNumber);
+            Assert.That(BlockTree.BestSuggestedBody!.Number, Is.EqualTo(blockNumber));
     }
 }
