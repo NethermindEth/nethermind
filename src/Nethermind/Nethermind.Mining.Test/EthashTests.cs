@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
@@ -830,7 +829,7 @@ public class EthashTests
         Ethash ethash = new(LimboLogs.Instance);
         EthashSealValidator sealValidator = new(LimboLogs.Instance, new ConstantDifficulty(b.Header.Difficulty), new CryptoRandom(), ethash, Timestamper.Default);
         bool valid = sealValidator.ValidateParams(b.Header, b.Header);
-        valid.Should().BeFalse();
+        Assert.That(valid, Is.False);
     }
 
     [Test]

@@ -1715,7 +1715,7 @@ namespace Nethermind.Blockchain
                         _blockInfoDb.Delete(blockHash);
                         _blockStore.Delete(i, blockHash);
                         _headerStore.Delete(blockHash);
-                        _balStore.Delete(blockHash);
+                        _balStore.Delete(i, blockHash);
                     }
                 }
             }

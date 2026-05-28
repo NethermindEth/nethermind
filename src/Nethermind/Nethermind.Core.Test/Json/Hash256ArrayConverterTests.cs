@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -35,24 +34,30 @@ public class Hash256ArrayConverterTests
 
         if (expected is null)
         {
-            hashes.Should().BeNull();
+            Assert.That(hashes, Is.Null);
         }
         else
         {
-            hashes.Should().NotBeNull().And.HaveCount(expected.Length);
+            Assert.That(hashes, Is.Not.Null);
+            Assert.That(hashes!.Length, Is.EqualTo(expected.Length));
             for (int i = 0; i < expected.Length; i++)
             {
-                if (expected[i] is null) hashes![i].Should().BeNull();
-                else hashes![i].Should().Be(expected[i]!);
+                if (expected[i] is null)
+                {
+                    Assert.That(hashes[i], Is.Null);
+                }
+                else
+                {
+                    Assert.That(hashes[i], Is.EqualTo(expected[i]!));
+                }
             }
         }
 
-        JsonSerializer.Serialize(hashes, s_options).Should().Be(json);
+        Assert.That(JsonSerializer.Serialize(hashes, s_options), Is.EqualTo(json));
     }
 
     [TestCase("[\"0xabcd\"]", TestName = "TooShort")]
     [TestCase("[\"0x" + "00" + "0123456789abcdeffedcba9876543210" + "0123456789abcdeffedcba98765432" + "ff\"]", TestName = "TooLong")]
     public void Read_WrongLengthElement_Throws(string json) =>
-        FluentActions.Invoking(() => JsonSerializer.Deserialize<Hash256?[]>(json, s_options))
-            .Should().Throw<JsonException>();
+        Assert.That(() => JsonSerializer.Deserialize<Hash256?[]>(json, s_options), Throws.TypeOf<JsonException>());
 }
