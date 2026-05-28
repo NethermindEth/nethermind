@@ -18,7 +18,7 @@ namespace Nethermind.Core.Extensions;
 /// hash is correct. Aliased in via <c>using BitOperations = ZkBitOperations</c>
 /// under <c>#if ZK_EVM</c>.
 /// </summary>
-public static class ZkBitOperations
+public static partial class ZkBitOperations
 {
     // xxHash64 prime — good avalanche when paired with a high-bit fold.
     private const ulong Prime = 0xD6E8FEB86659FD93UL;
