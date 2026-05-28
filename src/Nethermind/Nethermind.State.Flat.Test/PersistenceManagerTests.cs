@@ -321,6 +321,36 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void AddToPersistence_TierSourcePersist_PrunesPersistedTier()
+    {
+        // Sibling of AddToPersistence_InMemoryPersist_PrunesPersistedTier for the
+        // persistedToPersist branch at PersistenceManager line 426-432. Tier-source
+        // persists must also drive PruneBefore so the in-memory tier doesn't keep growing
+        // with entries that RocksDB now supersedes.
+        StateId target = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
+
+        // No in-memory snapshot — DetermineSnapshotAction takes the tier-fallback path
+        // and returns persistedToPersist via the stubbed TryLeaseSnapshotTo below.
+        using ArenaWriter emptyWriter = _memArena.CreateWriter(0);
+        (_, ArenaReservation emptyRes) = emptyWriter.Complete();
+        PersistedSnapshot persisted = new(Block0, target, emptyRes, NullBlobArenaManager.Instance, PersistedSnapshotTier.Persisted);
+        _persistedSnapshotRepository.TryLeaseSnapshotTo(target, out Arg.Any<PersistedSnapshot?>())
+            .Returns(x => { x[1] = persisted; return true; });
+        _persistedSnapshotRepository.LeaseBaseSnapshotsInRange(Arg.Any<StateId>(), Arg.Any<StateId>())
+            .Returns(_ => PersistedSnapshotList.Empty());
+
+        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        _persistenceManager.AddToPersistence(latest);
+
+        _persistedSnapshotRepository.Received().PruneBefore(target);
+    }
+
+    [Test]
     public void DetermineSnapshotAction_UnfinalizedBelowBackstop_ReturnsNull()
     {
         // Unfinalized (finalized at 10, persisted at 0 — not in range for the CompactSize=16
