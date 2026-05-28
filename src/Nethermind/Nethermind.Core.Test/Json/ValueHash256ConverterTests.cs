@@ -13,7 +13,7 @@ namespace Nethermind.Core.Test.Json;
 [TestFixture]
 public class ValueHash256ConverterTests
 {
-    static readonly JsonSerializerOptions options = new() { Converters = { new ValueHash256Converter() } };
+    private static readonly JsonSerializerOptions _options = new() { Converters = { new ValueHash256Converter() } };
 
     [Test]
     public void Roundtrips_valid_32_byte_hash()
