@@ -226,14 +226,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             Address? recipient = tx.To;
-            bool useSimpleTransferFastPath = false;
-            CodeInfo? preloadedCodeInfo = null;
-            Address? preloadedDelegationAddress = null;
-            if (IsSimpleTransferFastPathCandidate(tx, _isOverridableCodeInfoRepository))
-            {
-                preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(recipient!, followDelegation: true, spec, out preloadedDelegationAddress);
-                useSimpleTransferFastPath = HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress);
-            }
+            bool useSimpleTransferFastPath = TryPrepareSimpleTransferFastPath(tx, spec, out CodeInfo? preloadedCodeInfo, out Address? preloadedDelegationAddress);
 
             bool commitBeforeExecution = commit && (!useSimpleTransferFastPath || restore || tracer.IsTracingState);
             if (commitBeforeExecution) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
@@ -255,6 +248,21 @@ namespace Nethermind.Evm.TransactionProcessing
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress)
             => delegationAddress is null && codeInfo.IsEmpty;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool TryPrepareSimpleTransferFastPath(
+            Transaction tx,
+            IReleaseSpec spec,
+            out CodeInfo? preloadedCodeInfo,
+            out Address? preloadedDelegationAddress)
+        {
+            preloadedCodeInfo = null;
+            preloadedDelegationAddress = null;
+            if (!IsSimpleTransferFastPathCandidate(tx, _isOverridableCodeInfoRepository)) return false;
+
+            preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(tx.To!, followDelegation: true, spec, out preloadedDelegationAddress);
+            return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress);
+        }
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
