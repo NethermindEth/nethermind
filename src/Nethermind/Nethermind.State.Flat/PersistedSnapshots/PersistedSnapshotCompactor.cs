@@ -63,7 +63,12 @@ public class PersistedSnapshotCompactor(
 
         if (persistedSnapshotRepository.SnapshotCount < 2) return;
 
-        long startingBlockNumber = ((blockNumber - 1) / alignment) * alignment;
+        // The schedule alignment lives in offset-shifted space, but startingBlockNumber must
+        // be the raw block number at the left edge of the window the alignment trigger
+        // selects: (snapshotTo - alignment, snapshotTo]. Using ((b-1)/alignment)*alignment
+        // here only works when offset == 0; with a non-zero offset it produces a shorter,
+        // non-power-of-2 output span equal to (b mod alignment).
+        long startingBlockNumber = blockNumber - alignment;
         CompactRange(snapshotTo, startingBlockNumber, alignment, isPersistable: false);
     }
 
