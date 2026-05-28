@@ -257,6 +257,8 @@ public class SszGeneratorDiagnosticTest
 
         Assert.That(generated, Does.Contain("BooleanSszVectorConverter.ToSpan"));
         Assert.That(generated, Does.Contain("BooleanSszVectorConverter.FromSpan"));
+        Assert.That(generated, Does.Not.Contain("ValidateBooleans"));
+        Assert.That(generated, Does.Not.Contain("ValidateBoolean"));
         Assert.That(generated, Does.Contain("Int32SszVectorConverter.ToSpan"));
         Assert.That(generated, Does.Contain("Int32SszVectorConverter.FromSpan"));
         Assert.That(generated, Does.Contain("Int32SszVectorConverter.MerkleizeVector"));

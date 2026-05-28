@@ -26,7 +26,12 @@ public static class BooleanSszVectorConverter
     {
         for (int i = 0; i < values.Length; i++)
         {
-            values[i] = FromSpan(span.Slice(i, Length));
+            values[i] = span[i] switch
+            {
+                0 => false,
+                1 => true,
+                byte value => throw new InvalidDataException($"SSZ bool must be 0 or 1, got {value}")
+            };
         }
     }
 
