@@ -400,7 +400,8 @@ public class PersistedSnapshotRepositoryTests
         const int n = 8;
         IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
         PersistedSnapshotCompactor compactor = new(
-            repo, arena, config, Nethermind.Logging.LimboLogs.Instance, blooms,
+            repo, arena, config, ScheduleHelper.CreateWithOffset(config, 0),
+            Nethermind.Logging.LimboLogs.Instance, blooms,
             minCompactSize: config.CompactSize * 2,
             maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 

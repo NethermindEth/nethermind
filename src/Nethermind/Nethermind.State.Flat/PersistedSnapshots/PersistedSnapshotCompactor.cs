@@ -28,12 +28,14 @@ public class PersistedSnapshotCompactor(
     IPersistedSnapshotRepository persistedSnapshotRepository,
     IArenaManager arenaManager,
     IFlatDbConfig config,
+    ICompactionSchedule schedule,
     ILogManager logManager,
     PersistedSnapshotBloomFilterManager bloomManager,
     int minCompactSize,
     int maxCompactSize) : IPersistedSnapshotCompactor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
+    private readonly ICompactionSchedule _schedule = schedule;
     private readonly int _minCompactSize = Math.Max(minCompactSize, 2);
     private readonly int _maxCompactSize = maxCompactSize;
     private readonly int _compactSize = config.CompactSize;
@@ -54,7 +56,7 @@ public class PersistedSnapshotCompactor(
         long blockNumber = snapshotTo.BlockNumber;
         if (blockNumber == 0) return;
 
-        int alignment = (int)Math.Min(blockNumber & -blockNumber, _maxCompactSize);
+        int alignment = (int)Math.Min(_schedule.GetHierarchicalCompactSize(blockNumber), _maxCompactSize);
         if (alignment < _minCompactSize) return;
         // The CompactSize-wide window is the persistable's — see DoCompactPersistable.
         if (alignment == _compactSize) return;
@@ -69,7 +71,7 @@ public class PersistedSnapshotCompactor(
     public void DoCompactPersistable(StateId snapshotTo)
     {
         long blockNumber = snapshotTo.BlockNumber;
-        if (blockNumber == 0 || blockNumber % _compactSize != 0) return;
+        if (!_schedule.IsFullCompactionBoundary(blockNumber)) return;
 
         if (persistedSnapshotRepository.SnapshotCount < 2) return;
 

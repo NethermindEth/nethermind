@@ -44,7 +44,8 @@ public class PersistenceManagerPersistedTests
 
         IFlatDbConfig config = new FlatDbConfig();
         _ = new PersistedSnapshotCompactor(
-            repo, smallArena, config, LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+            repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
+            LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
             minCompactSize: config.MinCompactSize,
             maxCompactSize: config.CompactSize / 2);
 
@@ -71,7 +72,8 @@ public class PersistenceManagerPersistedTests
 
         IFlatDbConfig config = new FlatDbConfig();
         _ = new PersistedSnapshotCompactor(
-            repo, smallArena, config, LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+            repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
+            LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
             minCompactSize: config.MinCompactSize,
             maxCompactSize: config.CompactSize / 2);
 

@@ -44,11 +44,6 @@ public class PersistenceManager(
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
     private readonly IPersistedSnapshotCompactor _compactor = persistedSnapshotCompactor;
     private readonly IPersistedSnapshotRepository _repo = persistedSnapshotRepository;
-    // Per-instance compaction schedule (master PR #11756). Accepted as a ctor dependency so the
-    // public surface matches master, but the long-finality DetermineSnapshotAction below still
-    // computes boundaries via _compactSize directly. Wiring the schedule into the boundary calc
-    // is a follow-up integration; the schedule would let multi-instance deployments stagger
-    // their compaction beats.
     private readonly ICompactionSchedule _schedule = compactionSchedule;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
@@ -117,7 +112,7 @@ public class PersistenceManager(
             long b = s.BlockNumber;
             if (b == 0) continue;
 
-            if (b % _compactSize == 0)
+            if (_schedule.IsFullCompactionBoundary(b))
             {
                 // A CompactSize boundary — its persistable is produced below via
                 // DoCompactPersistable, so it is not bucketed for DoCompactSnapshot.
@@ -126,7 +121,7 @@ public class PersistenceManager(
             }
 
             // Non-boundary: bucket by power-of-2 alignment (always < CompactSize).
-            int compactSize = (int)(b & -b);
+            int compactSize = (int)_schedule.GetHierarchicalCompactSize(b);
             if (!buckets.TryGetValue(compactSize, out List<StateId>? bucket))
                 buckets[compactSize] = bucket = [];
             bucket.Add(s);
@@ -146,8 +141,7 @@ public class PersistenceManager(
         // whose highest power of two is exactly CompactSize would just no-op there.
         foreach (StateId boundary in boundaries)
         {
-            long b = boundary.BlockNumber;
-            if ((b & -b) > _compactSize)
+            if (_schedule.IsHierarchicalBoundary(boundary.BlockNumber))
                 await _boundaryCompactJobs.Writer.WriteAsync(boundary, _cancelTokenSource.Token);
         }
     }
@@ -234,14 +228,15 @@ public class PersistenceManager(
         // BFS is rooted on an in-graph node by construction.
         StateId? seed = null;
         long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
-        if (finalizedBlockNumber >= currentPersistedState.BlockNumber + _compactSize
+        long nextBoundary = _schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
+        if (finalizedBlockNumber >= nextBoundary
             && snapshotsDepth + _compactSize > _minReorgDepth)
         {
             // Anchor at the next boundary block, not at the CL-reported finalized tip. The
             // outer gate guarantees boundary <= finalizedBlockNumber, so the provider's own
             // range check passes; the boundary is below chain head by construction, so the
             // canonical header is in the block tree and FindHeader resolves.
-            long targetBlockNumber = currentPersistedState.BlockNumber + _compactSize;
+            long targetBlockNumber = nextBoundary;
             Hash256? canonicalRoot = _finalizedStateProvider.GetFinalizedStateRootAt(targetBlockNumber);
             if (canonicalRoot is not null)
                 seed = new StateId(targetBlockNumber, canonicalRoot);

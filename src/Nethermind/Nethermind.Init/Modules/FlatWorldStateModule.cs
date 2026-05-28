@@ -123,6 +123,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     ctx.Resolve<IPersistedSnapshotRepository>(),
                     ctx.Resolve<ArenaManager>(),
                     cfg,
+                    ctx.Resolve<ICompactionSchedule>(),
                     ctx.Resolve<ILogManager>(),
                     ctx.Resolve<PersistedSnapshotBloomFilterManager>(),
                     minCompactSize: cfg.MinCompactSize,

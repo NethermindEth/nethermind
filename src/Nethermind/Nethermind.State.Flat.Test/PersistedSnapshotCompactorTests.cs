@@ -62,7 +62,9 @@ public class PersistedSnapshotCompactorTests
             // in {8, 16, 32}, so n & -n == n covers the whole window and triggers a single merge.
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
-                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                repo, smallArena, config,
+                ScheduleHelper.CreateWithOffset(config, 0),
+                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
@@ -147,7 +149,9 @@ public class PersistedSnapshotCompactorTests
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
-                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                repo, smallArena, config,
+                ScheduleHelper.CreateWithOffset(config, 0),
+                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
@@ -217,7 +221,8 @@ public class PersistedSnapshotCompactorTests
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
-                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, bloomManager,
+                repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
+                Nethermind.Logging.LimboLogs.Instance, bloomManager,
                 minCompactSize: 2, maxCompactSize: 2);
 
             Hash256 addrHash256 = Keccak.Compute(TestItem.AddressA.Bytes);
@@ -305,7 +310,8 @@ public class PersistedSnapshotCompactorTests
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
-                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
+                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: 2, maxCompactSize: 2);
 
             // Source 0: accountCount addresses with varying slot counts so inner-HSST
@@ -391,7 +397,9 @@ public class PersistedSnapshotCompactorTests
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
-                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                repo, smallArena, config,
+                ScheduleHelper.CreateWithOffset(config, 0),
+                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
@@ -667,7 +675,8 @@ public class PersistedSnapshotCompactorTests
             // exactly two consecutive base snapshots are merged into one compacted snapshot.
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
-                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
+                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: 2,
                 maxCompactSize: 2);
 
@@ -744,7 +753,9 @@ public class PersistedSnapshotCompactorTests
             // CompactSize=1 makes every block a boundary; block 8 → window [0, 8].
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2, PersistedSnapshotMaxCompactSize = 8 };
             PersistedSnapshotCompactor compactor = new(
-                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                repo, smallArena, config,
+                ScheduleHelper.CreateWithOffset(config, 0),
+                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
@@ -805,7 +816,9 @@ public class PersistedSnapshotCompactorTests
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
-                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                repo, smallArena, config,
+                ScheduleHelper.CreateWithOffset(config, 0),
+                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
@@ -976,7 +989,8 @@ public class PersistedSnapshotCompactorTests
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
-                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
+                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: 2, maxCompactSize: 2);
 
             // Both sources touch every address with a different balance — collision on
