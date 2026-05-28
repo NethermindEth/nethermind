@@ -82,9 +82,11 @@ namespace Nethermind.Wallet
             }
 
             using PrivateKey key = protectedPrivateKey.Unprotect();
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
-            signature = new Signature(rs, v);
+            signature = WalletSigner.Sign(in message, key);
             return true;
         }
+
+        public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature) =>
+            WalletSigner.TrySignWithPassphrase(_keyStore, in message, address, passphrase, out signature);
     }
 }

@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -54,6 +55,7 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _nethermindApi.Context.Resolve<IVotesManager>(),
             _nethermindApi.Context.Resolve<ISigner>(),
             _nethermindApi.Context.Resolve<ITimeoutTimer>(),
+            _nethermindApi.Context.Resolve<ITimestamper>(),
             _nethermindApi.Context.Resolve<ILogManager>()
             );
     public IBlockProducer InitBlockProducer()
