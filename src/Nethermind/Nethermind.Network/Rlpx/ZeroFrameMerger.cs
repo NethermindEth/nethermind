@@ -46,6 +46,8 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_zeroPacket is not null)
                 {
+                    // Offending frame is intentionally not processed: the CorruptedFrameException
+                    // propagates up the pipeline and closes the peer connection.
                     _zeroPacket.Release();
                     _zeroPacket = null;
                     throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a new first chunk before the in-progress packet completed");

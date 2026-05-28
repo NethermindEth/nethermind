@@ -195,9 +195,10 @@ public class ZeroNettyFrameMergerTests
             Assert.That(completed, Is.Not.Null);
 
             using DisposableByteBuffer orphanSource = BuildFrames(3).AsDisposable();
-            const int continuationOffset = Frame.HeaderSize + Frame.DefaultMaxFrameSize;
-            using DisposableByteBuffer orphanFrame = PooledByteBufferAllocator.Default.Buffer(continuationOffset).AsDisposable();
-            orphanFrame.WriteBytes(orphanSource, continuationOffset, continuationOffset);
+            const int firstFrameSize = Frame.HeaderSize + Frame.DefaultMaxFrameSize;
+            const int continuationFrameOffset = firstFrameSize;
+            using DisposableByteBuffer orphanFrame = PooledByteBufferAllocator.Default.Buffer(firstFrameSize).AsDisposable();
+            orphanFrame.WriteBytes(orphanSource, srcIndex: continuationFrameOffset, length: firstFrameSize);
 
             Assert.That(() => wrapper.Decode(orphanFrame),
                 Throws.InstanceOf<CorruptedFrameException>(),
