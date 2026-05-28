@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -51,7 +52,7 @@ public partial class BlockProcessor(
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
     protected readonly ILogManager _logManager = logManager;
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
-    private readonly IInclusionListValidator _inclusionListValidator = new InclusionListValidator(specProvider, stateProvider);
+    private readonly IInclusionListValidator _inclusionListValidator = new InclusionListValidator(specProvider);
     private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() =>
         new(
             beaconBlockRootHandler,
@@ -78,20 +79,33 @@ public partial class BlockProcessor(
 
         _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
 
+        // EIP-7805 (FOCIL): the IL satisfaction check needs PARENT state for sender
+        // nonce/balance (per the EIP), not the post-execution state. Capture a snapshot of
+        // each IL tx sender BEFORE ProcessBlock advances the worldstate, then run the actual
+        // check after processing using the snapshot. Validating against post-execution state
+        // would let a censoring builder include a same-nonce replacement tx that bumps the
+        // sender's nonce, making the original IL tx look "not appendable" and the IL look
+        // satisfied — the exact attack EIP-7805 is designed to prevent.
+        bool runInclusionListValidation =
+            spec.InclusionListsEnabled
+            && !options.ContainsFlag(ProcessingOptions.NoValidation);
+        IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState = runInclusionListValidation
+            ? CaptureParentSenderState(suggestedBlock.InclusionListTransactions)
+            : (IReadOnlyDictionary<AddressAsKey, AccountSnapshot>)EmptyParentSenderState;
+
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
 
-        // EIP-7805 (FOCIL): cache the IL-validity decision NOW — inside the BranchProcessor's
-        // worldstate scope — because the validator reads sender balance/nonce from the
-        // post-execution state. BlockchainProcessor reads back the flag via
-        // ValidateInclusionList AFTER the scope has closed, where directly hitting the
-        // worldstate would throw "IWorldState must only be used within scope".
-        if (spec.InclusionListsEnabled && !options.ContainsFlag(ProcessingOptions.NoValidation))
+        // Run the IL validation inside this scope (worldstate is still bound) but using the
+        // parent-state snapshot captured above. BlockchainProcessor reads back the cached
+        // flag via ValidateInclusionList AFTER the scope has closed.
+        if (runInclusionListValidation)
         {
             block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
-            suggestedBlock.InclusionListUnsatisfied = !_inclusionListValidator.ValidateInclusionList(block);
+            suggestedBlock.InclusionListUnsatisfied =
+                !_inclusionListValidator.ValidateInclusionList(block, parentSenderState);
         }
 
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
@@ -132,6 +146,37 @@ public partial class BlockProcessor(
         }
 
         return !suggestedBlock.InclusionListUnsatisfied;
+    }
+
+    private static readonly Dictionary<AddressAsKey, AccountSnapshot> EmptyParentSenderState = [];
+
+    /// <summary>
+    /// Captures the parent-block nonce and balance of every distinct IL transaction sender,
+    /// reading directly from the live worldstate which — when this is called — is still
+    /// positioned at the parent block's state root (ProcessBlock hasn't run yet). The
+    /// snapshot is the EIP-7805 reference state for the IL satisfaction check, immune to
+    /// the censorship attack that arises when post-execution state is used instead.
+    /// </summary>
+    private IReadOnlyDictionary<AddressAsKey, AccountSnapshot> CaptureParentSenderState(Transaction[]? inclusionListTransactions)
+    {
+        if (inclusionListTransactions is not { Length: > 0 })
+        {
+            return EmptyParentSenderState;
+        }
+
+        Dictionary<AddressAsKey, AccountSnapshot> snapshot = [];
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+        {
+            Address? sender = inclusionListTransactions[i].SenderAddress;
+            if (sender is null || snapshot.ContainsKey(sender))
+            {
+                continue;
+            }
+
+            snapshot[sender] = new AccountSnapshot(_stateProvider.GetBalance(sender), _stateProvider.GetNonce(sender));
+        }
+
+        return snapshot;
     }
 
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
