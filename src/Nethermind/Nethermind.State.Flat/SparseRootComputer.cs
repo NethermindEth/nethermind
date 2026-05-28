@@ -74,11 +74,27 @@ public sealed class SparseRootComputer : IDisposable
         }
 
         Dictionary<Hash256, LeafUpdate> updates = entry.Updates;
+        Hash256? lastFirstTarget = null;
+        int sameTargetCount = 0;
         for (int retry = 0; retry < MaxRetries; retry++)
         {
             List<(Hash256 key, byte minLen)> targets = [];
             storageTrie.UpdateLeaves(updates, (key, minLen) => targets.Add((key, minLen)));
             if (targets.Count == 0) break;
+
+            // Detect deletion-with-blinded-sibling stalls: the proof reader walks only target
+            // paths, never the sibling that the collapse needs. If the same first target keeps
+            // returning NeedsProof, resolve the blinded sibling directly from the sparse trie's
+            // known blinded hashes. Mirrors the account-loop's TryResolveBlindedSiblings.
+            Hash256 firstTarget = targets[0].key;
+            if (lastFirstTarget is not null && lastFirstTarget == firstTarget) sameTargetCount++;
+            else sameTargetCount = 0;
+            lastFirstTarget = firstTarget;
+
+            if (sameTargetCount >= 1)
+            {
+                TryResolveBlindedStorageSiblings(storageTrie, accountPathHash, updates, targets);
+            }
 
             if (retry == MaxRetries - 1)
                 throw new TrieException($"Sparse trie storage retry loop exceeded {MaxRetries} iterations for account {accountPathHash}. {targets.Count} blinded targets remain.");
@@ -245,6 +261,44 @@ public sealed class SparseRootComputer : IDisposable
             {
                 // Best-effort sibling reveal. If the load fails, the outer retry loop will
                 // hit the blinded sibling again and rethrow with full diagnostics there.
+                continue;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Storage-side counterpart of <see cref="TryResolveBlindedSiblings"/>. When a slot
+    /// deletion would collapse a branch whose sibling is blinded, the proof reader doesn't
+    /// fetch the sibling (only walks target paths). The sibling's RlpNode is known from
+    /// the sparse storage trie itself — load it directly and reveal.
+    /// </summary>
+    private void TryResolveBlindedStorageSiblings(
+        SparsePatriciaTree storageTrie,
+        Hash256 accountPathHash,
+        Dictionary<Hash256, LeafUpdate> updates,
+        List<(Hash256 key, byte minLen)> targets)
+    {
+        foreach ((Hash256 target, _) in targets)
+        {
+            if (!updates.TryGetValue(target, out LeafUpdate upd) || !upd.IsDelete)
+                continue;
+
+            byte[] nibbles = Nibbles.BytesToNibbleBytes(target.Bytes);
+            if (!storageTrie.Subtrie.TryFindBlindedSiblingForDeletion(nibbles, out TreePath siblingPath, out RlpNode siblingRlpNode))
+                continue;
+
+            if (!siblingRlpNode.IsHash())
+                continue;
+
+            try
+            {
+                Hash256 siblingHash = siblingRlpNode.AsHash();
+                byte[] siblingRlp = _reader.LoadStorageRlp(accountPathHash, siblingPath, siblingHash);
+                ProofNode siblingProof = MultiProofReader.DecodeProofNode(siblingRlp, siblingPath);
+                storageTrie.RevealNodes([siblingProof]);
+            }
+            catch (Exception ex) when (ex is MissingTrieNodeException or TrieNodeHashMismatchException)
+            {
                 continue;
             }
         }
