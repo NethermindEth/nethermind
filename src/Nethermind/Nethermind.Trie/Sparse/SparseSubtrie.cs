@@ -402,26 +402,29 @@ public sealed class SparseSubtrie : IDisposable
 
         // Extension-only state: BranchWithExtension was revealed from an Extension proof
         // but the underlying Branch's children were never revealed (stateMask == 0 with shortKey).
-        // Two sub-cases for a non-delete update:
-        //   1) The update's path matches the full shortKey (continues INTO the inner branch) â€”
-        //      we cannot insert through without knowing the inner branch's structure, so we
-        //      request a proof to be revealed via MergeChildIntoBranchWithExtension.
-        //   2) The update's path diverges WITHIN the shortKey â€” we can split locally without
-        //      knowing the inner branch's structure: the original extension keeps its blinded
-        //      inner-branch reference, just under a shorter shortKey, while a new leaf joins
-        //      it under a new parent branch. Falling through to the shared shortKey path
-        //      handles this case in SplitExtensionAndInsert.
+        // Resolve by sub-case:
+        //   1) Path matches the full shortKey (continues INTO the inner branch) â€” we cannot
+        //      see what's under the extension. Request a proof regardless of update kind:
+        //        - Changed/Insert: would have to insert through unknown structure.
+        //        - Delete/Touched: would have to know whether the key exists under here to
+        //          decide between no-op and an actual deletion that may need collapse. The
+        //          empty StateMask below this point would otherwise make every delete a silent
+        //          no-op even when the target key really is reachable through the extension.
+        //   2) Path diverges WITHIN the shortKey â€” the target key cannot exist in this
+        //      subtree regardless of what's behind the extension, so for Delete/Touched we
+        //      return NoChange (handled by the shortKey block below), and for Changed/Insert
+        //      we split locally via SplitExtensionAndInsert (also handled below).
         bool isExtensionOnly = shortKey.Length > 0 && _arena[nodeIdx].StateMask == TrieMask.Empty;
-        if (isExtensionOnly && !(update.IsDelete || update.Kind == LeafUpdateKind.Touched))
+        if (isExtensionOnly && update.Kind != LeafUpdateKind.Touched)
         {
             int commonLenForExt = CommonPrefixLength(path, shortKey);
-            // Diverges within shortKey â€” split is local; let the shortKey block below handle it.
-            // Continues through full shortKey â€” we'd descend into a blinded inner branch, request a proof.
             if (commonLenForExt >= shortKey.Length)
             {
                 proofTarget = TreePath.FromNibble(path);
                 return (UpdateResult.NeedsProof, nodeIdx);
             }
+            // Diverges within shortKey: a delete here is a no-op (the deleted key can't live
+            // through a different prefix), so let the shortKey block return NoChange.
         }
 
         if (shortKey.Length > 0)

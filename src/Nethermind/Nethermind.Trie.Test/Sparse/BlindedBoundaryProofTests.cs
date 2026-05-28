@@ -163,6 +163,78 @@ public class BlindedBoundaryProofTests
     }
 
     /// <summary>
+    /// Companion to ExtensionOnlyReveal_ThenUpdate_MatchesPatricia, but for DELETE. A delete
+    /// whose target path matches the extension's shortKey in full has to descend INTO the
+    /// inner branch to find (and remove) the leaf. UpdateAtBranch must request a proof in
+    /// that case â€” the empty StateMask below would otherwise turn the delete into a silent
+    /// no-op via the "StateMask.IsBitSet(nibble) == false" branch, and the deleted key would
+    /// linger in the sparse root forever.
+    /// </summary>
+    [Test]
+    public void ExtensionOnlyReveal_ThenDelete_MatchesPatricia()
+    {
+        // Same shape as the update test: three keys sharing 8+ leading nibbles produce a root
+        // Extension wrapping a Branch.
+        MemDb db = new();
+        PatriciaTree tree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        Hash256 k0 = new("0x0000000000000000aabbccddeeff00112233445566778899aabbccddeeff0011");
+        Hash256 k1 = new("0x0000000000000000aabbccddeeff00112233445566778899aabbccddeeff0022");
+        Hash256 k2 = new("0x0000000000000000aabbccddeeff00112233445566778899aabbccddeeff0033");
+        tree.Set(k0.Bytes, TestItem.GenerateIndexedAccountRlp(0));
+        tree.Set(k1.Bytes, TestItem.GenerateIndexedAccountRlp(1));
+        tree.Set(k2.Bytes, TestItem.GenerateIndexedAccountRlp(2));
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 originalRoot = tree.RootHash;
+
+        // Patricia: delete k0
+        tree.Set(k0.Bytes, []);
+        tree.UpdateRootHash();
+        tree.Commit();
+        Hash256 patriciaNewRoot = tree.RootHash;
+
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        DecodedMultiProof rootOnly = MultiProofReader.ReadAccountProofs(
+            reader, originalRoot, [k0], new byte[] { 0 });
+        rootOnly.AccountNodes.Should().NotBeEmpty();
+        using SparsePatriciaTree sparse = new();
+        sparse.RevealNodes([rootOnly.AccountNodes[0]]);
+
+        Dictionary<Hash256, LeafUpdate> updates = new() { [k0] = LeafUpdate.Deleted() };
+
+        const int maxRetries = 8;
+        int retries = 0;
+        for (int retry = 0; retry < maxRetries; retry++)
+        {
+            List<Hash256> targets = [];
+            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key));
+            if (targets.Count == 0) break;
+
+            List<MultiProofReader.BlindedProofTarget> blinded = [];
+            foreach (Hash256 key in targets)
+            {
+                byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
+                if (sparse.Subtrie.TryFindBlindedEntryOnPath(nibbles, out TreePath bPath, out RlpNode bRlp, out int _))
+                    blinded.Add(new MultiProofReader.BlindedProofTarget(bPath, bRlp, nibbles));
+            }
+            if (blinded.Count == 0) break;
+            DecodedMultiProof proof = MultiProofReader.ReadProofsFromBlinded(reader, null, blinded);
+            sparse.RevealNodes(proof.AccountNodes);
+            retries = retry + 1;
+        }
+
+        retries.Should().BeGreaterThan(0,
+            "delete through extension-only must request a proof; if the pre-check let it fall " +
+            "through to NoChange, retries would stay 0 and sparseRoot would equal originalRoot");
+
+        Hash256 sparseRoot = sparse.ComputeRoot();
+        sparseRoot.Should().Be(patriciaNewRoot,
+            $"Extension-only delete should match Patricia. Patricia={patriciaNewRoot}, Sparse={sparseRoot}");
+        sparseRoot.Should().NotBe(originalRoot,
+            "if delete was silently dropped, sparse would still produce the original root");
+    }
+
+    /// <summary>
     /// Multi-block cross-reuse: simulate a sparse trie that has been used for several
     /// consecutive blocks (always retaining revealed structure). For each block's update,
     /// proof reads go through the blinded-boundary path. Roots must match Patricia at
