@@ -143,6 +143,18 @@ public sealed class BlobArenaWriter : IDisposable
         _manager.OnWriteCompleted(_file, hasHeadroom: _file.Frontier < _file.MaxSize);
     }
 
+    /// <summary>
+    /// <c>fsync(2)</c> the underlying blob file. Must be called after <see cref="Complete"/>
+    /// — Complete flushes the writer's in-memory buffer through the FileStream; this method
+    /// blocks until those bytes are durable on disk. Used by the persisted-snapshot convert
+    /// path on base snapshots before the catalog records the new entry.
+    /// </summary>
+    public void Fsync()
+    {
+        if (!_completed) throw new InvalidOperationException("BlobArenaWriter.Fsync requires Complete first.");
+        _file.Fsync();
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

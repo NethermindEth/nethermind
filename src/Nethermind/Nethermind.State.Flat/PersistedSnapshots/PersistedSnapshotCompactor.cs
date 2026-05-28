@@ -158,6 +158,12 @@ public class PersistedSnapshotCompactor(
                 (location, reservation) = arenaWriter.Complete();
             }
 
+            // Durability barrier — fsync the metadata arena before the catalog records the
+            // compacted entry. No blob fsync here: compaction does not write new blobs, it
+            // only emits NodeRefs into existing base blob arenas (those were fsynced when
+            // their respective base snapshots were converted).
+            reservation.Fsync();
+
             // PersistedSnapshot's ctor (called from inside AddCompactedSnapshot) reads
             // the merged ref_ids back from its own metadata and leases each blob arena
             // file via a ref-struct iterator — no ushort[] materialisation here. The

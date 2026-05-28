@@ -194,6 +194,13 @@ public sealed class ArenaReservation : RefCountingDisposable
     }
 
     /// <summary>
+    /// <c>fsync(2)</c> the underlying <see cref="ArenaFile"/>. Called by the convert/compact
+    /// paths after the writer's <c>Complete</c> so the freshly-written metadata is durable
+    /// on disk before the catalog records this reservation.
+    /// </summary>
+    public void Fsync() => _arenaFile.Fsync();
+
+    /// <summary>
     /// Mark this reservation AND its underlying <see cref="ArenaFile"/> for shutdown-survival.
     /// Called by <see cref="PersistedSnapshots.PersistedSnapshot.PersistOnShutdown"/> as the
     /// snapshot is being marked for survival across the next session. The reservation-level

@@ -235,6 +235,13 @@ public sealed class PersistedSnapshotRepository(
         }
         blobWriter.Complete();
 
+        // Durability barrier — fsync both the metadata arena and the blob arena before the
+        // catalog records the new entry. A crash between this point and the next persistence
+        // checkpoint would otherwise leave the catalog pointing at unsynced pages whose
+        // contents are not yet guaranteed to be on disk.
+        reservation.Fsync();
+        blobWriter.Fsync();
+
         // The base snapshot's trie RLPs occupy one contiguous run in the single blob arena
         // this writer targeted — record it so persistence can prefetch it (a base that wrote
         // no trie nodes has an empty run).

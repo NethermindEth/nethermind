@@ -220,6 +220,14 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
         PosixReclaim.TryPunchHole((int)_handle.DangerousGetHandle(), offset, size);
 
     /// <summary>
+    /// <c>fsync(2)</c> the underlying file — block until all previously written bytes are
+    /// durable on disk. Called by the persisted-snapshot convert/compact paths before the
+    /// catalog records the new entry so a crash cannot leave the catalog pointing at
+    /// unsynced pages.
+    /// </summary>
+    internal void Fsync() => PosixReclaim.Fsync((int)_handle.DangerousGetHandle());
+
+    /// <summary>
     /// Open a fresh per-reservation mmap view over <c>[offset, offset+size)</c> with
     /// <c>MADV_NORMAL</c> hint, distinct from the global random-access view used by point
     /// queries. When <paramref name="adviseDontNeedOnDispose"/> is true, disposing the

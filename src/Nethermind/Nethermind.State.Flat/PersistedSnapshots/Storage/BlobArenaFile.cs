@@ -159,6 +159,13 @@ public sealed class BlobArenaFile : RefCountingDisposable
         PosixReclaim.FadviseWillNeed((int)Handle.DangerousGetHandle(), offset, size);
 
     /// <summary>
+    /// <c>fsync(2)</c> the underlying file — block until all previously written bytes are
+    /// durable on disk. Called by the persisted-snapshot convert path before the catalog
+    /// records the new entry so a crash cannot leave the catalog pointing at unsynced pages.
+    /// </summary>
+    internal void Fsync() => PosixReclaim.Fsync((int)Handle.DangerousGetHandle());
+
+    /// <summary>
     /// <c>ftruncate</c> the underlying file to <paramref name="newSize"/>. Used by
     /// <see cref="BlobArenaManager.TryResetOrphanedFrontier"/> with <paramref name="newSize"/> = 0
     /// to reclaim an orphaned file: zeros the logical length AND frees all disk blocks in
