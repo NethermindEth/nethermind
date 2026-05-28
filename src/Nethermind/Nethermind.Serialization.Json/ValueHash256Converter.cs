@@ -26,11 +26,8 @@ public class ValueHash256Converter(bool strictHexFormat = false) : JsonConverter
             return new ValueHash256(bytes);
         }
 
-        byte[]? bytesArray = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
-        if (bytesArray is null)
-        {
-            throw new JsonException($"Cannot deserialize null into non-nullable {nameof(ValueHash256)}.");
-        }
+        byte[] bytesArray = ByteArrayConverter.Convert(ref reader, _strictHexFormat)
+            ?? throw new JsonException($"Cannot deserialize null into non-nullable {nameof(ValueHash256)}.");
         if (bytesArray.Length != ValueHash256.MemorySize)
         {
             throw new JsonException(
