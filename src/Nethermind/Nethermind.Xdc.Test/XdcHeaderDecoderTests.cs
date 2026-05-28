@@ -54,21 +54,7 @@ namespace Nethermind.Xdc.Test
 
             XdcBlockHeader decoded = (XdcBlockHeader)decodedBase!;
 
-            original.Hash = decoded.Hash;
-            Assert.That(decoded, Is.EqualTo(original));
-        }
-
-        [Test]
-        public void Equals_and_hash_code_ignore_local_self_mined_marker()
-        {
-            XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-            XdcBlockHeader selfMinedHeader = CopyHeader(header, isSelfMined: true);
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(selfMinedHeader, Is.EqualTo(header));
-                Assert.That(selfMinedHeader.GetHashCode(), Is.EqualTo(header.GetHashCode()));
-            });
+            Assert.That(decoded, Is.EqualTo(original).UsingXdcHeaderComparer(compareHash: false));
         }
 
         [Test]
@@ -124,41 +110,5 @@ namespace Nethermind.Xdc.Test
 
             Assert.That(encoded, Is.EqualTo(hexRlp));
         }
-
-        private static XdcBlockHeader CopyHeader(XdcBlockHeader source, bool isSelfMined) =>
-            new(
-                source.ParentHash!,
-                source.UnclesHash!,
-                source.Beneficiary!,
-                source.Difficulty,
-                source.Number,
-                source.GasLimit,
-                source.Timestamp,
-                source.ExtraData,
-                isSelfMined)
-            {
-                StateRoot = source.StateRoot,
-                TxRoot = source.TxRoot,
-                ReceiptsRoot = source.ReceiptsRoot,
-                Bloom = source.Bloom,
-                GasUsed = source.GasUsed,
-                MixHash = source.MixHash,
-                Nonce = source.Nonce,
-                Hash = source.Hash,
-                TotalDifficulty = source.TotalDifficulty,
-                AuRaStep = source.AuRaStep,
-                AuRaSignature = source.AuRaSignature,
-                BaseFeePerGas = source.BaseFeePerGas,
-                WithdrawalsRoot = source.WithdrawalsRoot,
-                ParentBeaconBlockRoot = source.ParentBeaconBlockRoot,
-                RequestsHash = source.RequestsHash,
-                BlockAccessListHash = source.BlockAccessListHash,
-                BlobGasUsed = source.BlobGasUsed,
-                ExcessBlobGas = source.ExcessBlobGas,
-                SlotNumber = source.SlotNumber,
-                Validators = source.Validators,
-                Validator = source.Validator,
-                Penalties = source.Penalties,
-            };
     }
 }

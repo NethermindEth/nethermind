@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
@@ -1143,17 +1144,12 @@ public partial class EngineModuleTests
         executionPayload.SetTransactions(txsSource);
 
         Transaction[] txsReceived = executionPayload.TryGetTransactions().Data!;
-        Transaction[] expectedTransactions = new Transaction[txsSource.Length];
-        for (int i = 0; i < txsSource.Length; i++)
-        {
-            expectedTransactions[i] = new Transaction();
-            txsSource[i].CopyTo(expectedTransactions[i]);
-            expectedTransactions[i].Hash = txsSource[i].Hash;
-            expectedTransactions[i].ChainId = txsReceived[i].ChainId;
-            expectedTransactions[i].Data = txsReceived[i].Data;
-        }
 
-        Assert.That(txsReceived, Is.EqualTo(expectedTransactions));
+        Assert.That(txsReceived, Is.EqualTo(txsSource).UsingTransactionComparer(
+            nameof(Transaction.ChainId),
+            nameof(Transaction.Data),
+            nameof(Transaction.SenderAddress),
+            nameof(Transaction.Timestamp)));
     }
 
     [Test]

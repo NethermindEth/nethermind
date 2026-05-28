@@ -69,7 +69,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // assert that it was retrieved from cache
-        Assert.That(result, Is.EqualTo(snapshot));
+        Assert.That(result, Is.EqualTo(snapshot).UsingXdcComparer());
     }
 
     [Test]
@@ -95,7 +95,7 @@ internal class SnapshotManagerTests
         Snapshot? saved = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
-        Assert.That(saved, Is.EqualTo(snapshot));
+        Assert.That(saved, Is.EqualTo(snapshot).UsingXdcComparer());
     }
 
     [Test]
@@ -112,7 +112,7 @@ internal class SnapshotManagerTests
         Snapshot? fromDb = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
-        Assert.That(fromDb, Is.EqualTo(snapshot));
+        Assert.That(fromDb, Is.EqualTo(snapshot).UsingXdcComparer());
     }
 
     [Test]
@@ -127,7 +127,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock1);
 
         // assert that it was retrieved from db
-        Assert.That(result, Is.EqualTo(snapshot1));
+        Assert.That(result, Is.EqualTo(snapshot1).UsingXdcComparer());
 
         // store another snapshot with the same hash but different data
 
@@ -140,7 +140,7 @@ internal class SnapshotManagerTests
         result = _snapshotManager.GetSnapshotByBlockNumber(900, _xdcReleaseSpec);
 
         // assert that the original snapshot is still returned
-        Assert.That(result, Is.EqualTo(snapshot2));
+        Assert.That(result, Is.EqualTo(snapshot2).UsingXdcComparer());
     }
 
     [TestCase(1, 0)]
@@ -160,7 +160,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(blockNumber, _xdcReleaseSpec);
 
         // assert that it was retrieved from db
-        Assert.That(result, Is.EqualTo(snapshot));
+        Assert.That(result, Is.EqualTo(snapshot).UsingXdcComparer());
     }
 
     [TestCase(450)]

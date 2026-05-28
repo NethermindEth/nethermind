@@ -28,7 +28,7 @@ public class BlockStoreTests
         store.Insert(block);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
-        Assert.That(retrieved, Is.EqualTo(block));
+        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
 
         store.Delete(block.Number, block.Hash!);
 
@@ -59,7 +59,7 @@ public class BlockStoreTests
         db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
-        Assert.That(retrieved, Is.EqualTo(block));
+        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
     }
 
     [Test]
@@ -85,13 +85,13 @@ public class BlockStoreTests
         store.Insert(block);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
-        Assert.That(retrieved, Is.EqualTo(block));
+        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
 
         db.Clear();
 
         retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
         retrieved!.EncodedSize = null;
-        Assert.That(retrieved, Is.EqualTo(block));
+        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
     }
 
     [Test]
@@ -108,13 +108,13 @@ public class BlockStoreTests
 
         ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
 
-        Assert.That(retrieved.Header, Is.EqualTo(block.Header));
+        Assert.That(retrieved.Header, Is.EqualTo(block.Header).UsingBlockHeaderComparer());
         Assert.That(retrieved.TransactionCount, Is.EqualTo(block.Transactions.Length));
 
         for (int i = 0; i < retrieved.TransactionCount; i++)
         {
             block.Transactions[i].Data = Array.Empty<byte>();
-            Assert.That(retrieved.GetNextTransaction(), Is.EqualTo(block.Transactions[i]));
+            Assert.That(retrieved.GetNextTransaction(), Is.EqualTo(block.Transactions[i]).UsingTransactionComparer());
         }
     }
 
@@ -142,7 +142,7 @@ public class BlockStoreTests
 
         // Populate cache
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
-        Assert.That(retrieved, Is.EqualTo(block));
+        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
 
         // Clear the DB but block should still be in cache
         db.Clear();

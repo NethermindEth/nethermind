@@ -149,19 +149,4 @@ public class XdcBlockHeader(
 
         return x;
     }
-
-    protected override bool EqualsCore(BlockHeader other) =>
-        other is XdcBlockHeader xdcHeader &&
-        base.EqualsCore(other) &&
-        BytesEqual(Validators, xdcHeader.Validators) &&
-        BytesEqual(Validator, xdcHeader.Validator) &&
-        BytesEqual(Penalties, xdcHeader.Penalties);
-
-    protected override void AddHashCodeComponents(ref HashCode hashCode)
-    {
-        base.AddHashCodeComponents(ref hashCode);
-        AddBytesHashCode(ref hashCode, Validators);
-        AddBytesHashCode(ref hashCode, Validator);
-        AddBytesHashCode(ref hashCode, Penalties);
-    }
 }

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -77,9 +78,9 @@ public class StartupTreeFixerTests
         Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header));
-        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header));
-        Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body));
+        Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body).UsingBlockBodyComparer());
         Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
     }
 
@@ -206,7 +207,7 @@ public class StartupTreeFixerTests
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
         Assert.That(tree.BestKnownNumber, Is.EqualTo(2L), "best known");
-        Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header));
-        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header));
+        Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
     }
 }

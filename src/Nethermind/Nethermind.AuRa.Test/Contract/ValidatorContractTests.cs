@@ -9,6 +9,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
@@ -94,7 +95,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             try
             {
-                Assert.That(item, Is.EqualTo(expected));
+                Assert.That(item, Is.EqualTo(expected).UsingTransactionComparer());
                 return true;
             }
             catch

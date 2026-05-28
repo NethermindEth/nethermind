@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using System;
 using System.Collections.Immutable;
 using Nethermind.Xdc.RLP;
 
@@ -64,16 +63,5 @@ public class XdcSubnetBlockHeader(
             MixHash = Hash256.Zero,
             RequestsHash = requestsHash,
         };
-    }
-
-    protected override bool EqualsCore(BlockHeader other) =>
-        other is XdcSubnetBlockHeader subnetHeader &&
-        base.EqualsCore(other) &&
-        BytesEqual(NextValidators, subnetHeader.NextValidators);
-
-    protected override void AddHashCodeComponents(ref HashCode hashCode)
-    {
-        base.AddHashCodeComponents(ref hashCode);
-        AddBytesHashCode(ref hashCode, NextValidators);
     }
 }

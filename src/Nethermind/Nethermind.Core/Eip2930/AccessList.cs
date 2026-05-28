@@ -12,7 +12,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.Eip2930;
 
-public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEnumerable StorageKeys)>, IEquatable<AccessList>
+public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEnumerable StorageKeys)>
 {
     private readonly List<(Address address, int count)> _addresses;
     private readonly List<UInt256> _keys;
@@ -68,52 +68,6 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
     public Enumerator GetEnumerator() => new(this);
     IEnumerator<(Address Address, StorageKeysEnumerable StorageKeys)> IEnumerable<(Address Address, StorageKeysEnumerable StorageKeys)>.GetEnumerator() => GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-    public bool Equals(AccessList? other)
-    {
-        if (ReferenceEquals(this, other))
-        {
-            return true;
-        }
-
-        if (other is null || _addresses.Count != other._addresses.Count || _keys.Count != other._keys.Count)
-        {
-            return false;
-        }
-
-        ReadOnlySpan<(Address address, int count)> addresses = CollectionsMarshal.AsSpan(_addresses);
-        ReadOnlySpan<(Address address, int count)> otherAddresses = CollectionsMarshal.AsSpan(other._addresses);
-        for (int i = 0; i < addresses.Length; i++)
-        {
-            if (addresses[i].address != otherAddresses[i].address || addresses[i].count != otherAddresses[i].count)
-            {
-                return false;
-            }
-        }
-
-        ReadOnlySpan<UInt256> keys = CollectionsMarshal.AsSpan(_keys);
-        ReadOnlySpan<UInt256> otherKeys = CollectionsMarshal.AsSpan(other._keys);
-        return keys.SequenceEqual(otherKeys);
-    }
-
-    public override bool Equals(object? obj) => obj is AccessList other && Equals(other);
-
-    public override int GetHashCode()
-    {
-        HashCode hashCode = new();
-        foreach ((Address address, int count) in _addresses)
-        {
-            hashCode.Add(address);
-            hashCode.Add(count);
-        }
-
-        foreach (UInt256 key in _keys)
-        {
-            hashCode.Add(key);
-        }
-
-        return hashCode.ToHashCode();
-    }
 
     public struct Enumerator(AccessList accessList) : IEnumerator<(Address Address, StorageKeysEnumerable StorageKeys)>,
         IEnumerator<(Address Address, IEnumerable<UInt256> StorageKeys)>

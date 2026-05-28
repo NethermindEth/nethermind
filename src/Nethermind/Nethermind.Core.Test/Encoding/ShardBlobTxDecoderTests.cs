@@ -44,7 +44,7 @@ public partial class ShardBlobTxDecoderTests
         decoded!.SenderAddress =
             new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
         decoded.Hash = decoded.CalculateHash();
-        Assert.That(decoded, Is.EqualTo(testCase.Tx));
+        Assert.That(decoded, Is.EqualTo(testCase.Tx).UsingTransactionComparer());
     }
 
     [Test]
@@ -74,7 +74,7 @@ public partial class ShardBlobTxDecoderTests
         decoded!.SenderAddress =
             new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
         decoded.Hash = decoded.CalculateHash();
-        Assert.That(decoded, Is.EqualTo(testCase.Tx));
+        Assert.That(decoded, Is.EqualTo(testCase.Tx).UsingTransactionComparer());
     }
 
     private static IEnumerable<Transaction> TamperedTestCaseSource()

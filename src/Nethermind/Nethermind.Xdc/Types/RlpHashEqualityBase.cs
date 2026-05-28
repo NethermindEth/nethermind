@@ -3,11 +3,10 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using System;
 
 namespace Nethermind.Xdc.Types;
 
-public abstract class RlpHashEqualityBase : IEquatable<RlpHashEqualityBase>
+public abstract class RlpHashEqualityBase
 {
     private Hash256? _hash;
 
@@ -21,12 +20,7 @@ public abstract class RlpHashEqualityBase : IEquatable<RlpHashEqualityBase>
     }
     protected abstract void Encode(KeccakRlpStream stream);
 
-    public bool Equals(RlpHashEqualityBase? other) =>
-        other is not null &&
-        other.GetType() == GetType() &&
-        Hash == other.Hash;
-
-    public override bool Equals(object? obj) => Equals(obj as RlpHashEqualityBase);
-
+    public override bool Equals(object? obj) =>
+                obj is RlpHashEqualityBase other && Hash == other.Hash;
     public override int GetHashCode() => Hash.GetHashCode();
 }

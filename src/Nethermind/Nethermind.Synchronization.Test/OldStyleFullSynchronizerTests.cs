@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool.AddPeer(miner1);
 
             Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After((int)_standardTimeoutUnit.TotalMilliseconds, 100));
-            Assert.That(miner1Tree.BestSuggestedHeader, Is.EqualTo(_blockTree.BestSuggestedHeader));
+            Assert.That(miner1Tree.BestSuggestedHeader, Is.EqualTo(_blockTree.BestSuggestedHeader).UsingBlockHeaderComparer());
 
             Block splitBlock = Build.A.Block
                 .WithParent(miner1Tree.FindParent(miner1Tree.Head!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!)
@@ -201,7 +201,7 @@ namespace Nethermind.Synchronization.Test
             miner1Tree.SuggestBlock(splitBlockChild);
             miner1Tree.UpdateMainChain(splitBlockChild);
 
-            Assert.That(splitBlockChild.Header, Is.EqualTo(miner1Tree.BestSuggestedHeader));
+            Assert.That(splitBlockChild.Header, Is.EqualTo(miner1Tree.BestSuggestedHeader).UsingBlockHeaderComparer());
 
             SyncServer.AddNewBlock(splitBlockChild, miner1);
 
