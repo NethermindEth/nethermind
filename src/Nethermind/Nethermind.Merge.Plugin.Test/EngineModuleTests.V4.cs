@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -38,7 +37,7 @@ public partial class EngineModuleTests
         RpcModuleProvider.ResolvedMethodInfo method = moduleProvider.Resolve(nameof(IEngineRpcModule.engine_newPayloadV4))!;
         RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter[] parameters = method.ExpectedParameters;
 
-        parameters.Should().HaveCount(4);
+        Assert.That(parameters.Length, Is.EqualTo(4));
         AssertParameter(parameters[0], "executionPayload", typeof(ExecutionPayloadV3));
         AssertParameter(parameters[1], "blobVersionedHashes", typeof(Hash256[]));
         AssertParameter(parameters[2], "parentBeaconBlockRoot", typeof(Hash256));
@@ -49,11 +48,11 @@ public partial class EngineModuleTests
             string name,
             Type type)
         {
-            parameter.Info.Name.Should().Be(name);
-            parameter.ParameterType.Should().Be(type);
-            parameter.Kind.Should().Be(RpcModuleProvider.ResolvedMethodInfo.ParameterKind.Typed);
-            parameter.TypeInfo.Should().NotBeNull();
-            parameter.TypeInfo!.Type.Should().Be(type);
+            Assert.That(parameter.Info.Name, Is.EqualTo(name));
+            Assert.That(parameter.ParameterType, Is.EqualTo(type));
+            Assert.That(parameter.Kind, Is.EqualTo(RpcModuleProvider.ResolvedMethodInfo.ParameterKind.Typed));
+            Assert.That(parameter.TypeInfo, Is.Not.Null);
+            Assert.That(parameter.TypeInfo!.Type, Is.EqualTo(type));
         }
     }
 
@@ -100,8 +99,8 @@ public partial class EngineModuleTests
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        Assert.That(successResponse, Is.Not.Null);
+        Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
             Result = new ForkchoiceUpdatedV1Result
@@ -114,7 +113,7 @@ public partial class EngineModuleTests
                     ValidationError = null
                 }
             }
-        }));
+        })));
 
         Hash256 expectedBlockHash = new(blockHash);
         Block block = new(
@@ -148,19 +147,19 @@ public partial class EngineModuleTests
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        Assert.That(successResponse, Is.Not.Null);
+        Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
             Result = expectedPayload
-        }));
+        })));
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV4",
             chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        Assert.That(successResponse, Is.Not.Null);
+        Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
             Result = new PayloadStatusV1
@@ -169,7 +168,7 @@ public partial class EngineModuleTests
                 Status = PayloadStatus.Valid,
                 ValidationError = null
             }
-        }));
+        })));
 
         fcuState = new
         {
@@ -182,8 +181,8 @@ public partial class EngineModuleTests
         response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        Assert.That(successResponse, Is.Not.Null);
+        Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
             Result = new ForkchoiceUpdatedV1Result
@@ -196,7 +195,7 @@ public partial class EngineModuleTests
                     ValidationError = null
                 }
             }
-        }));
+        })));
     }
 
 
@@ -301,10 +300,10 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
-        chain.BlockTree.HeadHash.Should().Be(lastHash);
+        Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(lastHash));
         Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
-        last.Should().NotBeNull();
-        last!.IsGenesis.Should().BeTrue();
+        Assert.That(last, Is.Not.Null);
+        Assert.That(last!.IsGenesis, Is.True);
     }
 
     [TestCase(30)]
@@ -315,16 +314,15 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
-        chain.BlockTree.HeadHash.Should().Be(lastHash);
+        Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(lastHash));
         Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
-        last.Should().NotBeNull();
-        last!.IsGenesis.Should().BeTrue();
+        Assert.That(last, Is.Not.Null);
+        Assert.That(last!.IsGenesis, Is.True);
 
         Block? head = chain.BlockTree.Head;
         // ExecutionRequests is a transient property (not in RLP), so it may not survive
         // cache round-trips. Verify via RequestsHash on the header instead, which IS persisted.
-        head!.Header.RequestsHash.Should().Be(
-            ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequestsProcessorMock.Requests));
+        Assert.That(head!.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequestsProcessorMock.Requests)));
     }
 
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
@@ -345,14 +343,14 @@ public partial class EngineModuleTests
                 parentBlock.Timestamp + 12,
                 random ?? TestItem.KeccakA, Address.Zero);
             PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV4(getPayloadResult, [], Keccak.Zero, executionRequests: withRequests ? ExecutionRequestsProcessorMock.Requests : Array.Empty<byte[]>())).Data;
-            payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
+            Assert.That(payloadStatusResponse.Status, Is.EqualTo(PayloadStatus.Valid));
             if (setHead)
             {
                 Hash256 newHead = getPayloadResult!.BlockHash;
                 ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
                 ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse = await rpc.engine_forkchoiceUpdatedV3(forkchoiceStateV1);
-                setHeadResponse.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-                setHeadResponse.Data.PayloadId.Should().Be(null);
+                Assert.That(setHeadResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+                Assert.That(setHeadResponse.Data.PayloadId, Is.EqualTo(null));
             }
 
             blocks.Add(getPayloadResult);
@@ -400,7 +398,7 @@ public partial class EngineModuleTests
             Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);
         ResultWrapper<PayloadStatusV1> executePayloadResult =
             await rpc.engine_newPayloadV4(executionPayload, [], executionPayload.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         return executionPayload;
     }
 

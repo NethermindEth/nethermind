@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -435,7 +436,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Transaction_allowance_uses_post_refund_receipt_gas_when_eip7778_enabled()
+    public void Transaction_admission_uses_pre_refund_block_gas_when_eip7778_enabled()
     {
         TestState.CreateAccount(TestItem.AddressA, 1.Ether);
         TestState.CreateAccount(Recipient, 1.Ether);
@@ -470,16 +471,16 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         BlockReceiptsTracer tracer = new();
         tracer.StartNewBlockTrace(block);
-
         tracer.StartNewTxTrace(tx1);
         TransactionResult result1 = _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         tracer.EndTxTrace();
+        tracer.EndBlockTrace();
 
-        Assert.That(result1, Is.EqualTo(TransactionResult.Ok));
+        Assert.That(result1, Is.EqualTo(TransactionResult.Ok), "precondition: first transaction must succeed");
 
         long blockGasAfterTx1 = block.Header.GasUsed;
         long receiptGasAfterTx1 = tracer.TxReceipts[0].GasUsedTotal;
-        Assert.That(blockGasAfterTx1, Is.GreaterThan(receiptGasAfterTx1), "First transaction should create a refund gap between block gas and receipt gas");
+        Assert.That(blockGasAfterTx1, Is.GreaterThan(receiptGasAfterTx1), "precondition: tx1 must create a refund gap between pre-refund block gas and post-refund receipt gas");
 
         block.Header.GasLimit = blockGasAfterTx1 + GasCostOf.Transaction - 1;
 
@@ -491,13 +492,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-        tracer.StartNewTxTrace(tx2);
-        TransactionResult result2 = _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-        tracer.EndTxTrace();
-        tracer.EndBlockTrace();
+        TransactionResult result2 = _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        Assert.That(result2, Is.EqualTo(TransactionResult.Ok), "Second transaction should be admitted based on post-refund receipt gas");
-        Assert.That(block.Header.GasUsed, Is.GreaterThan(block.Header.GasLimit), "Block gas should overflow only after the second transaction executes");
+        Assert.That(result2, Is.EqualTo(TransactionResult.BlockGasLimitExceeded), "second transaction must be rejected: admission uses pre-refund block gas, leaving no room");
+        Assert.That(block.Header.GasUsed, Is.EqualTo(blockGasAfterTx1), "a rejected transaction must not change block gas");
+        Assert.That(block.Header.GasUsed, Is.LessThanOrEqualTo(block.Header.GasLimit), "block gas must never exceed the gas limit");
     }
 
     [Test]

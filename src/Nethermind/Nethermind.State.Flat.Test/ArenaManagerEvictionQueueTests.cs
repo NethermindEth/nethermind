@@ -4,7 +4,6 @@
 using System;
 using System.IO;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
 
@@ -53,12 +52,12 @@ public class ArenaManagerEvictionQueueTests
     public void DisabledTracker_NoQueueOrDrain_QueueEvictionIsNoOp()
     {
         using ArenaManager manager = NewManager(pageCacheBytes: 0);
-        manager.PageTracker.MaxCapacity.Should().Be(0);
+        Assert.That(manager.PageTracker.MaxCapacity, Is.EqualTo(0));
         // No exception, no counters move.
         manager.QueueEviction(0, 0);
-        manager.EvictionsQueued.Should().Be(0);
-        manager.EvictionsInlineFallback.Should().Be(0);
-        manager.EvictionsDispatched.Should().Be(0);
+        Assert.That(manager.EvictionsQueued, Is.EqualTo(0));
+        Assert.That(manager.EvictionsInlineFallback, Is.EqualTo(0));
+        Assert.That(manager.EvictionsDispatched, Is.EqualTo(0));
     }
 
     [Test]
@@ -71,10 +70,10 @@ public class ArenaManagerEvictionQueueTests
         // on the dictionary miss. We're testing the queue mechanics, not the syscall.
         manager.QueueEviction(arenaId: 42, pageIdx: 3);
         WaitFor(() => manager.EvictionsDispatched + manager.EvictionsSkippedRetouched == 1);
-        manager.EvictionsQueued.Should().Be(1);
-        manager.EvictionsInlineFallback.Should().Be(0);
-        manager.EvictionsDispatched.Should().Be(1);
-        manager.EvictionsSkippedRetouched.Should().Be(0);
+        Assert.That(manager.EvictionsQueued, Is.EqualTo(1));
+        Assert.That(manager.EvictionsInlineFallback, Is.EqualTo(0));
+        Assert.That(manager.EvictionsDispatched, Is.EqualTo(1));
+        Assert.That(manager.EvictionsSkippedRetouched, Is.EqualTo(0));
     }
 
     [Test]
@@ -86,11 +85,11 @@ public class ArenaManagerEvictionQueueTests
         // Pre-touch (42, 7) so ContainsPage returns true. The drain must skip the dispatch
         // and bump EvictionsSkippedRetouched instead of EvictionsDispatched.
         manager.PageTracker.TryTouch(42, 7, out _, out _);
-        manager.PageTracker.ContainsPage(42, 7).Should().BeTrue();
+        Assert.That(manager.PageTracker.ContainsPage(42, 7), Is.True);
 
         manager.QueueEviction(arenaId: 42, pageIdx: 7);
         WaitFor(() => manager.EvictionsSkippedRetouched == 1);
-        manager.EvictionsDispatched.Should().Be(0);
+        Assert.That(manager.EvictionsDispatched, Is.EqualTo(0));
     }
 
     [Test]
@@ -110,7 +109,7 @@ public class ArenaManagerEvictionQueueTests
 
         WaitFor(() => manager.EvictionsDispatched + manager.EvictionsSkippedRetouched == 8);
         // The point is that no crash occurred — warm-touch tolerated the missing arenas.
-        manager.EvictionsDispatched.Should().Be(8);
+        Assert.That(manager.EvictionsDispatched, Is.EqualTo(8));
     }
 
     [Test]
@@ -146,8 +145,9 @@ public class ArenaManagerEvictionQueueTests
         manager.Dispose();
         // Every queued (or inline-fallback) eviction must have been resolved — either dispatched
         // or skipped — by the time Dispose returns.
-        manager.EvictionsQueued.Should().Be(batch);
-        (manager.EvictionsDispatched + manager.EvictionsSkippedRetouched).Should().Be(
-            manager.EvictionsQueued + manager.EvictionsInlineFallback);
+        Assert.That(manager.EvictionsQueued, Is.EqualTo(batch));
+        Assert.That(
+            manager.EvictionsDispatched + manager.EvictionsSkippedRetouched,
+            Is.EqualTo(manager.EvictionsQueued + manager.EvictionsInlineFallback));
     }
 }

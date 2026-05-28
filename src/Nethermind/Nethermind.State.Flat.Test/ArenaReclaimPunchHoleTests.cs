@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using FluentAssertions;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
@@ -53,12 +52,12 @@ public class ArenaReclaimPunchHoleTests
         // alive (the second keeps DeadBytes < Frontier), so cleanup actually punches.
         (SnapshotLocation locA, ArenaReservation reservationA) = WriteReservation(manager, 64 * pageSize);
         (SnapshotLocation locB, ArenaReservation reservationB) = WriteReservation(manager, pageSize);
-        locA.ArenaId.Should().Be(locB.ArenaId, "both writes must pack into the same shared arena file");
+        Assert.That(locA.ArenaId, Is.EqualTo(locB.ArenaId), "both writes must pack into the same shared arena file");
 
         string arenaPath = Directory.GetFiles(arenaDir).Single();
         Fsync(arenaPath);
         long blocksBefore = StatBlocks(arenaPath);
-        blocksBefore.Should().BeGreaterThan(0, "the written reservations should occupy real disk blocks");
+        Assert.That(blocksBefore, Is.GreaterThan(0), "the written reservations should occupy real disk blocks");
 
         reservationA.Dispose();
 
@@ -67,9 +66,9 @@ public class ArenaReclaimPunchHoleTests
 
         long blocksAfter = StatBlocks(arenaPath);
         if (punchHoleOnReclaim)
-            blocksAfter.Should().BeLessThan(blocksBefore, "cleanup should punch-hole reservation A's dead range");
+            Assert.That(blocksAfter, Is.LessThan(blocksBefore), "cleanup should punch-hole reservation A's dead range");
         else
-            blocksAfter.Should().Be(blocksBefore, "punch-hole is disabled");
+            Assert.That(blocksAfter, Is.EqualTo(blocksBefore), "punch-hole is disabled");
 
         reservationB.Dispose();
     }
@@ -100,8 +99,8 @@ public class ArenaReclaimPunchHoleTests
         string blobPath = Directory.GetFiles(blobDir).Single();
         Fsync(blobPath);
         long blocksBefore = StatBlocks(blobPath);
-        blocksBefore.Should().BeGreaterThan(0, "the written blobs should occupy real disk blocks");
-        new FileInfo(blobPath).Length.Should().Be(maxFileSize, "file pre-extended to MaxSize");
+        Assert.That(blocksBefore, Is.GreaterThan(0), "the written blobs should occupy real disk blocks");
+        Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(maxFileSize), "file pre-extended to MaxSize");
 
         // The writer's lease is gone, so the file is orphaned — frontier reset recycles it
         // by resetting the on-disk marker to HeaderSize AND punch-hole-ing the data range
@@ -109,20 +108,20 @@ public class ArenaReclaimPunchHoleTests
         BlobArenaFile file = blobs.GetFile(blobId);
         blobs.TryResetOrphanedFrontier(file);
 
-        file.Frontier.Should().Be(BlobArenaFile.HeaderSize, "in-memory frontier reset to header end");
-        new FileInfo(blobPath).Length.Should().Be(maxFileSize, "file length unchanged by reset");
+        Assert.That(file.Frontier, Is.EqualTo(BlobArenaFile.HeaderSize), "in-memory frontier reset to header end");
+        Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(maxFileSize), "file length unchanged by reset");
 
         // Verify the on-disk marker actually got reset.
         using SafeFileHandle h = File.OpenHandle(blobPath, FileMode.Open, FileAccess.Read);
         Span<byte> markerBuf = stackalloc byte[BlobArenaFile.HeaderSize];
         RandomAccess.Read(h, markerBuf, 0);
         int marker = BinaryPrimitives.ReadInt32LittleEndian(markerBuf);
-        marker.Should().Be(BlobArenaFile.HeaderSize, "on-disk marker reset to header end");
+        Assert.That(marker, Is.EqualTo(BlobArenaFile.HeaderSize), "on-disk marker reset to header end");
 
         if (!blobs.PunchHoleSupported)
             Assert.Ignore("filesystem does not support fallocate punch-hole");
         long blocksAfter = StatBlocks(blobPath);
-        blocksAfter.Should().BeLessThan(blocksBefore, "frontier reset should punch-hole the orphaned range");
+        Assert.That(blocksAfter, Is.LessThan(blocksBefore), "frontier reset should punch-hole the orphaned range");
     }
 
     private static (SnapshotLocation, ArenaReservation) WriteReservation(ArenaManager manager, int size)

@@ -7,7 +7,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -103,14 +102,14 @@ public abstract partial class BaseEngineModuleTests
         {
             ExecutionPayload getPayloadResult = await BuildAndGetPayloadOnBranch(rpc, chain, parentHeader, parentBlock.Timestamp + slotLength, random ?? TestItem.KeccakA, Address.Zero);
             PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(getPayloadResult)).Data;
-            payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
+            Assert.That(payloadStatusResponse.Status, Is.EqualTo(PayloadStatus.Valid));
             if (setHead)
             {
                 Hash256 newHead = getPayloadResult.BlockHash;
                 ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
                 ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-                setHeadResponse.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-                setHeadResponse.Data.PayloadId.Should().Be(null);
+                Assert.That(setHeadResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+                Assert.That(setHeadResponse.Data.PayloadId, Is.EqualTo(null));
             }
 
             blocks.Add(getPayloadResult);

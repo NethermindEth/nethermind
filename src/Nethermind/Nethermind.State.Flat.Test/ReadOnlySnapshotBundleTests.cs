@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -44,7 +43,7 @@ public class ReadOnlySnapshotBundleTests
             FlatTestHelpers.SnapshotList(MakeSnapshot(c => c.Accounts[new HashedKey<Address>(address)] = account)),
             reader, detailedMetrics);
 
-        bundle.GetAccount(address).Should().Be(account);
+        Assert.That(bundle.GetAccount(address), Is.EqualTo(account));
         reader.DidNotReceive().GetAccount(Arg.Any<Address>());
     }
 
@@ -59,7 +58,7 @@ public class ReadOnlySnapshotBundleTests
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
-        bundle.GetAccount(address).Should().Be(account);
+        Assert.That(bundle.GetAccount(address), Is.EqualTo(account));
     }
 
     [TestCase(true)]
@@ -71,7 +70,7 @@ public class ReadOnlySnapshotBundleTests
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
-        bundle.GetAccount(TestItem.AddressA).Should().BeNull();
+        Assert.That(bundle.GetAccount(TestItem.AddressA), Is.Null);
     }
 
     [Test]
@@ -84,8 +83,8 @@ public class ReadOnlySnapshotBundleTests
             MakeSnapshot(c => c.SelfDestructedStorageAddresses[new HashedKey<Address>(address)] = true),
             MakeSnapshot()));
 
-        bundle.DetermineSelfDestructSnapshotIdx(address).Should().Be(1);
-        bundle.DetermineSelfDestructSnapshotIdx(TestItem.AddressB).Should().Be(-1);
+        Assert.That(bundle.DetermineSelfDestructSnapshotIdx(address), Is.EqualTo(1));
+        Assert.That(bundle.DetermineSelfDestructSnapshotIdx(TestItem.AddressB), Is.EqualTo(-1));
     }
 
     [Test]
@@ -99,7 +98,7 @@ public class ReadOnlySnapshotBundleTests
             MakeSnapshot(c => c.Storages[new HashedKey<(Address, UInt256)>((address, index))] = stored)),
             recordDetailedMetrics: true);
 
-        bundle.GetSlot(address, index, selfDestructStateIdx: -1).Should().Equal(0x12, 0x34);
+        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0x12, 0x34 }));
     }
 
     [Test]
@@ -110,7 +109,7 @@ public class ReadOnlySnapshotBundleTests
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot(), MakeSnapshot()), reader);
 
-        bundle.GetSlot(TestItem.AddressA, (UInt256)42, selfDestructStateIdx: 1).Should().BeNull();
+        Assert.That(bundle.GetSlot(TestItem.AddressA, (UInt256)42, selfDestructStateIdx: 1), Is.Null);
         reader.DidNotReceive().TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>());
     }
 
@@ -125,7 +124,7 @@ public class ReadOnlySnapshotBundleTests
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
         // Default SlotValue.ToEvmBytes() is the canonical zero (single 0x00 byte).
-        bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1).Should().Equal((byte)0);
+        Assert.That(bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
     }
 
     [Test]
@@ -138,8 +137,8 @@ public class ReadOnlySnapshotBundleTests
             MakeSnapshot(c => c.StateNodes[new HashedKey<TreePath>(path)] = node)),
             recordDetailedMetrics: true);
 
-        bundle.TryFindStateNodes(path, Keccak.Zero, out TrieNode? found).Should().BeTrue();
-        found.Should().BeSameAs(node);
+        Assert.That(bundle.TryFindStateNodes(path, Keccak.Zero, out TrieNode? found), Is.True);
+        Assert.That(found, Is.SameAs(node));
     }
 
     [Test]
@@ -147,8 +146,8 @@ public class ReadOnlySnapshotBundleTests
     {
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()));
 
-        bundle.TryFindStateNodes(TreePath.FromHexString("ab"), Keccak.Zero, out TrieNode? node).Should().BeFalse();
-        node.Should().BeNull();
+        Assert.That(bundle.TryFindStateNodes(TreePath.FromHexString("ab"), Keccak.Zero, out TrieNode? node), Is.False);
+        Assert.That(node, Is.Null);
     }
 
     [Test]
@@ -162,8 +161,8 @@ public class ReadOnlySnapshotBundleTests
             MakeSnapshot(c => c.StorageNodes[new HashedKey<(Hash256, TreePath)>((address, path))] = node)),
             recordDetailedMetrics: true);
 
-        bundle.TryFindStorageNodes(address, path, Keccak.Zero, out TrieNode? found).Should().BeTrue();
-        found.Should().BeSameAs(node);
+        Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Zero, out TrieNode? found), Is.True);
+        Assert.That(found, Is.SameAs(node));
     }
 
     [TestCase(true)]
@@ -176,7 +175,7 @@ public class ReadOnlySnapshotBundleTests
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
-        bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None).Should().Equal((byte)0xc1, (byte)0xff);
+        Assert.That(bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None), Is.EqualTo(new byte[] { 0xc1, 0xff }));
     }
 
     [TestCase(true)]
@@ -190,7 +189,7 @@ public class ReadOnlySnapshotBundleTests
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
-        bundle.TryLoadStorageRlp(address, path, Keccak.Zero, ReadFlags.None).Should().Equal((byte)0xc1, (byte)0xee);
+        Assert.That(bundle.TryLoadStorageRlp(address, path, Keccak.Zero, ReadFlags.None), Is.EqualTo(new byte[] { 0xc1, 0xee }));
     }
 
     [Test]
@@ -198,7 +197,7 @@ public class ReadOnlySnapshotBundleTests
     {
         ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()));
 
-        bundle.TryLease().Should().BeTrue();
+        Assert.That(bundle.TryLease(), Is.True);
         bundle.Dispose(); // releases the lease taken above
         bundle.Dispose(); // tears down for real
 

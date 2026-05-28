@@ -255,7 +255,7 @@ public class HistoryPrunerTests
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new TestMemDb());
 
-        TestDelegate action = () => new HistoryPruner(
+        Action action = () => new HistoryPruner(
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<IBlockAccessListStore>(),

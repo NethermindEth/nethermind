@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using FluentAssertions;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NonBlocking;
 using NUnit.Framework;
@@ -55,15 +54,15 @@ public class ArenaMetricsTests
             maxArenaSize: maxArenaSize, tier: tier);
 
         // Before any write the file isn't materialised yet (CreateArenaFile fires on first writer).
-        Read(Metrics.ArenaAllocatedBytesByTier, tier).Should().Be(arenaBytesBefore);
-        Read(Metrics.ArenaFileCountByTier, tier).Should().Be(arenaCountBefore);
+        Assert.That(Read(Metrics.ArenaAllocatedBytesByTier, tier), Is.EqualTo(arenaBytesBefore));
+        Assert.That(Read(Metrics.ArenaFileCountByTier, tier), Is.EqualTo(arenaCountBefore));
 
         ArenaReservation reservation;
         using (ArenaWriter writer = arena.CreateWriter(payloadBytes))
         {
             // File materialised — count +1, allocated bytes still 0 (frontier == 0 at open).
-            Read(Metrics.ArenaFileCountByTier, tier).Should().Be(arenaCountBefore + 1);
-            Read(Metrics.ArenaAllocatedBytesByTier, tier).Should().Be(arenaBytesBefore);
+            Assert.That(Read(Metrics.ArenaFileCountByTier, tier), Is.EqualTo(arenaCountBefore + 1));
+            Assert.That(Read(Metrics.ArenaAllocatedBytesByTier, tier), Is.EqualTo(arenaBytesBefore));
 
             ref ArenaBufferWriter buf = ref writer.GetWriter();
             buf.GetSpan(payloadBytes).Clear();
@@ -73,21 +72,21 @@ public class ArenaMetricsTests
 
         // After Complete the frontier delta lands in ArenaAllocatedBytesByTier — exactly the
         // payload size, NOT the 64 KiB sparse MaxSize.
-        (Read(Metrics.ArenaAllocatedBytesByTier, tier) - arenaBytesBefore).Should().Be(payloadBytes);
+        Assert.That((Read(Metrics.ArenaAllocatedBytesByTier, tier) - arenaBytesBefore), Is.EqualTo(payloadBytes));
 
         // Reservation gauge tracks the live reservation we're holding.
-        (Read(Metrics.ArenaReservationBytesByTier, tier) - resvBytesBefore).Should().Be(payloadBytes);
+        Assert.That((Read(Metrics.ArenaReservationBytesByTier, tier) - resvBytesBefore), Is.EqualTo(payloadBytes));
 
         // Arena and blob gauges are independent — no blob activity here.
-        Read(Metrics.BlobAllocatedBytesByTier, tier).Should().Be(blobBytesBefore);
-        Read(Metrics.BlobFileCountByTier, tier).Should().Be(blobCountBefore);
+        Assert.That(Read(Metrics.BlobAllocatedBytesByTier, tier), Is.EqualTo(blobBytesBefore));
+        Assert.That(Read(Metrics.BlobFileCountByTier, tier), Is.EqualTo(blobCountBefore));
 
         // Dropping the reservation marks all its bytes dead → MarkDead drops the file →
         // OnArenaRemoved returns the count and allocated-bytes contributions to baseline.
         reservation.Dispose();
-        Read(Metrics.ArenaReservationBytesByTier, tier).Should().Be(resvBytesBefore);
-        Read(Metrics.ArenaFileCountByTier, tier).Should().Be(arenaCountBefore);
-        Read(Metrics.ArenaAllocatedBytesByTier, tier).Should().Be(arenaBytesBefore);
+        Assert.That(Read(Metrics.ArenaReservationBytesByTier, tier), Is.EqualTo(resvBytesBefore));
+        Assert.That(Read(Metrics.ArenaFileCountByTier, tier), Is.EqualTo(arenaCountBefore));
+        Assert.That(Read(Metrics.ArenaAllocatedBytesByTier, tier), Is.EqualTo(arenaBytesBefore));
     }
 
     [Test]
@@ -108,8 +107,8 @@ public class ArenaMetricsTests
         using (BlobArenaWriter writer = blobs.CreateWriter(blobBytes))
         {
             // File materialised on first writer — count +1, allocated still 0.
-            Read(Metrics.BlobFileCountByTier, tier).Should().Be(blobCountBefore + 1);
-            Read(Metrics.BlobAllocatedBytesByTier, tier).Should().Be(blobBytesBefore);
+            Assert.That(Read(Metrics.BlobFileCountByTier, tier), Is.EqualTo(blobCountBefore + 1));
+            Assert.That(Read(Metrics.BlobAllocatedBytesByTier, tier), Is.EqualTo(blobBytesBefore));
 
             byte[] rlp = new byte[blobBytes];
             writer.WriteRlp(rlp);
@@ -118,10 +117,10 @@ public class ArenaMetricsTests
 
         // After Complete: blob allocated bytes advance by exactly the written size (not the
         // 64 KiB MaxSize of the sparse file).
-        (Read(Metrics.BlobAllocatedBytesByTier, tier) - blobBytesBefore).Should().Be(blobBytes);
+        Assert.That((Read(Metrics.BlobAllocatedBytesByTier, tier) - blobBytesBefore), Is.EqualTo(blobBytes));
 
         // Arena gauges stay flat — blob writes never touch them.
-        Read(Metrics.ArenaAllocatedBytesByTier, tier).Should().Be(arenaBytesBefore);
-        Read(Metrics.ArenaFileCountByTier, tier).Should().Be(arenaCountBefore);
+        Assert.That(Read(Metrics.ArenaAllocatedBytesByTier, tier), Is.EqualTo(arenaBytesBefore));
+        Assert.That(Read(Metrics.ArenaFileCountByTier, tier), Is.EqualTo(arenaCountBefore));
     }
 }

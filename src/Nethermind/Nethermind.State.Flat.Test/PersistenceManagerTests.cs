@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -525,11 +524,11 @@ public class PersistenceManagerTests
         _persistenceManager.PersistSnapshot(snapshot);
 
         // Assert
-        writeBatch.SetAccountCalls.Should().Contain(c => c.Addr == TestItem.AddressA);
-        writeBatch.SetAccountCalls.Should().Contain(c => c.Addr == TestItem.AddressB);
-        writeBatch.SetStorageCalls.Should().Contain(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1);
-        writeBatch.SetStorageCalls.Should().Contain(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2);
-        writeBatch.SetStateTrieNodeCalls.Should().NotBeEmpty();
+        Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressA));
+        Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressB));
+        Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, SlotValue? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1));
+        Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, SlotValue? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2));
+        Assert.That(writeBatch.SetStateTrieNodeCalls, Is.Not.Empty);
         Assert.That(node.IsPersisted, Is.True);
     }
 

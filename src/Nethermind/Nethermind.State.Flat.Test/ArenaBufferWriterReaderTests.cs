@@ -4,7 +4,6 @@
 using System;
 using System.IO;
 using System.IO.MemoryMappedFiles;
-using FluentAssertions;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
 
@@ -49,16 +48,16 @@ public class ArenaBufferWriterReaderTests
             byte[] payload = MakePattern(8 * 1024);
             WriteAll(ref writer, payload);
 
-            fs.Position.Should().Be(0, "no flush yet");
+            Assert.That(fs.Position, Is.EqualTo(0), "no flush yet");
 
             ArenaBufferReader reader = writer.OpenReader(payload.Length);
-            fs.Position.Should().Be(0, "buffer-backed reader must not flush");
+            Assert.That(fs.Position, Is.EqualTo(0), "buffer-backed reader must not flush");
 
             ReadAndAssert(reader, payload);
 
             writer.DisposeActiveReader();
             // Buffered bytes are still under the 3/4 threshold so dispose should not flush either.
-            fs.Position.Should().Be(0);
+            Assert.That(fs.Position, Is.EqualTo(0));
         }
         finally
         {
@@ -89,16 +88,16 @@ public class ArenaBufferWriterReaderTests
             byte[] payload = MakePattern(BufferSize + BufferSize / 2);
             WriteAll(ref writer, payload);
 
-            fs.Position.Should().Be(BufferSize, "second-half write must have flushed the first 1 MiB");
+            Assert.That(fs.Position, Is.EqualTo(BufferSize), "second-half write must have flushed the first 1 MiB");
 
             // Ask for the full trailing region — straddles already-flushed bytes,
             // so the writer must take the mmap path.
             ArenaBufferReader reader = writer.OpenReader(payload.Length);
 
-            openViewCalls.Should().Be(1);
-            lastOpenViewOffset.Should().Be(0);
-            lastOpenViewSize.Should().Be(payload.Length);
-            fs.Position.Should().Be(payload.Length, "slow path must Flush()");
+            Assert.That(openViewCalls, Is.EqualTo(1));
+            Assert.That(lastOpenViewOffset, Is.EqualTo(0));
+            Assert.That(lastOpenViewSize, Is.EqualTo(payload.Length));
+            Assert.That(fs.Position, Is.EqualTo(payload.Length), "slow path must Flush()");
 
             ReadAndAssert(reader, payload);
 
@@ -132,7 +131,7 @@ public class ArenaBufferWriterReaderTests
             writer.DisposeActiveReader();
 
             long expectedPosition = overThreshold ? payloadSize : 0;
-            fs.Position.Should().Be(expectedPosition,
+            Assert.That(fs.Position, Is.EqualTo(expectedPosition),
                 overThreshold
                     ? "buffered >= 3/4 of buffer — dispose must flush"
                     : "buffered < 3/4 of buffer — dispose must not flush");
@@ -153,7 +152,7 @@ public class ArenaBufferWriterReaderTests
 
             _ = writer.OpenReader(512);
             Action second = () => writer.OpenReader(256);
-            second.Should().Throw<InvalidOperationException>();
+            Assert.That(second, Throws.TypeOf<InvalidOperationException>());
 
             writer.DisposeActiveReader();
         }
@@ -179,11 +178,11 @@ public class ArenaBufferWriterReaderTests
 
             WriteAll(ref writer, fillerBytes);
             WriteAll(ref writer, dataBytes);
-            fs.Position.Should().Be(0, "buffer is just full, no write-trigger Flush yet");
+            Assert.That(fs.Position, Is.EqualTo(0), "buffer is just full, no write-trigger Flush yet");
 
             // OpenReader on the tail data section: fast path, pins the buffer.
             ArenaBufferReader reader = writer.OpenReader(dataSection);
-            fs.Position.Should().Be(0, "fast path must not flush");
+            Assert.That(fs.Position, Is.EqualTo(0), "fast path must not flush");
             ReadAndAssert(reader, dataBytes);
 
             // Next write has zero headroom: must promote. The pinned buffer
@@ -192,7 +191,7 @@ public class ArenaBufferWriterReaderTests
             byte[] postBytes = MakePattern(32 * 1024, seed: 0x30);
             WriteAll(ref writer, postBytes);
 
-            fs.Position.Should().Be(BufferSize, "promote flushed exactly the pinned buffer");
+            Assert.That(fs.Position, Is.EqualTo(BufferSize), "promote flushed exactly the pinned buffer");
 
             // The reader must still see the original data-section bytes — the
             // pinned buffer is intact even though further writes moved elsewhere.
@@ -201,17 +200,17 @@ public class ArenaBufferWriterReaderTests
             writer.DisposeActiveReader();
 
             writer.Flush();
-            fs.Position.Should().Be((long)BufferSize + postBytes.Length);
+            Assert.That(fs.Position, Is.EqualTo((long)BufferSize + postBytes.Length));
 
             // Round-trip: the stream contents are filler ++ data ++ post.
             fs.Flush();
             fs.Position = 0;
             byte[] full = new byte[BufferSize + postBytes.Length];
             int got = fs.Read(full, 0, full.Length);
-            got.Should().Be(full.Length);
-            full.AsSpan(0, filler).SequenceEqual(fillerBytes).Should().BeTrue();
-            full.AsSpan(filler, dataSection).SequenceEqual(dataBytes).Should().BeTrue();
-            full.AsSpan(filler + dataSection, postBytes.Length).SequenceEqual(postBytes).Should().BeTrue();
+            Assert.That(got, Is.EqualTo(full.Length));
+            Assert.That(full.AsSpan(0, filler).SequenceEqual(fillerBytes), Is.True);
+            Assert.That(full.AsSpan(filler, dataSection).SequenceEqual(dataBytes), Is.True);
+            Assert.That(full.AsSpan(filler + dataSection, postBytes.Length).SequenceEqual(postBytes), Is.True);
         }
         finally { writer.Dispose(); }
     }
@@ -229,12 +228,12 @@ public class ArenaBufferWriterReaderTests
             // With no active reader, GetSpan must grow the write buffer to honor a
             // sizeHint larger than the 1 MiB default — not silently return 1 MiB.
             Span<byte> span = writer.GetSpan(sizeHint);
-            span.Length.Should().BeGreaterThanOrEqualTo(sizeHint, "GetSpan must honor sizeHint");
+            Assert.That(span.Length, Is.GreaterThanOrEqualTo(sizeHint), "GetSpan must honor sizeHint");
 
             byte[] payload = MakePattern(sizeHint, seed: 0x55);
             payload.CopyTo(span);
             writer.Advance(sizeHint);
-            writer.Written.Should().Be(sizeHint);
+            Assert.That(writer.Written, Is.EqualTo(sizeHint));
 
             ArenaBufferReader reader = writer.OpenReader(sizeHint);
             ReadAndAssert(reader, payload);
@@ -252,7 +251,7 @@ public class ArenaBufferWriterReaderTests
         try
         {
             Action tooBig = () => writer.GetSpan(MaxSizeHint + 1);
-            tooBig.Should().Throw<ArgumentOutOfRangeException>();
+            Assert.That(tooBig, Throws.TypeOf<ArgumentOutOfRangeException>());
         }
         finally { writer.Dispose(); }
     }
@@ -285,10 +284,10 @@ public class ArenaBufferWriterReaderTests
 
     private static unsafe void ReadAndAssert(ArenaBufferReader reader, ReadOnlySpan<byte> expected)
     {
-        reader.Length.Should().Be(expected.Length);
+        Assert.That(reader.Length, Is.EqualTo(expected.Length));
         byte[] actual = new byte[expected.Length];
-        reader.TryRead(0, actual).Should().BeTrue();
-        actual.AsSpan().SequenceEqual(expected).Should().BeTrue();
+        Assert.That(reader.TryRead(0, actual), Is.True);
+        Assert.That(actual.AsSpan().SequenceEqual(expected), Is.True);
     }
 
     private static unsafe IArenaWholeView OpenFileView(FileStream fs, long offset, long size)

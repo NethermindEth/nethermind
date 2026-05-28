@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
@@ -44,7 +43,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             CancellationBlockTracer blockTracer = new(Substitute.For<IBlockTracer>());
             Transaction transaction = Build.A.Transaction.TestObject;
-            blockTracer.StartNewTxTrace(transaction).Should().BeOfType<CancellationTxTracer>();
+            Assert.That(blockTracer.StartNewTxTrace(transaction), Is.TypeOf<CancellationTxTracer>());
         }
     }
 }

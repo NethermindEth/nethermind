@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using FluentAssertions;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
@@ -109,9 +108,9 @@ public class PageResidencyTrackerTests
         for (int i = 0; i < 1000; i++)
             Touch(tracker, 7, 42, handler);
 
-        handler.Evictions.Should().BeEmpty();
-        tracker.Count.Should().Be(1);
-        tracker.ContainsPage(7, 42).Should().BeTrue();
+        Assert.That(handler.Evictions, Is.Empty);
+        Assert.That(tracker.Count, Is.EqualTo(1));
+        Assert.That(tracker.ContainsPage(7, 42), Is.True);
     }
 
     [Test]
@@ -125,14 +124,14 @@ public class PageResidencyTrackerTests
 
         for (int i = 0; i < Ways; i++)
             Touch(tracker, 0, i, handler);
-        handler.Evictions.Should().BeEmpty();
-        tracker.Count.Should().Be(Ways);
+        Assert.That(handler.Evictions, Is.Empty);
+        Assert.That(tracker.Count, Is.EqualTo(Ways));
 
         Touch(tracker, 0, Ways, handler);
-        handler.Evictions.Should().ContainSingle().Which.Should().Be((0, 0));
-        tracker.ContainsPage(0, 0).Should().BeFalse();
-        tracker.ContainsPage(0, Ways).Should().BeTrue();
-        tracker.Count.Should().Be(Ways);
+        Assert.That(handler.Evictions, Is.EqualTo(new[] { (0, 0) }));
+        Assert.That(tracker.ContainsPage(0, 0), Is.False);
+        Assert.That(tracker.ContainsPage(0, Ways), Is.True);
+        Assert.That(tracker.Count, Is.EqualTo(Ways));
     }
 
     [Test]
@@ -141,20 +140,20 @@ public class PageResidencyTrackerTests
         PageResidencyTracker tracker = new(OneSetCapacity);
 
         // Empty set: Inserted, no displaced key.
-        tracker.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Inserted);
+        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(TouchOutcome.Inserted));
 
         // Re-touching the same key: Hit.
-        tracker.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Hit);
+        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(TouchOutcome.Hit));
 
         // Fill the remaining 7 ways — all Inserted.
         for (int i = 1; i < Ways; i++)
-            tracker.TryTouch(0, i, out _, out _).Should().Be(TouchOutcome.Inserted);
+            Assert.That(tracker.TryTouch(0, i, out _, out _), Is.EqualTo(TouchOutcome.Inserted));
 
         // Set is full and every way has REF=1. The 9th touch's clock pass clears all 8 REF
         // bits, then wraps back to way 0 and evicts (0, 0) — the first inserted key.
-        tracker.TryTouch(0, Ways, out int evictedArenaId, out int evictedPageIdx).Should().Be(TouchOutcome.Evicted);
-        evictedArenaId.Should().Be(0);
-        evictedPageIdx.Should().Be(0);
+        Assert.That(tracker.TryTouch(0, Ways, out int evictedArenaId, out int evictedPageIdx), Is.EqualTo(TouchOutcome.Evicted));
+        Assert.That(evictedArenaId, Is.EqualTo(0));
+        Assert.That(evictedPageIdx, Is.EqualTo(0));
     }
 
     [Test]
@@ -174,16 +173,16 @@ public class PageResidencyTrackerTests
             Touch(tracker, 0, i, handler);
 
         Touch(tracker, 0, Ways, handler);                       // primes the clock
-        handler.Evictions.Should().Equal((0, 0));
+        Assert.That(handler.Evictions, Is.EqualTo(new[] { (0, 0) }));
 
         Touch(tracker, 0, 3, handler);                          // arms way 3's REF bit
-        handler.Evictions.Should().HaveCount(1, "re-touching is a Hit, not an eviction");
+        Assert.That(handler.Evictions, Has.Count.EqualTo(1), "re-touching is a Hit, not an eviction");
 
         for (int i = 0; i < 3; i++)                             // three more streaming keys
             Touch(tracker, 0, Ways + 1 + i, handler);
 
-        handler.Evictions.Should().Equal((0, 0), (0, 1), (0, 2), (0, 4));
-        tracker.ContainsPage(0, 3).Should().BeTrue("re-touched key got a second chance");
+        Assert.That(handler.Evictions, Is.EqualTo(new[] { (0, 0), (0, 1), (0, 2), (0, 4) }));
+        Assert.That(tracker.ContainsPage(0, 3), Is.True, "re-touched key got a second chance");
     }
 
     [Test]
@@ -201,8 +200,8 @@ public class PageResidencyTrackerTests
             Touch(tracker, 0, i, handler);
 
         Touch(tracker, 0, Ways, handler);
-        handler.Evictions.Should().ContainSingle();
-        tracker.Count.Should().Be(Ways);
+        Assert.That(handler.Evictions, Has.Count.EqualTo(1));
+        Assert.That(tracker.Count, Is.EqualTo(Ways));
     }
 
     [Test]
@@ -212,9 +211,9 @@ public class PageResidencyTrackerTests
         PageResidencyTracker tracker = new(maxCapacity: 0);
         Touch(tracker, 1, 1, handler);
         Touch(tracker, 2, 2, handler);
-        handler.Evictions.Should().BeEmpty();
-        tracker.Count.Should().Be(0);
-        tracker.ContainsPage(1, 1).Should().BeFalse();
+        Assert.That(handler.Evictions, Is.Empty);
+        Assert.That(tracker.Count, Is.EqualTo(0));
+        Assert.That(tracker.ContainsPage(1, 1), Is.False);
     }
 
     [TestCase(1, Ways)]
@@ -224,7 +223,7 @@ public class PageResidencyTrackerTests
     public void MaxCapacity_RoundsUpToWayMultipleOfPowerOfTwoSets(int requested, int expected)
     {
         PageResidencyTracker tracker = new(maxCapacity: requested);
-        tracker.MaxCapacity.Should().Be(expected);
+        Assert.That(tracker.MaxCapacity, Is.EqualTo(expected));
     }
 
     [Test]
@@ -234,20 +233,20 @@ public class PageResidencyTrackerTests
 
         // Present: insert, then Forget — gone.
         tracker.TryTouch(5, 3, out _, out _);
-        tracker.ContainsPage(5, 3).Should().BeTrue();
+        Assert.That(tracker.ContainsPage(5, 3), Is.True);
         tracker.Forget(5, 3);
-        tracker.ContainsPage(5, 3).Should().BeFalse();
-        tracker.Count.Should().Be(0);
+        Assert.That(tracker.ContainsPage(5, 3), Is.False);
+        Assert.That(tracker.Count, Is.EqualTo(0));
 
         // Absent: Forget on a key the tracker never saw — neighbouring entries survive.
         tracker.TryTouch(5, 3, out _, out _);
         tracker.Forget(5, 4);
-        tracker.ContainsPage(5, 3).Should().BeTrue();
+        Assert.That(tracker.ContainsPage(5, 3), Is.True);
 
         // After REF bit armed (Hit re-arms it), Forget still clears via CAS retry.
         tracker.TryTouch(5, 3, out _, out _);  // Hit, sets REF=1
         tracker.Forget(5, 3);
-        tracker.ContainsPage(5, 3).Should().BeFalse();
+        Assert.That(tracker.ContainsPage(5, 3), Is.False);
 
         // Disabled tracker: no-op, no exception.
         using PageResidencyTracker disabled = new(maxCapacity: 0);
@@ -259,16 +258,16 @@ public class PageResidencyTrackerTests
     {
         // Disabled tracker: immediate false, no allocation needed for the probe.
         using (PageResidencyTracker disabled = new(maxCapacity: 0))
-            disabled.TryPickResidentPage(out _, out _).Should().BeFalse();
+            Assert.That(disabled.TryPickResidentPage(out _, out _), Is.False);
 
         // Empty tracker: probe budget runs out on VALID=0 slots.
         PageResidencyTracker tracker = new(maxCapacity: OneSetCapacity);
-        tracker.TryPickResidentPage(out _, out _).Should().BeFalse();
+        Assert.That(tracker.TryPickResidentPage(out _, out _), Is.False);
 
         // Insert + Forget — slot is back to 0, so picks miss again.
         tracker.TryTouch(5, 3, out _, out _);
         tracker.Forget(5, 3);
-        tracker.TryPickResidentPage(out _, out _).Should().BeFalse();
+        Assert.That(tracker.TryPickResidentPage(out _, out _), Is.False);
     }
 
     [Test]
@@ -286,8 +285,8 @@ public class PageResidencyTrackerTests
 
         for (int i = 0; i < 100; i++)
         {
-            tracker.TryPickResidentPage(out int aid, out int pid).Should().BeTrue();
-            inserted.Should().Contain((aid, pid));
+            Assert.That(tracker.TryPickResidentPage(out int aid, out int pid), Is.True);
+            Assert.That(inserted, Does.Contain((aid, pid)));
         }
     }
 
@@ -299,51 +298,51 @@ public class PageResidencyTrackerTests
         // Disabled tracker reports no metadata and no residency.
         using (PageResidencyTracker disabled = new(maxCapacity: 0))
         {
-            disabled.MetadataBytes.Should().Be(0);
-            disabled.ResidentBytes.Should().Be(0);
-            disabled.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Hit);
-            disabled.ResidentBytes.Should().Be(0);
+            Assert.That(disabled.MetadataBytes, Is.EqualTo(0));
+            Assert.That(disabled.ResidentBytes, Is.EqualTo(0));
+            Assert.That(disabled.TryTouch(0, 0, out _, out _), Is.EqualTo(TouchOutcome.Hit));
+            Assert.That(disabled.ResidentBytes, Is.EqualTo(0));
         }
 
         PageResidencyTracker tracker = new(maxCapacity: OneSetCapacity);
-        tracker.MetadataBytes.Should().BeGreaterThan(0);
-        tracker.ResidentBytes.Should().Be(0);
+        Assert.That(tracker.MetadataBytes, Is.GreaterThan(0));
+        Assert.That(tracker.ResidentBytes, Is.EqualTo(0));
 
         // Inserted: +1 page.
-        tracker.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Inserted);
-        tracker.ResidentBytes.Should().Be(pageSize);
+        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(TouchOutcome.Inserted));
+        Assert.That(tracker.ResidentBytes, Is.EqualTo(pageSize));
 
         // Hit: unchanged.
-        tracker.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Hit);
-        tracker.ResidentBytes.Should().Be(pageSize);
+        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(TouchOutcome.Hit));
+        Assert.That(tracker.ResidentBytes, Is.EqualTo(pageSize));
 
         // Fill the rest of the set.
         for (int i = 1; i < Ways; i++)
-            tracker.TryTouch(0, i, out _, out _).Should().Be(TouchOutcome.Inserted);
-        tracker.ResidentBytes.Should().Be((long)Ways * pageSize);
+            Assert.That(tracker.TryTouch(0, i, out _, out _), Is.EqualTo(TouchOutcome.Inserted));
+        Assert.That(tracker.ResidentBytes, Is.EqualTo((long)Ways * pageSize));
 
         // Eviction: net zero (one in, one out).
-        tracker.TryTouch(0, Ways, out _, out _).Should().Be(TouchOutcome.Evicted);
-        tracker.ResidentBytes.Should().Be((long)Ways * pageSize);
+        Assert.That(tracker.TryTouch(0, Ways, out _, out _), Is.EqualTo(TouchOutcome.Evicted));
+        Assert.That(tracker.ResidentBytes, Is.EqualTo((long)Ways * pageSize));
 
         // Bounds invariant: continued streaming inserts never exceed the capacity ceiling.
         for (int i = Ways + 1; i < 4 * Ways; i++)
             tracker.TryTouch(0, i, out _, out _);
-        tracker.ResidentBytes.Should().BeLessOrEqualTo((long)tracker.MaxCapacity * pageSize);
+        Assert.That(tracker.ResidentBytes, Is.LessThanOrEqualTo((long)tracker.MaxCapacity * pageSize));
 
         // Forget on a present key drops occupancy by one page.
         int presentKey = -1;
         for (int i = 4 * Ways - 1; i >= 0 && presentKey < 0; i--)
             if (tracker.ContainsPage(0, i)) presentKey = i;
-        presentKey.Should().BeGreaterOrEqualTo(0, "the set should still hold at least one streamed key");
+        Assert.That(presentKey, Is.GreaterThanOrEqualTo(0), "the set should still hold at least one streamed key");
         long beforeForget = tracker.ResidentBytes;
         tracker.Forget(0, presentKey);
-        tracker.ResidentBytes.Should().Be(beforeForget - pageSize);
+        Assert.That(tracker.ResidentBytes, Is.EqualTo(beforeForget - pageSize));
 
         // Re-inserting into the freed slot restores occupancy without raising the GC-reported
         // high-water mark — only the counter changes; pressure already covered this level.
-        tracker.TryTouch(0, presentKey, out _, out _).Should().Be(TouchOutcome.Inserted);
-        tracker.ResidentBytes.Should().Be(beforeForget);
+        Assert.That(tracker.TryTouch(0, presentKey, out _, out _), Is.EqualTo(TouchOutcome.Inserted));
+        Assert.That(tracker.ResidentBytes, Is.EqualTo(beforeForget));
 
         // Dispose releases the reported pressure (cannot observe GC pressure directly, but
         // the dispose path must not throw and must be idempotent).
@@ -369,13 +368,13 @@ public class PageResidencyTrackerTests
             ArenaByteReader reader = new(dataPtr, data.Length, reservation);
 
             Span<byte> sink = stackalloc byte[16];
-            reader.TryRead(0, sink).Should().BeTrue();
+            Assert.That(reader.TryRead(0, sink), Is.True);
 
             int firstPage = (int)(baseOffset / pageSize);
             int lastPage = (int)((baseOffset + 15) / pageSize);
-            firstPage.Should().NotBe(lastPage, "test setup must straddle a page boundary");
-            tracker.ContainsPage(9, firstPage).Should().BeTrue();
-            tracker.ContainsPage(9, lastPage).Should().BeTrue();
+            Assert.That(firstPage, Is.Not.EqualTo(lastPage), "test setup must straddle a page boundary");
+            Assert.That(tracker.ContainsPage(9, firstPage), Is.True);
+            Assert.That(tracker.ContainsPage(9, lastPage), Is.True);
         }
     }
 
@@ -393,10 +392,10 @@ public class PageResidencyTrackerTests
             ArenaByteReader reader = new(dataPtr, data.Length, reservation);
 
             using NoOpPin pin = reader.PinBuffer(0, pageSize * 2 + 1);
-            pin.Buffer.Length.Should().Be(pageSize * 2 + 1);
-            tracker.ContainsPage(1, 0).Should().BeTrue();
-            tracker.ContainsPage(1, 1).Should().BeTrue();
-            tracker.ContainsPage(1, 2).Should().BeTrue();
+            Assert.That(pin.Buffer.Length, Is.EqualTo(pageSize * 2 + 1));
+            Assert.That(tracker.ContainsPage(1, 0), Is.True);
+            Assert.That(tracker.ContainsPage(1, 1), Is.True);
+            Assert.That(tracker.ContainsPage(1, 2), Is.True);
         }
     }
 
@@ -421,11 +420,11 @@ public class PageResidencyTrackerTests
 
             Span<byte> b = stackalloc byte[1];
             for (int p = 0; p < Ways; p++)
-                reader5.TryRead((long)p * pageSize, b).Should().BeTrue();   // primes (5, 0..7)
-            handler.Evictions.Should().BeEmpty();
+                Assert.That(reader5.TryRead((long)p * pageSize, b), Is.True);   // primes (5, 0..7)
+            Assert.That(handler.Evictions, Is.Empty);
 
-            reader6.TryRead(0, b).Should().BeTrue();                        // forces clock eviction of (5, 0)
-            handler.Evictions.Should().ContainSingle().Which.Should().Be((5, 0));
+            Assert.That(reader6.TryRead(0, b), Is.True);                        // forces clock eviction of (5, 0)
+            Assert.That(handler.Evictions, Is.EqualTo(new[] { (5, 0) }));
         }
     }
 
@@ -448,23 +447,23 @@ public class PageResidencyTrackerTests
 
             Span<byte> b = stackalloc byte[1];
 
-            reader.TryRead(0, b).Should().BeTrue();
-            tracker.Count.Should().Be(1);
-            tracker.ContainsPage(0, 0).Should().BeTrue();
+            Assert.That(reader.TryRead(0, b), Is.True);
+            Assert.That(tracker.Count, Is.EqualTo(1));
+            Assert.That(tracker.ContainsPage(0, 0), Is.True);
 
             tracker.Forget(0, 0);
             for (int i = 1; i < 100; i++)
-                reader.TryRead(i, b).Should().BeTrue();
-            tracker.Count.Should().Be(0, "memo must skip Touch for repeated reads on the same page");
+                Assert.That(reader.TryRead(i, b), Is.True);
+            Assert.That(tracker.Count, Is.EqualTo(0), "memo must skip Touch for repeated reads on the same page");
 
             // Crossing into page 1 must invalidate the memo.
-            reader.TryRead(pageSize, b).Should().BeTrue();
-            tracker.Count.Should().Be(1);
-            tracker.ContainsPage(0, 1).Should().BeTrue();
+            Assert.That(reader.TryRead(pageSize, b), Is.True);
+            Assert.That(tracker.Count, Is.EqualTo(1));
+            Assert.That(tracker.ContainsPage(0, 1), Is.True);
 
             tracker.Forget(0, 1);
-            reader.TryRead(pageSize + 4, b).Should().BeTrue();
-            tracker.Count.Should().Be(0, "memo holds across reads still on page 1");
+            Assert.That(reader.TryRead(pageSize + 4, b), Is.True);
+            Assert.That(tracker.Count, Is.EqualTo(0), "memo holds across reads still on page 1");
         }
     }
 
@@ -481,9 +480,9 @@ public class PageResidencyTrackerTests
                 manager, arenaId: 0, offset: 0, size: data.Length);
             ArenaByteReader reader = new(dataPtr, data.Length, reservation);
             Span<byte> sink = stackalloc byte[8];
-            reader.TryRead(4, sink).Should().BeTrue();
+            Assert.That(reader.TryRead(4, sink), Is.True);
             using NoOpPin pin = reader.PinBuffer(0, 16);
-            pin.Buffer.Length.Should().Be(16);
+            Assert.That(pin.Buffer.Length, Is.EqualTo(16));
         }
     }
 }

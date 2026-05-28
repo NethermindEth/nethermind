@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using FluentAssertions;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
 
@@ -57,7 +56,7 @@ public class ArenaManagerForgetOnAdviseTests
         for (int p = 0; p < 10; p++)
             manager.PageTracker.TryTouch(arenaId, p, out _, out _);
         for (int p = 0; p < 10; p++)
-            manager.PageTracker.ContainsPage(arenaId, p).Should().BeTrue();
+            Assert.That(manager.PageTracker.ContainsPage(arenaId, p), Is.True);
 
         // Reservation covering [0, 10*pageSize) — 10 fully-covered pages.
         using ArenaFile syntheticFile = NewSyntheticFile(arenaId, 10L * pageSize);
@@ -67,7 +66,7 @@ public class ArenaManagerForgetOnAdviseTests
         reservation.AdviseDontNeed();
 
         for (int p = 0; p < 10; p++)
-            manager.PageTracker.ContainsPage(arenaId, p).Should().BeFalse($"page {p} should have been Forgotten");
+            Assert.That(manager.PageTracker.ContainsPage(arenaId, p), Is.False, $"page {p} should have been Forgotten");
     }
 
     [Test]
@@ -90,11 +89,11 @@ public class ArenaManagerForgetOnAdviseTests
 
         reservation.AdviseDontNeed();
 
-        manager.PageTracker.ContainsPage(arenaId, 0).Should().BeTrue("page 0 partially covered");
-        manager.PageTracker.ContainsPage(arenaId, 1).Should().BeFalse();
-        manager.PageTracker.ContainsPage(arenaId, 2).Should().BeFalse();
-        manager.PageTracker.ContainsPage(arenaId, 3).Should().BeTrue("page 3 partially covered");
-        manager.PageTracker.ContainsPage(arenaId, 4).Should().BeTrue("page 4 outside range");
+        Assert.That(manager.PageTracker.ContainsPage(arenaId, 0), Is.True, "page 0 partially covered");
+        Assert.That(manager.PageTracker.ContainsPage(arenaId, 1), Is.False);
+        Assert.That(manager.PageTracker.ContainsPage(arenaId, 2), Is.False);
+        Assert.That(manager.PageTracker.ContainsPage(arenaId, 3), Is.True, "page 3 partially covered");
+        Assert.That(manager.PageTracker.ContainsPage(arenaId, 4), Is.True, "page 4 outside range");
     }
 
     [Test]
@@ -122,7 +121,7 @@ public class ArenaManagerForgetOnAdviseTests
         reservation.Dispose();
 
         for (int i = 0; i < pages; i++)
-            manager.PageTracker.ContainsPage(location.ArenaId, firstPage + i)
-                .Should().BeFalse($"page {firstPage + i} should have been Forgotten on reservation dispose");
+            Assert.That(manager.PageTracker.ContainsPage(location.ArenaId, firstPage + i),
+                Is.False, $"page {firstPage + i} should have been Forgotten on reservation dispose");
     }
 }
