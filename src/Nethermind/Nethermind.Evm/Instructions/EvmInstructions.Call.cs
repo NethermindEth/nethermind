@@ -144,7 +144,7 @@ public static partial class EvmInstructions
 
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = TOpCall.IsDelegateCall ? UInt256.Zero : callValue;
-        bool hasValueTransfer = !TOpCall.IsDelegateCall && !callValue.IsZero;
+        bool hasValueTransfer = !transferValue.IsZero;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
         if (vm.VmState.IsStatic && hasValueTransfer && !TOpCall.IsCallCode)
             return EvmExceptionType.StaticCallViolation;
@@ -306,7 +306,6 @@ public static partial class EvmInstructions
             codeSource,
             env,
             in callValue,
-            in transferValue,
             gasLimitUl,
             in snapshot);
 
@@ -327,7 +326,6 @@ public static partial class EvmInstructions
             Address codeSource,
             ExecutionEnvironment env,
             in UInt256 callValue,
-            in UInt256 transferValue,
             long gasLimitUl,
             in Snapshot snapshot)
         {
