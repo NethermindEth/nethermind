@@ -229,25 +229,32 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         {
             if (!_wasSetCalled && !_hasSelfDestruct) return;
 
-            // Patricia semantics: Clear may be followed by Sets in the same batch (self-destruct
-            // then redeploy). When _hasSelfDestruct is set, wipe the sparse storage trie first
-            // so subsequent Sets land in an empty trie rooted at EmptyTreeHash.
-            Hash256 effectivePrevRoot = _previousStorageRoot;
-            if (_hasSelfDestruct)
+            // PersistentStorageProvider.UpdateRootHashesMultiThread parallelizes per-contract
+            // dispose. Serialize sparse-trie mutation here: the computer's _storageChanges dict
+            // and the SparseStateTrie's storage-trie dict are not concurrent collections.
+            Hash256 newRoot;
+            lock (_sparseRootComputer.StorageLock)
             {
-                _sparseRootComputer.Trie.WipeStorage(_storageTree._addressHash);
-                effectivePrevRoot = Keccak.EmptyTreeHash;
-            }
+                // Patricia semantics: Clear may be followed by Sets in the same batch (self-destruct
+                // then redeploy). When _hasSelfDestruct is set, wipe the sparse storage trie first
+                // so subsequent Sets land in an empty trie rooted at EmptyTreeHash.
+                Hash256 effectivePrevRoot = _previousStorageRoot;
+                if (_hasSelfDestruct)
+                {
+                    _sparseRootComputer.Trie.WipeStorage(_storageTree._addressHash);
+                    effectivePrevRoot = Keccak.EmptyTreeHash;
+                }
 
-            if (!_wasSetCalled)
-            {
-                _storageTree._tree.RootHash = Keccak.EmptyTreeHash;
-                _onRootUpdated(_storageTree._address, Keccak.EmptyTreeHash);
-                return;
-            }
+                if (!_wasSetCalled)
+                {
+                    _storageTree._tree.RootHash = Keccak.EmptyTreeHash;
+                    _onRootUpdated(_storageTree._address, Keccak.EmptyTreeHash);
+                    return;
+                }
 
-            _sparseRootComputer.AddStorageChanges(_storageTree._addressHash, effectivePrevRoot, _slotUpdates);
-            Hash256 newRoot = _sparseRootComputer.ComputeStorageRoot(_storageTree._addressHash);
+                _sparseRootComputer.AddStorageChanges(_storageTree._addressHash, effectivePrevRoot, _slotUpdates);
+                newRoot = _sparseRootComputer.ComputeStorageRoot(_storageTree._addressHash);
+            }
 
             // Keep FlatStorageTree.RootHash in sync so subsequent same-block reads via Get
             // (and the eventual account encoding) see the post-batch root.

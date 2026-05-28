@@ -24,6 +24,15 @@ public sealed class SparseRootComputer : IDisposable
     private readonly ITrieNodeReader _reader;
     private readonly Hash256 _previousStateRoot;
     private readonly bool _ownsTrie;
+
+    /// <summary>
+    /// Lock serializing mutation of <see cref="_storageChanges"/>, <see cref="_trie"/>'s
+    /// internal storage-trie dictionary, and per-contract storage-root computation.
+    /// PersistentStorageProvider.UpdateRootHashesMultiThread parallelizes contract dispose
+    /// across worker threads; without this lock the SparseStateTrie dictionaries get
+    /// corrupted by concurrent mutators.
+    /// </summary>
+    internal readonly object StorageLock = new();
     private readonly Dictionary<Hash256, (Hash256 PreviousStorageRoot, Dictionary<Hash256, LeafUpdate> Updates)> _storageChanges = [];
     private Dictionary<Hash256, LeafUpdate>? _accountChanges;
 
