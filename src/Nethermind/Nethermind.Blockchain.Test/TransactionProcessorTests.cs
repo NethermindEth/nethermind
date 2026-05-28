@@ -44,6 +44,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
     private IDisposable _stateCloser;
 
     private static readonly UInt256 AccountBalance = 1.Ether;
+    private static readonly byte[] StopCode = [(byte)Instruction.STOP];
 
     [SetUp]
     public void Setup()
@@ -747,11 +748,8 @@ public class TransactionProcessorTests(bool eip155Enabled)
     [TestCaseSource(nameof(SimpleTransferFastPathCases))]
     public void Simple_transfer_fast_path_predicate_enters_vm_when_expected(SimpleTransferFastPathCase testCase)
     {
-        Address recipient = testCase.Kind == SimpleTransferRecipientKind.Precompile
-            ? IdentityPrecompile.Address
-            : Address.FromNumber((UInt256)(uint)(1100 + (int)testCase.Kind));
         IReleaseSpec spec = Prague.Instance;
-        PrepareSimpleTransferRecipient(testCase.Kind, recipient, spec);
+        Address recipient = testCase.CreateRecipient(_stateProvider, spec);
         _stateProvider.Commit(spec);
         _stateProvider.CommitTree(0);
 
@@ -776,9 +774,8 @@ public class TransactionProcessorTests(bool eip155Enabled)
     [Test]
     public void Simple_transfer_fast_path_reports_action_trace()
     {
-        Address recipient = Address.FromNumber((UInt256)1400);
         IReleaseSpec spec = Prague.Instance;
-        PrepareSimpleTransferRecipient(SimpleTransferRecipientKind.Empty, recipient, spec);
+        Address recipient = CreateEmptyCodeRecipient(_stateProvider, spec, 1400);
         _stateProvider.Commit(spec);
         _stateProvider.CommitTree(0);
 
@@ -891,17 +888,17 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
     public static IEnumerable<TestCaseData> SimpleTransferFastPathCases()
     {
-        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.Empty, 1.Wei, false, 0, GasCostOf.Transaction, 1.Wei + GasCostOf.Transaction))
+        yield return new TestCaseData(new SimpleTransferFastPathCase((state, spec) => CreateEmptyCodeRecipient(state, spec, 1100), 1.Wei, false, 0, GasCostOf.Transaction, 1.Wei + GasCostOf.Transaction))
             .SetName("Empty-code recipient with value uses fast path");
-        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.Empty, UInt256.Zero, false, 0, GasCostOf.Transaction, GasCostOf.Transaction))
+        yield return new TestCaseData(new SimpleTransferFastPathCase((state, spec) => CreateEmptyCodeRecipient(state, spec, 1100), UInt256.Zero, false, 0, GasCostOf.Transaction, GasCostOf.Transaction))
             .SetName("Empty-code recipient with zero value uses fast path");
-        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.Contract, 1.Wei, false, 1, GasCostOf.Transaction, 1.Wei + GasCostOf.Transaction))
+        yield return new TestCaseData(new SimpleTransferFastPathCase((state, spec) => CreateContractRecipient(state, spec, 1101), 1.Wei, false, 1, GasCostOf.Transaction, 1.Wei + GasCostOf.Transaction))
             .SetName("Contract recipient enters VM");
-        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.Precompile, 1.Wei, false, 1, GasCostOf.Transaction + 15, 1.Wei + GasCostOf.Transaction + 15))
+        yield return new TestCaseData(new SimpleTransferFastPathCase((_, _) => IdentityPrecompile.Address, 1.Wei, false, 1, GasCostOf.Transaction + 15, 1.Wei + GasCostOf.Transaction + 15))
             .SetName("Precompile recipient enters VM");
-        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.Empty, 1.Wei, true, 1, GasCostOf.Transaction + 25_000, 1.Wei))
+        yield return new TestCaseData(new SimpleTransferFastPathCase((state, spec) => CreateEmptyCodeRecipient(state, spec, 1100), 1.Wei, true, 1, GasCostOf.Transaction + 25_000, 1.Wei))
             .SetName("Authorization-list transaction enters VM");
-        yield return new TestCaseData(new SimpleTransferFastPathCase(SimpleTransferRecipientKind.DelegatedToContract, 1.Wei, false, 1, GasCostOf.Transaction, 1.Wei + GasCostOf.Transaction))
+        yield return new TestCaseData(new SimpleTransferFastPathCase((state, spec) => CreateDelegatedToContractRecipient(state, spec, 1103), 1.Wei, false, 1, GasCostOf.Transaction, 1.Wei + GasCostOf.Transaction))
             .SetName("Delegated recipient with executable target enters VM");
     }
 
@@ -925,48 +922,40 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .TestObject;
     }
 
-    private void PrepareSimpleTransferRecipient(SimpleTransferRecipientKind kind, Address recipient, IReleaseSpec spec)
+    private static Address CreateEmptyCodeRecipient(IWorldState state, IReleaseSpec spec, uint addressNumber)
     {
-        if (kind == SimpleTransferRecipientKind.Precompile)
-        {
-            return;
-        }
+        Address recipient = Address.FromNumber((UInt256)addressNumber);
+        state.CreateAccount(recipient, UInt256.Zero);
+        CodeInfoRepository.InsertCode(state, ReadOnlyMemory<byte>.Empty, recipient, spec, out _);
+        return recipient;
+    }
 
-        _stateProvider.CreateAccount(recipient, UInt256.Zero);
-        switch (kind)
-        {
-            case SimpleTransferRecipientKind.Empty:
-                CodeInfoRepository.InsertCode(_stateProvider, Array.Empty<byte>(), recipient, spec, out _);
-                break;
-            case SimpleTransferRecipientKind.Contract:
-                CodeInfoRepository.InsertCode(_stateProvider, new byte[] { (byte)Instruction.STOP }, recipient, spec, out _);
-                break;
-            case SimpleTransferRecipientKind.DelegatedToContract:
-                Address codeSource = Address.FromNumber(1200);
-                _stateProvider.CreateAccount(codeSource, UInt256.Zero);
-                CodeInfoRepository.InsertCode(_stateProvider, new byte[] { (byte)Instruction.STOP }, codeSource, spec, out _);
-                CodeInfoRepository.SetDelegation(_stateProvider, codeSource, recipient, spec, out _, out _);
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
-        }
+    private static Address CreateContractRecipient(IWorldState state, IReleaseSpec spec, uint addressNumber)
+    {
+        Address recipient = Address.FromNumber((UInt256)addressNumber);
+        state.CreateAccount(recipient, UInt256.Zero);
+        CodeInfoRepository.InsertCode(state, StopCode, recipient, spec, out _);
+        return recipient;
+    }
+
+    private static Address CreateDelegatedToContractRecipient(IWorldState state, IReleaseSpec spec, uint addressNumber)
+    {
+        Address recipient = Address.FromNumber((UInt256)addressNumber);
+        Address codeSource = Address.FromNumber(1200);
+        state.CreateAccount(recipient, UInt256.Zero);
+        state.CreateAccount(codeSource, UInt256.Zero);
+        CodeInfoRepository.InsertCode(state, StopCode, codeSource, spec, out _);
+        CodeInfoRepository.SetDelegation(state, codeSource, recipient, spec, out _, out _);
+        return recipient;
     }
 
     public readonly record struct SimpleTransferFastPathCase(
-        SimpleTransferRecipientKind Kind,
+        Func<IWorldState, IReleaseSpec, Address> CreateRecipient,
         UInt256 Value,
         bool WithAuthorizationList,
         int ExpectedVmCalls,
         long ExpectedSpentGas,
         UInt256 ExpectedSenderDebit);
-
-    public enum SimpleTransferRecipientKind
-    {
-        Empty,
-        Contract,
-        Precompile,
-        DelegatedToContract
-    }
 
     private static LogEntry ExpectedTransferLog(Address sender, Address recipient, UInt256 value) =>
         new(TransferLog.Sender, value.ToBigEndian(), [TransferLog.TransferSignature, sender.ToHash().ToHash256(), recipient.ToHash().ToHash256()]);
