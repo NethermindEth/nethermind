@@ -72,17 +72,14 @@ public class ArenaReclaimPunchHoleTests
         reservationB.Dispose();
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void BlobFrontierReset_PunchesHole_ForOrphanedRange_WhenEnabled(bool punchHoleOnReclaim)
+    [Test]
+    public void BlobFrontierReset_TruncatesFile_ForOrphanedRange()
     {
-        if (!OperatingSystem.IsLinux()) Assert.Ignore("fallocate punch-hole is Linux-only");
         const int rlpSize = 4096;
         const int rlpCount = 64;
         string blobDir = Path.Combine(_testDir, "blob");
 
-        using BlobArenaManager blobs = new(blobDir, 8L * 1024 * 1024,
-            PersistedSnapshotTier.Persisted, punchHoleOnReclaim: punchHoleOnReclaim);
+        using BlobArenaManager blobs = new(blobDir, 8L * 1024 * 1024, PersistedSnapshotTier.Persisted);
 
         ushort blobId;
         using (BlobArenaWriter writer = blobs.CreateWriter(rlpSize * rlpCount))
@@ -98,23 +95,17 @@ public class ArenaReclaimPunchHoleTests
         }
 
         string blobPath = Directory.GetFiles(blobDir).Single();
-        Fsync(blobPath);
-        long blocksBefore = StatBlocks(blobPath);
-        blocksBefore.Should().BeGreaterThan(0, "the written blobs should occupy real disk blocks");
+        long lengthBefore = new FileInfo(blobPath).Length;
+        lengthBefore.Should().BeGreaterThan(0, "the writer's appends should have grown the file");
 
-        // The writer's lease is gone, so the file is orphaned — frontier reset recycles it.
+        // The writer's lease is gone, so the file is orphaned — frontier reset recycles it
+        // by truncating the file back to length 0 (frees disk blocks + zeros logical length
+        // in one syscall, eliminating the sparse-tail mismatch the old punch-hole path left).
         BlobArenaFile file = blobs.GetFile(blobId);
         blobs.TryResetOrphanedFrontier(file);
-        file.Frontier.Should().Be(0, "frontier reset runs regardless of punch-hole support");
 
-        if (punchHoleOnReclaim && !blobs.PunchHoleSupported)
-            Assert.Ignore("filesystem does not support fallocate punch-hole");
-
-        long blocksAfter = StatBlocks(blobPath);
-        if (punchHoleOnReclaim)
-            blocksAfter.Should().BeLessThan(blocksBefore, "frontier reset should punch-hole the orphaned range");
-        else
-            blocksAfter.Should().Be(blocksBefore, "punch-hole is disabled");
+        file.Frontier.Should().Be(0, "in-memory frontier reset");
+        new FileInfo(blobPath).Length.Should().Be(0, "on-disk file truncated by frontier reset");
     }
 
     private static (SnapshotLocation, ArenaReservation) WriteReservation(ArenaManager manager, int size)

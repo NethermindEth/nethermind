@@ -179,8 +179,21 @@ public class LongFinalityIntegrationTests
         string blobDir = Path.Combine(_testDir, "blobs", "small");
         Assert.That(Directory.GetFiles(arenaDir, "arena_*.bin"), Is.Not.Empty,
             "arena files were deleted on Dispose — PersistOnShutdown flag did not propagate to ArenaFile");
-        Assert.That(Directory.GetFiles(blobDir, "blob_*.bin"), Is.Not.Empty,
+        string[] blobFiles = Directory.GetFiles(blobDir, "blob_*.bin");
+        Assert.That(blobFiles, Is.Not.Empty,
             "blob files were deleted on Dispose — PersistOnShutdown flag did not propagate to BlobArenaFile");
+        // No pre-extension: blob length tracks the actual data extent. If we ever drift
+        // back into pre-extending or punch-zero-on-shutdown, a preserve-flagged file ends
+        // up with length 0 (truncated) or length MaxSize (pre-extended sparse) — neither
+        // matches the snapshot's written extent. Either symptom would be caught here.
+        foreach (string blobFile in blobFiles)
+        {
+            long len = new FileInfo(blobFile).Length;
+            Assert.That(len, Is.GreaterThan(0),
+                $"{blobFile} truncated on Dispose — preserve flag did not protect a referenced blob");
+            Assert.That(len, Is.LessThanOrEqualTo(1024 * 1024),
+                $"{blobFile} length {len} > 1 MiB cap — pre-extension regressed");
+        }
 
         // Session 2: reload and verify
         using (ArenaManager smallArena2 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))

@@ -67,10 +67,10 @@ public sealed class BlobArenaFile : RefCountingDisposable
         Path = path;
         MaxSize = maxSize;
         Handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
-        // Pre-extend file to MaxSize if smaller (sparse on Linux via ftruncate). Subsequent
-        // appends never have to grow the file.
-        if (RandomAccess.GetLength(Handle) < maxSize)
-            RandomAccess.SetLength(Handle, maxSize);
+        // File length tracks actual data extent — FileStream.Write auto-extends on demand,
+        // so we skip the pre-extension ftruncate. Keeping length == Frontier makes
+        // BlobArenaManager.Initialize's frontier restore accurate (no sparse-tail surprise)
+        // and lets restored files re-enter the packing pool when they still have headroom.
         Frontier = frontier;
         ReportedFrontier = frontier;
         Metrics.BlobFileCountByTier.AddOrUpdate(tier, 1L, static (_, c) => c + 1);
@@ -159,13 +159,13 @@ public sealed class BlobArenaFile : RefCountingDisposable
         PosixReclaim.FadviseWillNeed((int)Handle.DangerousGetHandle(), offset, size);
 
     /// <summary>
-    /// <c>fallocate(PUNCH_HOLE | KEEP_SIZE)</c> over <c>[offset, offset + size)</c>,
-    /// freeing the underlying disk blocks of an orphaned range without changing the
-    /// pre-extended sparse file length.
+    /// <c>ftruncate</c> the underlying file to <paramref name="newSize"/>. Used by
+    /// <see cref="BlobArenaManager.TryResetOrphanedFrontier"/> with <paramref name="newSize"/> = 0
+    /// to reclaim an orphaned file: zeros the logical length AND frees all disk blocks in
+    /// a single syscall. The page cache for the truncated range is implicitly invalidated.
     /// </summary>
-    /// <returns>The <see cref="PunchHoleOutcome"/> reported by the kernel.</returns>
-    internal PunchHoleOutcome PunchHole(long offset, long size) =>
-        PosixReclaim.TryPunchHole((int)Handle.DangerousGetHandle(), offset, size);
+    internal void SetFileLength(long newSize) =>
+        RandomAccess.SetLength(Handle, newSize);
 
     protected override void CleanUp()
     {

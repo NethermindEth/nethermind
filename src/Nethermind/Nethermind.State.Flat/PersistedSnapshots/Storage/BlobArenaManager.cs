@@ -41,7 +41,6 @@ public sealed class BlobArenaManager : IBlobArenaManager
     private readonly string _basePath;
     private readonly long _maxFileSize;
     private readonly PersistedSnapshotTier _tier;
-    private readonly bool _punchHoleOnReclaim;
     private readonly Lock _lock = new();
     // Indexed by blob arena id. Null slot = no file. Reads (TryLeaseFile lookup) are
     // unlocked — reference-slot reads are atomic in the CLR memory model. Slot mutations
@@ -53,33 +52,21 @@ public sealed class BlobArenaManager : IBlobArenaManager
     private readonly HashSet<ushort> _mutableFiles = [];
     private int _nextFileId;
     private bool _disposed;
-    // 1 while fallocate(PUNCH_HOLE) is usable on the blob filesystem; latched to 0 the
-    // first time the kernel reports it permanently unsupported.
-    private int _punchHoleSupported = 1;
 
     /// <summary>
     /// Construct a blob arena manager rooted at <paramref name="basePath"/> with a per-file
     /// size cap of <paramref name="maxFileSize"/>. <paramref name="tier"/> is the
     /// pool-tier label (small / large); passed through to every <see cref="BlobArenaFile"/>
     /// for its <see cref="Metrics.BlobFileCountByTier"/> / <see cref="Metrics.BlobAllocatedBytesByTier"/>
-    /// contributions. When <paramref name="punchHoleOnReclaim"/> is set, an orphaned file's
-    /// frontier reset also <c>fallocate(PUNCH_HOLE)</c>s the reclaimed range to free disk blocks.
+    /// contributions.
     /// </summary>
-    public BlobArenaManager(string basePath, long maxFileSize, PersistedSnapshotTier tier, bool punchHoleOnReclaim = true)
+    public BlobArenaManager(string basePath, long maxFileSize, PersistedSnapshotTier tier)
     {
         _basePath = basePath;
         _maxFileSize = maxFileSize;
         _tier = tier;
-        _punchHoleOnReclaim = punchHoleOnReclaim;
-        Metrics.PersistedSnapshotPunchHoleEnabledByTier[_tier] = punchHoleOnReclaim ? 1L : 0L;
         Directory.CreateDirectory(basePath);
     }
-
-    /// <summary>
-    /// Whether the adaptive punch-hole support flag is still set — i.e. no
-    /// filesystem-unsupported error has been seen. Independent of the operator config flag.
-    /// </summary>
-    internal bool PunchHoleSupported => Volatile.Read(ref _punchHoleSupported) == 1;
 
     /// <summary>
     /// Rehydrate the file pool from on-disk file lengths. Must be called before any
@@ -296,21 +283,10 @@ public sealed class BlobArenaManager : IBlobArenaManager
 
             // Reclaim the orphaned [0, prev) range while still under _lock — a racing
             // CreateWriter would otherwise lease this file and append at offset 0, and a
-            // punch-hole over a range that now holds fresh data would corrupt it.
-            bool punched = false;
-            if (_punchHoleOnReclaim && Volatile.Read(ref _punchHoleSupported) == 1)
-            {
-                PunchHoleOutcome outcome = file.PunchHole(0, prev);
-                if (outcome == PunchHoleOutcome.Unsupported)
-                {
-                    Volatile.Write(ref _punchHoleSupported, 0);
-                    Metrics.PersistedSnapshotPunchHoleEnabledByTier[_tier] = 0L;
-                }
-                punched = outcome == PunchHoleOutcome.Done;
-            }
-            // A successful punch already invalidated the page cache; fadvise only otherwise.
-            if (!punched)
-                file.FadviseDontNeed(0, prev);
+            // truncate over a range that now holds fresh data would corrupt it. ftruncate
+            // zeros the logical length AND frees all disk blocks in a single syscall;
+            // the page cache for the truncated range is implicitly invalidated.
+            file.SetFileLength(0);
 
             file.Frontier = 0;
             file.ReportedFrontier = 0;
