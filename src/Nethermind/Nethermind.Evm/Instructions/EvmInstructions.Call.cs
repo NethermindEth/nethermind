@@ -267,12 +267,19 @@ public static partial class EvmInstructions
             EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             if (pushResult != EvmExceptionType.None) return pushResult;
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            if (hasValueTransfer)
+            // Self-call (always true for CALLCODE; runtime for CALL/STATICCALL when target == executing account):
+            // the +/- value balance ops cancel and target is the currently-executing account (alive),
+            // so skip both writes. AddTransferLog already no-ops when from == to.
+            bool isSelfCall = caller == target;
+            if (!isSelfCall)
             {
-                state.SubtractFromBalance(caller, in callValue, spec);
-                vm.AddTransferLog<TEip7708>(caller, target, in callValue);
+                if (hasValueTransfer)
+                {
+                    state.SubtractFromBalance(caller, in callValue, spec);
+                    vm.AddTransferLog<TEip7708>(caller, target, in callValue);
+                }
+                state.AddToBalanceAndCreateIfNotExists(target, in hasValueTransfer ? ref callValue : ref UInt256.Zero, spec);
             }
-            state.AddToBalanceAndCreateIfNotExists(target, in hasValueTransfer ? ref callValue : ref UInt256.Zero, spec);
             Metrics.IncrementEmptyCalls();
             vm.ReturnData = null;
             return EvmExceptionType.None;
