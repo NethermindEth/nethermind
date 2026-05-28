@@ -1,0 +1,162 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using FluentAssertions;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
+using Nethermind.Trie.Sparse;
+using NUnit.Framework;
+
+namespace Nethermind.State.Flat.Test;
+
+/// <summary>
+/// Replays the 30 USDT slot updates that EXPB diagnostic captured as the first
+/// SPARSE STORAGE DIVERGENCE at block 22360025. We can't reproduce USDT's actual
+/// pre-block storage trie (it's millions of slots, requires mainnet snapshot), so
+/// this test runs the SAME 30 updates over a smaller synthesized starting state.
+/// If sparse and Patricia diverge here, the bug is in per-update logic and
+/// independent of cross-block state. If they match, the bug is cross-block.
+/// </summary>
+[TestFixture]
+public class SparseStorageDivergenceRepro
+{
+    // The 30 (slot, RLP-encoded value) pairs from EXPB run 26570166376.
+    // Values are the raw EVM bytes (before RLP encoding) as captured by the diagnostic.
+    private static readonly (UInt256 Slot, byte[] Value)[] UsdtUpdates =
+    [
+        (UInt256.Parse("24880548784460413565206321680149210674606117156704960678793268570165181055087"), Hex("0329CF7BE9")),
+        (UInt256.Parse("66432190378958698982748037416721501974597557166684390034768808040963035027597"), Hex("0C8BC4EE")),
+        (UInt256.Parse("54154433725855040597599936947229818939870848354138472930450730341202592042273"), Hex("053D")),
+        (UInt256.Parse("4666533536884160153875929683164264545496940896313765415127204256547137608608"),  Hex("1823CF40")),
+        (UInt256.Parse("54594398242127256168020648300364834754716832664957855491444373544627111999200"), Hex("01969848779E40")),
+        (UInt256.Parse("1662939945458848929411175874323755463499963766534011902216711725837592650886"),  Hex("076ADF84")),
+        (UInt256.Parse("8499339460709621932889829196415158328360717834089808628411183687464756841615"),  Hex("00")),
+        (UInt256.Parse("100774577740991836489658534584707137339969436236139302717070667277057599548896"), Hex("0360ABDA19")),
+        (UInt256.Parse("19735292588665622305008754747059467024430479447062626962922891164172414854753"), Hex("3B31E5822A")),
+        (UInt256.Parse("93814260588281390960302870827067378211479301260448654608214190735670554499530"), Hex("05F5E100")),
+        (UInt256.Parse("55409083425362913209108532393300178189024666377709523372236103604766776847546"), Hex("8645A321")),
+        (UInt256.Parse("57846480528666089346974600914302275919821987969527313588706040524224246015222"), Hex("7BC8EC86")),
+        (UInt256.Parse("105337562284535177966825304364387370391387040418577676007829002128637852364997"), Hex("0BB3B78A")),
+        (UInt256.Parse("42962703007025507023510264055053811505298033430706698263988402499465482156817"), Hex("013DB16A")),
+        (UInt256.Parse("87579920088409577074406663302538657763608640898557545177575394890769848170162"), Hex("00")),
+        (UInt256.Parse("56451175213482809652738306103676735064013360338888027008133385773800954823816"), Hex("148625A29F")),
+        (UInt256.Parse("94277138448614721016297393966151823589806760432022851576542795816519921569149"), Hex("0171E884744B")),
+        (UInt256.Parse("100303017462220927203868629009148936612233804024508206812851136365061248367786"), Hex("3F528860A8")),
+        (UInt256.Parse("58503166935794899529373963234700026353561458556759469400570547766664673378107"), Hex("0D30D8F486CF")),
+        (UInt256.Parse("36140762719286893666201324923555612530141957914271939314731304696457654811039"), Hex("94FFE5C7")),
+        (UInt256.Parse("66843475070601742227602128142808079298401838240208997658875598553070686940591"), Hex("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")),
+        (UInt256.Parse("39181872723613962231511786708157826484188080027633173665573010479360799163725"), Hex("07646520")),
+        (UInt256.Parse("104256474729522689243594716596841574846249156829713318065379945043478392608047"), Hex("8770A414")),
+        (UInt256.Parse("107476074695659601222706739085925993614568767376902281265617278208461174207115"), Hex("02160EC0")),
+        (UInt256.Parse("51348809623707519075011937304197130709056269973978573069147643724076641194635"), Hex("022F8DD454")),
+        (UInt256.Parse("26228100754620744046455276488116329195166822774550435633500677963289136681753"), Hex("47868C00")),
+        (UInt256.Parse("77999172037640322263057202549010655824995975032059979209149790050149853960815"), Hex("21954220E798")),
+        (UInt256.Parse("48690225930399837206938694953279783125702183599771526886819732034475729020329"), Hex("2934A8")),
+        (UInt256.Parse("10872891300812054119806826129947410490614213788581151901982359718877908605826"), Hex("025EBDCE678D")),
+        (UInt256.Parse("3477570045879978665933245088824668321381518639899723696854491909589541332791"),  Hex("1164AF1C")),
+    ];
+
+    private static byte[] Hex(string h) => Convert.FromHexString(h);
+
+    /// <summary>
+    /// Build a small Patricia storage trie, apply the 30 USDT updates via both
+    /// Patricia and sparse (with proof-driven reveal), assert the resulting roots match.
+    /// This isolates "per-update logic" vs "cross-block state accumulation".
+    /// </summary>
+    [Test]
+    public void Replay_Usdt30Updates_AgainstSyntheticStartingState_RootsMustMatch()
+    {
+        MemDb db = new();
+        Hash256 accountPathHash = TestItem.AddressA.ToAccountPath.ToHash256();
+        StorageTree storage = new(new RawTrieStore(db).GetTrieStore(accountPathHash), LimboLogs.Instance);
+
+        // Seed with a few slots so the trie isn't trivial.
+        Random rng = new(7);
+        for (int i = 0; i < 30; i++)
+        {
+            UInt256 seedSlot = new(BitConverter.ToUInt64(SeededBytes(rng, 8)), 0, 0, 0);
+            byte[] seedValue = SeededBytes(rng, 4);
+            storage.Set(seedSlot, seedValue);
+        }
+        storage.UpdateRootHash();
+        storage.Commit();
+        Hash256 seedRoot = storage.RootHash;
+
+        // Apply the 30 USDT updates via Patricia
+        foreach ((UInt256 slot, byte[] value) in UsdtUpdates)
+            storage.Set(slot, value);
+        storage.UpdateRootHash();
+        storage.Commit();
+        Hash256 patriciaPostRoot = storage.RootHash;
+
+        // Now apply same via sparse
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        using SparsePatriciaTree sparse = new();
+
+        // Reveal initial proof for the first update target so the sparse trie has a starting
+        // shape; subsequent reveal-update-retry iterations fill in the rest.
+        ValueHash256 firstKeyBuf = default;
+        StorageTree.ComputeKeyWithLookup(UsdtUpdates[0].Slot, ref firstKeyBuf);
+        Hash256 firstTargetHash = firstKeyBuf.ToCommitment();
+        DecodedMultiProof seedProof = MultiProofReader.ReadStorageProofs(
+            reader, accountPathHash, seedRoot, [firstTargetHash]);
+        if (seedProof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? seedNodes))
+            sparse.RevealNodes(seedNodes);
+
+        Dictionary<Hash256, LeafUpdate> updates = [];
+        ValueHash256 keyBuf = default;
+        foreach ((UInt256 slot, byte[] value) in UsdtUpdates)
+        {
+            StorageTree.ComputeKeyWithLookup(slot, ref keyBuf);
+            Hash256 slotHash = keyBuf.ToCommitment();
+
+            if (value.AsSpan().IndexOfAnyExcept((byte)0) < 0)
+            {
+                updates[slotHash] = LeafUpdate.Deleted();
+            }
+            else
+            {
+                Rlp rlpEncoded = Rlp.Encode(value);
+                byte[]? encoded = rlpEncoded?.Bytes;
+                updates[slotHash] = encoded is null || encoded.Length == 0
+                    ? LeafUpdate.Deleted()
+                    : LeafUpdate.Changed(encoded);
+            }
+        }
+
+        // Reveal + update + retry loop (mirrors SparseRootComputer.ComputeStorageRoot)
+        const int maxRetries = 10;
+        for (int retry = 0; retry < maxRetries; retry++)
+        {
+            List<Hash256> targets = [];
+            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key));
+            if (targets.Count == 0) break;
+
+            DecodedMultiProof proof = MultiProofReader.ReadStorageProofs(
+                reader, accountPathHash, seedRoot, targets.ToArray());
+            if (proof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? nodes))
+                sparse.RevealNodes(nodes);
+        }
+
+        Hash256 sparseRoot = sparse.ComputeRoot();
+        sparseRoot.Should().Be(patriciaPostRoot,
+            $"Sparse storage root must match Patricia for the 30 USDT updates. " +
+            $"Patricia={patriciaPostRoot}, Sparse={sparseRoot}");
+    }
+
+    private static byte[] SeededBytes(Random rng, int len)
+    {
+        byte[] b = new byte[len];
+        rng.NextBytes(b);
+        return b;
+    }
+}

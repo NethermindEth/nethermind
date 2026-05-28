@@ -289,6 +289,23 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 return;
             }
 
+            // Cross-block state corruption check: BEFORE applying this block's updates, the
+            // sparse storage trie's current root must equal _previousStorageRoot. If it doesn't,
+            // some prior block left the in-memory trie in a state inconsistent with what was
+            // persisted / what the account RLP says — pointing the bug at cross-block reuse,
+            // not at this block's compute.
+            if (_storageTree._config.SparseTrieShadowStorageCompare && !_hasSelfDestruct)
+            {
+                Hash256 trieCurrentRoot = _sparseRootComputer.Trie.ComputeStorageRoot(_storageTree._addressHash);
+                if (trieCurrentRoot != _previousStorageRoot)
+                {
+                    ILogger logger = _storageTree._scope._logManager.GetClassLogger<SparseStorageWriteBatch>();
+                    if (logger.IsWarn) logger.Warn(
+                        $"SPARSE STORAGE CROSS-BLOCK STATE DRIFT! Address={_storageTree._address}, " +
+                        $"ExpectedPrevRoot={_previousStorageRoot}, SparseInMemoryRoot={trieCurrentRoot}");
+                }
+            }
+
             _sparseRootComputer.AddStorageChanges(_storageTree._addressHash, effectivePrevRoot, _slotUpdates);
             Hash256 newRoot = _sparseRootComputer.ComputeStorageRoot(_storageTree._addressHash);
 
