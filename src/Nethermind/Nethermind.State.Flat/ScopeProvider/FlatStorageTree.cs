@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -209,6 +210,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         private readonly Action<Address, Hash256> _onRootUpdated = onRootUpdated;
         private readonly Hash256 _previousStorageRoot = storageTree._tree.RootHash;
         private readonly Dictionary<Hash256, LeafUpdate> _slotUpdates = new(estimatedEntries);
+        // Diagnostic: capture raw (slot, value) pairs to drive a parallel Patricia
+        // computation when SparseTrieShadowStorageCompare is on.
+        private readonly List<(UInt256 Index, byte[] Value)>? _rawUpdates
+            = storageTree._config.SparseTrieShadowStorageCompare ? new(estimatedEntries) : null;
         private bool _hasSelfDestruct;
         private bool _wasSetCalled;
 
@@ -244,6 +249,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
             // Keep the SnapshotBundle in sync for storage READS during this block.
             _storageTree.Set(index, value!);
+
+            _rawUpdates?.Add((index, value));
         }
 
         public void Clear()
@@ -285,6 +292,15 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             _sparseRootComputer.AddStorageChanges(_storageTree._addressHash, effectivePrevRoot, _slotUpdates);
             Hash256 newRoot = _sparseRootComputer.ComputeStorageRoot(_storageTree._addressHash);
 
+            // Diagnostic shadow comparison: drive Patricia with the same raw inputs and
+            // log the first divergence. Patricia tree is still at the pre-block state
+            // (we skip BulkSet in authoritative-storage mode), so we can mutate it safely
+            // here purely for diagnostic purposes.
+            if (_rawUpdates is not null)
+            {
+                ShadowComparePatricia(newRoot);
+            }
+
             // Keep FlatStorageTree.RootHash in sync so subsequent same-block reads via Get
             // (and the eventual account encoding) see the post-batch root.
             // Use SetRootHash(false) to skip RootRef re-lookup. The property setter calls
@@ -294,6 +310,51 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             // unused so we don't need to keep it in sync.
             _storageTree._tree.SetRootHash(newRoot, resetObjects: false);
             _onRootUpdated(_storageTree._address, newRoot);
+        }
+
+        private void ShadowComparePatricia(Hash256 sparseRoot)
+        {
+            try
+            {
+                // Reset Patricia tree to the pre-block state. SetRootHash(false) is safe
+                // (no DB lookup), then BulkSet applies the raw updates.
+                _storageTree._tree.SetRootHash(_previousStorageRoot, resetObjects: false);
+
+                ArrayPoolList<PatriciaTree.BulkSetEntry> bulkEntries = new(_rawUpdates!.Count);
+                ValueHash256 keyBuf = default;
+                foreach ((UInt256 index, byte[] value) in _rawUpdates)
+                {
+                    StorageTree.ComputeKeyWithLookup(index, ref keyBuf);
+                    bulkEntries.Add(StorageTree.CreateBulkSetEntry(keyBuf, value));
+                }
+
+                if (_hasSelfDestruct)
+                {
+                    _storageTree._tree.SetRootHash(Keccak.EmptyTreeHash, resetObjects: false);
+                }
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = bulkEntries.ToRef();
+                _storageTree._tree.BulkSet(asRef);
+                _storageTree._tree.UpdateRootHash(_rawUpdates.Count > 64);
+                Hash256 patriciaRoot = _storageTree._tree.RootHash;
+
+                if (patriciaRoot != sparseRoot)
+                {
+                    ILogger logger = _storageTree._scope._logManager.GetClassLogger<SparseStorageWriteBatch>();
+                    if (logger.IsWarn) logger.Warn(
+                        $"SPARSE STORAGE DIVERGENCE! Address={_storageTree._address}, " +
+                        $"AddressHash={_storageTree._addressHash}, PrevRoot={_previousStorageRoot}, " +
+                        $"SparseRoot={sparseRoot}, PatriciaRoot={patriciaRoot}, " +
+                        $"SlotCount={_rawUpdates.Count}, HasSelfDestruct={_hasSelfDestruct}");
+                }
+                bulkEntries.Dispose();
+            }
+            catch (Exception ex)
+            {
+                ILogger logger = _storageTree._scope._logManager.GetClassLogger<SparseStorageWriteBatch>();
+                if (logger.IsWarn) logger.Warn(
+                    $"Shadow Patricia comparison threw for address {_storageTree._address}: " +
+                    $"{ex.GetType().Name}: {ex.Message}");
+            }
         }
     }
 }

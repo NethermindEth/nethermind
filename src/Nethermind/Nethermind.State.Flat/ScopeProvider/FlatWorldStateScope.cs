@@ -22,7 +22,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
-    private readonly ILogManager _logManager;
+    internal readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
     private readonly PreservedSparseTrie? _preservedSparseTrie;
 
