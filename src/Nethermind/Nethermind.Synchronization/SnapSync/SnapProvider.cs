@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
@@ -101,14 +102,10 @@ namespace Nethermind.Synchronization.SnapSync
 
                     _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
                 }
-                catch (AggregateException ae) when (ae.Flatten().InnerExceptions.All(ie => ie is ObjectDisposedException))
+                catch (AggregateException ae) when (ae.Flatten() is { InnerExceptions: var inners }
+                    && inners.All(e => e is ObjectDisposedException))
                 {
-                    // PLINQ wraps ObjectDisposedException from `_codeDb.KeyExists` (when the
-                    // DB is being disposed during shutdown) in AggregateException. Re-throw
-                    // the bare form so the dispatcher's existing
-                    // `catch (ObjectDisposedException) → Info("Ignoring sync response as the
-                    // DB has already closed.")` handles it uniformly without a noisy ERROR.
-                    throw (ObjectDisposedException)ae.Flatten().InnerExceptions[0];
+                    ExceptionDispatchInfo.Capture(inners[0]).Throw();
                 }
 
                 ValueHash256 nextPath = accounts[^1].Path.IncrementPath();
