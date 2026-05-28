@@ -130,42 +130,63 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                         ReadOnlyAccountChanges ac = accountChanges[i];
                         Address address = ac.Address;
 
-                        StateTree privateStateTree = _scopeProvider.CreateStateTree();
-                        privateStateTree.RootHash = _backingStateTree.RootHash;
-
-                        Account? account;
-                        if (sink.StillNeeded(address, out Account? cached))
+                        // Swallow MissingTrieNodeException so a partially-synced trie can't blow up
+                        // the background warmup task; it'll fault the main read path normally instead.
+                        try
                         {
-                            account = privateStateTree.Get(address);
-                            sink.OnAccountRead(address, account);
-                        }
-                        else
-                        {
-                            account = cached;
-                        }
+                            StateTree privateStateTree = _scopeProvider.CreateStateTree();
+                            privateStateTree.RootHash = _backingStateTree.RootHash;
 
-                        if (account is null) return;
-                        Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
-                        if (storageRoot == Keccak.EmptyTreeHash) return;
+                            Account? account;
+                            if (sink.StillNeeded(address, out Account? cached))
+                            {
+                                account = privateStateTree.Get(address);
+                                sink.OnAccountRead(address, account);
+                            }
+                            else
+                            {
+                                account = cached;
+                            }
 
-                        ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
-                        UInt256[] storageReads = ac.StorageReads;
-                        if (storageChanges.Length + storageReads.Length == 0) return;
+                            if (account is null) return;
+                            Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                            if (storageRoot == Keccak.EmptyTreeHash) return;
 
-                        StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
-                        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
-                        {
-                            UInt256 key = slotChanges.Key;
-                            StorageCell cell = new(address, in key);
-                            if (!sink.StillNeeded(in cell)) continue;
-                            sink.OnStorageRead(in cell, storageTree.Get(in key));
+                            ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
+                            ReadOnlySpan<UInt256> reads = ac.StorageReads;
+                            if (changed.Length + reads.Length == 0) return;
+
+                            // Sorted-merge walk over (ChangedSlots, StorageReads) — both arrays are
+                            // ascending and disjoint, so one merged pass keeps adjacent trie paths
+                            // hot across consecutive Get calls.
+                            StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
+                            int slotIndex = 0;
+                            int readIndex = 0;
+                            while (slotIndex < changed.Length || readIndex < reads.Length)
+                            {
+                                UInt256 slot;
+                                if (readIndex >= reads.Length)
+                                {
+                                    slot = changed[slotIndex++];
+                                }
+                                else
+                                {
+                                    slot = reads[readIndex];
+                                    if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
+                                    {
+                                        slot = changed[slotIndex++];
+                                    }
+                                    else
+                                    {
+                                        readIndex++;
+                                    }
+                                }
+                                StorageCell cell = new(address, in slot);
+                                if (!sink.StillNeeded(in cell)) continue;
+                                sink.OnStorageRead(in cell, storageTree.Get(in slot));
+                            }
                         }
-                        foreach (UInt256 readKey in storageReads)
-                        {
-                            StorageCell cell = new(address, in readKey);
-                            if (!sink.StillNeeded(in cell)) continue;
-                            sink.OnStorageRead(in cell, storageTree.Get(in readKey));
-                        }
+                        catch (MissingTrieNodeException) { }
                     });
                 }
                 catch (OperationCanceledException) { }

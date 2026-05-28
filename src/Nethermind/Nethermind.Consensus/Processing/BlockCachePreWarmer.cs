@@ -384,11 +384,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     }
                 }
 
-                if (Bal is not null && Bal.AccountChanges.Count > 0)
-                {
-                    WarmupFromBal(parallelOptions, envPool);
-                }
-                else
+                // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
+                if (Bal is null)
                 {
                     WarmingState<Block> baseState = new(envPool, block, parent);
 
@@ -412,71 +409,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // Ignore, block completed cancel
             }
         }
-
-        private void WarmupFromBal(ParallelOptions parallelOptions, ObjectPool<IReadOnlyTxProcessorSource> envPool)
-        {
-            using ArrayPoolList<ReadOnlyAccountChanges> accounts = new(Bal!.AccountChanges.AsSpan());
-
-            WarmingState<ArrayPoolList<ReadOnlyAccountChanges>> baseState = new(envPool, accounts, parent);
-
-            ParallelUnbalancedWork.For(
-                0,
-                accounts.Count,
-                parallelOptions,
-                baseState.InitThreadState,
-                static (i, state) =>
-                {
-                    ReadOnlyAccountChanges ac = state.Payload[i];
-                    IWorldState worldState = state.Scope!.WorldState;
-
-                    WarmupBalAccount(ac, worldState);
-
-                    return state;
-                },
-                WarmingState<ArrayPoolList<ReadOnlyAccountChanges>>.FinallyAction);
-        }
-
-        private static void WarmupBalAccount(ReadOnlyAccountChanges ac, IWorldState worldState)
-        {
-            try
-            {
-                Address address = ac.Address;
-                worldState.WarmUp(address);
-
-                // Merge two sorted sequences (ChangedSlots, StorageReads) into one
-                // ascending pass for better trie path locality
-                ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
-                ReadOnlySpan<UInt256> reads = ac.StorageReads;
-                int slotIndex = 0;
-                int readIndex = 0;
-
-                while (slotIndex < changed.Length || readIndex < reads.Length)
-                {
-                    UInt256 slot;
-                    if (readIndex >= reads.Length)
-                    {
-                        slot = changed[slotIndex++];
-                    }
-                    else
-                    {
-                        slot = reads[readIndex];
-                        if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
-                        {
-                            slot = changed[slotIndex++];
-                        }
-                        else
-                        {
-                            readIndex++;
-                        }
-                    }
-                    worldState.Get(new StorageCell(address, slot));
-                }
-            }
-            catch (MissingTrieNodeException)
-            {
-            }
-        }
-
 
         private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
         {
