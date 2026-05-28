@@ -19,19 +19,22 @@ namespace Nethermind.Network.Discovery.Discv4;
 /// is to reach all node. The lookup is not parallelized as it is expected to be parallelized at a higher level with
 /// each worker having different target to look into.
 /// </summary>
-public class IteratorNodeLookup<TKey, TNode>(
-    IRoutingTable<TNode> routingTable,
+public class IteratorNodeLookup<TKey, TNode, TKadKey>(
+    IRoutingTable<TNode, TKadKey> routingTable,
     KademliaConfig<TNode> kademliaConfig,
     IKademliaMessageSender<TKey, TNode> msgSender,
-    IKeyOperator<TKey, TNode> keyOperator,
+    IKeyOperator<TKey, TNode, TKadKey> keyOperator,
+    IKademliaDistance<TKadKey> distance,
     ITimestamper timestamper,
-    ILogManager logManager) : IIteratorNodeLookup<TKey, TNode> where TNode : notnull
+    ILogManager logManager) : IIteratorNodeLookup<TKey, TNode>
+    where TNode : notnull
+    where TKadKey : notnull
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<IteratorNodeLookup<TKey, TNode>>();
-    private readonly KademliaHash _currentNodeIdAsHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
+    private readonly ILogger _logger = logManager.GetClassLogger<IteratorNodeLookup<TKey, TNode, TKadKey>>();
+    private readonly TKadKey _currentNodeIdAsHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
 
     // Small lru of unreachable nodes, prevent retrying. Pretty effective, although does not improve discovery overall.
-    private readonly LruCache<KademliaHash, DateTimeOffset> _unreachableNodes = new(256, "");
+    private readonly LruCache<TKadKey, DateTimeOffset> _unreachableNodes = new(256, "");
 
     // The maximum round per lookup. Higher means that it will 'see' deeper into the network, but come at a latency
     // cost of trying many node for increasingly lower new node.
@@ -41,51 +44,53 @@ public class IteratorNodeLookup<TKey, TNode>(
     private const int MaxNonProgressingRound = 3;
     private const int MinResult = 128;
 
-    private bool SameAsSelf(TNode node) => keyOperator.GetNodeHash(node) == _currentNodeIdAsHash;
+    private bool SameAsSelf(TNode node) => EqualityComparer<TKadKey>.Default.Equals(keyOperator.GetNodeHash(node), _currentNodeIdAsHash);
 
     public async IAsyncEnumerable<TNode> Lookup(TKey target, [EnumeratorCancellation] CancellationToken token)
     {
-        KademliaHash targetHash = keyOperator.GetKeyHash(target);
+        TKadKey targetHash = keyOperator.GetKeyHash(target);
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
         using AutoCancelTokenSource cts = token.CreateChildTokenSource();
         token = cts.Token;
 
-        ConcurrentDictionary<KademliaHash, TNode> queried = new();
-        ConcurrentDictionary<KademliaHash, TNode> seen = new();
+        ConcurrentDictionary<TKadKey, TNode> queried = new();
+        ConcurrentDictionary<TKadKey, TNode> seen = new();
 
-        IComparer<KademliaHash> comparer = Comparer<KademliaHash>.Create((h1, h2) =>
-            Hash256XorUtils.Compare(h1, h2, targetHash));
+        IComparer<TKadKey> comparer = Comparer<TKadKey>.Create((h1, h2) =>
+            distance.Compare(h1, h2, targetHash));
 
         // Ordered by lowest distance. Will get popped for next round.
-        PriorityQueue<(KademliaHash, TNode), KademliaHash> queryQueue = new(comparer);
+        PriorityQueue<(TKadKey, TNode), TKadKey> queryQueue = new(comparer);
 
         // Used to determine if the worker should stop
-        KademliaHash bestNodeId = KademliaHash.Zero;
+        TKadKey bestNodeId = distance.Zero;
+        bool hasBestNodeId = false;
         int closestNodeRound = 0;
         int currentRound = 0;
         int totalResult = 0;
 
         // Check internal table first
-        foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash, null))
+        foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash))
         {
-            KademliaHash nodeHash = keyOperator.GetNodeHash(node);
+            TKadKey nodeHash = keyOperator.GetNodeHash(node);
             seen.TryAdd(nodeHash, node);
 
             queryQueue.Enqueue((nodeHash, node), nodeHash);
 
             yield return node;
 
-            if (bestNodeId == KademliaHash.Zero || comparer.Compare(nodeHash, bestNodeId) < 0)
+            if (!hasBestNodeId || comparer.Compare(nodeHash, bestNodeId) < 0)
             {
                 bestNodeId = nodeHash;
+                hasBestNodeId = true;
             }
         }
 
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            if (!queryQueue.TryDequeue(out (KademliaHash hash, TNode node) toQuery, out KademliaHash hash256))
+            if (!queryQueue.TryDequeue(out (TKadKey hash, TNode node) toQuery, out _))
             {
                 // No node to query and running query.
                 if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
@@ -108,7 +113,7 @@ public class IteratorNodeLookup<TKey, TNode>(
             int seenIgnored = 0;
             foreach (TNode neighbour in neighbours!)
             {
-                KademliaHash neighbourHash = keyOperator.GetNodeHash(neighbour);
+                TKadKey neighbourHash = keyOperator.GetNodeHash(neighbour);
 
                 // Already queried, we ignore
                 if (queried.ContainsKey(neighbourHash))

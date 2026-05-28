@@ -9,6 +9,7 @@ using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -186,6 +187,7 @@ public class Discv5KademliaAdapterTests
         null!,
         new DiscoveryConfig(),
         new CryptoRandom(),
+        Hash256KademliaDistance.Instance,
         LimboLogs.Instance);
 
     private static Node CreateNode(PublicKey publicKey, int hostSuffix) =>
@@ -206,9 +208,7 @@ public class Discv5KademliaAdapterTests
     private static Discv5KademliaAdapter.NodesResponseHandler CreateNodesResponseHandler(Node receiver, NodeRecord record)
     {
         PublicKey nodeId = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)!.Decompress();
-        int distance = Hash256XorUtils.CalculateLogDistance(
-            KademliaHash.FromBytes(receiver.Id.Hash.Bytes),
-            KademliaHash.FromBytes(nodeId.Hash.Bytes));
-        return new Discv5KademliaAdapter.NodesResponseHandler(receiver, [distance]);
+        int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(receiver.Id.Hash, nodeId.Hash);
+        return new Discv5KademliaAdapter.NodesResponseHandler(receiver, [distance], Hash256KademliaDistance.Instance);
     }
 }

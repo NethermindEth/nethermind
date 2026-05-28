@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core.Threading;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NonBlocking;
 
 namespace Nethermind.Kademlia;
@@ -16,47 +16,53 @@ namespace Nethermind.Kademlia;
 /// earlier as it converge to the content faster, but take more query for findnodes due to a more strict stop
 /// condition.
 /// </summary>
-public class LookupKNearestNeighbour<TKey, TNode>(
-    IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TNode> nodeHashProvider,
+public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
+    IRoutingTable<TNode, TKadKey> routingTable,
+    INodeHashProvider<TNode, TKadKey> nodeHashProvider,
+    IKademliaDistance<TKadKey> distance,
     INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILogManager logManager) : ILookupAlgo<TNode> where TNode : notnull
+    ILoggerFactory? loggerFactory = null) : ILookupAlgo<TNode, TKadKey>
+    where TNode : notnull
+    where TKadKey : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimeout;
-    private readonly ILogger _logger = logManager.GetClassLogger<LookupKNearestNeighbour<TKey, TNode>>();
+    private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<LookupKNearestNeighbour<TKey, TNode, TKadKey>>();
 
     public async Task<TNode[]> Lookup(
-        KademliaHash targetHash,
+        TKadKey targetHash,
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     )
     {
-        if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("Initiate lookup for hash {TargetHash}", targetHash);
+        }
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
 
-        ConcurrentDictionary<KademliaHash, TNode> queried = new();
-        ConcurrentDictionary<KademliaHash, TNode> seen = new();
+        ConcurrentDictionary<TKadKey, TNode> queried = new();
+        ConcurrentDictionary<TKadKey, TNode> seen = new();
 
-        IComparer<KademliaHash> comparer = Comparer<KademliaHash>.Create((h1, h2) =>
-            Hash256XorUtils.Compare(h1, h2, targetHash));
-        IComparer<KademliaHash> comparerReverse = Comparer<KademliaHash>.Create((h1, h2) =>
-            Hash256XorUtils.Compare(h2, h1, targetHash));
+        IComparer<TKadKey> comparer = Comparer<TKadKey>.Create((h1, h2) =>
+            distance.Compare(h1, h2, targetHash));
+        IComparer<TKadKey> comparerReverse = Comparer<TKadKey>.Create((h1, h2) =>
+            distance.Compare(h2, h1, targetHash));
 
-        McsLock queueLock = new();
+        object queueLock = new();
 
         // Ordered by lowest distance. Will get popped for next round.
-        PriorityQueue<(KademliaHash, TNode), KademliaHash> bestSeen = new(comparer);
+        PriorityQueue<(TKadKey, TNode), TKadKey> bestSeen = new(comparer);
 
         // Ordered by highest distance. Added on result. Get popped as result.
-        PriorityQueue<(KademliaHash, TNode), KademliaHash> finalResult = new(comparerReverse);
+        PriorityQueue<(TKadKey, TNode), TKadKey> finalResult = new(comparerReverse);
 
-        foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash, default))
+        foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash))
         {
-            KademliaHash nodeHash = nodeHashProvider.GetHash(node);
+            TKadKey nodeHash = nodeHashProvider.GetHash(node);
             seen.TryAdd(nodeHash, node);
             bestSeen.Enqueue((nodeHash, node), nodeHash);
         }
@@ -72,7 +78,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
             while (!Volatile.Read(ref finished))
             {
                 token.ThrowIfCancellationRequested();
-                if (!TryGetNodeToQuery(out (KademliaHash hash, TNode node)? toQuery))
+                if (!TryGetNodeToQuery(out (TKadKey hash, TNode node)? toQuery))
                 {
                     if (queryingTask > 0)
                     {
@@ -82,7 +88,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
                     }
 
                     // No node to query and running query.
-                    if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
+                    if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Stopping lookup. No node to query.");
                     break;
                 }
 
@@ -90,7 +96,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
                 {
                     if (ShouldStopDueToNoBetterResult(out int round))
                     {
-                        if (_logger.IsTrace) _logger.Trace("Stopping lookup. No better result.");
+                        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Stopping lookup. No better result.");
                         break;
                     }
 
@@ -156,64 +162,66 @@ public class LookupKNearestNeighbour<TKey, TNode>(
             catch (Exception e)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                if (_logger.IsWarn) _logger.Warn($"Find neighbour op failed. {e}");
-                if (_logger.IsDebug) _logger.Debug($"Find neighbour op failed. {e}");
+                _logger.LogWarning(e, "Find neighbour op failed.");
                 return (node, null);
             }
         }
 
-        bool TryGetNodeToQuery([NotNullWhen(true)] out (KademliaHash, TNode)? toQuery)
+        bool TryGetNodeToQuery([NotNullWhen(true)] out (TKadKey, TNode)? toQuery)
         {
-            using McsLock.Disposable _ = queueLock.Acquire();
-            if (bestSeen.Count == 0)
+            lock (queueLock)
             {
-                toQuery = default;
-                // No more node to query.
-                // Note: its possible that there are other worker currently which may add to bestSeen.
-                return false;
-            }
+                if (bestSeen.Count == 0)
+                {
+                    toQuery = default;
+                    // No more node to query.
+                    // Note: its possible that there are other worker currently which may add to bestSeen.
+                    return false;
+                }
 
-            Interlocked.Increment(ref queryingTask);
-            toQuery = bestSeen.Dequeue();
-            return true;
+                Interlocked.Increment(ref queryingTask);
+                toQuery = bestSeen.Dequeue();
+                return true;
+            }
         }
 
-        void ProcessResult(KademliaHash hash, TNode toQuery, (TNode, TNode[]? neighbours)? valueTuple, int round)
+        void ProcessResult(TKadKey hash, TNode toQuery, (TNode, TNode[]? neighbours)? valueTuple, int round)
         {
-            using McsLock.Disposable _ = queueLock.Acquire();
-
-            finalResult.Enqueue((hash, toQuery), hash);
-            while (finalResult.Count > k)
+            lock (queueLock)
             {
-                finalResult.Dequeue();
-            }
-
-            TNode[]? neighbours = valueTuple?.neighbours;
-            if (neighbours == null) return;
-
-            foreach (TNode neighbour in neighbours)
-            {
-                KademliaHash neighbourHash = nodeHashProvider.GetHash(neighbour);
-
-                // Already queried, we ignore
-                if (queried.ContainsKey(neighbourHash)) continue;
-
-                // When seen already dont record
-                if (!seen.TryAdd(neighbourHash, neighbour)) continue;
-
-                bestSeen.Enqueue((neighbourHash, neighbour), neighbourHash);
-
-                if (closestNodeRound < round)
+                finalResult.Enqueue((hash, toQuery), hash);
+                while (finalResult.Count > k)
                 {
-                    if (finalResult.Count < k)
-                    {
-                        closestNodeRound = round;
-                    }
+                    finalResult.Dequeue();
+                }
 
-                    // If the worst item in final result is worst that this neighbour, update closes node round
-                    if (finalResult.TryPeek(out (KademliaHash hash, TNode node) worstResult, out KademliaHash _) && comparer.Compare(neighbourHash, worstResult.hash) < 0)
+                TNode[]? neighbours = valueTuple?.neighbours;
+                if (neighbours == null) return;
+
+                foreach (TNode neighbour in neighbours)
+                {
+                    TKadKey neighbourHash = nodeHashProvider.GetHash(neighbour);
+
+                    // Already queried, we ignore
+                    if (queried.ContainsKey(neighbourHash)) continue;
+
+                    // When seen already dont record
+                    if (!seen.TryAdd(neighbourHash, neighbour)) continue;
+
+                    bestSeen.Enqueue((neighbourHash, neighbour), neighbourHash);
+
+                    if (closestNodeRound < round)
                     {
-                        closestNodeRound = round;
+                        if (finalResult.Count < k)
+                        {
+                            closestNodeRound = round;
+                        }
+
+                        // If the worst item in final result is worst that this neighbour, update closes node round
+                        if (finalResult.TryPeek(out (TKadKey hash, TNode node) worstResult, out _) && comparer.Compare(neighbourHash, worstResult.hash) < 0)
+                        {
+                            closestNodeRound = round;
+                        }
                     }
                 }
             }
@@ -221,28 +229,31 @@ public class LookupKNearestNeighbour<TKey, TNode>(
 
         TNode[] CompileResult()
         {
-            using McsLock.Disposable _ = queueLock.Acquire();
-            if (finalResult.Count > k) finalResult.Dequeue();
-            return [.. finalResult.UnorderedItems.Select((kv) => kv.Element.Item2)];
+            lock (queueLock)
+            {
+                if (finalResult.Count > k) finalResult.Dequeue();
+                return [.. finalResult.UnorderedItems.Select((kv) => kv.Element.Item2)];
+            }
         }
 
         bool ShouldStopDueToNoBetterResult(out int round)
         {
-            using McsLock.Disposable _ = queueLock.Acquire();
-
-            round = Interlocked.Increment(ref currentRound);
-            if (finalResult.Count >= k && round - closestNodeRound >= (config.Alpha * 2))
+            lock (queueLock)
             {
-                // No closer node for more than or equal to _alpha*2 round.
-                // Assume exit condition
-                // Why not just _alpha?
-                // Because there could be currently running work that may increase closestNodeRound.
-                // So including this worker, assume no more
-                if (_logger.IsTrace) _logger.Trace($"No more closer node. Round: {round}, closestNodeRound {closestNodeRound}");
-                return true;
-            }
+                round = Interlocked.Increment(ref currentRound);
+                if (finalResult.Count >= k && round - closestNodeRound >= (config.Alpha * 2))
+                {
+                    // No closer node for more than or equal to _alpha*2 round.
+                    // Assume exit condition
+                    // Why not just _alpha?
+                    // Because there could be currently running work that may increase closestNodeRound.
+                    // So including this worker, assume no more
+                    if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("No more closer node. Round: {Round}, closestNodeRound {ClosestNodeRound}", round, closestNodeRound);
+                    return true;
+                }
 
-            return false;
+                return false;
+            }
         }
     }
 }

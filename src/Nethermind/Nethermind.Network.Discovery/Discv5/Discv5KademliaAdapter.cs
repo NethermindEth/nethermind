@@ -26,6 +26,7 @@ public class Discv5KademliaAdapter(
     INodeRecordProvider nodeRecordProvider,
     IDiscoveryConfig discoveryConfig,
     ICryptoRandom cryptoRandom,
+    IKademliaDistance<Hash256> distance,
     ILogManager logManager) : IDiscv5KademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;
@@ -46,6 +47,7 @@ public class Discv5KademliaAdapter(
 
     private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
     private readonly TimeSpan _findNodeTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
+    private readonly IKademliaDistance<Hash256> _distance = distance;
     private readonly ILogger _logger = logManager.GetClassLogger<Discv5KademliaAdapter>();
     private readonly BoundedMap<SessionKey, Discv5Session> _sessions = new(MaxSessions);
     private readonly BoundedMap<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges);
@@ -67,9 +69,9 @@ public class Discv5KademliaAdapter(
 
         foreach (int distance in distances)
         {
-            if (distance < 0 || distance > Hash256XorUtils.MaxDistance)
+            if (distance < 0 || distance > _distance.MaxDistance)
             {
-                throw new ArgumentOutOfRangeException(nameof(distances), distance, $"Distance must be between 0 and {Hash256XorUtils.MaxDistance}.");
+                throw new ArgumentOutOfRangeException(nameof(distances), distance, $"Distance must be between 0 and {_distance.MaxDistance}.");
             }
 
             Node[] nodes = kademlia.Value.GetAllAtDistance(distance);
@@ -111,7 +113,7 @@ public class Discv5KademliaAdapter(
         int[] distances = GetLookupDistances(receiver, target);
         byte[] requestId = CreateRequestId();
         Discv5FindNode findNode = new(requestId, distances);
-        NodesResponseHandler responseHandler = new(receiver, distances);
+        NodesResponseHandler responseHandler = new(receiver, distances, _distance);
 
         await SendRequest(receiver, findNode, Discv5MessageType.Nodes, responseHandler, _findNodeTimeout, token);
         Node[] nodes = responseHandler.GetNodes();
@@ -435,7 +437,7 @@ public class Discv5KademliaAdapter(
         for (int i = 0; i < distances.Length && result.Count < MaxFindNodeRecords; i++)
         {
             int distance = distances[i];
-            if (distance < 0 || distance > Hash256XorUtils.MaxDistance)
+            if (distance < 0 || distance > _distance.MaxDistance)
             {
                 continue;
             }
@@ -524,9 +526,7 @@ public class Discv5KademliaAdapter(
 
     private int[] GetLookupDistances(Node receiver, PublicKey target)
     {
-        KademliaHash receiverHash = KademliaHash.FromBytes(receiver.Id.Hash.Bytes);
-        KademliaHash targetHash = KademliaHash.FromBytes(target.Hash.Bytes);
-        int distance = Hash256XorUtils.CalculateLogDistance(receiverHash, targetHash);
+        int distance = _distance.CalculateLogDistance(receiver.Id.Hash, target.Hash);
 
         List<int> distances = [distance];
         if (distance > 0)
@@ -534,7 +534,7 @@ public class Discv5KademliaAdapter(
             distances.Add(distance - 1);
         }
 
-        if (distance < Hash256XorUtils.MaxDistance)
+        if (distance < _distance.MaxDistance)
         {
             distances.Add(distance + 1);
         }
@@ -770,7 +770,7 @@ public class Discv5KademliaAdapter(
         }
     }
 
-    internal sealed class NodesResponseHandler(Node receiver, int[] requestedDistances) : IResponseHandler
+    internal sealed class NodesResponseHandler(Node receiver, int[] requestedDistances, IKademliaDistance<Hash256> distanceCalculator) : IResponseHandler
     {
         private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly List<Node> _nodes = [];
@@ -833,9 +833,7 @@ public class Discv5KademliaAdapter(
 
         private bool MatchesRequestedDistance(Node node, int[] requestedDistances)
         {
-            KademliaHash receiverHash = KademliaHash.FromBytes(receiver.Id.Hash.Bytes);
-            KademliaHash nodeHash = KademliaHash.FromBytes(node.Id.Hash.Bytes);
-            int distance = Hash256XorUtils.CalculateLogDistance(receiverHash, nodeHash);
+            int distance = distanceCalculator.CalculateLogDistance(receiver.Id.Hash, node.Id.Hash);
             for (int i = 0; i < requestedDistances.Length; i++)
             {
                 if (requestedDistances[i] == distance)

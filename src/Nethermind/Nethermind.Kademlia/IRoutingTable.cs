@@ -3,14 +3,17 @@
 
 namespace Nethermind.Kademlia;
 
-public interface IRoutingTable<TNode> where TNode : notnull
+public interface IRoutingTable<TNode, TKadKey>
+    where TNode : notnull
+    where TKadKey : notnull
 {
-    BucketAddResult TryAddOrRefresh(in KademliaHash hash, TNode item, out TNode? toRefresh);
-    bool Remove(in KademliaHash hash);
-    TNode[] GetKNearestNeighbour(KademliaHash hash, KademliaHash? exclude = null, bool excludeSelf = false);
+    BucketAddResult TryAddOrRefresh(in TKadKey hash, TNode item, out TNode? toRefresh);
+    bool Remove(in TKadKey hash);
+    TNode[] GetKNearestNeighbour(TKadKey hash, bool excludeSelf = false);
+    TNode[] GetKNearestNeighbourExcluding(TKadKey hash, TKadKey exclude, bool excludeSelf = false);
     TNode[] GetAllAtDistance(int i);
-    IEnumerable<(KademliaHash Prefix, int Distance, KBucket<TNode> Bucket)> IterateBuckets();
-    TNode? GetByHash(KademliaHash nodeId);
+    IEnumerable<(TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket)> IterateBuckets();
+    TNode? GetByHash(TKadKey nodeId);
     void LogDebugInfo();
     event EventHandler<TNode>? OnNodeAdded;
     event EventHandler<TNode>? OnNodeRemoved;

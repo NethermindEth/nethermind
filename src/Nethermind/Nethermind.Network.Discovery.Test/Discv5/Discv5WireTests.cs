@@ -19,6 +19,7 @@ using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -211,6 +212,7 @@ public class Discv5WireTests
             nodeRecordProvider,
             new DiscoveryConfig(),
             new CryptoRandom(),
+            Hash256KademliaDistance.Instance,
             LimboLogs.Instance);
 
         return new TestPeer(adapter, handler, channel, kademlia, nodeRecordProvider, endpoint);
@@ -254,9 +256,7 @@ public class Discv5WireTests
 
     private static int[] GetLookupDistances(Node receiver, PublicKey target)
     {
-        KademliaHash receiverHash = KademliaHash.FromBytes(receiver.Id.Hash.Bytes);
-        KademliaHash targetHash = KademliaHash.FromBytes(target.Hash.Bytes);
-        int distance = Hash256XorUtils.CalculateLogDistance(receiverHash, targetHash);
+        int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(receiver.Id.Hash, target.Hash);
 
         List<int> distances = [distance];
         if (distance > 0)
@@ -264,7 +264,7 @@ public class Discv5WireTests
             distances.Add(distance - 1);
         }
 
-        if (distance < Hash256XorUtils.MaxDistance)
+        if (distance < Hash256KademliaDistance.Instance.MaxDistance)
         {
             distances.Add(distance + 1);
         }

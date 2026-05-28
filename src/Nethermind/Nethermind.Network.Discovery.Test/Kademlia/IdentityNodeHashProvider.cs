@@ -6,11 +6,11 @@ using Nethermind.Kademlia;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
-internal sealed class IdentityNodeHashProvider : INodeHashProvider<ValueHash256>
+internal sealed class IdentityNodeHashProvider : INodeHashProvider<ValueHash256, Hash256>
 {
     public static readonly IdentityNodeHashProvider Instance = new();
 
-    public static KademliaHash ToKademliaHash(ValueHash256 hash) => KademliaHash.FromBytes(hash.BytesAsSpan);
+    public static Hash256 ToHash(ValueHash256 hash) => hash.ToHash256();
 
-    public KademliaHash GetHash(ValueHash256 node) => ToKademliaHash(node);
+    public Hash256 GetHash(ValueHash256 node) => ToHash(node);
 }

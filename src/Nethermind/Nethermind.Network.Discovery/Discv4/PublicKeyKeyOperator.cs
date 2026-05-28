@@ -7,11 +7,11 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-public class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node>
+public class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node, Hash256>
 {
     public PublicKey GetKey(Node node) => node.Id;
 
-    public KademliaHash GetKeyHash(PublicKey key) => KademliaHash.FromBytes(key.Hash.Bytes);
+    public Hash256 GetKeyHash(PublicKey key) => key.Hash;
 
     /// <summary>
     /// Creates a random discv4 lookup target.
@@ -21,7 +21,7 @@ public class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node>
     /// Constructing a public key whose Keccak hash lands in that prefix is not practical, so this uses a random
     /// 64-byte target and treats discv4 bucket refresh as best-effort sampling.
     /// </remarks>
-    public PublicKey CreateRandomKeyAtDistance(KademliaHash nodePrefix, int depth)
+    public PublicKey CreateRandomKeyAtDistance(Hash256 nodePrefix, int depth)
     {
         Span<byte> randomBytes = new byte[64];
         Random.Shared.NextBytes(randomBytes);

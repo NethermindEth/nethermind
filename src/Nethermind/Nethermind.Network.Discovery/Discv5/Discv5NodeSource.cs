@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5;
@@ -22,7 +23,7 @@ public class Discv5NodeSource(
 
     private readonly ILogger _logger = logManager.GetClassLogger<Discv5NodeSource>();
     private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.IdHash;
-    private readonly int _recentNodeLimit = Math.Max(ChannelCapacity, kademliaConfig.KSize * Hash256XorUtils.MaxDistance);
+    private readonly int _recentNodeLimit = Math.Max(ChannelCapacity, kademliaConfig.KSize * Hash256KademliaDistance.Instance.MaxDistance);
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {

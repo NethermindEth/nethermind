@@ -1,36 +1,41 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Caching;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NonBlocking;
 
 namespace Nethermind.Kademlia;
 
-public class NodeHealthTracker<TKey, TNode>(
+/// <summary>
+/// Tracks node liveness signals and evicts peers that repeatedly fail Kademlia requests.
+/// </summary>
+public class NodeHealthTracker<TKey, TNode, TKadKey>(
     KademliaConfig<TNode> config,
-    IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TNode> nodeHashProvider,
+    IRoutingTable<TNode, TKadKey> routingTable,
+    INodeHashProvider<TNode, TKadKey> nodeHashProvider,
     IKademliaMessageSender<TKey, TNode> kademliaMessageSender,
-    ILogManager logManager
-) : INodeHealthTracker<TNode>, IDisposable where TNode : notnull
+    ILoggerFactory? loggerFactory = null
+) : INodeHealthTracker<TNode>, IDisposable
+    where TNode : notnull
+    where TKadKey : notnull
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<NodeHealthTracker<TKey, TNode>>();
+    private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<NodeHealthTracker<TKey, TNode, TKadKey>>();
 
-    private readonly ConcurrentDictionary<KademliaHash, bool> _isRefreshing = new();
-    private readonly ConcurrentDictionary<KademliaHash, Task> _refreshTasks = new();
-    private readonly LruCache<KademliaHash, int> _peerFailures = new(1024, "peer failure");
-    private readonly KademliaHash _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
+    private readonly ConcurrentDictionary<TKadKey, bool> _isRefreshing = new();
+    private readonly ConcurrentDictionary<TKadKey, Task> _refreshTasks = new();
+    private readonly PeerFailureCache _peerFailures = new(1024);
+    private readonly TKadKey _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
     private readonly TimeSpan _refreshPingTimeout = config.RefreshPingTimeout;
     private readonly CancellationTokenSource _refreshCancellation = new();
 
     private int _disposed;
 
-    private bool SameAsSelf(TNode node) => nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
+    private bool SameAsSelf(TNode node) => EqualityComparer<TKadKey>.Default.Equals(nodeHashProvider.GetHash(node), _currentNodeIdAsHash);
 
     private void TryRefresh(TNode toRefresh)
     {
-        KademliaHash nodeHash = nodeHashProvider.GetHash(toRefresh);
+        TKadKey nodeHash = nodeHashProvider.GetHash(toRefresh);
         if (_isRefreshing.TryAdd(nodeHash, true))
         {
             if (Volatile.Read(ref _disposed) != 0)
@@ -43,7 +48,7 @@ public class NodeHealthTracker<TKey, TNode>(
         }
     }
 
-    private async Task RefreshAsync(TNode toRefresh, KademliaHash nodeHash, CancellationToken token)
+    private async Task RefreshAsync(TNode toRefresh, TKadKey nodeHash, CancellationToken token)
     {
         try
         {
@@ -73,7 +78,7 @@ public class NodeHealthTracker<TKey, TNode>(
             catch (Exception e)
             {
                 OnRequestFailed(toRefresh);
-                if (_logger.IsDebug) _logger.Debug($"Error while refreshing node {toRefresh}, {e}");
+                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug(e, "Error while refreshing node {Node}.", toRefresh);
             }
 
             if (_isRefreshing.TryRemove(nodeHash, out _))
@@ -121,7 +126,7 @@ public class NodeHealthTracker<TKey, TNode>(
     /// <param name="node"></param>
     public void OnRequestFailed(TNode node)
     {
-        KademliaHash hash = nodeHashProvider.GetHash(node);
+        TKadKey hash = nodeHashProvider.GetHash(node);
         if (!_peerFailures.TryGet(hash, out int currentFailure))
         {
             _peerFailures.Set(hash, 1);
@@ -177,7 +182,10 @@ public class NodeHealthTracker<TKey, TNode>(
         catch (AggregateException e)
         {
             completed = true;
-            if (!HasOnlyCancellationExceptions(e) && _logger.IsDebug) _logger.Debug($"Error while disposing node health tracker. {e}");
+            if (!HasOnlyCancellationExceptions(e))
+            {
+                _logger.LogDebug(e, "Error while disposing node health tracker.");
+            }
         }
 
         if (completed)
@@ -197,5 +205,73 @@ public class NodeHealthTracker<TKey, TNode>(
         }
 
         return true;
+    }
+
+    private sealed class PeerFailureCache(int capacity)
+    {
+        private readonly object _lock = new();
+        private readonly Dictionary<TKadKey, (int FailureCount, LinkedListNode<TKadKey> OrderNode)> _values = [];
+        private readonly LinkedList<TKadKey> _order = [];
+
+        public bool TryGet(TKadKey hash, out int failureCount)
+        {
+            lock (_lock)
+            {
+                if (!_values.TryGetValue(hash, out (int FailureCount, LinkedListNode<TKadKey> OrderNode) entry))
+                {
+                    failureCount = 0;
+                    return false;
+                }
+
+                _order.Remove(entry.OrderNode);
+                _order.AddLast(entry.OrderNode);
+                failureCount = entry.FailureCount;
+                return true;
+            }
+        }
+
+        public void Set(TKadKey hash, int failureCount)
+        {
+            lock (_lock)
+            {
+                if (_values.TryGetValue(hash, out (int FailureCount, LinkedListNode<TKadKey> OrderNode) entry))
+                {
+                    _order.Remove(entry.OrderNode);
+                    _order.AddLast(entry.OrderNode);
+                    _values[hash] = (failureCount, entry.OrderNode);
+                    return;
+                }
+
+                LinkedListNode<TKadKey> orderNode = _order.AddLast(hash);
+                _values[hash] = (failureCount, orderNode);
+                Trim();
+            }
+        }
+
+        public void Delete(TKadKey hash)
+        {
+            lock (_lock)
+            {
+                if (_values.Remove(hash, out (int FailureCount, LinkedListNode<TKadKey> OrderNode) entry))
+                {
+                    _order.Remove(entry.OrderNode);
+                }
+            }
+        }
+
+        private void Trim()
+        {
+            while (_values.Count > capacity)
+            {
+                LinkedListNode<TKadKey>? oldest = _order.First;
+                if (oldest is null)
+                {
+                    return;
+                }
+
+                _order.RemoveFirst();
+                _values.Remove(oldest.Value);
+            }
+        }
     }
 }

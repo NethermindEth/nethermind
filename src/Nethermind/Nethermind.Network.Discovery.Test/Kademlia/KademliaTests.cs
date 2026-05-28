@@ -20,22 +20,23 @@ public class KademliaTests
 {
     private readonly IKademliaMessageSender<ValueHash256, ValueHash256> _kademliaMessageSender = Substitute.For<IKademliaMessageSender<ValueHash256, ValueHash256>>();
 
-    private Kademlia<ValueHash256, ValueHash256> CreateKad(KademliaConfig<ValueHash256> config) =>
+    private Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> CreateKad(KademliaConfig<ValueHash256> config) =>
         new ContainerBuilder()
-            .AddModule(new KademliaModule<ValueHash256, ValueHash256>())
+            .AddModule(new KademliaModule<ValueHash256, ValueHash256, Hash256>())
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
             .AddSingleton<ITimestamper>(new ManualTimestamper(new System.DateTime(2025, 5, 13, 21, 0, 0, System.DateTimeKind.Utc)))
-            .AddSingleton<IKeyOperator<ValueHash256, ValueHash256>>(new ValueHashNodeHashProvider())
+            .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
+            .AddSingleton<IKeyOperator<ValueHash256, ValueHash256, Hash256>>(new ValueHashNodeHashProvider())
             .AddSingleton(config)
             .AddSingleton(_kademliaMessageSender)
-            .AddSingleton<Kademlia<ValueHash256, ValueHash256>>()
+            .AddSingleton<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>>()
             .Build()
-            .Resolve<Kademlia<ValueHash256, ValueHash256>>();
+            .Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>>();
 
     [Test]
     public void TestNewNodeAdded()
     {
-        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = CreateKad(new KademliaConfig<ValueHash256>
         {
             KSize = 5,
             Beta = 0,
@@ -55,7 +56,7 @@ public class KademliaTests
     [Test]
     public void TestNodeRemoved()
     {
-        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = CreateKad(new KademliaConfig<ValueHash256>
         {
             KSize = 5,
             Beta = 0,
@@ -79,7 +80,7 @@ public class KademliaTests
     public void ShouldSeedBootnodes()
     {
         ValueHash256 bootNode = ValueKeccak.Compute("bootnode");
-        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = CreateKad(new KademliaConfig<ValueHash256>
         {
             KSize = 5,
             Beta = 0,
@@ -97,7 +98,7 @@ public class KademliaTests
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
 
-        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = CreateKad(new KademliaConfig<ValueHash256>
         {
             KSize = 5,
             Beta = 0,
@@ -127,7 +128,7 @@ public class KademliaTests
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
 
-        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = CreateKad(new KademliaConfig<ValueHash256>
         {
             CurrentNodeId = ValueKeccak.Compute("something"),
             KSize = 5,
@@ -163,7 +164,7 @@ public class KademliaTests
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
-        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = CreateKad(new KademliaConfig<ValueHash256>
         {
             KSize = 5,
             Beta = 1,
@@ -196,20 +197,20 @@ public class KademliaTests
         Assert.That(kad.GetAllAtDistance(250).ToHashSet(), Is.EquivalentTo(testHashes[10..].ToHashSet()));
     }
 
-    private static KademliaHash ToKademliaHash(ValueHash256 hash) => KademliaHash.FromBytes(hash.BytesAsSpan);
+    private static Hash256 ToHash(ValueHash256 hash) => hash.ToHash256();
 
-    private static ValueHash256 ToValueHash(KademliaHash hash) => new(hash.Bytes);
+    private static ValueHash256 ToValueHash(Hash256 hash) => hash.ValueHash256;
 
     private static ValueHash256 RandomValueHashAtDistance(ValueHash256 currentHash, int distance) =>
-        ToValueHash(Hash256XorUtils.GetRandomHashAtDistance(ToKademliaHash(currentHash), distance));
+        ToValueHash(Hash256KademliaDistance.Instance.GetRandomHashAtDistance(ToHash(currentHash), distance));
 
-    private class ValueHashNodeHashProvider : IKeyOperator<ValueHash256, ValueHash256>
+    private class ValueHashNodeHashProvider : IKeyOperator<ValueHash256, ValueHash256, Hash256>
     {
         public ValueHash256 GetKey(ValueHash256 node) => node;
 
-        public KademliaHash GetKeyHash(ValueHash256 key) => ToKademliaHash(key);
+        public Hash256 GetKeyHash(ValueHash256 key) => ToHash(key);
 
-        public ValueHash256 CreateRandomKeyAtDistance(KademliaHash nodePrefix, int depth) =>
-            ToValueHash(Hash256XorUtils.GetRandomHashAtDistance(nodePrefix, depth));
+        public ValueHash256 CreateRandomKeyAtDistance(Hash256 nodePrefix, int depth) =>
+            ToValueHash(Hash256KademliaDistance.Instance.GetRandomHashAtDistance(nodePrefix, depth));
     }
 }

@@ -4,7 +4,8 @@
 
 namespace Nethermind.Kademlia;
 
-public class FromKeyNodeHashProvider<TKey, TNode>(IKeyOperator<TKey, TNode> keyOperator) : INodeHashProvider<TNode>
+public class FromKeyNodeHashProvider<TKey, TNode, TKadKey>(IKeyOperator<TKey, TNode, TKadKey> keyOperator) : INodeHashProvider<TNode, TKadKey>
+    where TKadKey : notnull
 {
-    public KademliaHash GetHash(TNode node) => keyOperator.GetNodeHash(node);
+    public TKadKey GetHash(TNode node) => keyOperator.GetNodeHash(node);
 }

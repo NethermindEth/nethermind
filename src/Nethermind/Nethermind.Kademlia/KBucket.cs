@@ -4,11 +4,13 @@
 
 namespace Nethermind.Kademlia;
 
-public class KBucket<TNode>(int k) where TNode : notnull
+public class KBucket<TNode, TKadKey>(int k)
+    where TNode : notnull
+    where TKadKey : notnull
 {
     private readonly int _k = k;
-    private DoubleEndedLru<TNode> _items = new(k);
-    private DoubleEndedLru<TNode> _replacement = new(k);
+    private DoubleEndedLru<TNode, TKadKey> _items = new(k);
+    private DoubleEndedLru<TNode, TKadKey> _replacement = new(k);
 
     public int Count => _items.Count;
 
@@ -21,7 +23,7 @@ public class KBucket<TNode>(int k) where TNode : notnull
     /// </summary>
     /// <param name="item"></param>
     /// <returns></returns>
-    public BucketAddResult TryAddOrRefresh(in KademliaHash hash, TNode item, out TNode? toRefresh)
+    public BucketAddResult TryAddOrRefresh(in TKadKey hash, TNode item, out TNode? toRefresh)
     {
         TNode? previous = _items.GetByHash(hash);
         BucketAddResult addResult = _items.AddOrRefresh(hash, item);
@@ -45,13 +47,13 @@ public class KBucket<TNode>(int k) where TNode : notnull
 
     public TNode[] GetAll() => _cachedArray;
 
-    public (KademliaHash, TNode)[] GetAllWithHash() => _items.GetAllWithHash();
+    public (TKadKey, TNode)[] GetAllWithHash() => _items.GetAllWithHash();
 
-    public bool RemoveAndReplace(in KademliaHash hash)
+    public bool RemoveAndReplace(in TKadKey hash)
     {
         if (!_items.Remove(hash)) return false;
 
-        if (_replacement.TryPopHead(out KademliaHash replacementHash, out TNode? replacement))
+        if (_replacement.TryPopHead(out TKadKey replacementHash, out TNode? replacement))
         {
             _items.AddOrRefresh(replacementHash, replacement!);
         }
@@ -62,14 +64,14 @@ public class KBucket<TNode>(int k) where TNode : notnull
 
     public void Clear()
     {
-        _items = new DoubleEndedLru<TNode>(_k);
-        _replacement = new DoubleEndedLru<TNode>(_k);
+        _items = new DoubleEndedLru<TNode, TKadKey>(_k);
+        _replacement = new DoubleEndedLru<TNode, TKadKey>(_k);
         _cachedArray = _items.GetAll();
     }
 
-    public bool ContainsNode(in KademliaHash hash) => _items.Contains(hash);
+    public bool ContainsNode(in TKadKey hash) => _items.Contains(hash);
 
-    public TNode? GetByHash(KademliaHash hash) => _items.GetByHash(hash);
+    public TNode? GetByHash(TKadKey hash) => _items.GetByHash(hash);
 
     private static bool ShouldUpdateCachedArray(TNode? previous, TNode item)
     {

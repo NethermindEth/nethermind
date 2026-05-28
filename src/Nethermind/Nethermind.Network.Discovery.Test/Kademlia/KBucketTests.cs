@@ -13,48 +13,48 @@ public class KBucketTests
     [Test]
     public void TryAddOrRefresh_ShouldLimitToK()
     {
-        KBucket<ValueHash256> bucket = new(5);
+        KBucket<ValueHash256, Hash256> bucket = new(5);
 
         ValueHash256[] toAdd = Enumerable.Range(0, 10).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
 
         foreach (ValueHash256 valueHash256 in toAdd)
         {
-            bucket.TryAddOrRefresh(ToKademliaHash(valueHash256), valueHash256, out _);
+            bucket.TryAddOrRefresh(ToHash(valueHash256), valueHash256, out _);
         }
 
         // Again
         foreach (ValueHash256 valueHash256 in toAdd)
         {
-            bucket.TryAddOrRefresh(ToKademliaHash(valueHash256), valueHash256, out _);
+            bucket.TryAddOrRefresh(ToHash(valueHash256), valueHash256, out _);
         }
 
         Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(toAdd[..5].ToHashSet()));
-        Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(toAdd[..5].Select(static it => (ToKademliaHash(it), it)).ToHashSet()));
+        Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(toAdd[..5].Select(static it => (ToHash(it), it)).ToHashSet()));
 
         foreach (ValueHash256 valueHash256 in toAdd[..5])
         {
-            Assert.That(bucket.ContainsNode(ToKademliaHash(valueHash256)), Is.True);
-            Assert.That(bucket.GetByHash(ToKademliaHash(valueHash256)), Is.EqualTo(valueHash256));
+            Assert.That(bucket.ContainsNode(ToHash(valueHash256)), Is.True);
+            Assert.That(bucket.GetByHash(ToHash(valueHash256)), Is.EqualTo(valueHash256));
         }
     }
 
     [Test]
     public void TryAddOrRefresh_ShouldKeepSameCachedArray_WhenAddingSameNode()
     {
-        KBucket<ValueHash256> bucket = new(5);
+        KBucket<ValueHash256, Hash256> bucket = new(5);
 
         ValueHash256[] toAdd = Enumerable.Range(0, 10).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
 
         foreach (ValueHash256 valueHash256 in toAdd)
         {
-            bucket.TryAddOrRefresh(ToKademliaHash(valueHash256), valueHash256, out _);
+            bucket.TryAddOrRefresh(ToHash(valueHash256), valueHash256, out _);
         }
 
         ValueHash256[] nodes = bucket.GetAll();
 
         foreach (ValueHash256 valueHash256 in toAdd)
         {
-            bucket.TryAddOrRefresh(ToKademliaHash(valueHash256), valueHash256, out _);
+            bucket.TryAddOrRefresh(ToHash(valueHash256), valueHash256, out _);
         }
 
         Assert.That(bucket.GetAll(), Is.SameAs(nodes));
@@ -63,8 +63,8 @@ public class KBucketTests
     [Test]
     public void TryAddOrRefresh_ShouldReplaceCachedNode_WhenRefreshingSameHashWithNewInstance()
     {
-        KBucket<string> bucket = new(5);
-        KademliaHash hash = KademliaHash.FromBytes(ValueKeccak.Compute("node").BytesAsSpan);
+        KBucket<string, Hash256> bucket = new(5);
+        Hash256 hash = ToHash(ValueKeccak.Compute("node"));
 
         bucket.TryAddOrRefresh(hash, "old", out _);
         bucket.TryAddOrRefresh(hash, "new", out _);
@@ -77,21 +77,21 @@ public class KBucketTests
     [Test]
     public void RemoveAndReplace_ShouldReplaceNodeWithLatestInReplacementCache()
     {
-        KBucket<ValueHash256> bucket = new(5);
+        KBucket<ValueHash256, Hash256> bucket = new(5);
 
         ValueHash256[] toAdd = Enumerable.Range(0, 10).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
 
         foreach (ValueHash256 valueHash256 in toAdd)
         {
-            bucket.TryAddOrRefresh(ToKademliaHash(valueHash256), valueHash256, out _);
+            bucket.TryAddOrRefresh(ToHash(valueHash256), valueHash256, out _);
         }
 
-        bucket.RemoveAndReplace(ToKademliaHash(toAdd[0]));
+        bucket.RemoveAndReplace(ToHash(toAdd[0]));
 
         ValueHash256[] expected = [.. toAdd[1..5], toAdd[9]];
         Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(expected.ToHashSet()));
-        Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(expected.Select(static it => (ToKademliaHash(it), it)).ToHashSet()));
+        Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(expected.Select(static it => (ToHash(it), it)).ToHashSet()));
     }
 
-    private static KademliaHash ToKademliaHash(ValueHash256 hash) => KademliaHash.FromBytes(hash.BytesAsSpan);
+    private static Hash256 ToHash(ValueHash256 hash) => hash.ToHash256();
 }

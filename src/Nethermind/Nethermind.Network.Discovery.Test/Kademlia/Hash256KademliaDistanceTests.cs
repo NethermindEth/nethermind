@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Kademlia;
+using Nethermind.Core.Crypto;
+using Nethermind.Network.Discovery.Kademlia;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
-public class Hash256XorUtilsTests
+public class Hash256KademliaDistanceTests
 {
+    private static readonly Hash256KademliaDistance Distance = Hash256KademliaDistance.Instance;
 
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000",
               "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -51,24 +53,24 @@ public class Hash256XorUtilsTests
               "0x000000000000000000000000000000000000000000000000000000000001000f", 17)]
     public void TestDistance(string hash1, string hash2, string xosString, int expectedDistance)
     {
-        KademliaHash xor = Hash256XorUtils.XorDistance(new(hash1), new(hash2));
+        Hash256 xor = XorDistance(new(hash1), new(hash2));
         Assert.That(xor.ToString(), Is.EqualTo(xosString.ToLower()));
-        Assert.That(Hash256XorUtils.CalculateLogDistance(new(hash1), new(hash2)), Is.EqualTo(expectedDistance));
-        Assert.That(Hash256XorUtils.CalculateLogDistance(new(hash2), new(hash1)), Is.EqualTo(expectedDistance));
+        Assert.That(Distance.CalculateLogDistance(new Hash256(hash1), new Hash256(hash2)), Is.EqualTo(expectedDistance));
+        Assert.That(Distance.CalculateLogDistance(new Hash256(hash2), new Hash256(hash1)), Is.EqualTo(expectedDistance));
     }
 
     [Test]
     public void TestGetRandomHash()
     {
         Random rand = new(0);
-        Span<byte> randomizedBytes = stackalloc byte[KademliaHash.Length];
+        Span<byte> randomizedBytes = stackalloc byte[Hash256.Size];
         rand.NextBytes(randomizedBytes);
-        KademliaHash randomized = KademliaHash.FromBytes(randomizedBytes);
+        Hash256 randomized = new(randomizedBytes);
 
         void TestForDistance(int distance)
         {
-            KademliaHash randHash = Hash256XorUtils.GetRandomHashAtDistance(randomized, distance, rand);
-            Assert.That(Hash256XorUtils.CalculateLogDistance(randomized, randHash), Is.EqualTo(distance));
+            Hash256 randHash = Distance.GetRandomHashAtDistance(randomized, distance, rand);
+            Assert.That(Distance.CalculateLogDistance(randomized, randHash), Is.EqualTo(distance));
         }
 
         for (int i = 0; i <= 256; i++)
@@ -86,18 +88,31 @@ public class Hash256XorUtilsTests
     [TestCase(257)]
     public void GetRandomHashAtDistance_ShouldRejectInvalidDistance(int distance)
     {
-        KademliaHash hash = new("0x0000000000000000000000000000000000000000000000000000000000000000");
+        Hash256 hash = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
-        Assert.That(() => Hash256XorUtils.GetRandomHashAtDistance(hash, distance, new Random(0)), Throws.InstanceOf<ArgumentOutOfRangeException>());
+        Assert.That(() => Distance.GetRandomHashAtDistance(hash, distance, new Random(0)), Throws.InstanceOf<ArgumentOutOfRangeException>());
     }
 
     [TestCase]
     public void TestDistanceCompare()
     {
-        KademliaHash h1 = new("0x0010000000000000000000000000000000000000000000000000000000000000");
-        KademliaHash h2 = new("0x0110000000000000000000000000000000000000000000000000000000000000");
-        KademliaHash h3 = new("0x0000000000000000000000000000000000000000000000000000000000000000");
+        Hash256 h1 = new("0x0010000000000000000000000000000000000000000000000000000000000000");
+        Hash256 h2 = new("0x0110000000000000000000000000000000000000000000000000000000000000");
+        Hash256 h3 = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
-        Assert.That(Hash256XorUtils.Compare(h1, h2, h3), Is.LessThan(0));
+        Assert.That(Distance.Compare(h1, h2, h3), Is.LessThan(0));
+    }
+
+    private static Hash256 XorDistance(Hash256 left, Hash256 right)
+    {
+        Span<byte> result = stackalloc byte[Hash256.Size];
+        ReadOnlySpan<byte> leftBytes = left.Bytes;
+        ReadOnlySpan<byte> rightBytes = right.Bytes;
+        for (int i = 0; i < result.Length; i++)
+        {
+            result[i] = (byte)(leftBytes[i] ^ rightBytes[i]);
+        }
+
+        return new Hash256(result);
     }
 }

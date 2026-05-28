@@ -22,8 +22,9 @@ public class DiscV5KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
         .Bind<IKademliaMessageSender<PublicKey, Node>, IDiscv5KademliaAdapter>()
         .AddSingleton<NettyDiscoveryV5Handler>()
         .AddSingleton<Discv5PacketCodec>()
-        .AddModule(new KademliaModule<PublicKey, Node>())
-        .AddSingleton<IKeyOperator<PublicKey, Node>, PublicKeyKeyOperator>()
+        .AddModule(new KademliaModule<PublicKey, Node, Hash256>())
+        .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
+        .AddSingleton<IKeyOperator<PublicKey, Node, Hash256>, PublicKeyKeyOperator>()
         .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
         {
             CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true),

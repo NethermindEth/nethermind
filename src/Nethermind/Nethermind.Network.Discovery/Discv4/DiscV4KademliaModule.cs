@@ -11,7 +11,7 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.Discovery.Discv4;
 
 /// <summary>
-/// Specify the discv4 kademlia components. Mainly provide transport for <see cref="KademliaModule{TKey,TNode}"/>.
+/// Specify the discv4 kademlia components. Mainly provide transport for <see cref="KademliaModule{TKey,TNode,TKadKey}"/>.
 /// Because kademlia can and probably will be reused outside of discv4, this module is meant to be added within a child
 /// lifecycle in <see cref="DiscoveryApp"/> to prevent unexpected conflict.
 /// </summary>
@@ -31,9 +31,10 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
             .AddSingleton<NettyDiscoveryHandler>()
 
             // Register the main kademlia module and integration
-            .AddModule(new KademliaModule<PublicKey, Node>())
+            .AddModule(new KademliaModule<PublicKey, Node, Hash256>())
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaDiscv4Adapter>()
-            .AddSingleton<IKeyOperator<PublicKey, Node>, PublicKeyKeyOperator>()
+            .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
+            .AddSingleton<IKeyOperator<PublicKey, Node, Hash256>, PublicKeyKeyOperator>()
             .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
             {
                 CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true), // It actually only need masterNode.

@@ -2,46 +2,54 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using Nethermind.Core;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
-public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnull
+/// <summary>
+/// Maintains a Kademlia routing table and runs network lookups through caller-provided message transport.
+/// </summary>
+public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
+    where TNode : notnull
+    where TKadKey : notnull
 {
     private readonly IKademliaMessageSender<TKey, TNode> _kademliaMessageSender;
-    private readonly IKeyOperator<TKey, TNode> _keyOperator;
-    private readonly IRoutingTable<TNode> _routingTable;
-    private readonly ILookupAlgo<TNode> _lookupAlgo;
+    private readonly IKeyOperator<TKey, TNode, TKadKey> _keyOperator;
+    private readonly IRoutingTable<TNode, TKadKey> _routingTable;
+    private readonly ILookupAlgo<TNode, TKadKey> _lookupAlgo;
     private readonly INodeHealthTracker<TNode> _nodeHealthTracker;
     private readonly ILogger _logger;
 
     private readonly TNode _currentNodeId;
-    private readonly KademliaHash _currentNodeIdAsHash;
+    private readonly TKadKey _currentNodeIdAsHash;
     private readonly int _kSize;
     private readonly TimeSpan _refreshInterval;
     private readonly TimeSpan _bucketRefreshInterval;
     private readonly IReadOnlyList<TNode> _bootNodes;
-    private readonly ITimestamper _timestamper;
-    private readonly Dictionary<KademliaHash, long> _lastBucketRefreshTicks = [];
+    private readonly TimeProvider _timeProvider;
+    private readonly Dictionary<TKadKey, long> _lastBucketRefreshTicks = [];
     private readonly object _lastBucketRefreshLock = new();
 
+    /// <summary>
+    /// Creates a Kademlia table over the supplied routing, lookup, health, and transport abstractions.
+    /// </summary>
     public Kademlia(
-        IKeyOperator<TKey, TNode> keyOperator,
+        IKeyOperator<TKey, TNode, TKadKey> keyOperator,
         IKademliaMessageSender<TKey, TNode> sender,
-        IRoutingTable<TNode> routingTable,
-        ILookupAlgo<TNode> lookupAlgo,
-        ILogManager logManager,
+        IRoutingTable<TNode, TKadKey> routingTable,
+        ILookupAlgo<TNode, TKadKey> lookupAlgo,
         INodeHealthTracker<TNode> nodeHealthTracker,
-        ITimestamper timestamper,
-        KademliaConfig<TNode> config)
+        KademliaConfig<TNode> config,
+        ILoggerFactory? loggerFactory = null,
+        TimeProvider? timeProvider = null)
     {
         _keyOperator = keyOperator;
         _kademliaMessageSender = sender;
         _routingTable = routingTable;
         _lookupAlgo = lookupAlgo;
         _nodeHealthTracker = nodeHealthTracker;
-        _logger = logManager.GetClassLogger<Kademlia<TKey, TNode>>();
+        _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<Kademlia<TKey, TNode, TKadKey>>();
 
         _currentNodeId = config.CurrentNodeId;
         _currentNodeIdAsHash = _keyOperator.GetNodeHash(_currentNodeId);
@@ -49,7 +57,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         _refreshInterval = config.RefreshInterval;
         _bucketRefreshInterval = config.BucketRefreshInterval;
         _bootNodes = config.BootNodes;
-        _timestamper = timestamper;
+        _timeProvider = timeProvider ?? TimeProvider.System;
 
         AddOrRefresh(_currentNodeId);
         for (int i = 0; i < _bootNodes.Count; i++)
@@ -66,7 +74,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
     public TNode[] GetAllAtDistance(int i) => _routingTable.GetAllAtDistance(i);
 
-    private bool SameAsSelf(TNode node) => _keyOperator.GetNodeHash(node) == _currentNodeIdAsHash;
+    private bool SameAsSelf(TNode node) => EqualityComparer<TKadKey>.Default.Equals(_keyOperator.GetNodeHash(node), _currentNodeIdAsHash);
 
     public Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null) => _lookupAlgo.Lookup(
             _keyOperator.GetKeyHash(key),
@@ -75,7 +83,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             {
                 if (SameAsSelf(nextNode))
                 {
-                    KademliaHash keyHash = _keyOperator.GetKeyHash(key);
+                    TKadKey keyHash = _keyOperator.GetKeyHash(key);
                     return _routingTable.GetKNearestNeighbour(keyHash);
                 }
                 return await _kademliaMessageSender.FindNeighbours(nextNode, key, token);
@@ -97,7 +105,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error("Bootstrap iteration failed.", e);
+                _logger.LogError(e, "Bootstrap iteration failed.");
             }
 
             await Task.Delay(_refreshInterval, token);
@@ -125,11 +133,11 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Debug($"Bootnode ping failed for {node}. {e}");
+                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug(e, "Bootnode ping failed for {Node}.", node);
             }
         });
 
-        if (_logger.IsInfo) _logger.Info($"Online bootnodes: {onlineBootNodes}");
+        _logger.LogInformation("Online bootnodes: {OnlineBootNodes}", onlineBootNodes);
 
         TKey currentNodeIdAsKey = _keyOperator.GetKey(_currentNodeId);
         await LookupNodesClosest(currentNodeIdAsKey, token);
@@ -138,7 +146,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
         // Refresh stale non-empty buckets one by one. A refresh means to do a k-nearest node lookup for a random hash
         // for that particular bucket.
-        foreach ((KademliaHash Prefix, int Distance, KBucket<TNode> Bucket) in _routingTable.IterateBuckets())
+        foreach ((TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket) in _routingTable.IterateBuckets())
         {
             if (!ShouldRefreshBucket(Prefix, Bucket)) continue;
 
@@ -146,18 +154,18 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             await LookupNodesClosest(keyToLookup, token);
         }
 
-        if (_logger.IsDebug)
+        if (_logger.IsEnabled(LogLevel.Debug))
         {
-            _logger.Debug($"Bootstrap completed. Took {sw}.");
+            _logger.LogDebug("Bootstrap completed. Took {Elapsed}.", sw.Elapsed);
             _routingTable.LogDebugInfo();
         }
     }
 
-    private bool ShouldRefreshBucket(KademliaHash prefix, KBucket<TNode> bucket)
+    private bool ShouldRefreshBucket(TKadKey prefix, KBucket<TNode, TKadKey> bucket)
     {
         if (bucket.Count == 0) return false;
 
-        long nowTicks = _timestamper.UtcNow.Ticks;
+        long nowTicks = _timeProvider.GetUtcNow().Ticks;
         lock (_lastBucketRefreshLock)
         {
             if (_lastBucketRefreshTicks.TryGetValue(prefix, out long lastRefreshTicks) &&
@@ -173,10 +181,14 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
     public TNode[] GetKNeighbour(TKey target, TNode? excluding = default, bool excludeSelf = false)
     {
-        KademliaHash? excludeHash = null;
-        if (excluding != null) excludeHash = _keyOperator.GetNodeHash(excluding);
-        KademliaHash hash = _keyOperator.GetKeyHash(target);
-        return _routingTable.GetKNearestNeighbour(hash, excludeHash, excludeSelf);
+        TKadKey hash = _keyOperator.GetKeyHash(target);
+        if (excluding is null)
+        {
+            return _routingTable.GetKNearestNeighbour(hash, excludeSelf);
+        }
+
+        TKadKey excludeHash = _keyOperator.GetNodeHash(excluding);
+        return _routingTable.GetKNearestNeighbourExcluding(hash, excludeHash, excludeSelf);
     }
 
     public event EventHandler<TNode> OnNodeAdded
@@ -193,7 +205,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
     public IEnumerable<TNode> IterateNodes()
     {
-        foreach ((KademliaHash _, int _, KBucket<TNode> Bucket) in _routingTable.IterateBuckets())
+        foreach ((TKadKey _, int _, KBucket<TNode, TKadKey> Bucket) in _routingTable.IterateBuckets())
         {
             foreach (TNode node in Bucket.GetAll())
             {

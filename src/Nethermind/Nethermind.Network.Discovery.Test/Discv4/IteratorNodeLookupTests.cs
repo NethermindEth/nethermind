@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Kademlia;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -25,8 +26,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         private static readonly Node InitialNode = new(TestItem.PublicKeyC, "192.168.1.3", 30303);
         private static readonly Node NeighbourNode = new(TestItem.PublicKeyD, "192.168.1.4", 30303);
 
-        private IRoutingTable<Node> _routingTable = null!;
-        private IteratorNodeLookup<PublicKey, Node> _lookup = null!;
+        private IRoutingTable<Node, Hash256> _routingTable = null!;
+        private IteratorNodeLookup<PublicKey, Node, Hash256> _lookup = null!;
         private IKademliaMessageSender<PublicKey, Node> _msgSender = null!;
         private Node _currentNode = null!;
         private PublicKey _targetKey = null!;
@@ -37,22 +38,23 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _currentNode = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             _targetKey = TestItem.PublicKeyB;
 
-            _routingTable = Substitute.For<IRoutingTable<Node>>();
+            _routingTable = Substitute.For<IRoutingTable<Node, Hash256>>();
             KademliaConfig<Node> kademliaConfig = new() { CurrentNodeId = _currentNode };
             _msgSender = Substitute.For<IKademliaMessageSender<PublicKey, Node>>();
             ILogManager logManager = Substitute.For<ILogManager>();
 
-            _lookup = new IteratorNodeLookup<PublicKey, Node>(
+            _lookup = new IteratorNodeLookup<PublicKey, Node, Hash256>(
                 _routingTable,
                 kademliaConfig,
                 _msgSender,
                 new PublicKeyKeyOperator(),
+                Hash256KademliaDistance.Instance,
                 new ManualTimestamper(new DateTime(2025, 5, 13, 21, 0, 0, DateTimeKind.Utc)),
                 logManager);
         }
 
         private void RoutingTableReturns(params Node[] nodes) =>
-            _routingTable.GetKNearestNeighbour(Arg.Any<KademliaHash>(), Arg.Any<KademliaHash?>())
+            _routingTable.GetKNearestNeighbour(Arg.Any<Hash256>(), Arg.Any<bool>())
                 .Returns(nodes);
 
         private void FindNeighboursReturns(Node from, params Node[] result) =>
@@ -80,8 +82,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             Assert.That(result, Is.EquivalentTo(expectedNodes));
             _routingTable.Received(1).GetKNearestNeighbour(
-                Arg.Is<KademliaHash>(h => h == TargetHash),
-                Arg.Any<KademliaHash?>());
+                Arg.Is<Hash256>(h => h == TargetHash),
+                Arg.Any<bool>());
         }
 
         [Test]
@@ -206,6 +208,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Assert.That(result, Is.EquivalentTo(new[] { InitialNode, NeighbourNode }));
         }
 
-        private KademliaHash TargetHash => KademliaHash.FromBytes(_targetKey.Hash.Bytes);
+        private Hash256 TargetHash => _targetKey.Hash;
     }
 }

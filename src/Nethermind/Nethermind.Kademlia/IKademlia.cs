@@ -4,52 +4,51 @@
 namespace Nethermind.Kademlia;
 
 /// <summary>
-/// Main kademlia interface. High level code is expected to interface with this interface.
+/// Provides routing-table maintenance and iterative Kademlia lookup over caller-defined key and node types.
 /// </summary>
-/// <typeparam name="TKey"></typeparam>
-/// <typeparam name="TNode"></typeparam>
+/// <typeparam name="TKey">The protocol-specific lookup key type.</typeparam>
+/// <typeparam name="TNode">The protocol-specific node/contact type.</typeparam>
 public interface IKademlia<TKey, TNode>
 {
     /// <summary>
-    /// Add node to the table.
+    /// Adds a node to the routing table or refreshes its position when it is already present.
     /// </summary>
-    /// <param name="node"></param>
+    /// <param name="node">Node to add or refresh.</param>
     void AddOrRefresh(TNode node);
 
     /// <summary>
-    /// Remove from to the table.
+    /// Removes a node from the routing table.
     /// </summary>
-    /// <param name="node"></param>
+    /// <param name="node">Node to remove.</param>
     void Remove(TNode node);
 
     /// <summary>
-    /// Start timers, refresh and such for maintenance of the table.
+    /// Runs periodic bootstrap and routing-table refresh until cancelled.
     /// </summary>
-    /// <param name="token"></param>
+    /// <param name="token">Cancellation token that stops the maintenance loop.</param>
     Task Run(CancellationToken token);
 
     /// <summary>
-    /// Just do the bootstrap sequence, which is to initiate a lookup on current node id.
-    /// Also do a refresh on all bucket which is not part of joining strictly speaking.
+    /// Runs one bootstrap pass and refreshes stale non-empty buckets.
     /// </summary>
-    /// <param name="token"></param>
+    /// <param name="token">Cancellation token for the bootstrap pass.</param>
     Task Bootstrap(CancellationToken token);
 
     /// <summary>
-    /// Lookup k nearest neighbour closest to the target hash. This will traverse the network.
+    /// Looks up nodes closest to <paramref name="key"/> by traversing the network.
     /// </summary>
-    /// <param name="targetHash"></param>
-    /// <param name="token"></param>
-    /// <param name="k"></param>
+    /// <param name="key">Protocol-specific lookup key.</param>
+    /// <param name="token">Cancellation token for the lookup.</param>
+    /// <param name="k">Optional result size. Defaults to <see cref="KademliaConfig{TNode}.KSize"/>.</param>
     Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null);
 
     /// <summary>
-    /// Return the K nearest table entry from target. This does not traverse the network. The returned array is not
-    /// sorted. The routing table may return the exact same array for optimization purpose.
+    /// Returns the closest routing-table entries to <paramref name="target"/> without traversing the network.
     /// </summary>
-    /// <param name="target"></param>
-    /// <param name="excluding"></param>
-    /// <param name="excludeSelf"></param>
+    /// <param name="target">Protocol-specific lookup key.</param>
+    /// <param name="excluding">Optional node to exclude from the result.</param>
+    /// <param name="excludeSelf">Whether to exclude the local node from the result.</param>
+    /// <remarks>The returned array is not sorted and may be an internal routing-table array.</remarks>
     TNode[] GetKNeighbour(TKey target, TNode? excluding = default, bool excludeSelf = false);
 
     /// <summary>
@@ -59,18 +58,17 @@ public interface IKademlia<TKey, TNode>
     TNode[] GetAllAtDistance(int distance);
 
     /// <summary>
-    /// Called when a TNode is added to the routing table.
+    /// Raised when a node is added to the routing table.
     /// </summary>
     event EventHandler<TNode> OnNodeAdded;
 
     /// <summary>
-    /// Called when a TNode is removed from the routing table.
+    /// Raised when a node is removed from the routing table.
     /// </summary>
     event EventHandler<TNode> OnNodeRemoved;
 
     /// <summary>
-    /// Iterate all nodes with no ordering
+    /// Iterates all nodes currently in the routing table without ordering guarantees.
     /// </summary>
-    /// <returns></returns>
     IEnumerable<TNode> IterateNodes();
 }

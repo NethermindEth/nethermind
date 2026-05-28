@@ -5,10 +5,14 @@
 namespace Nethermind.Kademlia;
 
 /// <summary>
-/// Just a convenient interface with only one generic parameter.
+/// Maps a node/contact to its Kademlia key-space value.
 /// </summary>
-/// <typeparam name="TNode"></typeparam>
-public interface INodeHashProvider<in TNode>
+/// <typeparam name="TNode">The protocol-specific node/contact type.</typeparam>
+/// <typeparam name="TKadKey">The key-space value used by the routing table.</typeparam>
+public interface INodeHashProvider<in TNode, out TKadKey> where TKadKey : notnull
 {
-    KademliaHash GetHash(TNode node);
+    /// <summary>
+    /// Gets the Kademlia key-space value for <paramref name="node"/>.
+    /// </summary>
+    TKadKey GetHash(TNode node);
 }
