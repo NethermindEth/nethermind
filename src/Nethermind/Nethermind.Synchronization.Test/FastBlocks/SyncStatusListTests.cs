@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -53,7 +52,7 @@ public class SyncStatusListTests
 
         syncStatusList.TryGetInfosForBatch(500, new AlwaysDownloadStrategy(), out BlockInfo?[] infos);
 
-        infos.Count(static (it) => it is not null).Should().Be(101);
+        Assert.That(infos.Count(static (it) => it is not null), Is.EqualTo(101));
     }
 
     [Test]
@@ -80,11 +79,11 @@ public class SyncStatusListTests
             return [.. infos.Where(bi => bi != null).Select((bi) => bi!.BlockNumber)];
         }
 
-        TryGetInfos().Should().BeEquivalentTo([99999, 99995]); // first two as it will try the first 50 only
-        TryGetInfos().Should().BeEquivalentTo([99950]); // Then the next 50
-        TryGetInfos().Should().BeEquivalentTo([99000, 99001, 99003]); // If the next 50 failed, it will try looking far back.
-        TryGetInfos().Should().BeEmpty(); // If it look far back enough and still does not find anything it will just return so that progress can update.
-        TryGetInfos().Should().BeEquivalentTo([85000]); // But as the existing blocks was already marked as inserted, it should be able to make progress on later call.
+        Assert.That(TryGetInfos(), Is.EquivalentTo([99999, 99995])); // first two as it will try the first 50 only
+        Assert.That(TryGetInfos(), Is.EquivalentTo([99950])); // Then the next 50
+        Assert.That(TryGetInfos(), Is.EquivalentTo([99000, 99001, 99003])); // If the next 50 failed, it will try looking far back.
+        Assert.That(TryGetInfos(), Is.Empty); // If it look far back enough and still does not find anything it will just return so that progress can update.
+        Assert.That(TryGetInfos(), Is.EquivalentTo([85000])); // But as the existing blocks was already marked as inserted, it should be able to make progress on later call.
     }
 
     [Test]

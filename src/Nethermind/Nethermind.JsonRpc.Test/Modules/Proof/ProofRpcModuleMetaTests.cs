@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
@@ -96,15 +95,15 @@ public class ProofRpcModuleMetaTests
         ResultWrapper<AccountProofWithMeta> result = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressA, [], BlockParameter.Earliest);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         AccountProofWithMeta payload = result.Data;
 
-        payload.Should().NotBeNull();
-        payload.Proof.Should().NotBeNull();
-        payload.Proof.Address.Should().Be(TestItem.AddressA);
-        payload.Proof.Balance.Should().Be(100_000);
-        payload.Proof.Proof.Should().NotBeNull();
-        payload.Proof.Proof.Length.Should().BeGreaterThan(0);
+        Assert.That(payload, Is.Not.Null);
+        Assert.That(payload.Proof, Is.Not.Null);
+        Assert.That(payload.Proof.Address, Is.EqualTo(TestItem.AddressA));
+        Assert.That(payload.Proof.Balance, Is.EqualTo((UInt256)100_000));
+        Assert.That(payload.Proof.Proof, Is.Not.Null);
+        Assert.That(payload.Proof.Proof.Length, Is.GreaterThan(0));
     }
 
     [Test]
@@ -113,10 +112,10 @@ public class ProofRpcModuleMetaTests
         AccountProofWithMeta payload = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressA, [], BlockParameter.Earliest).Data;
 
-        payload.Meta.Should().NotBeNull();
-        payload.Meta.NodeLookups.Should().BeGreaterThan(0,
+        Assert.That(payload.Meta, Is.Not.Null);
+        Assert.That(payload.Meta.NodeLookups, Is.GreaterThan(0),
             "every proof generation must perform at least one node lookup");
-        payload.Meta.CacheHits.Should().BeLessThanOrEqualTo(payload.Meta.NodeLookups,
+        Assert.That(payload.Meta.CacheHits, Is.LessThanOrEqualTo(payload.Meta.NodeLookups),
             "cache hits cannot exceed total lookups");
     }
 
@@ -128,9 +127,9 @@ public class ProofRpcModuleMetaTests
         AccountProofWithMeta second = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressA, [], BlockParameter.Earliest).Data;
 
-        second.Meta.NodeLookups.Should().Be(first.Meta.NodeLookups);
-        second.Meta.CacheHits.Should().Be(first.Meta.CacheHits);
-        second.Meta.MaxDepth.Should().Be(first.Meta.MaxDepth);
+        Assert.That(second.Meta.NodeLookups, Is.EqualTo(first.Meta.NodeLookups));
+        Assert.That(second.Meta.CacheHits, Is.EqualTo(first.Meta.CacheHits));
+        Assert.That(second.Meta.MaxDepth, Is.EqualTo(first.Meta.MaxDepth));
     }
 
     [Test]
@@ -147,9 +146,9 @@ public class ProofRpcModuleMetaTests
         AccountProofWithMeta withStorage = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressB, storageKeys, BlockParameter.Earliest).Data;
 
-        withStorage.Meta.MaxDepth.Should().BeGreaterThan(withoutStorage.Meta.MaxDepth,
+        Assert.That(withStorage.Meta.MaxDepth, Is.GreaterThan(withoutStorage.Meta.MaxDepth),
             "descending into the storage trie reaches deeper than the account trie alone");
-        withStorage.Meta.NodeLookups.Should().BeGreaterThan(withoutStorage.Meta.NodeLookups,
+        Assert.That(withStorage.Meta.NodeLookups, Is.GreaterThan(withoutStorage.Meta.NodeLookups),
             "storage-trie traversal triggers additional node lookups");
     }
 
@@ -165,7 +164,7 @@ public class ProofRpcModuleMetaTests
         ResultWrapper<AccountProofWithMeta> result = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressA, storageKeys, BlockParameter.Earliest);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 }
