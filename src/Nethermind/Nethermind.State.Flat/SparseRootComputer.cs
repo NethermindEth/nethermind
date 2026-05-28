@@ -111,7 +111,25 @@ public sealed class SparseRootComputer : IDisposable
             }
 
             if (retry == MaxRetries - 1)
+            {
+                // Dump the stuck state so we can build an offline reproducer
+                Console.Error.WriteLine($"DIAG_STUCK_BEGIN addr={accountPathHash} prevRoot={entry.PreviousStorageRoot} updates={entry.Updates.Count}");
+                foreach ((Hash256 key, byte _) in targets)
+                {
+                    Console.Error.WriteLine($"DIAG_STUCK_TARGET key={key} isDelete={(updates.TryGetValue(key, out LeafUpdate u) ? u.IsDelete : false)}");
+                    byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
+                    if (storageTrie.Subtrie.TryFindBlindedEntryOnPath(nibbles, out TreePath bp, out RlpNode br, out int _))
+                        Console.Error.WriteLine($"DIAG_STUCK_BLINDED_ON_PATH path={bp} rlp=0x{Convert.ToHexString(br.AsSpan())}");
+                    else
+                        Console.Error.WriteLine($"DIAG_STUCK_NO_BLINDED_ON_PATH key={key}");
+                    if (storageTrie.Subtrie.TryFindBlindedSiblingForDeletion(nibbles, out TreePath sp, out RlpNode sr))
+                        Console.Error.WriteLine($"DIAG_STUCK_BLINDED_SIBLING path={sp} rlp=0x{Convert.ToHexString(sr.AsSpan())}");
+                    else
+                        Console.Error.WriteLine($"DIAG_STUCK_NO_BLINDED_SIBLING key={key}");
+                }
+                Console.Error.WriteLine($"DIAG_STUCK_END");
                 throw new TrieException($"Sparse trie storage retry loop exceeded {MaxRetries} iterations for account {accountPathHash}. {targets.Count} blinded targets remain.");
+            }
 
             // P0 minLen: same blinded-boundary optimization as the account loop.
             List<MultiProofReader.BlindedProofTarget> blinded = [];
