@@ -340,11 +340,26 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 if (patriciaRoot != sparseRoot)
                 {
                     ILogger logger = _storageTree._scope._logManager.GetClassLogger<SparseStorageWriteBatch>();
-                    if (logger.IsWarn) logger.Warn(
-                        $"SPARSE STORAGE DIVERGENCE! Address={_storageTree._address}, " +
-                        $"AddressHash={_storageTree._addressHash}, PrevRoot={_previousStorageRoot}, " +
-                        $"SparseRoot={sparseRoot}, PatriciaRoot={patriciaRoot}, " +
-                        $"SlotCount={_rawUpdates.Count}, HasSelfDestruct={_hasSelfDestruct}");
+                    if (logger.IsWarn)
+                    {
+                        logger.Warn(
+                            $"SPARSE STORAGE DIVERGENCE! Address={_storageTree._address}, " +
+                            $"AddressHash={_storageTree._addressHash}, PrevRoot={_previousStorageRoot}, " +
+                            $"SparseRoot={sparseRoot}, PatriciaRoot={patriciaRoot}, " +
+                            $"SlotCount={_rawUpdates.Count}, HasSelfDestruct={_hasSelfDestruct}");
+
+                        // Dump every (slot, value) so we can write a focused TDD reproducer.
+                        System.Text.StringBuilder dump = new();
+                        dump.Append("SPARSE STORAGE DIVERGENCE UPDATES: ");
+                        foreach ((UInt256 idx, byte[] val) in _rawUpdates)
+                        {
+                            dump.Append(idx.ToString());
+                            dump.Append("=0x");
+                            dump.Append(Convert.ToHexString(val));
+                            dump.Append(';');
+                        }
+                        logger.Warn(dump.ToString());
+                    }
                 }
                 bulkEntries.Dispose();
             }
