@@ -31,6 +31,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private SparseRootComputer? _sparseRootComputer;
+
+    /// <summary>
+    /// Internal accessor for the sparse computer. Storage write batches use this to
+    /// route per-contract slot changes when sparse storage is authoritative.
+    /// </summary>
+    internal SparseRootComputer? SparseRootComputerInternal => _sparseRootComputer;
+
+    /// <summary>
+    /// True when sparse storage roots should replace Patricia's: sparse trie is
+    /// authoritative for accounts AND SkipPatricia is configured AND not in verification mode.
+    /// </summary>
+    internal bool UseSparseStorageRoot => _sparseRootComputer is not null
+        && _sparseIsAuthoritative
+        && _configuration.SparseTrieSkipPatricia
+        && !_configuration.SparseTrieVerificationMode;
     private SparseStateTrie? _sparseStateTrie;
     private Hash256? _sparseComputedRoot;
     private bool _sparseIsAuthoritative;
