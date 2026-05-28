@@ -88,16 +88,28 @@ namespace Nethermind.Synchronization.SnapSync
                     _progressTracker.EnqueueAccountStorage(item);
                 }
 
-                using ArrayPoolListRef<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
+                try
                 {
-                    if (_codeExistKeyCache.Get(code)) return false;
+                    using ArrayPoolListRef<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
+                    {
+                        if (_codeExistKeyCache.Get(code)) return false;
 
-                    bool exist = _codeDb.KeyExists(code.Bytes);
-                    if (exist) _codeExistKeyCache.Set(code);
-                    return !exist;
-                }).ToPooledListRef(codeHashes.Count);
+                        bool exist = _codeDb.KeyExists(code.Bytes);
+                        if (exist) _codeExistKeyCache.Set(code);
+                        return !exist;
+                    }).ToPooledListRef(codeHashes.Count);
 
-                _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
+                    _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
+                }
+                catch (AggregateException ae) when (ae.Flatten().InnerExceptions.All(ie => ie is ObjectDisposedException))
+                {
+                    // PLINQ wraps ObjectDisposedException from `_codeDb.KeyExists` (when the
+                    // DB is being disposed during shutdown) in AggregateException. Re-throw
+                    // the bare form so the dispatcher's existing
+                    // `catch (ObjectDisposedException) → Info("Ignoring sync response as the
+                    // DB has already closed.")` handles it uniformly without a noisy ERROR.
+                    throw (ObjectDisposedException)ae.Flatten().InnerExceptions[0];
+                }
 
                 ValueHash256 nextPath = accounts[^1].Path.IncrementPath();
                 _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, nextPath, moreChildrenToRight);
