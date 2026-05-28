@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Core.Utils;
 
@@ -33,17 +32,6 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// </summary>
 public sealed class BlobArenaFile : RefCountingDisposable
 {
-    /// <summary>
-    /// Bytes reserved at file offset 0 for the on-disk frontier marker — an <c>int32</c>
-    /// LE giving the absolute file offset of the next byte to write. The marker is the
-    /// authoritative frontier source: <see cref="BlobArenaManager.Initialize"/> reads it
-    /// instead of <see cref="FileInfo.Length"/> (which is always <see cref="MaxSize"/>
-    /// thanks to pre-extension), so a crash mid-<see cref="BlobArenaWriter.Complete"/>
-    /// cannot leave the file appearing to have more committed data than the writer
-    /// actually published. Updated by <see cref="WriteFrontierHeader"/>.
-    /// </summary>
-    internal const int HeaderSize = 4;
-
     // Treated as bool; 0 = delete on CleanUp, 1 = keep the on-disk file. Set by
     // PersistOnShutdown via Interlocked.Exchange so it is safe to call from any path.
     private int _preserveOnDispose;
@@ -72,53 +60,23 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// </summary>
     internal long ReportedFrontier { get; set; }
 
-    internal BlobArenaFile(PersistedSnapshotTier tier, ushort id, string path, long maxSize)
+    internal BlobArenaFile(PersistedSnapshotTier tier, ushort id, string path, long maxSize, long frontier)
     {
         Tier = tier;
         BlobArenaId = id;
         Path = path;
         MaxSize = maxSize;
         Handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
-
-        long len = RandomAccess.GetLength(Handle);
-        if (len == 0)
-        {
-            // Fresh file — pre-extend to MaxSize (sparse ftruncate on Linux) so subsequent
-            // BlobArenaWriter appends never trigger an inline file-growth syscall. Seed the
-            // frontier header so a crash before any data write still leaves a valid file.
-            RandomAccess.SetLength(Handle, maxSize);
-            WriteFrontierHeader(HeaderSize);
-            Frontier = HeaderSize;
-        }
-        else
-        {
-            Span<byte> buf = stackalloc byte[HeaderSize];
-            RandomAccess.Read(Handle, buf, 0);
-            Frontier = BinaryPrimitives.ReadInt32LittleEndian(buf);
-            // Defensive: pre-extension may have been skipped on a partially-written file
-            // from an interrupted session. Bring the file up to MaxSize for the writer.
-            if (len < maxSize) RandomAccess.SetLength(Handle, maxSize);
-        }
-        ReportedFrontier = Frontier;
+        // File length tracks actual data extent — FileStream.Write auto-extends on demand,
+        // so we skip the pre-extension ftruncate. Keeping length == Frontier makes
+        // BlobArenaManager.Initialize's frontier restore accurate (no sparse-tail surprise)
+        // and lets restored files re-enter the packing pool when they still have headroom.
+        Frontier = frontier;
+        ReportedFrontier = frontier;
         Metrics.BlobFileCountByTier.AddOrUpdate(tier, 1L, static (_, c) => c + 1);
-        if (Frontier > HeaderSize)
+        if (frontier > 0)
             Metrics.BlobAllocatedBytesByTier.AddOrUpdate(tier,
-                static (_, f) => f, static (_, b, f) => b + f, Frontier);
-    }
-
-    /// <summary>
-    /// Publish <paramref name="frontier"/> into the file's <see cref="HeaderSize"/>-byte
-    /// on-disk frontier marker at offset 0. Called by <see cref="BlobArenaWriter.Complete"/>
-    /// after the data flush, and by <see cref="BlobArenaManager.TryResetOrphanedFrontier"/>
-    /// when reclaiming an orphaned file. Durability is the caller's responsibility (the
-    /// matching <c>Fsync</c> flushes both data pages and this marker page in one journal
-    /// commit).
-    /// </summary>
-    internal void WriteFrontierHeader(long frontier)
-    {
-        Span<byte> buf = stackalloc byte[HeaderSize];
-        BinaryPrimitives.WriteInt32LittleEndian(buf, checked((int)frontier));
-        RandomAccess.Write(Handle, buf, 0);
+                static (_, f) => f, static (_, b, f) => b + f, frontier);
     }
 
     /// <summary>
@@ -206,17 +164,6 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// records the new entry so a crash cannot leave the catalog pointing at unsynced pages.
     /// </summary>
     internal void Fsync() => PosixReclaim.Fsync((int)Handle.DangerousGetHandle());
-
-    /// <summary>
-    /// <c>fallocate(PUNCH_HOLE | KEEP_SIZE)</c> over <c>[offset, offset + size)</c>, freeing
-    /// the underlying disk blocks of an orphaned range without changing the pre-extended
-    /// sparse file length. Called by <see cref="BlobArenaManager.TryResetOrphanedFrontier"/>
-    /// after the on-disk frontier marker has already been reset, so a crash between the
-    /// two leaves a file with a fresh marker pointing past the punched (or pre-punch) data.
-    /// </summary>
-    /// <returns>The <see cref="PunchHoleOutcome"/> reported by the kernel.</returns>
-    internal PunchHoleOutcome PunchHole(long offset, long size) =>
-        PosixReclaim.TryPunchHole((int)Handle.DangerousGetHandle(), offset, size);
 
     /// <summary>
     /// <c>ftruncate</c> the underlying file to <paramref name="newSize"/>. Used by

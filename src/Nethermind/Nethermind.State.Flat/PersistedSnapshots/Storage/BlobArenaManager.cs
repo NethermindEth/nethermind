@@ -42,9 +42,6 @@ public sealed class BlobArenaManager : IBlobArenaManager
     private readonly long _maxFileSize;
     private readonly PersistedSnapshotTier _tier;
     private readonly Lock _lock = new();
-    // 1 while fallocate(PUNCH_HOLE) is usable on the blob filesystem; latched to 0 the
-    // first time the kernel reports it permanently unsupported.
-    private int _punchHoleSupported = 1;
     // Indexed by blob arena id. Null slot = no file. Reads (TryLeaseFile lookup) are
     // unlocked — reference-slot reads are atomic in the CLR memory model. Slot mutations
     // (insert / null) happen under _lock alongside _mutableFiles.
@@ -72,15 +69,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
     }
 
     /// <summary>
-    /// Whether the adaptive punch-hole support flag is still set — i.e. no
-    /// filesystem-unsupported error has been seen from <c>fallocate(PUNCH_HOLE)</c>.
-    /// </summary>
-    internal bool PunchHoleSupported => Volatile.Read(ref _punchHoleSupported) == 1;
-
-    /// <summary>
-    /// Rehydrate the file pool from on-disk files. Each file's frontier is read from its
-    /// on-disk <see cref="BlobArenaFile.HeaderSize"/>-byte marker (decoupled from the file's
-    /// pre-extended length). Must be called before any
+    /// Rehydrate the file pool from on-disk file lengths. Must be called before any
     /// <see cref="PersistedSnapshots.PersistedSnapshot"/> is constructed so
     /// <see cref="TryLeaseFile"/> can resolve ids stored in their <c>ref_ids</c> metadata.
     /// </summary>
@@ -94,13 +83,12 @@ public sealed class BlobArenaManager : IBlobArenaManager
                 if (!name.StartsWith(BlobFilePrefix, StringComparison.Ordinal)) continue;
                 int id = ParseId(name);
                 if (id < 0 || id > ushort.MaxValue) continue;
-                BlobArenaFile file = new(_tier, (ushort)id, path, _maxFileSize);
+                long len = new FileInfo(path).Length;
+                long maxSize = len > 0 ? Math.Max(len, _maxFileSize) : _maxFileSize;
+                BlobArenaFile file = new(_tier, (ushort)id, path, maxSize, frontier: len);
                 _files[id] = file;
                 _nextFileId = Math.Max(_nextFileId, id + 1);
-                // Headroom from the marker-derived Frontier, NOT FileInfo.Length.
-                // Pre-extension makes FileInfo.Length == MaxSize for every written file, so a
-                // length-based check would seal every file on restart and break packing-reuse.
-                if (file.Frontier < _maxFileSize) _mutableFiles.Add((ushort)id);
+                if (len < _maxFileSize) _mutableFiles.Add((ushort)id);
             }
         }
     }
@@ -153,11 +141,10 @@ public sealed class BlobArenaManager : IBlobArenaManager
                         $"Blob arena file id space exhausted ({ushort.MaxValue + 1} files).");
                 fileId = (ushort)_nextFileId++;
                 string path = Path.Combine(_basePath, $"{BlobFilePrefix}{fileId:D4}{BlobFileExtension}");
-                file = new BlobArenaFile(_tier, fileId, path, _maxFileSize);
+                file = new BlobArenaFile(_tier, fileId, path, _maxFileSize, frontier: 0);
                 _files[fileId] = file;
                 // Fresh file isn't added to _mutableFiles yet — Complete/Cancel adds it.
-                // BlobArenaFile ctor seeds Frontier past the HeaderSize-byte marker.
-                startOffset = file.Frontier;
+                startOffset = 0;
             }
 
             // The writer's lease keeps the file alive for the duration of the write. If
@@ -281,9 +268,9 @@ public sealed class BlobArenaManager : IBlobArenaManager
             // its bytes would all read as zeros).
             if (file.IsShutdownPreserved) return;
             long prev = file.ReportedFrontier;
-            if (prev <= BlobArenaFile.HeaderSize)
+            if (prev == 0)
             {
-                // No data past the marker; make sure it's a packing candidate and exit.
+                // Already at 0; make sure it's a packing candidate and exit.
                 _mutableFiles.Add(file.BlobArenaId);
                 return;
             }
@@ -291,39 +278,20 @@ public sealed class BlobArenaManager : IBlobArenaManager
             // Take the file out of the packing pool BEFORE mutating Frontier. Strictly
             // redundant with _lock + the HasOnlyManagerLease re-check (CreateWriter also
             // takes _lock), but keeps the "files in _mutableFiles have a stable Frontier"
-            // invariant locally obvious. Re-added at frontier=HeaderSize below.
+            // invariant locally obvious. Re-added at frontier=0 below.
             _mutableFiles.Remove(file.BlobArenaId);
 
-            // Marker reset MUST happen before the punch. If the order were reversed and the
-            // process crashed in between, the file would have a stale marker pointing into
-            // a zeroed (sparse-hole) data range — restart would read garbage. With marker-
-            // first, any crash leaves a consistent state: the marker says "empty", and the
-            // punched (or pre-punch) bytes past it are unreachable through any NodeRef.
-            file.WriteFrontierHeader(BlobArenaFile.HeaderSize);
+            // Reclaim the orphaned [0, prev) range while still under _lock — a racing
+            // CreateWriter would otherwise lease this file and append at offset 0, and a
+            // truncate over a range that now holds fresh data would corrupt it. ftruncate
+            // zeros the logical length AND frees all disk blocks in a single syscall;
+            // the page cache for the truncated range is implicitly invalidated.
+            file.SetFileLength(0);
 
-            // Reclaim the orphaned [HeaderSize, prev) range. File length stays at MaxSize
-            // (pre-extended) — only the disk blocks are freed. A successful punch
-            // invalidates the page cache for the range; the fadvise fallback covers
-            // filesystems where punch is unsupported.
-            long punchOffset = BlobArenaFile.HeaderSize;
-            long punchSize = prev - BlobArenaFile.HeaderSize;
-            bool punched = false;
-            if (Volatile.Read(ref _punchHoleSupported) == 1)
-            {
-                PunchHoleOutcome outcome = file.PunchHole(punchOffset, punchSize);
-                if (outcome == PunchHoleOutcome.Unsupported)
-                {
-                    Volatile.Write(ref _punchHoleSupported, 0);
-                }
-                punched = outcome == PunchHoleOutcome.Done;
-            }
-            if (!punched)
-                file.FadviseDontNeed(punchOffset, punchSize);
-
-            file.Frontier = BlobArenaFile.HeaderSize;
-            file.ReportedFrontier = BlobArenaFile.HeaderSize;
+            file.Frontier = 0;
+            file.ReportedFrontier = 0;
             Metrics.BlobAllocatedBytesByTier.AddOrUpdate(_tier,
-                static (_, _) => 0L, static (_, b, r) => Math.Max(0, b - r), punchSize);
+                static (_, _) => 0L, static (_, b, r) => Math.Max(0, b - r), prev);
 
             _mutableFiles.Add(file.BlobArenaId);
         }

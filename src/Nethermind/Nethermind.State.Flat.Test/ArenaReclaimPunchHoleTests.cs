@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using Microsoft.Win32.SafeHandles;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
 
@@ -74,14 +72,13 @@ public class ArenaReclaimPunchHoleTests
     }
 
     [Test]
-    public void BlobFrontierReset_PunchesHoleAndResetsMarker_ForOrphanedRange()
+    public void BlobFrontierReset_TruncatesFile_ForOrphanedRange()
     {
         const int rlpSize = 4096;
         const int rlpCount = 64;
-        const long maxFileSize = 8L * 1024 * 1024;
         string blobDir = Path.Combine(_testDir, "blob");
 
-        using BlobArenaManager blobs = new(blobDir, maxFileSize, PersistedSnapshotTier.Persisted);
+        using BlobArenaManager blobs = new(blobDir, 8L * 1024 * 1024, PersistedSnapshotTier.Persisted);
 
         ushort blobId;
         using (BlobArenaWriter writer = blobs.CreateWriter(rlpSize * rlpCount))
@@ -97,31 +94,17 @@ public class ArenaReclaimPunchHoleTests
         }
 
         string blobPath = Directory.GetFiles(blobDir).Single();
-        Fsync(blobPath);
-        long blocksBefore = StatBlocks(blobPath);
-        Assert.That(blocksBefore, Is.GreaterThan(0), "the written blobs should occupy real disk blocks");
-        Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(maxFileSize), "file pre-extended to MaxSize");
+        long lengthBefore = new FileInfo(blobPath).Length;
+        Assert.That(lengthBefore, Is.GreaterThan(0), "the writer's appends should have grown the file");
 
         // The writer's lease is gone, so the file is orphaned — frontier reset recycles it
-        // by resetting the on-disk marker to HeaderSize AND punch-hole-ing the data range
-        // to free disk blocks. The file's logical length stays at MaxSize (no truncate).
+        // by truncating the file back to length 0 (frees disk blocks + zeros logical length
+        // in one syscall, eliminating the sparse-tail mismatch the old punch-hole path left).
         BlobArenaFile file = blobs.GetFile(blobId);
         blobs.TryResetOrphanedFrontier(file);
 
-        Assert.That(file.Frontier, Is.EqualTo(BlobArenaFile.HeaderSize), "in-memory frontier reset to header end");
-        Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(maxFileSize), "file length unchanged by reset");
-
-        // Verify the on-disk marker actually got reset.
-        using SafeFileHandle h = File.OpenHandle(blobPath, FileMode.Open, FileAccess.Read);
-        Span<byte> markerBuf = stackalloc byte[BlobArenaFile.HeaderSize];
-        RandomAccess.Read(h, markerBuf, 0);
-        int marker = BinaryPrimitives.ReadInt32LittleEndian(markerBuf);
-        Assert.That(marker, Is.EqualTo(BlobArenaFile.HeaderSize), "on-disk marker reset to header end");
-
-        if (!blobs.PunchHoleSupported)
-            Assert.Ignore("filesystem does not support fallocate punch-hole");
-        long blocksAfter = StatBlocks(blobPath);
-        Assert.That(blocksAfter, Is.LessThan(blocksBefore), "frontier reset should punch-hole the orphaned range");
+        Assert.That(file.Frontier, Is.EqualTo(0), "in-memory frontier reset");
+        Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(0), "on-disk file truncated by frontier reset");
     }
 
     private static (SnapshotLocation, ArenaReservation) WriteReservation(ArenaManager manager, int size)

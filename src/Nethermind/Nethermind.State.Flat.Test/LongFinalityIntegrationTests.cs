@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Win32.SafeHandles;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -185,15 +182,17 @@ public class LongFinalityIntegrationTests
         string[] blobFiles = Directory.GetFiles(blobDir, "blob_*.bin");
         Assert.That(blobFiles, Is.Not.Empty,
             "blob files were deleted on Dispose — PersistOnShutdown flag did not propagate to BlobArenaFile");
-        // Blob files are pre-extended to MaxSize (sparse). A preserve-flagged file must
-        // retain its full logical length across Dispose — a truncated length would mean
-        // either the TryResetOrphanedFrontier preserve guard regressed (zero length) or
-        // ftruncate was called somewhere unexpected.
+        // No pre-extension: blob length tracks the actual data extent. If we ever drift
+        // back into pre-extending or punch-zero-on-shutdown, a preserve-flagged file ends
+        // up with length 0 (truncated) or length MaxSize (pre-extended sparse) — neither
+        // matches the snapshot's written extent. Either symptom would be caught here.
         foreach (string blobFile in blobFiles)
         {
             long len = new FileInfo(blobFile).Length;
-            Assert.That(len, Is.EqualTo(1024 * 1024),
-                $"{blobFile} length {len} != MaxSize — preserve guard regressed or pre-extension dropped");
+            Assert.That(len, Is.GreaterThan(0),
+                $"{blobFile} truncated on Dispose — preserve flag did not protect a referenced blob");
+            Assert.That(len, Is.LessThanOrEqualTo(1024 * 1024),
+                $"{blobFile} length {len} > 1 MiB cap — pre-extension regressed");
         }
 
         // Session 2: reload and verify
@@ -234,73 +233,6 @@ public class LongFinalityIntegrationTests
             Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
             Assert.That(snap1MissB, Is.Null);
             Assert.That(snap2MissA, Is.Null);
-        }
-    }
-
-    [Test]
-    public void Repository_Restart_IgnoresTornWritePastFrontierMarker()
-    {
-        // Simulates a crash mid-write: session 1 writes a snapshot through the normal
-        // convert path (writer publishes its frontier into the on-disk 4-byte marker),
-        // then we manually append garbage bytes past that marker on disk. Session 2's
-        // Initialize must trust the marker — not FileInfo.Length — and ignore the
-        // garbage. Pre-fix (FileInfo.Length-based recovery) the garbage would be read
-        // as committed data and either throw RlpException or surface as wrong bytes.
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(1, Keccak.Compute("1"));
-        TreePath path1 = new(Keccak.Compute("path1"), 4);
-        byte[] body1 = new byte[500]; Array.Fill(body1, (byte)0xAA);
-        byte[] rlp1 = Rlp.Encode(body1).Bytes;
-        MemDb catalogDb = new();
-
-        const long maxArenaSize = 1L * 1024 * 1024;
-
-        using (ArenaManager arena1 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: maxArenaSize))
-        using (BlobArenaManager blobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted))
-        using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), new PersistedSnapshotBloomFilterManager()))
-        {
-            repo.LoadFromCatalog();
-            repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s0, s1, c =>
-            {
-                c.StateNodes[path1] = new TrieNode(NodeType.Leaf, rlp1);
-                c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
-            })).Dispose();
-        }
-
-        // Session 1 disposed everything (incl. the convert fsync that flushed both data
-        // and the on-disk marker). Now append garbage past the marker frontier — exactly
-        // what a crash mid-FlushBuffer would leave behind.
-        string blobPath = Directory.GetFiles(Path.Combine(_testDir, "blobs", "small"), "blob_*.bin").Single();
-        int markerFrontier;
-        using (SafeFileHandle h = File.OpenHandle(blobPath, FileMode.Open, FileAccess.ReadWrite))
-        {
-            Span<byte> markerBuf = stackalloc byte[BlobArenaFile.HeaderSize];
-            RandomAccess.Read(h, markerBuf, 0);
-            markerFrontier = BinaryPrimitives.ReadInt32LittleEndian(markerBuf);
-            // Write 4 KiB of valid-looking-but-uncommitted RLP bytes past the marker.
-            byte[] garbage = new byte[4096];
-            Array.Fill(garbage, (byte)0xFE);
-            RandomAccess.Write(h, garbage, markerFrontier);
-        }
-
-        // Session 2: reload should still see exactly snap1's committed data; garbage
-        // past the marker must not corrupt the round-trip read.
-        using (ArenaManager arena2 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: maxArenaSize))
-        using (BlobArenaManager blobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted))
-        using (PersistedSnapshotRepository repo = new(arena2, blobs2, catalogDb, new FlatDbConfig(), new PersistedSnapshotBloomFilterManager()))
-        {
-            repo.LoadFromCatalog();
-            Assert.That(repo.SnapshotCount, Is.EqualTo(1));
-            Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? snap), Is.True);
-            Assert.That(snap!.TryLoadStateNodeRlp(path1, out byte[]? r), Is.True);
-            snap.Dispose();
-            Assert.That(r, Is.EqualTo(rlp1),
-                "state node round-tripped correctly — restart used the marker, not FileInfo.Length");
-
-            // Frontier should match the marker, not the garbage-inflated file length.
-            BlobArenaFile blob = blobs2.GetFile(ushort.Parse(Path.GetFileNameWithoutExtension(blobPath).AsSpan(5)));
-            Assert.That(blob.Frontier, Is.EqualTo((long)markerFrontier),
-                "Frontier restored from on-disk marker, not from FileInfo.Length");
         }
     }
 
