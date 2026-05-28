@@ -491,6 +491,7 @@ public sealed class SparseSubtrie : IDisposable
                         // and silently treats the delete as a no-op, leaving a partial branch
                         // with one child + one blinded sibling that encodes to the wrong RLP.
                         AddChildToBranch(nodeIdx, nibble, leafIdxToFree);
+                        Console.Error.WriteLine($"DIAG_SPARSE_COLLAPSE_ROLLBACK nibble={nibble} branchIdx={nodeIdx} leafIdx={leafIdxToFree}");
                         return (UpdateResult.NeedsProof, nodeIdx);
                     }
                     FreeNode(leafIdxToFree);

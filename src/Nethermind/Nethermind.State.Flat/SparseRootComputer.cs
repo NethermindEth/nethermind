@@ -94,6 +94,7 @@ public sealed class SparseRootComputer : IDisposable
         {
             List<(Hash256 key, byte minLen)> targets = [];
             storageTrie.UpdateLeaves(updates, (key, minLen) => targets.Add((key, minLen)));
+            if (diag) Console.Error.WriteLine($"DIAG_STORAGE_RETRY_ITER {retry} targets.Count={targets.Count}");
             if (targets.Count == 0) break;
 
             // Detect deletion-with-blinded-sibling stalls: the proof reader walks only target
