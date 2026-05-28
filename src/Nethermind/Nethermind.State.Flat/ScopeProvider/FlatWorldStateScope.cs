@@ -313,15 +313,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
 
-            // Variant selection: legacy walks Patricia (also warms transient cache via the
-            // adapter); SparseProof issues a sparse-style proof read that warms the same DB
-            // pages sparse will read later. None is gated at DI by NoopTrieWarmer.
+            // Variant selection:
+            //   Legacy â€” walks Patricia and warms the transient cache via the adapter.
+            //   SparseProof â€” EXPERIMENTAL. Runs a full root-to-leaf proof read for a single
+            //     target and DISCARDS the result. The decoded proof never reaches the sparse
+            //     trie, so this is pure DB/OS page-cache warming + wasted CPU on RLP decode.
+            //     Don't ship as a permanent default; only useful for measuring the underlying
+            //     I/O. Real prefetching needs the M5 background sparse task to reveal the
+            //     fetched proofs into the trie â€” until then SparseProof costs more than it
+            //     saves on a hot trie.
+            //   None â€” gated at DI by NoopTrieWarmer (never reaches this method).
             if (_configuration.SparseTrieWarmer == SparseTrieWarmerVariant.SparseProof
                 && _proofReader is not null && _prevStateRoot is not null)
             {
-                // Discard result — purpose is RocksDB/OS page-cache warming for paths the
-                // sparse trie will hit during ComputeStateRoot. ReadAccountProofs from a single
-                // target walks the same subtrie sparse will request.
                 _ = Nethermind.Trie.Sparse.MultiProofReader.ReadAccountProofs(
                     _proofReader, _prevStateRoot, [Keccak.Compute(address.Bytes)]);
             }

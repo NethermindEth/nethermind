@@ -120,7 +120,11 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             if (_config.SparseTrieWarmer == SparseTrieWarmerVariant.SparseProof
                 && _scope.SparseProofReader is not null && _tree.RootHash != Keccak.EmptyTreeHash)
             {
-                // Sparse-aware prefetch: walk only the storage path the sparse trie will read.
+                // EXPERIMENTAL â€” mirrors the account-side warmer's SparseProof variant. Full
+                // root-to-leaf storage proof read with the result discarded; the decoded proof
+                // is never revealed into the sparse storage trie. Only DB/OS page-cache warming
+                // until the M5 background sparse task can consume these reads. See the matching
+                // comment in FlatWorldStateScope.WarmUpStateTrie.
                 _ = Nethermind.Trie.Sparse.MultiProofReader.ReadStorageProofs(
                     _scope.SparseProofReader, _addressHash, _tree.RootHash, [key.ToCommitment()]);
             }

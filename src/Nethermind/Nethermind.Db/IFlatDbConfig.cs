@@ -79,7 +79,10 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Selects which trie warmer implementation runs during execution. " +
         "'Legacy' (default) uses the Patricia-walking TrieWarmer which warms DB pages via real trie traversals. " +
-        "'SparseProof' uses the sparse-aware proof prefetcher that hits only the paths the sparse trie will need. " +
+        "'SparseProof' (EXPERIMENTAL) issues sparse-style root-to-leaf proof reads for hint targets and discards the " +
+        "result — purpose is DB/OS page-cache warming for paths the sparse trie will hit later. The decoded proof " +
+        "nodes are NOT fed back into the sparse trie (that requires the M5 background sparse task), so the CPU spent " +
+        "decoding/allocating is pure waste. Useful only as a benchmark probe for the underlying I/O cost. " +
         "'None' disables warming entirely. Only meaningful when UseSparseRootComputation=true.",
         DefaultValue = "Legacy")]
     SparseTrieWarmerVariant SparseTrieWarmer { get; set; }
@@ -88,6 +91,9 @@ public interface IFlatDbConfig : IConfig
 public enum SparseTrieWarmerVariant
 {
     Legacy,
+    /// <summary>EXPERIMENTAL: full root-to-leaf proof read, result discarded (no sparse-trie reveal).
+    /// Until the M5 background sparse task is wired, this only warms DB/OS page cache and burns CPU
+    /// on RLP decode that nothing consumes. Don't use as a permanent default.</summary>
     SparseProof,
     None,
 }
