@@ -29,8 +29,9 @@ public partial class EngineRpcModule : IEngineRpcModule
     /// <summary>
     /// Bogota (EIP-7805 FOCIL) layered on Amsterdam's <see cref="ExecutionPayloadV4"/>: identical
     /// payload structure to <c>engine_newPayloadV5</c> plus a new <c>inclusionListTransactions</c>
-    /// parameter that the EL validates against the post-execution state and returns
-    /// <see cref="PayloadStatus.InvalidInclusionList"/> when any IL tx is valid but missing.
+    /// parameter that the EL validates against the parent block state (snapshotted before
+    /// processing the block) and returns <see cref="PayloadStatus.InvalidInclusionList"/> when
+    /// any IL tx is valid but missing.
     /// <see href="https://github.com/ethereum/execution-apis/pull/609">execution-apis#609</see>.
     /// </summary>
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
