@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -33,8 +34,8 @@ public class PosForwardHeaderProviderCacheTests
     public void SetUp()
     {
         _chainLevelHelper = Substitute.For<IChainLevelHelper>();
-        // `ChainLevelHelper.GetStartingPoint` in the typical walk-back path returns the anchor at
-        // `BestKnownNumber`, so the first header is `BestKnownNumber` (here `0`), not `BestKnownNumber + 1`.
+        // `ChainLevelHelper.GetStartingPoint` in the walk-back path returns the anchor at
+        // `BestKnownNumber`, so `headers[0].Number == BestKnownNumber` (here `0`).
         _chainLevelHelper.GetNextHeaders(default, default, default).ReturnsForAnyArgs(_ => BuildSequentialHeaders(start: 0, count: CachedBatchSize));
 
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
@@ -50,77 +51,116 @@ public class PosForwardHeaderProviderCacheTests
         _blockTree = Substitute.For<IBlockTree>();
         _blockTree.BestKnownNumber.Returns(0);
 
-        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-        ISyncReport syncReport = new NullSyncReport();
-
         _provider = new PosForwardHeaderProvider(
             _chainLevelHelper,
             poSSwitcher,
             _beaconPivot,
             sealValidator,
             _blockTree,
-            syncPeerPool,
-            syncReport,
+            Substitute.For<ISyncPeerPool>(),
+            new NullSyncReport(),
             LimboLogs.Instance);
     }
+
+    [TearDown]
+    public void TearDown() => _provider.Dispose();
+
+    private Task<IOwnedReadOnlyList<BlockHeader?>?> Get(int skip = 0, int max = Requested) =>
+        _provider.GetBlockHeaders(skip, max, CancellationToken.None);
+
+    private void RaiseMainChainUpdate(params Block[] blocks) =>
+        _blockTree.OnUpdateMainChain += Raise.EventWith(_blockTree, new OnUpdateMainChainArgs(new List<Block>(blocks), wereProcessed: true));
+
+    private void AssertChainLevelCalls(int expected) =>
+        _chainLevelHelper.ReceivedWithAnyArgs(expected).GetNextHeaders(default, default, default);
 
     [Test]
     public async Task Second_call_with_same_inputs_is_served_from_cache()
     {
-        await _provider.GetBlockHeaders(0, Requested, CancellationToken.None);
-        await _provider.GetBlockHeaders(0, Requested, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
+        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
 
-        _chainLevelHelper.ReceivedWithAnyArgs(1).GetNextHeaders(default, default, default);
+        AssertChainLevelCalls(1);
     }
 
     [Test]
     public async Task Cache_is_invalidated_when_process_destination_hash_changes()
     {
-        await _provider.GetBlockHeaders(0, Requested, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
 
         _beaconPivot.ProcessDestination = BuildHeader(1_000, TestItem.KeccakB);
-        await _provider.GetBlockHeaders(0, Requested, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
 
-        _chainLevelHelper.ReceivedWithAnyArgs(2).GetNextHeaders(default, default, default);
+        AssertChainLevelCalls(2);
     }
 
     [Test]
     public async Task Cache_miss_when_best_known_number_advances_past_cached_range()
     {
-        await _provider.GetBlockHeaders(0, Requested, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
 
         _blockTree.BestKnownNumber.Returns((long)CachedBatchSize + 10);
-        await _provider.GetBlockHeaders(0, Requested, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
 
-        _chainLevelHelper.ReceivedWithAnyArgs(2).GetNextHeaders(default, default, default);
+        AssertChainLevelCalls(2);
     }
 
     [Test]
     public async Task Cached_slice_advances_with_best_known_number()
     {
-        using IOwnedReadOnlyList<BlockHeader?>? first = await _provider.GetBlockHeaders(0, Requested, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
         first!.Count.Should().Be(Requested);
         first[0]!.Number.Should().Be(0);
 
         _blockTree.BestKnownNumber.Returns(20L);
-        using IOwnedReadOnlyList<BlockHeader?>? second = await _provider.GetBlockHeaders(0, Requested, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
 
         second!.Count.Should().Be(Requested);
         second[0]!.Number.Should().Be(20);
-        _chainLevelHelper.ReceivedWithAnyArgs(1).GetNextHeaders(default, default, default);
+        AssertChainLevelCalls(1);
     }
 
     [Test]
     public async Task SkipLastN_is_honored_on_cache_hit()
     {
-        await _provider.GetBlockHeaders(0, Requested, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
 
+        // Request more than the cache holds after the skip-tail trim so the front-cap
+        // exposes `skipLastN`; otherwise `min(available, maxHeader) == maxHeader` and a silently
+        // dropped `skipLastN` would still satisfy the assertion.
         const int skip = 4;
-        using IOwnedReadOnlyList<BlockHeader?>? sliced = await _provider.GetBlockHeaders(skip, Requested, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? sliced = await Get(skip: skip, max: CachedBatchSize);
 
-        sliced!.Count.Should().BeLessThanOrEqualTo(CachedBatchSize - skip);
-        sliced[^1]!.Number.Should().BeLessThanOrEqualTo(CachedBatchSize - skip);
-        _chainLevelHelper.ReceivedWithAnyArgs(1).GetNextHeaders(default, default, default);
+        sliced!.Count.Should().Be(CachedBatchSize - skip);
+        sliced[^1]!.Number.Should().Be(CachedBatchSize - skip - 1);
+        AssertChainLevelCalls(1);
+    }
+
+    [Test]
+    public async Task Cache_is_invalidated_on_reorg_within_cached_range()
+    {
+        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
+
+        Block reorgBlock = Build.A.Block.WithNumber(10).WithDifficulty(2).TestObject;
+        reorgBlock.Header.Hash.Should().NotBe(first![10]!.Hash!);
+        RaiseMainChainUpdate(reorgBlock);
+
+        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
+
+        AssertChainLevelCalls(2);
+    }
+
+    [Test]
+    public async Task Cache_survives_main_chain_update_that_matches_cached_hash()
+    {
+        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
+
+        Block extensionBlock = new(first![5]!, new BlockBody());
+        RaiseMainChainUpdate(extensionBlock);
+
+        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
+
+        AssertChainLevelCalls(1);
     }
 
     private static BlockHeader[] BuildSequentialHeaders(long start, int count)
