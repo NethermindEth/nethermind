@@ -115,8 +115,15 @@ public class LongFinalityIntegrationTests
         persisted.Dispose();
     }
 
-    [Test]
-    public void Repository_Restart_PreservesAllData()
+    // 4 KiB — each snapshot's metadata reservation page-rounds to fill the whole arena
+    // file, so the file fully-dies on the sole reservation's MarkDead and the punch path
+    // is short-circuited. 1 MiB — both snapshots' reservations pack into one arena file,
+    // so snap1's dispose finds snap2 still live, MarkDead returns true, and the bare
+    // ArenaReservation.CleanUp would (without the PersistOnShutdown-aware fix) punch the
+    // dead range in a live preserve-flagged file, zeroing snap1's metadata for session 2.
+    [TestCase(4096L, TestName = "Repository_Restart_PreservesAllData_PerSnapshotArenaFiles")]
+    [TestCase(1L * 1024 * 1024, TestName = "Repository_Restart_PreservesAllData_SharedArenaAcrossSnapshots")]
+    public void Repository_Restart_PreservesAllData(long maxArenaSize)
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -129,7 +136,7 @@ public class LongFinalityIntegrationTests
         MemDb catalogDb = new();
 
         // Session 1: persist two snapshots
-        using (ArenaManager smallArena1 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
+        using (ArenaManager smallArena1 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: maxArenaSize))
         using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted))
         using (PersistedSnapshotRepository repo = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig(), new PersistedSnapshotBloomFilterManager()))
         {
@@ -148,6 +155,17 @@ public class LongFinalityIntegrationTests
             })).Dispose();
         }
 
+        // Repository.Dispose flags every loaded snapshot's arena reservation AND every
+        // referenced blob file with PersistOnShutdown before tearing down the managers,
+        // so both file kinds must survive on disk for the catalog to re-bind in session 2.
+        // Split assertions so a missing flag on one side fingerprints which side regressed.
+        string arenaDir = Path.Combine(_testDir, "arenas", "base");
+        string blobDir = Path.Combine(_testDir, "blobs", "small");
+        Assert.That(Directory.GetFiles(arenaDir, "arena_*.bin"), Is.Not.Empty,
+            "arena files were deleted on Dispose — PersistOnShutdown flag did not propagate to ArenaFile");
+        Assert.That(Directory.GetFiles(blobDir, "blob_*.bin"), Is.Not.Empty,
+            "blob files were deleted on Dispose — PersistOnShutdown flag did not propagate to BlobArenaFile");
+
         // Session 2: reload and verify
         using (ArenaManager smallArena2 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
         using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted))
@@ -156,17 +174,27 @@ public class LongFinalityIntegrationTests
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(2));
 
-            // path1 is in s0→s1, path2 is in s1→s2 — query each snapshot directly
+            // s0→s1 carries path1 + AddressA; s1→s2 carries path2 + AddressB. The
+            // cross-snapshot misses verify the snapshot boundary survives reload
+            // (i.e. AddressB does NOT bleed into snap1's view, and vice versa).
             Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? snap1), Is.True);
             Assert.That(snap1!.TryLoadStateNodeRlp(path1, out byte[]? r1), Is.True);
+            Assert.That(snap1.TryGetAccount(TestItem.AddressA, out Account? a1), Is.True);
+            Assert.That(snap1.TryGetAccount(TestItem.AddressB, out Account? snap1MissB), Is.False);
             snap1.Dispose();
 
             Assert.That(repo.TryLeaseSnapshotTo(s2, out PersistedSnapshot? snap2), Is.True);
             Assert.That(snap2!.TryLoadStateNodeRlp(path2, out byte[]? r2), Is.True);
+            Assert.That(snap2.TryGetAccount(TestItem.AddressB, out Account? a2), Is.True);
+            Assert.That(snap2.TryGetAccount(TestItem.AddressA, out Account? snap2MissA), Is.False);
             snap2.Dispose();
 
             Assert.That(r1, Is.EqualTo(rlp1));
             Assert.That(r2, Is.EqualTo(rlp2));
+            Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
+            Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
+            Assert.That(snap1MissB, Is.Null);
+            Assert.That(snap2MissA, Is.Null);
         }
     }
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.Hsst;
 
@@ -21,6 +22,12 @@ public sealed class ArenaReservation : RefCountingDisposable
     internal int ArenaId { get; }
     internal long Offset { get; }
     public long Size { get; internal set; }
+    // Set once via PersistOnShutdown; checked in CleanUp to skip the punch-hole reclaim
+    // so a snapshot the next session needs to rehydrate is not zeroed on disk. Independent
+    // of the file-level _preserveOnDispose: a shared arena may still hold other live
+    // reservations, so the file stays alive regardless — only the punch over THIS
+    // reservation's range needs to be suppressed.
+    private int _preserveOnDispose;
 
     /// <summary>
     /// On-disk byte footprint of this reservation, page-padded up to where the next
@@ -187,11 +194,17 @@ public sealed class ArenaReservation : RefCountingDisposable
     }
 
     /// <summary>
-    /// Forward a shutdown-preserve request to the underlying <see cref="ArenaFile"/>. Called
-    /// by <see cref="PersistedSnapshots.PersistedSnapshot.PersistOnShutdown"/> as the snapshot
-    /// is being marked for survival across the next session.
+    /// Mark this reservation AND its underlying <see cref="ArenaFile"/> for shutdown-survival.
+    /// Called by <see cref="PersistedSnapshots.PersistedSnapshot.PersistOnShutdown"/> as the
+    /// snapshot is being marked for survival across the next session. The reservation-level
+    /// flag suppresses the punch-hole reclaim in <see cref="CleanUp"/>; the file-level flag
+    /// (set by the forwarded call) suppresses <c>File.Delete</c> in <see cref="ArenaFile.CleanUp"/>.
     /// </summary>
-    public void PersistOnShutdown() => _arenaFile.PersistOnShutdown();
+    public void PersistOnShutdown()
+    {
+        Interlocked.Exchange(ref _preserveOnDispose, 1);
+        _arenaFile.PersistOnShutdown();
+    }
 
     protected override void CleanUp()
     {
@@ -201,10 +214,13 @@ public sealed class ArenaReservation : RefCountingDisposable
         long footprint = Footprint;
         _arenaFile.AdviseDontNeed(Offset, footprint);
         bool fileSurvives = _arenaManager.MarkDead(_arenaFile, footprint);
-        // A file MarkDead removed is about to be File.Delete'd — punching it is wasted work.
-        // A successful punch-hole already invalidates the page cache, so the follow-up
-        // fadvise is then redundant and skipped.
-        bool punched = fileSurvives && _arenaManager.TryPunchHole(_arenaFile, Offset, footprint);
+        // A reservation flagged PersistOnShutdown must not be punched even when the file
+        // survives — the next session needs to mmap this exact range. A file MarkDead removed
+        // is about to be File.Delete'd — punching it is wasted work. A successful punch-hole
+        // already invalidates the page cache, so the follow-up fadvise is then redundant and
+        // skipped.
+        bool preserve = Volatile.Read(ref _preserveOnDispose) == 1;
+        bool punched = !preserve && fileSurvives && _arenaManager.TryPunchHole(_arenaFile, Offset, footprint);
         if (!punched)
             _arenaFile.FadviseDontNeed(Offset, footprint);
         _arenaManager.ForgetTrackerRange(ArenaId, Offset, footprint);
