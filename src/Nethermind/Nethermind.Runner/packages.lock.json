@@ -593,6 +593,7 @@
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
+          "Microsoft.ClearScript.V8": "[7.5.0, )",
           "Microsoft.ClearScript.V8.Native.linux-arm64": "[7.5.0, )",
           "Microsoft.ClearScript.V8.Native.linux-x64": "[7.5.0, )",
           "Microsoft.ClearScript.V8.Native.osx-arm64": "[7.5.0, )",
