@@ -696,6 +696,31 @@ public sealed class SparseSubtrie : IDisposable
             }
 
             byte[] shortKey = node.ShortKey ?? [];
+
+            // Extension-only state: BranchWithExtension whose inner branch is unrevealed
+            // (StateMask is empty). The wrapper RLP encodes [extKey, branchRef], so we report
+            // the boundary at the position BEFORE the shortKey is consumed and pass the
+            // wrapper RLP. The proof reader's walker then descends through the extension key
+            // normally, matching shortKey against the target nibbles and resolving the inner
+            // branch via its embedded reference. Reporting at post-shortKey would mis-align
+            // the walker: it would try to match shortKey against target nibbles that have
+            // already moved past it, producing no descent and a useless wrapper-only proof.
+            if (shortKey.Length > 0 && node.StateMask == TrieMask.Empty)
+            {
+                // Still verify the target matches the shortKey before declaring this the boundary.
+                // If the target diverges within shortKey, no proof is needed (UpdateLeaves would
+                // split the extension locally).
+                int sharedLen = 0;
+                int limit = Math.Min(shortKey.Length, targetNibbles.Length - nibblePos);
+                while (sharedLen < limit && targetNibbles[nibblePos + sharedLen] == shortKey[sharedLen]) sharedLen++;
+                if (sharedLen < shortKey.Length) return false;
+
+                blindedPath = currentPath; // pre-shortKey position
+                blindedRlp = node.CachedRlp;
+                remainingNibbleLen = targetNibbles.Length - nibblePos;
+                return true;
+            }
+
             if (shortKey.Length > 0)
             {
                 int sharedLen = 0;
@@ -704,17 +729,6 @@ public sealed class SparseSubtrie : IDisposable
                 if (sharedLen < shortKey.Length) return false; // path diverges within shortKey
                 currentPath = currentPath.Append(shortKey);
                 nibblePos += shortKey.Length;
-            }
-
-            // Extension-only state: BranchWithExtension whose inner branch is unrevealed.
-            // The whole node is effectively blinded for descent purposes — but the inner-branch
-            // hash lives in the cached RLP. Treat the current node as the blinded boundary.
-            if (node.StateMask == TrieMask.Empty)
-            {
-                blindedPath = currentPath;
-                blindedRlp = node.CachedRlp;
-                remainingNibbleLen = targetNibbles.Length - nibblePos;
-                return true;
             }
 
             if (nibblePos >= targetNibbles.Length) return false;
