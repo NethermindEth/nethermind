@@ -11,3 +11,4 @@ NETH003 | Naming | Warning | File name does not match the single contained top-l
 NETH004 | Performance | Warning | ConcurrentDictionary&lt;TKey,TValue&gt;.Keys / .Values allocate a snapshot list. Enumerate the dictionary directly with foreach, or use AcquireLock for a deliberate snapshot.
 NETH005 | Performance | Warning | Span<T>.ToArray() / ReadOnlySpan<T>.ToArray() passed to a method that has a Span<T>/ReadOnlySpan<T> overload at the same position. Pass the span directly.
 NETH006 | Reliability | Warning | TaskCompletionSource constructed without TaskCreationOptions.RunContinuationsAsynchronously can run continuations synchronously and deadlock.
+NETH007 | Correctness | Warning | Class decorates an interface (holds a field/property/ctor parameter of that interface type) but uses the default implementation of a member marked [MustForwardOnDecorate]. Add an explicit forwarding implementation.

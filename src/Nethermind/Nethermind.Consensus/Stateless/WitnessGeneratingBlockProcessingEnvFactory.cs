@@ -6,8 +6,12 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -44,13 +48,14 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
     {
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         WitnessCapturingTrieStore trieStore = new(worldStateManager.CreateReadOnlyTrieStore());
-        IStateReader stateReader = new StateReader(trieStore, readOnlyDbProvider.CodeDb, logManager);
+        WitnessCapturingCodeDb codeDb = new(readOnlyDbProvider.CodeDb);
+        IStateReader stateReader = new StateReader(trieStore, codeDb, logManager);
         IWorldState baseWorldState = new WorldState(
-            new TrieStoreScopeProvider(trieStore, readOnlyDbProvider.CodeDb, logManager), logManager);
+            new TrieStoreScopeProvider(trieStore, codeDb, logManager), logManager, witnessMode: true);
 
         IHeaderStore headerStore = rootLifetimeScope.Resolve<IHeaderStore>();
         WitnessGeneratingHeaderFinder headerFinder = new(headerStore);
-        WitnessGeneratingWorldState witnessWorldState = new(baseWorldState, stateReader, trieStore, headerFinder);
+        WitnessGeneratingWorldState witnessWorldState = new(baseWorldState, stateReader, trieStore, codeDb, headerFinder);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder => builder
             .AddScoped<IStateReader>(stateReader)
@@ -61,7 +66,19 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
             .AddModule(validationModules)
-            .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());
+            .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>()
+            .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
+                ctx.Resolve<IWorldState>(),
+                ctx.Resolve<ISpecProvider>(),
+                ctx.Resolve<IBlockhashProvider>(),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IBlocksConfig>(),
+                ctx.Resolve<IWithdrawalProcessorFactory>(),
+                ctx.ResolveOptional<PrewarmerEnvFactory>(),
+                ctx.ResolveOptional<PreBlockCaches>(),
+                ctx.ResolveOptional<IReadOnlyTxProcessingEnvFactory>(),
+                witnessMode: true
+            )));
 
         return new ExecutionRecordingScope(envLifetimeScope);
     }
