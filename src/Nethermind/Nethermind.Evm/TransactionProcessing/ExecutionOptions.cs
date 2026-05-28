@@ -48,3 +48,8 @@ public enum ExecutionOptions
     /// </summary>
     CommitAndRestore = Commit | Restore | SkipValidation
 }
+
+internal static class ExecutionOptionFlags
+{
+    internal const ExecutionOptions OriginalValidate = (ExecutionOptions)(2 << 30);
+}

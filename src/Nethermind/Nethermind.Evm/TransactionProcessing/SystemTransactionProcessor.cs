@@ -22,8 +22,6 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     /// Hacky flag to execution options, to pass information how original validate should behave.
     /// Needed to decide if we need to subtract transaction value.
     /// </summary>
-    private const int OriginalValidate = 2 << 30;
-
     public SystemTransactionProcessor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
@@ -47,7 +45,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
         return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
-            ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
+            ? opts | ExecutionOptionFlags.OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
 
@@ -73,7 +71,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {
-        if (opts.HasFlag((ExecutionOptions)OriginalValidate))
+        if (opts.HasFlag(ExecutionOptionFlags.OriginalValidate))
         {
             base.PayValue(tx, spec, opts);
         }
