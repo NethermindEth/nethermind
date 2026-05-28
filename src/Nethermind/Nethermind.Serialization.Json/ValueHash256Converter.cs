@@ -27,7 +27,14 @@ public class ValueHash256Converter(bool strictHexFormat = false) : JsonConverter
         }
 
         byte[]? bytesArray = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
-        return bytesArray is null ? null : new ValueHash256(bytesArray);
+        if (bytesArray is null) return null;
+        if (bytesArray.Length != ValueHash256.MemorySize)
+        {
+            throw new JsonException(
+                $"Invalid {nameof(ValueHash256)} length: expected {ValueHash256.MemorySize} bytes, got {bytesArray.Length}.");
+        }
+
+        return new ValueHash256(bytesArray);
     }
 
     [SkipLocalsInit]
