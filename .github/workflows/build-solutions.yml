@@ -4,19 +4,12 @@ on:
   workflow_call:
     inputs:
       include_debug:
-        description: >-
-          When true (default), build every solution in both release and debug
-          configurations. Set false to skip the debug builds (saves 3 jobs).
-          master-ci.yml leaves this true to preserve debug coverage on master.
+        description: Build every solution in both release and debug configurations.
         required: false
         type: boolean
         default: true
       upload_artifact:
-        description: >-
-          When non-empty AND the Nethermind release build succeeds, upload
-          `src/Nethermind/artifacts/` as a workflow artifact under this name.
-          Consumed by nethermind-tests.yml via its `build_artifact` input so
-          downstream test jobs can skip the local `dotnet build`.
+        description: When non-empty, upload `src/Nethermind/artifacts/` under this artifact name after the Nethermind release build.
         required: false
         type: string
         default: ''

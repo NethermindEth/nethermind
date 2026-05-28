@@ -9,9 +9,7 @@ on:
         required: false
         type: boolean
       tests_matrix:
-        description: >-
-          JSON for the `tests` job matrix (full strategy.matrix object — runner/project/include/exclude).
-          When omitted, defaults to the historical full matrix: 3 runners × 45 projects + 10 macOS entries.
+        description: JSON object for the `tests` job's `strategy.matrix`.
         required: false
         type: string
         default: '{"runner":["ubuntu-latest","ubuntu-24.04-arm","windows-latest"],"project":["Nethermind.Abi.Test","Nethermind.Api.Test","Nethermind.AuRa.Test","Nethermind.Blockchain.Test","Nethermind.Clique.Test","Nethermind.Config.Test","Nethermind.Consensus.Test","Nethermind.Core.Test","Nethermind.Db.Test","Nethermind.Era1.Test","Nethermind.EraE.Test","Nethermind.Ethash.Test","Nethermind.EthStats.Test","Nethermind.Evm.Test","Nethermind.Facade.Test","Nethermind.Flashbots.Test","Nethermind.HealthChecks.Test","Nethermind.History.Test","Nethermind.Hive.Test","Nethermind.JsonRpc.Test","Nethermind.JsonRpc.TraceStore.Test","Nethermind.KeyStore.Test","Nethermind.Logging.NLog.Test","Nethermind.Merge.AuRa.Test","Nethermind.Merge.Plugin.Test","Nethermind.Mining.Test","Nethermind.Monitoring.Test","Nethermind.Network.Discovery.Test","Nethermind.Network.Dns.Test","Nethermind.Network.Enr.Test","Nethermind.Network.Test","Nethermind.Optimism.Test","Nethermind.Runner.Test","Nethermind.Serialization.Ssz.Test","Nethermind.Shutter.Test","Nethermind.Sockets.Test","Nethermind.Specs.Test","Nethermind.State.Test","Nethermind.State.Test.Runner.Test","Nethermind.Synchronization.Test","Nethermind.Taiko.Test","Nethermind.Trie.Test","Nethermind.TxPool.Test","Nethermind.Wallet.Test","Nethermind.Xdc.Test"],"include":[{"runner":"macos-latest","project":"Nethermind.Db.Test"},{"runner":"macos-latest","project":"Nethermind.JsonRpc.Test"},{"runner":"macos-latest","project":"Nethermind.KeyStore.Test"},{"runner":"macos-latest","project":"Nethermind.Network.Discovery.Test"},{"runner":"macos-latest","project":"Nethermind.Network.Dns.Test"},{"runner":"macos-latest","project":"Nethermind.Network.Enr.Test"},{"runner":"macos-latest","project":"Nethermind.Network.Test"},{"runner":"macos-latest","project":"Nethermind.Runner.Test"},{"runner":"macos-latest","project":"Nethermind.Sockets.Test"},{"runner":"macos-latest","project":"Nethermind.Synchronization.Test"}]}'
@@ -26,9 +24,7 @@ on:
         type: string
         default: '["ubuntu-latest","ubuntu-24.04-arm","windows-latest","macos-latest"]'
       build_artifact:
-        description: >-
-          Name of a pre-built release artifact to download instead of building locally.
-          Only honored on Linux x64 runners — native deps differ on other platforms.
+        description: Artifact name to download in place of a local `dotnet build`. Only honored on Linux x64 runners.
         required: false
         type: string
         default: ''

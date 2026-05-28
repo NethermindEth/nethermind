@@ -4,10 +4,7 @@ on:
   workflow_call:
     inputs:
       include_amsterdam:
-        description: >-
-          When true (default), run the Amsterdam parallel-execution variants
-          (~96 jobs across 6 variants × 16 Pyspec chunks). Set false to skip
-          them on PRs that don't touch Evm/State/Specs/Blockchain.
+        description: Run the Amsterdam parallel-execution Pyspec variants (6 variants × 16 chunks).
         required: false
         type: boolean
         default: true

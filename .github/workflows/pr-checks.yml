@@ -18,12 +18,6 @@ permissions:
   security-events: write
 
 jobs:
-  # ── Phase 0 ────────────────────────────────────────────────────────────────
-  # Read .github/test-selection.yml and the PR's changed files. Compute which
-  # test projects, OS runners, and variant workflows downstream jobs should
-  # run. On merge_group the analysis is skipped and safe defaults are emitted
-  # (docs_only=false, evm/taiko=false) so the historical merge_group surface
-  # (build + tools + stateless) is preserved.
   select:
     name: Select tests
     runs-on: ubuntu-latest
@@ -40,11 +34,13 @@ jobs:
       evm: ${{ steps.select.outputs.evm }}
       taiko: ${{ steps.select.outputs.taiko }}
     steps:
-      - name: Check out policy
+      - name: Check out policy from base ref
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
           sparse-checkout: .github
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Select tests
         id: select
@@ -87,8 +83,24 @@ jobs:
                   f.write(f'## Test selection\nEvent {event!r}: emitting merge_group defaults.\n')
               sys.exit(0)
 
-          with open(os.environ['POLICY_FILE']) as f:
-              policy = yaml.safe_load(f)
+          fallback_full = False
+          try:
+              with open(os.environ['POLICY_FILE']) as f:
+                  policy = yaml.safe_load(f) or {}
+              if not isinstance(policy, dict):
+                  raise ValueError(f'policy root is not a mapping: {type(policy).__name__}')
+          except (FileNotFoundError, yaml.YAMLError, ValueError) as e:
+              print(f'::warning::Could not load {os.environ["POLICY_FILE"]} from base ref: {e}. Falling back to full matrix.', flush=True)
+              policy = {}
+              fallback_full = True
+
+          ALLOWED_RUNNERS = {
+              'ubuntu-latest',
+              'ubuntu-24.04-arm',
+              'windows-latest',
+              'macos-latest',
+          }
+          PROJECT_RE = re.compile(r'\A[A-Za-z][A-Za-z0-9_.]{0,127}\Z')
 
           files = subprocess.check_output(
               ['gh', 'api', f"repos/{os.environ['REPO']}/pulls/{os.environ['PR']}/files",
@@ -138,9 +150,33 @@ jobs:
 
           docs_only_paths = policy.get('docs_only_paths', [])
           full_matrix_paths = policy.get('full_matrix_paths', [])
-          baseline_projects = list(policy.get('baseline', {}).get('projects', []))
-          rules = policy.get('rules', [])
-          os_extensions = policy.get('os_extensions', {})
+          rules_raw = policy.get('rules', [])
+          os_extensions_raw = policy.get('os_extensions', {})
+
+          def _filter_projects(names, where):
+              clean = []
+              for n in names or []:
+                  if isinstance(n, str) and PROJECT_RE.match(n):
+                      clean.append(n)
+                  else:
+                      print(f'::warning::Dropping non-conforming project name {n!r} from {where}', flush=True)
+              return clean
+
+          baseline_projects = _filter_projects(
+              policy.get('baseline', {}).get('projects', []), 'baseline.projects')
+          rules = [
+              {
+                  'paths': r.get('paths', []),
+                  'projects': _filter_projects(r.get('projects', []), 'rules[].projects'),
+                  'variants': list(r.get('variants', [])),
+              }
+              for r in rules_raw
+          ]
+          os_extensions = {
+              k: _filter_projects(v, f'os_extensions.{k}')
+              for k, v in os_extensions_raw.items()
+              if k in ALLOWED_RUNNERS
+          }
 
           deep_ci = 'deep-ci' in labels
           needs_variants = 'needs-variants' in labels
@@ -165,15 +201,12 @@ jobs:
           if needs_variants:
               variants |= {'checked', 'no-intrinsics', 'flat-db', 'amsterdam'}
 
-          # OS extensions only apply to projects we already selected.
           runners_for_project = {p: ['ubuntu-latest'] for p in selected_projects}
           for os_label, projects in os_extensions.items():
               for p in projects:
                   if p in runners_for_project:
                       runners_for_project[p].append(os_label)
 
-          # tests_matrix is for nethermind-tests.yml's `tests` job — Nethermind.* projects only.
-          # Ethereum.* projects belong to tests-spec / tests-chunked (their matrices are static).
           include = [
               {'runner': r, 'project': p}
               for p in sorted(selected_projects)
@@ -188,8 +221,9 @@ jobs:
           else:
               spec_runners = ['ubuntu-latest']
               chunked_runners = ['ubuntu-latest']
+          spec_runners = [r for r in spec_runners if r in ALLOWED_RUNNERS]
+          chunked_runners = [r for r in chunked_runners if r in ALLOWED_RUNNERS]
 
-          # Preserve the historical EVM/Taiko path-gates (formerly inline in the `paths` job).
           evm_paths = [
               'src/Nethermind/Nethermind.Evm/**',
               'Directory.Packages.props',
@@ -242,17 +276,13 @@ jobs:
                   f.write(f'- `{p}` → {", ".join(by_proj[p])}\n')
           PYEOF
 
-  # ── Phase 1 ────────────────────────────────────────────────────────────────
-  # Fast feedback: build + lint. Subsequent phases wait on these.
   build-solutions:
     name: Build solutions
     needs: select
     if: needs.select.outputs.docs_only != 'true'
     uses: ./.github/workflows/build-solutions.yml
     with:
-      # Skip debug builds on PR to save 3 jobs; master-ci.yml leaves the default true.
       include_debug: ${{ github.event_name == 'merge_group' }}
-      # Only emit the reusable release artifact on PR — merge_group/master rebuild locally.
       upload_artifact: ${{ github.event_name == 'pull_request' && 'nethermind-build-release' || '' }}
 
   build-tools:
@@ -267,9 +297,6 @@ jobs:
     if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
     uses: ./.github/workflows/_code-quality.yml
 
-  # ── Phase 2 ────────────────────────────────────────────────────────────────
-  # Core test gate. Dynamic matrix from `select`. Reuses the release artifact
-  # uploaded by build-solutions on Linux x64; other OSes rebuild locally.
   nethermind-tests:
     name: Nethermind/Ethereum tests
     needs: [select, build-solutions, code-quality]
@@ -296,10 +323,6 @@ jobs:
     with:
       scans: 'trivy,dependency-review'
 
-  # ── Phase 3 ────────────────────────────────────────────────────────────────
-  # Variant workflows. Gated by `select` outputs so they only fire on PRs that
-  # touch the relevant areas; otherwise the post-merge `master-ci.yml` run
-  # provides the safety net.
   nethermind-tests-checked:
     name: Nethermind extra test variants
     needs: [select, nethermind-tests]
@@ -339,10 +362,6 @@ jobs:
     uses: ./.github/workflows/_taiko-integration.yml
     secrets: inherit
 
-  # ── Phase 4 ────────────────────────────────────────────────────────────────
-  # Long-haul gates. Path-independent (stays on every relevant PR) but only
-  # starts after Phase 2 is green, saving the ~6 self-hosted ARM hours that
-  # the failing-PR path currently consumes.
   sync-pr-gate:
     name: Sync PR Gate (Hoodi)
     needs: [select, nethermind-tests, stateless-tests]
@@ -350,9 +369,6 @@ jobs:
     uses: ./.github/workflows/sync-pr-gate.yml
     secrets: inherit
 
-  # ── Summary ────────────────────────────────────────────────────────────────
-  # Single check for branch protection. `skipped` is treated as success so
-  # path-gated callsites don't block merge.
   pr-required:
     name: PR required
     needs:

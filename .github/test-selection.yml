@@ -1,24 +1,18 @@
-# PR-CI test selection policy.
+# PR-CI test selection policy. Consumed by the `select` job in
+# `.github/workflows/pr-checks.yml`. The post-merge safety net is
+# `master-ci.yml`, which always runs the full union.
 #
-# Consumed by the `select` job in `.github/workflows/pr-checks.yml` to decide
-# which test projects, OS runners, and variant workflows should run on a given
-# PR based on the changed paths. The post-merge safety net is `master-ci.yml`,
-# which always runs the full union — so this file controls the PR fast-path
-# only, not coverage on master.
+# Selection algorithm:
+#   1. If every changed file matches `docs_only_paths`, downstream is skipped.
+#   2. Else if any changed file matches `full_matrix_paths`, emit the full
+#      project list + all OSes + all variants.
+#   3. Else union `baseline.projects` with each rule whose `paths` match a
+#      changed file, and add the OS runners listed in `os_extensions` for
+#      each selected project.
+#   4. PR labels: `deep-ci` forces run_full; `needs-variants` forces all
+#      variants on.
 #
-# Algorithm (see the `select` job for the implementation):
-#   1. If every changed file matches `docs_only_paths`, set docs_only=true and
-#      every downstream workflow is skipped. `pr-required` still runs and is
-#      green because skipped is treated as success.
-#   2. Else if any changed file matches `full_matrix_paths`, set run_full=true
-#      and emit the full project list + all OSes + all variants.
-#   3. Else start from `baseline.projects`, union each rule whose `paths`
-#      match a changed file, and intersect each selected project with its
-#      `os_extensions` to decide which non-Linux runners apply.
-#   4. PR label `deep-ci` forces run_full=true. Label `needs-variants` forces
-#      all variant flags on.
-#
-# Globs use bash extglob/globstar semantics. `**` matches across path
+# Globs follow bash extglob/globstar semantics. `**` matches across path
 # components; `*` matches within a single component.
 
 # Always-run sanity coverage. These projects test foundational invariants that
