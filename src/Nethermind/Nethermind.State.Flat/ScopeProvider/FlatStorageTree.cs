@@ -219,10 +219,28 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             StorageTree.ComputeKeyWithLookup(index, ref slotKey);
             Hash256 slotHash = slotKey.ToCommitment();
 
-            // Mirror Patricia's storage semantics: zero/empty value deletes the slot.
-            // PatriciaTree's StorageTree.Set treats empty/zero-RLP as delete; we do the same.
-            bool isDelete = value is null || value.Length == 0 || (value.Length == 1 && value[0] == 0x80);
-            _slotUpdates[slotHash] = isDelete ? LeafUpdate.Deleted() : LeafUpdate.Changed(value!);
+            // Patricia's StorageTree.CreateBulkSetEntry: zero/null → empty (delete);
+            // otherwise → RLP-encoded bytes (storage leaf value). Sparse must store the
+            // same encoded form, otherwise the storage root differs and the account RLP
+            // ends up pointing at a wrong subtree. This was the root cause of the
+            // InvalidStateRoot at the first authoritative block.
+            if (value.IsZero())
+            {
+                _slotUpdates[slotHash] = LeafUpdate.Deleted();
+            }
+            else
+            {
+                Nethermind.Serialization.Rlp.Rlp rlpEncoded = Nethermind.Serialization.Rlp.Rlp.Encode(value);
+                byte[]? encodedBytes = rlpEncoded?.Bytes;
+                if (encodedBytes is null || encodedBytes.Length == 0)
+                {
+                    _slotUpdates[slotHash] = LeafUpdate.Deleted();
+                }
+                else
+                {
+                    _slotUpdates[slotHash] = LeafUpdate.Changed(encodedBytes);
+                }
+            }
 
             // Keep the SnapshotBundle in sync for storage READS during this block.
             _storageTree.Set(index, value!);
