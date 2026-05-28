@@ -140,6 +140,11 @@ public sealed class BlobArenaWriter : IDisposable
         // candidate for the next writer's packing scan and pushes the post-write
         // frontier delta to the per-tier allocated-bytes gauge.
         _file.Frontier = _written;
+        // Publish the new frontier into the file's on-disk marker. A subsequent Fsync()
+        // flushes both data pages and this marker page in the same journal commit — a
+        // crash before Fsync leaves the previous on-disk marker intact, so the writer's
+        // uncommitted bytes are silently discarded on restart.
+        _file.WriteFrontierHeader(_written);
         _manager.OnWriteCompleted(_file, hasHeadroom: _file.Frontier < _file.MaxSize);
     }
 
