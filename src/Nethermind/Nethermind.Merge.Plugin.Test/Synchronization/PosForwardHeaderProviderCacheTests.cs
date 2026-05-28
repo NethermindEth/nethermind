@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -109,14 +108,14 @@ public class PosForwardHeaderProviderCacheTests
     public async Task Cached_slice_advances_with_best_known_number()
     {
         using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
-        first!.Count.Should().Be(Requested);
-        first[0]!.Number.Should().Be(0);
+        Assert.That(first!.Count, Is.EqualTo(Requested));
+        Assert.That(first[0]!.Number, Is.EqualTo(0));
 
         _blockTree.BestKnownNumber.Returns(20L);
         using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
 
-        second!.Count.Should().Be(Requested);
-        second[0]!.Number.Should().Be(20);
+        Assert.That(second!.Count, Is.EqualTo(Requested));
+        Assert.That(second[0]!.Number, Is.EqualTo(20));
         AssertChainLevelCalls(1);
     }
 
@@ -131,8 +130,8 @@ public class PosForwardHeaderProviderCacheTests
         const int skip = 4;
         using IOwnedReadOnlyList<BlockHeader?>? sliced = await Get(skip: skip, max: CachedBatchSize);
 
-        sliced!.Count.Should().Be(CachedBatchSize - skip);
-        sliced[^1]!.Number.Should().Be(CachedBatchSize - skip - 1);
+        Assert.That(sliced!.Count, Is.EqualTo(CachedBatchSize - skip));
+        Assert.That(sliced[^1]!.Number, Is.EqualTo(CachedBatchSize - skip - 1));
         AssertChainLevelCalls(1);
     }
 
@@ -142,7 +141,7 @@ public class PosForwardHeaderProviderCacheTests
         using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
 
         Block reorgBlock = Build.A.Block.WithNumber(10).WithDifficulty(2).TestObject;
-        reorgBlock.Header.Hash.Should().NotBe(first![10]!.Hash!);
+        Assert.That(reorgBlock.Header.Hash, Is.Not.EqualTo(first![10]!.Hash!));
         RaiseMainChainUpdate(reorgBlock);
 
         using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
