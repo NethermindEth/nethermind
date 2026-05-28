@@ -393,8 +393,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
             }
 
-            // shouldRevert: false means the ctor never reads isTracerConnected (TransactionSubstate
-            // only consults it on the revert-decode path), so skip the 12-way IsTracing OR.
             TransactionSubstate substate = new(
                 bytes: default,
                 refund: 0,
