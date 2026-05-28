@@ -14,7 +14,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Exceptions;
@@ -280,16 +279,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             ReturnParameters(parameters, returnParametersToPool);
             if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
-            string message = e switch
-            {
-                FormatException
-                {
-                    Message: Bytes.ErrMissingPrefix
-                        or BlockParameter.LeadingZeroHexNumberError
-                        or BlockParameter.EmptyHexQuantityError
-                } => e.Message,
-                _ => "Invalid params"
-            };
+            string message = e is IExceptionWithSafePublicMessage
+                ? e.Message
+                : "Invalid params";
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }
     }

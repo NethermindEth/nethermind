@@ -12,6 +12,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Find
@@ -253,7 +254,7 @@ namespace Nethermind.JsonRpc.Data
 
                 if (span.Length == 0)
                 {
-                    throw new FormatException(BlockParameter.EmptyHexQuantityError);
+                    throw new SafePublicMessageFormatException(BlockParameter.EmptyHexQuantityError);
                 }
 
                 // 64 hex chars = 32 bytes = Hash256
@@ -265,7 +266,7 @@ namespace Nethermind.JsonRpc.Data
 
                 if (span.Length > 1 && span[0] == (byte)'0')
                 {
-                    throw new FormatException(BlockParameter.LeadingZeroHexNumberError);
+                    throw new SafePublicMessageFormatException(BlockParameter.LeadingZeroHexNumberError);
                 }
 
                 // Parse as block number
