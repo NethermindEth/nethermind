@@ -237,6 +237,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_keeps_explicit_zero_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"to\": \"{SecondaryTestAddress}\", \"gas\": \"0x0\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
+            Does.Contain("intrinsic gas too low"));
+    }
+
+    [Test]
     public async Task Eth_call_with_gas_pricing()
     {
         using Context ctx = await Context.Create();

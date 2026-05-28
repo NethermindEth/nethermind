@@ -158,10 +158,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Dictionary<Address, AccountOverride>? stateOverride = null,
                 SearchResult<BlockHeader>? searchResult = null)
             {
-                // Match Geth: when no gas is specified, binary search is bounded by blockGasLimit (then
-                // capped at gasCap inside ToTransaction). eth_call uses gasCap directly because it is a
-                // pure simulation; estimateGas is computing gas for a real transaction that must fit in a block.
-                if (transactionCall.Gas is null)
+                // Match Geth: eth_estimateGas treats gas: 0x0 the same as an omitted gas field and
+                // bounds the binary search by blockGasLimit (then caps at gasCap inside ToTransaction).
+                if (transactionCall.Gas is null or 0)
                 {
                     if (BlockOverride?.GasLimit is not null)
                     {
