@@ -11,6 +11,7 @@ namespace Nethermind.State.Repositories
     {
         private readonly object _lockObject;
         private bool _lockTaken;
+        private int _disposed;
 
         public BatchWrite(object lockObject, IWriteBatch writeBatch)
         {
@@ -22,22 +23,27 @@ namespace Nethermind.State.Repositories
 
         public void Dispose()
         {
-            if (!Disposed)
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            try
             {
                 WriteBatch.Dispose();
-
+            }
+            finally
+            {
                 if (_lockTaken)
                 {
                     _lockTaken = false;
                     Monitor.Exit(_lockObject);
                 }
-
-                Disposed = true;
             }
         }
 
         public IWriteBatch WriteBatch { get; }
 
-        public bool Disposed { get; private set; }
+        public bool Disposed => _disposed != 0;
     }
 }

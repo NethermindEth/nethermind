@@ -23,7 +23,7 @@ public class VoteDecoderTests
                     0,
                     new Signature(new byte[64], 0)
                 )
-            );
+            ).SetName("BasicVote");
 
             yield return new TestCaseData(
                 new Vote(
@@ -31,7 +31,7 @@ public class VoteDecoderTests
                     ulong.MaxValue,
                     new Signature(new byte[64], 0)
                 )
-            );
+            ).SetName("MaxValues");
         }
     }
 
@@ -44,7 +44,7 @@ public class VoteDecoderTests
         Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
         Vote decoded = decoder.Decode(ref decoderContext);
 
-        Assert.That(decoded, Is.EqualTo(vote).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(vote).UsingXdcProperties(nameof(Vote.Signer)));
     }
 
     [Test]
@@ -64,7 +64,7 @@ public class VoteDecoderTests
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         Vote decoded = decoder.Decode(ref decoderContext);
 
-        Assert.That(decoded, Is.EqualTo(vote).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(vote).UsingXdcProperties(nameof(Vote.Signer)));
     }
 
     [Test]

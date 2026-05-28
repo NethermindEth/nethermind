@@ -51,14 +51,16 @@ namespace Nethermind.Facade
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null, CancellationToken cancellationToken = default);
 
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
-        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>;
+        /// <inheritdoc cref="Nethermind.State.IStateReader.RunTreeVisitor{TCtx}"/>
+        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
+
         bool HasStateForBlock(BlockHeader? baseBlock);
 
         Witness GenerateExecutionWitness(BlockHeader parent, Block block);
         Witness GenerateExecutionWitness(BlockHeader header, Transaction tx);
 
-        ReadOnlyBlockAccessList? GetBlockAccessList(Hash256 blockHash);
-        MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
-        void DeleteBlockAccessList(Hash256 blockHash);
+        ReadOnlyBlockAccessList? GetBlockAccessList(long blockNumber, Hash256 blockHash);
+        MemoryManager<byte>? GetBlockAccessListRlp(long blockNumber, Hash256 blockHash);
+        void DeleteBlockAccessList(long blockNumber, Hash256 blockHash);
     }
 }

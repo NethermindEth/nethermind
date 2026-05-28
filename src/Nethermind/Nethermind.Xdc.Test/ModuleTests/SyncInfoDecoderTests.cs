@@ -30,7 +30,7 @@ public class SyncInfoDecoderTests
                         0
                     )
                 )
-            );
+            ).SetName("WithCertificates");
 
             yield return new TestCaseData(
                 new SyncInfo(
@@ -41,7 +41,7 @@ public class SyncInfoDecoderTests
                     ),
                     new TimeoutCertificate(1, [], 0)
                 )
-            );
+            ).SetName("EmptyCertificates");
 
             yield return new TestCaseData(
                 new SyncInfo(
@@ -52,7 +52,7 @@ public class SyncInfoDecoderTests
                     ),
                     new TimeoutCertificate(ulong.MaxValue, [], ulong.MaxValue)
                 )
-            );
+            ).SetName("MaxValues");
         }
     }
 
@@ -65,7 +65,7 @@ public class SyncInfoDecoderTests
         Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 
-        Assert.That(decoded, Is.EqualTo(syncInfo).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcProperties());
     }
 
     [Test]
@@ -92,7 +92,7 @@ public class SyncInfoDecoderTests
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 
-        Assert.That(decoded, Is.EqualTo(syncInfo).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcProperties());
     }
 
     [Test]

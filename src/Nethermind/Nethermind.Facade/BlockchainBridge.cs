@@ -542,7 +542,8 @@ namespace Nethermind.Facade
 
         public Address? RecoverTxSender(Transaction tx) => ecdsa.RecoverAddress(tx);
 
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx> => stateReader.RunTreeVisitor(treeVisitor, baseBlock);
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
+            => stateReader.RunTreeVisitor(treeVisitor, baseBlock, diagnostics: diagnostics);
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => stateReader.HasStateForBlock(baseBlock);
 
@@ -550,15 +551,15 @@ namespace Nethermind.Facade
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, cancellationToken);
 
-        public ReadOnlyBlockAccessList? GetBlockAccessList(Hash256 blockHash)
-            => balStore.Get(blockHash);
+        public ReadOnlyBlockAccessList? GetBlockAccessList(long blockNumber, Hash256 blockHash)
+            => balStore.Get(blockNumber, blockHash);
 
-        public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash)
-            => balStore.GetRlp(blockHash);
+        public MemoryManager<byte>? GetBlockAccessListRlp(long blockNumber, Hash256 blockHash)
+            => balStore.GetRlp(blockNumber, blockHash);
 
         // for testing
-        public void DeleteBlockAccessList(Hash256 blockHash)
-            => balStore.Delete(blockHash);
+        public void DeleteBlockAccessList(long blockNumber, Hash256 blockHash)
+            => balStore.Delete(blockNumber, blockHash);
 
         private static string? ConstructError(TransactionResult txResult, string? tracerError)
         {

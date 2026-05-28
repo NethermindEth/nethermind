@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Test;
@@ -75,7 +74,7 @@ namespace Nethermind.JsonRpc.Test
             }
 
             WaitForLog();
-            _testLogger.LogList.Should().HaveCountGreaterThan(0);
+            Assert.That(_testLogger.LogList, Has.Count.GreaterThan(0));
         }
 
         [Test]
@@ -87,7 +86,7 @@ namespace Nethermind.JsonRpc.Test
             localStats.ReportCall("A", 100, true);
             MakeTimePass();
             localStats.ReportCall("A", 300, true);
-            _testLogger.LogList.Should().HaveCount(0);
+            Assert.That(_testLogger.LogList, Has.Count.EqualTo(0));
         }
 
         [Test]
@@ -95,7 +94,7 @@ namespace Nethermind.JsonRpc.Test
         {
             MakeTimePass();
             _localStats.ReportCall("A", 300, true);
-            _testLogger.LogList.Should().HaveCount(0);
+            Assert.That(_testLogger.LogList, Has.Count.EqualTo(0));
         }
 
         [Test]
@@ -132,8 +131,8 @@ namespace Nethermind.JsonRpc.Test
             MakeTimePass();
             _localStats.ReportCall("A", 300, true);
             WaitForLog();
-            _testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal));
-            _testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("C   ", StringComparison.Ordinal));
+            Assert.That(_testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal), Is.LessThan(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal)));
+            Assert.That(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal), Is.LessThan(_testLogger.LogList[0].IndexOf("C   ", StringComparison.Ordinal)));
         }
 
         [Test]
@@ -150,8 +149,9 @@ namespace Nethermind.JsonRpc.Test
                 _localStats.ReportCall("trigger", 300, true);
                 WaitForLog();
 
-                _testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal)
-                    .Should().BeLessThan(_testLogger.LogList[0].IndexOf("_   ", StringComparison.Ordinal));
+                Assert.That(
+                    _testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal),
+                    Is.LessThan(_testLogger.LogList[0].IndexOf("_   ", StringComparison.Ordinal)));
             }
             finally
             {
@@ -173,10 +173,10 @@ namespace Nethermind.JsonRpc.Test
 
                 localStats.ReportCall(new RpcReport("eth_call", 0, true), elapsedMicroseconds: 123);
 
-                silentLogger.LogList.Should().BeEmpty();
-                observer.Observations.Should().HaveCount(1);
-                observer.Observations[0].Value.Should().Be(123);
-                observer.Observations[0].Labels.Should().Equal("eth_call", "success");
+                Assert.That(silentLogger.LogList, Is.Empty);
+                Assert.That(observer.Observations, Has.Count.EqualTo(1));
+                Assert.That(observer.Observations[0].Value, Is.EqualTo(123));
+                Assert.That(observer.Observations[0].Labels, Is.EqualTo(new[] { "eth_call", "success" }));
             }
             finally
             {
@@ -214,11 +214,10 @@ namespace Nethermind.JsonRpc.Test
                 () => _testLogger.LogList.Exists(l => l.Replace(" ", String.Empty).Contains(line)),
                 TimeSpan.FromSeconds(5));
 
-            hasLine.Should().BeTrue(string.Join(Environment.NewLine, _testLogger.LogList));
+            Assert.That(hasLine, Is.True, string.Join(Environment.NewLine, _testLogger.LogList));
         }
 
         private void WaitForLog() =>
-            SpinWait.SpinUntil(() => _testLogger.LogList.Count != 0, TimeSpan.FromSeconds(5))
-                .Should().BeTrue();
+            Assert.That(SpinWait.SpinUntil(() => _testLogger.LogList.Count != 0, TimeSpan.FromSeconds(5)), Is.True);
     }
 }

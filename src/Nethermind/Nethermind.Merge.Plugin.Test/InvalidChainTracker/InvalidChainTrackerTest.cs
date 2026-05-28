@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -216,14 +215,14 @@ public class InvalidChainTrackerTest
     }
 
     private void AssertValid(Hash256 hash) =>
-        _tracker.IsOnKnownInvalidChain(hash, out _).Should().BeFalse();
+        Assert.That(_tracker.IsOnKnownInvalidChain(hash, out _), Is.False);
 
     private void AssertInvalid(Hash256 hash, Hash256? expectedLsatValidHash = null)
     {
-        _tracker.IsOnKnownInvalidChain(hash, out Hash256? lastValidHash).Should().BeTrue();
+        Assert.That(_tracker.IsOnKnownInvalidChain(hash, out Hash256? lastValidHash), Is.True);
         if (expectedLsatValidHash is not null)
         {
-            lastValidHash.Should().BeEquivalentTo(expectedLsatValidHash);
+            Assert.That(lastValidHash, Is.EqualTo(expectedLsatValidHash));
         }
     }
 }

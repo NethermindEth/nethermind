@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
@@ -18,7 +17,7 @@ public class SequenceTests
         TestReadOnlySequenceSegment start = new("  "u8.ToArray(), 0, end);
         ReadOnlySequence<byte> sequence = new(start, 0, end, 5);
 
-        sequence.TrimStart().ToArray().Should().Equal("abc"u8.ToArray());
+        Assert.That(sequence.TrimStart().ToArray(), Is.EqualTo("abc"u8.ToArray()));
     }
 
     private class TestReadOnlySequenceSegment : ReadOnlySequenceSegment<byte>

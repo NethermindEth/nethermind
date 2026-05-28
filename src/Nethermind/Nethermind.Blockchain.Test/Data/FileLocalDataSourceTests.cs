@@ -6,7 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Data;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
@@ -27,7 +26,7 @@ public class FileLocalDataSourceTests
             File.WriteAllText(tempFile.Path, GenerateStringJson("A", "B", "C"));
             // var x = new EthereumJsonSerializer().Serialize(new string []{"A", "B", "C"});
             using FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance);
-            fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C");
+            Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "A", "B", "C" }));
         }
     }
 
@@ -50,13 +49,13 @@ public class FileLocalDataSourceTests
                 };
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
                 await handle.WaitAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime));
-                changedRaised.Should().Be(1);
-                fileLocalDataSource.Data.Should().BeEquivalentTo("C", "B");
+                Assert.That(changedRaised, Is.EqualTo(1));
+                Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "C", "B" }));
 
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("E", "F"));
                 await handle.WaitAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime));
-                changedRaised.Should().Be(2);
-                fileLocalDataSource.Data.Should().BeEquivalentTo("E", "F");
+                Assert.That(changedRaised, Is.EqualTo(2));
+                Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "E", "F" }));
             }
         }
     }
@@ -77,8 +76,8 @@ public class FileLocalDataSourceTests
             };
             await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A", "B"));
             await handle.WaitAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime));
-            fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B");
-            changedRaised.Should().BeTrue();
+            Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "A", "B" }));
+            Assert.That(changedRaised, Is.True);
         }
     }
 
@@ -91,7 +90,7 @@ public class FileLocalDataSourceTests
         using (File.Open(tempFile.Path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
         {
             using FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance);
-            fileLocalDataSource.Data.Should().BeEquivalentTo(default);
+            Assert.That(fileLocalDataSource.Data, Is.Null);
         }
     }
 
@@ -114,12 +113,12 @@ public class FileLocalDataSourceTests
 
                 await Task.Delay(10 * interval);
 
-                fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C");
+                Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "A", "B", "C" }));
             }
 
             await Task.Delay(10 * interval);
 
-            fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C", "D");
+            Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "A", "B", "C", "D" }));
         }
     }
 
@@ -141,14 +140,14 @@ public class FileLocalDataSourceTests
                 };
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
                 await handle.WaitAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime));
-                changedRaised.Should().Be(1);
+                Assert.That(changedRaised, Is.EqualTo(1));
 
-                fileLocalDataSource.Data.Should().BeEquivalentTo("C", "B");
+                Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "C", "B" }));
 
                 File.Delete(tempFile.Path);
                 await handle.WaitAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime));
-                changedRaised.Should().Be(2);
-                fileLocalDataSource.Data.Should().BeNull();
+                Assert.That(changedRaised, Is.EqualTo(2));
+                Assert.That(fileLocalDataSource.Data, Is.Null);
             }
         }
     }
