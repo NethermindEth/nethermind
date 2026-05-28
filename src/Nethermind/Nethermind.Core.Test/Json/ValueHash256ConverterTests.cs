@@ -3,10 +3,8 @@
 
 using System;
 using System.Text.Json;
-
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
-
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json;
