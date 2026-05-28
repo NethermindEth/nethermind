@@ -28,8 +28,9 @@ namespace Nethermind.State.Repositories
         public void Flush()
         {
             ObjectDisposedException.ThrowIf(Disposed, this);
-            WriteBatch.Dispose();
+            IWriteBatch old = WriteBatch;
             WriteBatch = _writeBatchFactory();
+            old.Dispose();
         }
 
         public void Dispose()

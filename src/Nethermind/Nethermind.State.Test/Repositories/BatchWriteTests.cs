@@ -41,6 +41,6 @@ public class BatchWriteTests
         Exception failure = new("commit failed");
         IWriteBatch writeBatch = Substitute.For<IWriteBatch>();
         writeBatch.When(static b => b.Dispose()).Do(_ => throw failure);
-        return (new BatchWrite(writeLock, writeBatch), writeBatch, writeLock, failure);
+        return (new BatchWrite(writeLock, () => writeBatch), writeBatch, writeLock, failure);
     }
 }
