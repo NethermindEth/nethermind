@@ -91,12 +91,16 @@ jobs:
           - ubuntu-24.04-arm
           - windows-latest
         group:
-          - heavy
-          - core
-          - state
-          - consensus
+          - sync
+          - merge-plugin
+          - blockchain
           - network
+          - network-sub
           - rpc
+          - state
+          - trie-db
+          - consensus
+          - core
           - misc
         include:
           # macOS only runs the OS-sensitive subset (I/O, networking, sockets) as one group.
@@ -123,26 +127,39 @@ jobs:
           if [[ "${{ matrix.runner }}" == "ubuntu-latest" && "${{ env.COLLECT_COVERAGE }}" == "true" ]]; then
             coverage_args=(--coverage --coverage-output-format cobertura --coverage-settings codecoverage.json)
           fi
-          # Per-group project lists. Heavy projects (Synchronization, Merge.Plugin,
-          # Blockchain) cluster together so they don't bottleneck a mixed group.
+          # Group sizing aims for ~8m wall-clock per job — the natural floor set
+          # by the slowest single test project (Synchronization). Slow projects
+          # are isolated; fast ones are bucketed together.
           case "$GROUP" in
-            heavy)
-              projects=(Nethermind.Synchronization.Test Nethermind.Merge.Plugin.Test Nethermind.Merge.AuRa.Test Nethermind.Blockchain.Test)
+            sync)
+              projects=(Nethermind.Synchronization.Test)
               ;;
-            core)
-              projects=(Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Specs.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test)
+            merge-plugin)
+              projects=(Nethermind.Merge.Plugin.Test)
+              ;;
+            blockchain)
+              projects=(Nethermind.Blockchain.Test Nethermind.Merge.AuRa.Test)
+              ;;
+            network)
+              projects=(Nethermind.Network.Test Nethermind.Sockets.Test Nethermind.TxPool.Test)
+              ;;
+            network-sub)
+              projects=(Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.EthStats.Test)
+              ;;
+            rpc)
+              projects=(Nethermind.JsonRpc.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Runner.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test)
               ;;
             state)
-              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.State.Test.Runner.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
+              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.Facade.Test)
+              ;;
+            trie-db)
+              projects=(Nethermind.Trie.Test Nethermind.Db.Test Nethermind.State.Test.Runner.Test)
               ;;
             consensus)
               projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test)
               ;;
-            network)
-              projects=(Nethermind.Network.Test Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Sockets.Test Nethermind.TxPool.Test Nethermind.EthStats.Test)
-              ;;
-            rpc)
-              projects=(Nethermind.JsonRpc.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Runner.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test)
+            core)
+              projects=(Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Specs.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test)
               ;;
             misc)
               projects=(Nethermind.Era1.Test Nethermind.EraE.Test Nethermind.History.Test Nethermind.Optimism.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
