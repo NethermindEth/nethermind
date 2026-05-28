@@ -46,6 +46,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IDb _txIndexDb;
         private readonly IDb _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
+        private readonly IReceiptMigrationStore? _migrationStore;
 
         public ReceiptMigration(
             IReceiptStorage receiptStorage,
@@ -59,6 +60,7 @@ namespace Nethermind.Init.Steps.Migrations
         )
         {
             _receiptStorage = receiptStorage ?? throw new StepDependencyException(nameof(receiptStorage));
+            _migrationStore = receiptStorage as IReceiptMigrationStore;
             _blockTree = blockTree ?? throw new StepDependencyException(nameof(blockTree));
             _syncModeSelector = syncModeSelector ?? throw new StepDependencyException(nameof(syncModeSelector));
             _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new StepDependencyException(nameof(chainLevelInfoRepository));
@@ -156,7 +158,11 @@ namespace Nethermind.Init.Steps.Migrations
                     parallelism = Environment.ProcessorCount;
                 }
 
-                GetBlockBodiesForMigration(from, to, updateReceiptMigrationPointer, token)
+                MigrationPointerTracker? pointerTracker = updateReceiptMigrationPointer
+                    ? new MigrationPointerTracker(_receiptStorage, to, parallelism)
+                    : null;
+
+                GetBlockBodiesForMigration(from, to, pointerTracker, token)
                     .AsParallel().WithDegreeOfParallelism(parallelism).ForAll((item) =>
                 {
                     (long blockNum, Hash256 blockHash) = item;
@@ -174,6 +180,8 @@ namespace Nethermind.Init.Steps.Migrations
                     {
                         ReturnMissingBlock(block!);
                     }
+
+                    pointerTracker?.ReportCompleted(blockNum);
                 });
 
                 if (!token.IsCancellationRequested)
@@ -209,7 +217,7 @@ namespace Nethermind.Init.Steps.Migrations
 
         static void ReturnMissingBlock(Block emptyBlock) => EmptyBlock.Return(emptyBlock);
 
-        IEnumerable<(long, Hash256)> GetBlockBodiesForMigration(long from, long to, bool updateReceiptMigrationPointer, CancellationToken token)
+        IEnumerable<(long, Hash256)> GetBlockBodiesForMigration(long from, long to, MigrationPointerTracker? pointerTracker, CancellationToken token)
         {
             bool TryGetMainChainBlockHashFromLevel(long number, out Hash256? blockHash)
             {
@@ -248,10 +256,9 @@ namespace Nethermind.Init.Steps.Migrations
                 {
                     yield return (i, blockHash!);
                 }
-
-                if (updateReceiptMigrationPointer && _receiptStorage.MigratedBlockNumber > i)
+                else
                 {
-                    _receiptStorage.MigratedBlockNumber = i;
+                    pointerTracker?.ReportCompleted(i);
                 }
             }
         }
@@ -259,14 +266,18 @@ namespace Nethermind.Init.Steps.Migrations
         private void MigrateBlock(Block block)
         {
             TxReceipt?[] receipts = _receiptStorage.Get(block);
-            TxReceipt[] notNullReceipts = receipts.Length == 0
-                ? []
-                : receipts.Where(static r => r is not null).Cast<TxReceipt>().ToArray();
+            TxReceipt[] notNullReceipts = FilterNotNullReceipts(receipts, out int missingCount);
 
             if (notNullReceipts.Length == 0) return;
 
-            // This should set the new rlp and tx index depending on config.
-            _receiptStorage.Insert(block, notNullReceipts);
+            if (_migrationStore is not null)
+            {
+                _migrationStore.InsertForMigration(block, notNullReceipts);
+            }
+            else
+            {
+                _receiptStorage.Insert(block, notNullReceipts);
+            }
 
             // It used to be that the tx index is stored in the default column so we are moving it into transactions column
             {
@@ -292,11 +303,30 @@ namespace Nethermind.Init.Steps.Migrations
                 }
             }
 
-            if (notNullReceipts.Length != receipts.Length)
+            if (missingCount == 0) return;
+            if (_logger.IsWarn)
+                _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {missingCount} of {receipts.Length} receipts!");
+        }
+
+        private static TxReceipt[] FilterNotNullReceipts(TxReceipt?[] receipts, out int missingCount)
+        {
+            missingCount = 0;
+            foreach (TxReceipt? t in receipts)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!");
+                if (t is null) missingCount++;
             }
+
+            if (missingCount == 0) return receipts!;
+            if (missingCount == receipts.Length) return [];
+
+            TxReceipt[] notNullReceipts = new TxReceipt[receipts.Length - missingCount];
+            int next = 0;
+            foreach (TxReceipt? receipt in receipts)
+            {
+                if (receipt is not null) notNullReceipts[next++] = receipt;
+            }
+
+            return notNullReceipts;
         }
 
         private void ResetMigrationIndexIfNeeded()
@@ -307,29 +337,27 @@ namespace Nethermind.Init.Steps.Migrations
                 return;
             }
 
-            if (_receiptStorage.MigratedBlockNumber != long.MaxValue)
+            if (_receiptStorage.MigratedBlockNumber == long.MaxValue) return;
+            long blockNumber = _blockTree.Head?.Number ?? 0;
+            while (blockNumber > 0)
             {
-                long blockNumber = _blockTree.Head?.Number ?? 0;
-                while (blockNumber > 0)
+                ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(blockNumber);
+                BlockInfo? firstBlockInfo = level?.BlockInfos.FirstOrDefault();
+                if (firstBlockInfo is not null)
                 {
-                    ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(blockNumber);
-                    BlockInfo? firstBlockInfo = level?.BlockInfos.FirstOrDefault();
-                    if (firstBlockInfo is not null)
+                    TxReceipt[] receipts = _receiptStorage.Get(firstBlockInfo.BlockHash);
+                    if (receipts.Length > 0)
                     {
-                        TxReceipt[] receipts = _receiptStorage.Get(firstBlockInfo.BlockHash);
-                        if (receipts.Length > 0)
+                        if (IsMigrationNeeded(blockNumber, firstBlockInfo.BlockHash, receipts))
                         {
-                            if (IsMigrationNeeded(blockNumber, firstBlockInfo.BlockHash, receipts))
-                            {
-                                _receiptStorage.MigratedBlockNumber = long.MaxValue;
-                            }
-
-                            break;
+                            _receiptStorage.MigratedBlockNumber = long.MaxValue;
                         }
-                    }
 
-                    blockNumber--;
+                        break;
+                    }
                 }
+
+                blockNumber--;
             }
         }
 
@@ -350,6 +378,34 @@ namespace Nethermind.Init.Steps.Migrations
 
             bool isCompactEncoding = ReceiptArrayStorageDecoder.IsCompactEncoding(receiptData!);
             return _receiptConfig.CompactReceiptStore != isCompactEncoding;
+        }
+
+        internal sealed class MigrationPointerTracker(IReceiptStorage receiptStorage, long to, int expectedBacklog = 16)
+        {
+            private readonly Lock _lock = new();
+            private readonly HashSet<long> _completedAwaitingContiguity = new(expectedBacklog);
+            private long _nextToConfirm = to;
+
+            public void ReportCompleted(long blockNumber)
+            {
+                lock (_lock)
+                {
+                    _completedAwaitingContiguity.Add(blockNumber);
+
+                    bool advanced = false;
+                    while (_completedAwaitingContiguity.Remove(_nextToConfirm))
+                    {
+                        _nextToConfirm--;
+                        advanced = true;
+                    }
+
+                    long migratedBlockNumber = _nextToConfirm + 1;
+                    if (advanced && receiptStorage.MigratedBlockNumber > migratedBlockNumber)
+                    {
+                        receiptStorage.MigratedBlockNumber = migratedBlockNumber;
+                    }
+                }
+            }
         }
 
         private class EmptyBlockObjectPolicy : IPooledObjectPolicy<Block>
