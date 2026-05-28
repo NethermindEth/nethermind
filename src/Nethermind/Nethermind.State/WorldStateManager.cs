@@ -38,7 +38,7 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
         _trieStore = trieStore;
         _readOnlyTrieStore = trieStore.AsReadOnly();
         _logManager = logManager;
-        _boundaryStore = new StateBoundaryStore(dbProvider.StateDb);
+        _boundaryStore = new StateBoundaryStore(dbProvider.StateDb, _logManager);
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);

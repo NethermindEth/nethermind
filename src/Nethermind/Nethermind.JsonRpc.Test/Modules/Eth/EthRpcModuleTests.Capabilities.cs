@@ -281,7 +281,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public void eth_capabilities_no_head_disables_all_resources()
+    public void Eth_capabilities_no_head_disables_all_resources()
     {
         IReadOnlyBlockTree blockTree = Substitute.For<IReadOnlyBlockTree>();
         blockTree.Head.Returns((Block?)null);
@@ -304,7 +304,7 @@ public partial class EthRpcModuleTests
     }
 
     [TestCaseSource(nameof(CapabilitiesScenarios))]
-    public void eth_capabilities_returns_expected_availability_for(CapabilitiesScenario s)
+    public void Eth_capabilities_returns_expected_availability_for(CapabilitiesScenario s)
     {
         EthCapabilities caps = GetCaps(s.RetentionWindow, s.HeadNumber, s.OldestStateBlock, s.SyncConfig,
             s.LowestInsertedBody, s.LowestInsertedReceipt, s.HistoryConfig, s.HistoryPruner);
@@ -370,7 +370,7 @@ public partial class EthRpcModuleTests
         """;
 
     [Test]
-    public async Task eth_capabilities_json_matches_spec_schema()
+    public async Task Eth_capabilities_json_matches_spec_schema()
     {
         EthCapabilities caps = GetCaps(
             retentionWindow: 64,

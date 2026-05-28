@@ -64,14 +64,14 @@ public sealed class EthCapabilitiesProvider(
         if (fastSyncing && oldestStateBlock is null) return Disabled;
 
         long stateFloor = oldestStateBlock ?? 0L;
-        long? retention = stateBoundary.RetentionWindowBlocks;
-        long? windowOldest = retention is { } r ? Math.Max(0L, head.Number - r) : (long?)null;
-        long stateOldest = Math.Max(stateFloor, windowOldest ?? 0L);
+        if (stateBoundary.RetentionWindowBlocks is not { } retention)
+            return new ResourceAvailability(Disabled: false, OldestBlock: stateFloor, DeleteStrategy: null);
+
+        long windowOldest = Math.Max(0L, head.Number - retention);
+        long stateOldest = Math.Max(stateFloor, windowOldest);
         // Emit the window only when it's the binding constraint, and report the configured
         // retention so the value stays accurate before head reaches it.
-        DeleteStrategy? window = windowOldest is { } w && w >= stateFloor && retention is { } cfg
-            ? BuildWindow(cfg)
-            : null;
+        DeleteStrategy? window = windowOldest >= stateFloor ? BuildWindow(retention) : null;
         return new ResourceAvailability(Disabled: false, OldestBlock: stateOldest, DeleteStrategy: window);
     }
 

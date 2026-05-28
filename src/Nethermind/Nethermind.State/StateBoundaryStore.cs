@@ -4,6 +4,7 @@
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State;
@@ -14,7 +15,7 @@ namespace Nethermind.State;
 /// use this store — its <see cref="IStateBoundary.OldestStateBlock"/> reads through the
 /// persistence manager directly.
 /// </summary>
-public sealed class StateBoundaryStore(IKeyValueStore kv)
+public sealed class StateBoundaryStore(IKeyValueStore kv, ILogManager? logManager = null)
 {
     /// <summary>
     /// 32-byte keccak slot key, collision-free against the trie DB's hash-keyed (32 bytes of
@@ -22,6 +23,7 @@ public sealed class StateBoundaryStore(IKeyValueStore kv)
     /// </summary>
     internal static readonly byte[] OldestStateBlockKey = Keccak.Compute("OldestStateBlock").BytesToArray();
 
+    private readonly ILogger _logger = logManager?.GetClassLogger<StateBoundaryStore>() ?? default;
     private readonly Lock _lock = new();
     private long? _value = kv[OldestStateBlockKey]?.AsRlpValueContext().DecodeLong();
 
@@ -37,7 +39,12 @@ public sealed class StateBoundaryStore(IKeyValueStore kv)
             {
                 if (_value == value) return;
                 // Reject backward non-null writes; null reset is permitted for recovery.
-                if (value.HasValue && _value.HasValue && value.Value < _value.Value) return;
+                if (value.HasValue && _value.HasValue && value.Value < _value.Value)
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn($"Rejected backward OldestStateBlock write {value.Value} (current floor {_value.Value}); kept current.");
+                    return;
+                }
                 // Persist before caching so a thrown kv write doesn't desync memory from disk.
                 if (value.HasValue)
                     kv[OldestStateBlockKey] = Rlp.Encode(value.Value).Bytes;

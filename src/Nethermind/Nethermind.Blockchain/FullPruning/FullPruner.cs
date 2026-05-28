@@ -181,10 +181,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
 
             if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {stateToCopy} with root {header.StateRoot}");
-            if (TryCopyTrie(pruningContext, header, cancellationToken))
-            {
-                _stateBoundary.OldestStateBlock = stateToCopy;
-            }
+            TryCopyTrie(pruningContext, header, stateToCopy, cancellationToken);
         }
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
@@ -224,11 +221,10 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private bool TryCopyTrie(IPruningContext pruning, BlockHeader? baseBlock, CancellationToken cancellationToken)
+        private void TryCopyTrie(IPruningContext pruning, BlockHeader? baseBlock, long stateToCopy, CancellationToken cancellationToken)
         {
             INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
             ICopyTreeVisitor visitor = null;
-            bool committed = false;
 
             try
             {
@@ -277,6 +273,12 @@ namespace Nethermind.Blockchain.FullPruning
                 {
                     visitor.Finish();
 
+                    // Advance the state-availability floor before swapping. The FullPruningDb
+                    // mirrors this write into the cloning DB, so after Commit() the new live DB
+                    // has the marker atomically with the swap — a crash in between cannot leave
+                    // the new DB live without the floor.
+                    _stateBoundary.OldestStateBlock = stateToCopy;
+
                     using (_trieStore.PrepareStableState(cancellationToken))
                     {
                         pruning.Commit();
@@ -284,7 +286,6 @@ namespace Nethermind.Blockchain.FullPruning
 
                     _nodeStorage.Scheme = targetNodeStorage.Scheme;
                     _lastPruning = DateTime.UtcNow;
-                    committed = true;
                 }
             }
             catch (Exception e)
@@ -297,8 +298,6 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 visitor?.Dispose();
             }
-
-            return committed;
         }
 
         private ICopyTreeVisitor CopyTree<TContext>(
