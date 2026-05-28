@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Nethermind.Serialization.Ssz;
-using System;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
