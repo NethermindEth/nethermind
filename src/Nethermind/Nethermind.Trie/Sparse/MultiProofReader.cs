@@ -347,7 +347,7 @@ public static class MultiProofReader
         }
     }
 
-    internal static ProofNode DecodeProofNode(byte[] rlp, TreePath path)
+    public static ProofNode DecodeProofNode(byte[] rlp, TreePath path)
     {
         Rlp.ValueDecoderContext ctx = new(rlp);
         ctx.ReadSequenceLength();

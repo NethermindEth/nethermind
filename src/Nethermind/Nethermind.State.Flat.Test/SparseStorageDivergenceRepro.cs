@@ -162,6 +162,53 @@ public class SparseStorageDivergenceRepro
     }
 
     /// <summary>
+    /// USDT's actual storage root RLP at the failing block, captured from EXPB DIAG dump
+    /// (prevRoot=0x8e4d94c2ec81dadf65c525fae4e79e407ef18dcfff7b6571f623b6cce8e61b07).
+    /// This is a 16-child Branch where every slot is a 32-byte hash reference — the exact
+    /// shape mainnet USDT has at depth 0 due to its millions-of-slots size.
+    /// </summary>
+    private const string UsdtRootRlpHex =
+        "F90211" +
+        "A0243985007268B9047754206ED0476C58E81A0D5B90E8A5D55E0B97AB6FB9DCCA" +
+        "A0C792E96BE51C36508C571C2E9A4933EDD7057058299A3641B1AB074740773B09" +
+        "A0C2DD8B24F8C2D6F71BF09016F41E6C0E9439035423996D89BFC873AE459ABE06" +
+        "A02AAD4696C2ECDC8F8885A2F0EA90E9A50639ED628CD7BD51B6DA196EC5F8DF54" +
+        "A046F8751BD15955EA4E51068EAA063565EF853C91FF296DA99E77A4B10C80EE36" +
+        "A06C9FBD9856EFE489121F8730D0C4DBC5175083F649729CCAB89471B49A20F43F" +
+        "A022AFEF3DEEF97F02335791D2C6E3F31BD88DABE8B166ACD62DEEC691E68CFA9E" +
+        "A0B6925795639D87D32CEA94BF0C1CCA56CD62D60ACBF7CD22F6181FF6F749CCCC" +
+        "A01296C14EB051E4D969D9DF3D83CE0CF13626A4EE4FB8E56796BC3ECB645BAEED" +
+        "A0F6BB396C97CAE29DA5FFF8A1F83134AA541F2469F566733B2F0B5B7B295ACB15" +
+        "A097D03EF19DBA1D1634EADD62A72EC16F928C56077DD13CA896B7CAD6EA36B535" +
+        "A03AD88211B408CE27F84B7B3AF9314E28EA626DA5BBA6C35B96AEBA599F26BE92" +
+        "A002F77F34BF77360C4D39E6A54AEE179EF9FBE883402B3B015E9866C75564FC7B" +
+        "A0D46A361E38133090F9E163EF3B118E1BF6F909BA26421DD2D76B24E631F1B4D7" +
+        "A0B206F8E128367C7C2F73E5979F74C5D758DB0591507968CCB537F0E21DF2A9FE" +
+        "A06979C4A41A501B8F9D365D36C3773CA2E4329008DCD952A240FBC2BAAF3CC778" +
+        "80";
+
+    /// <summary>
+    /// Direct decode + reveal of USDT's actual mainnet root RLP. Then check that the sparse
+    /// trie's ComputeRoot() returns the same hash. If sparse mis-decodes/mis-encodes a 16-
+    /// child branch with all hashed children, this catches it.
+    /// </summary>
+    [Test]
+    public void Reveal_UsdtMainnetRoot_RoundTripsToSameHash()
+    {
+        byte[] rootRlp = Convert.FromHexString(UsdtRootRlpHex);
+        Hash256 expectedHash = new("0x8e4d94c2ec81dadf65c525fae4e79e407ef18dcfff7b6571f623b6cce8e61b07");
+
+        ProofNode rootProof = MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty);
+        using SparsePatriciaTree sparse = new();
+        sparse.RevealNodes([rootProof]);
+
+        Hash256 computed = sparse.ComputeRoot();
+        computed.Should().Be(expectedHash,
+            "Decoding + re-encoding USDT's mainnet root RLP must produce the same hash. " +
+            $"Expected={expectedHash}, Computed={computed}");
+    }
+
+    /// <summary>
     /// Hypothesis test: is sparse storage UpdateLeaves order-dependent? Apply the same 30
     /// updates in 5 different shuffled orders and assert the resulting root is identical.
     /// If sparse is canonical (as it should be), all 5 roots match. If a specific ordering
