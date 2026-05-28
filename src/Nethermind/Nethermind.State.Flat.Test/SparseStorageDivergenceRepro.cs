@@ -159,4 +159,92 @@ public class SparseStorageDivergenceRepro
         rng.NextBytes(b);
         return b;
     }
+
+    /// <summary>
+    /// More aggressive reproducer: 10,000 random slots make a much deeper storage trie
+    /// (multiple extension levels, large branches, mix of inline and hashed children).
+    /// Apply the 30 USDT updates and validate sparse == Patricia. This shape is closer to
+    /// USDT's actual mainnet trie depth.
+    /// </summary>
+    [Test]
+    [TestCase(0, 10_000)]
+    [TestCase(0, 100_000)]
+    public void Replay_Usdt30Updates_AgainstDeepStartingState_RootsMustMatch(int seed, int seedCount)
+    {
+        MemDb db = new();
+        Hash256 accountPathHash = TestItem.AddressA.ToAccountPath.ToHash256();
+        StorageTree storage = new(new RawTrieStore(db).GetTrieStore(accountPathHash), LimboLogs.Instance);
+
+        // Deep seed: many random slots → many trie levels, varied node shapes.
+        Random rng = new(seed);
+        for (int i = 0; i < seedCount; i++)
+        {
+            byte[] keyBytes = new byte[32];
+            rng.NextBytes(keyBytes);
+            UInt256 seedSlot = new(keyBytes);
+            int valueLen = 1 + rng.Next(31); // mix of value sizes
+            byte[] seedValue = SeededBytes(rng, valueLen);
+            storage.Set(seedSlot, seedValue);
+        }
+        storage.UpdateRootHash();
+        storage.Commit();
+        Hash256 seedRoot = storage.RootHash;
+
+        foreach ((UInt256 slot, byte[] value) in UsdtUpdates)
+            storage.Set(slot, value);
+        storage.UpdateRootHash();
+        storage.Commit();
+        Hash256 patriciaPostRoot = storage.RootHash;
+
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        using SparsePatriciaTree sparse = new();
+
+        // Reveal seed proof
+        ValueHash256 firstKeyBuf = default;
+        StorageTree.ComputeKeyWithLookup(UsdtUpdates[0].Slot, ref firstKeyBuf);
+        Hash256 firstTargetHash = firstKeyBuf.ToCommitment();
+        DecodedMultiProof seedProof = MultiProofReader.ReadStorageProofs(
+            reader, accountPathHash, seedRoot, [firstTargetHash]);
+        if (seedProof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? seedNodes))
+            sparse.RevealNodes(seedNodes);
+
+        Dictionary<Hash256, LeafUpdate> updates = [];
+        ValueHash256 keyBuf = default;
+        foreach ((UInt256 slot, byte[] value) in UsdtUpdates)
+        {
+            StorageTree.ComputeKeyWithLookup(slot, ref keyBuf);
+            Hash256 slotHash = keyBuf.ToCommitment();
+
+            if (value.AsSpan().IndexOfAnyExcept((byte)0) < 0)
+            {
+                updates[slotHash] = LeafUpdate.Deleted();
+            }
+            else
+            {
+                Rlp rlpEncoded = Rlp.Encode(value);
+                byte[]? encoded = rlpEncoded?.Bytes;
+                updates[slotHash] = encoded is null || encoded.Length == 0
+                    ? LeafUpdate.Deleted()
+                    : LeafUpdate.Changed(encoded);
+            }
+        }
+
+        const int maxRetries = 10;
+        for (int retry = 0; retry < maxRetries; retry++)
+        {
+            List<Hash256> targets = [];
+            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key));
+            if (targets.Count == 0) break;
+
+            DecodedMultiProof proof = MultiProofReader.ReadStorageProofs(
+                reader, accountPathHash, seedRoot, targets.ToArray());
+            if (proof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? nodes))
+                sparse.RevealNodes(nodes);
+        }
+
+        Hash256 sparseRoot = sparse.ComputeRoot();
+        sparseRoot.Should().Be(patriciaPostRoot,
+            $"seed={seed}: Sparse storage root must match Patricia for 30 USDT updates over a 10k-slot deep trie. " +
+            $"Patricia={patriciaPostRoot}, Sparse={sparseRoot}");
+    }
 }
