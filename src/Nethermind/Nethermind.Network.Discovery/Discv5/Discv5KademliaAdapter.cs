@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
@@ -151,7 +152,7 @@ public class Discv5KademliaAdapter(
         TimeSpan timeout,
         CancellationToken token)
     {
-        ResponseKey responseKey = new(receiver.Id.Hash, RequestIdToString(request.RequestId), responseType);
+        ResponseKey responseKey = new(receiver.Id.Hash, RequestIdKey.From(request.RequestId), responseType);
         _responseHandlers.Set(responseKey, responseHandler);
 
         using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -183,7 +184,7 @@ public class Discv5KademliaAdapter(
         if (TryGetSession(sessionKey, out Discv5Session? session))
         {
             byte[] sessionNonce = session.GetNextNonce(cryptoRandom);
-            PendingNonceKey sessionPendingNonceKey = new(receiver.Address, NonceToString(sessionNonce));
+            PendingNonceKey sessionPendingNonceKey = new(receiver.Address, NonceKey.From(sessionNonce));
             _pendingByNonce.Set(sessionPendingNonceKey, new PendingRequest(receiver, message));
             byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, session.WriteKey, message, sessionNonce);
             try
@@ -201,7 +202,7 @@ public class Discv5KademliaAdapter(
         byte[] nonce = cryptoRandom.GenerateRandomBytes(Discv5PacketCodec.NonceSize);
         byte[] encryptionKey = cryptoRandom.GenerateRandomBytes(16);
         PendingRequest pendingRequest = new(receiver, message);
-        PendingNonceKey pendingNonceKey = new(receiver.Address, NonceToString(nonce));
+        PendingNonceKey pendingNonceKey = new(receiver.Address, NonceKey.From(nonce));
         _pendingByNonce.Set(pendingNonceKey, pendingRequest);
 
         byte[] initialPacket = packetCodec.EncodeOrdinary(receiver.Id, encryptionKey, message, nonce);
@@ -262,7 +263,7 @@ public class Discv5KademliaAdapter(
 
     private async Task HandleWhoAreYou(IPEndPoint endpoint, Discv5Packet packet, CancellationToken token)
     {
-        PendingNonceKey pendingNonceKey = new(endpoint, NonceToString(packet.Nonce));
+        PendingNonceKey pendingNonceKey = new(endpoint, NonceKey.From(packet.Nonce));
         if (!_pendingByNonce.TryRemove(pendingNonceKey, out PendingRequest? pendingRequest))
         {
             return;
@@ -403,7 +404,7 @@ public class Discv5KademliaAdapter(
 
     private bool HandleResponse(Hash256 nodeId, Discv5Message message)
     {
-        ResponseKey responseKey = new(nodeId, RequestIdToString(message.RequestId), message.MessageType);
+        ResponseKey responseKey = new(nodeId, RequestIdKey.From(message.RequestId), message.MessageType);
         return _responseHandlers.TryGetValue(responseKey, out IResponseHandler? handler) && handler.Handle(message);
     }
 
@@ -420,15 +421,16 @@ public class Discv5KademliaAdapter(
         for (int i = 0; i < records.Length; i += MaxEnrsPerNodesMessage)
         {
             int count = Math.Min(MaxEnrsPerNodesMessage, records.Length - i);
-            NodeRecord[] chunk = records.AsSpan(i, count).ToArray();
+            ArraySegment<NodeRecord> chunk = new(records, i, count);
             await SendResponse(remoteNode, new Discv5Nodes(findNode.RequestId, total, chunk), token);
         }
     }
 
     private NodeRecord[] GetFindNodeRecords(int[] distances, Node requester)
     {
-        HashSet<Hash256> seen = [];
-        List<NodeRecord> result = [];
+        HashSet<Hash256> seen = new(MaxFindNodeRecords);
+        List<NodeRecord> result = new(MaxFindNodeRecords);
+        bool allowNonRoutableRelays = NodeFilter.IsLoopbackOrPrivateOrLinkLocal(requester.Address.Address);
         bool includedSelf = false;
         for (int i = 0; i < distances.Length && result.Count < MaxFindNodeRecords; i++)
         {
@@ -449,26 +451,35 @@ public class Discv5KademliaAdapter(
                 continue;
             }
 
-            Node[] nodes = GetNodesAtDistances([distance], requester);
-            for (int j = 0; j < nodes.Length && result.Count < MaxFindNodeRecords; j++)
-            {
-                Node node = nodes[j];
-                if (string.IsNullOrEmpty(node.Enr) || !seen.Add(node.Id.Hash))
-                {
-                    continue;
-                }
-
-                NodeRecord? record = GetFindNodeRecord(
-                    node,
-                    allowNonRoutableRelays: NodeFilter.IsLoopbackOrPrivateOrLinkLocal(requester.Address.Address));
-                if (record is not null)
-                {
-                    result.Add(record);
-                }
-            }
+            AddFindNodeRecordsAtDistance(distance, requester, allowNonRoutableRelays, seen, result);
         }
 
         return [.. result];
+    }
+
+    private void AddFindNodeRecordsAtDistance(
+        int distance,
+        Node requester,
+        bool allowNonRoutableRelays,
+        HashSet<Hash256> seen,
+        List<NodeRecord> result)
+    {
+        Node[] nodes = kademlia.Value.GetAllAtDistance(distance);
+        Hash256 requesterHash = requester.IdHash;
+        for (int i = 0; i < nodes.Length && result.Count < MaxFindNodeRecords; i++)
+        {
+            Node node = nodes[i];
+            if (node.IdHash.Equals(requesterHash) || string.IsNullOrEmpty(node.Enr) || !seen.Add(node.Id.Hash))
+            {
+                continue;
+            }
+
+            NodeRecord? record = GetFindNodeRecord(node, allowNonRoutableRelays);
+            if (record is not null)
+            {
+                result.Add(record);
+            }
+        }
     }
 
     private NodeRecord? GetFindNodeRecord(Node node, bool allowNonRoutableRelays)
@@ -536,10 +547,6 @@ public class Discv5KademliaAdapter(
         byte[] requestId = cryptoRandom.GenerateRandomBytes(sizeof(ulong));
         return requestId.AsSpan().WithoutLeadingZeros().ToArray();
     }
-
-    private static string RequestIdToString(byte[] requestId) => Convert.ToHexString(requestId);
-
-    private static string NonceToString(byte[] nonce) => Convert.ToHexString(nonce);
 
     private bool TryGetSession(SessionKey sessionKey, [NotNullWhen(true)] out Discv5Session? session) => _sessions.TryGetValue(sessionKey, out session);
 
@@ -700,9 +707,38 @@ public class Discv5KademliaAdapter(
 
     private readonly record struct ChallengeKey(Hash256 NodeId, IPEndPoint Endpoint);
 
-    private readonly record struct PendingNonceKey(IPEndPoint Endpoint, string Nonce);
+    private readonly record struct PendingNonceKey(IPEndPoint Endpoint, NonceKey Nonce);
 
-    private readonly record struct ResponseKey(Hash256 NodeId, string RequestId, Discv5MessageType MessageType);
+    private readonly record struct ResponseKey(Hash256 NodeId, RequestIdKey RequestId, Discv5MessageType MessageType);
+
+    private readonly record struct RequestIdKey(ulong Value, byte Length)
+    {
+        public static RequestIdKey From(ReadOnlySpan<byte> requestId)
+        {
+            ulong value = 0;
+            for (int i = 0; i < requestId.Length; i++)
+            {
+                value = (value << 8) | requestId[i];
+            }
+
+            return new RequestIdKey(value, checked((byte)requestId.Length));
+        }
+    }
+
+    private readonly record struct NonceKey(ulong Prefix, uint Suffix)
+    {
+        public static NonceKey From(ReadOnlySpan<byte> nonce)
+        {
+            if (nonce.Length != Discv5PacketCodec.NonceSize)
+            {
+                throw new ArgumentException($"Nonce must be {Discv5PacketCodec.NonceSize} bytes.", nameof(nonce));
+            }
+
+            return new NonceKey(
+                BinaryPrimitives.ReadUInt64BigEndian(nonce[..sizeof(ulong)]),
+                BinaryPrimitives.ReadUInt32BigEndian(nonce.Slice(sizeof(ulong), sizeof(uint))));
+        }
+    }
 
     private sealed record PendingRequest(Node Receiver, Discv5Message Message);
 
@@ -772,7 +808,7 @@ public class Discv5KademliaAdapter(
             _total ??= nodes.Total;
             _received++;
 
-            for (int i = 0; i < nodes.Records.Length && _nodes.Count < MaxNodesResponseRecords; i++)
+            for (int i = 0; i < nodes.Records.Count && _nodes.Count < MaxNodesResponseRecords; i++)
             {
                 NodeRecord record = nodes.Records[i];
                 if (!Discv5NodeRecordConverter.TryGetNodeFromEnr(record, _allowNonRoutableRelays, out Node? node) ||

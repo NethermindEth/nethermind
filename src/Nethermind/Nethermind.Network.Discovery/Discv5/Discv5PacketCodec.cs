@@ -21,9 +21,7 @@ internal enum Discv5PacketFlag : byte
 
 internal sealed record Discv5Packet(
     Discv5PacketFlag Flag,
-    byte[] MaskingIv,
     byte[] Nonce,
-    byte[] Header,
     byte[] AuthData,
     byte[] Message,
     byte[] MessageAd)
@@ -36,8 +34,6 @@ internal sealed record Discv5Challenge(byte[] RequestNonce, byte[] IdNonce, ulon
 internal sealed record Discv5Session(PublicKey RemotePublicKey, byte[] ReadKey, byte[] WriteKey)
 {
     private long _nonceCounter;
-
-    public byte[] RemoteNodeId => RemotePublicKey.Hash.BytesToArray();
 
     public byte[] GetNextNonce(ICryptoRandom random)
     {
@@ -74,19 +70,18 @@ public sealed class Discv5PacketCodec(
 
     private readonly PrivateKey _privateKey = nodeKey.Unprotect();
     private readonly PublicKey _publicKey = nodeKey.PublicKey;
+    private readonly byte[] _localNodeId = nodeKey.PublicKey.Hash.BytesToArray();
     private readonly INodeRecordProvider _nodeRecordProvider = nodeRecordProvider;
     private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
     private readonly IEcdsa _ecdsa = ecdsa;
-
-    internal byte[] LocalNodeId => _publicKey.Hash.BytesToArray();
 
     public void Dispose() => _privateKey.Dispose();
 
     internal byte[] EncodeOrdinary(PublicKey destination, byte[] encryptionKey, Discv5Message message, byte[]? nonce = null)
     {
         byte[] actualNonce = nonce ?? CreateNonce();
-        byte[] authData = LocalNodeId.ToArray();
-        return EncodePacket(destination.Hash.BytesToArray(), Discv5PacketFlag.Ordinary, actualNonce, authData, encryptionKey, message);
+        byte[] authData = _localNodeId;
+        return EncodePacket(destination.Hash.Bytes, Discv5PacketFlag.Ordinary, actualNonce, authData, encryptionKey, message);
     }
 
     internal byte[] EncodeWhoAreYou(byte[] destinationNodeId, byte[] requestNonce, ulong enrSequence, out Discv5Challenge challenge)
@@ -107,20 +102,20 @@ public sealed class Discv5PacketCodec(
         DeriveKeys(
             destination,
             ephemeralKey,
-            LocalNodeId,
+            _localNodeId,
             destination.Hash.Bytes,
             challenge.ChallengeData,
             out byte[] initiatorKey,
             out byte[] recipientKey);
 
         byte[] ephemeralPublicKey = ephemeralKey.CompressedPublicKey.Bytes;
-        byte[] idSignature = SignIdNonce(challenge.ChallengeData, ephemeralPublicKey, destination.Hash.BytesToArray());
+        byte[] idSignature = SignIdNonce(challenge.ChallengeData, ephemeralPublicKey, destination.Hash.Bytes);
         byte[] record = challenge.EnrSequence < _nodeRecordProvider.Current.EnrSequence
             ? _nodeRecordProvider.Current.ToRlpBytes()
             : [];
 
         byte[] authData = new byte[HandshakeAuthDataHeadSize + idSignature.Length + ephemeralPublicKey.Length + record.Length];
-        LocalNodeId.CopyTo(authData, 0);
+        _localNodeId.CopyTo(authData, 0);
         authData[NodeIdSize] = IdSignatureSize;
         authData[NodeIdSize + 1] = EphemeralPublicKeySize;
         idSignature.CopyTo(authData.AsSpan(HandshakeAuthDataHeadSize));
@@ -128,11 +123,11 @@ public sealed class Discv5PacketCodec(
         record.CopyTo(authData.AsSpan(HandshakeAuthDataHeadSize + idSignature.Length + ephemeralPublicKey.Length));
 
         session = new Discv5Session(destination, recipientKey, initiatorKey);
-        return EncodePacket(destination.Hash.BytesToArray(), Discv5PacketFlag.Handshake, CreateNonce(), authData, initiatorKey, message);
+        return EncodePacket(destination.Hash.Bytes, Discv5PacketFlag.Handshake, CreateNonce(), authData, initiatorKey, message);
     }
 
     internal bool TryDecode(ReadOnlySpan<byte> packet, out Discv5Packet decoded)
-        => TryDecode(packet, LocalNodeId, out decoded);
+        => TryDecode(packet, _localNodeId, out decoded);
 
     internal static bool TryDecode(ReadOnlySpan<byte> packet, ReadOnlySpan<byte> localNodeId, out Discv5Packet decoded)
     {
@@ -142,7 +137,7 @@ public sealed class Discv5PacketCodec(
             return false;
         }
 
-        byte[] maskingIv = packet[..MaskingIvSize].ToArray();
+        ReadOnlySpan<byte> maskingIv = packet[..MaskingIvSize];
         byte[] staticHeader = AesCtrTransform(localNodeId[..AesKeySize], maskingIv, packet.Slice(MaskingIvSize, StaticHeaderSize));
         if (!staticHeader.AsSpan(0, ProtocolId.Length).SequenceEqual(ProtocolId))
         {
@@ -173,10 +168,10 @@ public sealed class Discv5PacketCodec(
         byte[] authData = header.AsSpan(StaticHeaderSize, authDataSize).ToArray();
         byte[] message = packet[(MaskingIvSize + headerSize)..].ToArray();
         byte[] messageAd = new byte[MaskingIvSize + header.Length];
-        maskingIv.CopyTo(messageAd, 0);
+        maskingIv.CopyTo(messageAd);
         header.CopyTo(messageAd.AsSpan(MaskingIvSize));
 
-        decoded = new Discv5Packet(flag, maskingIv, nonce, header, authData, message, messageAd);
+        decoded = new Discv5Packet(flag, nonce, authData, message, messageAd);
         return true;
     }
 
@@ -259,13 +254,13 @@ public sealed class Discv5PacketCodec(
             return false;
         }
 
-        if (!VerifyIdSignature(remoteCompressedPublicKey, idSignature, challenge.ChallengeData, ephemeralPublicKey.Bytes, LocalNodeId))
+        if (!VerifyIdSignature(remoteCompressedPublicKey, idSignature, challenge.ChallengeData, ephemeralPublicKey.Bytes, _localNodeId))
         {
             return false;
         }
 
         PublicKey remotePublicKey = remoteCompressedPublicKey.Decompress();
-        DeriveKeys(ephemeralPublicKey, sourceNodeId, LocalNodeId, challenge.ChallengeData, out byte[] initiatorKey, out byte[] recipientKey);
+        DeriveKeys(ephemeralPublicKey, sourceNodeId, _localNodeId, challenge.ChallengeData, out byte[] initiatorKey, out byte[] recipientKey);
 
         if (!TryDecryptMessage(packet, initiatorKey, out message))
         {
@@ -293,7 +288,7 @@ public sealed class Discv5PacketCodec(
     }
 
     private byte[] EncodePacket(
-        byte[] destinationNodeId,
+        ReadOnlySpan<byte> destinationNodeId,
         Discv5PacketFlag flag,
         byte[] nonce,
         byte[] authData,
@@ -302,7 +297,7 @@ public sealed class Discv5PacketCodec(
         => EncodePacket(destinationNodeId, flag, nonce, authData, encryptionKey, message, out _);
 
     private byte[] EncodePacket(
-        byte[] destinationNodeId,
+        ReadOnlySpan<byte> destinationNodeId,
         Discv5PacketFlag flag,
         byte[] nonce,
         byte[] authData,
@@ -324,7 +319,7 @@ public sealed class Discv5PacketCodec(
             encryptedMessage = EncryptMessage(encryptionKey, nonce, Discv5MessageCodec.Encode(message), messageAd);
         }
 
-        byte[] maskedHeader = AesCtrTransform(destinationNodeId.AsSpan(0, AesKeySize), maskingIv, header);
+        byte[] maskedHeader = AesCtrTransform(destinationNodeId[..AesKeySize], maskingIv, header);
         byte[] packet = new byte[MaskingIvSize + maskedHeader.Length + encryptedMessage.Length];
         maskingIv.CopyTo(packet, 0);
         maskedHeader.CopyTo(packet.AsSpan(MaskingIvSize));
@@ -372,19 +367,14 @@ public sealed class Discv5PacketCodec(
         aes.Padding = PaddingMode.None;
         aes.Key = key.ToArray();
 
-        using ICryptoTransform encryptor = aes.CreateEncryptor();
         Span<byte> counter = stackalloc byte[MaskingIvSize];
         iv.CopyTo(counter);
         Span<byte> keyStream = stackalloc byte[MaskingIvSize];
-        byte[] counterBlock = new byte[MaskingIvSize];
-        byte[] keyStreamBlock = new byte[MaskingIvSize];
 
         int offset = 0;
         while (offset < input.Length)
         {
-            counter.CopyTo(counterBlock);
-            encryptor.TransformBlock(counterBlock, 0, counterBlock.Length, keyStreamBlock, 0);
-            keyStreamBlock.CopyTo(keyStream);
+            aes.EncryptEcb(counter, keyStream, PaddingMode.None);
 
             int blockLength = Math.Min(MaskingIvSize, input.Length - offset);
             for (int i = 0; i < blockLength; i++)
@@ -487,14 +477,14 @@ public sealed class Discv5PacketCodec(
         return result;
     }
 
-    private byte[] SignIdNonce(byte[] challengeData, byte[] ephemeralPublicKey, byte[] recipientNodeId)
+    private byte[] SignIdNonce(byte[] challengeData, byte[] ephemeralPublicKey, ReadOnlySpan<byte> recipientNodeId)
     {
         byte[] signingHash = CalculateIdSignatureHash(challengeData, ephemeralPublicKey, recipientNodeId);
         Signature signature = _ecdsa.Sign(_privateKey, new ValueHash256(signingHash));
         return signature.Bytes.ToArray();
     }
 
-    private bool VerifyIdSignature(CompressedPublicKey signer, byte[] signatureBytes, byte[] challengeData, byte[] ephemeralPublicKey, byte[] recipientNodeId)
+    private bool VerifyIdSignature(CompressedPublicKey signer, byte[] signatureBytes, byte[] challengeData, byte[] ephemeralPublicKey, ReadOnlySpan<byte> recipientNodeId)
     {
         byte[] signingHash = CalculateIdSignatureHash(challengeData, ephemeralPublicKey, recipientNodeId);
         for (int recoveryId = 0; recoveryId <= 1; recoveryId++)
@@ -513,7 +503,7 @@ public sealed class Discv5PacketCodec(
     internal static byte[] CalculateIdSignatureHashForTest(byte[] challengeData, byte[] ephemeralPublicKey, byte[] recipientNodeId)
         => CalculateIdSignatureHash(challengeData, ephemeralPublicKey, recipientNodeId);
 
-    private static byte[] CalculateIdSignatureHash(byte[] challengeData, byte[] ephemeralPublicKey, byte[] recipientNodeId)
+    private static byte[] CalculateIdSignatureHash(byte[] challengeData, byte[] ephemeralPublicKey, ReadOnlySpan<byte> recipientNodeId)
     {
         byte[] signingInput = new byte[IdentityProofText.Length + challengeData.Length + ephemeralPublicKey.Length + recipientNodeId.Length];
         IdentityProofText.CopyTo(signingInput, 0);

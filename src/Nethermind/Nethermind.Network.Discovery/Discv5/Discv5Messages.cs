@@ -36,7 +36,7 @@ internal sealed record Discv5FindNode(byte[] RequestId, int[] Distances) : Discv
     public override Discv5MessageType MessageType => Discv5MessageType.FindNode;
 }
 
-internal sealed record Discv5Nodes(byte[] RequestId, int Total, NodeRecord[] Records) : Discv5Message(RequestId)
+internal sealed record Discv5Nodes(byte[] RequestId, int Total, IReadOnlyList<NodeRecord> Records) : Discv5Message(RequestId)
 {
     public override Discv5MessageType MessageType => Discv5MessageType.Nodes;
 }

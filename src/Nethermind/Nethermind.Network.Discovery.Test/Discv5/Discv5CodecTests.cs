@@ -172,6 +172,66 @@ public class Discv5CodecTests
     }
 
     [Test]
+    public void MessageCodec_Roundtrips_Pong()
+    {
+        Discv5Pong message = new([0, 0, 0, 2], 3, IPAddress.Parse("192.0.2.1"), 30303);
+
+        Discv5Message decoded = Discv5MessageCodec.Decode(Discv5MessageCodec.Encode(message));
+
+        Assert.That(decoded, Is.InstanceOf<Discv5Pong>());
+        Discv5Pong decodedPong = (Discv5Pong)decoded;
+        Assert.That(decodedPong.RequestId, Is.EqualTo(message.RequestId));
+        Assert.That(decodedPong.EnrSequence, Is.EqualTo(message.EnrSequence));
+        Assert.That(decodedPong.RecipientIp, Is.EqualTo(message.RecipientIp));
+        Assert.That(decodedPong.RecipientPort, Is.EqualTo(message.RecipientPort));
+    }
+
+    [Test]
+    public void MessageCodec_Roundtrips_TalkReq()
+    {
+        Discv5TalkReq message = new([0, 0, 0, 3], "eth"u8.ToArray(), [1, 2, 3, 4]);
+
+        Discv5Message decoded = Discv5MessageCodec.Decode(Discv5MessageCodec.Encode(message));
+
+        Assert.That(decoded, Is.InstanceOf<Discv5TalkReq>());
+        Discv5TalkReq decodedTalkReq = (Discv5TalkReq)decoded;
+        Assert.That(decodedTalkReq.RequestId, Is.EqualTo(message.RequestId));
+        Assert.That(decodedTalkReq.Protocol, Is.EqualTo(message.Protocol));
+        Assert.That(decodedTalkReq.Request, Is.EqualTo(message.Request));
+    }
+
+    [Test]
+    public void MessageCodec_Roundtrips_TalkResp()
+    {
+        Discv5TalkResp message = new([0, 0, 0, 4], [5, 6, 7, 8]);
+
+        Discv5Message decoded = Discv5MessageCodec.Decode(Discv5MessageCodec.Encode(message));
+
+        Assert.That(decoded, Is.InstanceOf<Discv5TalkResp>());
+        Discv5TalkResp decodedTalkResp = (Discv5TalkResp)decoded;
+        Assert.That(decodedTalkResp.RequestId, Is.EqualTo(message.RequestId));
+        Assert.That(decodedTalkResp.Response, Is.EqualTo(message.Response));
+    }
+
+    [Test]
+    public void MessageCodec_Roundtrips_Nodes_From_NonZero_ArraySegment()
+    {
+        NodeRecord skippedRecord = CreateNodeRecord(new PrivateKey(GethNodeAPrivateKey));
+        NodeRecord expectedRecord = CreateNodeRecord(new PrivateKey(GethNodeBPrivateKey));
+        NodeRecord[] records = [skippedRecord, expectedRecord];
+        Discv5Nodes message = new([0, 0, 0, 5], 1, new ArraySegment<NodeRecord>(records, 1, 1));
+
+        Discv5Message decoded = Discv5MessageCodec.Decode(Discv5MessageCodec.Encode(message));
+
+        Assert.That(decoded, Is.InstanceOf<Discv5Nodes>());
+        Discv5Nodes decodedNodes = (Discv5Nodes)decoded;
+        Assert.That(decodedNodes.RequestId, Is.EqualTo(message.RequestId));
+        Assert.That(decodedNodes.Total, Is.EqualTo(message.Total));
+        Assert.That(decodedNodes.Records.Count, Is.EqualTo(1));
+        Assert.That(decodedNodes.Records[0].EnrString, Is.EqualTo(expectedRecord.EnrString));
+    }
+
+    [Test]
     public void MessageCodec_Rejects_Nodes_With_Invalid_Enr()
     {
         byte[] invalidRecord = new byte[304];
