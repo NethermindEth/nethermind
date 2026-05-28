@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -16,8 +17,13 @@ public sealed class SparseStateTrie : IDisposable
 {
     private SparsePatriciaTree? _accountTrie;
 
-    /// <summary>Storage tries keyed by accountPathHash (keccak(address)).</summary>
-    private readonly Dictionary<Hash256, SparsePatriciaTree> _storageTries = [];
+    /// <summary>
+    /// Storage tries keyed by accountPathHash (keccak(address)). ConcurrentDictionary because
+    /// PersistentStorageProvider.UpdateRootHashesMultiThread calls per-contract Dispose in
+    /// parallel; GetOrCreateStorageTrie must be thread-safe to avoid dictionary corruption.
+    /// Per-contract SparsePatriciaTree mutation remains exclusive to that contract's batch.
+    /// </summary>
+    private readonly ConcurrentDictionary<Hash256, SparsePatriciaTree> _storageTries = new();
 
     private BucketedLfu<Hash256>? _hotAccountsLfu;
     private BucketedLfu<(Hash256, Hash256)>? _hotSlotsLfu;
@@ -26,15 +32,8 @@ public sealed class SparseStateTrie : IDisposable
 
     public SparsePatriciaTree AccountTrie => _accountTrie ??= new SparsePatriciaTree();
 
-    public SparsePatriciaTree GetOrCreateStorageTrie(Hash256 accountPathHash)
-    {
-        if (!_storageTries.TryGetValue(accountPathHash, out SparsePatriciaTree? trie))
-        {
-            trie = new SparsePatriciaTree();
-            _storageTries[accountPathHash] = trie;
-        }
-        return trie;
-    }
+    public SparsePatriciaTree GetOrCreateStorageTrie(Hash256 accountPathHash) =>
+        _storageTries.GetOrAdd(accountPathHash, static _ => new SparsePatriciaTree());
 
     public void RevealMultiproof(DecodedMultiProof proof)
     {
@@ -127,16 +126,16 @@ public sealed class SparseStateTrie : IDisposable
     {
         _accountTrie?.Clear();
         _accountTrie = null;
-        foreach (SparsePatriciaTree trie in _storageTries.Values)
-            trie.Dispose();
+        foreach (KeyValuePair<Hash256, SparsePatriciaTree> kvp in _storageTries)
+            kvp.Value.Dispose();
         _storageTries.Clear();
     }
 
     public void Dispose()
     {
         _accountTrie?.Dispose();
-        foreach (SparsePatriciaTree trie in _storageTries.Values)
-            trie.Dispose();
+        foreach (KeyValuePair<Hash256, SparsePatriciaTree> kvp in _storageTries)
+            kvp.Value.Dispose();
         _storageTries.Clear();
     }
 }

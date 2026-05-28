@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -24,16 +25,12 @@ public sealed class SparseRootComputer : IDisposable
     private readonly ITrieNodeReader _reader;
     private readonly Hash256 _previousStateRoot;
     private readonly bool _ownsTrie;
-
     /// <summary>
-    /// Lock serializing mutation of <see cref="_storageChanges"/>, <see cref="_trie"/>'s
-    /// internal storage-trie dictionary, and per-contract storage-root computation.
-    /// PersistentStorageProvider.UpdateRootHashesMultiThread parallelizes contract dispose
-    /// across worker threads; without this lock the SparseStateTrie dictionaries get
-    /// corrupted by concurrent mutators.
+    /// Concurrent because <see cref="AddStorageChanges"/> is invoked from
+    /// PersistentStorageProvider.UpdateRootHashesMultiThread's parallel worker threads,
+    /// one per contract.
     /// </summary>
-    internal readonly object StorageLock = new();
-    private readonly Dictionary<Hash256, (Hash256 PreviousStorageRoot, Dictionary<Hash256, LeafUpdate> Updates)> _storageChanges = [];
+    private readonly ConcurrentDictionary<Hash256, (Hash256 PreviousStorageRoot, Dictionary<Hash256, LeafUpdate> Updates)> _storageChanges = new();
     private Dictionary<Hash256, LeafUpdate>? _accountChanges;
 
     public SparseRootComputer(ITrieNodeReader reader, Hash256 previousStateRoot)
