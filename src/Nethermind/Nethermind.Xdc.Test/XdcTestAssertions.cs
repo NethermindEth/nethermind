@@ -11,8 +11,10 @@ namespace Nethermind.Xdc.Test;
 
 internal static class XdcTestAssertions
 {
-    public static EqualConstraint UsingXdcComparer(this EqualConstraint constraint) =>
+    public static EqualConstraint UsingXdcComparer(this EqualConstraint constraint, bool compareHash = true, bool compareSigner = true) =>
         constraint
+            .Using<Block>(new XdcBlockComparer(compareHash))
+            .Using<XdcBlockHeader>(new XdcBlockHeaderComparer(compareHash))
             .Using<BlockRoundInfo>(BlockRoundInfoComparer.Instance)
             .Using<EpochSwitchInfo>(EpochSwitchInfoComparer.Instance)
             .Using<ExtraFieldsV2>(ExtraFieldsV2Comparer.Instance)
@@ -21,16 +23,7 @@ internal static class XdcTestAssertions
             .Using<SubnetSnapshot>(SubnetSnapshotComparer.Instance)
             .Using<SyncInfo>(SyncInfoComparer.Instance)
             .Using<TimeoutCertificate>(TimeoutCertificateComparer.Instance)
-            .Using<Vote>(VoteComparer.Instance);
-
-    public static EqualConstraint UsingXdcHeaderComparer(this EqualConstraint constraint, bool compareHash = true) =>
-        constraint.Using(new XdcBlockHeaderComparer(compareHash));
-
-    public static EqualConstraint UsingXdcBlockComparer(this EqualConstraint constraint, bool compareHash = true) =>
-        constraint.Using(new XdcBlockComparer(compareHash));
-
-    public static EqualConstraint UsingXdcVoteComparer(this EqualConstraint constraint, bool compareSigner = true) =>
-        constraint.Using(compareSigner ? VoteComparer.Instance : VoteComparer.WithoutSigner);
+            .Using<Vote>(compareSigner ? VoteComparer.Instance : VoteComparer.WithoutSigner);
 
     private sealed class XdcBlockComparer(bool compareHash) : IEqualityComparer<Block>
     {

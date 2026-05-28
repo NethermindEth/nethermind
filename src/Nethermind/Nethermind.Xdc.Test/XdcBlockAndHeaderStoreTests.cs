@@ -47,7 +47,7 @@ internal class XdcBlockAndHeaderStoreTests
         _headerStore.Insert(header);
         XdcBlockHeader? retrievedHeader = _headerStore.Get(header.Hash!, false);
         // Assert
-        Assert.That(retrievedHeader, Is.EqualTo(header).UsingXdcHeaderComparer());
+        Assert.That(retrievedHeader, Is.EqualTo(header).UsingXdcComparer());
     }
 
     [Test]
@@ -62,7 +62,7 @@ internal class XdcBlockAndHeaderStoreTests
         _blockStore.Insert(block);
         Block? retrievedBlock = _blockStore.Get(block.Number, block.Hash!);
         // Assert
-        Assert.That(retrievedBlock, Is.EqualTo(block).UsingXdcBlockComparer());
+        Assert.That(retrievedBlock, Is.EqualTo(block).UsingXdcComparer());
     }
 
     [Test]

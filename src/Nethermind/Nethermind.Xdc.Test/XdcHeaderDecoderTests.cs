@@ -54,7 +54,7 @@ namespace Nethermind.Xdc.Test
 
             XdcBlockHeader decoded = (XdcBlockHeader)decodedBase!;
 
-            Assert.That(decoded, Is.EqualTo(original).UsingXdcHeaderComparer(compareHash: false));
+            Assert.That(decoded, Is.EqualTo(original).UsingXdcComparer(compareHash: false));
         }
 
         [Test]

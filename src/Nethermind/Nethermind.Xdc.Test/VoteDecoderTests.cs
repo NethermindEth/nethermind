@@ -44,7 +44,7 @@ public class VoteDecoderTests
         Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
         Vote decoded = decoder.Decode(ref decoderContext);
 
-        Assert.That(decoded, Is.EqualTo(vote).UsingXdcVoteComparer(compareSigner: false));
+        Assert.That(decoded, Is.EqualTo(vote).UsingXdcComparer(compareSigner: false));
     }
 
     [Test]
@@ -64,7 +64,7 @@ public class VoteDecoderTests
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         Vote decoded = decoder.Decode(ref decoderContext);
 
-        Assert.That(decoded, Is.EqualTo(vote).UsingXdcVoteComparer(compareSigner: false));
+        Assert.That(decoded, Is.EqualTo(vote).UsingXdcComparer(compareSigner: false));
     }
 
     [Test]
