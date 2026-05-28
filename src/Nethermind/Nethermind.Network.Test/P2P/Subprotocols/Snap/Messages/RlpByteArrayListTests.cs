@@ -38,12 +38,12 @@ public class RlpByteArrayListTests
 
     private static readonly TestCaseData[] TestCases =
     [
-        new TestCaseData((object)SingleByteItems).SetName("SingleByteItems"),
-        new TestCaseData((object)ShortStringItems).SetName("ShortStringItems"),
-        new TestCaseData((object)LargeItems).SetName("LargeItems"),
-        new TestCaseData((object)new byte[][] { [], [], [] }).SetName("EmptyItems"),
-        new TestCaseData((object)MixedItems).SetName("MixedItems"),
-        new TestCaseData((object)new byte[][] { [0xde, 0xad] }).SetName("SingleItem"),
+        new TestCaseData((object)SingleByteItems).SetName("{m}_SingleByteItems"),
+        new TestCaseData((object)ShortStringItems).SetName("{m}_ShortStringItems"),
+        new TestCaseData((object)LargeItems).SetName("{m}_LargeItems"),
+        new TestCaseData((object)new byte[][] { [], [], [] }).SetName("{m}_EmptyItems"),
+        new TestCaseData((object)MixedItems).SetName("{m}_MixedItems"),
+        new TestCaseData((object)new byte[][] { [0xde, 0xad] }).SetName("{m}_SingleItem"),
     ];
 
     [TestCaseSource(nameof(TestCases))]
