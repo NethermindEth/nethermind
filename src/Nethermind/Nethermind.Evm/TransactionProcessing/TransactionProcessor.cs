@@ -1225,7 +1225,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     // burn logs include the priority fee in the balance.
                     bool deferFinalization = spec.IsEip7708Enabled && spec.IsEip8037Enabled;
                     JournalSet<Address>? destroyList = substate.DestroyList;
-                    if (!deferFinalization && destroyList is not null && destroyList.Count > 0)
+                    if (!deferFinalization && destroyList?.Count > 0)
                     {
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;
