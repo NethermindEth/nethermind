@@ -27,58 +27,11 @@ defaults:
     shell: bash
 
 jobs:
-  # Build once per RID. The artifact carries Nethermind.slnx + EthereumTests.slnx
-  # outputs (artifacts/{bin,obj}). All downstream test jobs run `dotnet test
-  # --no-build --no-restore` against this — they don't compile anything.
-  build:
-    name: build (${{ matrix.runner }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: true
-      matrix:
-        runner:
-          - ubuntu-latest
-          - ubuntu-24.04-arm
-          - windows-latest
-          - macos-latest
-    steps:
-      - name: Free up disk space
-        if: runner.os == 'Linux'
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: true
-          tool-cache: false
-          swap-storage: false
-
-      - name: Check out repository
-        uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-
-      - name: Build Nethermind + EthereumTests
-        working-directory: src/Nethermind
-        run: |
-          dotnet build Nethermind.slnx -m -c release -v minimal
-          dotnet build EthereumTests.slnx -m -c release -v minimal
-          dotnet build-server shutdown || true
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: build-${{ matrix.runner }}
-          path: src/Nethermind/artifacts/
-          retention-days: 1
-          if-no-files-found: error
-
-  # Unit tests as 7 grouped jobs per OS. Each group runs its projects
-  # sequentially against the pre-built artifact — no per-project rebuild.
+  # Unit tests as 11 grouped jobs per OS + macOS subset. Each group runs its
+  # projects sequentially in one runner; MSBuild's incremental compile makes the
+  # first project the only one that pays the full graph cost.
   tests:
     name: tests ${{ matrix.group }} (${{ matrix.runner }})
-    needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     outputs:
@@ -112,12 +65,6 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Download build artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: build-${{ matrix.runner }}
-          path: src/Nethermind/artifacts/
-
       - name: Run ${{ matrix.group }}
         working-directory: src/Nethermind
         env:
@@ -127,9 +74,6 @@ jobs:
           if [[ "${{ matrix.runner }}" == "ubuntu-latest" && "${{ env.COLLECT_COVERAGE }}" == "true" ]]; then
             coverage_args=(--coverage --coverage-output-format cobertura --coverage-settings codecoverage.json)
           fi
-          # Group sizing aims for ~8m wall-clock per job — the natural floor set
-          # by the slowest single test project (Synchronization). Slow projects
-          # are isolated; fast ones are bucketed together.
           case "$GROUP" in
             sync)
               projects=(Nethermind.Synchronization.Test)
@@ -165,7 +109,6 @@ jobs:
               projects=(Nethermind.Era1.Test Nethermind.EraE.Test Nethermind.History.Test Nethermind.Optimism.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
               ;;
             os-sensitive)
-              # Curated macOS subset — I/O, networking, sockets, runner lifecycle.
               projects=(Nethermind.Db.Test Nethermind.JsonRpc.Test Nethermind.KeyStore.Test Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Network.Test Nethermind.Runner.Test Nethermind.Sockets.Test Nethermind.Synchronization.Test)
               ;;
             *)
@@ -174,9 +117,12 @@ jobs:
               ;;
           esac
 
+          # fail-fast within the group: any project's failure aborts the rest.
           set -e
           for project in "${projects[@]}"; do
             echo "::group::$project"
+            dotnet build "$project/$project.csproj" -c release -v minimal
+            dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
             dotnet test --project "$project/$project.csproj" -c release \
               --no-build --no-restore -v minimal "${coverage_args[@]}"
             echo "::endgroup::"
@@ -195,7 +141,6 @@ jobs:
   # Legacy.VM chunked on ubuntu-latest only; linux-arm runs it unchunked.
   tests-spec:
     name: spec ${{ matrix.group }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
-    needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -222,12 +167,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-
-      - name: Download build artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: build-${{ matrix.runner }}
-          path: src/Nethermind/artifacts/
 
       - name: Run ${{ matrix.group }}
         working-directory: src/Nethermind
@@ -262,6 +201,8 @@ jobs:
           set -e
           for project in "${projects[@]}"; do
             echo "::group::$project${TEST_CHUNK:+ ($TEST_CHUNK)}"
+            dotnet build "$project/$project.csproj" -c release -v minimal
+            dotnet build-server shutdown || true
             dotnet test --project "$project/$project.csproj" -c release \
               --no-build --no-restore -v minimal "${coverage_args[@]}"
             echo "::endgroup::"
@@ -280,7 +221,6 @@ jobs:
   # genuinely slow tests, not orchestration convenience).
   tests-chunked:
     name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
-    needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -338,18 +278,14 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Download build artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: build-${{ matrix.runner }}
-          path: src/Nethermind/artifacts/
-
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         working-directory: src/Nethermind/${{ matrix.test.project }}
         env:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
           set -e
+          dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal
+          dotnet build-server shutdown || true
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
             --no-build --no-restore -v minimal
 
@@ -360,12 +296,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check result
+        env:
+          TESTS_RESULT: ${{ needs.tests.result }}
+          SPEC_RESULT: ${{ needs.tests-spec.result }}
+          CHUNKED_RESULT: ${{ needs.tests-chunked.result }}
         run: |
-          [[ \
-            "${{ needs.tests.result }}" == "success" && \
-            "${{ needs.tests-spec.result }}" == "success" && \
-            "${{ needs.tests-chunked.result }}" == "success" \
-          ]]
+          echo "tests: $TESTS_RESULT"
+          echo "tests-spec: $SPEC_RESULT"
+          echo "tests-chunked: $CHUNKED_RESULT"
+          [[ "$TESTS_RESULT" == "success" && \
+             "$SPEC_RESULT" == "success" && \
+             "$CHUNKED_RESULT" == "success" ]]
 
   codecov-upload:
     name: Upload Codecov reports

@@ -12,8 +12,6 @@ concurrency:
 on:
   pull_request:
     paths:
-      # Use `*/**` so sub-modules (Nethermind.Evm.Precompiles, Nethermind.State.Flat,
-      # Nethermind.Consensus.AuRa/Clique/Ethash, etc.) also match.
       - 'src/Nethermind/Nethermind.Evm*/**'
       - 'src/Nethermind/Nethermind.State*/**'
       - 'src/Nethermind/Nethermind.Trie*/**'
@@ -45,60 +43,19 @@ defaults:
     shell: bash
 
 jobs:
-  # Build once per variant. The checked variant has different DefineConstants so
-  # its binaries differ from no-intrinsics; we keep them in separate artifacts.
-  build:
-    name: build [${{ matrix.variant.label }}]
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: true
-      matrix:
-        variant:
-          - { label: checked, args: '-p:DefineConstants=TRACE%3BDEBUG' }
-          - { label: no-intrinsics, args: '' }
-    steps:
-      - name: Free up disk space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: true
-          tool-cache: false
-          swap-storage: false
-
-      - name: Check out repository
-        uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-
-      - name: Build Nethermind + EthereumTests [${{ matrix.variant.label }}]
-        working-directory: src/Nethermind
-        run: |
-          dotnet build Nethermind.slnx -m -c release -v minimal ${{ matrix.variant.args }}
-          dotnet build EthereumTests.slnx -m -c release -v minimal ${{ matrix.variant.args }}
-          dotnet build-server shutdown || true
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: build-checked-${{ matrix.variant.label }}
-          path: src/Nethermind/artifacts/
-          retention-days: 1
-          if-no-files-found: error
-
+  # 13 groups × 2 variants (checked / no-intrinsics) = 26 jobs.
+  # Variant args are baked into `dotnet build` at compile time; `hw` is applied
+  # at test runtime via DOTNET_EnableHWIntrinsic.
   tests:
     name: tests ${{ matrix.group }} [${{ matrix.variant.label }}]
-    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: true
       matrix:
         variant:
-          - { label: checked, hw: '' }
-          - { label: no-intrinsics, hw: '0' }
+          - { label: checked, args: '-p:DefineConstants=TRACE%3BDEBUG', hw: '' }
+          - { label: no-intrinsics, args: '', hw: '0' }
         group:
           - sync
           - merge-plugin
@@ -119,19 +76,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          # Only the spec-* groups touch Ethereum.* projects that need the
-          # ethereum/tests submodule at runtime; pure Nethermind.* unit-test
-          # groups don't need it.
+          # Only spec-* groups touch Ethereum.* projects that need the ethereum/tests submodule.
           submodules: ${{ contains(fromJSON('["spec-core","spec-tx-rlp-trie"]'), matrix.group) && 'recursive' || 'false' }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-
-      - name: Download build artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: build-checked-${{ matrix.variant.label }}
-          path: src/Nethermind/artifacts/
 
       - name: Run ${{ matrix.group }} [${{ matrix.variant.label }}]
         working-directory: src/Nethermind
@@ -188,23 +137,24 @@ jobs:
           set -e
           for project in "${projects[@]}"; do
             echo "::group::$project [${{ matrix.variant.label }}]"
+            dotnet build "$project/$project.csproj" -c release -v minimal ${{ matrix.variant.args }}
+            dotnet build-server shutdown || true
             dotnet test --project "$project/$project.csproj" -c release \
-              --no-build --no-restore -v minimal
+              --no-build --no-restore -v minimal ${{ matrix.variant.args }}
             echo "::endgroup::"
           done
 
   # Heavy chunked tests under both variants. TEST_SKIP_HEAVY=1 limits each chunk.
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
-    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: true
       matrix:
         variant:
-          - { label: checked, hw: '' }
-          - { label: no-intrinsics, hw: '0' }
+          - { label: checked, args: '-p:DefineConstants=TRACE%3BDEBUG', hw: '' }
+          - { label: no-intrinsics, args: '', hw: '0' }
         test:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
@@ -237,12 +187,6 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Download build artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: build-checked-${{ matrix.variant.label }}
-          path: src/Nethermind/artifacts/
-
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         working-directory: src/Nethermind/${{ matrix.test.project }}
         env:
@@ -250,8 +194,10 @@ jobs:
           TEST_SKIP_HEAVY: 1
         run: |
           set -e
+          dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal ${{ matrix.variant.args }}
+          dotnet build-server shutdown || true
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
-            --no-build --no-restore -v minimal
+            --no-build --no-restore -v minimal ${{ matrix.variant.args }}
 
   tests-summary:
     name: Tests summary
@@ -260,8 +206,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check result
+        env:
+          TESTS_RESULT: ${{ needs.tests.result }}
+          CHUNKED_RESULT: ${{ needs.tests-chunked.result }}
         run: |
-          [[ \
-            "${{ needs.tests.result }}" == "success" && \
-            "${{ needs.tests-chunked.result }}" == "success" \
-          ]]
+          echo "tests: $TESTS_RESULT"
+          echo "tests-chunked: $CHUNKED_RESULT"
+          [[ "$TESTS_RESULT" == "success" && "$CHUNKED_RESULT" == "success" ]]

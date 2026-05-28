@@ -4,13 +4,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# The Flat-DB variant exercises the alternative DB layout — only changes to
+# Flat-DB variant exercises the alternative DB layout — only changes to
 # state/DB/trie/blockchain code (or shared base) can plausibly regress it.
 on:
   pull_request:
     paths:
-      # Use `*/**` so sub-modules (Nethermind.Db.Rocks/Rpc, Nethermind.State.Flat,
-      # Nethermind.Evm.Precompiles, etc.) also match.
       - 'src/Nethermind/Nethermind.Db*/**'
       - 'src/Nethermind/Nethermind.State*/**'
       - 'src/Nethermind/Nethermind.Trie*/**'
@@ -39,47 +37,9 @@ env:
   TEST_USE_FLAT: 1
 
 jobs:
-  # Single build — TEST_USE_FLAT is a runtime env, not a build-time switch.
-  build:
-    name: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Free up disk space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: true
-          tool-cache: false
-          swap-storage: false
-
-      - name: Check out repository
-        uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-
-      - name: Build Nethermind + EthereumTests
-        working-directory: src/Nethermind
-        run: |
-          dotnet build Nethermind.slnx -m -c release -v minimal
-          dotnet build EthereumTests.slnx -m -c release -v minimal
-          dotnet build-server shutdown || true
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: build-flat
-          path: src/Nethermind/artifacts/
-          retention-days: 1
-          if-no-files-found: error
-
   # Base unit/spec projects (19 of them) collapse into 2 grouped jobs.
-  # Chunked Pyspec / Amsterdam variants stay as individual matrix entries.
   tests:
     name: tests ${{ matrix.group }}
-    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -92,18 +52,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          # Only flat-spec touches Ethereum.* projects that need the
-          # ethereum/tests submodule; flat-nethermind is Nethermind.* only.
+          # Only flat-spec needs Ethereum.* submodules.
           submodules: ${{ matrix.group == 'flat-spec' && 'recursive' || 'false' }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-
-      - name: Download build artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: build-flat
-          path: src/Nethermind/artifacts/
 
       - name: Run ${{ matrix.group }}
         working-directory: src/Nethermind
@@ -126,6 +79,8 @@ jobs:
           set -e
           for project in "${projects[@]}"; do
             echo "::group::$project"
+            dotnet build "$project/$project.csproj" -c release -v minimal
+            dotnet build-server shutdown || true
             dotnet test --project "$project/$project.csproj" -c release \
               --no-build --no-restore -v minimal
             echo "::endgroup::"
@@ -134,7 +89,6 @@ jobs:
   # Legacy.Blockchain chunks — kept chunked because the suite is large.
   tests-legacy-chunked:
     name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }})
-    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -150,18 +104,14 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Download build artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: build-flat
-          path: src/Nethermind/artifacts/
-
       - name: Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }})
         working-directory: src/Nethermind/Ethereum.Legacy.Blockchain.Test
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           set -e
+          dotnet build Ethereum.Legacy.Blockchain.Test.csproj -c release -v minimal
+          dotnet build-server shutdown || true
           dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release \
             --no-build --no-restore -v minimal
 
@@ -170,7 +120,6 @@ jobs:
   # chunk is ~10 min wall-clock.
   tests-pyspec:
     name: Pyspec [${{ matrix.label }}] (${{ matrix.chunk }})
-    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -217,12 +166,6 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Download build artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: build-flat
-          path: src/Nethermind/artifacts/
-
       - name: Pyspec [${{ matrix.label }}] (${{ matrix.chunk }})
         working-directory: src/Nethermind/Ethereum.Blockchain.Pyspec.Test
         env:
@@ -242,7 +185,7 @@ jobs:
             *)                  echo "::error::Unknown label: $LABEL"; exit 1 ;;
           esac
 
-          # Resource monitor for Pyspec — these chunks have hit memory/disk limits before.
+          # Resource monitor for Pyspec — chunks have hit memory/disk limits before.
           (
             while true; do
               echo "::group::Pyspec resources $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
@@ -259,6 +202,8 @@ jobs:
           trap 'kill $monitor_pid 2>/dev/null || true; wait $monitor_pid 2>/dev/null || true' EXIT
 
           set -e
+          dotnet build Ethereum.Blockchain.Pyspec.Test.csproj -c release -v minimal
+          dotnet build-server shutdown || true
           dotnet test --project Ethereum.Blockchain.Pyspec.Test.csproj -c release \
             --no-build --no-restore -v minimal --filter "$filter"
 
@@ -269,9 +214,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check result
+        env:
+          TESTS_RESULT: ${{ needs.tests.result }}
+          LEGACY_RESULT: ${{ needs.tests-legacy-chunked.result }}
+          PYSPEC_RESULT: ${{ needs.tests-pyspec.result }}
         run: |
-          [[ \
-            "${{ needs.tests.result }}" == "success" && \
-            "${{ needs.tests-legacy-chunked.result }}" == "success" && \
-            "${{ needs.tests-pyspec.result }}" == "success" \
-          ]]
+          echo "tests: $TESTS_RESULT"
+          echo "tests-legacy-chunked: $LEGACY_RESULT"
+          echo "tests-pyspec: $PYSPEC_RESULT"
+          [[ "$TESTS_RESULT" == "success" && \
+             "$LEGACY_RESULT" == "success" && \
+             "$PYSPEC_RESULT" == "success" ]]
