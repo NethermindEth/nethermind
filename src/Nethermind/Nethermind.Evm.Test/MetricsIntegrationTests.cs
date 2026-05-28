@@ -8,6 +8,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Test.Helpers;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using DbMetrics = Nethermind.Db.Metrics;
@@ -157,4 +159,41 @@ public class MetricsIntegrationTests
 
         Assert.That(Metrics.MainThreadEip7702DelegationsCleared - startCleared, Is.EqualTo(1));
     }
+
+    [TestCase(ExecutionOptions.Commit, false, 1, TestName = "Block gas metrics count committed transactions")]
+    [TestCase(ExecutionOptions.CommitAndRestore, false, 0, TestName = "Block gas metrics skip call-and-restore transactions")]
+    [TestCase(ExecutionOptions.SkipValidationAndCommit, true, 1, TestName = "Block gas metrics count committed system transactions with extra flags")]
+    public void Block_gas_metrics_track_only_block_like_execution_modes(ExecutionOptions options, bool useSystemCall, long expectedTransactions)
+    {
+        Metrics.ResetBlockStats();
+
+        Transaction tx = useSystemCall ? CreateSystemCall() : CreateCommittedTransfer();
+        Block block = _harness.CreateBlock(tx);
+
+        _ = _harness.ProcessTx(tx, block, options);
+
+        Assert.That(Metrics.BlockTransactions, Is.EqualTo(expectedTransactions));
+    }
+
+    private Transaction CreateCommittedTransfer()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        _harness.WorldState.CreateAccount(sender.Address, 10.Ether);
+
+        return Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(1.Ether)
+            .WithGasPrice(1.GWei)
+            .WithGasLimit(21_000)
+            .SignedAndResolved(_harness.Ecdsa, sender, true)
+            .TestObject;
+    }
+
+    private static SystemCall CreateSystemCall() => new()
+    {
+        SenderAddress = Address.SystemUser,
+        To = TestItem.AddressC,
+        Value = UInt256.Zero,
+        GasPrice = 1.GWei,
+        GasLimit = 30_000_000,
+        Data = Array.Empty<byte>(),
+    };
 }

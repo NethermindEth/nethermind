@@ -209,7 +209,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
 
-            UpdateMetrics(opts, effectiveGasPrice);
+            UpdateMetrics(tx, opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
@@ -566,9 +566,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
 
-        private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
+        private static void UpdateMetrics(Transaction tx, ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
+            if (ShouldUpdateBlockGasMetrics(tx, opts) && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
             {
                 float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
 
@@ -580,6 +580,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 Metrics.BlockTransactions++;
             }
         }
+
+        private static bool ShouldUpdateBlockGasMetrics(Transaction tx, ExecutionOptions opts) =>
+            opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp
+                || tx.IsSystem()
+                && opts.HasFlag(ExecutionOptions.Commit)
+                && !opts.HasFlag(ExecutionOptions.Restore)
+                && !opts.HasFlag(ExecutionOptions.Warmup);
 
         /// <summary>
         /// Validates the transaction, in a static manner (i.e. without accessing state/storage).

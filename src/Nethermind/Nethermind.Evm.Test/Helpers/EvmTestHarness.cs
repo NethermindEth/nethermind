@@ -78,6 +78,15 @@ public sealed class EvmTestHarness : IDisposable
     public void ExecuteTx(Transaction tx, Block block, ITxTracer? tracer = null) =>
         TxProcessor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer ?? NullTxTracer.Instance);
 
+    /// <summary>
+    /// Runs <paramref name="tx"/> against <paramref name="block"/>'s header with explicit execution options.
+    /// </summary>
+    public TransactionResult ProcessTx(Transaction tx, Block block, ExecutionOptions options, ITxTracer? tracer = null)
+    {
+        TxProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)));
+        return TxProcessor.Process(tx, tracer ?? NullTxTracer.Instance, options);
+    }
+
     public void Dispose()
     {
         _scope.Dispose();
