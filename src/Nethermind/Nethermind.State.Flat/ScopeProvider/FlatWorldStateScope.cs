@@ -116,6 +116,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             ParentStateTrieNodeReader proofReader = new(snapshotBundle);
             _proofReader = proofReader;
             _prevStateRoot = prevRoot;
+            if (configuration.SparseTrieShadowStorageCompare && preservedSparseTrie is not null)
+                preservedSparseTrie.DiagLogger = logManager.GetClassLogger<PreservedSparseTrie>();
 
             // M3: cross-block sparse trie reuse via PreservedSparseTrie. Combined with
             // dirty-path-only HashNode and minLen-aware proof reading, the next block
