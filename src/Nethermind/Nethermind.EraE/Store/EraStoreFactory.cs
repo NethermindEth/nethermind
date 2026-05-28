@@ -55,6 +55,15 @@ public sealed class EraStoreFactory(
             : src;
 
         fileSystem.Directory.CreateDirectory(downloadDir);
-        return new RemoteEraStoreDecorator(localStore, remoteClient, downloadDir, eraConfig.MaxEraSize);
+        return new RemoteEraStoreDecorator(
+            localStore,
+            remoteClient,
+            downloadDir,
+            eraConfig.MaxEraSize,
+            specProvider,
+            blockValidator,
+            trustedAccumulators,
+            eraConfig.Concurrency,
+            validator);
     }
 }
