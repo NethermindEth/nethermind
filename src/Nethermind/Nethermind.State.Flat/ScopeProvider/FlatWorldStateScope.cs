@@ -67,10 +67,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private StateId _currentStateId;
     internal bool _pausePrewarmer = false;
 
-    private static int _sparseMatchCount;
-    private static int _sparseMismatchCount;
-    private static int _sparseFailCount;
-    private static int _consecutiveMatches;
+    private readonly SparseAuthoritativeTracker _sparseTracker;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -80,9 +77,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
         PreservedSparseTrie? preservedSparseTrie,
+        SparseAuthoritativeTracker sparseTracker,
         ILogManager logManager,
         bool isReadOnly = false)
     {
+        _sparseTracker = sparseTracker;
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
@@ -136,9 +135,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 _sparseRootComputer = new SparseRootComputer(proofReader, prevRoot);
             }
 
-            // After enough consecutive matches, skip Patricia UpdateRootHash (unless verification mode is on)
+            // Sparse drives commit/root only when explicitly opted-in via SparseTrieSkipPatricia
+            // AND we've seen 10 consecutive matching roots from this provider (or shadow-compare
+            // is off, meaning we have no observed matches but the operator has chosen to trust
+            // sparse anyway). Promoting to authoritative when Patricia still runs would silently
+            // waste BulkSet work on every block.
             _sparseIsAuthoritative = !configuration.SparseTrieVerificationMode
-                && Volatile.Read(ref _consecutiveMatches) >= 10;
+                && configuration.SparseTrieSkipPatricia
+                && _sparseTracker.ConsecutiveMatches >= 10;
         }
 
         _warmer.OnEnterScope();
@@ -205,8 +209,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                     if (_sparseComputedRoot == _stateTree.RootHash)
                     {
-                        int matchCount = Interlocked.Increment(ref _sparseMatchCount);
-                        int consecutive = Interlocked.Increment(ref _consecutiveMatches);
+                        int matchCount = _sparseTracker.RecordMatch();
+                        int consecutive = _sparseTracker.ConsecutiveMatches;
                         if (matchCount % 100 == 1 || matchCount <= 5)
                         {
                             ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
@@ -217,13 +221,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                                 $"compute={_sparseRootComputer.LastComputeRootMs}ms, retries={_sparseRootComputer.LastRetryCount}, " +
                                 $"proofNodes={_sparseRootComputer.LastProofNodeCount}, accounts={_sparseRootComputer.AccountChangeCount}), " +
                                 $"Consecutive={consecutive}, " +
-                                $"Totals: match={matchCount} mismatch={_sparseMismatchCount} fail={_sparseFailCount}");
+                                $"Totals: match={matchCount} mismatch={_sparseTracker.MismatchCount} fail={_sparseTracker.FailCount}");
                         }
                     }
                     else
                     {
-                        int mismatchCount = Interlocked.Increment(ref _sparseMismatchCount);
-                        Interlocked.Exchange(ref _consecutiveMatches, 0);
+                        int mismatchCount = _sparseTracker.RecordMismatch();
                         ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
                         if (logger.IsWarn) logger.Warn(
                             $"SPARSE ROOT MISMATCH #{mismatchCount}! Patricia={_stateTree.RootHash}, Sparse={_sparseComputedRoot}, " +
@@ -237,8 +240,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 else
                 {
                     // Authoritative mode: sparse root is the answer, skip Patricia UpdateRootHash
-                    int matchCount = Interlocked.Increment(ref _sparseMatchCount);
-                    Interlocked.Increment(ref _consecutiveMatches);
+                    int matchCount = _sparseTracker.RecordMatch();
                     if (matchCount % 500 == 1)
                     {
                         ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
@@ -250,12 +252,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
             catch (Exception ex)
             {
-                int failCount = Interlocked.Increment(ref _sparseFailCount);
-                Interlocked.Exchange(ref _consecutiveMatches, 0);
+                int failCount = _sparseTracker.RecordFail();
                 ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
                 if (logger.IsWarn) logger.Warn(
                     $"SPARSE ROOT FAIL #{failCount}! Exception={ex.GetType().Name}: {ex.Message}, " +
-                    $"Totals: match={_sparseMatchCount} mismatch={_sparseMismatchCount} fail={failCount}");
+                    $"Totals: match={_sparseTracker.MatchCount} mismatch={_sparseTracker.MismatchCount} fail={failCount}");
                 _sparseComputedRoot = null;
                 _sparseIsAuthoritative = false;
 
@@ -376,13 +377,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 SparseStateTrie trie = _sparseRootComputer.Trie;
                 SparseTrieSnapshotCommitter.CommitAccountTrie(trie.AccountTrie.Subtrie, _snapshotBundle);
 
-                // P1: persist sparse storage trie nodes. Without this, block N's sparse storage
-                // roots reference nodes that exist only in memory; block N+1's proof reader hits
-                // the DB for those paths and finds nothing. CommitStorageTrie skips clean subtrees
-                // (FullRlp null) so it's cheap when nothing changed.
-                foreach (KeyValuePair<Hash256, SparsePatriciaTree> kvp in trie.StorageTries)
+                // P1: persist sparse storage trie nodes. Walk only contracts whose storage
+                // changed this block (DirtyStorageAccountHashes), not every retained storage
+                // trie â€” preserved-trie state across blocks grows the StorageTries dictionary
+                // without bound until pruning is added (M3+), so iterating it on every commit
+                // is O(retained contracts). Block N+1's proof reader needs the persisted nodes
+                // only for the contracts block N actually touched.
+                foreach (Hash256 dirtyAccount in _sparseRootComputer.DirtyStorageAccountHashes())
                 {
-                    SparseTrieSnapshotCommitter.CommitStorageTrie(kvp.Value.Subtrie, _snapshotBundle, kvp.Key);
+                    if (trie.StorageTries.TryGetValue(dirtyAccount, out SparsePatriciaTree? dirtyTrie))
+                    {
+                        SparseTrieSnapshotCommitter.CommitStorageTrie(dirtyTrie.Subtrie, _snapshotBundle, dirtyAccount);
+                    }
                 }
                 usedSparseCommit = true;
             }
@@ -390,7 +396,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
                 if (logger.IsWarn) logger.Warn($"SparseTrieSnapshotCommitter failed: {ex.Message}.");
-                Interlocked.Exchange(ref _consecutiveMatches, 0);
+                _sparseTracker.ResetConsecutive();
 
                 // CRITICAL: in SkipPatricia mode, the Patricia tree was never populated via BulkSet,
                 // so falling back to Patricia.Commit() would persist STALE state under the sparse

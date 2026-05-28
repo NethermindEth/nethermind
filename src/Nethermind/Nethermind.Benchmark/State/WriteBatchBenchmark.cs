@@ -161,6 +161,7 @@ public class WriteBatchBenchmark
             configuration: _config,
             trieCacheWarmer: new NoopTrieWarmer(),
             preservedSparseTrie: null,
+            sparseTracker: new SparseAuthoritativeTracker(),
             logManager: NullLogManager.Instance);
     }
 

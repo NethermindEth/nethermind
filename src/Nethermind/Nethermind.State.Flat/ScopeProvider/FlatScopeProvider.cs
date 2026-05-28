@@ -24,6 +24,7 @@ public class FlatScopeProvider(
     // buffer (writes are transient) and must NOT populate the hint cache — see TrieStoreScopeProvider.
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
     private readonly PreservedSparseTrie _preservedSparseTrie = new();
+    private readonly SparseAuthoritativeTracker _sparseTracker = new();
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
@@ -40,6 +41,7 @@ public class FlatScopeProvider(
             configuration,
             trieWarmer,
             _preservedSparseTrie,
+            _sparseTracker,
             logManager,
             isReadOnly: isReadOnly);
     }

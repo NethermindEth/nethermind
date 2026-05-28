@@ -187,6 +187,16 @@ public sealed class SparseRootComputer : IDisposable
     /// <summary>The underlying trie for persistence and cross-block storage.</summary>
     internal SparseStateTrie Trie => _trie;
 
+    /// <summary>Iterates address-hashes whose storage trie was modified this block. Persistence
+    /// walks only these instead of every retained storage trie â€” important once
+    /// PreservedSparseTrie keeps thousands of warm contracts across blocks. Lock-free
+    /// enumeration of the concurrent dictionary (no snapshot copy).</summary>
+    public IEnumerable<Hash256> DirtyStorageAccountHashes()
+    {
+        foreach (KeyValuePair<Hash256, (Hash256, Dictionary<Hash256, LeafUpdate>)> kvp in _storageChanges)
+            yield return kvp.Key;
+    }
+
     public Hash256 ComputeStateRoot()
     {
         if (_accountChanges is null || _accountChanges.Count == 0)

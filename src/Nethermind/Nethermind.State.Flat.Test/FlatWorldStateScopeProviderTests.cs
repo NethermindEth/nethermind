@@ -100,6 +100,7 @@ public class FlatWorldStateScopeProviderTests
                 .SingleInstance()
                 .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
                 .WithParameter(TypedParameter.From<PreservedSparseTrie?>(null))
+                .WithParameter(TypedParameter.From(new SparseAuthoritativeTracker()))
                 ;
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();

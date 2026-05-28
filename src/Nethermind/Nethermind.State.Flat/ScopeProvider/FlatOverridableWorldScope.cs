@@ -144,6 +144,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 configuration,
                 trieWarmer,
                 preservedSparseTrie: null,
+                sparseTracker: new SparseAuthoritativeTracker(),
                 logManager);
         }
     }
