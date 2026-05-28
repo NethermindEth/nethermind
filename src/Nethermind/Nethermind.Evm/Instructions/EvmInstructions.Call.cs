@@ -142,9 +142,7 @@ public static partial class EvmInstructions
             goto StackUnderflow;
         }
 
-        // For non-delegate calls, the transfer value is the call value.
-        UInt256 transferValue = TOpCall.IsDelegateCall ? UInt256.Zero : callValue;
-        bool hasValueTransfer = !transferValue.IsZero;
+        bool hasValueTransfer = !TOpCall.IsDelegateCall && !callValue.IsZero;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
         if (vm.VmState.IsStatic && hasValueTransfer && !TOpCall.IsCallCode)
             return EvmExceptionType.StaticCallViolation;
@@ -156,13 +154,10 @@ public static partial class EvmInstructions
             : env.ExecutingAccount;
 
         // Add extra gas cost if value is transferred.
-        if (hasValueTransfer)
-        {
-            if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
-        }
+        if (hasValueTransfer && !TGasPolicy.ConsumeCallValueTransfer(ref gas))
+            goto OutOfGas;
 
         IReleaseSpec spec = vm.Spec;
-
         IWorldState state = vm.WorldState;
 
         // Update gas: call cost and memory expansion for input and output.
@@ -175,11 +170,7 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
 
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(
-            codeSource,
-            followDelegation: false,
-            vmSpec: spec,
-            delegationAddress: out Address? delegated);
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
         if (spec.UseHotAndColdStorage && delegated is not null)
         {
@@ -240,7 +231,7 @@ public static partial class EvmInstructions
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < transferValue))
+            (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
@@ -270,7 +261,7 @@ public static partial class EvmInstructions
         }
 
         // Fast-path for calls to externally owned accounts (non-contracts)
-        if (HasNoExecutableCode(codeInfo) && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
             // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.
@@ -279,10 +270,14 @@ public static partial class EvmInstructions
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
             if (hasValueTransfer)
             {
-                state.SubtractFromBalance(caller, in transferValue, spec);
-                vm.AddTransferLog<TEip7708>(caller, target, transferValue);
+                state.SubtractFromBalance(caller, in callValue, spec);
+                vm.AddTransferLog<TEip7708>(caller, target, in callValue);
+                state.AddToBalanceAndCreateIfNotExists(target, in callValue, spec);
             }
-            state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
+            else
+            {
+                state.AddToBalanceAndCreateIfNotExists(target, in UInt256.Zero, spec);
+            }
             Metrics.IncrementEmptyCalls();
             vm.ReturnData = null;
             return EvmExceptionType.None;
@@ -291,26 +286,9 @@ public static partial class EvmInstructions
         // Take a snapshot of the state for potential rollback.
         Snapshot snapshot = state.TakeSnapshot();
         // Subtract the transfer value from the caller's balance.
-        if (hasValueTransfer) state.SubtractFromBalance(caller, in transferValue, spec);
+        if (hasValueTransfer) state.SubtractFromBalance(caller, in callValue, spec);
 
-        return SlowCall(
-            vm,
-            ref gas,
-            in dataOffset,
-            dataLength,
-            outputOffset,
-            outputLength,
-            codeInfo,
-            target,
-            caller,
-            codeSource,
-            env,
-            in callValue,
-            gasLimitUl,
-            in snapshot);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool HasNoExecutableCode(CodeInfo codeInfo) => codeInfo.IsEmpty;
+        return SlowCall(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, in snapshot);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         static EvmExceptionType SlowCall(
