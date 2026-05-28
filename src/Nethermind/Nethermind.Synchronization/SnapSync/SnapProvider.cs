@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                     _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
                 }
-                catch (AggregateException ae) when (ae.Flatten() is { InnerExceptions: var inners }
+                catch (AggregateException ae) when (ae.Flatten().InnerExceptions is { Count: > 0 } inners
                     && inners.All(e => e is ObjectDisposedException))
                 {
                     ExceptionDispatchInfo.Capture(inners[0]).Throw();
