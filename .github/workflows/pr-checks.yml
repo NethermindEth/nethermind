@@ -18,86 +18,376 @@ permissions:
   security-events: write
 
 jobs:
-  paths:
-    name: Detect changed paths
-    if: github.event_name == 'pull_request'
+  # ── Phase 0 ────────────────────────────────────────────────────────────────
+  # Read .github/test-selection.yml and the PR's changed files. Compute which
+  # test projects, OS runners, and variant workflows downstream jobs should
+  # run. On merge_group the analysis is skipped and safe defaults are emitted
+  # (docs_only=false, evm/taiko=false) so the historical merge_group surface
+  # (build + tools + stateless) is preserved.
+  select:
+    name: Select tests
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
-      taiko: ${{ steps.filter.outputs.taiko }}
-      evm: ${{ steps.filter.outputs.evm }}
+      docs_only: ${{ steps.select.outputs.docs_only }}
+      run_full: ${{ steps.select.outputs.run_full }}
+      tests_matrix: ${{ steps.select.outputs.tests_matrix }}
+      spec_runners: ${{ steps.select.outputs.spec_runners }}
+      chunked_runners: ${{ steps.select.outputs.chunked_runners }}
+      variant_checked: ${{ steps.select.outputs.variant_checked }}
+      variant_flat: ${{ steps.select.outputs.variant_flat }}
+      variant_amsterdam: ${{ steps.select.outputs.variant_amsterdam }}
+      evm: ${{ steps.select.outputs.evm }}
+      taiko: ${{ steps.select.outputs.taiko }}
     steps:
-      - name: Detect changed paths
-        id: filter
+      - name: Check out policy
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github
+          sparse-checkout-cone-mode: false
+
+      - name: Select tests
+        id: select
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+          LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          EVENT_NAME: ${{ github.event_name }}
+          POLICY_FILE: .github/test-selection.yml
         run: |
-          set -euo pipefail
-          files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
-          match() { echo "$files" | grep -qE "$1"; }
-          match '^src/Nethermind/Nethermind\.Taiko/|^\.github/workflows/_taiko-integration\.yml' \
-            && taiko=true || taiko=false
-          match '^src/Nethermind/Nethermind\.Evm/|^Directory\.Packages\.props|^\.github/workflows/evm-opcode-benchmark-diff\.yml|^scripts/evm_benchmark_utils\.py' \
-            && evm=true || evm=false
-          echo "taiko=$taiko" >> "$GITHUB_OUTPUT"
-          echo "evm=$evm" >> "$GITHUB_OUTPUT"
+          python3 - <<'PYEOF'
+          import json, os, re, subprocess, sys
+          import yaml
 
+          event = os.environ.get('EVENT_NAME', '')
+          out_path = os.environ['GITHUB_OUTPUT']
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/null')
+
+          def emit(**kv):
+              with open(out_path, 'a') as f:
+                  for k, v in kv.items():
+                      f.write(f'{k}={v}\n')
+
+          # Safe defaults for merge_group (paths analysis is PR-only).
+          if event != 'pull_request':
+              emit(
+                  docs_only='false',
+                  run_full='false',
+                  tests_matrix='{"include":[]}',
+                  spec_runners='["ubuntu-latest","ubuntu-24.04-arm"]',
+                  chunked_runners='["ubuntu-latest","ubuntu-24.04-arm","windows-latest","macos-latest"]',
+                  variant_checked='false',
+                  variant_flat='false',
+                  variant_amsterdam='false',
+                  evm='false',
+                  taiko='false',
+              )
+              with open(summary_path, 'a') as f:
+                  f.write(f'## Test selection\nEvent {event!r}: emitting merge_group defaults.\n')
+              sys.exit(0)
+
+          with open(os.environ['POLICY_FILE']) as f:
+              policy = yaml.safe_load(f)
+
+          files = subprocess.check_output(
+              ['gh', 'api', f"repos/{os.environ['REPO']}/pulls/{os.environ['PR']}/files",
+               '--paginate', '--jq', '.[].filename'],
+              text=True,
+          ).strip().splitlines()
+
+          labels = set(json.loads(os.environ.get('LABELS_JSON') or 'null') or [])
+
+          def glob_to_regex(g):
+              out = ['^']
+              i = 0
+              while i < len(g):
+                  c = g[i]
+                  if c == '*':
+                      if i + 1 < len(g) and g[i + 1] == '*':
+                          # `**/` and `/**` collapse one slash.
+                          if i + 2 < len(g) and g[i + 2] == '/':
+                              out.append('(?:.*/)?')
+                              i += 3
+                              continue
+                          if out and out[-1] == '/':
+                              out[-1] = '(?:/.*)?'
+                              i += 2
+                              continue
+                          out.append('.*')
+                          i += 2
+                          continue
+                      out.append('[^/]*')
+                  elif c == '?':
+                      out.append('[^/]')
+                  elif c in r'.\\+(){}[]|^$':
+                      out.append('\\' + c)
+                  else:
+                      out.append(c)
+                  i += 1
+              out.append('$')
+              return ''.join(out)
+
+          _regex_cache = {}
+          def matches_any(path, globs):
+              for g in globs:
+                  rx = _regex_cache.get(g) or _regex_cache.setdefault(g, re.compile(glob_to_regex(g)))
+                  if rx.match(path):
+                      return True
+              return False
+
+          docs_only_paths = policy.get('docs_only_paths', [])
+          full_matrix_paths = policy.get('full_matrix_paths', [])
+          baseline_projects = list(policy.get('baseline', {}).get('projects', []))
+          rules = policy.get('rules', [])
+          os_extensions = policy.get('os_extensions', {})
+
+          deep_ci = 'deep-ci' in labels
+          needs_variants = 'needs-variants' in labels
+
+          docs_only = bool(files) and all(matches_any(f, docs_only_paths) for f in files)
+          run_full = deep_ci or any(matches_any(f, full_matrix_paths) for f in files)
+
+          selected_projects = set(baseline_projects)
+          variants = set()
+
+          if run_full:
+              for rule in rules:
+                  selected_projects.update(rule.get('projects', []))
+                  variants.update(rule.get('variants', []))
+              variants |= {'checked', 'no-intrinsics', 'flat-db', 'amsterdam'}
+          else:
+              for rule in rules:
+                  if any(matches_any(f, rule.get('paths', [])) for f in files):
+                      selected_projects.update(rule.get('projects', []))
+                      variants.update(rule.get('variants', []))
+
+          if needs_variants:
+              variants |= {'checked', 'no-intrinsics', 'flat-db', 'amsterdam'}
+
+          # OS extensions only apply to projects we already selected.
+          runners_for_project = {p: ['ubuntu-latest'] for p in selected_projects}
+          for os_label, projects in os_extensions.items():
+              for p in projects:
+                  if p in runners_for_project:
+                      runners_for_project[p].append(os_label)
+
+          # tests_matrix is for nethermind-tests.yml's `tests` job — Nethermind.* projects only.
+          # Ethereum.* projects belong to tests-spec / tests-chunked (their matrices are static).
+          include = [
+              {'runner': r, 'project': p}
+              for p in sorted(selected_projects)
+              if not p.startswith('Ethereum.')
+              for r in runners_for_project.get(p, ['ubuntu-latest'])
+          ]
+          tests_matrix = {'include': include}
+
+          if run_full:
+              spec_runners = ['ubuntu-latest', 'ubuntu-24.04-arm']
+              chunked_runners = ['ubuntu-latest', 'ubuntu-24.04-arm', 'windows-latest', 'macos-latest']
+          else:
+              spec_runners = ['ubuntu-latest']
+              chunked_runners = ['ubuntu-latest']
+
+          # Preserve the historical EVM/Taiko path-gates (formerly inline in the `paths` job).
+          evm_paths = [
+              'src/Nethermind/Nethermind.Evm/**',
+              'Directory.Packages.props',
+              '.github/workflows/evm-opcode-benchmark-diff.yml',
+              'scripts/evm_benchmark_utils.py',
+          ]
+          taiko_paths = [
+              'src/Nethermind/Nethermind.Taiko/**',
+              '.github/workflows/_taiko-integration.yml',
+          ]
+          evm = any(matches_any(f, evm_paths) for f in files)
+          taiko = any(matches_any(f, taiko_paths) for f in files)
+
+          variant_checked = bool(variants & {'checked', 'no-intrinsics'})
+          variant_flat = 'flat-db' in variants
+          variant_amsterdam = 'amsterdam' in variants
+
+          def b(x):
+              return 'true' if x else 'false'
+
+          emit(
+              docs_only=b(docs_only),
+              run_full=b(run_full),
+              tests_matrix=json.dumps(tests_matrix),
+              spec_runners=json.dumps(spec_runners),
+              chunked_runners=json.dumps(chunked_runners),
+              variant_checked=b(variant_checked),
+              variant_flat=b(variant_flat),
+              variant_amsterdam=b(variant_amsterdam),
+              evm=b(evm),
+              taiko=b(taiko),
+          )
+
+          with open(summary_path, 'a') as f:
+              f.write('## Test selection\n\n')
+              f.write(f'- **Changed files**: {len(files)}\n')
+              f.write(f'- **Labels**: {", ".join(sorted(labels)) or "(none)"}\n')
+              f.write(f'- **docs_only**: {b(docs_only)}\n')
+              f.write(f'- **run_full**: {b(run_full)}\n')
+              f.write(f'- **Variants**: {", ".join(sorted(variants)) or "(none)"}\n')
+              f.write(f'- **spec_runners**: {", ".join(spec_runners)}\n')
+              f.write(f'- **chunked_runners**: {", ".join(chunked_runners)}\n')
+              f.write(f'- **evm path-gate**: {b(evm)}\n')
+              f.write(f'- **taiko path-gate**: {b(taiko)}\n')
+              f.write(f'\n**Selected projects** ({len(include)} matrix entries):\n\n')
+              by_proj = {}
+              for e in include:
+                  by_proj.setdefault(e['project'], []).append(e['runner'])
+              for p in sorted(by_proj):
+                  f.write(f'- `{p}` → {", ".join(by_proj[p])}\n')
+          PYEOF
+
+  # ── Phase 1 ────────────────────────────────────────────────────────────────
+  # Fast feedback: build + lint. Subsequent phases wait on these.
   build-solutions:
     name: Build solutions
+    needs: select
+    if: needs.select.outputs.docs_only != 'true'
     uses: ./.github/workflows/build-solutions.yml
+    with:
+      # Skip debug builds on PR to save 3 jobs; master-ci.yml leaves the default true.
+      include_debug: ${{ github.event_name == 'merge_group' }}
+      # Only emit the reusable release artifact on PR — merge_group/master rebuild locally.
+      upload_artifact: ${{ github.event_name == 'pull_request' && 'nethermind-build-release' || '' }}
 
   build-tools:
     name: Build tools
+    needs: select
+    if: needs.select.outputs.docs_only != 'true'
     uses: ./.github/workflows/build-tools.yml
-
-  nethermind-tests:
-    name: Nethermind/Ethereum tests
-    if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/nethermind-tests.yml
-    secrets: inherit
-
-  nethermind-tests-checked:
-    name: Nethermind extra test variants
-    if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/nethermind-tests-checked.yml
-
-  nethermind-tests-flat:
-    name: Nethermind tests (Flat DB)
-    if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/nethermind-tests-flat.yml
 
   code-quality:
     name: Code quality
-    if: github.event_name == 'pull_request'
+    needs: select
+    if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
     uses: ./.github/workflows/_code-quality.yml
+
+  # ── Phase 2 ────────────────────────────────────────────────────────────────
+  # Core test gate. Dynamic matrix from `select`. Reuses the release artifact
+  # uploaded by build-solutions on Linux x64; other OSes rebuild locally.
+  nethermind-tests:
+    name: Nethermind/Ethereum tests
+    needs: [select, build-solutions, code-quality]
+    if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/nethermind-tests.yml
+    secrets: inherit
+    with:
+      tests_matrix: ${{ needs.select.outputs.tests_matrix }}
+      spec_runners: ${{ needs.select.outputs.spec_runners }}
+      chunked_runners: ${{ needs.select.outputs.chunked_runners }}
+      build_artifact: nethermind-build-release
+
+  stateless-tests:
+    name: Stateless execution tests
+    needs: [select, build-solutions]
+    if: needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/stateless-tests.yml
 
   security-scans:
     name: Security scans
-    if: github.event_name == 'pull_request'
+    needs: select
+    if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
     uses: ./.github/workflows/_security-scans.yml
     with:
       scans: 'trivy,dependency-review'
 
-  stateless-tests:
-    name: Stateless execution tests
-    uses: ./.github/workflows/stateless-tests.yml
+  # ── Phase 3 ────────────────────────────────────────────────────────────────
+  # Variant workflows. Gated by `select` outputs so they only fire on PRs that
+  # touch the relevant areas; otherwise the post-merge `master-ci.yml` run
+  # provides the safety net.
+  nethermind-tests-checked:
+    name: Nethermind extra test variants
+    needs: [select, nethermind-tests]
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.select.outputs.docs_only != 'true' &&
+      needs.select.outputs.variant_checked == 'true'
+    uses: ./.github/workflows/nethermind-tests-checked.yml
 
-  sync-pr-gate:
-    name: Sync PR Gate (Hoodi)
-    if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/sync-pr-gate.yml
-    secrets: inherit
+  nethermind-tests-flat:
+    name: Nethermind tests (Flat DB)
+    needs: [select, nethermind-tests]
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.select.outputs.docs_only != 'true' &&
+      needs.select.outputs.variant_flat == 'true'
+    uses: ./.github/workflows/nethermind-tests-flat.yml
+    with:
+      include_amsterdam: ${{ needs.select.outputs.variant_amsterdam == 'true' }}
 
   evm-opcode-benchmark-diff:
     name: EVM Opcode Benchmark Diff
-    needs: paths
-    if: needs.paths.outputs.evm == 'true'
+    needs: select
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.select.outputs.docs_only != 'true' &&
+      needs.select.outputs.evm == 'true'
     uses: ./.github/workflows/evm-opcode-benchmark-diff.yml
 
   taiko-integration:
     name: Taiko integration
-    needs: paths
-    if: needs.paths.outputs.taiko == 'true'
+    needs: select
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.select.outputs.docs_only != 'true' &&
+      needs.select.outputs.taiko == 'true'
     uses: ./.github/workflows/_taiko-integration.yml
     secrets: inherit
+
+  # ── Phase 4 ────────────────────────────────────────────────────────────────
+  # Long-haul gates. Path-independent (stays on every relevant PR) but only
+  # starts after Phase 2 is green, saving the ~6 self-hosted ARM hours that
+  # the failing-PR path currently consumes.
+  sync-pr-gate:
+    name: Sync PR Gate (Hoodi)
+    needs: [select, nethermind-tests, stateless-tests]
+    if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/sync-pr-gate.yml
+    secrets: inherit
+
+  # ── Summary ────────────────────────────────────────────────────────────────
+  # Single check for branch protection. `skipped` is treated as success so
+  # path-gated callsites don't block merge.
+  pr-required:
+    name: PR required
+    needs:
+      - select
+      - build-solutions
+      - build-tools
+      - code-quality
+      - nethermind-tests
+      - nethermind-tests-checked
+      - nethermind-tests-flat
+      - stateless-tests
+      - security-scans
+      - sync-pr-gate
+      - evm-opcode-benchmark-diff
+      - taiko-integration
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required jobs
+        env:
+          NEEDS_JSON: ${{ toJson(needs) }}
+        run: |
+          set -e
+          echo "$NEEDS_JSON" > /tmp/needs.json
+          fail=0
+          while IFS= read -r job; do
+            result=$(jq -r --arg j "$job" '.[$j].result' /tmp/needs.json)
+            case "$result" in
+              success|skipped)
+                echo "  $job: $result"
+                ;;
+              *)
+                echo "::error::Required job '$job' did not succeed: $result"
+                fail=1
+                ;;
+            esac
+          done < <(jq -r 'keys[]' /tmp/needs.json)
+          exit $fail

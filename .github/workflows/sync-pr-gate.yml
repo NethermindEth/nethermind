@@ -168,3 +168,14 @@ jobs:
       - name: Check size of DB
         if: always()
         run: du -h $GITHUB_WORKSPACE/sedge
+
+      - name: Tear down sedge stack
+        if: always()
+        working-directory: sedge
+        # Self-hosted runner cleanup: bring down compose stack and wipe execution-data
+        # so a cancellation or failure doesn't leave a dirty RocksDB or hanging containers
+        # for the next run on the same runner.
+        run: |
+          docker compose down -v --remove-orphans || true
+          rm -rf execution-data || true
+          docker system prune -f --volumes || true

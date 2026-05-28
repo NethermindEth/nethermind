@@ -1,0 +1,343 @@
+# PR-CI test selection policy.
+#
+# Consumed by the `select` job in `.github/workflows/pr-checks.yml` to decide
+# which test projects, OS runners, and variant workflows should run on a given
+# PR based on the changed paths. The post-merge safety net is `master-ci.yml`,
+# which always runs the full union — so this file controls the PR fast-path
+# only, not coverage on master.
+#
+# Algorithm (see the `select` job for the implementation):
+#   1. If every changed file matches `docs_only_paths`, set docs_only=true and
+#      every downstream workflow is skipped. `pr-required` still runs and is
+#      green because skipped is treated as success.
+#   2. Else if any changed file matches `full_matrix_paths`, set run_full=true
+#      and emit the full project list + all OSes + all variants.
+#   3. Else start from `baseline.projects`, union each rule whose `paths`
+#      match a changed file, and intersect each selected project with its
+#      `os_extensions` to decide which non-Linux runners apply.
+#   4. PR label `deep-ci` forces run_full=true. Label `needs-variants` forces
+#      all variant flags on.
+#
+# Globs use bash extglob/globstar semantics. `**` matches across path
+# components; `*` matches within a single component.
+
+# Always-run sanity coverage. These projects test foundational invariants that
+# almost any change can break transitively; the baseline prevents a misclassified
+# rule from letting an obvious regression slip through.
+baseline:
+  projects:
+    - Nethermind.Core.Test
+    - Nethermind.Evm.Test
+    - Nethermind.Blockchain.Test
+    - Nethermind.JsonRpc.Test
+    - Nethermind.State.Test
+    - Nethermind.Trie.Test
+    - Nethermind.TxPool.Test
+    - Nethermind.Synchronization.Test
+    - Nethermind.Merge.Plugin.Test
+    - Nethermind.Network.Test
+
+# Path → (test projects, variants) rules. Each rule's `paths` are evaluated
+# against every changed file; if any match, the rule's `projects` and
+# `variants` are unioned into the selection.
+#
+# Keep this list ordered by source-area name to make code review easier.
+rules:
+  - paths: ['src/Nethermind/Nethermind.Abi/**']
+    projects: [Nethermind.Abi.Test, Ethereum.Abi.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Analyzers/**']
+    projects: [Nethermind.Abi.Test]  # analyzers run during build of every test project
+
+  - paths: ['src/Nethermind/Nethermind.Api/**']
+    projects: [Nethermind.Api.Test, Nethermind.Runner.Test]
+
+  - paths: ['src/Nethermind/Nethermind.BalRecorder/**']
+    projects: [Nethermind.BalRecorder.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Blockchain/**']
+    projects:
+      - Nethermind.Blockchain.Test
+      - Ethereum.Blockchain.Block.Test
+      - Ethereum.Legacy.Blockchain.Test
+      - Ethereum.Legacy.Blockchain.Block.Test
+    variants: [flat-db, amsterdam]
+
+  - paths:
+      - 'src/Nethermind/Nethermind.Consensus/**'
+      - 'src/Nethermind/Nethermind.Consensus.AuRa/**'
+    projects: [Nethermind.Consensus.Test, Nethermind.AuRa.Test, Nethermind.Merge.AuRa.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Consensus.Clique/**']
+    projects: [Nethermind.Clique.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Consensus.Ethash/**']
+    projects: [Nethermind.Ethash.Test, Nethermind.Mining.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Config/**']
+    projects: [Nethermind.Config.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Core/**']
+    projects:
+      - Nethermind.Core.Test
+      - Nethermind.Blockchain.Test
+      - Nethermind.Evm.Test
+      - Nethermind.JsonRpc.Test
+    variants: [checked]
+
+  - paths: ['src/Nethermind/Nethermind.Crypto/**']
+    projects:
+      - Nethermind.Core.Test
+      - Nethermind.Evm.Test
+      - Nethermind.Network.Test
+      - Nethermind.KeyStore.Test
+    variants: [checked, no-intrinsics]
+
+  - paths:
+      - 'src/Nethermind/Nethermind.Db/**'
+      - 'src/Nethermind/Nethermind.Db.Rocks/**'
+    projects:
+      - Nethermind.Db.Test
+      - Nethermind.State.Test
+      - Nethermind.Synchronization.Test
+    variants: [flat-db]
+
+  - paths:
+      - 'src/Nethermind/Nethermind.Era1/**'
+      - 'src/Nethermind/Nethermind.EraE/**'
+    projects: [Nethermind.Era1.Test, Nethermind.EraE.Test]
+
+  - paths: ['src/Nethermind/Nethermind.EthStats/**']
+    projects: [Nethermind.EthStats.Test]
+
+  - paths:
+      - 'src/Nethermind/Nethermind.Evm/**'
+      - 'src/Nethermind/Nethermind.Evm.Precompiles/**'
+    projects:
+      - Nethermind.Evm.Test
+      - Ethereum.Legacy.VM.Test
+      - Ethereum.Blockchain.Pyspec.Test
+      - Ethereum.Blockchain.Block.Test
+      - Ethereum.Legacy.Blockchain.Block.Test
+      - Ethereum.Legacy.Blockchain.Test
+    variants: [checked, no-intrinsics, flat-db, amsterdam]
+
+  - paths: ['src/Nethermind/Nethermind.Facade/**']
+    projects: [Nethermind.Facade.Test, Nethermind.JsonRpc.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Flashbots/**']
+    projects: [Nethermind.Flashbots.Test]
+
+  - paths: ['src/Nethermind/Nethermind.HealthChecks/**']
+    projects: [Nethermind.HealthChecks.Test]
+
+  - paths: ['src/Nethermind/Nethermind.History/**']
+    projects: [Nethermind.History.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Hive/**']
+    projects: [Nethermind.Hive.Test, Nethermind.Runner.Test]
+
+  - paths:
+      - 'src/Nethermind/Nethermind.JsonRpc/**'
+      - 'src/Nethermind/Nethermind.JsonRpc.SourceGenerator/**'
+    projects:
+      - Nethermind.JsonRpc.Test
+      - Nethermind.JsonRpc.TraceStore.Test
+      - Nethermind.Facade.Test
+
+  - paths: ['src/Nethermind/Nethermind.JsonRpc.TraceStore/**']
+    projects: [Nethermind.JsonRpc.TraceStore.Test]
+
+  - paths: ['src/Nethermind/Nethermind.KeyStore/**']
+    projects: [Nethermind.KeyStore.Test, Ethereum.KeyStore.Test, Nethermind.Wallet.Test]
+
+  - paths:
+      - 'src/Nethermind/Nethermind.Logging/**'
+      - 'src/Nethermind/Nethermind.Logging.NLog/**'
+      - 'src/Nethermind/Nethermind.Logging.Microsoft/**'
+    projects: [Nethermind.Logging.NLog.Test]
+
+  - paths:
+      - 'src/Nethermind/Nethermind.Merge.AuRa/**'
+      - 'src/Nethermind/Nethermind.Merge.Plugin/**'
+    projects:
+      - Nethermind.Merge.Plugin.Test
+      - Nethermind.Merge.AuRa.Test
+      - Nethermind.Blockchain.Test
+    variants: [flat-db]
+
+  - paths: ['src/Nethermind/Nethermind.Merkleization/**']
+    projects: [Nethermind.Serialization.Ssz.Test, Ethereum.Ssz.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Monitoring/**']
+    projects: [Nethermind.Monitoring.Test]
+
+  - paths:
+      - 'src/Nethermind/Nethermind.Network/**'
+      - 'src/Nethermind/Nethermind.Network.Contract/**'
+      - 'src/Nethermind/Nethermind.Network.Stats/**'
+    projects: [Nethermind.Network.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Network.Discovery/**']
+    projects: [Nethermind.Network.Discovery.Test, Nethermind.Network.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Network.Dns/**']
+    projects: [Nethermind.Network.Dns.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Network.Enr/**']
+    projects: [Nethermind.Network.Enr.Test, Nethermind.Network.Discovery.Test]
+
+  - paths: ['src/Nethermind/Nethermind.OpcodeTracing.Plugin/**']
+    projects: [Nethermind.Evm.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Optimism/**']
+    projects: [Nethermind.Optimism.Test]
+
+  - paths:
+      - 'src/Nethermind/Nethermind.Serialization.Json/**'
+      - 'src/Nethermind/Nethermind.Serialization.SszGenerator/**'
+    projects: [Nethermind.JsonRpc.Test, Nethermind.Serialization.Ssz.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Serialization.Rlp/**']
+    projects:
+      - Ethereum.Rlp.Test
+      - Nethermind.Core.Test
+      - Nethermind.Blockchain.Test
+    variants: [checked]
+
+  - paths: ['src/Nethermind/Nethermind.Serialization.Ssz/**']
+    projects: [Nethermind.Serialization.Ssz.Test, Ethereum.Ssz.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Shutter/**']
+    projects: [Nethermind.Shutter.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Sockets/**']
+    projects: [Nethermind.Sockets.Test, Nethermind.JsonRpc.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Specs/**']
+    # Specs touches every fork rule and chain definition; treat as broad.
+    projects:
+      - Nethermind.Specs.Test
+      - Nethermind.Core.Test
+      - Nethermind.Evm.Test
+      - Nethermind.Blockchain.Test
+      - Ethereum.Blockchain.Pyspec.Test
+      - Ethereum.Legacy.Blockchain.Test
+    variants: [checked, no-intrinsics, flat-db, amsterdam]
+
+  - paths:
+      - 'src/Nethermind/Nethermind.State/**'
+      - 'src/Nethermind/Nethermind.State.Flat/**'
+      - 'src/Nethermind/Nethermind.StateComposition/**'
+    projects:
+      - Nethermind.State.Test
+      - Nethermind.Synchronization.Test
+      - Nethermind.Trie.Test
+      - Nethermind.Blockchain.Test
+    variants: [checked, flat-db, amsterdam]
+
+  - paths:
+      - 'src/Nethermind/Nethermind.Stateless.Executor/**'
+      - 'src/Nethermind/Nethermind.Stateless.ZiskGuest/**'
+    projects: [Nethermind.Core.Test]  # stateless tests are covered by stateless-tests.yml directly
+
+  - paths: ['src/Nethermind/Nethermind.Synchronization/**']
+    projects:
+      - Nethermind.Synchronization.Test
+      - Nethermind.Blockchain.Test
+    variants: [flat-db]
+
+  - paths: ['src/Nethermind/Nethermind.Taiko/**']
+    projects: [Nethermind.Taiko.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Trie/**']
+    projects: [Nethermind.Trie.Test, Nethermind.State.Test, Nethermind.Synchronization.Test]
+    variants: [flat-db]
+
+  - paths: ['src/Nethermind/Nethermind.TxPool/**']
+    projects: [Nethermind.TxPool.Test, Nethermind.Blockchain.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Wallet/**']
+    projects: [Nethermind.Wallet.Test, Nethermind.KeyStore.Test]
+
+  - paths: ['src/Nethermind/Nethermind.Xdc/**']
+    projects: [Nethermind.Xdc.Test]
+
+# Extra OS runners per project. Every selected project gets ubuntu-latest;
+# additional OSes only apply if the project appears here AND it was selected
+# above (either via the baseline or a matched rule).
+#
+# Lists below are seeded from the historical OS coverage in the previous
+# nethermind-tests.yml matrix (the three-runner matrix + macOS include block).
+# Trim or extend by editing here.
+os_extensions:
+  ubuntu-24.04-arm:
+    - Nethermind.Core.Test
+    - Nethermind.Evm.Test
+    - Nethermind.Network.Test
+    - Nethermind.Synchronization.Test
+    - Nethermind.Blockchain.Test
+    - Nethermind.JsonRpc.Test
+
+  windows-latest:
+    - Nethermind.Core.Test
+    - Nethermind.Db.Test
+    - Nethermind.KeyStore.Test
+    - Nethermind.Network.Test
+    - Nethermind.Network.Discovery.Test
+    - Nethermind.Network.Dns.Test
+    - Nethermind.Network.Enr.Test
+    - Nethermind.Runner.Test
+    - Nethermind.Sockets.Test
+    - Nethermind.JsonRpc.Test
+    - Nethermind.Synchronization.Test
+
+  macos-latest:
+    - Nethermind.Db.Test
+    - Nethermind.JsonRpc.Test
+    - Nethermind.KeyStore.Test
+    - Nethermind.Network.Discovery.Test
+    - Nethermind.Network.Dns.Test
+    - Nethermind.Network.Enr.Test
+    - Nethermind.Network.Test
+    - Nethermind.Runner.Test
+    - Nethermind.Sockets.Test
+    - Nethermind.Synchronization.Test
+
+# Force run_full=true when any of these match. Anything that affects how every
+# downstream test compiles or runs belongs here.
+full_matrix_paths:
+  - 'Directory.Packages.props'
+  - 'Directory.Build.props'
+  - 'Directory.Build.targets'
+  - 'global.json'
+  - 'src/Nethermind/Directory.Build.props'
+  - 'src/Nethermind/Directory.Build.targets'
+  - 'src/Nethermind/Directory.Packages.props'
+  - 'src/Nethermind/tests.props'
+  - 'src/Nethermind/codecoverage.json'
+  - 'src/Nethermind/*.slnx'
+  - 'src/Nethermind/Nethermind.Runner/**'
+  - 'src/Nethermind/Nethermind.Init/**'
+  - 'src/Nethermind/Nethermind.Init.Snapshot/**'
+  - 'src/Nethermind/Ethereum.Test.Base/**'
+  - '.github/workflows/pr-checks.yml'
+  - '.github/workflows/build-solutions.yml'
+  - '.github/workflows/nethermind-tests.yml'
+  - '.github/workflows/nethermind-tests-checked.yml'
+  - '.github/workflows/nethermind-tests-flat.yml'
+  - '.github/test-selection.yml'
+
+# Workflow is skipped (every downstream phase is skipped) when every changed
+# file matches one of these patterns. The `pr-required` summary job still runs
+# and reports green because skipped is treated as success.
+docs_only_paths:
+  - '**/*.md'
+  - 'docs/**'
+  - 'LICENSE'
+  - '.github/ISSUE_TEMPLATE/**'
+  - '.github/CODEOWNERS'
+  - '.github/pull_request_template.md'
+  - '.github/dependabot.yml'
+  - '.gitignore'
+  - '.editorconfig'

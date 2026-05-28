@@ -2,6 +2,24 @@ name: Build solutions
 
 on:
   workflow_call:
+    inputs:
+      include_debug:
+        description: >-
+          When true (default), build every solution in both release and debug
+          configurations. Set false to skip the debug builds (saves 3 jobs).
+          master-ci.yml leaves this true to preserve debug coverage on master.
+        required: false
+        type: boolean
+        default: true
+      upload_artifact:
+        description: >-
+          When non-empty AND the Nethermind release build succeeds, upload
+          `src/Nethermind/artifacts/` as a workflow artifact under this name.
+          Consumed by nethermind-tests.yml via its `build_artifact` input so
+          downstream test jobs can skip the local `dotnet build`.
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build:
@@ -9,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        config: [release, debug]
+        config: ${{ fromJson(inputs.include_debug && '["release","debug"]' || '["release"]') }}
         solution: [Nethermind, EthereumTests, Benchmarks]
     steps:
       - name: Free up disk space
@@ -35,3 +53,12 @@ jobs:
 
       - name: Build ${{ matrix.solution }}.slnx
         run: dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore
+
+      - name: Upload release artifact
+        if: inputs.upload_artifact != '' && matrix.solution == 'Nethermind' && matrix.config == 'release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.upload_artifact }}
+          path: src/Nethermind/artifacts/
+          retention-days: 1
+          if-no-files-found: error
