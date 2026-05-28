@@ -80,6 +80,16 @@ public class HistoryPrunerTests
             /*expectedPruneBelow:*/ 20L,
             /*finalCutoff:*/ BeaconGenesisBlockNumber
         ).SetName("Prunes_up_to_sync_pivot");
+
+        // 5 epochs × 32 slots = 160 blocks of retention > chain length (100) — CalculateRollingCutoff
+        // clamps the would-be-negative cutoff to 0 and ShouldPruneHistory returns false (pointer 1 < 0 is false).
+        yield return new TestCaseData(
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 5, PruningInterval = 0 },
+            /*syncPivot:*/ (long)blocks,
+            /*primeWithOldestRead:*/ false,
+            /*expectedPruneBelow:*/ 1L,
+            /*finalCutoff:*/ 0L
+        ).SetName("Rolling_mode_with_retention_larger_than_chain_age_does_not_prune");
     }
 
     private static IEnumerable<TestCaseData> BalPruningCases()
@@ -233,34 +243,6 @@ public class HistoryPrunerTests
         }
 
         CheckHeadPreserved(testBlockchain, blocks);
-    }
-
-    [Test]
-    public async Task Rolling_mode_with_retention_larger_than_chain_age_does_not_prune()
-    {
-        // 5 epochs × 32 slots = 160 blocks of retention, larger than the chain (50 blocks).
-        // CalculateRollingCutoff clamps a would-be-negative cutoff to 0 → nothing should be pruned.
-        const int blocks = 50;
-
-        IHistoryConfig historyConfig = new HistoryConfig
-        {
-            Pruning = PruningModes.Rolling,
-            RetentionEpochs = 5,
-            PruningInterval = 0
-        };
-        List<Hash256> blockHashes = [];
-        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, blockHashes: blockHashes);
-
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.TryPruneHistory(CancellationToken.None);
-
-        CheckGenesisPreserved(testBlockchain, blockHashes[0]);
-        for (int i = 1; i <= blocks; i++)
-        {
-            CheckBlockPreserved(testBlockchain, blockHashes, i);
-        }
-        CheckHeadPreserved(testBlockchain, blocks);
-        CheckOldestAndCutoff(oldest: 1, cutoff: 0, historyPruner);
     }
 
     [TestCase(0, 100000u, 0L, 3533u, false)]
