@@ -58,6 +58,13 @@ jobs:
           - { label: checked, args: '-p:DefineConstants=TRACE%3BDEBUG' }
           - { label: no-intrinsics, args: '' }
     steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: true
+          tool-cache: false
+          swap-storage: false
+
       - name: Check out repository
         uses: actions/checkout@v6
         with:

@@ -43,6 +43,14 @@ jobs:
           - windows-latest
           - macos-latest
     steps:
+      - name: Free up disk space
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: true
+          tool-cache: false
+          swap-storage: false
+
       - name: Check out repository
         uses: actions/checkout@v6
         with:
