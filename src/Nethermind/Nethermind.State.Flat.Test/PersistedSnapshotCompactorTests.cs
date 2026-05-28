@@ -1045,4 +1045,73 @@ public class PersistedSnapshotCompactorTests
                 Directory.Delete(testDir, recursive: true);
         }
     }
+
+    /// <summary>
+    /// Regression for the offset-vs-block-number mismatch in
+    /// <c>DoCompactSnapshot</c>'s <c>startingBlockNumber</c>. The alignment value comes
+    /// from the offset-shifted schedule but the start-of-window was computed in raw
+    /// block-number space — the previous
+    /// <c>startingBlockNumber = ((blockNumber - 1) / alignment) * alignment</c> formula
+    /// only matched the trigger's actual window when <c>offset == 0</c>. With a non-zero
+    /// offset it produced a span of <c>(blockNumber mod alignment)</c> instead of
+    /// <c>alignment</c>.
+    ///
+    /// Test geometry: offset=3, CompactSize=64, maxCompactSize=32. At block 45,
+    /// <c>(45 + 3) &amp; -(45 + 3) = 48 &amp; -48 = 16</c>, so alignment=16 fires.
+    /// Window must be <c>(29, 45]</c> (span 16), not the buggy <c>(32, 45]</c> (span 13).
+    /// </summary>
+    [Test]
+    public void DoCompactSnapshot_WithNonZeroScheduleOffset_StartingBlockSpansFullAlignment()
+    {
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Persisted);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            repo.LoadFromCatalog();
+
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 64, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config,
+                ScheduleHelper.CreateWithOffset(config, 3),
+                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                minCompactSize: 2,
+                maxCompactSize: 32);
+
+            // 45 base snapshots, blocks 1..45. No intermediate compactions so
+            // AssembleSnapshotsForCompaction sees only bases.
+            StateId prev = new(0, Keccak.EmptyTreeHash);
+            StateId tip = prev;
+            for (int i = 1; i <= 45; i++)
+            {
+                StateId next = new(i, Keccak.Compute($"s{i}"));
+                SnapshotContent c = new();
+                c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                prev = next;
+                if (i == 45) tip = next;
+            }
+
+            // At block 45 with offset=3, alignment=16. Window must be (29, 45].
+            compactor.DoCompactSnapshot(tip);
+
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(tip, out PersistedSnapshot? compacted), Is.True);
+            try
+            {
+                Assert.That(compacted!.From.BlockNumber, Is.EqualTo(29),
+                    "startingBlockNumber must be (blockNumber - alignment) — the left edge of the window the offset-shifted alignment trigger selects");
+                Assert.That(compacted.To.BlockNumber, Is.EqualTo(45));
+                Assert.That(compacted.To.BlockNumber - compacted.From.BlockNumber, Is.EqualTo(16),
+                    "compacted span must equal alignment, not (blockNumber mod alignment)");
+            }
+            finally { compacted!.Dispose(); }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
+    }
 }
