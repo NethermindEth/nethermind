@@ -77,6 +77,20 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
+        /// <summary>
+        /// Recovers the sender address and any EIP-7702 authority addresses for a single
+        /// transaction. Designed for callers that already loop over transactions themselves —
+        /// e.g. <see cref="Decoders.InclusionListDecoder"/> which combines decode and recovery
+        /// into a single parallel pass.
+        /// </summary>
+        public void RecoverOne(Transaction tx, IReleaseSpec releaseSpec)
+        {
+            bool useSignatureChainId = !releaseSpec.ValidateChainId;
+            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
+            RecoverAuthorities(tx, releaseSpec);
+            if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+        }
+
         private void RecoverAuthorities(Transaction tx, IReleaseSpec releaseSpec)
         {
             if (!releaseSpec.IsAuthorizationListEnabled
