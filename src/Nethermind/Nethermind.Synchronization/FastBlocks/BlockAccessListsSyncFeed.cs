@@ -127,11 +127,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
         if (PivotHasNoBlockAccessLists)
         {
-            if (CurrentState == SyncFeedState.Active)
-            {
-                FallAsleep();
-            }
-
+            FallAsleep();
             return false;
         }
 
