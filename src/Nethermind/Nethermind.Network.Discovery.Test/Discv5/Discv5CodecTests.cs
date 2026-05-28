@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -76,8 +78,9 @@ public class Discv5CodecTests
         Assert.That(decrypted, Is.True);
         Assert.That(message, Is.InstanceOf<Discv5Ping>());
         Discv5Ping ping = (Discv5Ping)message;
-        Assert.That(ping.RequestId, Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
+        Assert.That(ping.RequestId.ToArray(), Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
         Assert.That(ping.EnrSequence, Is.EqualTo(2));
+        message.Dispose();
     }
 
     [Test]
@@ -153,17 +156,19 @@ public class Discv5CodecTests
         Assert.That(session.ReadKey.ToHexString(true), Is.EqualTo(expectedReadKeyHex));
         Assert.That(message, Is.InstanceOf<Discv5Ping>());
         Discv5Ping ping = (Discv5Ping)message;
-        Assert.That(ping.RequestId, Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
+        Assert.That(ping.RequestId.ToArray(), Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
         Assert.That(ping.EnrSequence, Is.EqualTo(1));
         Assert.That(nodeRecord is not null, Is.EqualTo(includesRecord));
+        message.Dispose();
     }
 
     [Test]
     public void MessageCodec_Roundtrips_FindNode()
     {
-        Discv5FindNode message = new([0, 0, 0, 1], [255, 254, 256]);
+        using Discv5FindNode message = new([0, 0, 0, 1], [255, 254, 256]);
 
-        Discv5Message decoded = Discv5MessageCodec.Decode(Discv5MessageCodec.Encode(message));
+        using ArrayPoolSpan<byte> encoded = Discv5MessageCodec.Encode(message);
+        using Discv5Message decoded = Discv5MessageCodec.Decode(encoded);
 
         Assert.That(decoded, Is.InstanceOf<Discv5FindNode>());
         Discv5FindNode decodedFindNode = (Discv5FindNode)decoded;
@@ -174,9 +179,10 @@ public class Discv5CodecTests
     [Test]
     public void MessageCodec_Roundtrips_Pong()
     {
-        Discv5Pong message = new([0, 0, 0, 2], 3, IPAddress.Parse("192.0.2.1"), 30303);
+        using Discv5Pong message = new([0, 0, 0, 2], 3, IPAddress.Parse("192.0.2.1"), 30303);
 
-        Discv5Message decoded = Discv5MessageCodec.Decode(Discv5MessageCodec.Encode(message));
+        using ArrayPoolSpan<byte> encoded = Discv5MessageCodec.Encode(message);
+        using Discv5Message decoded = Discv5MessageCodec.Decode(encoded);
 
         Assert.That(decoded, Is.InstanceOf<Discv5Pong>());
         Discv5Pong decodedPong = (Discv5Pong)decoded;
@@ -189,28 +195,30 @@ public class Discv5CodecTests
     [Test]
     public void MessageCodec_Roundtrips_TalkReq()
     {
-        Discv5TalkReq message = new([0, 0, 0, 3], "eth"u8.ToArray(), [1, 2, 3, 4]);
+        using Discv5TalkReq message = new([0, 0, 0, 3], "eth"u8.ToArray(), new byte[] { 1, 2, 3, 4 });
 
-        Discv5Message decoded = Discv5MessageCodec.Decode(Discv5MessageCodec.Encode(message));
+        using ArrayPoolSpan<byte> encoded = Discv5MessageCodec.Encode(message);
+        using Discv5Message decoded = Discv5MessageCodec.Decode(encoded);
 
         Assert.That(decoded, Is.InstanceOf<Discv5TalkReq>());
         Discv5TalkReq decodedTalkReq = (Discv5TalkReq)decoded;
         Assert.That(decodedTalkReq.RequestId, Is.EqualTo(message.RequestId));
-        Assert.That(decodedTalkReq.Protocol, Is.EqualTo(message.Protocol));
-        Assert.That(decodedTalkReq.Request, Is.EqualTo(message.Request));
+        Assert.That(decodedTalkReq.Protocol.ToArray(), Is.EqualTo(message.Protocol.ToArray()));
+        Assert.That(decodedTalkReq.Request.ToArray(), Is.EqualTo(message.Request.ToArray()));
     }
 
     [Test]
     public void MessageCodec_Roundtrips_TalkResp()
     {
-        Discv5TalkResp message = new([0, 0, 0, 4], [5, 6, 7, 8]);
+        using Discv5TalkResp message = new([0, 0, 0, 4], new byte[] { 5, 6, 7, 8 });
 
-        Discv5Message decoded = Discv5MessageCodec.Decode(Discv5MessageCodec.Encode(message));
+        using ArrayPoolSpan<byte> encoded = Discv5MessageCodec.Encode(message);
+        using Discv5Message decoded = Discv5MessageCodec.Decode(encoded);
 
         Assert.That(decoded, Is.InstanceOf<Discv5TalkResp>());
         Discv5TalkResp decodedTalkResp = (Discv5TalkResp)decoded;
         Assert.That(decodedTalkResp.RequestId, Is.EqualTo(message.RequestId));
-        Assert.That(decodedTalkResp.Response, Is.EqualTo(message.Response));
+        Assert.That(decodedTalkResp.Response.ToArray(), Is.EqualTo(message.Response.ToArray()));
     }
 
     [Test]
@@ -219,9 +227,10 @@ public class Discv5CodecTests
         NodeRecord skippedRecord = CreateNodeRecord(new PrivateKey(GethNodeAPrivateKey));
         NodeRecord expectedRecord = CreateNodeRecord(new PrivateKey(GethNodeBPrivateKey));
         NodeRecord[] records = [skippedRecord, expectedRecord];
-        Discv5Nodes message = new([0, 0, 0, 5], 1, new ArraySegment<NodeRecord>(records, 1, 1));
+        using Discv5Nodes message = new([0, 0, 0, 5], 1, new ArraySegment<NodeRecord>(records, 1, 1));
 
-        Discv5Message decoded = Discv5MessageCodec.Decode(Discv5MessageCodec.Encode(message));
+        using ArrayPoolSpan<byte> encoded = Discv5MessageCodec.Encode(message);
+        using Discv5Message decoded = Discv5MessageCodec.Decode(encoded);
 
         Assert.That(decoded, Is.InstanceOf<Discv5Nodes>());
         Discv5Nodes decodedNodes = (Discv5Nodes)decoded;

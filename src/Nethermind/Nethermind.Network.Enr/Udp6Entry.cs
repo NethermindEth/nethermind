@@ -15,4 +15,6 @@ public class Udp6Entry(int portNumber) : EnrContentEntry<int>(portNumber)
     protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
 
     protected override void EncodeValue(RlpStream rlpStream) => rlpStream.Encode(Value);
+
+    protected override void EncodeValue(Span<byte> buffer, ref int position) => position += Rlp.Encode((ulong)(long)Value, buffer[position..]).Length;
 }

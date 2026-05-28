@@ -21,4 +21,11 @@ public class IpEntry(IPAddress ipAddress) : EnrContentEntry<IPAddress>(ipAddress
         Value.MapToIPv4().TryWriteBytes(bytes, out int _);
         rlpStream.Encode(bytes);
     }
+
+    protected override void EncodeValue(Span<byte> buffer, ref int position)
+    {
+        Span<byte> bytes = stackalloc byte[4];
+        Value.MapToIPv4().TryWriteBytes(bytes, out int _);
+        position = Rlp.Encode(buffer, position, bytes);
+    }
 }

@@ -260,9 +260,10 @@ public class NodeRecord
         }
 
         int rlpLength = GetRlpLengthWithSignature();
-        RlpStream rlpStream = new(rlpLength);
-        Encode(rlpStream);
-        return rlpStream.Data.ToArray()!;
+        byte[] bytes = GC.AllocateUninitializedArray<byte>(rlpLength);
+        int position = 0;
+        Encode(bytes, ref position);
+        return bytes;
     }
 
     /// <summary>
@@ -286,6 +287,32 @@ public class NodeRecord
         foreach ((_, EnrContentEntry contentEntry) in Entries)
         {
             contentEntry.Encode(rlpStream);
+        }
+    }
+
+    /// <summary>
+    /// Applies Rlp([signature, seq, k, v, ...]) into a span.
+    /// </summary>
+    /// <param name="buffer">The destination span.</param>
+    /// <param name="position">The current write position.</param>
+    public void Encode(Span<byte> buffer, ref int position)
+    {
+        if (OriginalRlp is not null)
+        {
+            OriginalRlp.CopyTo(buffer[position..]);
+            position += OriginalRlp.Length;
+            return;
+        }
+
+        RequireSignature();
+
+        int contentLength = GetContentLengthWithSignature();
+        position = Rlp.StartSequence(buffer, position, contentLength);
+        position = Rlp.Encode(buffer, position, Signature!.Bytes);
+        position += Rlp.Encode(EnrSequence, buffer[position..]).Length; // a different sequence here (not RLP sequence)
+        foreach ((_, EnrContentEntry contentEntry) in Entries)
+        {
+            contentEntry.Encode(buffer, ref position);
         }
     }
 

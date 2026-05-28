@@ -5,8 +5,10 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 
@@ -186,7 +188,7 @@ public sealed class Discv5PacketCodec(
             return false;
         }
 
-        byte[] plaintext = new byte[packet.Message.Length - AesGcmTagSize];
+        Discv5MessageBuffer plaintext = new(packet.Message.Length - AesGcmTagSize);
         try
         {
             using AesGcm aesGcm = new(encryptionKey, AesGcmTagSize);
@@ -194,16 +196,22 @@ public sealed class Discv5PacketCodec(
                 packet.Nonce,
                 packet.Message.AsSpan(0, plaintext.Length),
                 packet.Message.AsSpan(plaintext.Length, AesGcmTagSize),
-                plaintext,
+                plaintext.Span,
                 packet.MessageAd);
+
+            message = Discv5MessageCodec.Decode(plaintext.Memory, plaintext);
+            return true;
         }
         catch (CryptographicException)
         {
+            plaintext.Dispose();
             return false;
         }
-
-        message = Discv5MessageCodec.Decode(plaintext);
-        return true;
+        catch
+        {
+            plaintext.Dispose();
+            throw;
+        }
     }
 
     internal Discv5Challenge DecodeWhoAreYou(Discv5Packet packet)
@@ -316,7 +324,8 @@ public sealed class Discv5PacketCodec(
         {
             ArgumentNullException.ThrowIfNull(encryptionKey);
 
-            encryptedMessage = EncryptMessage(encryptionKey, nonce, Discv5MessageCodec.Encode(message), messageAd);
+            using ArrayPoolSpan<byte> encodedMessage = Discv5MessageCodec.Encode(message);
+            encryptedMessage = EncryptMessage(encryptionKey, nonce, encodedMessage, messageAd);
         }
 
         byte[] maskedHeader = AesCtrTransform(destinationNodeId[..AesKeySize], maskingIv, header);
@@ -346,7 +355,7 @@ public sealed class Discv5PacketCodec(
 
     private byte[] CreateNonce() => _cryptoRandom.GenerateRandomBytes(NonceSize);
 
-    private static byte[] EncryptMessage(byte[] encryptionKey, byte[] nonce, byte[] plaintext, byte[] messageAd)
+    private static byte[] EncryptMessage(byte[] encryptionKey, byte[] nonce, ReadOnlySpan<byte> plaintext, byte[] messageAd)
     {
         byte[] encrypted = new byte[plaintext.Length + AesGcmTagSize];
         using AesGcm aesGcm = new(encryptionKey, AesGcmTagSize);

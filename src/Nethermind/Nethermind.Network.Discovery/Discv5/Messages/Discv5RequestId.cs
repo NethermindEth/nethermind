@@ -1,0 +1,44 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.Network.Discovery.Discv5.Messages;
+
+internal readonly record struct Discv5RequestId(ulong Value, byte Length)
+{
+    public const int MaxLength = sizeof(ulong);
+
+    public static Discv5RequestId From(ReadOnlySpan<byte> requestId)
+    {
+        if (requestId.Length > MaxLength)
+        {
+            throw new ArgumentOutOfRangeException(nameof(requestId), requestId.Length, $"discv5 request-id length exceeds {MaxLength}.");
+        }
+
+        ulong value = 0;
+        for (int i = 0; i < requestId.Length; i++)
+        {
+            value = (value << 8) | requestId[i];
+        }
+
+        return new Discv5RequestId(value, checked((byte)requestId.Length));
+    }
+
+    public void CopyTo(Span<byte> destination)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(destination.Length, Length, nameof(destination));
+
+        ulong value = Value;
+        for (int i = Length - 1; i >= 0; i--)
+        {
+            destination[i] = (byte)value;
+            value >>= 8;
+        }
+    }
+
+    public byte[] ToArray()
+    {
+        byte[] bytes = new byte[Length];
+        CopyTo(bytes);
+        return bytes;
+    }
+}

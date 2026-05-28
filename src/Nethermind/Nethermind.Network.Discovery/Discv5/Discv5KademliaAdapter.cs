@@ -6,11 +6,11 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
@@ -98,8 +98,7 @@ public class Discv5KademliaAdapter(
     {
         RegisterKnownRecord(receiver);
         ReserveEndpointCheck(receiver);
-        byte[] requestId = CreateRequestId();
-        Discv5Ping ping = new(requestId, nodeRecordProvider.Current.EnrSequence);
+        using Discv5Ping ping = new(CreateRequestId(), nodeRecordProvider.Current.EnrSequence);
         PongResponseHandler responseHandler = new(receiver);
 
         await SendRequest(receiver, ping, Discv5MessageType.Pong, responseHandler, _pingTimeout, token);
@@ -110,9 +109,8 @@ public class Discv5KademliaAdapter(
     public async Task<Node[]> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
     {
         RegisterKnownRecord(receiver);
-        int[] distances = GetLookupDistances(receiver, target);
-        byte[] requestId = CreateRequestId();
-        Discv5FindNode findNode = new(requestId, distances);
+        Discv5Distances distances = GetLookupDistances(receiver, target);
+        using Discv5FindNode findNode = new(CreateRequestId(), distances);
         NodesResponseHandler responseHandler = new(receiver, distances, _distance);
 
         await SendRequest(receiver, findNode, Discv5MessageType.Nodes, responseHandler, _findNodeTimeout, token);
@@ -154,7 +152,7 @@ public class Discv5KademliaAdapter(
         TimeSpan timeout,
         CancellationToken token)
     {
-        ResponseKey responseKey = new(receiver.Id.Hash, RequestIdKey.From(request.RequestId), responseType);
+        ResponseKey responseKey = new(receiver.Id.Hash, request.RequestId, responseType);
         _responseHandlers.Set(responseKey, responseHandler);
 
         using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -293,7 +291,14 @@ public class Discv5KademliaAdapter(
             return;
         }
 
-        await HandleMessage(session.RemotePublicKey, endpoint, message, token);
+        try
+        {
+            await HandleMessage(session.RemotePublicKey, endpoint, message, token);
+        }
+        finally
+        {
+            message.Dispose();
+        }
     }
 
     private async Task HandleHandshake(IPEndPoint endpoint, Discv5Packet packet, CancellationToken token)
@@ -333,7 +338,14 @@ public class Discv5KademliaAdapter(
         }
 
         SetSession(new SessionKey(nodeId, endpoint), session);
-        await HandleMessage(session.RemotePublicKey, endpoint, message, token, messageRecord);
+        try
+        {
+            await HandleMessage(session.RemotePublicKey, endpoint, message, token, messageRecord);
+        }
+        finally
+        {
+            message.Dispose();
+        }
     }
 
     private async Task SendWhoAreYou(IPEndPoint endpoint, Discv5Packet requestPacket, byte[] destinationNodeId)
@@ -374,10 +386,11 @@ public class Discv5KademliaAdapter(
         switch (message)
         {
             case Discv5Ping ping:
-                await SendResponse(
-                    remoteNode,
-                    new Discv5Pong(ping.RequestId, nodeRecordProvider.Current.EnrSequence, endpoint.Address, endpoint.Port),
-                    token);
+                using (Discv5Pong pong = new(ping.RequestId, nodeRecordProvider.Current.EnrSequence, endpoint.Address, endpoint.Port))
+                {
+                    await SendResponse(remoteNode, pong, token);
+                }
+
                 kademlia.Value.AddOrRefresh(remoteNode);
                 if (!string.IsNullOrEmpty(remoteNode.Enr))
                 {
@@ -389,7 +402,11 @@ public class Discv5KademliaAdapter(
                 kademlia.Value.AddOrRefresh(remoteNode);
                 break;
             case Discv5TalkReq talkReq:
-                await SendResponse(remoteNode, new Discv5TalkResp(talkReq.RequestId, []), token);
+                using (Discv5TalkResp talkResp = new(talkReq.RequestId, ReadOnlyMemory<byte>.Empty))
+                {
+                    await SendResponse(remoteNode, talkResp, token);
+                }
+
                 break;
         }
     }
@@ -406,7 +423,7 @@ public class Discv5KademliaAdapter(
 
     private bool HandleResponse(Hash256 nodeId, Discv5Message message)
     {
-        ResponseKey responseKey = new(nodeId, RequestIdKey.From(message.RequestId), message.MessageType);
+        ResponseKey responseKey = new(nodeId, message.RequestId, message.MessageType);
         return _responseHandlers.TryGetValue(responseKey, out IResponseHandler? handler) && handler.Handle(message);
     }
 
@@ -415,7 +432,8 @@ public class Discv5KademliaAdapter(
         NodeRecord[] records = GetFindNodeRecords(findNode.Distances, remoteNode);
         if (records.Length == 0)
         {
-            await SendResponse(remoteNode, new Discv5Nodes(findNode.RequestId, 1, []), token);
+            using Discv5Nodes emptyResponse = new(findNode.RequestId, 1, []);
+            await SendResponse(remoteNode, emptyResponse, token);
             return;
         }
 
@@ -424,17 +442,18 @@ public class Discv5KademliaAdapter(
         {
             int count = Math.Min(MaxEnrsPerNodesMessage, records.Length - i);
             ArraySegment<NodeRecord> chunk = new(records, i, count);
-            await SendResponse(remoteNode, new Discv5Nodes(findNode.RequestId, total, chunk), token);
+            using Discv5Nodes nodes = new(findNode.RequestId, total, chunk);
+            await SendResponse(remoteNode, nodes, token);
         }
     }
 
-    private NodeRecord[] GetFindNodeRecords(int[] distances, Node requester)
+    private NodeRecord[] GetFindNodeRecords(Discv5Distances distances, Node requester)
     {
         HashSet<Hash256> seen = new(MaxFindNodeRecords);
         List<NodeRecord> result = new(MaxFindNodeRecords);
         bool allowNonRoutableRelays = NodeFilter.IsLoopbackOrPrivateOrLinkLocal(requester.Address.Address);
         bool includedSelf = false;
-        for (int i = 0; i < distances.Length && result.Count < MaxFindNodeRecords; i++)
+        for (int i = 0; i < distances.Count && result.Count < MaxFindNodeRecords; i++)
         {
             int distance = distances[i];
             if (distance < 0 || distance > _distance.MaxDistance)
@@ -524,28 +543,37 @@ public class Discv5KademliaAdapter(
         }
     }
 
-    private int[] GetLookupDistances(Node receiver, PublicKey target)
+    private Discv5Distances GetLookupDistances(Node receiver, PublicKey target)
     {
         int distance = _distance.CalculateLogDistance(receiver.Id.Hash, target.Hash);
 
-        List<int> distances = [distance];
+        Span<int> distances = stackalloc int[3];
+        distances[0] = distance;
+        int count = 1;
         if (distance > 0)
         {
-            distances.Add(distance - 1);
+            distances[count++] = distance - 1;
         }
 
         if (distance < _distance.MaxDistance)
         {
-            distances.Add(distance + 1);
+            distances[count++] = distance + 1;
         }
 
-        return [.. distances];
+        return new Discv5Distances(distances[..count]);
     }
 
-    private byte[] CreateRequestId()
+    private Discv5RequestId CreateRequestId()
     {
-        byte[] requestId = cryptoRandom.GenerateRandomBytes(sizeof(ulong));
-        return requestId.AsSpan().WithoutLeadingZeros().ToArray();
+        Span<byte> requestId = stackalloc byte[sizeof(ulong)];
+        cryptoRandom.GenerateRandomBytes(requestId);
+        int start = 0;
+        while (start < requestId.Length && requestId[start] == 0)
+        {
+            start++;
+        }
+
+        return Discv5RequestId.From(requestId[start..]);
     }
 
     private bool TryGetSession(SessionKey sessionKey, [NotNullWhen(true)] out Discv5Session? session) => _sessions.TryGetValue(sessionKey, out session);
@@ -709,21 +737,7 @@ public class Discv5KademliaAdapter(
 
     private readonly record struct PendingNonceKey(IPEndPoint Endpoint, NonceKey Nonce);
 
-    private readonly record struct ResponseKey(Hash256 NodeId, RequestIdKey RequestId, Discv5MessageType MessageType);
-
-    private readonly record struct RequestIdKey(ulong Value, byte Length)
-    {
-        public static RequestIdKey From(ReadOnlySpan<byte> requestId)
-        {
-            ulong value = 0;
-            for (int i = 0; i < requestId.Length; i++)
-            {
-                value = (value << 8) | requestId[i];
-            }
-
-            return new RequestIdKey(value, checked((byte)requestId.Length));
-        }
-    }
+    private readonly record struct ResponseKey(Hash256 NodeId, Discv5RequestId RequestId, Discv5MessageType MessageType);
 
     private readonly record struct NonceKey(ulong Prefix, uint Suffix)
     {
@@ -770,7 +784,7 @@ public class Discv5KademliaAdapter(
         }
     }
 
-    internal sealed class NodesResponseHandler(Node receiver, int[] requestedDistances, IKademliaDistance<Hash256> distanceCalculator) : IResponseHandler
+    internal sealed class NodesResponseHandler(Node receiver, Discv5Distances requestedDistances, IKademliaDistance<Hash256> distanceCalculator) : IResponseHandler
     {
         private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly List<Node> _nodes = [];
@@ -831,10 +845,10 @@ public class Discv5KademliaAdapter(
 
         public Node[] GetNodes() => [.. _nodes];
 
-        private bool MatchesRequestedDistance(Node node, int[] requestedDistances)
+        private bool MatchesRequestedDistance(Node node, Discv5Distances requestedDistances)
         {
             int distance = distanceCalculator.CalculateLogDistance(receiver.Id.Hash, node.Id.Hash);
-            for (int i = 0; i < requestedDistances.Length; i++)
+            for (int i = 0; i < requestedDistances.Count; i++)
             {
                 if (requestedDistances[i] == distance)
                 {

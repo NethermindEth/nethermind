@@ -16,4 +16,6 @@ public class SecP256k1Entry(CompressedPublicKey publicKey) : EnrContentEntry<Com
     protected override int GetRlpLengthOfValue() => CompressedPublicKey.LengthInBytes + 1;
 
     protected override void EncodeValue(RlpStream rlpStream) => rlpStream.Encode(Value.Bytes);
+
+    protected override void EncodeValue(Span<byte> buffer, ref int position) => position = Rlp.Encode(buffer, position, Value.Bytes);
 }
