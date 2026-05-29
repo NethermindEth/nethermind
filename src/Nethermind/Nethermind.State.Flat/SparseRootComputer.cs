@@ -102,10 +102,22 @@ public sealed class SparseRootComputer : IDisposable
         Dictionary<ValueHash256, LeafUpdate> updates = entry.Updates;
         ValueHash256? lastFirstTarget = null;
         int sameTargetCount = 0;
+        // Drain-and-reinsert-misses, same as the account loop: first pass applies the whole
+        // slot set, retries re-apply ONLY the prior pass's blinded misses. Storage-heavy
+        // contracts (large slot sets, multiple blinded boundaries) are exactly where the old
+        // full-dictionary-every-retry replay hurt most.
+        ValueHash256[]? missBuffer = null;
+        int missCount = -1; // -1 => first pass uses the full dictionary
+        try
+        {
         for (int retry = 0; retry < MaxRetries; retry++)
         {
             List<(ValueHash256 key, byte minLen)> targets = [];
-            storageTrie.UpdateLeaves(updates, (key, minLen) => targets.Add((key, minLen)));
+            if (missCount < 0)
+                _trie.UpdateStorageLeaves(accountPathHash, updates, (key, minLen) => targets.Add((key, minLen)));
+            else
+                _trie.UpdateStorageLeavesSubset(accountPathHash, updates, missBuffer.AsSpan(0, missCount),
+                    (key, minLen) => targets.Add((key, minLen)));
             if (targets.Count == 0) break;
 
             // Detect deletion-with-blinded-sibling stalls: the proof reader walks only target
@@ -179,6 +191,20 @@ public sealed class SparseRootComputer : IDisposable
                     storageTrie.RevealNodes(nodes);
                 }
             }
+
+            // Next retry re-applies only this pass's misses.
+            if (missBuffer is null || missBuffer.Length < targets.Count)
+            {
+                if (missBuffer is not null) System.Buffers.ArrayPool<ValueHash256>.Shared.Return(missBuffer);
+                missBuffer = System.Buffers.ArrayPool<ValueHash256>.Shared.Rent(targets.Count);
+            }
+            for (int t = 0; t < targets.Count; t++) missBuffer[t] = targets[t].key;
+            missCount = targets.Count;
+        }
+        }
+        finally
+        {
+            if (missBuffer is not null) System.Buffers.ArrayPool<ValueHash256>.Shared.Return(missBuffer);
         }
 
         Hash256 result = _trie.ComputeStorageRoot(accountPathHash);

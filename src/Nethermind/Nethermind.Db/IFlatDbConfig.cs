@@ -72,13 +72,12 @@ public interface IFlatDbConfig : IConfig
         "a sparse bug would corrupt state with no Patricia cross-check.", DefaultValue = "false")]
     bool SparseTrieForceAuthoritative { get; set; }
 
-    [ConfigItem(Description = "M4 EXPERIMENTAL. Streams per-commit state deltas to a background sparse trie task " +
-        "that reveals proofs and builds the state root concurrently with EVM execution, instead of computing it " +
-        "synchronously at RecalculateStateRoot. Runs in SHADOW mode: the background root is computed and compared " +
-        "against the authoritative synchronous root but is never trusted, so it cannot affect consensus â€” it only " +
-        "lets us validate the streaming pipeline and measure overlap. Note: profiling shows synchronous root " +
-        "computation is already ~1-3ms warm (the cross-block cache eliminates proof reads), so the achievable " +
-        "overlap is small; this exists to prove the M4 architecture, not as a guaranteed win.", DefaultValue = "false")]
+    [ConfigItem(Description = "M4 (NOT YET WIRED - reserved). Intended to stream per-commit state deltas to a " +
+        "background sparse trie task that builds the state root concurrently with EVM execution. The streaming " +
+        "task (SparseTrieTask) exists and is root-equivalence-tested, but is deliberately NOT constructed by the " +
+        "scope yet (the per-tx WorldState.Commit hook it needs is not built), so this flag currently does nothing. " +
+        "Hidden from docs/CLI until the pipeline is fully wired so operators are not offered a no-op switch.",
+        DefaultValue = "false", HiddenFromDocs = true, DisabledForCli = true)]
     bool SparseTrieParallelRoot { get; set; }
 
     [ConfigItem(Description = "When true (default), sparse storage tries replace Patricia's at the per-contract " +

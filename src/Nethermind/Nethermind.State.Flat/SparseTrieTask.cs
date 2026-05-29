@@ -51,10 +51,22 @@ namespace Nethermind.State.Flat;
 /// </remarks>
 public sealed class SparseTrieTask : IAsyncDisposable
 {
-    /// <summary>A single pre-hashed delta batch for one commit phase.</summary>
+    /// <summary>
+    /// A single pre-hashed delta batch for one commit phase.
+    /// </summary>
+    /// <param name="AccountUpdates">Account leaf updates (last-writer-wins per address-hash).</param>
+    /// <param name="StorageUpdates">Per-slot leaf updates.</param>
+    /// <param name="WipedStorageAccounts">
+    /// Address-hashes whose storage was cleared (self-destruct / account deletion) in this phase.
+    /// The synchronous path calls <c>WipeStorage</c> on clear; the streamed path MUST do the same
+    /// before applying any same-phase slot writes, otherwise writes land on top of stale retained
+    /// storage from a previous block and produce a wrong storage root. Order within a delta is:
+    /// wipe first, then slot writes (a self-destruct-then-redeploy in one block).
+    /// </param>
     public readonly record struct HashedDelta(
         IReadOnlyList<(ValueHash256 AccountPath, LeafUpdate Update)> AccountUpdates,
-        IReadOnlyList<(Hash256 AccountPath, Hash256 PreviousStorageRoot, ValueHash256 SlotPath, LeafUpdate Update)> StorageUpdates);
+        IReadOnlyList<(Hash256 AccountPath, Hash256 PreviousStorageRoot, ValueHash256 SlotPath, LeafUpdate Update)> StorageUpdates,
+        IReadOnlyList<Hash256>? WipedStorageAccounts = null);
 
     private readonly Channel<HashedDelta> _channel;
     private readonly SparseRootComputer _computer;
@@ -62,12 +74,20 @@ public sealed class SparseTrieTask : IAsyncDisposable
     private readonly CancellationToken _ct;
     private readonly Task _drainTask;
 
+    // Set if the drain loop hit cancellation or any fault. Once poisoned, GetRootAsync refuses to
+    // return a root computed from a partial/inconsistent accumulation â€” the caller must fall back
+    // to the synchronous path. This matters the moment this task stops being shadow-only.
+    private volatile bool _poisoned;
+
     // Accumulated per-block changes, applied to the computer when Finish() is signalled.
     // Account updates are last-writer-wins per key (a later commit phase supersedes an earlier
     // one for the same account); storage is grouped per contract. This mirrors how the
     // synchronous path builds its update dictionaries before ComputeStateRoot.
     private readonly Dictionary<ValueHash256, LeafUpdate> _accounts = [];
     private readonly Dictionary<Hash256, (Hash256 PrevRoot, Dictionary<ValueHash256, LeafUpdate> Slots)> _storage = [];
+    // Contracts wiped this block, in case a wipe arrives before this contract's first slot write
+    // (or with no later writes at all). Applied in GetRootAsync before the slot dictionaries.
+    private readonly HashSet<Hash256> _wiped = [];
 
     public SparseTrieTask(SparseRootComputer computer, ILogger logger, CancellationToken ct)
     {
@@ -102,6 +122,19 @@ public sealed class SparseTrieTask : IAsyncDisposable
                 foreach ((ValueHash256 acc, LeafUpdate upd) in delta.AccountUpdates)
                     _accounts[acc] = upd;
 
+                // Wipes first: a contract cleared this phase must drop any slot writes accumulated
+                // for it from EARLIER phases (self-destruct mid-block), and be marked so the
+                // pre-existing retained storage trie is wiped before same/later-phase writes apply.
+                if (delta.WipedStorageAccounts is { Count: > 0 } wipes)
+                {
+                    foreach (Hash256 wiped in wipes)
+                    {
+                        _wiped.Add(wiped);
+                        if (_storage.TryGetValue(wiped, out (Hash256 PrevRoot, Dictionary<ValueHash256, LeafUpdate> Slots) e))
+                            e.Slots.Clear();
+                    }
+                }
+
                 foreach ((Hash256 accPath, Hash256 prevRoot, ValueHash256 slot, LeafUpdate upd) in delta.StorageUpdates)
                 {
                     ref (Hash256 PrevRoot, Dictionary<ValueHash256, LeafUpdate> Slots) entry =
@@ -117,18 +150,42 @@ public sealed class SparseTrieTask : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            // Cancellation => caller is falling back to the synchronous path; nothing to do.
+            // Cancellation => caller is falling back to the synchronous path. Poison so a
+            // subsequent GetRootAsync cannot hand back a root from a partially-drained stream.
+            _poisoned = true;
+        }
+        catch (Exception ex)
+        {
+            // Any drain fault leaves the accumulation inconsistent; poison and let the caller fall
+            // back. Logged because once this is more than shadow-only, a silent fault would be a
+            // consensus hazard.
+            _poisoned = true;
+            if (_logger.IsWarn) _logger.Warn($"SparseTrieTask drain faulted, root poisoned: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
     /// <summary>
     /// Awaits all streamed deltas, applies them through the M3 <see cref="SparseRootComputer"/>,
-    /// and returns the computed state root. Faults (or returns null) are the caller's signal to
-    /// trust the synchronous root instead.
+    /// and returns the computed state root.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if the drain loop was cancelled or faulted (the accumulation is then incomplete and
+    /// any root computed from it would be wrong). Callers MUST treat this as "fall back to the
+    /// synchronous root" â€” never trust a poisoned result.
+    /// </exception>
     public async Task<Hash256> GetRootAsync()
     {
-        await _drainTask; // ensures all deltas accumulated
+        await _drainTask; // ensures all deltas accumulated (or poisoned)
+
+        if (_poisoned)
+            throw new InvalidOperationException(
+                "SparseTrieTask result is poisoned (drain cancelled or faulted); caller must use the synchronous root.");
+
+        // Apply self-destruct/clear wipes before any slot writes, mirroring the synchronous
+        // FlatStorageTree path. Without this, slot writes land on stale cross-block retained
+        // storage and produce a wrong storage root.
+        foreach (Hash256 wiped in _wiped)
+            _computer.Trie.WipeStorage(wiped);
 
         foreach (KeyValuePair<Hash256, (Hash256 PrevRoot, Dictionary<ValueHash256, LeafUpdate> Slots)> kvp in _storage)
         {
@@ -142,6 +199,9 @@ public sealed class SparseTrieTask : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _channel.Writer.TryComplete();
-        try { await _drainTask; } catch { /* best-effort */ }
+        // Best-effort drain on dispose; any fault is already reflected in _poisoned (set by the
+        // drain loop's catch blocks), so GetRootAsync would reject the result. Swallowing here is
+        // safe precisely because the poison flag, not this await, gates result validity.
+        try { await _drainTask; } catch { /* poison flag already set by drain loop */ }
     }
 }

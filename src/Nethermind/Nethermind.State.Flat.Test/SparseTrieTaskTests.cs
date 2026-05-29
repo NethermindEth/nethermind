@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -106,5 +107,27 @@ public class SparseTrieTaskTests
 
         Hash256 streamedRoot = await task.GetRootAsync();
         streamedRoot.Should().Be(syncRoot, "last-writer-wins across batches must match single-batch root");
+    }
+
+    [Test]
+    public async Task CancelledDrain_PoisonsResult_ForcesFallback()
+    {
+        // A cancelled (or faulted) drain leaves the accumulation incomplete. GetRootAsync must
+        // refuse to return a root from it so a future production wiring is forced to fall back to
+        // the synchronous path rather than commit a wrong root.
+        (Hash256 block1Root, _, byte[][] newRlps, MemDb db) = BuildTwoBlocks(total: 20, changed: 5);
+        using CancellationTokenSource cts = new();
+
+        using SparseRootComputer streamComputer = new(new HalfPathTrieNodeReader(new NodeStorage(db)), block1Root);
+        await using SparseTrieTask task = new(streamComputer, LimboLogs.Instance.GetClassLogger<SparseTrieTaskTests>(), cts.Token);
+
+        task.Enqueue(new SparseTrieTask.HashedDelta(
+            [(TestItem.Keccaks[0].ValueHash256, LeafUpdate.Changed(newRlps[0]))], []));
+        cts.Cancel();          // poison the drain
+        task.Finish();
+
+        Func<Task> act = async () => await task.GetRootAsync();
+        await act.Should().ThrowAsync<InvalidOperationException>(
+            "a cancelled/poisoned drain must not yield a trusted root");
     }
 }
