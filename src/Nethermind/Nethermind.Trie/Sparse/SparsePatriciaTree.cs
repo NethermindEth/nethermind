@@ -299,14 +299,6 @@ public sealed class SparsePatriciaTree : IDisposable
         Dictionary<ValueHash256, LeafUpdate> updates,
         Action<ValueHash256, byte>? proofRequired)
     {
-        // Apply updates in sorted key order rather than Dictionary hash order. A hashed key's
-        // nibble path is just its bytes expanded, so ascending ValueHash256 order == ascending
-        // nibble-path (lexicographic) order. Walking the arena in path order means consecutive
-        // updates share long prefixes â€” the descent re-touches the same upper branches back to
-        // back (warm in cache) instead of jumping randomly across the trie, and dirty
-        // propagation marks each subtree once. This mirrors Reth's drain-and-sort before the
-        // range-routed update. The sort is O(n log n) over 32-byte structs; cheap next to the
-        // per-leaf trie descent it accelerates.
         int count = updates.Count;
         if (count == 0) return;
 
@@ -315,31 +307,64 @@ public sealed class SparsePatriciaTree : IDisposable
         {
             int i = 0;
             foreach (ValueHash256 k in updates.Keys) keys[i++] = k;
-            Array.Sort(keys, 0, count);
-
-            // The hash key is always 32 bytes â†’ 64 nibbles. Reuse one stack buffer across the
-            // loop so we don't allocate a 64-byte managed array per leaf.
-            Span<byte> nibblePath = stackalloc byte[64];
-            for (int k = 0; k < count; k++)
-            {
-                ValueHash256 key = keys[k];
-                LeafUpdate update = updates[key];
-                Nibbles.BytesToNibbleBytes(key.Bytes, nibblePath);
-                SparseSubtrie.UpdateResult result = _subtrie.UpdateSingleLeaf(
-                    nibblePath, update, out TreePath proofTarget);
-
-                if (result == SparseSubtrie.UpdateResult.NeedsProof)
-                {
-                    // depth walked through sparse trie before hitting blinded = totalNibbles - remainingPath.
-                    // proofTarget is the REMAINING path (including the blinded nibble), so minLen = nibbles consumed.
-                    int minLen = nibblePath.Length - proofTarget.Length;
-                    proofRequired?.Invoke(key, (byte)Math.Min(minLen, byte.MaxValue));
-                }
-            }
+            UpdateLeavesSorted(updates, keys.AsSpan(0, count), proofRequired);
         }
         finally
         {
             ArrayPool<ValueHash256>.Shared.Return(keys);
+        }
+    }
+
+    /// <summary>
+    /// Applies only the given subset of keys from <paramref name="updates"/>. Used by the
+    /// reveal-update-retry loop so each retry re-processes ONLY the keys that hit a blinded node
+    /// last time (the misses), instead of re-sorting and re-walking the entire change set every
+    /// iteration. Mirrors Reth's "drain applied, reinsert only misses" â€” on a block with N
+    /// changes and a couple of blinded boundaries, this turns O(retries Ã— N) leaf walks into
+    /// O(N + misses), which is the dominant avoidable cost once proofs are warm.
+    /// </summary>
+    /// <param name="keysToApply">
+    /// The subset to apply this pass. Sorted in place (ascending = nibble-path order) so the
+    /// caller's buffer must be writable. Misses are reported via <paramref name="proofRequired"/>.
+    /// </param>
+    public void UpdateLeavesSubset(
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        Span<ValueHash256> keysToApply,
+        Action<ValueHash256, byte>? proofRequired)
+        => UpdateLeavesSorted(updates, keysToApply, proofRequired);
+
+    private void UpdateLeavesSorted(
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        Span<ValueHash256> keys,
+        Action<ValueHash256, byte>? proofRequired)
+    {
+        // Apply updates in sorted key order rather than Dictionary hash order. A hashed key's
+        // nibble path is just its bytes expanded, so ascending ValueHash256 order == ascending
+        // nibble-path (lexicographic) order. Walking the arena in path order means consecutive
+        // updates share long prefixes â€” the descent re-touches the same upper branches back to
+        // back (warm in cache) instead of jumping randomly across the trie, and dirty
+        // propagation marks each subtree once. The sort is O(n log n) over 32-byte structs;
+        // cheap next to the per-leaf trie descent it accelerates.
+        keys.Sort();
+
+        // The hash key is always 32 bytes â†’ 64 nibbles. Reuse one stack buffer across the
+        // loop so we don't allocate a 64-byte managed array per leaf.
+        Span<byte> nibblePath = stackalloc byte[64];
+        for (int k = 0; k < keys.Length; k++)
+        {
+            ValueHash256 key = keys[k];
+            LeafUpdate update = updates[key];
+            Nibbles.BytesToNibbleBytes(key.Bytes, nibblePath);
+            SparseSubtrie.UpdateResult result = _subtrie.UpdateSingleLeaf(
+                nibblePath, update, out TreePath proofTarget);
+
+            if (result == SparseSubtrie.UpdateResult.NeedsProof)
+            {
+                // depth walked through sparse trie before hitting blinded = totalNibbles - remainingPath.
+                // proofTarget is the REMAINING path (including the blinded nibble), so minLen = nibbles consumed.
+                int minLen = nibblePath.Length - proofTarget.Length;
+                proofRequired?.Invoke(key, (byte)Math.Min(minLen, byte.MaxValue));
+            }
         }
     }
 

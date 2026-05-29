@@ -86,6 +86,22 @@ public sealed class SparseStateTrie : IDisposable
         Action<ValueHash256, byte>? proofRequired) =>
         AccountTrie.UpdateLeaves(updates, proofRequired);
 
+    /// <summary>Applies only <paramref name="keysToApply"/> from <paramref name="updates"/> â€”
+    /// used by the retry loop to re-process only the prior pass's blinded misses.</summary>
+    public void UpdateAccountLeavesSubset(
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        Span<ValueHash256> keysToApply,
+        Action<ValueHash256, byte>? proofRequired) =>
+        AccountTrie.UpdateLeavesSubset(updates, keysToApply, proofRequired);
+
+    /// <summary>Storage counterpart of <see cref="UpdateAccountLeavesSubset"/>.</summary>
+    public void UpdateStorageLeavesSubset(
+        Hash256 accountPathHash,
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        Span<ValueHash256> keysToApply,
+        Action<ValueHash256, byte>? proofRequired) =>
+        GetOrCreateStorageTrie(accountPathHash).UpdateLeavesSubset(updates, keysToApply, proofRequired);
+
     public Hash256 ComputeStorageRoot(Hash256 accountPathHash)
     {
         if (!_storageTries.TryGetValue(accountPathHash, out SparsePatriciaTree? trie))

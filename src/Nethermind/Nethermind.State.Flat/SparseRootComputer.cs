@@ -254,14 +254,30 @@ public sealed class SparseRootComputer : IDisposable
         long updateMsAccum = 0;
         ValueHash256? lastTarget = null;
         int sameTargetCount = 0;
-        for (int retry = 0; retry < MaxRetries; retry++)
+        // Drain-and-reinsert-misses: the first pass applies the whole change set; every retry
+        // afterwards re-applies ONLY the keys that hit a blinded node last time. Without this,
+        // each proof-reveal retry re-sorts and re-walks the entire dictionary even though all but
+        // a handful of leaves are already applied â€” O(retries Ã— N) instead of O(N + misses).
+        ValueHash256[]? missBuffer = null;
+        int missCount = -1; // -1 => first pass uses the full dictionary
+        try
         {
-            long ts = System.Diagnostics.Stopwatch.GetTimestamp();
-            List<(ValueHash256 key, byte minLen)> targets = [];
-            _trie.UpdateAccountLeaves(_accountChanges, (key, minLen) => targets.Add((key, minLen)));
-            updateMsAccum += (System.Diagnostics.Stopwatch.GetTimestamp() - ts) * 1000 / System.Diagnostics.Stopwatch.Frequency;
-            LastRetryCount = retry;
-            if (targets.Count == 0) break;
+            for (int retry = 0; retry < MaxRetries; retry++)
+            {
+                long ts = System.Diagnostics.Stopwatch.GetTimestamp();
+                List<(ValueHash256 key, byte minLen)> targets = [];
+                if (missCount < 0)
+                {
+                    _trie.UpdateAccountLeaves(_accountChanges, (key, minLen) => targets.Add((key, minLen)));
+                }
+                else
+                {
+                    _trie.UpdateAccountLeavesSubset(_accountChanges, missBuffer.AsSpan(0, missCount),
+                        (key, minLen) => targets.Add((key, minLen)));
+                }
+                updateMsAccum += (System.Diagnostics.Stopwatch.GetTimestamp() - ts) * 1000 / System.Diagnostics.Stopwatch.Frequency;
+                LastRetryCount = retry;
+                if (targets.Count == 0) break;
 
             // Detect stuck-on-same-target case: track if the same target keeps coming back
             ValueHash256 firstTarget = targets[0].key;
@@ -312,6 +328,21 @@ public sealed class SparseRootComputer : IDisposable
                 LastRevealMs += (tDone - tReveal) * 1000 / System.Diagnostics.Stopwatch.Frequency;
                 LastProofNodeCount += proof.AccountNodes.Count;
             }
+
+            // Next retry re-applies only this pass's misses. Rent/grow a reusable buffer and
+            // copy the miss keys into it; the subset overload sorts them in place.
+            if (missBuffer is null || missBuffer.Length < targets.Count)
+            {
+                if (missBuffer is not null) System.Buffers.ArrayPool<ValueHash256>.Shared.Return(missBuffer);
+                missBuffer = System.Buffers.ArrayPool<ValueHash256>.Shared.Rent(targets.Count);
+            }
+            for (int t = 0; t < targets.Count; t++) missBuffer[t] = targets[t].key;
+            missCount = targets.Count;
+            }
+        }
+        finally
+        {
+            if (missBuffer is not null) System.Buffers.ArrayPool<ValueHash256>.Shared.Return(missBuffer);
         }
 
         LastUpdateLeavesMs = updateMsAccum;
