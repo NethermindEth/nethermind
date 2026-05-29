@@ -70,7 +70,7 @@ public class FlatSnapServer(
                         try
                         {
                             byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), stateId.StateRoot.ToCommitment());
-                            response.Add(rlp!);
+                            response.Add(rlp ?? []);
                             responseSize += rlp?.Length ?? 0;
                         }
                         catch (MissingTrieNodeException)
@@ -94,7 +94,7 @@ public class FlatSnapServer(
                                 for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
                                 {
                                     byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
-                                    response.Add(sRlp!);
+                                    response.Add(sRlp ?? []);
                                     responseSize += sRlp?.Length ?? 0;
                                 }
                             }
