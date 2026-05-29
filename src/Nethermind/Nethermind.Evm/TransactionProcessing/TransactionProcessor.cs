@@ -583,7 +583,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static bool ShouldUpdateBlockGasMetrics(ExecutionOptions opts) =>
             opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp
-                || opts.HasFlag(ExecutionOptionFlags.OriginalValidate)
+                || opts.HasFlag(ExecutionOptions.OriginalValidate)
                 && !opts.HasFlag(ExecutionOptions.Restore)
                 && !opts.HasFlag(ExecutionOptions.Warmup);
 

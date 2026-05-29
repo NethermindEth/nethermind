@@ -163,6 +163,7 @@ public class MetricsIntegrationTests
     [TestCase(ExecutionOptions.Commit, false, 1, TestName = "Block gas metrics count committed transactions")]
     [TestCase(ExecutionOptions.CommitAndRestore, false, 0, TestName = "Block gas metrics skip call-and-restore transactions")]
     [TestCase(ExecutionOptions.SkipValidationAndCommit, true, 0, TestName = "Block gas metrics skip trace-style system calls")]
+    [TestCase(ExecutionOptions.SkipValidationAndCommit | ExecutionOptions.OriginalValidate, true, 1, TestName = "Block gas metrics count committed system transactions with original validate marker")]
     public void Block_gas_metrics_track_only_block_like_execution_modes(ExecutionOptions options, bool useSystemCall, long expectedTransactions)
     {
         Metrics.ResetBlockStats();
@@ -173,19 +174,6 @@ public class MetricsIntegrationTests
         _ = _harness.ProcessTx(tx, block, options);
 
         Assert.That(Metrics.BlockTransactions, Is.EqualTo(expectedTransactions));
-    }
-
-    [Test]
-    public void Block_gas_metrics_count_committed_system_transactions_with_original_validate_marker()
-    {
-        Metrics.ResetBlockStats();
-
-        Transaction tx = CreateSystemCall();
-        Block block = _harness.CreateBlock(tx);
-
-        _ = _harness.ProcessTx(tx, block, ExecutionOptions.SkipValidationAndCommit | ExecutionOptionFlags.OriginalValidate);
-
-        Assert.That(Metrics.BlockTransactions, Is.EqualTo(1));
     }
 
     private Transaction CreateCommittedTransfer()

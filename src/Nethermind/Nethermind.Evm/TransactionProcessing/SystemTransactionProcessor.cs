@@ -45,7 +45,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
         return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
-            ? opts | ExecutionOptionFlags.OriginalValidate | ExecutionOptions.SkipValidationAndCommit
+            ? opts | ExecutionOptions.OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
 
@@ -71,7 +71,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {
-        if (opts.HasFlag(ExecutionOptionFlags.OriginalValidate))
+        if (opts.HasFlag(ExecutionOptions.OriginalValidate))
         {
             base.PayValue(tx, spec, opts);
         }

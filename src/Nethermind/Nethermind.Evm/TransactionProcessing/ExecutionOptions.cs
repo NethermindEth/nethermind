@@ -46,10 +46,10 @@ public enum ExecutionOptions
     /// <summary>
     /// Commit and later restore state also skip validation, use for CallAndRestore
     /// </summary>
-    CommitAndRestore = Commit | Restore | SkipValidation
-}
+    CommitAndRestore = Commit | Restore | SkipValidation,
 
-internal static class ExecutionOptionFlags
-{
-    internal const ExecutionOptions OriginalValidate = (ExecutionOptions)(2 << 30);
+    /// <summary>
+    /// Preserve original validation semantics for system transactions that are re-routed through skip-validation execution.
+    /// </summary>
+    OriginalValidate = 2 << 30,
 }
