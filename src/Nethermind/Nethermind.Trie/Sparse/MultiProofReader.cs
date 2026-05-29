@@ -300,47 +300,41 @@ public static class MultiProofReader
 
             case ProofNodeKind.Branch:
                 {
-                    for (int nibble = 0; nibble < 16; nibble++)
+                    // Targets are sorted by nibble path, so for any branch at depth N we can
+                    // partition them by their depth-N nibble in a single linear pass instead of
+                    // 16 full rescans (the old code was O(16 * range_size) per branch). Targets
+                    // shorter than nibbleDepth+1 don't have a nibble at this depth and are skipped.
+                    int i = targetStart;
+                    int childDepth = nibbleDepth + 1;
+                    int childCount = node.ChildMask.CountBits();
+                    if (childCount == 0) break;
+
+                    while (i < targetEnd)
                     {
-                        int subStart = -1;
-                        int subEnd = -1;
-                        for (int i = targetStart; i < targetEnd; i++)
-                        {
-                            if (nibbleDepth < targets[i].Length && targets[i][nibbleDepth] == nibble)
-                            {
-                                if (subStart == -1) subStart = i;
-                                subEnd = i + 1;
-                            }
-                        }
-                        if (subStart == -1) continue;
+                        byte[] t = targets[i];
+                        if (nibbleDepth >= t.Length) { i++; continue; }
+                        int nibble = t[nibbleDepth];
+                        int subStart = i;
+                        do { i++; } while (i < targetEnd
+                            && nibbleDepth < targets[i].Length
+                            && targets[i][nibbleDepth] == nibble);
+                        int subEnd = i;
 
-                        if (!node.ChildMask.IsBitSet(nibble))
-                            continue; // empty slot — absence proof
-
+                        if (!node.ChildMask.IsBitSet(nibble)) continue;
                         RlpNode childRef = node.ChildRlps is not null && nibble < node.ChildRlps.Length
                             ? node.ChildRlps[nibble]
                             : default;
-
                         if (childRef.IsNull) continue;
 
                         TreePath childPath = currentPath.Append(nibble);
-                        int childDepth = nibbleDepth + 1;
                         bool needEmit = AnyTargetNeedsDepth(minLens, subStart, subEnd, childDepth);
 
-                        if (childRef.IsHash())
-                        {
-                            Hash256 childHash = childRef.AsHash();
-                            byte[] childRlp = loadRlp.Load(childPath, childHash, ReadFlags.None);
-                            ProofNode childProof = DecodeProofNode(childRlp, childPath);
-                            if (needEmit) output.Add(childProof);
-                            WalkNode(loadRlp, childProof, childPath, targets, minLens, subStart, subEnd, childDepth, output);
-                        }
-                        else
-                        {
-                            ProofNode childProof = DecodeProofNode(childRef.AsSpan().ToArray(), childPath);
-                            if (needEmit) output.Add(childProof);
-                            WalkNode(loadRlp, childProof, childPath, targets, minLens, subStart, subEnd, childDepth, output);
-                        }
+                        byte[] childRlp = childRef.IsHash()
+                            ? loadRlp.Load(childPath, childRef.AsHash(), ReadFlags.None)
+                            : childRef.AsSpan().ToArray();
+                        ProofNode childProof = DecodeProofNode(childRlp, childPath);
+                        if (needEmit) output.Add(childProof);
+                        WalkNode(loadRlp, childProof, childPath, targets, minLens, subStart, subEnd, childDepth, output);
                     }
                     break;
                 }
