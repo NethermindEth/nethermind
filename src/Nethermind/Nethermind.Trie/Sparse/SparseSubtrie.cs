@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -581,12 +582,28 @@ public sealed class SparseSubtrie : IDisposable
         return _arena[Root].CachedRlp;
     }
 
-    /// <summary>Same as <see cref="HashNode"/> but parallelizes recursion across the root's
-    /// dirty children when there are enough of them to amortize threadpool overhead. Each
-    /// child's subtree hash is independent (writes only to its own arena slots, reads only
-    /// from blinded refs / its own cached children), so parallel execution is safe as long
-    /// as no allocator calls fire â€” HashNode and its callees only mutate existing arena
-    /// slots and allocate GC heap byte[]s for RLP, never AllocNode/AllocChildren/AllocValue.</summary>
+    /// <summary>
+    /// Parallel hashing entry point. Collects dirty subtree roots at path-depth >=
+    /// <see cref="ParallelTargetDepth"/> and runs <see cref="HashNode"/> on each in
+    /// parallel. The "upper portion" (nodes whose own path-depth is &lt; target) is
+    /// then encoded sequentially in DFS post-order.
+    /// </summary>
+    /// <remarks>
+    /// Path-depth here = total nibbles from the trie root to the node's own position
+    /// (i.e. excluding the node's own <see cref="SparseTrieNode.ShortKey"/>).
+    /// Choosing depth=2 mimics Reth's two-tier subtrie split: up to ~256 independent
+    /// subtree hashes can run concurrently, but the storage layout stays single-arena
+    /// so reveal/update paths and child-array invariants are untouched.
+    ///
+    /// Thread safety: parallel roots have disjoint arena subtrees â€” writes to
+    /// <c>_arena[idx].FullRlp / CachedRlp / State</c> within one subtree never touch
+    /// slots of another. <see cref="HashNode"/> and its callees never grow the arena
+    /// or child arrays (only update/reveal grow them, and that has completed before
+    /// hashing), so the reads/writes are stable.
+    /// </remarks>
+    private const int ParallelTargetDepth = 2;
+    private const int ParallelMinRoots = 4;
+
     private void HashNodeRootParallel(int nodeIdx)
     {
         if (_arena[nodeIdx].IsCached() || _arena[nodeIdx].IsBlinded()) return;
@@ -599,33 +616,92 @@ public sealed class SparseSubtrie : IDisposable
             return;
         }
 
+        List<int> parallelRoots = new(256);
+        CollectParallelRoots(nodeIdx, nodeDepth: 0, ParallelTargetDepth, parallelRoots);
+
+        if (parallelRoots.Count >= ParallelMinRoots)
+        {
+            int[] arr = parallelRoots.ToArray();
+            System.Threading.Tasks.Parallel.For(0, arr.Length, i => HashNode(arr[i]));
+        }
+        else
+        {
+            for (int i = 0; i < parallelRoots.Count; i++) HashNode(parallelRoots[i]);
+        }
+
+        HashUpperSequential(nodeIdx, nodeDepth: 0, ParallelTargetDepth);
+    }
+
+    /// <summary>
+    /// Collects dirty subtree roots at path-depth >= <paramref name="targetDepth"/>.
+    /// A node is a "parallel root" if its own path-depth is >= target. Caller invariant:
+    /// only dirty nodes are added; the upper sequential pass owns encoding of every
+    /// dirty node whose own depth is &lt; target.
+    /// </summary>
+    private void CollectParallelRoots(int nodeIdx, int nodeDepth, int targetDepth, List<int> result)
+    {
+        if (_arena[nodeIdx].IsCached() || _arena[nodeIdx].IsBlinded()) return;
+        if (!_arena[nodeIdx].IsDirty()) return;
+
+        if (nodeDepth >= targetDepth)
+        {
+            result.Add(nodeIdx);
+            return;
+        }
+
+        // Above the boundary â€” recurse into dirty children.
+        if (!_arena[nodeIdx].IsBranch()) return; // leaf above boundary is handled by upper pass
+
+        byte[]? shortKey = _arena[nodeIdx].ShortKey;
+        int childDepth = nodeDepth + (shortKey?.Length ?? 0) + 1;
         TrieMask mask = _arena[nodeIdx].StateMask;
         int childrenStart = _arena[nodeIdx].ChildrenStart;
-
-        // Gather dirty children up front so we can launch them in parallel.
-        Span<int> dirty = stackalloc int[16];
-        int dirtyCount = 0;
         for (int n = 0; n < 16; n++)
         {
             if (!mask.IsBitSet(n)) continue;
             int denseIdx = childrenStart + mask.DenseIndex(n);
             SparseChildEntry entry = _children[denseIdx];
             if (entry.IsRevealed && _arena[entry.ArenaIndex].IsDirty())
-                dirty[dirtyCount++] = entry.ArenaIndex;
+                CollectParallelRoots(entry.ArenaIndex, childDepth, targetDepth, result);
+        }
+    }
+
+    /// <summary>
+    /// Encodes dirty nodes whose path-depth is &lt; <paramref name="targetDepth"/> in
+    /// DFS post-order. Children at depth >= target are assumed already hashed by the
+    /// parallel pass; this method must not recurse into them.
+    /// </summary>
+    private void HashUpperSequential(int nodeIdx, int nodeDepth, int targetDepth)
+    {
+        if (_arena[nodeIdx].IsCached() || _arena[nodeIdx].IsBlinded()) return;
+        if (nodeDepth >= targetDepth) return; // owned by parallel pass
+
+        if (_arena[nodeIdx].IsLeaf())
+        {
+            EncodeLeaf(nodeIdx);
+            return;
         }
 
-        const int ParallelThreshold = 4;
-        if (dirtyCount >= ParallelThreshold)
+        if (!_arena[nodeIdx].IsBranch()) return;
+
+        if (_arena[nodeIdx].HasShortKey() && _arena[nodeIdx].StateMask == TrieMask.Empty)
         {
-            int[] arr = new int[dirtyCount];
-            for (int i = 0; i < dirtyCount; i++) arr[i] = dirty[i];
-            System.Threading.Tasks.Parallel.For(0, dirtyCount, i => HashNode(arr[i]));
-        }
-        else
-        {
-            for (int i = 0; i < dirtyCount; i++) HashNode(dirty[i]);
+            EncodeExtensionOnly(nodeIdx);
+            return;
         }
 
+        byte[]? shortKey = _arena[nodeIdx].ShortKey;
+        int childDepth = nodeDepth + (shortKey?.Length ?? 0) + 1;
+        TrieMask mask = _arena[nodeIdx].StateMask;
+        int childrenStart = _arena[nodeIdx].ChildrenStart;
+        for (int n = 0; n < 16; n++)
+        {
+            if (!mask.IsBitSet(n)) continue;
+            int denseIdx = childrenStart + mask.DenseIndex(n);
+            SparseChildEntry entry = _children[denseIdx];
+            if (entry.IsRevealed && _arena[entry.ArenaIndex].IsDirty() && childDepth < targetDepth)
+                HashUpperSequential(entry.ArenaIndex, childDepth, targetDepth);
+        }
         EncodeBranch(nodeIdx);
         if (_arena[nodeIdx].HasShortKey()) WrapBranchWithExtension(nodeIdx);
     }
@@ -731,8 +807,14 @@ public sealed class SparseSubtrie : IDisposable
     {
         TrieMask mask = _arena[nodeIdx].StateMask;
         int childrenStart = _arena[nodeIdx].ChildrenStart;
-        RlpNode[] childRlpArr = new RlpNode[16];
 
+        // First pass over children to compute total content length.
+        // We deliberately do not cache the resolved RlpNode per slot here:
+        // - RlpNode contains a managed reference (byte[]) so it cannot live in a stackalloc span
+        // - allocating a 16-element managed array per EncodeBranch is hot enough to show in profiles
+        // The two-pass shape reads each child's CachedRlp/BlindedRlp twice, which is a couple
+        // of struct copies and one indexed load each â€” far cheaper than the array allocation
+        // it replaces.
         int contentLen = 1; // trailing 0x80
         for (int n = 0; n < 16; n++)
         {
@@ -740,7 +822,6 @@ public sealed class SparseSubtrie : IDisposable
             int denseIdx = childrenStart + mask.DenseIndex(n);
             SparseChildEntry entry = _children[denseIdx];
             RlpNode childRlp = entry.IsRevealed ? _arena[entry.ArenaIndex].CachedRlp : entry.BlindedRlp;
-            childRlpArr[n] = childRlp;
             contentLen += childRlp.ChildRefLength;
         }
 
@@ -751,7 +832,10 @@ public sealed class SparseSubtrie : IDisposable
         for (int n = 0; n < 16; n++)
         {
             if (!mask.IsBitSet(n)) { rlp[pos++] = 0x80; continue; }
-            pos += childRlpArr[n].WriteChildRef(rlp.AsSpan(pos));
+            int denseIdx = childrenStart + mask.DenseIndex(n);
+            SparseChildEntry entry = _children[denseIdx];
+            RlpNode childRlp = entry.IsRevealed ? _arena[entry.ArenaIndex].CachedRlp : entry.BlindedRlp;
+            pos += childRlp.WriteChildRef(rlp.AsSpan(pos));
         }
         rlp[pos] = 0x80;
 
