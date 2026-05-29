@@ -53,6 +53,16 @@ jobs:
     env:
       DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw }}
     steps:
+      - name: Free up disk space
+        # spec-* groups build EthereumTests.slnx which copies large Pyspec/
+        # Blockchain test fixtures into bin/release/ — exhausts default disk.
+        if: contains(fromJSON('["spec-core","spec-tx-rlp-trie"]'), matrix.group)
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: true
+          tool-cache: false
+          swap-storage: false
+
       - name: Check out repository
         uses: actions/checkout@v6
         with:

@@ -176,6 +176,17 @@ jobs:
           - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 7of8 }
           - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 8of8 }
     steps:
+      - name: Free up disk space
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          # EthereumTests.slnx copies large Pyspec/Blockchain test fixtures +
+          # native libs into every project's bin/release/, exhausting the
+          # default ~14 GB ubuntu-latest disk before the build finishes.
+          large-packages: true
+          tool-cache: false
+          swap-storage: false
+
       - name: Check out repository
         uses: actions/checkout@v6
         with:

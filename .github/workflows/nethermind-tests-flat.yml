@@ -30,6 +30,16 @@ jobs:
           - flat-spec
           - flat-nethermind
     steps:
+      - name: Free up disk space
+        # flat-spec builds EthereumTests.slnx which copies large Pyspec/
+        # Blockchain test fixtures into bin/release/ — exhausts default disk.
+        if: matrix.group == 'flat-spec'
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: true
+          tool-cache: false
+          swap-storage: false
+
       - name: Check out repository
         uses: actions/checkout@v6
         with:
