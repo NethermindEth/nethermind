@@ -9,11 +9,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// Persists snapshot metadata in a key-value store (RocksDB column or MemDb).
-/// Each entry is keyed by its 40-byte <see cref="StateId"/> <c>To</c>
-/// (8-byte big-endian block number followed by the 32-byte state root), matching
-/// the in-memory dictionary keys used by <c>PersistedSnapshotRepository</c>. The
-/// reserved 4-byte key stores the catalog-version word; entry keys are 40 bytes,
-/// so the lengths cannot collide.
+/// Each entry is keyed by its 48-byte tuple <c>(To.BlockNumber, To.StateRoot, depth)</c>
+/// — 8-byte big-endian block number, 32-byte state root, 8-byte big-endian depth
+/// (<c>To.BlockNumber - From.BlockNumber</c>). The depth disambiguates entries that
+/// share the same <c>To</c> across the three runtime buckets (base, compacted,
+/// persistable) so each survives independently across a restart. The reserved 4-byte
+/// key stores the catalog-version word; entry keys are 48 bytes, so the lengths
+/// cannot collide.
 /// </summary>
 public sealed class SnapshotCatalog(IDb db)
 {
@@ -34,8 +36,9 @@ public sealed class SnapshotCatalog(IDb db)
     // kind(1) = 119
     internal const int EntrySize = 119;
 
-    // 8-byte block number + 32-byte state root, matching the StateId layout.
-    internal const int KeySize = 40;
+    // 8-byte block number + 32-byte state root + 8-byte depth, matching the runtime
+    // tuple that disambiguates same-To entries across the three buckets.
+    internal const int KeySize = 48;
 
     // Catalog version: bumped when the on-disk binary layout changes incompatibly. Old
     // directories will fail to load with a clear "wipe and resync" message. v2 was the
@@ -51,9 +54,11 @@ public sealed class SnapshotCatalog(IDb db)
     // v6: tiers merged — single arena/blob/catalog (the persisted_snapshot/small + /large
     // directory split is gone). Entries gain a per-base blob-RLP BlobRange and a SnapshotKind
     // byte; wipe-and-resync.
-    internal const int CurrentVersion = 6;
+    // v7: entry key is (To.BlockNumber, To.StateRoot, depth=To.BlockNumber-From.BlockNumber)
+    // so base/compacted/persistable at the same To round-trip independently; wipe-and-resync.
+    internal const int CurrentVersion = 7;
 
-    // Length-4 sentinel key holding the version word. Entry keys are 40 bytes, so the
+    // Length-4 sentinel key holding the version word. Entry keys are 48 bytes, so the
     // length disambiguation is unambiguous when iterating GetAll().
     private static readonly byte[] MetadataKey = new byte[4];
 
@@ -66,21 +71,21 @@ public sealed class SnapshotCatalog(IDb db)
     {
         _entries.Add(entry);
         Span<byte> key = stackalloc byte[KeySize];
-        WriteKey(key, entry.To);
+        WriteKey(key, entry.To, Depth(entry));
         byte[] value = new byte[EntrySize];
         WriteEntry(value, entry);
         _db.Set(key, value);
     }
 
-    public bool Remove(in StateId to)
+    public bool Remove(in StateId to, long depth)
     {
         for (int i = 0; i < _entries.Count; i++)
         {
-            if (_entries[i].To == to)
+            if (_entries[i].To == to && Depth(_entries[i]) == depth)
             {
                 _entries.RemoveAt(i);
                 Span<byte> key = stackalloc byte[KeySize];
-                WriteKey(key, to);
+                WriteKey(key, to, depth);
                 _db.Remove(key);
                 return true;
             }
@@ -88,11 +93,11 @@ public sealed class SnapshotCatalog(IDb db)
         return false;
     }
 
-    public CatalogEntry? Find(in StateId to)
+    public CatalogEntry? Find(in StateId to, long depth)
     {
         for (int i = 0; i < _entries.Count; i++)
         {
-            if (_entries[i].To == to) return _entries[i];
+            if (_entries[i].To == to && Depth(_entries[i]) == depth) return _entries[i];
         }
         return null;
     }
@@ -100,16 +105,16 @@ public sealed class SnapshotCatalog(IDb db)
     /// <summary>
     /// Update the location of a catalog entry (used after arena compaction).
     /// </summary>
-    public void UpdateLocation(in StateId to, SnapshotLocation newLocation)
+    public void UpdateLocation(in StateId to, long depth, SnapshotLocation newLocation)
     {
         for (int i = 0; i < _entries.Count; i++)
         {
-            if (_entries[i].To == to)
+            if (_entries[i].To == to && Depth(_entries[i]) == depth)
             {
                 CatalogEntry updated = _entries[i] with { Location = newLocation };
                 _entries[i] = updated;
                 Span<byte> key = stackalloc byte[KeySize];
-                WriteKey(key, to);
+                WriteKey(key, to, depth);
                 byte[] value = new byte[EntrySize];
                 WriteEntry(value, updated);
                 _db.Set(key, value);
@@ -117,6 +122,8 @@ public sealed class SnapshotCatalog(IDb db)
             }
         }
     }
+
+    private static long Depth(CatalogEntry entry) => entry.To.BlockNumber - entry.From.BlockNumber;
 
     /// <summary>
     /// Load all entries from the underlying DB into the in-memory list.
@@ -163,10 +170,11 @@ public sealed class SnapshotCatalog(IDb db)
         _db.Set(MetadataKey, value);
     }
 
-    private static void WriteKey(Span<byte> span, in StateId to)
+    private static void WriteKey(Span<byte> span, in StateId to, long depth)
     {
         BinaryPrimitives.WriteInt64BigEndian(span, to.BlockNumber);
         to.StateRoot.BytesAsSpan.CopyTo(span[8..]);
+        BinaryPrimitives.WriteInt64BigEndian(span[40..], depth);
     }
 
     private static void WriteEntry(Span<byte> span, CatalogEntry entry)

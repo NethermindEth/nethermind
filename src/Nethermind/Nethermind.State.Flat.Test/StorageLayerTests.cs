@@ -56,39 +56,58 @@ public class StorageLayerTests
     public void SnapshotCatalog_SaveLoad_RoundTrips()
     {
         MemDb catalogDb = new();
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(100, Keccak.Compute("block100"));
+        // Same To across three entries with distinct depths (1 / 2 / 4) — mirrors the
+        // runtime case where a base + sub-CompactSize compacted + CompactSize persistable
+        // all end at the same block. Pre-v7 catalog would collapse these to one entry on
+        // disk; v7 keys by (To, depth) and round-trips all three.
+        StateId s_base_from = new(99, Keccak.Compute("block99"));     // depth=1 source
+        StateId s_compacted_from = new(98, Keccak.Compute("block98")); // depth=2 source
+        StateId s_persistable_from = new(96, Keccak.Compute("block96")); // depth=4 source
+        StateId sharedTo = new(100, Keccak.Compute("block100"));
         StateId s2 = new(200, Keccak.Compute("block200"));
 
         SnapshotCatalog catalog = new(catalogDb);
-        catalog.Add(new(s0, s1, new(0, 0, 1024), new BlobRange(3, 4096, 8192), SnapshotKind.Base));
-        catalog.Add(new(s1, s2, new(0, 1024, 2048), BlobRange.None, SnapshotKind.Persistable));
+        catalog.Add(new(s_base_from, sharedTo, new(0, 0, 1024), new BlobRange(3, 4096, 8192), SnapshotKind.Base));
+        catalog.Add(new(s_compacted_from, sharedTo, new(0, 1024, 2048), BlobRange.None, SnapshotKind.Compacted));
+        catalog.Add(new(s_persistable_from, sharedTo, new(0, 3072, 4096), BlobRange.None, SnapshotKind.Persistable));
+        catalog.Add(new(sharedTo, s2, new(0, 7168, 2048), BlobRange.None, SnapshotKind.Persistable));
 
         // Load in new instance
         SnapshotCatalog loaded = new(catalogDb);
         loaded.Load();
 
-        Assert.That(loaded.Entries.Count, Is.EqualTo(2));
+        Assert.That(loaded.Entries.Count, Is.EqualTo(4));
 
-        SnapshotCatalog.CatalogEntry e1 = loaded.Entries[0];
-        Assert.That(e1.From.BlockNumber, Is.EqualTo(0));
-        Assert.That(e1.To.BlockNumber, Is.EqualTo(100));
-        Assert.That(e1.Location, Is.EqualTo(new SnapshotLocation(0, 0, 1024)));
-        Assert.That(e1.BlobRange, Is.EqualTo(new BlobRange(3, 4096, 8192)));
-        Assert.That(e1.Kind, Is.EqualTo(SnapshotKind.Base));
+        // All three entries at sharedTo must survive distinct.
+        SnapshotCatalog.CatalogEntry? loadedBase = loaded.Find(sharedTo, depth: 1);
+        SnapshotCatalog.CatalogEntry? loadedCompacted = loaded.Find(sharedTo, depth: 2);
+        SnapshotCatalog.CatalogEntry? loadedPersistable = loaded.Find(sharedTo, depth: 4);
+        Assert.That(loadedBase, Is.Not.Null);
+        Assert.That(loadedBase!.From, Is.EqualTo(s_base_from));
+        Assert.That(loadedBase.Location, Is.EqualTo(new SnapshotLocation(0, 0, 1024)));
+        Assert.That(loadedBase.BlobRange, Is.EqualTo(new BlobRange(3, 4096, 8192)));
+        Assert.That(loadedBase.Kind, Is.EqualTo(SnapshotKind.Base));
+        Assert.That(loadedCompacted, Is.Not.Null);
+        Assert.That(loadedCompacted!.From, Is.EqualTo(s_compacted_from));
+        Assert.That(loadedCompacted.Location, Is.EqualTo(new SnapshotLocation(0, 1024, 2048)));
+        Assert.That(loadedCompacted.Kind, Is.EqualTo(SnapshotKind.Compacted));
+        Assert.That(loadedPersistable, Is.Not.Null);
+        Assert.That(loadedPersistable!.From, Is.EqualTo(s_persistable_from));
+        Assert.That(loadedPersistable.Location, Is.EqualTo(new SnapshotLocation(0, 3072, 4096)));
+        Assert.That(loadedPersistable.Kind, Is.EqualTo(SnapshotKind.Persistable));
 
-        SnapshotCatalog.CatalogEntry e2 = loaded.Entries[1];
-        Assert.That(e2.From.BlockNumber, Is.EqualTo(100));
-        Assert.That(e2.To.BlockNumber, Is.EqualTo(200));
-        Assert.That(e2.Location, Is.EqualTo(new SnapshotLocation(0, 1024, 2048)));
-        Assert.That(e2.BlobRange, Is.EqualTo(BlobRange.None));
-        Assert.That(e2.Kind, Is.EqualTo(SnapshotKind.Persistable));
+        SnapshotCatalog.CatalogEntry? loadedTail = loaded.Find(s2, depth: 100);
+        Assert.That(loadedTail, Is.Not.Null);
+        Assert.That(loadedTail!.From, Is.EqualTo(sharedTo));
+        Assert.That(loadedTail.Location, Is.EqualTo(new SnapshotLocation(0, 7168, 2048)));
+        Assert.That(loadedTail.Kind, Is.EqualTo(SnapshotKind.Persistable));
     }
 
     [Test]
     public void SnapshotCatalog_Remove_And_Find()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s_compactedFrom = new(0, Keccak.Compute("compactedFrom"));
         StateId s1 = new(1, Keccak.Compute("1"));
         StateId s2 = new(2, Keccak.Compute("2"));
         StateId missing = new(999, Keccak.Compute("missing"));
@@ -96,12 +115,21 @@ public class StorageLayerTests
         SnapshotCatalog catalog = new(new MemDb());
         catalog.Add(new(s0, s1, new(0, 0, 100), BlobRange.None, SnapshotKind.Base));
         catalog.Add(new(s1, s2, new(0, 100, 200), BlobRange.None, SnapshotKind.Base));
+        // Same To (s2), different depth (s_compactedFrom→s2 has depth=2 vs s1→s2 depth=1).
+        catalog.Add(new(s_compactedFrom, s2, new(0, 200, 100), BlobRange.None, SnapshotKind.Compacted));
 
-        Assert.That(catalog.Find(s1), Is.Not.Null);
-        Assert.That(catalog.Remove(s1), Is.True);
-        Assert.That(catalog.Find(s1), Is.Null);
-        Assert.That(catalog.Entries.Count, Is.EqualTo(1));
-        Assert.That(catalog.Remove(missing), Is.False);
+        Assert.That(catalog.Find(s1, depth: 1), Is.Not.Null);
+        Assert.That(catalog.Remove(s1, depth: 1), Is.True);
+        Assert.That(catalog.Find(s1, depth: 1), Is.Null);
+        Assert.That(catalog.Entries.Count, Is.EqualTo(2));
+        Assert.That(catalog.Remove(missing, depth: 1), Is.False);
+
+        // Removing one (To, depth) leaves the sibling at the same To intact.
+        Assert.That(catalog.Find(s2, depth: 1), Is.Not.Null);
+        Assert.That(catalog.Find(s2, depth: 2), Is.Not.Null);
+        Assert.That(catalog.Remove(s2, depth: 1), Is.True);
+        Assert.That(catalog.Find(s2, depth: 1), Is.Null);
+        Assert.That(catalog.Find(s2, depth: 2), Is.Not.Null);
     }
 
     [Test]
@@ -115,9 +143,9 @@ public class StorageLayerTests
         SnapshotLocation newLoc = new(1, 500, 100);
         catalog.Add(new(s0, s1, origLoc, BlobRange.None, SnapshotKind.Base));
 
-        catalog.UpdateLocation(s1, newLoc);
+        catalog.UpdateLocation(s1, depth: 1, newLoc);
 
-        Assert.That(catalog.Find(s1)!.Location, Is.EqualTo(newLoc));
+        Assert.That(catalog.Find(s1, depth: 1)!.Location, Is.EqualTo(newLoc));
     }
 
     [Test]

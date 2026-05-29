@@ -562,6 +562,14 @@ public class PersistedSnapshotRepositoryTests
         using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), bloomMgr2);
         repo2.LoadFromCatalog();
 
+        // With the v7 (To, depth)-keyed catalog the base at ids[4] survives alongside the
+        // persistable at the same To — both buckets must lease independently.
+        Assert.That(repo2.TryLeaseSnapshotTo(ids[4], out PersistedSnapshot? baseAt4), Is.True,
+            "base at the persistable's To must round-trip under v7");
+        baseAt4!.Dispose();
+        Assert.That(repo2.TryLeasePersistableCompactedSnapshotTo(ids[4], out PersistedSnapshot? persistableAt4), Is.True);
+        persistableAt4!.Dispose();
+
         // Every slot in (0, 4] must resolve to the SAME bloom instance — the persistable's
         // merged bloom, which the range walk in Register spread across the slot dict.
         using PersistedSnapshotBloom b1 = bloomMgr2.LeaseOrSentinel(ids[1]);
@@ -585,5 +593,61 @@ public class PersistedSnapshotRepositoryTests
             Assert.That(b1.Bloom.MightContain(key), Is.True,
                 $"AddressKey for base {i} must be in the persistable's merged bloom");
         }
+    }
+
+    /// <summary>
+    /// Regression for the v7 (To, depth)-keyed catalog: before v7, a persistable at the
+    /// same To as a base overwrote the base's catalog entry, so a restart would lose the
+    /// base. With v7 both round-trip independently — SnapshotCount on reload equals the
+    /// number of <c>Add</c> calls in the prior session.
+    /// </summary>
+    [Test]
+    public void LoadFromCatalog_RoundTripsBaseAndPersistableAtSameTo()
+    {
+        StateId[] ids = new StateId[5];
+        ids[0] = new(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= 4; i++) ids[i] = new(i, Keccak.Compute($"s{i}"));
+
+        MemDb catalogDb = new();
+        string arenaDir = Path.Combine(_testDir, "arenas", "rt");
+        string blobDir = Path.Combine(_testDir, "blobs", "rt");
+
+        using (ArenaManager arena1 = new(arenaDir, 0, maxArenaSize: 64 * 1024))
+        using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024, PersistedSnapshotTier.Persisted))
+        using (PersistedSnapshotBloomFilterManager bloomMgr1 = new())
+        using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), bloomMgr1))
+        {
+            repo.LoadFromCatalog();
+            for (int i = 1; i <= 4; i++)
+                repo.ConvertSnapshotToPersistedSnapshot(
+                    CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
+
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(
+                repo, arena1, config,
+                ScheduleHelper.CreateWithOffset(config, 0),
+                Nethermind.Logging.LimboLogs.Instance, bloomMgr1,
+                minCompactSize: 2, maxCompactSize: config.PersistedSnapshotMaxCompactSize);
+            compactor.DoCompactPersistable(ids[4]);
+
+            Assert.That(repo.SnapshotCount, Is.EqualTo(5), "session 1 must hold 4 bases + 1 persistable");
+        }
+
+        using PersistedSnapshotBloomFilterManager bloomMgr2 = new();
+        using ArenaManager arena2 = new(arenaDir, 0, maxArenaSize: 64 * 1024);
+        using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024, PersistedSnapshotTier.Persisted);
+        using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), bloomMgr2);
+        repo2.LoadFromCatalog();
+
+        Assert.That(repo2.SnapshotCount, Is.EqualTo(5),
+            "all five snapshots (4 bases + 1 persistable at the last base's To) must round-trip under v7");
+        for (int i = 1; i <= 4; i++)
+        {
+            Assert.That(repo2.TryLeaseSnapshotTo(ids[i], out PersistedSnapshot? b), Is.True,
+                $"base at ids[{i}] must survive reload");
+            b!.Dispose();
+        }
+        Assert.That(repo2.TryLeasePersistableCompactedSnapshotTo(ids[4], out PersistedSnapshot? persistable), Is.True);
+        persistable!.Dispose();
     }
 }

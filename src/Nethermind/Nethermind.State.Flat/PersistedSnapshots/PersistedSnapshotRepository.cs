@@ -564,12 +564,17 @@ public sealed class PersistedSnapshotRepository(
         {
             ordered.Remove(to);
             if (!dict.TryRemove(to, out PersistedSnapshot? snapshot)) continue;
+            // Capture depth before Dispose — From/To stay valid on the still-alive object,
+            // but the underlying reservation/file leases are released by Dispose. The catalog
+            // key now scopes the removal to this bucket's entry (the other buckets' entries
+            // at the same To carry a different depth and stay put).
+            long depth = snapshot.To.BlockNumber - snapshot.From.BlockNumber;
             Interlocked.Add(ref bucketMemory, -snapshot.Size);
             Interlocked.Decrement(ref bucketCount);
             Interlocked.Add(ref globalMemory, -snapshot.Size);
             Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
             Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
-            RemoveFromCatalog(to);
+            RemoveFromCatalog(to, depth);
             snapshot.Dispose();
             pruned++;
         }
@@ -662,11 +667,11 @@ public sealed class PersistedSnapshotRepository(
         return best;
     }
 
-    private void RemoveFromCatalog(in StateId to)
+    private void RemoveFromCatalog(in StateId to, long depth)
     {
-        SnapshotCatalog.CatalogEntry? entry = _catalog.Find(to);
+        SnapshotCatalog.CatalogEntry? entry = _catalog.Find(to, depth);
         if (entry is not null)
-            _catalog.Remove(to);
+            _catalog.Remove(to, depth);
     }
 
     public void Dispose()
