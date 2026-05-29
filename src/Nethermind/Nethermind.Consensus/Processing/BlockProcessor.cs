@@ -79,6 +79,9 @@ public partial class BlockProcessor(
 
         _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
 
+        if (_balManager.BatchReadEnabled && suggestedBlock.BlockAccessList is not null)
+            _ = _stateProvider.HintBal(suggestedBlock.BlockAccessList);
+
         // EIP-7805 (FOCIL): the IL satisfaction check needs PARENT state for sender
         // nonce/balance (per the EIP), not the post-execution state. Capture a snapshot of
         // each IL tx sender BEFORE ProcessBlock advances the worldstate, then run the actual
