@@ -2503,6 +2503,29 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ClearStaleMarkersAbove_DoesNotScanPastBestKnownNumber()
+    {
+        // Regression: scan must cap at Max(BestKnownNumber, BestKnownBeaconNumber) so a corrupted
+        // DB cannot drive an unbounded loop. A stray marker far above must survive the heal.
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis();
+
+        Block head = Build.A.Block.WithNumber(1).WithParent(genesis).TestObject;
+        blockTree.SuggestBlock(head);
+        blockTree.UpdateMainChain(new[] { head }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        const long strayHeight = 1_000_000L;
+        ChainLevelInfoRepository repo = new(_blocksInfosDb);
+        ChainLevelInfo strayLevel = new(true, [new BlockInfo(TestItem.KeccakA, UInt256.One)]);
+        repo.PersistLevel(strayHeight, strayLevel);
+
+        blockTree.HealCanonicalChain(head.Hash!, maxBlockDepth: 10);
+
+        ChainLevelInfo? afterHeal = new ChainLevelInfoRepository(_blocksInfosDb).LoadLevel(strayHeight);
+        Assert.That(afterHeal, Is.Not.Null, "stray level must remain in DB — bounded scan must not reach it");
+        Assert.That(afterHeal!.HasBlockOnMainChain, Is.True, "scan must not have cleared markers beyond BestKnownNumber");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void HealCanonicalChain_WhenWrongBlockIsMarkedCanonical_FixesMarker()
     {
         // Scenario: A and B are siblings at H=1. B was swapped to index 0 by accident
