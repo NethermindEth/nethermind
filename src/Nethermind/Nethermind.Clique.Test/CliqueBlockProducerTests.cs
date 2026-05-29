@@ -545,7 +545,7 @@ public class CliqueBlockProducerTests
     private static readonly int _timeout = 5000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
 
     [Test]
-    [Retry(3)]
+    [Category("Flaky"), Retry(3)]
     public async Task Can_produce_block_with_transactions() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
@@ -674,7 +674,7 @@ public class CliqueBlockProducerTests
         await goerli.StopNode(TestItem.PrivateKeyC);
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_vote_a_validator_out()
     {
         On goerli = On.FastGoerli;
@@ -755,7 +755,7 @@ public class CliqueBlockProducerTests
             .StopNode(TestItem.PrivateKeyA);
 
     [Test]
-    [Retry(3)]
+    [Category("Flaky"), Retry(3)]
     public async Task Can_reorganize_when_receiving_in_turn_blocks()
     {
         On goerli = On.FastGoerli;
@@ -815,7 +815,7 @@ public class CliqueBlockProducerTests
     }
 
     [Test]
-    [Retry(3)]
+    [Category("Flaky"), Retry(3)]
     public async Task Creates_blocks_without_signals_from_block_tree()
     {
         await On.Goerli
@@ -843,7 +843,7 @@ public class CliqueBlockProducerTests
         await goerli.StopNode(TestItem.PrivateKeyA);
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Many_validators_can_process_blocks()
     {
         PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(static pk => pk.Address, GenericComparer.GetOptimized<Address>()).ToArray();
