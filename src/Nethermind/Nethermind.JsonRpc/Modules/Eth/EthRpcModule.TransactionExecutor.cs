@@ -193,6 +193,22 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, bool optimize)
             : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
+            public override ResultWrapper<AccessListResultForRpc?> Execute(
+                TransactionForRpc transactionCall,
+                BlockParameter? blockParameter,
+                Dictionary<Address, AccountOverride>? stateOverride = null,
+                SearchResult<BlockHeader>? searchResult = null)
+            {
+                // Match Geth: eth_createAccessList treats gas: 0x0 the same as an omitted gas field and
+                // defaults to gasCap through ToTransaction rather than passing a literal zero gas limit.
+                if (transactionCall.Gas is null or 0)
+                {
+                    transactionCall.Gas = _rpcConfig.GasCap;
+                }
+
+                return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
+            }
+
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, token);

@@ -2110,6 +2110,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_createAccessList_with_explicit_zero_gas_treats_it_as_omitted()
+    {
+        using Context ctx = await Context.Create();
+
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","gas":"0x0"}""";
+
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverrideJson: null, optimize: true);
+
+        Assert.That(result["error"], Is.Null);
+        Assert.That(gasUsed, Is.EqualTo(21_000));
+        Assert.That(result["accessList"]!.ToArray(), Is.Empty);
+    }
+
+    [Test]
     public async Task Eth_create_access_list_with_state_override()
     {
         using Context ctx = await Context.Create();
