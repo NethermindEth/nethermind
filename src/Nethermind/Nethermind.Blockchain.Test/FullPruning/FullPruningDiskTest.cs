@@ -64,6 +64,7 @@ public class FullPruningDiskTest
                 PruningTrigger,
                 PruningConfig,
                 BlockTree,
+                Container.Resolve<IStateBoundaryWriter>(),
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,
@@ -114,6 +115,7 @@ public class FullPruningDiskTest
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
+            IStateBoundaryWriter stateBoundary,
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IDriveInfo driveInfo,
@@ -121,7 +123,7 @@ public class FullPruningDiskTest
             IChainEstimations chainEstimations,
             ILogManager logManager)
             : FullPruner(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree,
-                stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
+                stateBoundary, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
         {
             public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false);
 
@@ -204,6 +206,10 @@ public class FullPruningDiskTest
                 );
 
             HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
+            // Exclude the boundary marker FullPruner writes on commit — it's absent from the pre-prune snapshot.
+            byte[]? boundaryValue = chain.DbProvider.StateDb[StateBoundaryStore.OldestStateBlockKey];
+            Assert.That(boundaryValue, Is.Not.Null, "FullPruner should record the OldestStateBlock floor on a successful prune");
+            currentItems.Remove(boundaryValue!);
             Assert.That(currentItems.IsSubsetOf(allItems), Is.True);
             Assert.That(currentItems.Count, Is.GreaterThan(0));
         }

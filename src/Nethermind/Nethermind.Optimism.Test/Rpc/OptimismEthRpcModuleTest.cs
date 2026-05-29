@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.History;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -636,6 +639,13 @@ internal static class TestRpcBlockchainExt
             blockchain.ForkInfo,
             new BlocksConfig().SecondsPerSlot,
             sequencerRpcClient, ecdsa, sealer, new LogIndexConfig(), opSpecHelper,
-            new HeadBlockSignal(blockchain.BlockTree)
+            new HeadBlockSignal(blockchain.BlockTree),
+            new EthCapabilitiesProvider(
+                blockchain.BlockTree.AsReadOnly(),
+                blockchain.WorldStateManager,
+                blockchain.Container.Resolve<ISyncConfig>(),
+                Substitute.For<ISyncPointers>(),
+                Substitute.For<IHistoryConfig>(),
+                Substitute.For<IHistoryPruner>())
         ));
 }
