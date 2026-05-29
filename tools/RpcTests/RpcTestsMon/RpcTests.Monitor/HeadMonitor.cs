@@ -9,7 +9,7 @@ using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal record HeadInfo(long Number, string Hash) : IFormattable
+internal record BlockInfo(long Number, string Hash) : IFormattable
 {
     public override string ToString() => $"{Number} ({Hash})";
 
@@ -27,7 +27,7 @@ internal class HeadMonitor(Uri nodeUrl, INotifier notifier)
         new UriBuilder(httpUrl) { Scheme = httpUrl.Scheme == "https" ? "wss" : "ws" }.Uri;
 
     // TODO: add automatic reconnection with exponential backoff
-    public async IAsyncEnumerable<HeadInfo> SubscribeAsync([EnumeratorCancellation] CancellationToken ct = default)
+    public async IAsyncEnumerable<BlockInfo> SubscribeAsync([EnumeratorCancellation] CancellationToken ct = default)
     {
         using ClientWebSocket ws = new();
         await ws.ConnectAsync(DeriveWsUrl(nodeUrl), ct);
@@ -41,13 +41,13 @@ internal class HeadMonitor(Uri nodeUrl, INotifier notifier)
             if (message is null)
                 yield break;
 
-            HeadInfo? head = ParseHead(message);
+            BlockInfo? head = ParseHead(message);
             if (head is not null)
                 yield return head;
         }
     }
 
-    private HeadInfo? ParseHead(JsonNode message)
+    private BlockInfo? ParseHead(JsonNode message)
     {
         if (message["error"] is { } error)
         {
@@ -64,7 +64,7 @@ internal class HeadMonitor(Uri nodeUrl, INotifier notifier)
         if (numberHex is null || hash is null) return null;
 
         // TODO: forward more info
-        return new HeadInfo(Convert.ToInt64(numberHex, 16), hash);
+        return new BlockInfo(Convert.ToInt64(numberHex, 16), hash);
     }
 
     private static async Task<JsonNode?> ReadMessageAsync(ClientWebSocket ws, byte[] buffer, MemoryStream ms, CancellationToken ct)

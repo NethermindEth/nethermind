@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Nodes;
-using DynamicExpresso;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.FileSystemGlobbing.Abstractions;
 
@@ -11,20 +10,15 @@ namespace Nethermind.RpcTests.Monitor;
 internal class TestDefinition
 {
     public required string FilePath { get; init; }
-    public required DynamicJson OnChanged { get; init; }
-    public required DynamicJson Request { get; init; }
+    public required DynamicJson<TestContext> OnChanged { get; init; }
+    public required DynamicJson<TestContext> Request { get; init; }
+    public required TestContext BaseContext { get; init; }
     public JsonNode? LastOnChangedValue { get; set; }
 }
 
 internal static class TestLoader
 {
     private static readonly DirectoryInfo _testDir = new("tests");
-
-    private static readonly Parameter[] _parameters =
-    [
-        new("Head", typeof(HeadInfo)),
-        new("Request", typeof(RequestContext))
-    ];
 
     public static TestDefinition[] Load(string[] globs)
     {
@@ -39,21 +33,21 @@ internal static class TestLoader
             {
                 string fullPath = Path.Combine(_testDir.Name, path);
                 JsonArray tests = JsonNode.Parse(File.ReadAllText(fullPath))!.AsArray();
+                int testIndex = 0;
                 foreach (JsonNode? testNode in tests)
                 {
                     if (testNode?["onChanged"] is not { } onChangedNode || testNode["request"] is not { } requestNode)
-                        continue; // TODO: throw error about invalid test
+                        continue;
+
+                    int shift = HashCode.Combine(path, testIndex++);
+                    TestContext baseContext = new(new BlockInfo(0, ""), new RequestContext(0), shift);
 
                     definitions.Add(new TestDefinition
                     {
                         FilePath = path,
-                        OnChanged = new DynamicJson(
-                            onChangedNode,
-                            new Parameter("Head", typeof(HeadInfo))),
-                        Request = new DynamicJson(
-                            requestNode,
-                            new Parameter("Head", typeof(HeadInfo)), new Parameter("Request", typeof(RequestContext))
-                        )
+                        BaseContext = baseContext,
+                        OnChanged = new DynamicJson<TestContext>(onChangedNode),
+                        Request = new DynamicJson<TestContext>(requestNode)
                     });
                 }
             }

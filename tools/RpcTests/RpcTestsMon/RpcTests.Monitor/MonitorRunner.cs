@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks.Dataflow;
 using Nethermind.RpcTests.Monitor.Notifiers;
@@ -9,11 +10,17 @@ namespace Nethermind.RpcTests.Monitor;
 
 internal record RequestContext(long Number);
 
-internal record TestRun(HeadInfo Head, TestDefinition Definition, RequestContext RequestCtx);
+internal record TestRun(BlockInfo Head, TestDefinition Definition, RequestContext RequestCtx);
+
+internal record struct TestContext(BlockInfo Head, RequestContext Request, int TestNumber)
+{
+    public static string Hex(int n) => $"0x{n:x}";
+    public static string Hex(long n) => $"0x{n:x}";
+}
 
 internal record MismatchInfo(TestRun Test, JsonNode Request, JsonNode TargetResponse, JsonNode ReferenceResponse)
 {
-    public HeadInfo Head => Test.Head;
+    public BlockInfo Head => Test.Head;
 }
 
 internal class MonitorRunner(INotifier notifier)
@@ -27,13 +34,13 @@ internal class MonitorRunner(INotifier notifier)
         if (tests.Length == 0) return;
 
         using HttpClient client = new();
-        (ITargetBlock<HeadInfo> startBlock, IDataflowBlock endBlock) =
+        (ITargetBlock<BlockInfo> startBlock, IDataflowBlock endBlock) =
             BuildPipeline(args, tests, new RequestSender(client), ct);
 
         HeadMonitor headMonitor = new(args.TargetUrl, notifier);
         try
         {
-            await foreach (HeadInfo head in headMonitor.SubscribeAsync(ct))
+            await foreach (BlockInfo head in headMonitor.SubscribeAsync(ct))
             {
                 //Console.WriteLine($"Head #{head:#}");
                 if (!startBlock.Post(head))
@@ -46,15 +53,15 @@ internal class MonitorRunner(INotifier notifier)
         await endBlock.Completion;
     }
 
-    private (ITargetBlock<HeadInfo> start, IDataflowBlock end) BuildPipeline(
+    private (ITargetBlock<BlockInfo> start, IDataflowBlock end) BuildPipeline(
         ExecutionArgs args, TestDefinition[] tests, RequestSender sender, CancellationToken ct)
     {
-        BufferBlock<HeadInfo> headBuffer = new(new DataflowBlockOptions { BoundedCapacity = 2 });
+        BufferBlock<BlockInfo> headBuffer = new(new DataflowBlockOptions { BoundedCapacity = 2 });
 
         DataflowLinkOptions propagate = new() { PropagateCompletion = true };
 
         // filter tests that need to run for this head
-        TransformManyBlock<HeadInfo, TestRun> filterBlock = new(
+        TransformManyBlock<BlockInfo, TestRun> filterBlock = new(
             head => FilterTests(tests, head),
             new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1, BoundedCapacity = tests.Length }
         );
@@ -78,7 +85,7 @@ internal class MonitorRunner(INotifier notifier)
         return (headBuffer, notifyBlock);
     }
 
-    private IEnumerable<TestRun> FilterTests(TestDefinition[] tests, HeadInfo head)
+    private IEnumerable<TestRun> FilterTests(TestDefinition[] tests, BlockInfo head)
     {
         foreach (TestDefinition test in tests)
         {
@@ -88,8 +95,8 @@ internal class MonitorRunner(INotifier notifier)
             try
             {
                 // TODO: optimize via comparing simple value
-                JsonNode? changed = test.OnChanged.Compile(head);
-                if (changed?.ToString() == test.LastOnChangedValue?.ToString())
+                JsonNode? changed = test.OnChanged.Compile(test.BaseContext with { Head = head });
+                if (!ValuesEqual(changed, test.LastOnChangedValue))
                     continue;
 
                 test.LastOnChangedValue = changed;
@@ -110,7 +117,8 @@ internal class MonitorRunner(INotifier notifier)
     {
         try
         {
-            JsonNode request = test.Definition.Request.Compile(test.Head, test.RequestCtx)!;
+            JsonNode request = test.Definition.Request.Compile(
+                test.Definition.BaseContext with { Head = test.Head, Request = test.RequestCtx })!;
             JsonNode targetResp = await sender.SendAsync(args.TargetUrl, request, ct);
             JsonNode refResp = await sender.SendAsync(args.ReferenceUrl, request, ct);
 
@@ -128,4 +136,15 @@ internal class MonitorRunner(INotifier notifier)
             return null;
         }
     }
+
+    private static bool ValuesEqual(JsonNode? x, JsonNode? y) => (x?.GetValueKind(), y?.GetValueKind()) switch
+    {
+        (null, null) => true,
+        (JsonValueKind.Null, JsonValueKind.Null) => true,
+        (JsonValueKind.False, JsonValueKind.False) => true,
+        (JsonValueKind.True, JsonValueKind.True) => true,
+        (JsonValueKind.String, JsonValueKind.String) => x.AsValue().Equals(y.AsValue()),
+        (JsonValueKind.Number, JsonValueKind.Number) => x.AsValue().Equals(y.AsValue()),
+        _ => false
+    };
 }
