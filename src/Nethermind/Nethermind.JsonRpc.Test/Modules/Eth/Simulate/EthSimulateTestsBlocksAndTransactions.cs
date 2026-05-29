@@ -361,6 +361,47 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     [Test]
+    public async Task Test_eth_simulate_with_gas_cap_zero_treats_missing_gas_as_uncapped()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        chain.RpcConfig.GasCap = 0;
+
+        Address contractAddress = new("0xc200000000000000000000000000000000000000");
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { contractAddress, new AccountOverride { Code = Bytes.FromHexString("0x5a60005260206000f3") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractAddress,
+                            GasPrice = 0
+                        }
+                    ]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        SimulateCallResult callResult = result.Data.First().Calls.First();
+        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+        Assert.That(callResult.ReturnData, Is.Not.Null);
+
+        UInt256 gasAvailable = new(callResult.ReturnData!, isBigEndian: true);
+        Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+    }
+
+    [Test]
     public async Task TestTransferLogsAddress([Values] bool eip7708)
     {
         SimulatePayload<TransactionForRpc> payload = CreateTransferLogsAddressPayload();

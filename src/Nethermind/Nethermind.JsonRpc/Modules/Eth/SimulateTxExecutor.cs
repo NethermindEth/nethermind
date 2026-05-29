@@ -202,7 +202,8 @@ public class SimulateTxExecutor<TTrace>(
         Dictionary<Address, AccountOverride>? stateOverride,
         CancellationToken token)
     {
-        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap!.Value, token);
+        long simulateGasBudget = _rpcConfig.GasCap is null or 0 ? long.MaxValue : _rpcConfig.GasCap.Value;
+        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, simulateGasBudget, token);
 
         foreach (SimulateBlockResult<TTrace> item in results.Items)
         {
