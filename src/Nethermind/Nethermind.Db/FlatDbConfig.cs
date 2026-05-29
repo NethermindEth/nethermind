@@ -36,6 +36,11 @@ public class FlatDbConfig : IFlatDbConfig
     // explicitly to opt in.
     public int SparseTrieMaxHotAccounts { get; set; } = int.MaxValue;
     public int SparseTrieMaxHotSlots { get; set; } = int.MaxValue;
+    // Triggered (not per-block) memory bound for the preserved trie: prune only fires on a
+    // commit where retained storage-trie count exceeds this. int.MaxValue = no bound, matching
+    // historical behaviour. See IFlatDbConfig for why per-block evict-to-cap was abandoned
+    // (7.5x regression on realblocks â€” it discards the working set).
+    public int SparseTrieMaxRetainedStorageTries { get; set; } = int.MaxValue;
     // Static default stays at Legacy â€” the DI wiring in FlatWorldStateModule overrides this
     // to None whenever UseSparseRootComputation=true, because the Legacy warmer walks Patricia
     // which is duplicate work once the sparse trie is authoritative. The override is in DI

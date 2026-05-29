@@ -101,6 +101,19 @@ public interface IFlatDbConfig : IConfig
         "workloads with hot-slot locality.", DefaultValue = "2147483647")]
     int SparseTrieMaxHotSlots { get; set; }
 
+    [ConfigItem(Description = "Memory bound for the cross-block preserved sparse trie, expressed as the " +
+        "maximum number of per-contract storage tries kept revealed across blocks. This is the dimension " +
+        "that otherwise grows without bound (one arena per contract ever touched, evicted only on reorg). " +
+        "Unlike the LFU caps, pruning here is TRIGGERED, not per-block: a prune runs only on a commit where " +
+        "the retained storage-trie count exceeds this value, so warm steady-state operation pays nothing and " +
+        "the hot path is never touched. Per-block evict-to-cap was measured to be 7.5x slower on realblocks " +
+        "because it discards the working set; triggered pruning avoids that by firing only under genuine " +
+        "memory pressure. When a prune fires it collapses cold paths using the LFU caps above (which must be " +
+        "set to finite values for the prune to retain anything meaningful). Default int.MaxValue = no memory " +
+        "bound (matches historical behaviour). Set to a value sized to your memory budget, e.g. 200000.",
+        DefaultValue = "2147483647")]
+    int SparseTrieMaxRetainedStorageTries { get; set; }
+
     [ConfigItem(Description = "Selects which trie warmer implementation runs during execution. " +
         "'Legacy' (default) uses the Patricia-walking TrieWarmer which warms DB pages via real trie traversals. " +
         "'SparseProof' (EXPERIMENTAL) issues sparse-style root-to-leaf proof reads for hint targets and discards the " +

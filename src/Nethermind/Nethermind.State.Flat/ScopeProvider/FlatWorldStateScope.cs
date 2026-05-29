@@ -467,19 +467,45 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 if (_sparseComputedRoot is not null && _sparseComputedRoot == newRoot)
                 {
-                    // M3 LFU prune: collapse paths not in the hot-set to Blinded entries.
-                    // Skip entirely when capacities are int.MaxValue (effectively "never prune")
-                    // â€” keeps all revealed paths warm across blocks. Used while we validate
-                    // Prune doesn't introduce reveal-cycle regressions.
-                    bool pruneEnabled = _configuration.SparseTrieMaxHotAccounts < int.MaxValue
-                                     || _configuration.SparseTrieMaxHotSlots < int.MaxValue;
-                    if (pruneEnabled)
+                    // Prune policy â€” two independent triggers, both off by default (caps =
+                    // int.MaxValue), evaluated against the trie we are about to anchor:
+                    //
+                    //   1. LFU per-block prune: fires every commit when either hot-cap is finite.
+                    //      Aggressive; only sensible for workloads with strong hot-key locality.
+                    //      Measured 7.5x slower on realblocks (evicts the working set), so it
+                    //      stays opt-in.
+                    //
+                    //   2. Triggered memory-bound prune: fires only on commits where the retained
+                    //      storage-trie count exceeds SparseTrieMaxRetainedStorageTries. This is
+                    //      the production-safe bound â€” warm steady state pays nothing because the
+                    //      check is a single int compare and the prune body runs only under real
+                    //      memory pressure. When it does fire it uses the LFU caps to decide what
+                    //      to retain; if those are left at int.MaxValue we fall back to retaining
+                    //      the budget itself so the prune actually frees memory.
+                    bool lfuPruneEnabled = _configuration.SparseTrieMaxHotAccounts < int.MaxValue
+                                        || _configuration.SparseTrieMaxHotSlots < int.MaxValue;
+
+                    int retainedStorageTries = _sparseStateTrie.StorageTries.Count;
+                    bool overMemoryBudget = retainedStorageTries > _configuration.SparseTrieMaxRetainedStorageTries;
+
+                    bool shouldPrune = lfuPruneEnabled || overMemoryBudget;
+                    if (shouldPrune)
                     {
+                        // When only the memory-budget trigger fired, the operator may not have set
+                        // finite LFU caps. Derive retention from the budget so the prune is
+                        // meaningful: keep at most budget accounts/contracts and a generous
+                        // per-contract slot allowance, rather than pruning to int.MaxValue (a no-op).
+                        int hotAccounts = _configuration.SparseTrieMaxHotAccounts;
+                        int hotSlots = _configuration.SparseTrieMaxHotSlots;
+                        if (overMemoryBudget && !lfuPruneEnabled)
+                        {
+                            hotAccounts = _configuration.SparseTrieMaxRetainedStorageTries;
+                            hotSlots = _configuration.SparseTrieMaxRetainedStorageTries;
+                        }
+
                         try
                         {
-                            _sparseStateTrie.Prune(
-                                _configuration.SparseTrieMaxHotAccounts,
-                                _configuration.SparseTrieMaxHotSlots);
+                            _sparseStateTrie.Prune(hotAccounts, hotSlots);
                         }
                         catch (Exception ex)
                         {
@@ -497,7 +523,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                     // Observability for the cross-block cache. With pruning off the retained
                     // storage-trie count grows unbounded (one arena per contract ever touched);
-                    // log it periodically so operators can see growth and size the prune caps.
+                    // log it at Debug so operators can see growth and size the budget.
                     ILogger sizeLogger = _logManager.GetClassLogger<FlatWorldStateScope>();
                     if (sizeLogger.IsDebug)
                     {
@@ -505,7 +531,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         sizeLogger.Debug(
                             $"Sparse cross-block cache: storageTries={cs.StorageTrieCount}, " +
                             $"accountArenaNodes={cs.AccountArenaNodes}, storageArenaNodes={cs.StorageArenaNodes}, " +
-                            $"prune={(pruneEnabled ? "on" : "off")}");
+                            $"lfuPrune={(lfuPruneEnabled ? "on" : "off")}, " +
+                            $"memTrigger={(overMemoryBudget ? "FIRED" : "idle")}");
                     }
 
                     _preservedSparseTrie.StoreAnchored(_sparseStateTrie, newRoot);
