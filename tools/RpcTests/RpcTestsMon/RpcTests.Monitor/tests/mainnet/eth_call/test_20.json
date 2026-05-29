@@ -18,6 +18,10 @@
         "{{Hex(Head.Number - 2)}}"
       ],
       "id": "{{Request.Number}}"
+    },
+    "response": {
+      "id":1,
+      "jsonrpc":"2.0"
     }
   }
 ]

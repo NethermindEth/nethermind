@@ -14,13 +14,14 @@ internal class TestDefinition
     public required int Index { get; init; }
     public required DynamicExpression<TestContext, bool> Run { get; init; }
     public required DynamicJson<TestContext> Request { get; init; }
+    public DynamicJson<TestContext>? Response { get; init; }
 }
 
 internal static class TestLoader
 {
     private static readonly DirectoryInfo _testDir = new("tests");
 
-    public static TestDefinition[] Load(string[] globs)
+    public static TestDefinition[] Load(string[] globs, bool requiresResponse)
     {
         Matcher matcher = new();
         matcher.AddIncludePatterns(globs);
@@ -37,20 +38,25 @@ internal static class TestLoader
                 foreach (JsonNode? testNode in tests)
                 {
                     if (testNode?["run"]?.GetValue<string>() is not { } runExpr || testNode["request"] is not { } requestNode)
-                        throw new Exception($"Test \"{path}\" doesn't have required properties 'run' and 'request'");
+                        throw new Exception("Test is missing required properties 'run' and 'request'");
+
+                    if (requiresResponse && testNode["response"] is null)
+                        throw new Exception("Test is missing required 'response' property");
 
                     definitions.Add(new TestDefinition
                     {
                         FilePath = path,
                         Index = ++testIndex,
                         Run = new DynamicExpression<TestContext, bool>(runExpr),
-                        Request = new DynamicJson<TestContext>(requestNode)
+                        Request = new DynamicJson<TestContext>(requestNode),
+                        Response = testNode["response"] is { } responseNode ? new DynamicJson<TestContext>(responseNode) : null
                     });
                 }
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Failed to load test \"{path}\": {ex}");
+                Console.Error.WriteLine($"Failed to load test \"{path}\": {ex.Message}");
+                throw;
             }
         }
 

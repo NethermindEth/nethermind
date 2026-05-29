@@ -8,7 +8,7 @@ namespace Nethermind.RpcTests.Monitor;
 
 internal class MonitorRunner(ExecutionArgs args, INotifier notifier, HttpClient client)
 {
-    private readonly TestDefinition[] _tests = TestLoader.Load(args.TestGlobs);
+    private readonly TestDefinition[] _tests = TestLoader.Load(args.TestGlobs, requiresResponse: args.ReferenceUrl is null);
     private readonly TestExecutor _executor = new(client);
 
     public async Task RunAsync(CancellationToken ct)

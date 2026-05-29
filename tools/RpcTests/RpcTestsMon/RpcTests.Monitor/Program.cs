@@ -16,8 +16,7 @@ Option<Uri> targetOption = new("--target", "-t")
 Option<Uri> referenceOption = new("--reference", "-r")
 {
     Description = "Reference node HTTP URL",
-    CustomParser = UriParser,
-    Required = true
+    CustomParser = UriParser
 };
 
 Option<string[]> testsOption = new("--tests", "-g")
@@ -46,7 +45,7 @@ rootCommand.SetAction(async (parseResult, ct) =>
     ExecutionArgs args = new()
     {
         TargetUrl = parseResult.GetRequiredValue(targetOption),
-        ReferenceUrl = parseResult.GetRequiredValue(referenceOption),
+        ReferenceUrl = parseResult.GetValue(referenceOption),
         TestGlobs = parseResult.GetRequiredValue(testsOption),
         Parallelism = parseResult.GetValue(parallelismOption)
     };

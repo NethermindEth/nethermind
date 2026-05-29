@@ -6,7 +6,7 @@ namespace Nethermind.RpcTests.Monitor;
 internal class ExecutionArgs
 {
     public required Uri TargetUrl { get; init; }
-    public required Uri ReferenceUrl { get; init; }
+    public required Uri? ReferenceUrl { get; init; }
     public required string[] TestGlobs { get; init; }
     public int Parallelism { get; init; } = 10;
 }
