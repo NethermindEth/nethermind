@@ -71,7 +71,10 @@ public sealed class SparseStateTrie : IDisposable
     {
         if (!_storageTries.TryGetValue(accountPathHash, out SparsePatriciaTree? trie))
             return Keccak.EmptyTreeHash;
-        return trie.ComputeRoot();
+        // Per-contract storage tries are already invoked from a parallel pool in
+        // PersistentStorageProvider.UpdateRootHashesMultiThread â€” disable inner parallelism
+        // so we don't fan out a Parallel.For inside an already-parallel context.
+        return trie.ComputeRoot(allowParallel: false);
     }
 
     /// <summary>

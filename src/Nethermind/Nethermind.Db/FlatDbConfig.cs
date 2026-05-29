@@ -26,10 +26,17 @@ public class FlatDbConfig : IFlatDbConfig
     public bool SparseTrieSkipPatricia { get; set; } = false;
     public bool SparseTrieAuthoritativeStorage { get; set; } = true;
     public bool SparseTrieShadowStorageCompare { get; set; } = false;
-    // Default to effectively-unbounded retention until we are confident Prune handles every
-    // edge case (it currently triggers retry-loop failures on some realblocks blocks â€” see
-    // the in-flight investigation). Set to lower values to actually prune.
-    public int SparseTrieMaxHotAccounts { get; set; } = int.MaxValue;
-    public int SparseTrieMaxHotSlots { get; set; } = int.MaxValue;
+    // Match the IFlatDbConfig DefaultValue documentation. The previous int.MaxValue defaults
+    // silently disabled LFU pruning despite the ConfigItem docs advertising 50000/200000 â€”
+    // operators and benchmarks ran without actually exercising Prune. With F1's "never blind
+    // the root" fix in place, Prune is safe to default on. Set explicitly to int.MaxValue to
+    // disable pruning (cross-block trie keeps growing); set lower for tighter memory budgets.
+    public int SparseTrieMaxHotAccounts { get; set; } = 50_000;
+    public int SparseTrieMaxHotSlots { get; set; } = 200_000;
+    // Static default stays at Legacy â€” the DI wiring in FlatWorldStateModule overrides this
+    // to None whenever UseSparseRootComputation=true, because the Legacy warmer walks Patricia
+    // which is duplicate work once the sparse trie is authoritative. The override is in DI
+    // rather than here so non-sparse deployments keep the Patricia warmer without extra
+    // config gymnastics.
     public SparseTrieWarmerVariant SparseTrieWarmer { get; set; } = SparseTrieWarmerVariant.Legacy;
 }

@@ -29,6 +29,26 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
+        // Warmer wiring:
+        //   â€¢ TrieWarmerWorkerCount == 0 â†’ user explicitly disabled warming.
+        //   â€¢ SparseTrieWarmer == None â†’ user explicitly disabled warming.
+        //   â€¢ UseSparseRootComputation=true with Legacy warmer â†’ FORCE Noop. The Legacy
+        //     warmer walks Patricia, which is duplicate work once the sparse trie is
+        //     authoritative for root computation. Until the sparse-aware prefetcher (M5)
+        //     lands, the right behaviour is no warmer in sparse mode â€” the Patricia walks
+        //     materially distort sparse-mode benchmarks (extra DB reads, allocator pressure)
+        //     and never actually populate the sparse trie's reveal state.
+        //   â€¢ SparseTrieWarmer == SparseProof â†’ EXPERIMENTAL DB-page-cache prefetcher, kept
+        //     opt-in until proof results are fed back into the sparse trie.
+        //   â€¢ Otherwise â†’ Legacy Patricia warmer (correct for pure-Patricia mode).
+        bool sparseAuthoritative = flatDbConfig.UseSparseRootComputation;
+        bool legacyIsRedundantInSparseMode = sparseAuthoritative
+            && flatDbConfig.SparseTrieWarmer == SparseTrieWarmerVariant.Legacy;
+        bool useNoopWarmer =
+            flatDbConfig.TrieWarmerWorkerCount == 0
+            || flatDbConfig.SparseTrieWarmer == SparseTrieWarmerVariant.None
+            || legacyIsRedundantInSparseMode;
+
         builder
 
             // Implementation of nethermind interfaces
@@ -55,11 +75,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
-            // SparseTrieWarmer=None turns warming off entirely. Otherwise the existing TrieWarmer
-            // (the queue + worker pool) runs; what each worker actually does is selected inside
-            // FlatWorldStateScope.WarmUpStateTrie / FlatStorageTree.WarmUpStorageTrie based on the
-            // SparseTrieWarmer variant (Legacy = Patricia walk, SparseProof = sparse proof prefetch).
-            .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0 || flatDbConfig.SparseTrieWarmer == SparseTrieWarmerVariant.None
+            .AddSingleton<ITrieWarmer>(useNoopWarmer
                 ? _ => new NoopTrieWarmer()
                 : ctx => ctx.Resolve<TrieWarmer>())
             .AddSingleton<TrieWarmer>()

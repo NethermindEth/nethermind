@@ -18,6 +18,7 @@ public sealed class SparseSubtrie : IDisposable
     private const int InitialArenaCapacity = 64;
     private const int InitialChildrenCapacity = 128;
     private const int InitialValuesCapacity = 32;
+    private const int MaxBranchChildren = 16;
 
     private SparseTrieNode[] _arena;
     private SparseChildEntry[] _children;
@@ -26,6 +27,14 @@ public sealed class SparseSubtrie : IDisposable
     private int _childrenCount;
     private int _valuesCount;
     private int _freeHead = -1;
+    // Free lists per slice size (1..16) for branch child arrays. Branches reallocate their
+    // slice on every AddChild / RemoveChild / Prune-collapse; without these the _children
+    // array grew monotonically across blocks once cross-block reuse landed. Stack<int> gives
+    // O(1) push/pop; indices stay valid because slices live entirely inside _children.
+    private readonly Stack<int>?[] _childFreeListBySize = new Stack<int>?[MaxBranchChildren + 1];
+    // Free list of value slot indices freed by FreeNode/Prune. Values are heap byte[]; we
+    // just null the slot and reuse its index on the next AllocValue.
+    private readonly Stack<int> _valueFreeList = new();
 
     public int Root { get; set; } = -1;
     public int NumLeaves { get; internal set; }
@@ -67,7 +76,7 @@ public sealed class SparseSubtrie : IDisposable
         {
             NumLeaves--;
             if (node.IsDirty()) NumDirtyLeaves--;
-            if (node.ValueIndex >= 0) _values[node.ValueIndex] = null;
+            if (node.ValueIndex >= 0) FreeValue(node.ValueIndex);
         }
         _arena[idx] = default;
         _arena[idx].ValueIndex = _freeHead;
@@ -76,6 +85,16 @@ public sealed class SparseSubtrie : IDisposable
 
     public int AllocChildren(int count)
     {
+        if (count <= 0) return _childrenCount;
+        // Reuse a freed slice of the exact same size if one is available. Sizes are bounded
+        // by branch fan-out (16) so we keep one stack per size.
+        if (count <= MaxBranchChildren)
+        {
+            Stack<int>? bucket = _childFreeListBySize[count];
+            if (bucket is not null && bucket.Count > 0)
+                return bucket.Pop();
+        }
+
         int start = _childrenCount;
         _childrenCount += count;
         if (_childrenCount > _children.Length)
@@ -87,13 +106,39 @@ public sealed class SparseSubtrie : IDisposable
         return start;
     }
 
+    /// <summary>
+    /// Returns a children slice to the per-size free list. Callers must ensure no live branch
+    /// still references <paramref name="start"/>. The slice's contents are intentionally left
+    /// in place â€” the next <see cref="AllocChildren"/> caller overwrites them before any read.
+    /// </summary>
+    public void FreeChildren(int start, int count)
+    {
+        if (count <= 0 || count > MaxBranchChildren) return;
+        Stack<int>? bucket = _childFreeListBySize[count] ??= new Stack<int>();
+        bucket.Push(start);
+    }
+
     public int AllocValue(byte[] value)
     {
+        if (_valueFreeList.Count > 0)
+        {
+            int reused = _valueFreeList.Pop();
+            _values[reused] = value;
+            return reused;
+        }
+
         int idx = _valuesCount++;
         if (idx >= _values.Length)
             Array.Resize(ref _values, _values.Length * 2);
         _values[idx] = value;
         return idx;
+    }
+
+    private void FreeValue(int idx)
+    {
+        if (idx < 0 || idx >= _values.Length) return;
+        _values[idx] = null;
+        _valueFreeList.Push(idx);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -153,10 +198,11 @@ public sealed class SparseSubtrie : IDisposable
         TrieMask newMask = oldMask.SetBit(nibble);
         int oldCount = oldMask.CountBits();
         int newCount = oldCount + 1;
+        int oldStart = branch.ChildrenStart;
         int newStart = AllocChildren(newCount);
         int denseInsert = newMask.DenseIndex(nibble);
 
-        int srcIdx = branch.ChildrenStart;
+        int srcIdx = oldStart;
         int dstIdx = newStart;
         for (int d = 0; d < newCount; d++)
         {
@@ -168,6 +214,7 @@ public sealed class SparseSubtrie : IDisposable
         branch.StateMask = newMask;
         branch.ChildrenStart = newStart;
         branch.MarkDirty();
+        if (oldCount > 0) FreeChildren(oldStart, oldCount);
     }
 
     public void RemoveChildFromBranch(int branchIdx, int nibble)
@@ -179,16 +226,18 @@ public sealed class SparseSubtrie : IDisposable
         TrieMask newMask = oldMask.ClearBit(nibble);
         branch.BlindedMask = branch.BlindedMask.ClearBit(nibble);
         int newCount = oldCount - 1;
+        int oldStart = branch.ChildrenStart;
 
         if (newCount == 0)
         {
             branch.StateMask = TrieMask.Empty;
             branch.MarkDirty();
+            if (oldCount > 0) FreeChildren(oldStart, oldCount);
             return;
         }
 
         int newStart = AllocChildren(newCount);
-        int srcIdx = branch.ChildrenStart;
+        int srcIdx = oldStart;
         int dstIdx = newStart;
         for (int d = 0; d < oldCount; d++)
         {
@@ -200,6 +249,7 @@ public sealed class SparseSubtrie : IDisposable
         branch.StateMask = newMask;
         branch.ChildrenStart = newStart;
         branch.MarkDirty();
+        FreeChildren(oldStart, oldCount);
     }
 
 
@@ -549,8 +599,13 @@ public sealed class SparseSubtrie : IDisposable
             && _arena[existingBranchIdx].StateMask == TrieMask.Empty
             && _arena[existingBranchIdx].ChildrenStart >= 0)
         {
-            RlpNode blindedChild = _children[_arena[existingBranchIdx].ChildrenStart].BlindedRlp;
+            int oldChildrenStart = _arena[existingBranchIdx].ChildrenStart;
+            RlpNode blindedChild = _children[oldChildrenStart].BlindedRlp;
             FreeNode(existingBranchIdx);
+            // The extension-only node held a single blinded child slot; return it before we
+            // allocate the replacement 2-child slice or it leaks (the node itself is now
+            // freed, so nothing references this slot).
+            FreeChildren(oldChildrenStart, 1);
 
             TrieMask mask = TrieMask.Empty.SetBit(existingNibble).SetBit(newNibble);
             int childStart = AllocChildren(2);
@@ -574,11 +629,25 @@ public sealed class SparseSubtrie : IDisposable
 
 
 
-    public RlpNode UpdateCachedRlp()
+    /// <summary>
+    /// Hashes this subtrie bottom-up and returns the root's <see cref="RlpNode"/> (child-ref form).
+    /// </summary>
+    /// <param name="allowParallel">
+    /// When true the root branch's dirty subtries hash on the thread pool; when false the whole
+    /// walk is sequential. Storage tries must pass <c>false</c> because they are already invoked
+    /// from per-contract worker threads in
+    /// <c>PersistentStorageProvider.UpdateRootHashesMultiThread</c> â€” fanning out again would
+    /// nest <c>Parallel.For</c>'s inside a parallel context and oversubscribe the pool. Only the
+    /// final account-trie root is safe to parallelize.
+    /// </param>
+    public RlpNode UpdateCachedRlp(bool allowParallel = true)
     {
         if (Root == -1) return RlpNode.FromRlp([0x80]);
         if (_arena[Root].IsEmpty()) return RlpNode.FromRlp([0x80]);
-        HashNodeRootParallel(Root);
+        if (allowParallel)
+            HashNodeRootParallel(Root);
+        else
+            HashNode(Root);
         return _arena[Root].CachedRlp;
     }
 
@@ -622,7 +691,14 @@ public sealed class SparseSubtrie : IDisposable
         if (parallelRoots.Count >= ParallelMinRoots)
         {
             int[] arr = parallelRoots.ToArray();
-            System.Threading.Tasks.Parallel.For(0, arr.Length, i => HashNode(arr[i]));
+            // Cap the degree explicitly. Without this an account trie root with 200+ dirty
+            // depth-2 subtries can spin up dozens of pool workers, which on top of any
+            // ambient parallelism (e.g. another trie's compute) oversubscribes the pool and
+            // costs more than it saves. ProcessorCount is a sensible upper bound for a
+            // CPU-bound walk; we still let the runtime decide actual concurrency up to that.
+            int maxDop = Math.Min(arr.Length, Math.Max(1, Environment.ProcessorCount));
+            System.Threading.Tasks.ParallelOptions opts = new() { MaxDegreeOfParallelism = maxDop };
+            System.Threading.Tasks.Parallel.For(0, arr.Length, opts, i => HashNode(arr[i]));
         }
         else
         {
@@ -888,6 +964,10 @@ public sealed class SparseSubtrie : IDisposable
         Array.Clear(_arena);
         Array.Clear(_children);
         Array.Clear(_values);
+        // Drop any pending free-list entries: they reference slots inside the cleared arrays.
+        for (int i = 0; i < _childFreeListBySize.Length; i++)
+            _childFreeListBySize[i]?.Clear();
+        _valueFreeList.Clear();
         Root = AllocNode(SparseTrieNode.CreateEmpty());
     }
 
@@ -1078,15 +1158,19 @@ public sealed class SparseSubtrie : IDisposable
     {
         if (Root < 0) return;
         byte[] path = [];
-        PruneResult res = PruneRecursive(Root, path, isRetained);
-        if (res.BecameBlinded)
-        {
-            // Whole trie collapses: root becomes a single Blinded node holding the original
-            // root's full-RLP hash. We still need a root node, so allocate one.
-            FreeNode(Root);
-            Root = AllocNode(SparseTrieNode.CreateBlinded(res.BlindedRlp));
-        }
-        // Otherwise Root stays at the same idx â€” its children were updated in place.
+        // The root is NEVER replaced with a Blinded node, even when every descendant becomes
+        // cold. A blinded root breaks the next block's reveal cycle:
+        //   â€¢ TryFindBlindedEntryOnPath walks branch nodes only â€” it returns false on a
+        //     blinded root, so SparseRootComputer can't locate the boundary and exhausts
+        //     its retry budget.
+        //   â€¢ RevealSingleNode early-outs on empty-path/root proofs, so even if we DID load
+        //     the prevRoot proof, the existing reveal path doesn't replace the blinded root.
+        // Keeping the root revealed (as a branch with all-blinded children) keeps the
+        // structure descend-able: UpdateLeaves hits a blinded child slot, emits a target,
+        // and TryFindBlindedEntryOnPath returns its stored RLP from the parent branch.
+        // Cold leaves still collapse to Blinded under their parent branch via the recursive
+        // walk â€” we just stop one level short at the root.
+        _ = PruneRecursive(Root, path, isRetained);
     }
 
     private readonly struct PruneResult(bool becameBlinded, RlpNode blindedRlp)
@@ -1176,8 +1260,8 @@ public sealed class SparseSubtrie : IDisposable
         return PruneResult.Keep;
     }
 
-    /// <summary>Recursively frees all arena slots in a subtree rooted at <paramref name="nodeIdx"/>.
-    /// Does NOT free the children-array slice (left dangling until arena recycling lands).</summary>
+    /// <summary>Recursively frees all arena slots in a subtree rooted at <paramref name="nodeIdx"/>
+    /// and returns the branch's children-array slice to the per-size free list.</summary>
     private void FreeSubtree(int nodeIdx)
     {
         if (nodeIdx < 0) return;
@@ -1186,6 +1270,7 @@ public sealed class SparseSubtrie : IDisposable
         {
             TrieMask mask = node.StateMask;
             int cStart = node.ChildrenStart;
+            int childCount = mask.CountBits();
             for (int n = 0; n < 16; n++)
             {
                 if (!mask.IsBitSet(n)) continue;
@@ -1193,6 +1278,7 @@ public sealed class SparseSubtrie : IDisposable
                 SparseChildEntry e = _children[d];
                 if (e.IsRevealed) FreeSubtree(e.ArenaIndex);
             }
+            if (childCount > 0) FreeChildren(cStart, childCount);
         }
         FreeNode(nodeIdx);
     }

@@ -123,11 +123,17 @@ public sealed class SparsePatriciaTree : IDisposable
     {
         ref SparseTrieNode ext = ref _subtrie.NodeAt(extensionIdx);
         byte[]? shortKey = ext.ShortKey ?? [];
+        // The pre-merge extension-only node owns a single-slot children slice holding the
+        // blinded child. Once we transition it to a fully-revealed branch (or replace the
+        // node with a leaf below), nothing references that slot, so return it to the size-1
+        // free list. Captured BEFORE we mutate ext, since AllocChildren may pop it back.
+        int oldChildrenStart = ext.ChildrenStart;
 
         if (childProof.Kind == ProofNodeKind.Branch)
         {
             RlpNode extensionCachedRlp = ext.CachedRlp;
             int childCount = childProof.ChildMask.CountBits();
+            if (oldChildrenStart >= 0) _subtrie.FreeChildren(oldChildrenStart, 1);
             int childStart = _subtrie.AllocChildren(childCount);
             TrieMask mask = childProof.ChildMask;
             int dense = 0;
@@ -160,6 +166,9 @@ public sealed class SparsePatriciaTree : IDisposable
             shortKey.CopyTo(combinedKey.AsSpan());
             leafKey.CopyTo(combinedKey.AsSpan(shortKey.Length));
 
+            // The extension's 1-slot child slice is no longer referenced once we rewrite ext
+            // as a leaf â€” return it before allocating the value.
+            if (oldChildrenStart >= 0) _subtrie.FreeChildren(oldChildrenStart, 1);
             int valIdx = _subtrie.AllocValue(childProof.Value ?? []);
             ext = ref _subtrie.NodeAt(extensionIdx);
             ext.Kind = SparseNodeKind.Leaf;
@@ -187,6 +196,9 @@ public sealed class SparsePatriciaTree : IDisposable
             innerKey.CopyTo(combinedKey.AsSpan(shortKey.Length));
 
             RlpNode innerChildRef = childProof.ChildRlps is { Length: > 0 } ? childProof.ChildRlps[0] : default;
+            // Old 1-slot is being replaced by another 1-slot â€” free + alloc will normally
+            // pop the same slot back, so this is allocation-free in steady state.
+            if (oldChildrenStart >= 0) _subtrie.FreeChildren(oldChildrenStart, 1);
             int childStart = _subtrie.AllocChildren(1);
             _subtrie.ChildAt(childStart) = SparseChildEntry.Blinded(innerChildRef);
 
@@ -301,12 +313,18 @@ public sealed class SparsePatriciaTree : IDisposable
     /// Computes the state root hash via incremental bottom-up hashing.
     /// The root is always keccak-hashed regardless of RLP size.
     /// </summary>
-    public Hash256 ComputeRoot()
+    /// <param name="allowParallel">
+    /// When false, hashing is fully sequential. Pass false for per-contract storage tries that
+    /// are themselves being computed in parallel by
+    /// <c>PersistentStorageProvider.UpdateRootHashesMultiThread</c>, otherwise the inner
+    /// <c>Parallel.For</c> nests inside the outer parallel context and oversubscribes the pool.
+    /// </param>
+    public Hash256 ComputeRoot(bool allowParallel = true)
     {
         // UpdateCachedRlp returns CachedRlp (child-ref form) which for the root is either
         // a 32-byte hash (already keccaked) or inline RLP < 32 bytes.
         // For inline root, we keccak the inline bytes. For hash root, return the hash directly.
-        RlpNode rootRlp = _subtrie.UpdateCachedRlp();
+        RlpNode rootRlp = _subtrie.UpdateCachedRlp(allowParallel);
 
         if (rootRlp.IsNull || rootRlp.Length == 0 ||
             (rootRlp.Length == 1 && rootRlp.AsSpan()[0] == 0x80))
