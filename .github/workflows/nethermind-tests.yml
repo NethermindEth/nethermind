@@ -27,10 +27,12 @@ defaults:
     shell: bash
 
 jobs:
-  # Unit tests run as 6 grouped jobs per OS + macOS subset. Each job does ONE
-  # solution build, then `dotnet test Nethermind.slnx --filter "..."` with MTP
-  # cross-module parallelism — multiple test modules execute concurrently in
-  # one runner.
+  # Unit tests: hybrid matrix.
+  #   - Heavy projects (Sync, Merge.Plugin, Blockchain, Network, JsonRpc, Evm,
+  #     Runner) get their own runner. Needed for timing-sensitive tests
+  #     (PreWarmCaches, Process_long_running_branch) that fail when CPU is
+  #     shared with other test hosts.
+  #   - Fast/medium projects bundle into 5 groups, run sequentially within.
   tests:
     name: tests ${{ matrix.group }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
@@ -45,12 +47,20 @@ jobs:
           - ubuntu-24.04-arm
           - windows-latest
         group:
+          # Heavy — one project each, gets its own runner.
           - sync
-          - merge
+          - merge-plugin
+          - blockchain
           - network
-          - rpc
-          - state-evm
-          - mixed
+          - jsonrpc
+          - evm
+          - runner
+          # Grouped — fast/medium projects sequential within one runner.
+          - consensus
+          - state
+          - network-sub
+          - rpc-extras
+          - misc
         include:
           - { runner: macos-latest, group: os-sensitive }
     steps:
@@ -66,25 +76,31 @@ jobs:
           GROUP: ${{ matrix.group }}
         run: |
           case "$GROUP" in
-            sync)
-              projects=(Nethermind.Synchronization.Test)
+            # Heavy — standalone runners.
+            sync)         projects=(Nethermind.Synchronization.Test) ;;
+            merge-plugin) projects=(Nethermind.Merge.Plugin.Test) ;;
+            blockchain)   projects=(Nethermind.Blockchain.Test) ;;
+            network)      projects=(Nethermind.Network.Test) ;;
+            jsonrpc)      projects=(Nethermind.JsonRpc.Test) ;;
+            evm)          projects=(Nethermind.Evm.Test) ;;
+            runner)       projects=(Nethermind.Runner.Test) ;;
+            # Grouped — fast/medium projects sequential within one runner.
+            consensus)
+              projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test Nethermind.Merge.AuRa.Test Nethermind.Specs.Test)
               ;;
-            merge)
-              projects=(Nethermind.Merge.Plugin.Test Nethermind.Merge.AuRa.Test Nethermind.Blockchain.Test)
+            state)
+              # Nethermind.State.Test.Runner.Test lives in EthereumTests.slnx —
+              # tested by `spec-tx-rlp-trie` instead.
+              projects=(Nethermind.State.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
               ;;
-            network)
-              projects=(Nethermind.Network.Test Nethermind.Sockets.Test Nethermind.TxPool.Test Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.EthStats.Test)
+            network-sub)
+              projects=(Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Sockets.Test Nethermind.TxPool.Test Nethermind.EthStats.Test)
               ;;
-            rpc)
-              projects=(Nethermind.JsonRpc.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Runner.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test)
+            rpc-extras)
+              projects=(Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test Nethermind.Optimism.Test)
               ;;
-            state-evm)
-              # Nethermind.State.Test.Runner.Test lives in EthereumTests.slnx
-              # (not Nethermind.slnx) — tested by `spec-tx-rlp-trie` instead.
-              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
-              ;;
-            mixed)
-              projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Specs.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test Nethermind.Era1.Test Nethermind.EraE.Test Nethermind.History.Test Nethermind.Optimism.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
+            misc)
+              projects=(Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test Nethermind.Era1.Test Nethermind.EraE.Test Nethermind.History.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
               ;;
             os-sensitive)
               projects=(Nethermind.Db.Test Nethermind.JsonRpc.Test Nethermind.KeyStore.Test Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Network.Test Nethermind.Runner.Test Nethermind.Sockets.Test Nethermind.Synchronization.Test)
@@ -104,43 +120,16 @@ jobs:
           dotnet build Nethermind.slnx -c release -m -v minimal
           dotnet build-server shutdown || true
 
-          # Launch test invocations in parallel, bounded to 4 concurrent.
-          # Each project's stdout+stderr goes to its own log; exit code captured separately.
-          results_dir=$(mktemp -d)
-          MAX_PARALLEL=4
-          running=0
+          # Sequential within the group — tests with hard timing budgets (e.g.
+          # PreWarmCaches concurrency assertions, Process_long_running_branch)
+          # fail when CPU is oversubscribed by parallel test hosts.
+          set -e
           for project in "${projects[@]}"; do
-            if (( running >= MAX_PARALLEL )); then
-              wait -n || true
-              running=$((running - 1))
-            fi
-            (
-              if dotnet test --project "$project/$project.csproj" -c release \
-                  --no-build --no-restore -v minimal $coverage_args \
-                  > "$results_dir/$project.log" 2>&1; then
-                echo "0" > "$results_dir/$project.exitcode"
-              else
-                echo "$?" > "$results_dir/$project.exitcode"
-              fi
-            ) &
-            running=$((running + 1))
-          done
-          wait
-
-          # Report per-project results in a stable order; fail the job if any project failed.
-          fail=0
-          for project in "${projects[@]}"; do
-            rc=$(cat "$results_dir/$project.exitcode" 2>/dev/null || echo "?")
-            if [[ "$rc" == "0" ]]; then
-              echo "::group::✓ $project"
-            else
-              echo "::group::✗ $project (exit $rc)"
-              fail=1
-            fi
-            cat "$results_dir/$project.log" 2>/dev/null || true
+            echo "::group::$project"
+            dotnet test --project "$project/$project.csproj" -c release \
+              --no-build --no-restore -v minimal $coverage_args
             echo "::endgroup::"
           done
-          exit $fail
 
       - name: Upload coverage reports
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
@@ -220,40 +209,14 @@ jobs:
           dotnet build EthereumTests.slnx -c release -m -v minimal
           dotnet build-server shutdown || true
 
-          results_dir=$(mktemp -d)
-          MAX_PARALLEL=4
-          running=0
+          # Sequential within the group — avoids CPU contention on timing-sensitive tests.
+          set -e
           for project in "${projects[@]}"; do
-            if (( running >= MAX_PARALLEL )); then
-              wait -n || true
-              running=$((running - 1))
-            fi
-            (
-              if dotnet test --project "$project/$project.csproj" -c release \
-                  --no-build --no-restore -v minimal $coverage_args \
-                  > "$results_dir/$project.log" 2>&1; then
-                echo "0" > "$results_dir/$project.exitcode"
-              else
-                echo "$?" > "$results_dir/$project.exitcode"
-              fi
-            ) &
-            running=$((running + 1))
-          done
-          wait
-
-          fail=0
-          for project in "${projects[@]}"; do
-            rc=$(cat "$results_dir/$project.exitcode" 2>/dev/null || echo "?")
-            if [[ "$rc" == "0" ]]; then
-              echo "::group::✓ $project${TEST_CHUNK:+ ($TEST_CHUNK)}"
-            else
-              echo "::group::✗ $project${TEST_CHUNK:+ ($TEST_CHUNK)} (exit $rc)"
-              fail=1
-            fi
-            cat "$results_dir/$project.log" 2>/dev/null || true
+            echo "::group::$project${TEST_CHUNK:+ ($TEST_CHUNK)}"
+            dotnet test --project "$project/$project.csproj" -c release \
+              --no-build --no-restore -v minimal $coverage_args
             echo "::endgroup::"
           done
-          exit $fail
 
       - name: Upload coverage reports
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'

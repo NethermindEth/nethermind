@@ -33,12 +33,21 @@ jobs:
           - { label: checked, args: '-p:DefineConstants=TRACE%3BDEBUG', hw: '' }
           - { label: no-intrinsics, args: '', hw: '0' }
         group:
+          # Heavy — one project each, gets its own runner per variant.
           - sync
-          - merge
+          - merge-plugin
+          - blockchain
           - network
-          - rpc
-          - state-evm
-          - mixed
+          - jsonrpc
+          - evm
+          - runner
+          # Grouped — fast/medium projects sequential.
+          - consensus
+          - state
+          - network-sub
+          - rpc-extras
+          - misc
+          # Ethereum spec groups (built from EthereumTests.slnx).
           - spec-core
           - spec-tx-rlp-trie
     env:
@@ -60,32 +69,37 @@ jobs:
           VARIANT_ARGS: ${{ matrix.variant.args }}
         run: |
           case "$GROUP" in
-            sync)
+            # Heavy — standalone runners per variant.
+            sync)         solution=Nethermind.slnx; projects=(Nethermind.Synchronization.Test) ;;
+            merge-plugin) solution=Nethermind.slnx; projects=(Nethermind.Merge.Plugin.Test) ;;
+            blockchain)   solution=Nethermind.slnx; projects=(Nethermind.Blockchain.Test) ;;
+            network)      solution=Nethermind.slnx; projects=(Nethermind.Network.Test) ;;
+            jsonrpc)      solution=Nethermind.slnx; projects=(Nethermind.JsonRpc.Test) ;;
+            evm)          solution=Nethermind.slnx; projects=(Nethermind.Evm.Test) ;;
+            runner)       solution=Nethermind.slnx; projects=(Nethermind.Runner.Test) ;;
+            # Grouped — fast/medium projects sequential within one runner.
+            consensus)
               solution=Nethermind.slnx
-              projects=(Nethermind.Synchronization.Test)
+              projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test Nethermind.Merge.AuRa.Test Nethermind.Specs.Test)
               ;;
-            merge)
+            state)
               solution=Nethermind.slnx
-              projects=(Nethermind.Merge.Plugin.Test Nethermind.Merge.AuRa.Test Nethermind.Blockchain.Test)
+              # Nethermind.State.Test.Runner.Test lives in EthereumTests.slnx —
+              # tested by `spec-tx-rlp-trie` instead.
+              projects=(Nethermind.State.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
               ;;
-            network)
+            network-sub)
               solution=Nethermind.slnx
-              projects=(Nethermind.Network.Test Nethermind.Sockets.Test Nethermind.TxPool.Test Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.EthStats.Test)
+              projects=(Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Sockets.Test Nethermind.TxPool.Test Nethermind.EthStats.Test)
               ;;
-            rpc)
+            rpc-extras)
               solution=Nethermind.slnx
-              projects=(Nethermind.JsonRpc.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Runner.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test)
+              projects=(Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test Nethermind.Optimism.Test)
               ;;
-            state-evm)
-              solution=Nethermind.slnx
-              # Nethermind.State.Test.Runner.Test lives in EthereumTests.slnx
-              # (not Nethermind.slnx) — tested by `spec-tx-rlp-trie` instead.
-              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
-              ;;
-            mixed)
+            misc)
               solution=Nethermind.slnx
               # Note: EraE not covered by this workflow upstream.
-              projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Specs.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test Nethermind.Era1.Test Nethermind.History.Test Nethermind.Optimism.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
+              projects=(Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test Nethermind.Era1.Test Nethermind.History.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
               ;;
             spec-core)
               solution=EthereumTests.slnx
@@ -107,40 +121,14 @@ jobs:
           dotnet build "$solution" -c release -m -v minimal $VARIANT_ARGS
           dotnet build-server shutdown || true
 
-          results_dir=$(mktemp -d)
-          MAX_PARALLEL=4
-          running=0
+          # Sequential within the group — avoids CPU contention on timing-sensitive tests.
+          set -e
           for project in "${projects[@]}"; do
-            if (( running >= MAX_PARALLEL )); then
-              wait -n || true
-              running=$((running - 1))
-            fi
-            (
-              if dotnet test --project "$project/$project.csproj" -c release \
-                  --no-build --no-restore -v minimal $VARIANT_ARGS \
-                  > "$results_dir/$project.log" 2>&1; then
-                echo "0" > "$results_dir/$project.exitcode"
-              else
-                echo "$?" > "$results_dir/$project.exitcode"
-              fi
-            ) &
-            running=$((running + 1))
-          done
-          wait
-
-          fail=0
-          for project in "${projects[@]}"; do
-            rc=$(cat "$results_dir/$project.exitcode" 2>/dev/null || echo "?")
-            if [[ "$rc" == "0" ]]; then
-              echo "::group::✓ $project [${{ matrix.variant.label }}]"
-            else
-              echo "::group::✗ $project [${{ matrix.variant.label }}] (exit $rc)"
-              fail=1
-            fi
-            cat "$results_dir/$project.log" 2>/dev/null || true
+            echo "::group::$project [${{ matrix.variant.label }}]"
+            dotnet test --project "$project/$project.csproj" -c release \
+              --no-build --no-restore -v minimal $VARIANT_ARGS
             echo "::endgroup::"
           done
-          exit $fail
 
   # Heavy chunked tests under both variants. TEST_SKIP_HEAVY=1 limits each chunk.
   # Legacy.Blockchain: 8 → 4 chunks (same total work, larger chunks).

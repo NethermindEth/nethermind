@@ -61,40 +61,14 @@ jobs:
           dotnet build "$solution" -c release -m -v minimal
           dotnet build-server shutdown || true
 
-          results_dir=$(mktemp -d)
-          MAX_PARALLEL=4
-          running=0
+          # Sequential within the group — avoids CPU contention on timing-sensitive tests.
+          set -e
           for project in "${projects[@]}"; do
-            if (( running >= MAX_PARALLEL )); then
-              wait -n || true
-              running=$((running - 1))
-            fi
-            (
-              if dotnet test --project "$project/$project.csproj" -c release \
-                  --no-build --no-restore -v minimal \
-                  > "$results_dir/$project.log" 2>&1; then
-                echo "0" > "$results_dir/$project.exitcode"
-              else
-                echo "$?" > "$results_dir/$project.exitcode"
-              fi
-            ) &
-            running=$((running + 1))
-          done
-          wait
-
-          fail=0
-          for project in "${projects[@]}"; do
-            rc=$(cat "$results_dir/$project.exitcode" 2>/dev/null || echo "?")
-            if [[ "$rc" == "0" ]]; then
-              echo "::group::✓ $project"
-            else
-              echo "::group::✗ $project (exit $rc)"
-              fail=1
-            fi
-            cat "$results_dir/$project.log" 2>/dev/null || true
+            echo "::group::$project"
+            dotnet test --project "$project/$project.csproj" -c release \
+              --no-build --no-restore -v minimal
             echo "::endgroup::"
           done
-          exit $fail
 
   # Legacy.Blockchain chunks — 8 → 4 chunks (same total work, larger chunks).
   tests-legacy-chunked:
