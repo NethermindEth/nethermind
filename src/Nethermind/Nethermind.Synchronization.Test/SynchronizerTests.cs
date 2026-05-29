@@ -17,7 +17,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -138,10 +137,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
                 if (started)
                 {
-                    // Deep-clone so the synchronizer's downstream mutations (Hash recompute,
-                    // TotalDifficulty rewrite, etc.) cannot bleed back into the peer's stored
-                    // Blocks — and through them into the test's `peer.HeadHeader` reference.
-                    result[filled++] = Rlp.Decode<BlockHeader>(Rlp.Encode(block.Header).Bytes);
+                    result[filled++] = block.Header;
                 }
 
                 if (filled >= maxBlocks)
@@ -349,8 +345,11 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public SyncingContext BestSuggestedHeaderIs(BlockHeader header, int timeout = DynamicTimeout)
         {
-            WaitForBestSuggested(h => ReferenceEquals(h, header) || h?.Hash == header.Hash, timeout);
-            Assert.That(BlockTree.BestSuggestedHeader, Is.EqualTo(header), "header");
+            Hash256 expectedHash = header.Hash!;
+            Assert.That(
+                () => BlockTree.BestSuggestedHeader?.Hash,
+                Is.EqualTo(expectedHash).After(timeout, 10),
+                () => $"BestSuggestedHeader hash mismatch. Expected {expectedHash}, current: {BlockTree.BestSuggestedHeader}");
             _blockHeader = BlockTree.BestSuggestedHeader!;
             return this;
         }
@@ -358,37 +357,12 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         public SyncingContext BestSuggestedBlockHasNumber(long number)
         {
             _logger.Info($"ASSERTING THAT NUMBER IS {number}");
-            WaitForBestSuggested(h => h?.Number == number, DynamicTimeout);
-            Assert.That(BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(number), "block number");
+            Assert.That(
+                () => BlockTree.BestSuggestedHeader?.Number,
+                Is.EqualTo(number).After(DynamicTimeout, 10),
+                () => $"BestSuggestedHeader number mismatch. Expected {number}, current: {BlockTree.BestSuggestedHeader}");
             _blockHeader = BlockTree.BestSuggestedHeader!;
             return this;
-        }
-
-        private void WaitForBestSuggested(Func<BlockHeader?, bool> predicate, int timeoutMs)
-        {
-            if (predicate(BlockTree.BestSuggestedHeader))
-                return;
-
-            TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            EventHandler<BlockEventArgs> handler = (_, args) =>
-            {
-                if (predicate(args.Block?.Header))
-                    tcs.TrySetResult();
-            };
-            BlockTree.NewBestSuggestedBlock += handler;
-            try
-            {
-                if (predicate(BlockTree.BestSuggestedHeader))
-                    return;
-                if (!tcs.Task.Wait(timeoutMs))
-                {
-                    Assert.Fail($"Timed out after {timeoutMs}ms waiting for predicate on BestSuggestedHeader. Current: {BlockTree.BestSuggestedHeader}");
-                }
-            }
-            finally
-            {
-                BlockTree.NewBestSuggestedBlock -= handler;
-            }
         }
 
         public SyncingContext BlockIsSameAsGenesis()
