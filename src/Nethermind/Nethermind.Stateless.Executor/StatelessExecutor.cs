@@ -40,9 +40,17 @@ public static class StatelessExecutor
                 transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].Bytes.AsSpan(1));
 
             using Witness witness = payload.Witness.ToWitness();
-            success = Execute(payload.Block, witness, specProvider);
+
+            try
+            {
+                success = Execute(payload.Block, witness, specProvider);
+            }
+            catch (Exception ex)
+            {
+                Debug.Fail(ex.Message);
+            }
         }
-        
+
         StatelessValidationResult result = new()
         {
             NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
@@ -56,17 +64,7 @@ public static class StatelessExecutor
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
     {
         BlockHeader? parentHeader = null;
-        ArrayPoolList<BlockHeader> headers;
-
-        try
-        {
-            headers = witness.DecodeHeaders();
-        }
-        catch (Exception ex)
-        {
-            Debug.Fail(ex.Message);
-            return false;
-        }
+        using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
 
         foreach (BlockHeader header in headers)
         {
@@ -114,19 +112,11 @@ public static class StatelessExecutor
         Block processedBlock;
         TxReceipt[] receipts;
 
-        try
-        {
-            (processedBlock, receipts) = blockProcessor.ProcessOne(
-                suggestedBlock,
-                ProcessingOptions.ReadOnlyChain,
-                NullBlockTracer.Instance,
-                specProvider.GetSpec(suggestedBlock.Header));
-        }
-        catch (Exception ex)
-        {
-            Debug.Fail(ex.Message);
-            return false;
-        }
+        (processedBlock, receipts) = blockProcessor.ProcessOne(
+            suggestedBlock,
+            ProcessingOptions.ReadOnlyChain,
+            NullBlockTracer.Instance,
+            specProvider.GetSpec(suggestedBlock.Header));
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
         {
