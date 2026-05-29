@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -22,10 +22,12 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 {
     private const int BufferSize = 1024 * 16;
     private const int SlotBufferSize = 1024;
+    private const int DisposeTimeoutMilliseconds = 1000;
 
     private readonly ILogger _logger;
 
     private bool _isDisposed = false;
+    private int _activeProcessors = 0;
 
     private readonly SpmcRingBuffer<SlotJob> _slotJobBuffer = new(SlotBufferSize);
 
@@ -33,7 +35,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     private readonly MpmcRingBuffer<Job> _jobBufferMultiThreaded = new(BufferSize);
 
     // A job needs to be small, within one cache line (64B) ideally.
-    private record struct Job(
+    private readonly record struct Job(
         // If its warming up address, its a scope, otherwise, its a storage tree.
         object scopeOrStorageTree,
         Address? path,
@@ -41,23 +43,13 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         int sequenceId);
 
     // A slot hint from the main processing thread is called a lot, so it has its own dedicated queue with a smaller job struct.
-    private record struct SlotJob(
+    private readonly record struct SlotJob(
         ITrieWarmer.IStorageWarmer storageTree,
         UInt256 index,
         int sequenceId);
 
-    private readonly Task? _warmerJob = null;
-    private readonly int _secondaryWorkerCount;
-
-    private int _pendingWakeUpSlots = 0;
-    private int _activeSecondaryWorker = 0;
-    private int _shouldWakeUpPrimaryWorker = 0;
-    private readonly ManualResetEventSlim _primaryWorkerLatch = new();
-
-    // Use a full semaphore instead of the slim variant to reduce the spin used and prefer to not wake up thread until
-    // needed. Only the main worker spin.
-    private readonly Semaphore _executionSlots;
-
+    private readonly Processor[] _processors;
+    private readonly ManualResetEventSlim _processorsIdle = new(initialState: true);
     private readonly CancellationTokenSource _cancelTokenSource;
 
     public TrieWarmer(IProcessExitSource processExitSource, ILogManager logManager, IFlatDbConfig flatDbConfig)
@@ -66,177 +58,82 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount - 1, 1)
+            ? Math.Max(Environment.ProcessorCount / 2, 1)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
-        _secondaryWorkerCount = workerCount - 1;
-
-        _executionSlots = new Semaphore(0, _secondaryWorkerCount);
 
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
-        if (_secondaryWorkerCount > 0)
+        _processors = new Processor[workerCount];
+        for (int i = 0; i < _processors.Length; i++)
         {
-            _warmerJob = Task.Run(() =>
-            {
-                using ArrayPoolListRef<Thread> tasks = new(_secondaryWorkerCount);
-                Thread primaryWorkerThread = new(() =>
-                {
-                    RunPrimaryWorker(_cancelTokenSource.Token);
-                })
-                {
-                    Name = "TrieWarmer-Primary",
-                    IsBackground = true
-                };
-                primaryWorkerThread.Start();
-                tasks.Add(primaryWorkerThread);
-
-                for (int i = 0; i < _secondaryWorkerCount; i++)
-                {
-                    Thread t = new(() =>
-                    {
-                        RunSecondaryWorker(_cancelTokenSource.Token);
-                    })
-                    {
-                        Name = $"TrieWarmer-Secondary-{i}",
-                        Priority = ThreadPriority.Lowest,
-                        IsBackground = true
-                    };
-                    t.Start();
-                    tasks.Add(t);
-                }
-
-                foreach (Thread thread in tasks)
-                {
-                    thread.Join();
-                }
-            });
+            _processors[i] = new Processor(this);
         }
     }
 
-    private void RunPrimaryWorker(CancellationToken cancellationToken)
+    private sealed class Processor(TrieWarmer owner) : IThreadPoolWorkItem
     {
-        SpinWait spinWait = new();
-        try
+        private readonly TrieWarmer _owner = owner;
+        private int _scheduled = 0;
+
+        public bool TrySchedule()
         {
-            while (true)
-            {
-                if (cancellationToken.IsCancellationRequested) break;
+            if (Interlocked.CompareExchange(ref _scheduled, 1, 0) != 0) return false;
 
-                if (TryDequeue(out Job job))
-                {
-                    spinWait.Reset();
-                    MaybeWakeOpOtherWorker();
-
-                    HandleJob(job);
-                }
-                else
-                {
-                    if (spinWait.NextSpinWillYield)
-                    {
-                        _primaryWorkerLatch.Reset();
-                        _shouldWakeUpPrimaryWorker = 1;
-                        _primaryWorkerLatch.Wait(1, cancellationToken);
-                        _shouldWakeUpPrimaryWorker = 0;
-                    }
-                    else
-                    {
-                        spinWait.SpinOnce();
-                    }
-                }
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            if (_logger.IsError) _logger.Error("Error in primary warmup job ", ex);
-        }
-    }
-
-    private void RunSecondaryWorker(CancellationToken cancellationToken)
-    {
-        try
-        {
-            Interlocked.Increment(ref _activeSecondaryWorker);
-            while (true)
-            {
-                if (cancellationToken.IsCancellationRequested) break;
-
-                if (TryDequeue(out Job job))
-                {
-                    HandleJob(job);
-                }
-                else
-                {
-                    Interlocked.Decrement(ref _activeSecondaryWorker);
-                    if (WaitForExecutionSlot())
-                    {
-                        Interlocked.Decrement(ref _pendingWakeUpSlots);
-                    }
-                    Interlocked.Increment(ref _activeSecondaryWorker);
-                }
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            if (_logger.IsError) _logger.Error("Error in warmup job ", ex);
-        }
-    }
-
-    // Some wait but not forever so that it exit properly
-    private bool WaitForExecutionSlot() => _executionSlots.WaitOne(500);
-
-    private bool ShouldWakeUpMoreWorker()
-    {
-        // Assume that for each pending job, it go to the respective worker.
-        int effectiveActiveWorker = _activeSecondaryWorker + _pendingWakeUpSlots;
-        if (effectiveActiveWorker >= _secondaryWorkerCount) return false; // We cant wake up more worker
-
-        // We should wake up more worker if the num of job is more than effective active worker
-
-        // We go check the queue one by one because they each do a volatile read
-        long jobCount = _jobBufferMultiThreaded.EstimatedJobCount;
-        if (jobCount > effectiveActiveWorker) return true;
-
-        jobCount += _slotJobBuffer.EstimatedJobCount;
-        return jobCount > effectiveActiveWorker;
-    }
-
-    private bool MaybeWakeOpOtherWorker()
-    {
-        bool wokeUpWorker = false;
-
-        // Release one by one until all jobs were dequeued
-        while (ShouldWakeUpMoreWorker())
-        {
-            try
-            {
-                Interlocked.Increment(ref _pendingWakeUpSlots);
-                _executionSlots.Release();
-                wokeUpWorker = true;
-            }
-            catch (SemaphoreFullException)
-            {
-                Interlocked.Decrement(ref _pendingWakeUpSlots);
-                break;
-            }
-        }
-
-        return wokeUpWorker;
-    }
-
-    private bool MaybeWakeupFast()
-    {
-        // Skipping wakeup due to non-atomic read is fine. Doing atomic operation all the time slows down measurably.
-        if (_shouldWakeUpPrimaryWorker == 1)
-        {
-            _primaryWorkerLatch.Set();
-            _shouldWakeUpPrimaryWorker = 0;
+            _owner.OnProcessorScheduled();
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
             return true;
         }
 
-        return false;
+        public void ClearScheduled() => Volatile.Write(ref _scheduled, 0);
+
+        public bool TryReacquireAfterEmptyCheck() => Interlocked.Exchange(ref _scheduled, 1) == 0;
+
+        void IThreadPoolWorkItem.Execute() => _owner.Execute(this);
+    }
+
+    private bool HasReadyWork() => _slotJobBuffer.HasReadyItem || _jobBufferMultiThreaded.HasReadyItem;
+
+    private long PendingHint() => _slotJobBuffer.EstimatedJobCount + _jobBufferMultiThreaded.EstimatedJobCount;
+
+    private void KickProcessors()
+    {
+        long pending = PendingHint();
+        int desiredProcessors = (int)Math.Min(_processors.Length, Math.Max(1, pending));
+        for (int i = 0; i < desiredProcessors; i++)
+        {
+            _processors[i].TrySchedule();
+        }
+    }
+
+    private void Execute(Processor processor)
+    {
+        try
+        {
+            while (true)
+            {
+                while (TryDequeue(out Job job))
+                {
+                    HandleJob(in job);
+                }
+
+                processor.ClearScheduled();
+                Thread.MemoryBarrier();
+
+                if (!HasReadyWork()) break;
+                if (!processor.TryReacquireAfterEmptyCheck()) break;
+            }
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error("Error in trie warmer processor", ex);
+            processor.ClearScheduled();
+            KickProcessors();
+        }
+        finally
+        {
+            OnProcessorStopped();
+        }
     }
 
     private bool TryDequeue(out Job job)
@@ -254,23 +151,18 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         return _jobBufferMultiThreaded.TryDequeue(out job);
     }
 
-    private static void HandleJob(Job job)
+    private static void HandleJob(in Job job)
     {
-        (object scopeOrStorageTree,
-            Address? address,
-            UInt256 index,
-            int sequenceId) = job;
-
         try
         {
-            if (scopeOrStorageTree is ITrieWarmer.IAddressWarmer scope)
+            if (job.scopeOrStorageTree is ITrieWarmer.IAddressWarmer scope)
             {
-                scope.WarmUpStateTrie(address!, sequenceId);
+                scope.WarmUpStateTrie(job.path!, job.sequenceId);
             }
             else
             {
-                ITrieWarmer.IStorageWarmer storageTree = (ITrieWarmer.IStorageWarmer)scopeOrStorageTree;
-                storageTree.WarmUpStorageTrie(index, sequenceId);
+                ITrieWarmer.IStorageWarmer storageTree = (ITrieWarmer.IStorageWarmer)job.scopeOrStorageTree;
+                storageTree.WarmUpStorageTrie(job.index, job.sequenceId);
             }
         }
         // It can be missing when the warmer lags so much behind that the node is now gone.
@@ -286,53 +178,83 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
     {
+        if (Volatile.Read(ref _isDisposed)) return false;
+
         // Address is not single threaded. In which case, might as well use the same buffer.
         bool enqueued = _jobBufferMultiThreaded.TryEnqueue(new Job(scope, path, default, sequenceId));
-        if (enqueued) MaybeWakeupFast();
+        if (enqueued) KickProcessors();
         return enqueued;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256? index, int sequenceId)
     {
+        if (Volatile.Read(ref _isDisposed)) return false;
+
         bool enqueued = _slotJobBuffer.TryEnqueue(new SlotJob(storageTree, index.GetValueOrDefault(), sequenceId));
-        if (enqueued) MaybeWakeupFast();
+        if (enqueued) KickProcessors();
         return enqueued;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
     {
+        if (Volatile.Read(ref _isDisposed)) return false;
+
         bool enqueued = _jobBufferMultiThreaded.TryEnqueue(new Job(storageTree, null, index, sequenceId));
-        if (enqueued) MaybeWakeupFast();
+        if (enqueued) KickProcessors();
         return enqueued;
     }
 
-    public void OnEnterScope() => _primaryWorkerLatch.Set();
+    public void OnEnterScope() { }
 
     public void OnExitScope() { }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+        if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return ValueTask.CompletedTask;
 
         _cancelTokenSource.Cancel();
+        KickProcessors();
 
-        // Release semaphore so that worker detects the cancellation quickly
-        while (true)
+        bool processorsStopped = WaitForProcessorsToStop();
+        if (!processorsStopped && _logger.IsWarn)
         {
-            try
-            {
-                _executionSlots.Release();
-            }
-            catch (SemaphoreFullException)
-            {
-                break;
-            }
+            _logger.Warn($"TrieWarmer processors ({Volatile.Read(ref _activeProcessors)}) did not stop within {DisposeTimeoutMilliseconds}ms during dispose");
         }
 
-        if (_warmerJob is not null) await _warmerJob;
-        _executionSlots.Dispose();
         _cancelTokenSource.Dispose();
+        // A push can pass the disposed check before DisposeAsync starts and still need to schedule
+        // accepted work. Keep the process-lifetime wait handle alive so that race cannot observe a
+        // disposed event while flushing the accepted job.
+
+        return ValueTask.CompletedTask;
+    }
+
+    private void OnProcessorScheduled()
+    {
+        Interlocked.Increment(ref _activeProcessors);
+        _processorsIdle.Reset();
+    }
+
+    private void OnProcessorStopped()
+    {
+        if (Interlocked.Decrement(ref _activeProcessors) == 0)
+        {
+            _processorsIdle.Set();
+        }
+    }
+
+    private bool WaitForProcessorsToStop()
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        while (Volatile.Read(ref _activeProcessors) != 0)
+        {
+            int remainingMilliseconds = DisposeTimeoutMilliseconds - (int)stopwatch.ElapsedMilliseconds;
+            if (remainingMilliseconds <= 0) return Volatile.Read(ref _activeProcessors) == 0;
+            if (!_processorsIdle.Wait(remainingMilliseconds)) return Volatile.Read(ref _activeProcessors) == 0;
+        }
+
+        return true;
     }
 }
