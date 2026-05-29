@@ -22,6 +22,7 @@ public sealed class BucketedLfu<TKey> where TKey : notnull
 
     private readonly Dictionary<TKey, EntryMeta> _entries;
     private readonly List<TKey>[] _buckets;
+    private readonly object _gate = new();
     private int _minFreq = MinFrequency;
     private int _capacity;
 
@@ -40,35 +41,41 @@ public sealed class BucketedLfu<TKey> where TKey : notnull
             _buckets[i] = [];
     }
 
-    public int Count => _entries.Count;
+    public int Count { get { lock (_gate) return _entries.Count; } }
     public int Capacity => _capacity;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Touch(TKey key)
     {
-        if (_entries.TryGetValue(key, out EntryMeta meta))
+        // Concurrent block processing touches the LFU from many threads (per-contract
+        // storage compute runs in parallel via PersistentStorageProvider.UpdateRootHashesMultiThread).
+        // Dictionary + List<T> are not thread-safe; without the lock the bucket positions
+        // diverge from the entry meta and RemoveFromBucket throws IndexOutOfRange. A single
+        // monitor lock is fine here because Touch is O(1) and the hot path inside is small.
+        lock (_gate)
         {
-            // Existing key — increment frequency
-            RemoveFromBucket(key, meta.Freq, meta.Pos);
-            byte newFreq = meta.Freq < MaxFrequency ? (byte)(meta.Freq + 1) : MaxFrequency;
-            int newPos = _buckets[newFreq].Count;
-            _buckets[newFreq].Add(key);
-            _entries[key] = new EntryMeta { Freq = newFreq, Pos = newPos };
+            if (_entries.TryGetValue(key, out EntryMeta meta))
+            {
+                // Existing key — increment frequency
+                RemoveFromBucket(key, meta.Freq, meta.Pos);
+                byte newFreq = meta.Freq < MaxFrequency ? (byte)(meta.Freq + 1) : MaxFrequency;
+                int newPos = _buckets[newFreq].Count;
+                _buckets[newFreq].Add(key);
+                _entries[key] = new EntryMeta { Freq = newFreq, Pos = newPos };
 
-            // Update min frequency if we emptied the old bucket
-            if (_buckets[meta.Freq].Count == 0 && meta.Freq == _minFreq)
-                _minFreq = newFreq;
-        }
-        else
-        {
-            // New key — evict if at capacity
-            if (_entries.Count >= _capacity)
-                EvictOne();
+                if (_buckets[meta.Freq].Count == 0 && meta.Freq == _minFreq)
+                    _minFreq = newFreq;
+            }
+            else
+            {
+                if (_entries.Count >= _capacity)
+                    EvictOne();
 
-            int pos = _buckets[MinFrequency].Count;
-            _buckets[MinFrequency].Add(key);
-            _entries[key] = new EntryMeta { Freq = MinFrequency, Pos = pos };
-            _minFreq = MinFrequency;
+                int pos = _buckets[MinFrequency].Count;
+                _buckets[MinFrequency].Add(key);
+                _entries[key] = new EntryMeta { Freq = MinFrequency, Pos = pos };
+                _minFreq = MinFrequency;
+            }
         }
     }
 
@@ -77,19 +84,26 @@ public sealed class BucketedLfu<TKey> where TKey : notnull
     /// </summary>
     public List<TKey> DecayAndEvict(int newCapacity)
     {
-        _capacity = Math.Max(1, newCapacity);
-        List<TKey> evicted = [];
-        while (_entries.Count > _capacity)
+        lock (_gate)
         {
-            TKey? victim = EvictOne();
-            if (victim is not null) evicted.Add(victim);
-            else break;
+            _capacity = Math.Max(1, newCapacity);
+            List<TKey> evicted = [];
+            while (_entries.Count > _capacity)
+            {
+                TKey? victim = EvictOne();
+                if (victim is not null) evicted.Add(victim);
+                else break;
+            }
+            return evicted;
         }
-        return evicted;
     }
 
-    /// <summary>Returns all currently retained keys.</summary>
-    public IReadOnlyCollection<TKey> RetainedKeys => _entries.Keys;
+    /// <summary>Returns a snapshot of currently retained keys (allocates a copy under the lock
+    /// so callers can iterate without races against concurrent Touch calls).</summary>
+    public IReadOnlyCollection<TKey> RetainedKeys
+    {
+        get { lock (_gate) { return [.. _entries.Keys]; } }
+    }
 
     private TKey? EvictOne()
     {
