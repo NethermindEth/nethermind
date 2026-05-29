@@ -47,6 +47,14 @@ public readonly struct RlpNode : IEquatable<RlpNode>
     public int Length => _data?.Length ?? 0;
     public bool IsNull => _data is null;
 
+    /// <summary>
+    /// Internal accessor exposing the backing byte[] without a copy. Callers that need a
+    /// content-equal dictionary key can wrap this directly instead of <c>AsSpan().ToArray()</c>,
+    /// which allocates a fresh array per call. The returned reference is stable for the
+    /// lifetime of this RlpNode â€” do not mutate it.
+    /// </summary>
+    internal byte[]? UnderlyingBytes => _data;
+
     /// <summary>True if this was explicitly created from a hash (not from raw RLP).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsHash() => _isHash;

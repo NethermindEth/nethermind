@@ -351,7 +351,11 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 // (no DB lookup), then BulkSet applies the raw updates.
                 _storageTree._tree.SetRootHash(_previousStorageRoot, resetObjects: false);
 
-                ArrayPoolList<PatriciaTree.BulkSetEntry> bulkEntries = new(_rawUpdates!.Count);
+                // 'using' so a throw between Add and ToRef/BulkSet doesn't leak the pooled
+                // array. The previous manual Dispose() at the end of the block ran only on
+                // the success path; an exception during BulkSet/UpdateRootHash left the
+                // ArrayPool entry permanently retained until process exit.
+                using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkEntries = new(_rawUpdates!.Count);
                 ValueHash256 keyBuf = default;
                 foreach ((UInt256 index, byte[] value) in _rawUpdates)
                 {
@@ -392,7 +396,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                         logger.Warn(dump.ToString());
                     }
                 }
-                bulkEntries.Dispose();
             }
             catch (Exception ex)
             {

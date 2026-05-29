@@ -91,10 +91,25 @@ public static class MultiProofReader
         // happened to share the same subtrie content (e.g., empty/canonical subtries, or two
         // contracts with identical storage). The walker then emitted the proof at one path
         // only, leaving the other position un-revealed and producing a wrong root.
+        // Fast-path: a single blinded target is the overwhelmingly common case for
+        // small-block retries (one blinded boundary on one account/slot key). Bypass the
+        // grouping dictionary entirely and walk it directly.
+        if (blindedTargets.Count == 1)
+        {
+            BlindedProofTarget only = blindedTargets[0];
+            WalkSingleBlindedGroup(loadRlp, only.BlindedPath, only.BlindedRlp, [only], output);
+            return;
+        }
+
+        // Group by (blindedPath, blindedRlp) â€” coalesce only when BOTH match. The previous
+        // AsSpan().ToArray() copied the RLP bytes per target just to key the dictionary;
+        // RlpNode's backing byte[] is already content-stable for the lifetime of this call,
+        // so we reuse it directly via UnderlyingBytes.
         Dictionary<(TreePath, RlpBytesKey), List<BlindedProofTarget>> groups = [];
         foreach (BlindedProofTarget target in blindedTargets)
         {
-            (TreePath, RlpBytesKey) key = (target.BlindedPath, new RlpBytesKey(target.BlindedRlp.AsSpan().ToArray()));
+            byte[] keyBytes = target.BlindedRlp.UnderlyingBytes ?? Array.Empty<byte>();
+            (TreePath, RlpBytesKey) key = (target.BlindedPath, new RlpBytesKey(keyBytes));
             if (!groups.TryGetValue(key, out List<BlindedProofTarget>? bucket))
             {
                 bucket = [];
@@ -106,36 +121,60 @@ public static class MultiProofReader
         foreach (KeyValuePair<(TreePath, RlpBytesKey), List<BlindedProofTarget>> grp in groups)
         {
             List<BlindedProofTarget> targets = grp.Value;
-            TreePath blindedPath = targets[0].BlindedPath;
-            RlpNode blindedRlp = targets[0].BlindedRlp;
-
-            // Resolve the blinded subtrie root: load from DB if it's a hash reference,
-            // decode inline RLP directly otherwise.
-            byte[] rootRlpBytes;
-            if (blindedRlp.IsHash())
-            {
-                rootRlpBytes = loadRlp.Load(blindedPath, blindedRlp.AsHash(), ReadFlags.None);
-            }
-            else
-            {
-                rootRlpBytes = blindedRlp.AsSpan().ToArray();
-            }
-            ProofNode rootProof = DecodeProofNode(rootRlpBytes, blindedPath);
-            output.Add(rootProof);
-
-            int startDepth = blindedPath.Length;
-            byte[][] sortedTargets = new byte[targets.Count][];
-            for (int i = 0; i < targets.Count; i++) sortedTargets[i] = targets[i].TargetNibbles;
-            Array.Sort(sortedTargets, NibbleCompare);
-
-            // All targets in this group want nodes at depth >= startDepth + 1.
-            byte[] minLens = new byte[sortedTargets.Length];
-            byte boundaryDepth = (byte)Math.Min(startDepth + 1, byte.MaxValue);
-            for (int i = 0; i < minLens.Length; i++) minLens[i] = boundaryDepth;
-
-            WalkNode(loadRlp, rootProof, blindedPath, sortedTargets, minLens,
-                0, sortedTargets.Length, startDepth, output);
+            WalkSingleBlindedGroup(loadRlp, targets[0].BlindedPath, targets[0].BlindedRlp, targets, output);
         }
+    }
+
+    private static void WalkSingleBlindedGroup<T>(
+        T loadRlp,
+        TreePath blindedPath,
+        RlpNode blindedRlp,
+        List<BlindedProofTarget> targets,
+        List<ProofNode> output) where T : LoadRlpFunc
+    {
+        // Resolve the blinded subtrie root: load from DB if it's a hash reference,
+        // decode inline RLP directly otherwise.
+        byte[] rootRlpBytes;
+        if (blindedRlp.IsHash())
+        {
+            rootRlpBytes = loadRlp.Load(blindedPath, blindedRlp.AsHash(), ReadFlags.None);
+        }
+        else
+        {
+            // Inline blinded: reuse the existing backing byte[] when available so we don't
+            // copy the same RLP bytes a second time just to hand to the decoder.
+            rootRlpBytes = blindedRlp.UnderlyingBytes ?? blindedRlp.AsSpan().ToArray();
+        }
+        ProofNode rootProof = DecodeProofNode(rootRlpBytes, blindedPath);
+        output.Add(rootProof);
+
+        int startDepth = blindedPath.Length;
+
+        // Single-target fast path: skip the sort + minLens fan-out array allocations.
+        if (targets.Count == 1)
+        {
+            byte[] singleTarget = targets[0].TargetNibbles;
+            byte boundary = (byte)Math.Min(startDepth + 1, byte.MaxValue);
+            // WalkNode reads minLens[i] inside its inner loops; we only have one target so
+            // a single-element byte[] is unavoidable, but it's tiny (1 byte) compared with
+            // the multi-target N-byte array allocation.
+            byte[] singleMin = [boundary];
+            byte[][] single = [singleTarget];
+            WalkNode(loadRlp, rootProof, blindedPath, single, singleMin, 0, 1, startDepth, output);
+            return;
+        }
+
+        byte[][] sortedTargets = new byte[targets.Count][];
+        for (int i = 0; i < targets.Count; i++) sortedTargets[i] = targets[i].TargetNibbles;
+        Array.Sort(sortedTargets, NibbleCompare);
+
+        // All targets in this group want nodes at depth >= startDepth + 1.
+        byte[] minLens = new byte[sortedTargets.Length];
+        byte boundaryDepth = (byte)Math.Min(startDepth + 1, byte.MaxValue);
+        for (int i = 0; i < minLens.Length; i++) minLens[i] = boundaryDepth;
+
+        WalkNode(loadRlp, rootProof, blindedPath, sortedTargets, minLens,
+            0, sortedTargets.Length, startDepth, output);
     }
 
     private static int NibbleCompare(byte[] a, byte[] b)
