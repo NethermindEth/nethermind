@@ -77,7 +77,7 @@ jobs:
     name: tests ${{ matrix.group }} [${{ matrix.variant.label }}]
     needs: [fetch-fixtures]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     strategy:
       fail-fast: true
       matrix:
@@ -177,7 +177,14 @@ jobs:
               ;;
           esac
 
-          dotnet build "$solution" -c release -m -v minimal $VARIANT_ARGS -p:RestoreDisableParallel=true
+          # Heavy single-project groups build only their target's dep tree;
+          # grouped jobs build the solution to amortize across many projects.
+          if (( ${#projects[@]} == 1 )); then
+            build_target="${projects[0]}/${projects[0]}.csproj"
+          else
+            build_target="$solution"
+          fi
+          dotnet build "$build_target" -c release -m -v minimal $VARIANT_ARGS -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
           MAX_PARALLEL=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 2)
@@ -294,10 +301,8 @@ jobs:
           TEST_SKIP_HEAVY: 1
         run: |
           set -e
-          dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal ${{ matrix.variant.args }} -p:RestoreDisableParallel=true
-          dotnet build-server shutdown || true
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
-            --no-build --no-restore -v minimal ${{ matrix.variant.args }} \
+            -v minimal ${{ matrix.variant.args }} -p:RestoreDisableParallel=true \
             --filter "TestCategory!=Flaky"
 
   tests-summary:

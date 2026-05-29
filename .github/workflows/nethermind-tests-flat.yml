@@ -298,10 +298,8 @@ jobs:
           trap 'kill $monitor_pid 2>/dev/null || true; wait $monitor_pid 2>/dev/null || true' EXIT
 
           set -e
-          dotnet build Ethereum.Blockchain.Pyspec.Test.csproj -c release -v minimal -p:RestoreDisableParallel=true
-          dotnet build-server shutdown || true
           dotnet test --project Ethereum.Blockchain.Pyspec.Test.csproj -c release \
-            --no-build --no-restore -v minimal --filter "${filter}&TestCategory!=Flaky"
+            -v minimal -p:RestoreDisableParallel=true --filter "${filter}&TestCategory!=Flaky"
 
   tests-summary:
     name: Tests summary

@@ -91,7 +91,7 @@ jobs:
   tests:
     name: tests ${{ matrix.group }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 25
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
     strategy:
@@ -179,7 +179,14 @@ jobs:
           # Serial restore avoids a Windows-only race: parallel writers to NuGet's
           # *.dat-new cache files deadlock against Defender and surface as
           # "fatal device hardware error". Parallel build (-m) is unaffected.
-          dotnet build Nethermind.slnx -c release -m -v minimal -p:RestoreDisableParallel=true
+          # Heavy single-project groups build only their target's dependency tree;
+          # grouped jobs build the solution once to amortize across many projects.
+          if (( ${#projects[@]} == 1 )); then
+            build_target="${projects[0]}/${projects[0]}.csproj"
+          else
+            build_target="Nethermind.slnx"
+          fi
+          dotnet build "$build_target" -c release -m -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
           # 2-wide within the group; 4-wide on multi-vCPU runners surfaces flakes
@@ -446,10 +453,8 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
           set -e
-          dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal -p:RestoreDisableParallel=true
-          dotnet build-server shutdown || true
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
-            --no-build --no-restore -v minimal --filter "TestCategory!=Flaky"
+            -v minimal -p:RestoreDisableParallel=true --filter "TestCategory!=Flaky"
 
   # Single job for every test tagged [Category("Flaky")]. Required check, so
   # flaky failures still block merging — but one re-run of THIS job is enough
