@@ -17,7 +17,7 @@ using SHA256 =
 
 public static partial class Merkle
 {
-    public static UInt256[] ZeroHashes = new UInt256[64];
+    public static readonly UInt256[] ZeroHashes = new UInt256[64];
 
     private static void BuildZeroHashes()
     {

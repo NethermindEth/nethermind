@@ -500,7 +500,7 @@ class SszType
         syntaxNode.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToString() : null;
 
     private static string GetTypeName(ITypeSymbol syntaxNode) =>
-        string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace! + ".", "");
+        string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name;
 
     // Strip the nullable reference-type annotation so the resulting name is usable both as a
     // bare type identifier in static-member access (e.g. `Foo.Encode(...)`) and as a parameter
