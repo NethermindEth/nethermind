@@ -11,7 +11,6 @@ BFLAT_REFS := \
   -r {std}/System.Diagnostics.Tracing.dll \
   -r {std}/System.Memory.dll \
   -r {std}/System.Runtime.dll \
-  -r {std}/System.Runtime.InteropServices.dll \
   -r $(BIN_DIR)/BouncyCastle.Cryptography.dll \
   -r $(BIN_DIR)/Microsoft.Extensions.ObjectPool.dll \
   -r $(BIN_DIR)/Nethermind.Abi.dll \
@@ -44,7 +43,7 @@ build: dotnet-build
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.ZiskGuest/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
-		nethermindeth/bflat-riscv64:b2958814fb0cdde50eaed280043706467f6d6a4a \
+		nethermindeth/bflat-riscv64:1ba088ae4c95c1404f3a88ca85f274fe9b01a0b1 \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
 		--no-pie \
 		--no-pthread \
