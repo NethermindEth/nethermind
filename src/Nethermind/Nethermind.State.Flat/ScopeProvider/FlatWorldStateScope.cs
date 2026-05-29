@@ -343,12 +343,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             // Variant selection:
             //   Legacy â€” walks Patricia and warms the transient cache via the adapter.
             //   SparseProof â€” EXPERIMENTAL. Runs a full root-to-leaf proof read for a single
-            //     target and DISCARDS the result. The decoded proof never reaches the sparse
-            //     trie, so this is pure DB/OS page-cache warming + wasted CPU on RLP decode.
-            //     Don't ship as a permanent default; only useful for measuring the underlying
-            //     I/O. Real prefetching needs the M5 background sparse task to reveal the
-            //     fetched proofs into the trie â€” until then SparseProof costs more than it
-            //     saves on a hot trie.
+            //     target and DISCARDS the decoded result, keeping only the DB/OS page-cache
+            //     warming side effect. The discard is REQUIRED, not laziness: this method runs on
+            //     trie-warmer WORKER threads, while the block-processing thread mutates the same
+            //     preserved SparseStateTrie during ComputeStateRoot. SparsePatriciaTree.RevealNodes
+            //     is single-writer with no locking, so revealing the fetched proof here would race
+            //     the main reveal/update and corrupt the arena (intermittent wrong roots). A real
+            //     sparse-native prefetcher must therefore route proofs to a SINGLE consumer that
+            //     owns all reveals â€” i.e. the M4 SparseTrieTask. Finding 6 is thus blocked on M4;
+            //     they are coupled, not independent. Until then SparseProof is only a DB warmer and
+            //     the prewarm-off benchmark (+69% without any warmer) shows the Legacy Patricia
+            //     warmer remains load-bearing, so it stays the default.
             //   None â€” gated at DI by NoopTrieWarmer (never reaches this method).
             if (_configuration.SparseTrieWarmer == SparseTrieWarmerVariant.SparseProof
                 && _proofReader is not null && _prevStateRoot is not null)
