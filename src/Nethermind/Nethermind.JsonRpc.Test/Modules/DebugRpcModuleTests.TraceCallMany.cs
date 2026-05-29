@@ -278,4 +278,34 @@ public partial class DebugRpcModuleTests
         UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
         Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
     }
+
+    [Test]
+    public async Task Debug_traceCallMany_with_explicit_zero_gas_treats_it_as_omitted()
+    {
+        using Context ctx = await CreateContext();
+
+        long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
+        long gasCap = blockGasLimit * 10;
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        Address contractAddress = new("0xc200000000000000000000000000000000000000");
+
+        LegacyTransactionForRpc tx = new() { To = contractAddress, Gas = 0 };
+
+        TransactionBundle bundle = new()
+        {
+            Transactions = [tx],
+            StateOverrides = new Dictionary<Address, AccountOverride>
+            {
+                [contractAddress] = new() { Code = Bytes.FromHexString("5a60005260206000f3") }
+            }
+        };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        GethLikeTxTrace trace = result.Data.First().First();
+        UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+    }
 }

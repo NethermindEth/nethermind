@@ -716,7 +716,10 @@ public class DebugRpcModule(
             {
                 foreach (TransactionForRpc call in bundle.Transactions)
                 {
-                    call.Gas ??= jsonRpcConfig.GasCap;
+                    if (call.Gas is null or 0)
+                    {
+                        call.Gas = jsonRpcConfig.GasCap;
+                    }
                 }
             }
         }
