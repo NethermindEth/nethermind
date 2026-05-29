@@ -79,7 +79,9 @@ jobs:
               projects=(Nethermind.JsonRpc.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Runner.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test)
               ;;
             state-evm)
-              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.State.Test.Runner.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
+              # Nethermind.State.Test.Runner.Test lives in EthereumTests.slnx
+              # (not Nethermind.slnx) — tested by `spec-tx-rlp-trie` instead.
+              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
               ;;
             mixed)
               projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Specs.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test Nethermind.Era1.Test Nethermind.EraE.Test Nethermind.History.Test Nethermind.Optimism.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
@@ -191,7 +193,10 @@ jobs:
               projects=(Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Blockchain.Block.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test)
               ;;
             spec-tx-rlp-trie)
-              projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test)
+              # Nethermind.State.Test.Runner.Test is a Nethermind.* test that lives
+              # in EthereumTests.slnx (it tests the test runner itself), so it rides
+              # with the spec group that already builds that solution.
+              projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test Nethermind.State.Test.Runner.Test)
               # linux-arm absorbs the unchunked Legacy.VM.Test here.
               if [[ "${{ matrix.runner }}" == "ubuntu-24.04-arm" ]]; then
                 projects+=(Ethereum.Legacy.VM.Test)

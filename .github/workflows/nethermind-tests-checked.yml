@@ -78,7 +78,9 @@ jobs:
               ;;
             state-evm)
               solution=Nethermind.slnx
-              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.State.Test.Runner.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
+              # Nethermind.State.Test.Runner.Test lives in EthereumTests.slnx
+              # (not Nethermind.slnx) — tested by `spec-tx-rlp-trie` instead.
+              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
               ;;
             mixed)
               solution=Nethermind.slnx
@@ -91,7 +93,10 @@ jobs:
               ;;
             spec-tx-rlp-trie)
               solution=EthereumTests.slnx
-              projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test)
+              # Nethermind.State.Test.Runner.Test is a Nethermind.* test that lives
+              # in EthereumTests.slnx (it tests the test runner itself), so it rides
+              # with this group which already builds that solution.
+              projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test Nethermind.State.Test.Runner.Test)
               ;;
             *)
               echo "::error::Unknown group: $GROUP"
