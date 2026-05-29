@@ -125,12 +125,31 @@ public sealed class SparseStateTrie : IDisposable
     /// When a capacity is int.MaxValue, the corresponding LFU stays null so touches and
     /// pruning are no-ops â€” lets operators turn cross-block hot tracking off entirely.
     /// </summary>
-    public void SetHotCacheCapacities(int maxHotAccounts, int maxHotSlots)
+    /// <param name="maxHotAccounts">Per-block LFU account cap (int.MaxValue = LFU disabled).</param>
+    /// <param name="maxHotSlots">Per-block LFU slot cap (int.MaxValue = LFU disabled).</param>
+    /// <param name="maxRetainedStorageTries">
+    /// Memory-trigger budget. When finite, BOTH LFUs must exist even if the per-block caps are
+    /// int.MaxValue, otherwise the triggered prune (which retains by LFU frequency) has no
+    /// frequency data and storage eviction silently no-ops. The LFUs are sized to the budget so
+    /// they can hold the full retained set; per-block eviction still won't fire because the
+    /// triggered prune passes its own (budget-derived) caps to <see cref="Prune"/>.
+    /// </param>
+    public void SetHotCacheCapacities(int maxHotAccounts, int maxHotSlots, int maxRetainedStorageTries = int.MaxValue)
     {
+        bool memoryTriggerActive = maxRetainedStorageTries < int.MaxValue;
+
         if (maxHotAccounts < int.MaxValue)
             _hotAccountsLfu ??= new BucketedLfu<Hash256>(maxHotAccounts);
+        else if (memoryTriggerActive)
+            _hotAccountsLfu ??= new BucketedLfu<Hash256>(maxRetainedStorageTries);
+
         if (maxHotSlots < int.MaxValue)
             _hotSlotsLfu ??= new BucketedLfu<(Hash256, Hash256)>(maxHotSlots);
+        else if (memoryTriggerActive)
+            // Slot budget is unknown; size generously off the contract budget. The triggered
+            // prune supplies the actual retention count to Prune(); this only needs to be a live
+            // LFU collecting touch frequency so eviction has something to rank by.
+            _hotSlotsLfu ??= new BucketedLfu<(Hash256, Hash256)>(maxRetainedStorageTries);
     }
 
     /// <summary>True when the account-LFU is enabled (cap is &lt; int.MaxValue). Used to

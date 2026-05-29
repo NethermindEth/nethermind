@@ -148,9 +148,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             // M3 LFU retention. Caps come from config; touches happen inside SparseRootComputer
             // before each update batch; the actual collapse runs in Commit before StoreAnchored.
+            // Pass the retained-storage-tries budget too: when only THAT is set (the production
+            // memory-bound path), the LFUs must still be created so the triggered prune has
+            // frequency data to evict by â€” otherwise storage eviction silently no-ops.
             _sparseRootComputer.Trie.SetHotCacheCapacities(
                 configuration.SparseTrieMaxHotAccounts,
-                configuration.SparseTrieMaxHotSlots);
+                configuration.SparseTrieMaxHotSlots,
+                configuration.SparseTrieMaxRetainedStorageTries);
 
             // Sparse drives commit/root only when explicitly opted-in via SparseTrieSkipPatricia
             // AND we've seen 10 consecutive matching roots from this provider (or shadow-compare

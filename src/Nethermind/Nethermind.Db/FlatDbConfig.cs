@@ -42,10 +42,12 @@ public class FlatDbConfig : IFlatDbConfig
     // historical behaviour. See IFlatDbConfig for why per-block evict-to-cap was abandoned
     // (7.5x regression on realblocks â€” it discards the working set).
     public int SparseTrieMaxRetainedStorageTries { get; set; } = int.MaxValue;
-    // Static default stays at Legacy â€” the DI wiring in FlatWorldStateModule overrides this
-    // to None whenever UseSparseRootComputation=true, because the Legacy warmer walks Patricia
-    // which is duplicate work once the sparse trie is authoritative. The override is in DI
-    // rather than here so non-sparse deployments keep the Patricia warmer without extra
-    // config gymnastics.
+    // Default Legacy. NOTE: there is intentionally NO DI override forcing this to None under
+    // sparse mode â€” an earlier attempt to do that (treating the Legacy warmer as redundant once
+    // sparse is authoritative) regressed realblocks badly (MIN 0.5ms -> 35ms) because the Legacy
+    // Patricia warmer also primes the OS/RocksDB page cache that the sparse proof reads hit. It
+    // was reverted; FlatWorldStateModule only substitutes NoopTrieWarmer when the warmer is
+    // explicitly None or TrieWarmerWorkerCount == 0. The warmer stays Legacy in sparse mode until
+    // a sparse-native prewarmer (feeds proofs back into the trie) replaces it.
     public SparseTrieWarmerVariant SparseTrieWarmer { get; set; } = SparseTrieWarmerVariant.Legacy;
 }
