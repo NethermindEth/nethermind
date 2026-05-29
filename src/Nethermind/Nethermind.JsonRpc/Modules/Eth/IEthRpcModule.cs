@@ -341,7 +341,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             [JsonRpcParameter(ExampleValue = "[\"0x7F0d15C7FAae65896648C8273B6d7E43f58Fa842\",[  \"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\" ],\"latest\"]")]
             Address accountAddress,
             HashSet<UInt256> storageKeys,
-            BlockParameter? blockParameter = null);
+            BlockParameter blockParameter);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Accounts via Address and Blocknumber", IsSharable = true)]
         ResultWrapper<AccountForRpc?> eth_getAccount([JsonRpcParameter(ExampleValue = "[\"0xaa00000000000000000000000000000000000000\", \"latest\"]")] Address accountAddress, BlockParameter? blockParameter = null);

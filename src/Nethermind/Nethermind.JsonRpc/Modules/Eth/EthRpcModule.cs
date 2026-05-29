@@ -926,7 +926,7 @@ public partial class EthRpcModule(
     }
 
     // https://github.com/ethereum/EIPs/issues/1186
-    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter? blockParameter)
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter blockParameter)
     {
         if (storageKeys.Count > GetProofStorageKeyLimit)
         {

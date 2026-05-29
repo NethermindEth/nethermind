@@ -1545,6 +1545,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_proof_no_block_argument_returns_invalid_params()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), "[]");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 2\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_get_block_by_number_empty_param()
     {
         using Context ctx = await Context.Create();

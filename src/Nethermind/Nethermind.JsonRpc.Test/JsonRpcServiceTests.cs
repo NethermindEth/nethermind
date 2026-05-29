@@ -86,6 +86,12 @@ public class JsonRpcServiceTests
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_feeHistory(Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<double[]>())))
             .SetName("Missing required argument");
         yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getProof),
+            """["0xaa00000000000000000000000000000000000000",[],null]""",
+            "missing value for required argument 2",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getProof(Arg.Any<Address>(), Arg.Any<HashSet<UInt256>>(), Arg.Any<BlockParameter>())))
+            .SetName("ExplicitMissingGetProofBlockArgumentToken");
+        yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBlockByNumber),
             """["0x1",false,"extra"]""",
             "Invalid params",
