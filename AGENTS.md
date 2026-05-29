@@ -41,7 +41,7 @@ Detailed rules live in [`.agents/rules/`](./.agents/rules/). **You MUST read the
 - [package-management.md](./.agents/rules/package-management.md) — Load when working with NuGet dependencies. Covers Central Package Management (CPM) rules.
 - [github-workflows.md](./.agents/rules/github-workflows.md) — Load when working with GitHub Actions, CODEOWNERS, or PR templates. Covers workflow conventions and automation patterns.
 - [git.md](./.agents/rules/git.md) — Load when interacting with git version control. Covers merging, rebasing, pushing, and more.
-- [agent-skills.md](./.agents/rules/agent-skills.md) — Load when working with agentic skills. Covers the symlink convention.
+- [agent-skills.md](./.agents/rules/agent-skills.md) — Load when working with agentic skills. Covers the canonical `.agents/skills/` location and how tool-specific copies are kept in sync.
 
 ---
 
