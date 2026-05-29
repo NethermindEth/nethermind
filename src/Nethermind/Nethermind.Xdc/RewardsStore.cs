@@ -8,6 +8,7 @@ using Nethermind.Int256;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Text.Json;
 
 namespace Nethermind.Xdc;
 
@@ -17,6 +18,7 @@ internal sealed class RewardsStore(IDb rewardsDb, int rewardHistoryEpochRetentio
     private readonly int _rewardHistoryEpochRetention = rewardHistoryEpochRetention;
 
     private const byte EpochRewardsPrefix = 0x10;
+    private const byte EpochRewardsRpcPrefix = 0x13;
     private const byte SequenceToEpochPrefix = 0x11;
     private const byte EpochToSequencePrefix = 0x12;
     private static readonly byte[] OldestSequenceKey = [0x01];
@@ -72,7 +74,27 @@ internal sealed class RewardsStore(IDb rewardsDb, int rewardHistoryEpochRetentio
         batch[RetainedCountKey] = ToBigEndian(retainedCount);
     }
 
+    public void SaveEpochRewardsRpc(ulong epochBlockNumber, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards)
+    {
+        byte[] key = BuildEpochRewardsRpcKey(epochBlockNumber);
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(rewards);
+        _rewardsDb.Set(key, bytes);
+    }
+
     public bool HasEpochRewards(ulong epochBlockNumber) => _rewardsDb.KeyExists(BuildEpochRewardsKey(epochBlockNumber));
+
+    public bool TryGetEpochRewardsRpc(ulong epochBlockNumber, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards)
+    {
+        byte[]? bytes = _rewardsDb.Get(BuildEpochRewardsRpcKey(epochBlockNumber));
+        if (bytes is null)
+        {
+            rewards = null;
+            return false;
+        }
+
+        rewards = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>(bytes);
+        return rewards is not null;
+    }
 
     public bool TryGetAccountReward(Address account, ulong epochBlockNumber, out UInt256 reward)
     {
@@ -127,6 +149,7 @@ internal sealed class RewardsStore(IDb rewardsDb, int rewardHistoryEpochRetentio
             ulong oldestEpoch = BinaryPrimitives.ReadUInt64BigEndian(oldestEpochBytes);
 
             batch.Remove(BuildEpochRewardsKey(oldestEpoch));
+            batch.Remove(BuildEpochRewardsRpcKey(oldestEpoch));
             batch.Remove(BuildEpochToSequenceKey(oldestEpoch));
             batch.Remove(BuildSequenceToEpochKey(oldestSequence));
 
@@ -139,6 +162,14 @@ internal sealed class RewardsStore(IDb rewardsDb, int rewardHistoryEpochRetentio
     {
         byte[] key = new byte[1 + sizeof(ulong)];
         key[0] = EpochRewardsPrefix;
+        BinaryPrimitives.WriteUInt64BigEndian(key.AsSpan(1), epochBlockNumber);
+        return key;
+    }
+
+    private static byte[] BuildEpochRewardsRpcKey(ulong epochBlockNumber)
+    {
+        byte[] key = new byte[1 + sizeof(ulong)];
+        key[0] = EpochRewardsRpcPrefix;
         BinaryPrimitives.WriteUInt64BigEndian(key.AsSpan(1), epochBlockNumber);
         return key;
     }

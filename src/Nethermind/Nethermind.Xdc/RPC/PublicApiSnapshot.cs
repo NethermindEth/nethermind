@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
@@ -24,4 +25,21 @@ public class PublicApiSnapshot
     /// </summary>
     public HashSet<Address> Signers { get; set; }
 
+    /// <summary>
+    /// Recent signers for spam protection (V1 snapshots).
+    /// </summary>
+    [JsonPropertyName("recents")]
+    public Dictionary<ulong, Address>? Recents { get; set; }
+
+    /// <summary>
+    /// Votes cast in chronological order (V1 snapshots).
+    /// </summary>
+    [JsonPropertyName("votes")]
+    public object[]? Votes { get; set; }
+
+    /// <summary>
+    /// Current vote tally (V1 snapshots).
+    /// </summary>
+    [JsonPropertyName("tally")]
+    public Dictionary<Address, object>? Tally { get; set; }
 }

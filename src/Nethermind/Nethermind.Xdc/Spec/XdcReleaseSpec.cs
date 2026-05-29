@@ -47,6 +47,8 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public long TIP2019Block { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
+    public Address RelayerRegistrationSMC { get; set; }
+    public Address TRC21IssuerSMC { get; set; }
     public bool IsTipUpgradeRewardEnabled { get; set; }
     public bool IsTipUpgradePenaltyEnabled { get; set; }
     public bool IsTipTrc21FeeEnabled { get; set; }
@@ -135,6 +137,8 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public HashSet<Address> BlackListedAddresses { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
+    public Address RelayerRegistrationSMC { get; set; }
+    public Address TRC21IssuerSMC { get; set; }
     public bool IsTipUpgradeRewardEnabled { get; set; }
     public bool IsTipTrc21FeeEnabled { get; set; }
     public bool IsBlackListingEnabled { get; set; }

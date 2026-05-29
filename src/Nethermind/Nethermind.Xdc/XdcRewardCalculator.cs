@@ -75,11 +75,13 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         List<BlockReward> rewards = new();
         (Dictionary<Address, long> masternodeSigners, Dictionary<Address, long> protectorSigners, Dictionary<Address, long> observerSigners, UInt256 burnedInOneEpoch) = GetSigningTxCount(xdcHeader, spec);
 
+        Dictionary<string, Dictionary<string, Dictionary<string, string>>> rpcRewards = new();
+
         if (!spec.IsTipUpgradeRewardEnabled)
         {
             UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
             Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, masternodeSigners);
-            AddDistributedRewards(xdcHeader, rewardSigners, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+            AddDistributedRewards(xdcHeader, rewardSigners, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards, XdcConstants.RpcRewardSectionMasternode);
         }
         else
         {
@@ -93,9 +95,9 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
                 spec.ObserverReward,
                 observerSigners);
 
-            AddDistributedRewards(xdcHeader, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
-            AddDistributedRewards(xdcHeader, protectorRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
-            AddDistributedRewards(xdcHeader, observerRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+            AddDistributedRewards(xdcHeader, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards, XdcConstants.RpcRewardSectionMasternode);
+            AddDistributedRewards(xdcHeader, protectorRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards, XdcConstants.RpcRewardSectionProtector);
+            AddDistributedRewards(xdcHeader, observerRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards, XdcConstants.RpcRewardSectionObserver);
 
             _mintedRecordContract.UpdateAccounting(
                 _transactionProcessor,
@@ -109,6 +111,11 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
 
         BlockReward[] finalRewards = rewards.ToArray();
         _rewardsStore.SaveEpochRewards((ulong)xdcHeader.Number, finalRewards);
+        if (rpcRewards.Count > 0)
+        {
+            _rewardsStore.SaveEpochRewardsRpc((ulong)xdcHeader.Number, rpcRewards);
+        }
+
         return finalRewards;
     }
 
@@ -336,14 +343,38 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         Dictionary<Address, UInt256> rewardSigners,
         List<BlockReward> rewards,
         ref UInt256 totalFoundationWalletReward,
-        ref UInt256 totalMintedInEpoch)
+        ref UInt256 totalMintedInEpoch,
+        Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rpcRewards = null,
+        string? rpcSectionKey = null)
     {
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, header.ExtraConsensusData!.BlockRound);
         foreach ((Address signer, UInt256 reward) in rewardSigners)
         {
             (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(signer, reward, header);
             totalFoundationWalletReward += foundationWalletReward;
             totalMintedInEpoch += holderReward.Value + foundationWalletReward;
             rewards.Add(holderReward);
+
+            if (rpcRewards is null || rpcSectionKey is null)
+            {
+                continue;
+            }
+
+            if (!rpcRewards.TryGetValue(rpcSectionKey, out Dictionary<string, Dictionary<string, string>>? signersMap))
+            {
+                signersMap = new Dictionary<string, Dictionary<string, string>>();
+                rpcRewards[rpcSectionKey] = signersMap;
+            }
+
+            string signerKey = signer.ToString();
+            if (!signersMap.TryGetValue(signerKey, out Dictionary<string, string>? holdersMap))
+            {
+                holdersMap = new Dictionary<string, string>();
+                signersMap[signerKey] = holdersMap;
+            }
+
+            holdersMap[holderReward.Address.ToString()] = holderReward.Value.ToString();
+            holdersMap[spec.FoundationWallet.ToString()] = foundationWalletReward.ToString();
         }
     }
 }
