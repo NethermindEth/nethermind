@@ -46,11 +46,11 @@ jobs:
           case "$GROUP" in
             flat-spec)
               solution=EthereumTests.slnx
-              filter='FullyQualifiedName~Ethereum.Abi|FullyQualifiedName~Ethereum.Basic|FullyQualifiedName~Ethereum.Blockchain.Block|FullyQualifiedName~Ethereum.Difficulty|FullyQualifiedName~Ethereum.HexPrefix|FullyQualifiedName~Ethereum.KeyAddress|FullyQualifiedName~Ethereum.KeyStore|FullyQualifiedName~Ethereum.Legacy.Blockchain.Block|FullyQualifiedName~Ethereum.Legacy.Transition|FullyQualifiedName~Ethereum.Legacy.VM|FullyQualifiedName~Ethereum.PoW|FullyQualifiedName~Ethereum.Rlp|FullyQualifiedName~Ethereum.Transaction|FullyQualifiedName~Ethereum.Trie'
+              projects=(Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Blockchain.Block.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test)
               ;;
             flat-nethermind)
               solution=Nethermind.slnx
-              filter='FullyQualifiedName~Nethermind.Consensus.Test|FullyQualifiedName~Nethermind.Core.Test|FullyQualifiedName~Nethermind.Db.Test|FullyQualifiedName~Nethermind.Merge.Plugin.Test|FullyQualifiedName~Nethermind.Runner.Test'
+              projects=(Nethermind.Consensus.Test Nethermind.Core.Test Nethermind.Db.Test Nethermind.Merge.Plugin.Test Nethermind.Runner.Test)
               ;;
             *)
               echo "::error::Unknown group: $GROUP"
@@ -58,11 +58,43 @@ jobs:
               ;;
           esac
 
-          set -e
           dotnet build "$solution" -c release -m -v minimal
           dotnet build-server shutdown || true
-          dotnet test "$solution" -c release --no-build --no-restore -v minimal \
-            --filter "$filter" --maximum-parallel-test-modules 4
+
+          results_dir=$(mktemp -d)
+          MAX_PARALLEL=4
+          running=0
+          for project in "${projects[@]}"; do
+            if (( running >= MAX_PARALLEL )); then
+              wait -n || true
+              running=$((running - 1))
+            fi
+            (
+              if dotnet test --project "$project/$project.csproj" -c release \
+                  --no-build --no-restore -v minimal \
+                  > "$results_dir/$project.log" 2>&1; then
+                echo "0" > "$results_dir/$project.exitcode"
+              else
+                echo "$?" > "$results_dir/$project.exitcode"
+              fi
+            ) &
+            running=$((running + 1))
+          done
+          wait
+
+          fail=0
+          for project in "${projects[@]}"; do
+            rc=$(cat "$results_dir/$project.exitcode" 2>/dev/null || echo "?")
+            if [[ "$rc" == "0" ]]; then
+              echo "::group::✓ $project"
+            else
+              echo "::group::✗ $project (exit $rc)"
+              fail=1
+            fi
+            cat "$results_dir/$project.log" 2>/dev/null || true
+            echo "::endgroup::"
+          done
+          exit $fail
 
   # Legacy.Blockchain chunks — 8 → 4 chunks (same total work, larger chunks).
   tests-legacy-chunked:

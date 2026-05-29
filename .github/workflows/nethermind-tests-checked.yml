@@ -57,40 +57,41 @@ jobs:
         working-directory: src/Nethermind
         env:
           GROUP: ${{ matrix.group }}
+          VARIANT_ARGS: ${{ matrix.variant.args }}
         run: |
           case "$GROUP" in
             sync)
               solution=Nethermind.slnx
-              filter='FullyQualifiedName~Nethermind.Synchronization'
+              projects=(Nethermind.Synchronization.Test)
               ;;
             merge)
               solution=Nethermind.slnx
-              filter='FullyQualifiedName~Nethermind.Merge|FullyQualifiedName~Nethermind.Blockchain'
+              projects=(Nethermind.Merge.Plugin.Test Nethermind.Merge.AuRa.Test Nethermind.Blockchain.Test)
               ;;
             network)
               solution=Nethermind.slnx
-              filter='FullyQualifiedName~Nethermind.Network|FullyQualifiedName~Nethermind.Sockets|FullyQualifiedName~Nethermind.TxPool|FullyQualifiedName~Nethermind.EthStats'
+              projects=(Nethermind.Network.Test Nethermind.Sockets.Test Nethermind.TxPool.Test Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.EthStats.Test)
               ;;
             rpc)
               solution=Nethermind.slnx
-              filter='FullyQualifiedName~Nethermind.JsonRpc|FullyQualifiedName~Nethermind.Hive|FullyQualifiedName~Nethermind.Runner|FullyQualifiedName~Nethermind.Flashbots|FullyQualifiedName~Nethermind.KeyStore|FullyQualifiedName~Nethermind.Wallet'
+              projects=(Nethermind.JsonRpc.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Runner.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test)
               ;;
             state-evm)
               solution=Nethermind.slnx
-              filter='FullyQualifiedName~Nethermind.Evm|FullyQualifiedName~Nethermind.State|FullyQualifiedName~Nethermind.Trie|FullyQualifiedName~Nethermind.Db|FullyQualifiedName~Nethermind.Facade'
+              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.State.Test.Runner.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
               ;;
             mixed)
               solution=Nethermind.slnx
               # Note: EraE not covered by this workflow upstream.
-              filter='FullyQualifiedName~Nethermind.Consensus|FullyQualifiedName~Nethermind.AuRa|FullyQualifiedName~Nethermind.Clique|FullyQualifiedName~Nethermind.Ethash|FullyQualifiedName~Nethermind.Mining|FullyQualifiedName~Nethermind.Shutter|FullyQualifiedName~Nethermind.Abi|FullyQualifiedName~Nethermind.Api|FullyQualifiedName~Nethermind.Config|FullyQualifiedName~Nethermind.Core|FullyQualifiedName~Nethermind.Specs|FullyQualifiedName~Nethermind.Logging|FullyQualifiedName~Nethermind.Monitoring|FullyQualifiedName~Nethermind.HealthChecks|FullyQualifiedName~Nethermind.Era1|FullyQualifiedName~Nethermind.History|FullyQualifiedName~Nethermind.Optimism|FullyQualifiedName~Nethermind.Taiko|FullyQualifiedName~Nethermind.Xdc|FullyQualifiedName~Nethermind.Serialization.Ssz'
+              projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Specs.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test Nethermind.Era1.Test Nethermind.History.Test Nethermind.Optimism.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
               ;;
             spec-core)
               solution=EthereumTests.slnx
-              filter='FullyQualifiedName~Ethereum.Abi|FullyQualifiedName~Ethereum.Basic|FullyQualifiedName~Ethereum.Blockchain.Block|FullyQualifiedName~Ethereum.Difficulty|FullyQualifiedName~Ethereum.HexPrefix|FullyQualifiedName~Ethereum.KeyAddress|FullyQualifiedName~Ethereum.KeyStore'
+              projects=(Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Blockchain.Block.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test)
               ;;
             spec-tx-rlp-trie)
               solution=EthereumTests.slnx
-              filter='FullyQualifiedName~Ethereum.Legacy.Blockchain.Block|FullyQualifiedName~Ethereum.Legacy.Transition|FullyQualifiedName~Ethereum.Legacy.VM|FullyQualifiedName~Ethereum.PoW|FullyQualifiedName~Ethereum.Rlp|FullyQualifiedName~Ethereum.Transaction|FullyQualifiedName~Ethereum.Trie'
+              projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test)
               ;;
             *)
               echo "::error::Unknown group: $GROUP"
@@ -98,11 +99,43 @@ jobs:
               ;;
           esac
 
-          set -e
-          dotnet build "$solution" -c release -m -v minimal ${{ matrix.variant.args }}
+          dotnet build "$solution" -c release -m -v minimal $VARIANT_ARGS
           dotnet build-server shutdown || true
-          dotnet test "$solution" -c release --no-build --no-restore -v minimal \
-            --filter "$filter" --maximum-parallel-test-modules 4 ${{ matrix.variant.args }}
+
+          results_dir=$(mktemp -d)
+          MAX_PARALLEL=4
+          running=0
+          for project in "${projects[@]}"; do
+            if (( running >= MAX_PARALLEL )); then
+              wait -n || true
+              running=$((running - 1))
+            fi
+            (
+              if dotnet test --project "$project/$project.csproj" -c release \
+                  --no-build --no-restore -v minimal $VARIANT_ARGS \
+                  > "$results_dir/$project.log" 2>&1; then
+                echo "0" > "$results_dir/$project.exitcode"
+              else
+                echo "$?" > "$results_dir/$project.exitcode"
+              fi
+            ) &
+            running=$((running + 1))
+          done
+          wait
+
+          fail=0
+          for project in "${projects[@]}"; do
+            rc=$(cat "$results_dir/$project.exitcode" 2>/dev/null || echo "?")
+            if [[ "$rc" == "0" ]]; then
+              echo "::group::✓ $project [${{ matrix.variant.label }}]"
+            else
+              echo "::group::✗ $project [${{ matrix.variant.label }}] (exit $rc)"
+              fail=1
+            fi
+            cat "$results_dir/$project.log" 2>/dev/null || true
+            echo "::endgroup::"
+          done
+          exit $fail
 
   # Heavy chunked tests under both variants. TEST_SKIP_HEAVY=1 limits each chunk.
   # Legacy.Blockchain: 8 → 4 chunks (same total work, larger chunks).
