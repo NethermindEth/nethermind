@@ -313,40 +313,27 @@ public sealed class SparseSubtrie : IDisposable
 
         int childIdx = remainingEntry.ArenaIndex;
 
-        // Build prefix: branch's extension key + remaining nibble
-        byte[] prefix;
+        // The collapsed node's new ShortKey = branch's extension key + remaining nibble +
+        // child's ShortKey. The previous code built an intermediate `prefix` array and then
+        // a second array for the concatenation; only the final array needs to live (it's
+        // stored as ShortKey). Compute the prefix length and write directly into the final
+        // buffer in one allocation, dropping the throwaway intermediate.
         byte[]? branchShortKey = _arena[branchIdx].ShortKey;
-        if (branchShortKey is { Length: > 0 })
-        {
-            prefix = new byte[branchShortKey.Length + 1];
-            branchShortKey.CopyTo(prefix.AsSpan());
-            prefix[^1] = (byte)remainingNibble;
-        }
-        else
-        {
-            prefix = [(byte)remainingNibble];
-        }
+        int prefixLen = (branchShortKey?.Length ?? 0) + 1; // +1 for remainingNibble
 
-        if (_arena[childIdx].IsLeaf())
+        if (_arena[childIdx].IsLeaf() || _arena[childIdx].IsBranch())
         {
             byte[] childKey = _arena[childIdx].ShortKey ?? [];
-            byte[] newKey = new byte[prefix.Length + childKey.Length];
-            prefix.CopyTo(newKey.AsSpan());
-            childKey.CopyTo(newKey.AsSpan(prefix.Length));
+            byte[] newKey = new byte[prefixLen + childKey.Length];
+            int pos = 0;
+            if (branchShortKey is { Length: > 0 })
+            {
+                branchShortKey.CopyTo(newKey.AsSpan());
+                pos = branchShortKey.Length;
+            }
+            newKey[pos++] = (byte)remainingNibble;
+            childKey.CopyTo(newKey.AsSpan(pos));
             _arena[childIdx].ShortKey = newKey;
-            _arena[childIdx].MarkDirty();
-            FreeNode(branchIdx);
-            FreeChildren(oldChildrenStart, 1);
-            return childIdx;
-        }
-
-        if (_arena[childIdx].IsBranch())
-        {
-            byte[] childShortKey = _arena[childIdx].ShortKey ?? [];
-            byte[] newShortKey = new byte[prefix.Length + childShortKey.Length];
-            prefix.CopyTo(newShortKey.AsSpan());
-            childShortKey.CopyTo(newShortKey.AsSpan(prefix.Length));
-            _arena[childIdx].ShortKey = newShortKey;
             _arena[childIdx].MarkDirty();
             FreeNode(branchIdx);
             FreeChildren(oldChildrenStart, 1);
