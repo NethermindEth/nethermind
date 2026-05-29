@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -142,7 +141,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             else
             {
                 using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
-                deserialized.Proofs.Count.Should().Be(proofCount);
+                Assert.That(deserialized.Proofs.Count, Is.EqualTo(proofCount));
             }
         }
 

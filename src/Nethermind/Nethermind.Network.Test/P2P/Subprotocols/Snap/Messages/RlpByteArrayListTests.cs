@@ -113,7 +113,7 @@ public class RlpByteArrayListTests
         {
             Rlp.ValueDecoderContext ctx = new(encoded, true);
             using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
-            list.Count.Should().Be(itemCount);
+            Assert.That(list.Count, Is.EqualTo(itemCount));
         }
     }
 
@@ -125,7 +125,7 @@ public class RlpByteArrayListTests
 
         Rlp.ValueDecoderContext ctx = new(encoded, true);
         using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
-        list.Count.Should().Be(count);
+        Assert.That(list.Count, Is.EqualTo(count));
     }
 
     private static byte[] EncodeSingleByteItemList(int count)
