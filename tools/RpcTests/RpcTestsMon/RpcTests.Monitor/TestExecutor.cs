@@ -1,0 +1,37 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace Nethermind.RpcTests.Monitor;
+
+internal class TestExecutor(HttpClient httpClient)
+{
+    private long _requestNumber;
+
+    public async Task<TestFailure?> ExecuteAsync(ExecutionArgs args, TestContext test, CancellationToken ct = default)
+    {
+        RequestContext requestContext = new(Interlocked.Increment(ref _requestNumber));
+        test = test with {Request = requestContext};
+
+        JsonNode request = test.Definition.Request.Compile(test);
+        using JsonContent content = JsonContent.Create(request);
+
+        (JsonNode actual, JsonNode expected) = (await SendAsync(args.TargetUrl, content, ct), await SendAsync(args.ReferenceUrl, content, ct));
+
+        return ResponseComparer.Compare(actual, expected)
+            ? null
+            : new TestFailure(test, request, actual, expected);
+    }
+
+    private async Task<JsonNode> SendAsync(Uri url, JsonContent content, CancellationToken ct)
+    {
+        using HttpResponseMessage response = await httpClient.PostAsync(url, content, ct);
+        response.EnsureSuccessStatusCode();
+
+        return await JsonNode.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct)
+            ?? throw new JsonException("Empty response received.");
+    }
+}

@@ -9,15 +9,6 @@ using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal record BlockInfo(long Number, string Hash) : IFormattable
-{
-    public override string ToString() => $"{Number} ({Hash})";
-
-    public string ToString(string? format, IFormatProvider? formatProvider) => format?.Equals("#") == true
-        ? Number.ToString()
-        : ToString();
-}
-
 internal class HeadMonitor(Uri nodeUrl, INotifier notifier)
 {
     private const string SubscribeRequest =

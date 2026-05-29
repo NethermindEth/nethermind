@@ -4,6 +4,7 @@
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.FileSystemGlobbing.Abstractions;
+using Nethermind.RpcTests.Monitor.Dynamic;
 
 namespace Nethermind.RpcTests.Monitor;
 
@@ -11,7 +12,7 @@ internal class TestDefinition
 {
     public required string FilePath { get; init; }
     public required int Index { get; init; }
-    public required DynamicJson<TestContext> OnChanged { get; init; }
+    public required DynamicExpression<TestContext, bool> Run { get; init; }
     public required DynamicJson<TestContext> Request { get; init; }
 }
 
@@ -35,21 +36,21 @@ internal static class TestLoader
                 int testIndex = 0;
                 foreach (JsonNode? testNode in tests)
                 {
-                    if (testNode?["onChanged"] is not { } onChangedNode || testNode["request"] is not { } requestNode)
-                        throw new Exception($"Test \"{path}\" doesn't have required properties 'onChanged' and 'request'");
+                    if (testNode?["run"]?.GetValue<string>() is not { } runExpr || testNode["request"] is not { } requestNode)
+                        throw new Exception($"Test \"{path}\" doesn't have required properties 'run' and 'request'");
 
                     definitions.Add(new TestDefinition
                     {
                         FilePath = path,
                         Index = ++testIndex,
-                        OnChanged = new DynamicJson<TestContext>(onChangedNode),
+                        Run = new DynamicExpression<TestContext, bool>(runExpr),
                         Request = new DynamicJson<TestContext>(requestNode)
                     });
                 }
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Failed to load {path}: {ex.Message}");
+                Console.Error.WriteLine($"Failed to load test \"{path}\": {ex}");
             }
         }
 

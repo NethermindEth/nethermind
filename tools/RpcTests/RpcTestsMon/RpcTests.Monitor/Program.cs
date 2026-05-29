@@ -51,8 +51,9 @@ rootCommand.SetAction(async (parseResult, ct) =>
         Parallelism = parseResult.GetValue(parallelismOption)
     };
 
-    MonitorRunner runner = new(GetNotifier());
-    await runner.RunAsync(args, ct);
+    using HttpClient client = new();
+    MonitorRunner runner = new(args, GetNotifier(), client);
+    await runner.RunAsync(ct);
 });
 
 return await rootCommand.Parse(args).InvokeAsync();

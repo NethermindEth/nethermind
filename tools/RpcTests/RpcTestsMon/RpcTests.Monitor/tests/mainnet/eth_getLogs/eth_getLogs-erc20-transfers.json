@@ -1,6 +1,6 @@
 [
   {
-    "onChanged": "{{Head.Number}}",
+    "run": "EveryBlock",
     "test": {
       "description": "eth_getLogs ERC20 transfers @ head-2"
     },
@@ -8,8 +8,8 @@
       "jsonrpc":"2.0",
       "method":"eth_getLogs",
       "params":[{
-        "fromBlock":"{{To.Hex(Head.Number - 2)}}",
-        "toBlock":"{{To.Hex(Head.Number - 2)}}",
+        "fromBlock":"{{Hex(Head.Number - 2)}}",
+        "toBlock":"{{Hex(Head.Number - 2)}}",
         "topics":["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"]
       }],
       "id": "{{Request.Number}}"

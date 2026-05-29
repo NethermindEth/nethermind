@@ -22,8 +22,8 @@ internal class WebhookSlackNotifier(string webhookUrl) : INotifier
         object[] attachments =
         [
             MakeAttachment("request.json", "#d3d3d3", failure.Request.ToPrettyString()),
-            MakeAttachment("target-response.json", "#ff6b35", failure.TargetResponse.ToPrettyString()),
-            MakeAttachment("reference-response.json", "#36a64f", failure.ReferenceResponse.ToPrettyString())
+            MakeAttachment("actual-response.json", "#ff6b35", failure.ActualResponse.ToPrettyString()),
+            MakeAttachment("expected-response.json", "#36a64f", failure.ExpectedResponse.ToPrettyString())
         ];
 
         return PostAsync(new { text, attachments }, ct);

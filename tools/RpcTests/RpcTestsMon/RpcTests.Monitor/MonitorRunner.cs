@@ -1,41 +1,23 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Threading.Tasks.Dataflow;
 using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal record struct TestContext(TestDefinition Definition, BlockInfo? Head = null)
+internal class MonitorRunner(ExecutionArgs args, INotifier notifier, HttpClient client)
 {
-    public static string Hex(int n) => $"0x{n:x}";
-    public static string Hex(long n) => $"0x{n:x}";
+    private readonly TestDefinition[] _tests = TestLoader.Load(args.TestGlobs);
+    private readonly TestExecutor _executor = new(client);
 
-    public JsonNode? LastOnChangedValue;
-}
-
-internal record TestFailure(TestContext Test, JsonNode Request, JsonNode TargetResponse, JsonNode ReferenceResponse)
-{
-    public BlockInfo Head => Test.Head!;
-}
-
-internal class MonitorRunner(INotifier notifier)
-{
-    private TestContext[] _testContexts = [];
-
-    public async Task RunAsync(ExecutionArgs args, CancellationToken ct)
+    public async Task RunAsync(CancellationToken ct)
     {
-        TestDefinition[] tests = TestLoader.Load(args.TestGlobs);
-        Console.WriteLine($"Loaded {tests.Length} tests");
-        if (tests.Length == 0) return;
+        Console.WriteLine($"Loaded {_tests.Length} tests");
+        if (_tests.Length == 0)
+            return;
 
-        _testContexts = [.. tests.Select(static t => new TestContext(t))];
-
-        using HttpClient client = new();
-        (ITargetBlock<BlockInfo> startBlock, IDataflowBlock endBlock) =
-            BuildPipeline(args, new RequestSender(client), ct);
+        (ITargetBlock<BlockInfo> startBlock, IDataflowBlock endBlock) = BuildPipeline(ct);
 
         HeadMonitor headMonitor = new(args.TargetUrl, notifier);
         try
@@ -53,8 +35,7 @@ internal class MonitorRunner(INotifier notifier)
         await endBlock.Completion;
     }
 
-    private (ITargetBlock<BlockInfo> start, IDataflowBlock end) BuildPipeline(
-        ExecutionArgs args, RequestSender sender, CancellationToken ct)
+    private (ITargetBlock<BlockInfo> start, IDataflowBlock end) BuildPipeline(CancellationToken ct)
     {
         BufferBlock<BlockInfo> headBuffer = new(new DataflowBlockOptions { BoundedCapacity = 2 });
 
@@ -63,12 +44,12 @@ internal class MonitorRunner(INotifier notifier)
         // filter tests that need to run for this head
         TransformManyBlock<BlockInfo, TestContext> filterBlock = new(
             FilterTests,
-            new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1, BoundedCapacity = _testContexts.Length }
+            new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1, BoundedCapacity = _tests.Length }
         );
 
         // run each triggered test against both nodes, yield on mismatch
         TransformBlock<TestContext, TestFailure?> runnerBlock = new(
-            pending => RunTestAsync(pending, sender, args, ct),
+            pending => RunTestAsync(pending, ct),
             new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = args.Parallelism, BoundedCapacity = args.Parallelism }
         );
 
@@ -87,63 +68,41 @@ internal class MonitorRunner(INotifier notifier)
 
     private IEnumerable<TestContext> FilterTests(BlockInfo head)
     {
-        for (int i = 0; i < _testContexts.Length; i++)
+        foreach (TestDefinition def in _tests)
         {
-            ref TestContext state = ref _testContexts[i];
-            TestContext? pending = null;
+            bool shouldRun = false;
+            TestContext ctx = new(def, head);
+
             try
             {
-                // TODO: optimize via comparing simple value
-                TestContext ctx = state with { Head = head };
-                JsonNode? changed = state.Definition.OnChanged.Compile(ctx);
-                if (!ValuesEqual(changed, state.LastOnChangedValue))
-                    continue;
-
-                state.LastOnChangedValue = changed;
-                pending = ctx;
+                shouldRun = def.Run.Compile(ctx);
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"onChanged evaluation error: {ex.Message}");
+                Console.Error.WriteLine($"Error on test \"{def.FilePath}\" run condition evaluation: {ex.Message}");
             }
 
-            if (pending is not null)
-                yield return pending.Value;
+            if (shouldRun)
+                yield return ctx;
         }
     }
 
-    private async Task<TestFailure?> RunTestAsync(
-        TestContext test, RequestSender sender, ExecutionArgs args, CancellationToken ct)
+    private async Task<TestFailure?> RunTestAsync(TestContext test, CancellationToken ct)
     {
         try
         {
-            JsonNode request = test.Definition.Request.Compile(test)!;
-            JsonNode targetResp = await sender.SendAsync(args.TargetUrl, request, ct);
-            JsonNode refResp = await sender.SendAsync(args.ReferenceUrl, request, ct);
-
-            if (ResponseComparer.Compare(targetResp, refResp))
+            if (await _executor.ExecuteAsync(args, test, ct) is not { } testFailure)
                 return null;
 
             Console.Error.WriteLine($"Mismatch on test \"{test.Definition.FilePath}\" at block #{test.Head:#}");
-            return new TestFailure(test, request, targetResp, refResp);
+            return testFailure;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            string errorMsg = $"Test \"{test.Definition.FilePath}\" error at block #{test.Head:#}: {ex.Message}";
+            string errorMsg = $"Error on test \"{test.Definition.FilePath}\" invocation at block #{test.Head:#}: {ex.Message}";
             Console.Error.WriteLine(errorMsg);
             _ = notifier.NotifyErrorAsync(errorMsg);
             return null;
         }
     }
-
-    private static bool ValuesEqual(JsonNode? x, JsonNode? y) => (x?.GetValueKind(), y?.GetValueKind()) switch
-    {
-        (null, null) => true,
-        (JsonValueKind.Null, JsonValueKind.Null) => true,
-        (JsonValueKind.False, JsonValueKind.False) => true,
-        (JsonValueKind.True, JsonValueKind.True) => true,
-        (JsonValueKind.String, JsonValueKind.String) => x.AsValue().Equals(y.AsValue()),
-        (JsonValueKind.Number, JsonValueKind.Number) => x.AsValue().Equals(y.AsValue()),
-        _ => false
-    };
 }
