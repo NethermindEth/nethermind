@@ -642,6 +642,7 @@
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
+          "Microsoft.ClearScript.V8": "[7.5.0, )",
           "Microsoft.ClearScript.V8.Native.linux-arm64": "[7.5.0, )",
           "Microsoft.ClearScript.V8.Native.linux-x64": "[7.5.0, )",
           "Microsoft.ClearScript.V8.Native.osx-arm64": "[7.5.0, )",
@@ -932,6 +933,7 @@
           "Nethermind.Crypto": "[1.39.0-unstable, )",
           "Nethermind.Evm": "[1.39.0-unstable, )",
           "Nethermind.Facade": "[1.39.0-unstable, )",
+          "Nethermind.History": "[1.39.0-unstable, )",
           "Nethermind.Network": "[1.39.0-unstable, )",
           "Nethermind.Network.Dns": "[1.39.0-unstable, )",
           "Nethermind.Sockets": "[1.39.0-unstable, )",
