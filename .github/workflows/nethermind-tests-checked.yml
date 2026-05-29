@@ -22,8 +22,7 @@ defaults:
     shell: bash
 
 jobs:
-  # 8 groups × 2 variants (checked / no-intrinsics) = 16 jobs.
-  # Solution-level build + MTP cross-module parallelism within each job.
+  # 14 groups × 2 variants (checked / no-intrinsics).
   tests:
     name: tests ${{ matrix.group }} [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
@@ -35,7 +34,6 @@ jobs:
           - { label: checked, args: '-p:DefineConstants=TRACE%3BDEBUG', hw: '' }
           - { label: no-intrinsics, args: '', hw: '0' }
         group:
-          # Heavy — one project each, gets its own runner per variant.
           - sync
           - merge-plugin
           - blockchain
@@ -43,22 +41,17 @@ jobs:
           - jsonrpc
           - evm
           - runner
-          # Grouped — fast/medium projects sequential.
           - consensus
           - state
           - network-sub
           - rpc-extras
           - misc
-          # Ethereum spec groups (built from EthereumTests.slnx).
           - spec-core
           - spec-tx-rlp-trie
     env:
       DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw }}
     steps:
       - name: Free up disk space
-        # Both solutions hit the disk: Nethermind.slnx copies coverage native
-        # libs into every test project's bin/release/, and EthereumTests.slnx
-        # additionally copies large test fixtures. Always free.
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           large-packages: true
@@ -71,18 +64,15 @@ jobs:
           submodules: false
 
       - name: Fetch ethereum/tests fixtures
-        # Only spec-* groups consume ethereum/tests; other groups build
-        # Nethermind.slnx and don't reference src/tests at all.
+        # See nethermind-tests.yml for the SHA-resolution / symlink-exclude rationale.
         if: ${{ contains(fromJSON('["spec-core","spec-tx-rlp-trie"]'), matrix.group) }}
         shell: bash
         run: |
-          # SHA resolved from the parent repo's submodule pointer — single
-          # source of truth, bumped via the normal submodule update flow.
           SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
           test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
           mkdir -p src/tests
           curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
-            | tar -xz --strip-components=1 -C src/tests
+            | tar -xz --strip-components=1 --exclude='*/src' -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -94,7 +84,6 @@ jobs:
           VARIANT_ARGS: ${{ matrix.variant.args }}
         run: |
           case "$GROUP" in
-            # Heavy — standalone runners per variant.
             sync)         solution=Nethermind.slnx; projects=(Nethermind.Synchronization.Test) ;;
             merge-plugin) solution=Nethermind.slnx; projects=(Nethermind.Merge.Plugin.Test) ;;
             blockchain)   solution=Nethermind.slnx; projects=(Nethermind.Blockchain.Test) ;;
@@ -102,15 +91,13 @@ jobs:
             jsonrpc)      solution=Nethermind.slnx; projects=(Nethermind.JsonRpc.Test) ;;
             evm)          solution=Nethermind.slnx; projects=(Nethermind.Evm.Test) ;;
             runner)       solution=Nethermind.slnx; projects=(Nethermind.Runner.Test) ;;
-            # Grouped — fast/medium projects sequential within one runner.
             consensus)
               solution=Nethermind.slnx
               projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test Nethermind.Merge.AuRa.Test Nethermind.Specs.Test)
               ;;
             state)
               solution=Nethermind.slnx
-              # Nethermind.State.Test.Runner.Test lives in EthereumTests.slnx —
-              # tested by `spec-tx-rlp-trie` instead.
+              # Nethermind.State.Test.Runner.Test lives in EthereumTests.slnx (tested by spec-tx-rlp-trie).
               projects=(Nethermind.State.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
               ;;
             network-sub)
@@ -123,7 +110,6 @@ jobs:
               ;;
             misc)
               solution=Nethermind.slnx
-              # Note: EraE not covered by this workflow upstream.
               projects=(Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test Nethermind.Era1.Test Nethermind.History.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
               ;;
             spec-core)
@@ -132,12 +118,7 @@ jobs:
               ;;
             spec-tx-rlp-trie)
               solution=EthereumTests.slnx
-              # Nethermind.State.Test.Runner.Test is a Nethermind.* test that lives
-              # in EthereumTests.slnx (it tests the test runner itself), so it rides
-              # with this group which already builds that solution.
-              # Ethereum.Legacy.VM.Test is too large for an unchunked run in this
-              # 30-min window — it lives in `tests-chunked` below with
-              # TEST_SKIP_HEAVY=1 (matching the Legacy.Blockchain/Pyspec pattern).
+              # Legacy.VM.Test is chunked in tests-chunked below — too large for an unchunked run here.
               projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test Nethermind.State.Test.Runner.Test)
               ;;
             *)
@@ -149,8 +130,6 @@ jobs:
           dotnet build "$solution" -c release -m -v minimal $VARIANT_ARGS -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
-          # Flaky-tagged tests run in the central `tests-flaky` job in nethermind-tests.yml.
-          # 2-wide within the group; bash-3.2-safe PID tracking.
           MAX_PARALLEL=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 2)
           (( MAX_PARALLEL > 2 )) && MAX_PARALLEL=2
           results_dir=$(mktemp -d)
@@ -188,10 +167,7 @@ jobs:
           done
           exit $fail
 
-  # Heavy chunked tests under both variants. TEST_SKIP_HEAVY=1 limits each chunk.
-  # Legacy.Blockchain: 8 → 4 chunks (same total work, larger chunks).
-  # Legacy.VM: 4 chunks (main workflow uses 8 unchunked, but this variant skips
-  # heavy via TEST_SKIP_HEAVY=1 so 4 fits in 25 min).
+  # Heavy chunked tests under both variants — TEST_SKIP_HEAVY=1 keeps each chunk tractable.
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
@@ -232,17 +208,15 @@ jobs:
           submodules: false
 
       - name: Fetch ethereum/tests fixtures
-        # Only Legacy.* uses ethereum/tests; Pyspec pulls its own at runtime.
+        # Pyspec pulls its own fixtures at runtime via TestFixtureDownloader.
         if: ${{ !startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') }}
         shell: bash
         run: |
-          # SHA resolved from the parent repo's submodule pointer — single
-          # source of truth, bumped via the normal submodule update flow.
           SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
           test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
           mkdir -p src/tests
           curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
-            | tar -xz --strip-components=1 -C src/tests
+            | tar -xz --strip-components=1 --exclude='*/src' -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -256,7 +230,6 @@ jobs:
           set -e
           dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal ${{ matrix.variant.args }} -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
-          # Flaky-tagged tests run in the central `tests-flaky` job.
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
             --no-build --no-restore -v minimal ${{ matrix.variant.args }} \
             --filter "TestCategory!=Flaky"

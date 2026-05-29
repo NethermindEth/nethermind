@@ -19,8 +19,6 @@ env:
   DOTNET_GCServer: 1
 
 jobs:
-  # Base unit/spec projects collapse into 2 grouped jobs. Solution-level build
-  # + MTP cross-module parallelism keeps wall-clock low.
   tests:
     name: tests ${{ matrix.group }}
     runs-on: ubuntu-latest
@@ -33,9 +31,6 @@ jobs:
           - flat-nethermind
     steps:
       - name: Free up disk space
-        # Both solutions hit the disk: Nethermind.slnx copies coverage native
-        # libs into every test project's bin/release/, and EthereumTests.slnx
-        # additionally copies large test fixtures. Always free.
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           large-packages: true
@@ -48,18 +43,15 @@ jobs:
           submodules: false
 
       - name: Fetch ethereum/tests fixtures
-        # Only flat-spec needs ethereum/tests; flat-nethermind builds
-        # Nethermind.slnx without referencing src/tests.
+        # See nethermind-tests.yml for the SHA-resolution / symlink-exclude rationale.
         if: matrix.group == 'flat-spec'
         shell: bash
         run: |
-          # SHA resolved from the parent repo's submodule pointer — single
-          # source of truth, bumped via the normal submodule update flow.
           SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
           test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
           mkdir -p src/tests
           curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
-            | tar -xz --strip-components=1 -C src/tests
+            | tar -xz --strip-components=1 --exclude='*/src' -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -87,8 +79,6 @@ jobs:
           dotnet build "$solution" -c release -m -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
-          # Flaky-tagged tests run in the central `tests-flaky` job in nethermind-tests.yml.
-          # 2-wide within the group; bash-3.2-safe PID tracking.
           MAX_PARALLEL=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 2)
           (( MAX_PARALLEL > 2 )) && MAX_PARALLEL=2
           results_dir=$(mktemp -d)
@@ -126,7 +116,6 @@ jobs:
           done
           exit $fail
 
-  # Legacy.Blockchain chunks — 8 → 4 chunks (same total work, larger chunks).
   tests-legacy-chunked:
     name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }})
     runs-on: ubuntu-latest
@@ -144,13 +133,11 @@ jobs:
       - name: Fetch ethereum/tests fixtures
         shell: bash
         run: |
-          # SHA resolved from the parent repo's submodule pointer — single
-          # source of truth, bumped via the normal submodule update flow.
           SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
           test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
           mkdir -p src/tests
           curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
-            | tar -xz --strip-components=1 -C src/tests
+            | tar -xz --strip-components=1 --exclude='*/src' -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -163,13 +150,10 @@ jobs:
           set -e
           dotnet build Ethereum.Legacy.Blockchain.Test.csproj -c release -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
-          # Flaky-tagged tests run in the central `tests-flaky` job.
           dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release \
             --no-build --no-restore -v minimal --filter "TestCategory!=Flaky"
 
-  # Pyspec runs: Sequential (default) + 6 Amsterdam fixture variants.
-  # Each variant is a filter-based pass; 16 → 12 chunks per label
-  # (same total work, ~30% larger chunks, still well under 25-min timeout).
+  # Pyspec Sequential + 6 Amsterdam fixture variants, each chunked 1of12..12of12.
   tests-pyspec:
     name: Pyspec [${{ matrix.label }}] (${{ matrix.chunk }})
     runs-on: ubuntu-latest
@@ -221,7 +205,6 @@ jobs:
           LABEL: ${{ matrix.label }}
         run: |
           # Sequential = default Pyspec sans Amsterdam variant fixtures.
-          # Other labels = a specific Amsterdam fixture class.
           case "$LABEL" in
             Sequential)         filter='FullyQualifiedName!~AmsterdamParallel&FullyQualifiedName!~AmsterdamBatchRead' ;;
             Parallel)           filter='FullyQualifiedName~AmsterdamParallelBlockchainTests' ;;
@@ -233,7 +216,7 @@ jobs:
             *)                  echo "::error::Unknown label: $LABEL"; exit 1 ;;
           esac
 
-          # Resource monitor for Pyspec — chunks have hit memory/disk limits before.
+          # Resource monitor — Pyspec chunks have hit memory/disk limits before.
           (
             while true; do
               echo "::group::Pyspec resources $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
@@ -252,8 +235,6 @@ jobs:
           set -e
           dotnet build Ethereum.Blockchain.Pyspec.Test.csproj -c release -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
-          # Flaky-tagged tests run in the central `tests-flaky` job — append to
-          # this label's filter so we don't double-run them here.
           dotnet test --project Ethereum.Blockchain.Pyspec.Test.csproj -c release \
             --no-build --no-restore -v minimal --filter "${filter}&TestCategory!=Flaky"
 

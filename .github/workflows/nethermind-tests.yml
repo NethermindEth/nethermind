@@ -21,9 +21,7 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   TERM: xterm
-  # Server GC parallelizes collection across cores — worth it for the
-  # multi-minute Pyspec / Legacy.Blockchain chunks. Default for test host
-  # is workstation GC, so this opt-in is meaningful.
+  # Server GC for multi-minute test chunks; test-host default is workstation GC.
   DOTNET_GCServer: 1
 
 defaults:
@@ -31,12 +29,9 @@ defaults:
     shell: bash
 
 jobs:
-  # Unit tests: hybrid matrix.
-  #   - Heavy projects (Sync, Merge.Plugin, Blockchain, Network, JsonRpc, Evm,
-  #     Runner) get their own runner. Needed for timing-sensitive tests
-  #     (PreWarmCaches, Process_long_running_branch) that fail when CPU is
-  #     shared with other test hosts.
-  #   - Fast/medium projects bundle into 5 groups, run sequentially within.
+  # Heavy projects (sync/blockchain/network/etc.) get their own runner;
+  # timing-sensitive tests there fail under shared CPU. Fast/medium projects
+  # share a runner per group.
   tests:
     name: tests ${{ matrix.group }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
@@ -51,7 +46,6 @@ jobs:
           - ubuntu-24.04-arm
           - windows-latest
         group:
-          # Heavy — one project each, gets its own runner.
           - sync
           - merge-plugin
           - blockchain
@@ -59,7 +53,6 @@ jobs:
           - jsonrpc
           - evm
           - runner
-          # Grouped — fast/medium projects sequential within one runner.
           - consensus
           - state
           - network-sub
@@ -68,11 +61,9 @@ jobs:
         include:
           - { runner: macos-latest, group: os-sensitive }
     steps:
+      # Microsoft.Testing.Extensions.CodeCoverage copies native libs into every
+      # test project's bin/release/; exhausts the default ubuntu-latest disk.
       - name: Free up disk space
-        # Nethermind.slnx build copies Microsoft.Testing.Extensions.CodeCoverage
-        # native libs (linux-x64, linux-musl-x64, win-x64) into every test
-        # project's bin/release/ × ~40 test projects — exhausts ubuntu-latest
-        # default ~14 GB disk.
         if: runner.os == 'Linux'
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -92,7 +83,6 @@ jobs:
           GROUP: ${{ matrix.group }}
         run: |
           case "$GROUP" in
-            # Heavy — standalone runners.
             sync)         projects=(Nethermind.Synchronization.Test) ;;
             merge-plugin) projects=(Nethermind.Merge.Plugin.Test) ;;
             blockchain)   projects=(Nethermind.Blockchain.Test) ;;
@@ -100,13 +90,11 @@ jobs:
             jsonrpc)      projects=(Nethermind.JsonRpc.Test) ;;
             evm)          projects=(Nethermind.Evm.Test) ;;
             runner)       projects=(Nethermind.Runner.Test) ;;
-            # Grouped — fast/medium projects sequential within one runner.
             consensus)
               projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test Nethermind.Merge.AuRa.Test Nethermind.Specs.Test)
               ;;
             state)
-              # Nethermind.State.Test.Runner.Test lives in EthereumTests.slnx —
-              # tested by `spec-tx-rlp-trie` instead.
+              # Nethermind.State.Test.Runner.Test lives in EthereumTests.slnx (tested by spec-tx-rlp-trie).
               projects=(Nethermind.State.Test Nethermind.Trie.Test Nethermind.Db.Test Nethermind.Facade.Test)
               ;;
             network-sub)
@@ -132,23 +120,15 @@ jobs:
             coverage_args="--coverage --coverage-output-format cobertura --coverage-settings codecoverage.json"
           fi
 
-          # One solution build amortized across all projects in the group.
-          # `-p:RestoreDisableParallel=true` works around a Windows-only NuGet
-          # race: `dotnet build -m` parallelises restore, and concurrent
-          # writers to the same `*.dat-new` cache file deadlock against the
-          # Defender file handle and surface as "fatal device hardware error".
-          # Serial restore eliminates the race; parallel build (`-m`) is kept.
+          # Serial restore avoids a Windows-only race: parallel writers to NuGet's
+          # *.dat-new cache files deadlock against Defender and surface as
+          # "fatal device hardware error". Parallel build (-m) is unaffected.
           dotnet build Nethermind.slnx -c release -m -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
-          # Flaky-tagged tests run in the dedicated `tests-flaky` job.
-          # Non-flaky tests run 2-wide within the group: enough to hide build/
-          # restore/teardown latency on multi-project groups, but capped at 2
-          # so timing-sensitive tests don't trip on CPU contention (4-wide on
-          # Windows runners exposed flakes beyond our [Category("Flaky")] list).
-          # `wait -n` would be ideal but macOS GitHub runners ship bash 3.2
-          # (predates `wait -n`). Track PIDs and `wait $pid` on the oldest when
-          # full; works on bash 3.2+.
+          # 2-wide within the group; 4-wide on multi-vCPU runners surfaces flakes
+          # beyond our [Category("Flaky")] list. PID tracking (not `wait -n`)
+          # because macOS GitHub runners ship bash 3.2.
           MAX_PARALLEL=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 2)
           (( MAX_PARALLEL > 2 )) && MAX_PARALLEL=2
           results_dir=$(mktemp -d)
@@ -195,8 +175,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-  # Ethereum.* spec tests via EthereumTests.slnx + MTP cross-module parallelism.
-  # Legacy.VM still chunked on ubuntu-latest because the suite is large.
   tests-spec:
     name: spec ${{ matrix.group }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
@@ -218,13 +196,12 @@ jobs:
           - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 7of8 }
           - { runner: ubuntu-latest, group: spec-legacy-vm, chunk: 8of8 }
     steps:
+      # EthereumTests.slnx copies test fixtures + native libs into every test
+      # project's bin/release/, on top of the disk pressure tests/ already adds.
       - name: Free up disk space
         if: runner.os == 'Linux'
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
-          # EthereumTests.slnx copies large Pyspec/Blockchain test fixtures +
-          # native libs into every project's bin/release/, exhausting the
-          # default ~14 GB ubuntu-latest disk before the build finishes.
           large-packages: true
           tool-cache: false
           swap-storage: false
@@ -234,19 +211,21 @@ jobs:
         with:
           submodules: false
 
+      # Tarball download instead of submodule clone. SHA resolved from the
+      # parent repo's submodule pointer (single source of truth — bump via
+      # the normal `git -C src/tests checkout <ref>` + `git add src/tests`).
       - name: Fetch ethereum/tests fixtures
         shell: bash
         run: |
-          # Resolve the fixture SHA from the parent repo's submodule pointer
-          # — single source of truth, bumped via the normal submodule update
-          # flow (`git -C src/tests checkout <ref>` + `git add src/tests`).
-          # We never actually clone the submodule; we just read its pinned
-          # commit from the parent tree and pull the matching tarball.
           SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
           test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
           mkdir -p src/tests
+          # Exclude the archive's top-level src/ subtree — it contains a
+          # self-referential symlink (src/LegacyTests → ../LegacyTests/src/...)
+          # that Git Bash's tar on Windows refuses to create. The test data
+          # lives at the archive root (LegacyTests/, GeneralStateTests/, ...).
           curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
-            | tar -xz --strip-components=1 -C src/tests
+            | tar -xz --strip-components=1 --exclude='*/src' -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -262,17 +241,14 @@ jobs:
               projects=(Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Blockchain.Block.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test)
               ;;
             spec-tx-rlp-trie)
-              # Nethermind.State.Test.Runner.Test is a Nethermind.* test that lives
-              # in EthereumTests.slnx (it tests the test runner itself), so it rides
-              # with the spec group that already builds that solution.
+              # Nethermind.State.Test.Runner.Test lives in EthereumTests.slnx (tests the runner itself).
               projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test Nethermind.State.Test.Runner.Test)
-              # linux-arm absorbs the unchunked Legacy.VM.Test here.
+              # linux-arm has spare CPU to absorb the unchunked Legacy.VM.Test here.
               if [[ "${{ matrix.runner }}" == "ubuntu-24.04-arm" ]]; then
                 projects+=(Ethereum.Legacy.VM.Test)
               fi
               ;;
             spec-legacy-vm)
-              # Single chunk per job — TEST_CHUNK env tells the test runner which slice.
               projects=(Ethereum.Legacy.VM.Test)
               ;;
             *)
@@ -289,9 +265,6 @@ jobs:
           dotnet build EthereumTests.slnx -c release -m -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
-          # Flaky-tagged tests run in the dedicated `tests-flaky` job. 2-wide
-          # within the group; bash-3.2-safe PID tracking (macOS runners ship
-          # bash 3.2 → no `wait -n`).
           MAX_PARALLEL=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 2)
           (( MAX_PARALLEL > 2 )) && MAX_PARALLEL=2
           results_dir=$(mktemp -d)
@@ -338,10 +311,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-  # Pyspec / Legacy.Blockchain — kept chunked. Each chunk is a single project
-  # run with a TEST_CHUNK env that the test code uses to pick its slice.
-  # Legacy.Blockchain: 8 → 4 chunks. Pyspec Sequential: 16 → 12 chunks.
-  # Same total work, ~2x wall-clock per chunk (still well under 25-min timeout).
   tests-chunked:
     name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
@@ -390,22 +359,20 @@ jobs:
         with:
           submodules: false
 
+      # Pyspec downloads its own fixtures at test runtime via TestFixtureDownloader.
       - name: Fetch ethereum/tests fixtures
-        # Only Legacy.* uses ethereum/tests; Pyspec downloads its own
-        # fixtures at test runtime via TestFixtureDownloader.
         if: ${{ !startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') }}
         shell: bash
         run: |
-          # Resolve the fixture SHA from the parent repo's submodule pointer
-          # — single source of truth, bumped via the normal submodule update
-          # flow (`git -C src/tests checkout <ref>` + `git add src/tests`).
-          # We never actually clone the submodule; we just read its pinned
-          # commit from the parent tree and pull the matching tarball.
           SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
           test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
           mkdir -p src/tests
+          # Exclude the archive's top-level src/ subtree — it contains a
+          # self-referential symlink (src/LegacyTests → ../LegacyTests/src/...)
+          # that Git Bash's tar on Windows refuses to create. The test data
+          # lives at the archive root (LegacyTests/, GeneralStateTests/, ...).
           curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
-            | tar -xz --strip-components=1 -C src/tests
+            | tar -xz --strip-components=1 --exclude='*/src' -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -418,60 +385,44 @@ jobs:
           set -e
           dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
-          # Flaky-tagged tests run in the dedicated `tests-flaky` job.
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
             --no-build --no-restore -v minimal --filter "TestCategory!=Flaky"
 
-  # Single job that runs every test tagged [Category("Flaky")] across both
-  # solutions. Required check — failures block merging — but isolating known
-  # flakes here means a single re-run of THIS job (via "Re-run failed jobs"
-  # in the UI) is enough to retry a flake, instead of dragging the whole
-  # ~250-job matrix.
-  #
-  # Convention for the team: a test observed flaky gets tagged
-  #   [Category("Flaky"), Retry(3)]
-  # The Retry attribute makes NUnit try the test up to 3 times; a test that
-  # fails all 3 attempts is genuinely broken, not transient.
+  # Single job for every test tagged [Category("Flaky")]. Required check, so
+  # flaky failures still block merging — but one re-run of THIS job is enough
+  # to retry a flake instead of dragging the whole ~250-job matrix.
+  # Convention: tag a flaky test with `[Category("Flaky"), Retry(N)]`.
   tests-flaky:
     name: Flaky tests
     runs-on: ubuntu-latest
-    # Cap matches the rest of the test matrix at 20 min. Build ~5 min leaves
-    # ~15 min for tests; any Flaky test that genuinely needs more than that
-    # to fail under its Retry budget is too slow to be a useful flake marker.
     timeout-minutes: 20
     steps:
       - name: Free up disk space
-        # Same Nethermind.slnx-native-libs disk issue as the main tests job.
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           large-packages: true
           tool-cache: false
           swap-storage: false
 
+      # All current Flaky-tagged tests are in Nethermind.* projects; if a Flaky
+      # test ever lands in an Ethereum.* project, also build EthereumTests.slnx.
       - name: Check out repository
         uses: actions/checkout@v6
-        # No submodules needed — all current Flaky-tagged tests are in
-        # Nethermind.* projects (none in the Ethereum.* spec set).
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
       - name: Build Nethermind.slnx
-        # Only Nethermind.slnx; if a Flaky test ever gets added to an
-        # Ethereum.* project, also build EthereumTests.slnx here.
         working-directory: src/Nethermind
         run: |
           dotnet build Nethermind.slnx -c release -m -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
+      # Modules without Flaky tests return MTP exit 5 (NUnit "no match") or
+      # 8 (MTP "minimum expected"); both are fine here. Real failures stay 1/2.
       - name: Run flaky tests
         working-directory: src/Nethermind
         run: |
-          # Most modules in the solution have no Flaky tests. When the filter
-          # matches nothing in a module, MTP returns exit 5 (NUnit's adapter
-          # short-circuit) or exit 8 (MTP's "minimum expected tests" policy);
-          # both mean "no Flaky tests here, that's fine". Real test failures
-          # still return exit 1 (fail) or exit 2 (execution error).
           dotnet test Nethermind.slnx -c release --no-build --no-restore -v minimal \
             --filter "TestCategory=Flaky" --ignore-exit-code "5;8"
 
