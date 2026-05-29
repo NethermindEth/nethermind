@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 
@@ -298,23 +299,47 @@ public sealed class SparsePatriciaTree : IDisposable
         Dictionary<ValueHash256, LeafUpdate> updates,
         Action<ValueHash256, byte>? proofRequired)
     {
-        // The hash key is always 32 bytes â†’ 64 nibbles. Stack-allocate the buffer once and
-        // overwrite per update so we don't allocate a 64-byte managed array per leaf. On a
-        // realblocks-sized block this trims tens of thousands of heap allocations.
-        Span<byte> nibblePath = stackalloc byte[64];
-        foreach (KeyValuePair<ValueHash256, LeafUpdate> kvp in updates)
-        {
-            Nibbles.BytesToNibbleBytes(kvp.Key.Bytes, nibblePath);
-            SparseSubtrie.UpdateResult result = _subtrie.UpdateSingleLeaf(
-                nibblePath, kvp.Value, out TreePath proofTarget);
+        // Apply updates in sorted key order rather than Dictionary hash order. A hashed key's
+        // nibble path is just its bytes expanded, so ascending ValueHash256 order == ascending
+        // nibble-path (lexicographic) order. Walking the arena in path order means consecutive
+        // updates share long prefixes â€” the descent re-touches the same upper branches back to
+        // back (warm in cache) instead of jumping randomly across the trie, and dirty
+        // propagation marks each subtree once. This mirrors Reth's drain-and-sort before the
+        // range-routed update. The sort is O(n log n) over 32-byte structs; cheap next to the
+        // per-leaf trie descent it accelerates.
+        int count = updates.Count;
+        if (count == 0) return;
 
-            if (result == SparseSubtrie.UpdateResult.NeedsProof)
+        ValueHash256[] keys = ArrayPool<ValueHash256>.Shared.Rent(count);
+        try
+        {
+            int i = 0;
+            foreach (ValueHash256 k in updates.Keys) keys[i++] = k;
+            Array.Sort(keys, 0, count);
+
+            // The hash key is always 32 bytes â†’ 64 nibbles. Reuse one stack buffer across the
+            // loop so we don't allocate a 64-byte managed array per leaf.
+            Span<byte> nibblePath = stackalloc byte[64];
+            for (int k = 0; k < count; k++)
             {
-                // depth walked through sparse trie before hitting blinded = totalNibbles - remainingPath.
-                // proofTarget is the REMAINING path (including the blinded nibble), so minLen = nibbles consumed.
-                int minLen = nibblePath.Length - proofTarget.Length;
-                proofRequired?.Invoke(kvp.Key, (byte)Math.Min(minLen, byte.MaxValue));
+                ValueHash256 key = keys[k];
+                LeafUpdate update = updates[key];
+                Nibbles.BytesToNibbleBytes(key.Bytes, nibblePath);
+                SparseSubtrie.UpdateResult result = _subtrie.UpdateSingleLeaf(
+                    nibblePath, update, out TreePath proofTarget);
+
+                if (result == SparseSubtrie.UpdateResult.NeedsProof)
+                {
+                    // depth walked through sparse trie before hitting blinded = totalNibbles - remainingPath.
+                    // proofTarget is the REMAINING path (including the blinded nibble), so minLen = nibbles consumed.
+                    int minLen = nibblePath.Length - proofTarget.Length;
+                    proofRequired?.Invoke(key, (byte)Math.Min(minLen, byte.MaxValue));
+                }
             }
+        }
+        finally
+        {
+            ArrayPool<ValueHash256>.Shared.Return(keys);
         }
     }
 
