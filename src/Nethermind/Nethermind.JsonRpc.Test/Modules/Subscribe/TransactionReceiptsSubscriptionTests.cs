@@ -18,9 +18,6 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 {
-    // Non-parallel (like SubscribeModuleTests): delivery is observed via a wall-clock WaitOne, but
-    // the send pump's continuation runs on the thread pool, so parallel runs can saturate it and
-    // delay delivery past the timeout.
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     [Parallelizable(ParallelScope.None)]
     public class TransactionReceiptsSubscriptionTests
@@ -89,8 +86,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 filter);
 
             List<JsonRpcResult> jsonRpcResults = [];
-            // Delivery callbacks run sequentially on the subscription's single-reader pump, so this
-            // counts down to zero exactly when the expected results have all arrived.
             using CountdownEvent received = new(Math.Max(expectedCount, 1));
 
             subscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
@@ -103,12 +98,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             if (expectedCount > 0)
             {
-                // Return as soon as the expected results arrive; the timeout is only a safety net.
                 received.Wait(TimeSpan.FromSeconds(1));
             }
             else
             {
-                // No results expected — allow the pipeline a moment to (not) deliver anything.
                 Thread.Sleep(200);
             }
 
