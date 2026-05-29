@@ -80,13 +80,18 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "M3 LFU retention: maximum number of HOT accounts kept revealed in the " +
         "preserved sparse trie across blocks. Accounts touched by an update are moved to the top of " +
         "the LFU; the coldest accounts evict back to Blinded entries on commit. Lower values reduce " +
-        "memory at the cost of more proof reads next block; higher values keep more of the trie warm.",
-        DefaultValue = "50000")]
+        "memory at the cost of more proof reads next block; higher values keep more of the trie warm. " +
+        "Default is int.MaxValue which disables pruning entirely (the preserved trie keeps growing " +
+        "until Wipe/Clear). On realblocks workloads cross-block hit rate is low and Prune cost > " +
+        "benefit; tune to enable pruning for workloads with hot-account locality, e.g. validator " +
+        "set churn or app-specific access patterns.",
+        DefaultValue = "2147483647")]
     int SparseTrieMaxHotAccounts { get; set; }
 
     [ConfigItem(Description = "M3 LFU retention: maximum number of HOT (account, slot) pairs kept " +
-        "revealed in the preserved sparse trie across blocks. Same eviction semantics as " +
-        "SparseTrieMaxHotAccounts. Tune for storage-heavy workloads.", DefaultValue = "200000")]
+        "revealed in the preserved sparse trie across blocks. Same eviction semantics and default " +
+        "behaviour as SparseTrieMaxHotAccounts (int.MaxValue = disabled). Tune for storage-heavy " +
+        "workloads with hot-slot locality.", DefaultValue = "2147483647")]
     int SparseTrieMaxHotSlots { get; set; }
 
     [ConfigItem(Description = "Selects which trie warmer implementation runs during execution. " +

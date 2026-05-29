@@ -71,10 +71,14 @@ public sealed class SparseStateTrie : IDisposable
     {
         if (!_storageTries.TryGetValue(accountPathHash, out SparsePatriciaTree? trie))
             return Keccak.EmptyTreeHash;
-        // Per-contract storage tries are already invoked from a parallel pool in
-        // PersistentStorageProvider.UpdateRootHashesMultiThread â€” disable inner parallelism
-        // so we don't fan out a Parallel.For inside an already-parallel context.
-        return trie.ComputeRoot(allowParallel: false);
+        // Storage tries DO run from parallel workers in
+        // PersistentStorageProvider.UpdateRootHashesMultiThread â€” but EXPB 26637010048
+        // showed that disabling the inner parallelism entirely cost ~60 ms p95. The .NET
+        // thread pool deals with nested Parallel.For by sharing workers, so the practical
+        // cost of nesting is bounded by the per-call MaxDegreeOfParallelism cap (added in
+        // F3). Leave the parameter on the API for callers that hold a Parallel context
+        // they own, but default to allowing parallel here.
+        return trie.ComputeRoot(allowParallel: true);
     }
 
     /// <summary>

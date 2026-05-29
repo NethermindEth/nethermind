@@ -26,13 +26,15 @@ public class FlatDbConfig : IFlatDbConfig
     public bool SparseTrieSkipPatricia { get; set; } = false;
     public bool SparseTrieAuthoritativeStorage { get; set; } = true;
     public bool SparseTrieShadowStorageCompare { get; set; } = false;
-    // Match the IFlatDbConfig DefaultValue documentation. The previous int.MaxValue defaults
-    // silently disabled LFU pruning despite the ConfigItem docs advertising 50000/200000 â€”
-    // operators and benchmarks ran without actually exercising Prune. With F1's "never blind
-    // the root" fix in place, Prune is safe to default on. Set explicitly to int.MaxValue to
-    // disable pruning (cross-block trie keeps growing); set lower for tighter memory budgets.
-    public int SparseTrieMaxHotAccounts { get; set; } = 50_000;
-    public int SparseTrieMaxHotSlots { get; set; } = 200_000;
+    // Prune defaults match the IFlatDbConfig docs (now both int.MaxValue = disabled).
+    // EXPB 26637010048 showed that on realblocks (1000 consecutive recent blocks) the LFU
+    // hit rate is too low for Prune to pay for itself â€” p95 regresses ~50 ms when enabled.
+    // F1's "never blind the root" fix makes Prune SAFE; this default just keeps it OFF
+    // until either (a) M5's sparse-aware prefetcher closes the proof-read overhead, or
+    // (b) a workload with stronger hot-account locality is targeted. Set lower values
+    // explicitly to opt in.
+    public int SparseTrieMaxHotAccounts { get; set; } = int.MaxValue;
+    public int SparseTrieMaxHotSlots { get; set; } = int.MaxValue;
     // Static default stays at Legacy â€” the DI wiring in FlatWorldStateModule overrides this
     // to None whenever UseSparseRootComputation=true, because the Legacy warmer walks Patricia
     // which is duplicate work once the sparse trie is authoritative. The override is in DI
