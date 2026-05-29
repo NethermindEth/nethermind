@@ -7,21 +7,20 @@ using System.Runtime.InteropServices;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 
-namespace Nethermind.Serialization.Ssz.SszVectorConverters;
+namespace Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 
-[SszVectorConverter<ulong>]
-public static class UInt64SszVectorConverter
+[SszBasicTypeConverter<ushort>]
+public static class UInt16SszBasicTypeConverter
 {
-    public const int Length = sizeof(ulong);
-    public const bool PacksItems = true;
+    public const int Length = sizeof(ushort);
 
-    public static ulong FromSpan(ReadOnlySpan<byte> span) => BinaryPrimitives.ReadUInt64LittleEndian(span);
+    public static ushort FromSpan(ReadOnlySpan<byte> span) => BinaryPrimitives.ReadUInt16LittleEndian(span);
 
-    public static void FromSpan(ReadOnlySpan<byte> span, Span<ulong> values)
+    public static void FromSpan(ReadOnlySpan<byte> span, Span<ushort> values)
     {
         if (BitConverter.IsLittleEndian)
         {
-            MemoryMarshal.Cast<byte, ulong>(span).CopyTo(values);
+            MemoryMarshal.Cast<byte, ushort>(span).CopyTo(values);
             return;
         }
 
@@ -31,9 +30,9 @@ public static class UInt64SszVectorConverter
         }
     }
 
-    public static void ToSpan(Span<byte> span, ulong value) => BinaryPrimitives.WriteUInt64LittleEndian(span, value);
+    public static void ToSpan(Span<byte> span, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(span, value);
 
-    public static void ToSpan(Span<byte> span, ReadOnlySpan<ulong> values)
+    public static void ToSpan(Span<byte> span, ReadOnlySpan<ushort> values)
     {
         if (BitConverter.IsLittleEndian)
         {
@@ -47,5 +46,5 @@ public static class UInt64SszVectorConverter
         }
     }
 
-    public static void Feed(ref Merkleizer merkleizer, ulong value) => merkleizer.Feed(new UInt256(value));
+    public static void Feed(ref Merkleizer merkleizer, ushort value) => merkleizer.Feed(new UInt256(value));
 }

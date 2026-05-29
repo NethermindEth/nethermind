@@ -268,7 +268,7 @@ namespace Nethermind.Serialization.SszGenerator.Test
     [SszContainer]
     public partial struct ConverterNameShadowContainer
     {
-        public TestBytes4 TestBytes4SszVectorConverter { get; set; }
+        public TestBytes4 TestBytes4SszVectorTypeConverter { get; set; }
     }
 
     [SszContainer]
@@ -283,8 +283,8 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public uint Value { get; } = value;
     }
 
-    [SszVectorConverter<TestBytes4>]
-    public static class TestBytes4SszVectorConverter
+    [SszVectorTypeConverter<TestBytes4>]
+    public static class TestBytes4SszVectorTypeConverter
     {
         public const int Length = sizeof(uint);
 
@@ -324,8 +324,8 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ReadOnlyMemory<byte> Data { get; } = data;
     }
 
-    [SszVectorConverter<TestBytes48>]
-    public static class TestBytes48SszVectorConverter
+    [SszVectorTypeConverter<TestBytes48>]
+    public static class TestBytes48SszVectorTypeConverter
     {
         public const int Length = 48;
 

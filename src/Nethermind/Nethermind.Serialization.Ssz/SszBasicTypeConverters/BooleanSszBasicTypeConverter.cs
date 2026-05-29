@@ -6,13 +6,12 @@ using System.IO;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 
-namespace Nethermind.Serialization.Ssz.SszVectorConverters;
+namespace Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 
-[SszVectorConverter<bool>]
-public static class BooleanSszVectorConverter
+[SszBasicTypeConverter<bool>]
+public static class BooleanSszBasicTypeConverter
 {
     public const int Length = sizeof(byte);
-    public const bool PacksItems = true;
 
     public static bool FromSpan(ReadOnlySpan<byte> span) =>
         span[0] switch

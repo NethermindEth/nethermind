@@ -14,7 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Serialization.Ssz.Merkleization;
-using Nethermind.Serialization.Ssz.SszVectorConverters;
+using Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 using NUnit.Framework;
 
 namespace Nethermind.Serialization.SszGenerator.Test;
@@ -123,8 +123,8 @@ public class EncodingTest
             ],
         };
 
-        byte[] expectedBytes = new byte[3 * UInt128SszVectorConverter.Length];
-        UInt128SszVectorConverter.ToSpan(expectedBytes, container.Wides);
+        byte[] expectedBytes = new byte[3 * UInt128SszBasicTypeConverter.Length];
+        UInt128SszBasicTypeConverter.ToSpan(expectedBytes, container.Wides);
 
         Merkleize(container, out UInt256 actual);
         Merkle.Merkleize(out UInt256 expected, expectedBytes, 2);
@@ -162,12 +162,12 @@ public class EncodingTest
     [Test]
     public void Converter_static_calls_ignore_member_name_shadowing()
     {
-        ConverterNameShadowContainer container = new() { TestBytes4SszVectorConverter = new TestBytes4(42) };
+        ConverterNameShadowContainer container = new() { TestBytes4SszVectorTypeConverter = new TestBytes4(42) };
 
         byte[] encoded = Encode(container);
         Decode(encoded, out ConverterNameShadowContainer decoded);
 
-        Assert.That(decoded.TestBytes4SszVectorConverter.Value, Is.EqualTo(container.TestBytes4SszVectorConverter.Value));
+        Assert.That(decoded.TestBytes4SszVectorTypeConverter.Value, Is.EqualTo(container.TestBytes4SszVectorTypeConverter.Value));
     }
 
     [Test]
@@ -412,14 +412,14 @@ public class EncodingTest
         Decode(encoded, out NullableLongConverterVectorContainer decoded);
         Merkleize(decoded, out UInt256 decodedRoot);
 
-        Span<byte> zeroItem = stackalloc byte[TestBytes48SszVectorConverter.Length];
+        Span<byte> zeroItem = stackalloc byte[TestBytes48SszVectorTypeConverter.Length];
         Merkle.Merkleize(out UInt256 itemRoot, zeroItem);
         Span<UInt256> itemRoots = stackalloc UInt256[2];
         itemRoots[0] = itemRoot;
         itemRoots[1] = itemRoot;
         Merkle.Merkleize(out UInt256 expected, itemRoots);
 
-        Assert.That(encoded, Is.EqualTo(new byte[TestBytes48SszVectorConverter.Length * 2]));
+        Assert.That(encoded, Is.EqualTo(new byte[TestBytes48SszVectorTypeConverter.Length * 2]));
         Assert.That(decoded.Items, Has.Length.EqualTo(2));
         Assert.That(root, Is.EqualTo(expected));
         Assert.That(root, Is.EqualTo(decodedRoot));
@@ -446,13 +446,13 @@ public class EncodingTest
         CompatibleNullableVectorUnion container = new() { Selector = CompatibleNullableVectorUnionSelector.Items, Items = null };
 
         byte[] encoded = Encode(container);
-        byte[] reusedBuffer = Enumerable.Repeat((byte)0xFF, 1 + TestBytes48SszVectorConverter.Length * 2).ToArray();
+        byte[] reusedBuffer = Enumerable.Repeat((byte)0xFF, 1 + TestBytes48SszVectorTypeConverter.Length * 2).ToArray();
         CompatibleNullableVectorUnion.Encode(reusedBuffer, container);
         Merkleize(container, out UInt256 root);
         Decode(encoded, out CompatibleNullableVectorUnion decoded);
         Merkleize(decoded, out UInt256 decodedRoot);
 
-        Span<byte> zeroItem = stackalloc byte[TestBytes48SszVectorConverter.Length];
+        Span<byte> zeroItem = stackalloc byte[TestBytes48SszVectorTypeConverter.Length];
         Merkle.Merkleize(out UInt256 itemRoot, zeroItem);
         Span<UInt256> itemRoots = stackalloc UInt256[2];
         itemRoots[0] = itemRoot;
@@ -460,7 +460,7 @@ public class EncodingTest
         Merkle.Merkleize(out UInt256 expected, itemRoots);
         Merkle.MixIn(ref expected, (byte)container.Selector);
 
-        byte[] expectedBytes = new byte[1 + TestBytes48SszVectorConverter.Length * 2];
+        byte[] expectedBytes = new byte[1 + TestBytes48SszVectorTypeConverter.Length * 2];
         expectedBytes[0] = (byte)container.Selector;
         Assert.That(encoded, Is.EqualTo(expectedBytes));
         Assert.That(reusedBuffer, Is.EqualTo(expectedBytes));
@@ -494,7 +494,7 @@ public class EncodingTest
 
         Merkleize(container, out UInt256 actual);
 
-        UInt256 expected = MerkleizeWithConverter(container.PreviousValue, UInt64SszVectorConverter.Feed);
+        UInt256 expected = MerkleizeWithConverter(container.PreviousValue, UInt64SszBasicTypeConverter.Feed);
         Merkle.MixIn(ref expected, (byte)container.Selector);
 
         Assert.That(actual, Is.EqualTo(expected));
@@ -524,8 +524,8 @@ public class EncodingTest
 
         Merkleize(container, out UInt256 actual);
 
-        UInt256 headRoot = MerkleizeWithConverter(container.Head, UInt64SszVectorConverter.Feed);
-        UInt256 tailRoot = MerkleizeWithConverter(container.Tail, UInt64SszVectorConverter.Feed);
+        UInt256 headRoot = MerkleizeWithConverter(container.Head, UInt64SszBasicTypeConverter.Feed);
+        UInt256 tailRoot = MerkleizeWithConverter(container.Tail, UInt64SszBasicTypeConverter.Feed);
         MerkleizeProgressiveSpec([headRoot, tailRoot], out UInt256 expected);
         expected = MixInActiveFieldsSpec(expected, 0b00000101);
 
@@ -664,7 +664,7 @@ public class EncodingTest
 
         byte[] encoded = Encode(original);
         Decode(encoded, out ConverterContainer decoded);
-        TestBytes4SszVectorConverter.FeedCallCount = 0;
+        TestBytes4SszVectorTypeConverter.FeedCallCount = 0;
         Merkleize(original, out UInt256 _);
 
         Assert.That(encoded.Length, Is.EqualTo(108));
@@ -673,7 +673,7 @@ public class EncodingTest
         Assert.That(decoded.FixedBytesVector!.Select(x => x.Value), Is.EqualTo(original.FixedBytesVector!.Select(x => x.Value)));
         Assert.That(decoded.Hash, Is.EqualTo(original.Hash));
         Assert.That(decoded.HashVector, Is.EqualTo(original.HashVector));
-        Assert.That(TestBytes4SszVectorConverter.FeedCallCount, Is.EqualTo(3));
+        Assert.That(TestBytes4SszVectorTypeConverter.FeedCallCount, Is.EqualTo(3));
     }
 
     [TestCaseSource(nameof(InvalidInputCases))]

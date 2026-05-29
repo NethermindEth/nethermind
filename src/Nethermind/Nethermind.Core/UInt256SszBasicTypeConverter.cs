@@ -8,11 +8,10 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Core;
 
-[SszVectorConverter<UInt256>]
-public static class UInt256SszVectorConverter
+[SszBasicTypeConverter<UInt256>]
+public static class UInt256SszBasicTypeConverter
 {
     public const int Length = 32;
-    public const bool PacksItems = true;
 
     public static UInt256 FromSpan(ReadOnlySpan<byte> span) => new(span);
 

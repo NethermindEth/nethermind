@@ -8,8 +8,8 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
-[SszVectorConverter<SszKzgCommitment>]
-public static class SszKzgCommitmentVectorConverter
+[SszVectorTypeConverter<SszKzgCommitment>]
+public static class SszKzgCommitmentVectorTypeConverter
 {
     public const int Length = SszKzgCommitment.KzgCommitmentLength;
 

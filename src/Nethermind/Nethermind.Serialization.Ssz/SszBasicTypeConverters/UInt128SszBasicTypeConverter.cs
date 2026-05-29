@@ -6,13 +6,12 @@ using System.Buffers.Binary;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 
-namespace Nethermind.Serialization.Ssz.SszVectorConverters;
+namespace Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 
-[SszVectorConverter<UInt128>]
-public static class UInt128SszVectorConverter
+[SszBasicTypeConverter<UInt128>]
+public static class UInt128SszBasicTypeConverter
 {
     public const int Length = 16;
-    public const bool PacksItems = true;
 
     public static UInt128 FromSpan(ReadOnlySpan<byte> span)
     {

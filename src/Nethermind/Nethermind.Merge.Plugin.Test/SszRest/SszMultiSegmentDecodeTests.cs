@@ -171,8 +171,8 @@ public class SszMultiSegmentDecodeTests
 
     private static void DecodeUInt256(ReadOnlySequence<byte> data, out UInt256 value)
     {
-        Span<byte> buffer = stackalloc byte[UInt256SszVectorConverter.Length];
+        Span<byte> buffer = stackalloc byte[UInt256SszBasicTypeConverter.Length];
         data.CopyTo(buffer);
-        value = UInt256SszVectorConverter.FromSpan(buffer);
+        value = UInt256SszBasicTypeConverter.FromSpan(buffer);
     }
 }

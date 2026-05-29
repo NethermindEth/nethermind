@@ -4,14 +4,14 @@ class SszType
 {
     private const string SelectorPropertyName = "Selector";
 
-    public static List<SszType> CreateBasicTypes(IEnumerable<SszVectorConverterInfo> converters)
+    public static List<SszType> CreateKnownTypes(IEnumerable<SszTypeConverterInfo> converters)
     {
         List<SszType> types =
         [
             new() { Namespace = "System.Collections", Name = "BitArray", Kind = Kind.Basic },
         ];
 
-        foreach (SszVectorConverterInfo converter in converters)
+        foreach (SszTypeConverterInfo converter in converters)
         {
             types.Add(new()
             {
@@ -20,7 +20,7 @@ class SszType
                 TypeReferenceName = converter.TargetTypeReferenceName,
                 Kind = Kind.Basic,
                 StaticLength = converter.Length,
-                PacksItems = converter.PacksItems,
+                ConverterKind = converter.Kind,
                 CustomConverterType = converter.ConverterStaticMemberAccess,
                 CustomEncodeMethod = $"{converter.ConverterStaticMemberAccess}.ToSpan",
                 CustomDecodeMethod = $"{converter.ConverterStaticMemberAccess}.FromSpan",
@@ -97,7 +97,8 @@ class SszType
     public int ActiveFieldsBitLength { get; set; }
 
     public bool IsStruct { get; set; }
-    public bool PacksItems { get; set; }
+    public SszTypeConverterKind? ConverterKind { get; set; }
+    public bool IsSszBasicType => ConverterKind == SszTypeConverterKind.BasicType;
     public SszType? EnumType { get; set; }
 
     public string? CustomConverterType { get; init; }
@@ -161,7 +162,7 @@ class SszType
             string? enumNamespace = GetNamespace(enumType);
             result.EnumType = types.First(x => x.Namespace == enumNamespace && x.Name == enumType.Name);
             result.StaticLength = result.EnumType.StaticLength;
-            result.PacksItems = result.EnumType.PacksItems;
+            result.ConverterKind = result.EnumType.ConverterKind;
         }
 
         result.Members = kind switch
@@ -332,7 +333,7 @@ class SszType
 
         if (!isContainer)
         {
-            throw new InvalidOperationException($"Type {type.ToDisplayString()} is not SSZ serializable. Mark it with SszContainer or SszCompatibleUnion, or provide an SszVectorConverter<{type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}>.");
+            throw new InvalidOperationException($"Type {type.ToDisplayString()} is not SSZ serializable. Mark it with SszContainer or SszCompatibleUnion, or provide an SszBasicTypeConverter<{type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}> or SszVectorTypeConverter<{type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}>.");
         }
 
         return isProgressiveContainer ? Kind.ProgressiveContainer : Kind.Container;

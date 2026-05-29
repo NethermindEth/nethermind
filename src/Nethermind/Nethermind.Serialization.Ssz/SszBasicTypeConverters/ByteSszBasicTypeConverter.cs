@@ -5,13 +5,12 @@ using System;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 
-namespace Nethermind.Serialization.Ssz.SszVectorConverters;
+namespace Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 
-[SszVectorConverter<byte>]
-public static class ByteSszVectorConverter
+[SszBasicTypeConverter<byte>]
+public static class ByteSszBasicTypeConverter
 {
     public const int Length = sizeof(byte);
-    public const bool PacksItems = true;
 
     public static byte FromSpan(ReadOnlySpan<byte> span) => span[0];
 

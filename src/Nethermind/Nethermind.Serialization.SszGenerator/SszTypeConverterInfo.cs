@@ -3,10 +3,15 @@
 
 using Microsoft.CodeAnalysis;
 
-internal sealed class SszVectorConverterInfo
+internal enum SszTypeConverterKind
+{
+    BasicType,
+    VectorType,
+}
+
+internal sealed class SszTypeConverterInfo
 {
     private const string LengthMemberName = "Length";
-    private const string PacksItemsMemberName = "PacksItems";
 
     public required string TargetName { get; init; }
     public required string TargetNamespace { get; init; }
@@ -15,24 +20,36 @@ internal sealed class SszVectorConverterInfo
     public required string ConverterStaticMemberAccess { get; init; }
     public required string ConverterDisplayName { get; init; }
     public required int Length { get; init; }
-    public required bool PacksItems { get; init; }
+    public required SszTypeConverterKind Kind { get; init; }
 
-    public static IEnumerable<SszVectorConverterInfo> Find(Compilation compilation)
+    public static IEnumerable<SszTypeConverterInfo> Find(Compilation compilation)
     {
-        INamedTypeSymbol? converterAttribute = compilation.GetTypeByMetadataName("Nethermind.Serialization.Ssz.SszVectorConverterAttribute`1");
-        if (converterAttribute is null)
+        INamedTypeSymbol? basicTypeConverterAttribute = compilation.GetTypeByMetadataName("Nethermind.Serialization.Ssz.SszBasicTypeConverterAttribute`1");
+        INamedTypeSymbol? vectorTypeConverterAttribute = compilation.GetTypeByMetadataName("Nethermind.Serialization.Ssz.SszVectorTypeConverterAttribute`1");
+        if (basicTypeConverterAttribute is null && vectorTypeConverterAttribute is null)
         {
             return [];
         }
 
-        Dictionary<string, SszVectorConverterInfo> result = new(StringComparer.Ordinal);
+        Dictionary<string, SszTypeConverterInfo> result = new(StringComparer.Ordinal);
         foreach (INamedTypeSymbol converterType in EnumerateAvailableTypes(compilation))
         {
-            SszVectorConverterInfo? converter = TryCreate(converterAttribute, converterType);
+            SszTypeConverterInfo? basicTypeConverter = basicTypeConverterAttribute is null
+                ? null
+                : TryCreate(basicTypeConverterAttribute, SszTypeConverterKind.BasicType, converterType);
+            SszTypeConverterInfo? vectorTypeConverter = vectorTypeConverterAttribute is null
+                ? null
+                : TryCreate(vectorTypeConverterAttribute, SszTypeConverterKind.VectorType, converterType);
+            if (basicTypeConverter is not null && vectorTypeConverter is not null)
+            {
+                throw new InvalidOperationException($"SSZ converter {converterType.ToDisplayString()} must use either SszBasicTypeConverter or SszVectorTypeConverter, not both.");
+            }
+
+            SszTypeConverterInfo? converter = basicTypeConverter ?? vectorTypeConverter;
             if (converter is not null)
             {
                 string key = converter.TargetNamespace + "." + converter.TargetTypeReferenceName;
-                if (result.TryGetValue(key, out SszVectorConverterInfo? existingConverter))
+                if (result.TryGetValue(key, out SszTypeConverterInfo? existingConverter))
                 {
                     throw new InvalidOperationException($"Multiple SSZ converters found for {key}: {existingConverter.ConverterDisplayName} and {converter.ConverterDisplayName}.");
                 }
@@ -94,7 +111,7 @@ internal sealed class SszVectorConverterInfo
         }
     }
 
-    private static SszVectorConverterInfo? TryCreate(INamedTypeSymbol converterAttribute, INamedTypeSymbol converterType)
+    private static SszTypeConverterInfo? TryCreate(INamedTypeSymbol converterAttribute, SszTypeConverterKind converterKind, INamedTypeSymbol converterType)
     {
         AttributeData? attribute = converterType.GetAttributes().FirstOrDefault(
             a => SymbolEqualityComparer.Default.Equals(a.AttributeClass?.OriginalDefinition, converterAttribute));
@@ -153,7 +170,7 @@ internal sealed class SszVectorConverterInfo
             ConverterStaticMemberAccess = converterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             ConverterDisplayName = converterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             Length = length,
-            PacksItems = GetPacksItems(converterType),
+            Kind = converterKind,
         };
     }
 
@@ -174,16 +191,6 @@ internal sealed class SszVectorConverterInfo
         length = 0;
         error = $"SSZ converter {converterType.ToDisplayString()} must declare public const int {LengthMemberName} with a positive value.";
         return false;
-    }
-
-    private static bool GetPacksItems(INamedTypeSymbol converterType)
-    {
-        IFieldSymbol? field = converterType.GetMembers(PacksItemsMemberName)
-            .OfType<IFieldSymbol>()
-            .FirstOrDefault(f => f is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, HasConstantValue: true }
-                && f.Type.SpecialType == SpecialType.System_Boolean);
-
-        return field?.ConstantValue is true;
     }
 
     private static bool HasFromSpanMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>

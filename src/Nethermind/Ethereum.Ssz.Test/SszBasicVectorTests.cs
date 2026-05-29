@@ -7,7 +7,7 @@ using System.IO;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
-using Nethermind.Serialization.Ssz.SszVectorConverters;
+using Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 using NUnit.Framework;
 
 namespace Ethereum.Ssz.Test;
@@ -133,36 +133,36 @@ public class SszBasicVectorTests
         {
             case TypeBool:
                 bool[] decodedBools = new bool[ssz.Length];
-                BooleanSszVectorConverter.FromSpan(ssz, decodedBools);
-                BooleanSszVectorConverter.ToSpan(reEncoded, decodedBools);
+                BooleanSszBasicTypeConverter.FromSpan(ssz, decodedBools);
+                BooleanSszBasicTypeConverter.ToSpan(reEncoded, decodedBools);
                 break;
             case TypeUint8:
-                ByteSszVectorConverter.ToSpan(reEncoded, ssz);
+                ByteSszBasicTypeConverter.ToSpan(reEncoded, ssz);
                 break;
             case TypeUint16:
-                ushort[] decodedUshorts = new ushort[ssz.Length / UInt16SszVectorConverter.Length];
-                UInt16SszVectorConverter.FromSpan(ssz, decodedUshorts);
-                UInt16SszVectorConverter.ToSpan(reEncoded, decodedUshorts);
+                ushort[] decodedUshorts = new ushort[ssz.Length / UInt16SszBasicTypeConverter.Length];
+                UInt16SszBasicTypeConverter.FromSpan(ssz, decodedUshorts);
+                UInt16SszBasicTypeConverter.ToSpan(reEncoded, decodedUshorts);
                 break;
             case TypeUint32:
-                uint[] decodedUints = new uint[ssz.Length / UInt32SszVectorConverter.Length];
-                UInt32SszVectorConverter.FromSpan(ssz, decodedUints);
-                UInt32SszVectorConverter.ToSpan(reEncoded, decodedUints);
+                uint[] decodedUints = new uint[ssz.Length / UInt32SszBasicTypeConverter.Length];
+                UInt32SszBasicTypeConverter.FromSpan(ssz, decodedUints);
+                UInt32SszBasicTypeConverter.ToSpan(reEncoded, decodedUints);
                 break;
             case TypeUint64:
-                ulong[] decodedUlongs = new ulong[ssz.Length / UInt64SszVectorConverter.Length];
-                UInt64SszVectorConverter.FromSpan(ssz, decodedUlongs);
-                UInt64SszVectorConverter.ToSpan(reEncoded, decodedUlongs);
+                ulong[] decodedUlongs = new ulong[ssz.Length / UInt64SszBasicTypeConverter.Length];
+                UInt64SszBasicTypeConverter.FromSpan(ssz, decodedUlongs);
+                UInt64SszBasicTypeConverter.ToSpan(reEncoded, decodedUlongs);
                 break;
             case TypeUint128:
-                UInt128[] decodedUint128s = new UInt128[ssz.Length / UInt128SszVectorConverter.Length];
-                UInt128SszVectorConverter.FromSpan(ssz, decodedUint128s);
-                UInt128SszVectorConverter.ToSpan(reEncoded, decodedUint128s);
+                UInt128[] decodedUint128s = new UInt128[ssz.Length / UInt128SszBasicTypeConverter.Length];
+                UInt128SszBasicTypeConverter.FromSpan(ssz, decodedUint128s);
+                UInt128SszBasicTypeConverter.ToSpan(reEncoded, decodedUint128s);
                 break;
             case TypeUint256:
-                UInt256[] decodedUInt256s = new UInt256[ssz.Length / UInt256SszVectorConverter.Length];
-                UInt256SszVectorConverter.FromSpan(ssz, decodedUInt256s);
-                UInt256SszVectorConverter.ToSpan(reEncoded, decodedUInt256s);
+                UInt256[] decodedUInt256s = new UInt256[ssz.Length / UInt256SszBasicTypeConverter.Length];
+                UInt256SszBasicTypeConverter.FromSpan(ssz, decodedUInt256s);
+                UInt256SszBasicTypeConverter.ToSpan(reEncoded, decodedUInt256s);
                 break;
             default:
                 Assert.Fail($"Unsupported element type: {elementType}");

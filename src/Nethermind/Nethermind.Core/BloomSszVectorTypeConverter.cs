@@ -8,14 +8,14 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Core;
 
-[SszVectorConverter<Address>]
-public static class AddressSszVectorConverter
+[SszVectorTypeConverter<Bloom>]
+public static class BloomSszVectorTypeConverter
 {
-    public const int Length = Address.Size;
+    public const int Length = Bloom.ByteLength;
 
-    public static Address FromSpan(ReadOnlySpan<byte> span) => new(span);
+    public static Bloom FromSpan(ReadOnlySpan<byte> span) => new(span);
 
-    public static void FromSpan(ReadOnlySpan<byte> span, Span<Address> values)
+    public static void FromSpan(ReadOnlySpan<byte> span, Span<Bloom> values)
     {
         for (int i = 0; i < values.Length; i++)
         {
@@ -23,9 +23,9 @@ public static class AddressSszVectorConverter
         }
     }
 
-    public static void ToSpan(Span<byte> span, Address value) => value.Bytes.CopyTo(span);
+    public static void ToSpan(Span<byte> span, Bloom value) => value.Bytes.CopyTo(span);
 
-    public static void ToSpan(Span<byte> span, ReadOnlySpan<Address> values)
+    public static void ToSpan(Span<byte> span, ReadOnlySpan<Bloom> values)
     {
         for (int i = 0; i < values.Length; i++)
         {
@@ -33,7 +33,7 @@ public static class AddressSszVectorConverter
         }
     }
 
-    public static void Feed(ref Merkleizer merkleizer, Address value)
+    public static void Feed(ref Merkleizer merkleizer, Bloom value)
     {
         Merkle.Merkleize(out UInt256 root, value.Bytes);
         merkleizer.Feed(root);

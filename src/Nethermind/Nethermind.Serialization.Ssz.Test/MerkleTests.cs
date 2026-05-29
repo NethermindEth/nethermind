@@ -7,7 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Serialization.Ssz.Merkleization;
-using Nethermind.Serialization.Ssz.SszVectorConverters;
+using Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 using NUnit.Framework;
 
 namespace Nethermind.Serialization.Ssz.Test;
@@ -40,56 +40,56 @@ public class MerkleTests
     [Test]
     public void Can_merkleize_bool()
     {
-        UInt256 root = MerkleizeWithConverter(true, BooleanSszVectorConverter.Feed);
+        UInt256 root = MerkleizeWithConverter(true, BooleanSszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x0100000000000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_byte()
     {
-        UInt256 root = MerkleizeWithConverter((byte)34, ByteSszVectorConverter.Feed);
+        UInt256 root = MerkleizeWithConverter((byte)34, ByteSszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x2200000000000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_ushort()
     {
-        UInt256 root = MerkleizeWithConverter((ushort)(34 + byte.MaxValue), UInt16SszVectorConverter.Feed);
+        UInt256 root = MerkleizeWithConverter((ushort)(34 + byte.MaxValue), UInt16SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x2101000000000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_uint()
     {
-        UInt256 root = MerkleizeWithConverter((uint)34 + byte.MaxValue + ushort.MaxValue, UInt32SszVectorConverter.Feed);
+        UInt256 root = MerkleizeWithConverter((uint)34 + byte.MaxValue + ushort.MaxValue, UInt32SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x2001010000000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_int()
     {
-        UInt256 root = MerkleizeWithConverter(34 + byte.MaxValue + ushort.MaxValue, Int32SszVectorConverter.Feed);
+        UInt256 root = MerkleizeWithConverter(34 + byte.MaxValue + ushort.MaxValue, Int32SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x2001010000000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_negative_int()
     {
-        UInt256 root = MerkleizeWithConverter(-1, Int32SszVectorConverter.Feed);
+        UInt256 root = MerkleizeWithConverter(-1, Int32SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0xffffffff00000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_ulong()
     {
-        UInt256 root = MerkleizeWithConverter((ulong)34 + byte.MaxValue + ushort.MaxValue + uint.MaxValue, UInt64SszVectorConverter.Feed);
+        UInt256 root = MerkleizeWithConverter((ulong)34 + byte.MaxValue + ushort.MaxValue + uint.MaxValue, UInt64SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x1f01010001000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_negative_long()
     {
-        UInt256 root = MerkleizeWithConverter(-1L, Int64SszVectorConverter.Feed);
+        UInt256 root = MerkleizeWithConverter(-1L, Int64SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0xffffffffffffffff000000000000000000000000000000000000000000000000"));
     }
 
@@ -103,7 +103,7 @@ public class MerkleTests
         input += uint.MaxValue;
         input += ulong.MaxValue;
 
-        UInt256 root = MerkleizeWithConverter(input, UInt128SszVectorConverter.Feed);
+        UInt256 root = MerkleizeWithConverter(input, UInt128SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x1e01010001000000010000000000000000000000000000000000000000000000"));
     }
 
@@ -117,7 +117,7 @@ public class MerkleTests
         input += uint.MaxValue;
         input += ulong.MaxValue;
 
-        UInt256 root = MerkleizeWithConverter(input, UInt256SszVectorConverter.Feed);
+        UInt256 root = MerkleizeWithConverter(input, UInt256SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x1e01010001000000010000000000000000000000000000000000000000000000"));
     }
 

@@ -216,7 +216,7 @@ class ShutterCryptoTests
         {
             Span<UInt256> chunk = stackalloc UInt256[1];
             Merkleizer merkleizer = new(chunk);
-            IdentityPreimageSszVectorConverter.Feed(ref merkleizer, default);
+            IdentityPreimageSszVectorTypeConverter.Feed(ref merkleizer, default);
         }
 
         Assert.That(FeedDefault, Throws.InstanceOf<System.IO.InvalidDataException>());

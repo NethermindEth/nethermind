@@ -7,13 +7,12 @@ using System.Runtime.InteropServices;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 
-namespace Nethermind.Serialization.Ssz.SszVectorConverters;
+namespace Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 
-[SszVectorConverter<long>]
-public static class Int64SszVectorConverter
+[SszBasicTypeConverter<long>]
+public static class Int64SszBasicTypeConverter
 {
     public const int Length = sizeof(long);
-    public const bool PacksItems = true;
 
     public static long FromSpan(ReadOnlySpan<byte> span) => BinaryPrimitives.ReadInt64LittleEndian(span);
 

@@ -28,8 +28,8 @@ public partial struct IdentityPreimage(ReadOnlyMemory<byte> data)
     public ReadOnlyMemory<byte> Data { get; set; } = data;
 }
 
-[SszVectorConverter<IdentityPreimage>]
-public static class IdentityPreimageSszVectorConverter
+[SszVectorTypeConverter<IdentityPreimage>]
+public static class IdentityPreimageSszVectorTypeConverter
 {
     public const int Length = IdentityPreimage.Length;
 

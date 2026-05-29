@@ -8,8 +8,8 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Core.Crypto;
 
-[SszVectorConverter<ValueHash256>]
-public static class ValueHash256SszVectorConverter
+[SszVectorTypeConverter<ValueHash256>]
+public static class ValueHash256SszVectorTypeConverter
 {
     public const int Length = ValueHash256.MemorySize;
 

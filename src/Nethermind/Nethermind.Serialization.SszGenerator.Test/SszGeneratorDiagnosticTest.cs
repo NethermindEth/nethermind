@@ -32,7 +32,7 @@ public class SszGeneratorDiagnosticTest
             {
             }
 
-            [SszVectorConverter<BadFixedBytes>]
+            [SszVectorTypeConverter<BadFixedBytes>]
             public static class BadFixedBytesConverter
             {
                 public static int Length => 4;
@@ -80,7 +80,7 @@ public class SszGeneratorDiagnosticTest
             {
             }
 
-            [SszVectorConverter<BadFixedBytes>]
+            [SszVectorTypeConverter<BadFixedBytes>]
             public static class BadFixedBytesConverter
             {
                 public const int Length = 4;
@@ -121,7 +121,7 @@ public class SszGeneratorDiagnosticTest
             {
             }
 
-            [SszVectorConverter<BadFixedBytes>]
+            [SszVectorTypeConverter<BadFixedBytes>]
             public static class BadFixedBytesConverter
             {
                 public const int Length = 4;
@@ -165,7 +165,7 @@ public class SszGeneratorDiagnosticTest
             {
             }
 
-            [SszVectorConverter<DuplicateFixedBytes>]
+            [SszVectorTypeConverter<DuplicateFixedBytes>]
             public static class FirstDuplicateFixedBytesConverter
             {
                 public const int Length = 4;
@@ -189,7 +189,7 @@ public class SszGeneratorDiagnosticTest
                 }
             }
 
-            [SszVectorConverter<DuplicateFixedBytes>]
+            [SszVectorTypeConverter<DuplicateFixedBytes>]
             public static class SecondDuplicateFixedBytesConverter
             {
                 public const int Length = 4;
@@ -255,25 +255,25 @@ public class SszGeneratorDiagnosticTest
         CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
         string generated = GetGeneratedSource(source, parseOptions, nameof(Converter_backed_primitive_collections_emit_converter_calls), "Serialization.SszCodec.PrimitiveCollectionContainer.cs");
 
-        Assert.That(generated, Does.Contain("BooleanSszVectorConverter.ToSpan"));
-        Assert.That(generated, Does.Contain("BooleanSszVectorConverter.FromSpan"));
+        Assert.That(generated, Does.Contain("BooleanSszBasicTypeConverter.ToSpan"));
+        Assert.That(generated, Does.Contain("BooleanSszBasicTypeConverter.FromSpan"));
         Assert.That(generated, Does.Not.Contain("ValidateBooleans"));
         Assert.That(generated, Does.Not.Contain("ValidateBoolean"));
-        Assert.That(generated, Does.Contain("Int32SszVectorConverter.ToSpan"));
-        Assert.That(generated, Does.Contain("Int32SszVectorConverter.FromSpan"));
+        Assert.That(generated, Does.Contain("Int32SszBasicTypeConverter.ToSpan"));
+        Assert.That(generated, Does.Contain("Int32SszBasicTypeConverter.FromSpan"));
         Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<int>"));
-        Assert.That(generated, Does.Contain("Int64SszVectorConverter.ToSpan"));
-        Assert.That(generated, Does.Contain("Int64SszVectorConverter.FromSpan"));
+        Assert.That(generated, Does.Contain("Int64SszBasicTypeConverter.ToSpan"));
+        Assert.That(generated, Does.Contain("Int64SszBasicTypeConverter.FromSpan"));
         Assert.That(generated, Does.Contain("MerkleizeBasicListWithConverter<long>"));
-        Assert.That(generated, Does.Contain("UInt128SszVectorConverter.ToSpan"));
-        Assert.That(generated, Does.Contain("UInt128SszVectorConverter.FromSpan"));
+        Assert.That(generated, Does.Contain("UInt128SszBasicTypeConverter.ToSpan"));
+        Assert.That(generated, Does.Contain("UInt128SszBasicTypeConverter.FromSpan"));
         Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<UInt128>"));
-        Assert.That(generated, Does.Contain("UInt32SszVectorConverter.ToSpan"));
-        Assert.That(generated, Does.Contain("UInt32SszVectorConverter.FromSpan"));
+        Assert.That(generated, Does.Contain("UInt32SszBasicTypeConverter.ToSpan"));
+        Assert.That(generated, Does.Contain("UInt32SszBasicTypeConverter.FromSpan"));
         Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<uint>"));
-        Assert.That(generated, Does.Not.Contain("SszVectorConverter.MerkleizeVector"));
-        Assert.That(generated, Does.Not.Contain("SszVectorConverter.MerkleizeList"));
-        Assert.That(generated, Does.Not.Contain("SszVectorConverter.MerkleizeProgressiveList"));
+        Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeVector"));
+        Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeList"));
+        Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeProgressiveList"));
         Assert.That(generated, Does.Contain("MemoryMarshal.Cast<PrimitiveEnum, uint>"));
         Assert.That(generated, Does.Not.Contain("EncodeItemsWithConverter"));
         Assert.That(generated, Does.Not.Contain("DecodeItemsWithConverter"));
@@ -281,7 +281,7 @@ public class SszGeneratorDiagnosticTest
         Assert.That(generated, Does.Not.Contain("SszLib.Decode"));
         Assert.That(generated, Does.Not.Contain("using Nethermind.Core;"));
         Assert.That(generated, Does.Not.Contain("using Nethermind.Core.Crypto;"));
-        Assert.That(generated, Does.Not.Contain("using Nethermind.Serialization.Ssz.SszVectorConverters;"));
+        Assert.That(generated, Does.Not.Contain("using Nethermind.Serialization.Ssz.SszBasicTypeConverters;"));
     }
 
     private static Diagnostic GetSsz003Diagnostic(string source, CSharpParseOptions parseOptions, string assemblyName)
@@ -361,7 +361,7 @@ public class SszGeneratorDiagnosticTest
         }
 
         references[^3] = MetadataReference.CreateFromFile(typeof(SszContainerAttribute).Assembly.Location);
-        references[^2] = MetadataReference.CreateFromFile(typeof(SszVectorConverterAttribute<>).Assembly.Location);
+        references[^2] = MetadataReference.CreateFromFile(typeof(SszVectorTypeConverterAttribute<>).Assembly.Location);
         references[^1] = MetadataReference.CreateFromFile(typeof(UInt256).Assembly.Location);
         return references;
     }
