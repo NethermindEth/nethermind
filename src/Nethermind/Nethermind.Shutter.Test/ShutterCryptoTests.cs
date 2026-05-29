@@ -210,15 +210,12 @@ class ShutterCryptoTests
     }
 
     [Test]
-    public void Identity_preimage_converter_rejects_empty_data_for_merkleize()
+    public void Identity_preimage_converter_merkleizes_empty_data_as_zero_root()
     {
-        static void FeedDefault()
-        {
-            Span<UInt256> chunk = stackalloc UInt256[1];
-            Merkleizer merkleizer = new(chunk);
-            IdentityPreimageSszVectorTypeConverter.Feed(ref merkleizer, default);
-        }
+        Span<UInt256> chunk = stackalloc UInt256[1];
+        Merkleizer merkleizer = new(chunk);
+        IdentityPreimageSszVectorTypeConverter.Feed(ref merkleizer, default);
 
-        Assert.That(FeedDefault, Throws.InstanceOf<System.IO.InvalidDataException>());
+        Assert.That(chunk[0], Is.EqualTo(UInt256.Zero));
     }
 }

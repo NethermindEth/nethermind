@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Serialization.Ssz;
 using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 using NUnit.Framework;

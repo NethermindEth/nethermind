@@ -64,6 +64,12 @@ public static class IdentityPreimageSszVectorTypeConverter
     public static void Feed(ref Merkleizer merkleizer, IdentityPreimage value)
     {
         ReadOnlySpan<byte> data = value.Data.Span;
+        if (data.IsEmpty)
+        {
+            merkleizer.Feed(UInt256.Zero);
+            return;
+        }
+
         Validate(data);
         Merkle.Merkleize(out UInt256 root, data);
         merkleizer.Feed(root);
