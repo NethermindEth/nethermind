@@ -7,10 +7,18 @@ set -eo pipefail
 start_dotmemory() {
   echo "Starting dotMemory..."
 
-  exec dotmemory start \
-    --save-to-dir=/nethermind/diag/dotmemory \
-    --service-output \
-    ./nethermind -- "$@"
+  local args=(--save-to-dir=/nethermind/diag/dotmemory --service-output)
+
+  # Optional periodic snapshots when DIAG_DOTMEMORY_TIMER is set (e.g. "00:00:30" → every 30s).
+  # Without this the run only collects the timeline graph, not heap snapshots.
+  if [ -n "${DIAG_DOTMEMORY_TIMER:-}" ]; then
+    args+=("--trigger-on-timer=$DIAG_DOTMEMORY_TIMER")
+    if [ -n "${DIAG_DOTMEMORY_MAX_SNAPSHOTS:-}" ]; then
+      args+=("--trigger-max-snapshots=$DIAG_DOTMEMORY_MAX_SNAPSHOTS")
+    fi
+  fi
+
+  exec dotmemory start "${args[@]}" ./nethermind -- "$@"
 }
 
 start_dotnet_trace() {
