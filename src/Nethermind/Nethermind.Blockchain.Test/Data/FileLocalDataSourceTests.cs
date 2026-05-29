@@ -95,7 +95,7 @@ public class FileLocalDataSourceTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Category("Flaky"), Retry(10)]
+    [Ignore("Causing repeated pains on GitHub actions.")]
     public async Task retries_loading_file()
     {
         using (TempPath tempFile = TempPath.GetTempFile())

@@ -120,7 +120,10 @@ jobs:
               # Nethermind.State.Test.Runner.Test is a Nethermind.* test that lives
               # in EthereumTests.slnx (it tests the test runner itself), so it rides
               # with this group which already builds that solution.
-              projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test Nethermind.State.Test.Runner.Test)
+              # Ethereum.Legacy.VM.Test is too large for an unchunked run in this
+              # 30-min window — it lives in `tests-chunked` below with
+              # TEST_SKIP_HEAVY=1 (matching the Legacy.Blockchain/Pyspec pattern).
+              projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test Nethermind.State.Test.Runner.Test)
               ;;
             *)
               echo "::error::Unknown group: $GROUP"
@@ -172,6 +175,8 @@ jobs:
 
   # Heavy chunked tests under both variants. TEST_SKIP_HEAVY=1 limits each chunk.
   # Legacy.Blockchain: 8 → 4 chunks (same total work, larger chunks).
+  # Legacy.VM: 4 chunks (main workflow uses 8 unchunked, but this variant skips
+  # heavy via TEST_SKIP_HEAVY=1 so 4 fits in 25 min).
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
@@ -187,6 +192,10 @@ jobs:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of4 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of4 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of4 }
+          - { project: Ethereum.Legacy.VM.Test, chunk: 1of4 }
+          - { project: Ethereum.Legacy.VM.Test, chunk: 2of4 }
+          - { project: Ethereum.Legacy.VM.Test, chunk: 3of4 }
+          - { project: Ethereum.Legacy.VM.Test, chunk: 4of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }
