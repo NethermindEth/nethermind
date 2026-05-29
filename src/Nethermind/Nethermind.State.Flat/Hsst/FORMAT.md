@@ -83,8 +83,8 @@ decoding is forward-readable from a known `MetadataStart` cursor:
 
 `MetadataStart` is the byte offset (within the HSST buffer, measured from
 byte 0 — the first byte of the data region) of the entry's **leading flag
-byte**. The flag byte's low 2 bits encode the `BSearchNodeKind` (Entry
-or Intermediate) — the same flag-byte layout used by `BSearchIndex`
+byte**. The flag byte's low 2 bits encode the `BTreeNodeKind` (Entry
+or Intermediate) — the same flag-byte layout used by B-tree index
 node headers — so the BTree reader's dispatch loop can recognize *what
 kind of thing it just landed on* from a single byte read. For entries the
 flag is `NodeKind = Entry (00)`; bits 2–7 are reserved and written as
@@ -94,7 +94,7 @@ readers seek into the node, take the metaStart pointer, then:
 1. Read the 1-byte flag at `MetadataStart`. The low 2 bits must be
    `NodeKind = Entry`; the dispatch loop terminates here for the
    target entry (Intermediate kind routes through
-   `BSearchIndexReader.ReadFromStart` instead).
+   `BTreeNodeReader.ReadFromStart` instead).
 2. Decode `ValueLength` (LEB128) starting at `MetadataStart + 1` — the
    value bytes live at `[MetadataStart - ValueLength, MetadataStart)`.
 3. The full key sits at
@@ -102,7 +102,7 @@ readers seek into the node, take the metaStart pointer, then:
    where `KeyLength` comes from the BTree trailer (the value is the same
    for every entry in this HSST).
 
-**Page-local leaf-level nodes.** Leaf-level `BSearchIndex` nodes are
+**Page-local leaf-level nodes.** Leaf-level B-tree index nodes are
 emitted *inline in the data region*, next to the entries they describe,
 not in a separate trailing index region. The builder fires a node write
 whenever adding the next entry would push the (pending-entries +
@@ -114,7 +114,7 @@ without a second I/O. Leaf-level nodes are written with `NodeKind =
 Intermediate` on disk; "leaf" is purely a conceptual role for nodes
 whose value slots all point at entries.
 
-The `BSearchIndex` node's flag byte (bits 0-1 = `NodeKind =
+The B-tree index node's flag byte (bits 0-1 = `NodeKind =
 Intermediate`) is the same flag byte that the reader's dispatch loop
 reads — so landing on either an entry-flag or a node-flag is uniform
 from the loop's point of view. **Variable depth** falls out of this:
@@ -251,9 +251,9 @@ by a packed entry array with a recursive "summary" index.
   ```
   `Flags` bit 0 = `IsLittleEndian` (only valid when `KeySize ∈ {2,4,8}`;
   when set, every stored key — data and summary — is byte-reversed so an
-  x86 LE integer load recovers lex order, matching the BSearchIndex
+  x86 LE integer load recovers lex order, matching the B-tree index node
   LE-stored convention and unlocking the AVX-512 floor-scan fast path).
-  Other Flags bits are reserved (must be 0). `Depth` is capped at 8.
+  Other Flags bits are reserved (must be 0). `Depth` is capped at 4.
   `RecordsPerCkHigherLog2` must be ≥ 1 when `Depth ≥ 2`; for `Depth ≤ 1`
   it is ignored on read but still written. Per-level record counts
   `Count_k` are **not stored** — the reader derives them from `EntryCount`
@@ -513,9 +513,9 @@ is no flag bit gating `BaseOffset`.
 `Flags` bits — shared with the data-region's **per-entry leading flag
 byte**, so the BTree reader's dispatch loop reads a single byte at the
 current cursor and switches on `NodeKind` to decide whether it's sitting
-on an entry or on a `BSearchIndex` node. For entry-kind flag bytes, bits
+on an entry or on a B-tree index node. For entry-kind flag bytes, bits
 2-7 are reserved and written as zero. There is no separate "leaf" kind
-on disk: a `BSearchIndex` node whose value slots all point at entries is
+on disk: a B-tree index node whose value slots all point at entries is
 conceptually a leaf, but encodes identically to any other intermediate
 node. Consumers that need the leaf-level semantics (e.g. the
 enumerator's "stop descending and buffer entries" decision) peek the
@@ -524,7 +524,7 @@ level.
 
 | Bit  | Meaning |
 |------|---------|
-| 0-1  | `NodeKind` — `00` = Entry (data-region entry), `01` = Intermediate (BSearchIndex node), `10`/`11` reserved |
+| 0-1  | `NodeKind` — `00` = Entry (data-region entry), `01` = Intermediate (B-tree index node), `10`/`11` reserved |
 | 2-3  | `KeyType` — 0 Variable / 1 Uniform (value 2 reserved/unused) — intermediate only |
 | 4-5  | `ValueSizeCode` — packs the per-entry value-slot width into 2 bits: `00`→2, `01`→3, `10`→4, `11`→6 — intermediate only |
 | 6    | `IsKeyLittleEndian` — 1 = fixed-width key slots are stored byte-reversed so a native LE integer load matches lex order; set unconditionally for Variable (prefixArr is 2 bytes/slot) and for Uniform with `KeySize ∈ {2,4,8}` — intermediate only |
@@ -543,7 +543,7 @@ node header** — they arrive from outside:
   no parent to inherit from).
 
 **`CommonPrefixLen` is picked per node by the layout planner**
-(`BSearchIndexLayoutPlanner.Plan`) from the per-entry LCP array and the
+(`BTreeNodeLayoutPlanner.Plan`) from the per-entry LCP array and the
 node's separator lengths. The per-entry LCP array
 (`commonPrefixArr[i]` = LCP between entry `i-1` and entry `i`) is
 computed once during `Add`/`FinishValueWrite` and shared across every
@@ -594,11 +594,13 @@ stores 6-byte slots.
 
 For an intermediate node, each value is a `{2, 3, 4, 6}` byte
 little-endian unsigned integer (Uniform; the byte width comes from
-`ValueSizeCode`) interpreted (after `+ BaseOffset`) as the **inclusive
-last byte** of the referenced child node within the HSST buffer
-(0-indexed from the first byte of the HSST). The child's exclusive end =
-`childOffset + 1`; the reader then loads the child from the end the same
-way it loaded the root.
+`ValueSizeCode`) interpreted (after `+ BaseOffset`) as the **first byte**
+(start offset) of the referenced child node within the HSST buffer
+(0-indexed from the first byte of the HSST). The reader seeks to that
+offset and parses the child forward from its start — the same forward
+parse used for every node, differing only in how the start is located
+(the root's start comes from the trailer's `root_start` arithmetic; a
+child's start is read directly from the parent's value slot).
 
 ### Metadata-start pointers (leaves)
 
@@ -641,7 +643,7 @@ Keys section byte size** (= `4·N + tailBytes`), not a per-entry width.
 
 ## Constraints
 
-- Maximum entries per leaf node: **64** by default; configurable at write
+- Maximum entries per leaf node: **512** by default; configurable at write
   time. Beyond that, the writer splits the leaf and promotes a separator
   into an intermediate node.
 - Maximum key length per entry: **255 bytes**. Every entry in a BTree HSST
@@ -668,68 +670,99 @@ the layout and must be reviewed in lockstep with this document. If you
 add a new file that encodes or decodes HSST bytes, append it here.
 
 Writers / encoders:
-- `Hsst/HsstBTreeBuilder.cs` — top-level HSST builder; writes the data region,
-  builds the B-tree index region (leaf splitting, intermediate-node promotion),
-  appends the trailing `IndexType` byte. Supports both `BTree` (0x01,
-  key-after-value entries) and `BTreeKeyFirst` (0x07, key-first entries) via a
-  constructor flag.
-- `BSearchIndex/BSearchIndexWriter.cs` — writes a single B-tree index
-  node's bytes (`Metadata | Keys section | Values section`, with the
-  fixed 12-byte metadata header at the front).
-- `BSearchIndex/BSearchIndexLayoutPlanner.cs` — picks key/value section
-  encodings (Variable / Uniform) and section sizes.
+- `Hsst/BTree/HsstBTreeBuilder.cs` — top-level HSST builder; writes the data
+  region, builds the B-tree index region (leaf splitting, intermediate-node
+  promotion), appends the trailing `IndexType` byte. Supports both `BTree`
+  (0x01, key-after-value entries) and `BTreeKeyFirst` (0x07, key-first
+  entries) via a constructor flag. Also owns the per-leaf / per-entry size
+  estimation that drives page-local leaf flushing.
+- `Hsst/BTree/BTreeNodeWriter.cs` — writes a single B-tree index node's
+  bytes (`Metadata | Keys section | Values section`, with the fixed 12-byte
+  metadata header at the front).
+- `Hsst/BTree/BTreeNodeLayoutPlanner.cs` — picks key/value section encodings
+  (Variable / Uniform), section sizes, and per-node `CommonPrefixLen`.
+- `Hsst/BTree/BTreeNodeMetadata.cs` / `Hsst/BTree/NodeMetadata.cs` — node
+  header field encode/decode and the flag-byte / `NodeKind` accessors.
+- `Hsst/BTree/BTreeNodeKind.cs` — `NodeKind` enum (low 2 bits of the shared
+  flag byte: Entry / Intermediate).
 - `Hsst/IndexType.cs` — enum of valid index-type byte values.
-- `Hsst/HsstPackedArrayBuilder.cs` / `Hsst/HsstPackedArrayReader.cs` — `PackedArray`
-  writer / reader (recursive summary index; fixed 10-byte metadata).
-- `Hsst/HsstDenseByteIndexBuilder.cs` — `DenseByteIndex` writer
+- `Hsst/HsstOffset.cs` — shared `{1, 2, 4, 6}` offset-width selection used by
+  the `DenseByteIndex` `Ends` table and B-tree value slots.
+- `Hsst/PackedArray/HsstPackedArrayBuilder.cs` — `PackedArray` writer
+  (recursive summary index; fixed 10-byte metadata).
+- `Hsst/PackedArray/HsstPackedArrayLayout.cs` — `PackedArray` layout
+  constants (e.g. `MaxSummaryDepth`).
+- `Hsst/DenseByteIndex/HsstDenseByteIndexBuilder.cs` — `DenseByteIndex` writer
   (descending-tag value layout; variable-width `Ends` table;
   `[Count][OffsetSize][IndexType]` trailer; tag-byte = array index).
-- `Hsst/HsstTwoByteSlotValueBuilder.cs` — `TwoByteSlotValue` writer (fixed
-  2-byte keys, variable values, leading IndexType byte, u16 start offsets).
-- `Hsst/HsstTwoByteSlotValueLargeBuilder.cs` — `TwoByteSlotValueLarge`
-  writer (same shape as `TwoByteSlotValue` but u24 offsets, ~16 MiB cap).
+- `Hsst/TwoByteSlot/HsstTwoByteSlotValueBuilder.cs` — `TwoByteSlotValue`
+  writer (fixed 2-byte keys, variable values, leading IndexType byte, u16
+  start offsets).
+- `Hsst/TwoByteSlot/HsstTwoByteSlotValueLargeBuilder.cs` —
+  `TwoByteSlotValueLarge` writer (same shape as `TwoByteSlotValue` but u24
+  offsets, ~16 MiB cap).
+- `Hsst/TwoByteSlot/HsstTwoByteSlotKeys.cs` — 2-byte LE key store/compare
+  helpers (the caller-BE ↔ stored-LE byte reversal shared by both 2-byte
+  variants).
 
 Readers / decoders:
-- `Hsst/HsstReader.cs` — point-query reader; reads the trailing
-  `IndexType` byte and walks the B-tree from the tail. For the keys-first
+- `Hsst/HsstReader.cs` — point-query dispatcher; reads the trailing
+  `IndexType` byte and routes to the per-variant reader. For the keys-first
   two-byte-slot variants it instead dispatches on the leading `IndexType`
   byte (byte 0) via its `TrySeekTwoByteSlot` entry point.
-- `BSearchIndex/BSearchIndexReader.cs` — parses a single B-tree index
-  node forward from its start offset; owns the on-disk header decode and
-  the floor-search dispatch.
-- `Hsst/HsstIndex.cs` — thin public wrapper over `BSearchIndexReader`
-  preserving the `HsstIndex` API surface for callers.
-- `Hsst/HsstDenseByteIndexReader.cs` — `DenseByteIndex` lookup helper
-  (direct `Ends[k]` index, no tag scan); dispatched into from
+- `Hsst/BTree/HsstBTreeReader.cs` — `BTree` / `BTreeKeyFirst` tree walk:
+  locates the root via the trailer arithmetic, descends child start pointers,
+  and decodes the matched entry.
+- `Hsst/BTree/BTreeNodeReader.cs` — parses a single B-tree index node forward
+  from its start offset; owns the on-disk header decode and the floor-search
+  dispatch.
+- `Hsst/BTree/BTreeNodeVariableKeyReader.cs` — decodes the Variable keys
+  section (the `prefixArr` / `offsetArr` / `remainingkeys` SoA layout).
+- `Hsst/DenseByteIndex/HsstDenseByteIndexReader.cs` — `DenseByteIndex` lookup
+  helper (direct `Ends[k]` index, no tag scan); dispatched into from
   `HsstReader`.
-- `Hsst/HsstPackedArrayReader.cs` — `PackedArray` lookup helper
+- `Hsst/PackedArray/HsstPackedArrayReader.cs` — `PackedArray` lookup helper
   (recursive summary descent over fixed 10-byte metadata).
-- `Hsst/HsstTwoByteSlotValueReader.cs` — `TwoByteSlotValue` lookup helper
-  (binary search over the 2-byte key array; u16 LE offset resolution).
-- `Hsst/HsstTwoByteSlotValueLargeReader.cs` — `TwoByteSlotValueLarge`
-  lookup helper (same shape as `TwoByteSlotValueReader` but u24 LE reads).
+- `Hsst/TwoByteSlot/HsstTwoByteSlotValueReader.cs` — `TwoByteSlotValue`
+  lookup helper (binary search over the 2-byte key array; u16 LE offset
+  resolution; carries the `4N + 1` non-value overhead constant).
+- `Hsst/TwoByteSlot/HsstTwoByteSlotValueLargeReader.cs` —
+  `TwoByteSlotValueLarge` lookup helper (same shape as
+  `HsstTwoByteSlotValueReader` but u24 LE reads; `5N` overhead constant).
 
-Iterators:
-- `Hsst/HsstEnumerator.cs` — forward iterator over a whole HSST scope;
-  reads the trailing `IndexType` byte, descends to the leftmost leaf,
-  and walks key-sorted entries via end-anchored ancestor frames. For the
-  keys-first two-byte-slot variants it dispatches on the leading
-  `IndexType` byte (byte 0) via its `CreateTwoByteSlot` factory.
-- `Hsst/HsstMergeEnumerator.cs` — N-way-merge cursor; collects every
-  leaf entry's `(separator, metaStart)` up-front so a
-  sort-merge can round-robin many cursors without per-step allocations.
+Iterators / mergers:
+- `Hsst/HsstEnumerator.cs` — forward-iterator dispatcher over a whole HSST
+  scope; reads the trailing `IndexType` byte and routes to the per-variant
+  enumerator. For the keys-first two-byte-slot variants it dispatches on the
+  leading `IndexType` byte (byte 0) via its `CreateTwoByteSlot` factory.
+- `Hsst/BTree/HsstBTreeEnumerator.cs` — `BTree` / `BTreeKeyFirst` forward
+  iterator; descends to the leftmost leaf and walks key-sorted entries via
+  end-anchored ancestor frames.
+- `Hsst/PackedArray/HsstPackedArrayEnumerator.cs`,
+  `Hsst/TwoByteSlot/HsstTwoByteSlotValueEnumerator.cs`,
+  `Hsst/TwoByteSlot/HsstTwoByteSlotValueLargeEnumerator.cs` — per-variant
+  forward iterators.
+- `Hsst/NWayMergeCursor.cs` — N-way-merge cursor; round-robins many
+  per-variant merge sources without per-step allocations.
+- `Hsst/BTree/HsstBTreeMerger.cs`, `Hsst/PackedArray/HsstPackedArrayMerger.cs`,
+  `Hsst/TwoByteSlot/HsstTwoByteSlotMerger.cs` — per-variant merge sources
+  feeding `NWayMergeCursor`.
 
 Size / capacity math:
-- `PersistedSnapshots/HsstSizeEstimator.cs` — every constant here
-  (minimum HSST size, per-entry overhead, per-leaf overhead) tracks the
-  bytes the builder actually emits. Update whenever the wire layout
+- Per-leaf / per-entry overhead estimation lives inline in
+  `Hsst/BTree/HsstBTreeBuilder.cs` (the page-boundary leaf-size estimate);
+  per-variant non-value overhead constants live in the readers (e.g. the
+  `4N + 1` / `5N` formulas in the two-byte-slot readers). These track the
+  bytes the builders actually emit — update them whenever the wire layout
   gains or loses bytes.
+- `PersistedSnapshots/PersistedSnapshotBuilder.cs` (`EstimateSize`) sizes the
+  arena reservation for a whole persisted snapshot blob.
 
 Tests that pin the wire format (rename / re-anchor when bytes move):
 - `Nethermind.State.Flat.Test/Hsst/HsstTests.cs` —
   `IndexType_Byte_Is_BTree_At_Tail` and round-trip tests.
-- `Nethermind.State.Flat.Test/Hsst/HsstReaderTests.cs` —
-  `IndexType_Byte_Is_BTree_ReaderWorks`.
+- `Nethermind.State.Flat.Test/Hsst/HsstReaderTests.cs` — reader floor-search
+  and span/copy-reader parity round-trip tests.
 - `Nethermind.State.Flat.Test/Hsst/HsstBTreeKeyFirstTests.cs` —
   `IndexType_Byte_Is_BTreeKeyFirst_At_Tail` and round-trip tests for the
   key-first variant (`0x07`).
@@ -738,8 +771,11 @@ Tests that pin the wire format (rename / re-anchor when bytes move):
   layout invariants.
 - `Nethermind.State.Flat.Test/Hsst/HsstPackedArrayTests.cs` —
   fixed-metadata shape and summary-level math.
+- `Nethermind.State.Flat.Test/Hsst/HsstTwoByteSlotValueTests.cs` — keys-first
+  `0x05` / `0x06` wire shape (leading IndexType byte, key/offset/value
+  sections).
 - `Nethermind.State.Flat.Test/Hsst/HsstCrossFormatTests.cs` —
   cross-variant invariants over the trailing `IndexType` dispatch.
-- `Nethermind.State.Flat.Test/BSearchIndex/BSearchIndexTests.cs` — hex
+- `Nethermind.State.Flat.Test/Hsst/BTree/BTreeNodeTests.cs` — hex
   fixture tests for individual index nodes; `ReadFromStart(data, …)`
   call sites are sensitive to header byte positions.
