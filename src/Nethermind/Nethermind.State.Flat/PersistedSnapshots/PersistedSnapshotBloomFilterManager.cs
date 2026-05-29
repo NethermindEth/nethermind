@@ -133,6 +133,28 @@ public sealed class PersistedSnapshotBloomFilterManager : IDisposable
     }
 
     /// <summary>
+    /// Lease the bloom keyed by <paramref name="to"/>, but only when it covers the full
+    /// (<paramref name="from"/>, <paramref name="to"/>] range. A race against compaction
+    /// can momentarily leave a narrower bloom registered at a compacted snapshot's
+    /// <c>To</c> slot; such a bloom under-covers and would yield false negatives on
+    /// reads, so this returns <see cref="PersistedSnapshotBloom.AlwaysTrue"/> instead.
+    /// Acquires an additional lease for the caller on success.
+    /// </summary>
+    /// <remarks>
+    /// Reading <see cref="PersistedSnapshotBloom.From"/> before <see cref="PersistedSnapshotBloom.TryAcquire"/>
+    /// is safe: the wrapper and its readonly bounds outlive the underlying
+    /// <see cref="Persistence.BloomFilter.BloomFilter"/>; only <c>TryAcquire</c> gates real use.
+    /// </remarks>
+    public PersistedSnapshotBloom LeaseOrSentinel(StateId from, StateId to)
+    {
+        if (_blooms.TryGetValue(to, out BloomEntry entry)
+            && entry.Bloom.From.BlockNumber <= from.BlockNumber
+            && entry.Bloom.TryAcquire())
+            return entry.Bloom;
+        return PersistedSnapshotBloom.AlwaysTrue;
+    }
+
+    /// <summary>
     /// Drop every slot whose <c>To.BlockNumber</c> is strictly less than
     /// <paramref name="stateId"/>'s, releasing one lease per slot. Mirrors
     /// <see cref="PersistedSnapshotRepository.PruneBefore"/>.
