@@ -18,8 +18,11 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 {
+    // Non-parallel (like SubscribeModuleTests): delivery is observed via a wall-clock WaitOne, but
+    // the send pump's continuation runs on the thread pool, so parallel runs can saturate it and
+    // delay delivery past the timeout.
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.None)]
     public class TransactionReceiptsSubscriptionTests
     {
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
