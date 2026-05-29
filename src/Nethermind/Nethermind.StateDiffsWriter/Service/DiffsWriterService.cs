@@ -7,14 +7,12 @@ using System.Diagnostics;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.StateDiff.Core.Data;
 using Nethermind.StateDiff.Core.Diff;
 using Nethermind.StateDiffsWriter.Data;
 using Nethermind.StateDiffsWriter.Storage;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.StateDiffsWriter.Service;
