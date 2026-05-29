@@ -1595,6 +1595,16 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_account_explicit_null_block_argument_returns_invalid_params()
+    {
+        using Context ctx = await Context.Create();
+        string account_address = TestBlockchain.AccountC.ToString();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getAccount", account_address, null);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_get_account_info_notfound()
     {
         using Context ctx = await Context.Create();
@@ -1632,6 +1642,16 @@ public partial class EthRpcModuleTests
         string account_address = TestBlockchain.AccountC.ToString();
 
         string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", account_address);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_account_info_explicit_null_block_argument_returns_invalid_params()
+    {
+        using Context ctx = await Context.Create();
+        string account_address = TestBlockchain.AccountC.ToString();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", account_address, null);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
     }
 
