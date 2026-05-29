@@ -22,13 +22,4 @@ public static class ByteSszVectorConverter
     public static void ToSpan(Span<byte> span, ReadOnlySpan<byte> values) => values.CopyTo(span);
 
     public static void Feed(ref Merkleizer merkleizer, byte value) => merkleizer.Feed(new UInt256(value));
-
-    public static void MerkleizeVector(ReadOnlySpan<byte> values, ulong length, out UInt256 root) =>
-        PackedSszVectorConverterMerkle.MerkleizeVector(values, Length, length, ToSpan, out root);
-
-    public static void MerkleizeList(ReadOnlySpan<byte> values, ulong limit, out UInt256 root) =>
-        PackedSszVectorConverterMerkle.MerkleizeList(values, Length, limit, ToSpan, out root);
-
-    public static void MerkleizeProgressiveList(ReadOnlySpan<byte> values, out UInt256 root) =>
-        PackedSszVectorConverterMerkle.MerkleizeProgressiveList(values, Length, ToSpan, out root);
 }

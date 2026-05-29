@@ -7,9 +7,6 @@ internal sealed class SszVectorConverterInfo
 {
     private const string LengthMemberName = "Length";
     private const string PacksItemsMemberName = "PacksItems";
-    private const string MerkleizeVectorMemberName = "MerkleizeVector";
-    private const string MerkleizeListMemberName = "MerkleizeList";
-    private const string MerkleizeProgressiveListMemberName = "MerkleizeProgressiveList";
 
     public required string TargetName { get; init; }
     public required string TargetNamespace { get; init; }
@@ -19,9 +16,6 @@ internal sealed class SszVectorConverterInfo
     public required string ConverterDisplayName { get; init; }
     public required int Length { get; init; }
     public required bool PacksItems { get; init; }
-    public required bool CanMerkleizeVector { get; init; }
-    public required bool CanMerkleizeList { get; init; }
-    public required bool CanMerkleizeProgressiveList { get; init; }
 
     public static IEnumerable<SszVectorConverterInfo> Find(Compilation compilation)
     {
@@ -160,9 +154,6 @@ internal sealed class SszVectorConverterInfo
             ConverterDisplayName = converterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             Length = length,
             PacksItems = GetPacksItems(converterType),
-            CanMerkleizeVector = HasMerkleizeVectorMethod(converterType, targetType),
-            CanMerkleizeList = HasMerkleizeListMethod(converterType, targetType),
-            CanMerkleizeProgressiveList = HasMerkleizeProgressiveListMethod(converterType, targetType),
         };
     }
 
@@ -230,33 +221,6 @@ internal sealed class SszVectorConverterInfo
                 && m.Parameters[0].RefKind == RefKind.Ref
                 && m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::Nethermind.Serialization.Ssz.Merkleization.Merkleizer"
                 && SymbolEqualityComparer.Default.Equals(m.Parameters[1].Type, targetType));
-
-    private static bool HasMerkleizeVectorMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
-        converterType.GetMembers(MerkleizeVectorMemberName)
-            .OfType<IMethodSymbol>()
-            .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 3 }
-                && IsSpanOfType(m.Parameters[0].Type, nameof(ReadOnlySpan<byte>), targetType)
-                && m.Parameters[1].Type.SpecialType == SpecialType.System_UInt64
-                && IsOutUInt256(m.Parameters[2]));
-
-    private static bool HasMerkleizeListMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
-        converterType.GetMembers(MerkleizeListMemberName)
-            .OfType<IMethodSymbol>()
-            .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 3 }
-                && IsSpanOfType(m.Parameters[0].Type, nameof(ReadOnlySpan<byte>), targetType)
-                && m.Parameters[1].Type.SpecialType == SpecialType.System_UInt64
-                && IsOutUInt256(m.Parameters[2]));
-
-    private static bool HasMerkleizeProgressiveListMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
-        converterType.GetMembers(MerkleizeProgressiveListMemberName)
-            .OfType<IMethodSymbol>()
-            .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 2 }
-                && IsSpanOfType(m.Parameters[0].Type, nameof(ReadOnlySpan<byte>), targetType)
-                && IsOutUInt256(m.Parameters[1]));
-
-    private static bool IsOutUInt256(IParameterSymbol parameter) =>
-        parameter.RefKind == RefKind.Out
-        && parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::Nethermind.Int256.UInt256";
 
     private static bool IsSpanOfByte(ITypeSymbol type, string name) =>
         type is INamedTypeSymbol { IsGenericType: true, ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true }, TypeArguments.Length: 1 } named

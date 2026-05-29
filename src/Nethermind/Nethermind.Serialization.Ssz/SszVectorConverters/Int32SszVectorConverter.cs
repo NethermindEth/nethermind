@@ -49,13 +49,4 @@ public static class Int32SszVectorConverter
 
     public static void Feed(ref Merkleizer merkleizer, int value) =>
         merkleizer.Feed(new UInt256(unchecked((uint)value)));
-
-    public static void MerkleizeVector(ReadOnlySpan<int> values, ulong length, out UInt256 root) =>
-        PackedSszVectorConverterMerkle.MerkleizeVector(values, Length, length, ToSpan, out root);
-
-    public static void MerkleizeList(ReadOnlySpan<int> values, ulong limit, out UInt256 root) =>
-        PackedSszVectorConverterMerkle.MerkleizeList(values, Length, limit, ToSpan, out root);
-
-    public static void MerkleizeProgressiveList(ReadOnlySpan<int> values, out UInt256 root) =>
-        PackedSszVectorConverterMerkle.MerkleizeProgressiveList(values, Length, ToSpan, out root);
 }

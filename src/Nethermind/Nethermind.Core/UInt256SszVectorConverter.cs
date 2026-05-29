@@ -35,19 +35,4 @@ public static class UInt256SszVectorConverter
     }
 
     public static void Feed(ref Merkleizer merkleizer, UInt256 value) => merkleizer.Feed(value);
-
-    public static void MerkleizeVector(ReadOnlySpan<UInt256> values, ulong length, out UInt256 root) =>
-        Merkle.Merkleize(out root, values, length);
-
-    public static void MerkleizeList(ReadOnlySpan<UInt256> values, ulong limit, out UInt256 root)
-    {
-        Merkle.Merkleize(out root, values, limit);
-        Merkle.MixIn(ref root, values.Length);
-    }
-
-    public static void MerkleizeProgressiveList(ReadOnlySpan<UInt256> values, out UInt256 root)
-    {
-        Merkle.MerkleizeProgressive(out root, values);
-        Merkle.MixIn(ref root, values.Length);
-    }
 }

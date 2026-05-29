@@ -28,9 +28,6 @@ class SszType
                 CustomDecodeTemplate = $"{{1}} = {converter.ConverterStaticMemberAccess}.FromSpan({{0}});",
                 CustomFeedMethod = $"{converter.ConverterStaticMemberAccess}.Feed",
                 CustomFeedTemplate = $"{converter.ConverterStaticMemberAccess}.Feed(ref {{0}}, {{1}});",
-                CustomMerkleizeVectorMethod = converter.CanMerkleizeVector ? $"{converter.ConverterStaticMemberAccess}.MerkleizeVector" : null,
-                CustomMerkleizeListMethod = converter.CanMerkleizeList ? $"{converter.ConverterStaticMemberAccess}.MerkleizeList" : null,
-                CustomMerkleizeProgressiveListMethod = converter.CanMerkleizeProgressiveList ? $"{converter.ConverterStaticMemberAccess}.MerkleizeProgressiveList" : null,
             });
         }
 
@@ -110,9 +107,6 @@ class SszType
     public string? CustomDecodeTemplate { get; init; }
     public string? CustomFeedMethod { get; init; }
     public string? CustomFeedTemplate { get; init; }
-    public string? CustomMerkleizeVectorMethod { get; init; }
-    public string? CustomMerkleizeListMethod { get; init; }
-    public string? CustomMerkleizeProgressiveListMethod { get; init; }
     public bool HasCustomInlineCodec => CustomEncodeTemplate is not null;
     public IEnumerable<SszProperty>? CompatibleUnionMembers => Kind == Kind.CompatibleUnion ? Members?.Where(x => x.Name != SelectorPropertyName) : null;
     public SszProperty? Selector => Members?.FirstOrDefault(x => x.Name == SelectorPropertyName);

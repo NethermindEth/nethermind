@@ -108,19 +108,12 @@ public class SszBasicVectorTests
             return;
         }
 
-        // Correct length but invalid values (e.g. bool > 1): DecodeBools doesn't validate yet
+        // Correct length but invalid values, for example bool > 1.
         if (elementType == TypeBool)
         {
-            bool hasInvalidBool = false;
-            for (int i = 0; i < ssz.Length; i++)
-            {
-                if (ssz[i] > 1)
-                {
-                    hasInvalidBool = true;
-                    break;
-                }
-            }
-            Assert.That(hasInvalidBool, Is.True, $"Expected out-of-range boolean value for {caseName}");
+            byte[] reEncoded = new byte[ssz.Length];
+            Assert.That(() => VerifyDecodeReencode(elementType, ssz, reEncoded, expectedByteLength), Throws.InstanceOf<InvalidDataException>(),
+                $"Decoder should reject out-of-range boolean values for {caseName}");
             return;
         }
 
@@ -167,13 +160,9 @@ public class SszBasicVectorTests
                 UInt128SszVectorConverter.ToSpan(reEncoded, decodedUint128s);
                 break;
             case TypeUint256:
-                int itemCount = ssz.Length / UInt256SszVectorConverter.Length;
-                for (int i = 0; i < itemCount; i++)
-                {
-                    ReadOnlySpan<byte> source = ssz.AsSpan(i * UInt256SszVectorConverter.Length, UInt256SszVectorConverter.Length);
-                    Span<byte> target = reEncoded.AsSpan(i * UInt256SszVectorConverter.Length, UInt256SszVectorConverter.Length);
-                    UInt256SszVectorConverter.ToSpan(target, UInt256SszVectorConverter.FromSpan(source));
-                }
+                UInt256[] decodedUInt256s = new UInt256[ssz.Length / UInt256SszVectorConverter.Length];
+                UInt256SszVectorConverter.FromSpan(ssz, decodedUInt256s);
+                UInt256SszVectorConverter.ToSpan(reEncoded, decodedUInt256s);
                 break;
             default:
                 Assert.Fail($"Unsupported element type: {elementType}");
