@@ -390,7 +390,12 @@ namespace Nethermind.Network.Test
 
             // Wait for at least one failed connect attempt so we know the manager has cycled.
             await ctx.RlpxPeer.WaitForConnectCallsAsync(1, TimeSpan.FromSeconds(30));
-            Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(0));
+
+            // ActivePeers transiently holds a peer between AddActivePeer (before ConnectAsync) and
+            // DeactivatePeerIfDisconnected (after ConnectAsync returns false). Sessions, however,
+            // is only populated when ConnectAsync actually creates a session — which the failing
+            // mock never does. That's the invariant this test is asserting.
+            lock (ctx.Sessions) Assert.That(ctx.Sessions, Is.Empty);
         }
 
         [Test]
