@@ -90,19 +90,19 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     nodeRecord.SetEntry(IdEntry.Instance);
                     break;
                 case 2 when key.SequenceEqual(EnrContentKey.IpU8):
-                {
-                    ReadOnlySpan<byte> ipBytes = ctx.DecodeByteArraySpan();
-                    IPAddress address = new(ipBytes);
-                    nodeRecord.SetEntry(new IpEntry(address));
-                    break;
-                }
+                    {
+                        ReadOnlySpan<byte> ipBytes = ctx.DecodeByteArraySpan();
+                        IPAddress address = new(ipBytes);
+                        nodeRecord.SetEntry(new IpEntry(address));
+                        break;
+                    }
                 case 3 when key.SequenceEqual(EnrContentKey.Ip6U8):
-                {
-                    ReadOnlySpan<byte> ipBytes = ctx.DecodeByteArraySpan();
-                    IPAddress address = new(ipBytes);
-                    nodeRecord.SetEntry(new Ip6Entry(address));
-                    break;
-                }
+                    {
+                        ReadOnlySpan<byte> ipBytes = ctx.DecodeByteArraySpan();
+                        IPAddress address = new(ipBytes);
+                        nodeRecord.SetEntry(new Ip6Entry(address));
+                        break;
+                    }
                 case 3 when key.SequenceEqual(EnrContentKey.EthU8):
                     _ = ctx.ReadSequenceLength();
                     _ = ctx.ReadSequenceLength();
@@ -111,29 +111,29 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.TcpU8):
-                {
-                    int tcpPort = ctx.DecodePositiveInt();
-                    nodeRecord.SetEntry(new TcpEntry(tcpPort));
-                    break;
-                }
+                    {
+                        int tcpPort = ctx.DecodePositiveInt();
+                        nodeRecord.SetEntry(new TcpEntry(tcpPort));
+                        break;
+                    }
                 case 4 when key.SequenceEqual(EnrContentKey.Tcp6U8):
-                {
-                    int tcpPort = ctx.DecodePositiveInt();
-                    nodeRecord.SetEntry(new Tcp6Entry(tcpPort));
-                    break;
-                }
+                    {
+                        int tcpPort = ctx.DecodePositiveInt();
+                        nodeRecord.SetEntry(new Tcp6Entry(tcpPort));
+                        break;
+                    }
                 case 3 when key.SequenceEqual(EnrContentKey.UdpU8):
-                {
-                    int udpPort = ctx.DecodePositiveInt();
-                    nodeRecord.SetEntry(new UdpEntry(udpPort));
-                    break;
-                }
+                    {
+                        int udpPort = ctx.DecodePositiveInt();
+                        nodeRecord.SetEntry(new UdpEntry(udpPort));
+                        break;
+                    }
                 case 4 when key.SequenceEqual(EnrContentKey.Udp6U8):
-                {
-                    int udpPort = ctx.DecodePositiveInt();
-                    nodeRecord.SetEntry(new Udp6Entry(udpPort));
-                    break;
-                }
+                    {
+                        int udpPort = ctx.DecodePositiveInt();
+                        nodeRecord.SetEntry(new Udp6Entry(udpPort));
+                        break;
+                    }
                 case 9 when key.SequenceEqual(EnrContentKey.SecP256k1U8):
                     ReadOnlySpan<byte> keyBytes = ctx.DecodeByteArraySpan();
                     CompressedPublicKey reportedKey = new(keyBytes);
@@ -145,7 +145,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     ctx.SkipItem();
                     nodeRecord.Snap = true;
                     break;
-                }
+            }
         }
 
         ctx.Check(checkPosition);

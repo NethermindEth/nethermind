@@ -3,12 +3,10 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.ServiceStopper;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -118,7 +116,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
         _discoveryHandler.OnChannelActivated += OnChannelActivated;
 
         channel.Pipeline
-            .AddLast(new LoggingHandler(LogLevel.INFO))
+            .AddLast(new DotNetty.Handlers.Logging.LoggingHandler(LogLevel.INFO))
             .AddLast(_discoveryHandler);
     }
 

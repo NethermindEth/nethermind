@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;

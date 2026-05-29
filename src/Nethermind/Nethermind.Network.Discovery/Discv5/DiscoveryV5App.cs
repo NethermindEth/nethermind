@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
@@ -12,7 +11,6 @@ using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.ServiceStopper;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Kademlia;
@@ -287,7 +285,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
     private static bool IsSpecialUseIPv4(ReadOnlySpan<byte> bytes)
     {
-        uint v4 = BinaryPrimitives.ReadUInt32BigEndian(bytes);
+        uint v4 = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(bytes);
         byte a = (byte)(v4 >> 24);
         byte b = (byte)(v4 >> 16);
         byte c = (byte)(v4 >> 8);
