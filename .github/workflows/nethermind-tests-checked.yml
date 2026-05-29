@@ -132,16 +132,15 @@ jobs:
           dotnet build-server shutdown || true
 
           # Flaky-tagged tests run in the central `tests-flaky` job in nethermind-tests.yml.
-          # Non-flaky tests run 2-wide within the group, capped at 2 to avoid
-          # CPU contention on multi-vCPU runners.
-          MAX_PARALLEL=$(nproc 2>/dev/null || echo 2)
+          # 2-wide within the group; bash-3.2-safe PID tracking.
+          MAX_PARALLEL=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 2)
           (( MAX_PARALLEL > 2 )) && MAX_PARALLEL=2
           results_dir=$(mktemp -d)
-          running=0
+          pids=()
           for project in "${projects[@]}"; do
-            if (( running >= MAX_PARALLEL )); then
-              wait -n || true
-              running=$((running - 1))
+            if (( ${#pids[@]} >= MAX_PARALLEL )); then
+              wait "${pids[0]}" 2>/dev/null || true
+              pids=("${pids[@]:1}")
             fi
             (
               if dotnet test --project "$project/$project.csproj" -c release \
@@ -153,7 +152,7 @@ jobs:
                 echo "$?" > "$results_dir/$project.exitcode"
               fi
             ) &
-            running=$((running + 1))
+            pids+=($!)
           done
           wait
 
