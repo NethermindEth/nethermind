@@ -72,12 +72,15 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/_code-quality.yml
 
-  security-scans:
-    name: Security scans
+  trivy:
+    name: Trivy scanner
     if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/_security-scans.yml
-    with:
-      scans: 'trivy,dependency-review'
+    uses: ./.github/workflows/trivy.yml
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/dependency-review.yml
 
   stateless-tests:
     name: Stateless execution tests

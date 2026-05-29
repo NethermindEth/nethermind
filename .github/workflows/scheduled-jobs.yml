@@ -22,16 +22,12 @@ jobs:
   codeql:
     name: CodeQL
     if: github.event.schedule == '0 0 * * 0' || github.event_name == 'push'
-    uses: ./.github/workflows/_security-scans.yml
-    with:
-      scans: 'codeql'
+    uses: ./.github/workflows/codeql.yml
 
   trivy:
     name: Trivy
     if: github.event.schedule == '29 19 * * 4'
-    uses: ./.github/workflows/_security-scans.yml
-    with:
-      scans: 'trivy'
+    uses: ./.github/workflows/trivy.yml
 
   weekly-updates:
     name: Weekly updates
