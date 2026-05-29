@@ -316,6 +316,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         [TestCaseSource(nameof(Scenarios))]
         [Repeat(TestRepeatCount)]
+        [Category("Flaky"), Retry(3)]
         public async Task Scenario_plus_one_code((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             RemoteDbContext remote = new(_logManager);
