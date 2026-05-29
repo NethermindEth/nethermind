@@ -22,9 +22,60 @@ defaults:
     shell: bash
 
 jobs:
+  # See nethermind-tests.yml for rationale.
+  fetch-fixtures:
+    name: Fetch test fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      pyspec_version: ${{ steps.pyspec.outputs.version }}
+      pyspec_stem: ${{ steps.pyspec.outputs.stem }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Resolve Pyspec fixture pin
+        id: pyspec
+        run: |
+          CONST=src/Nethermind/Ethereum.Blockchain.Pyspec.Test/Constants.cs
+          VERSION=$(awk -F'"' '/DEFAULT_ARCHIVE_VERSION/ {print $2}' "$CONST")
+          ARCHIVE=$(awk -F'"' '/DEFAULT_ARCHIVE_NAME/ {print $2}' "$CONST")
+          URL_TPL=$(awk -F'"' '/ARCHIVE_URL_TEMPLATE/ {print $2}' "$CONST")
+          STEM="${ARCHIVE%.tar.gz}"
+          URL="${URL_TPL//\{0\}/$VERSION}"
+          URL="${URL//\{1\}/$ARCHIVE}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "stem=$STEM" >> "$GITHUB_OUTPUT"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch ethereum/tests + Pyspec in parallel
+        run: |
+          git submodule update --init --recursive src/tests &
+          SUB=$!
+          curl -fsSL "${{ steps.pyspec.outputs.url }}" -o pyspec-fixtures.tar.gz &
+          CURL=$!
+          wait $SUB && wait $CURL
+
+      - name: Tarball ethereum/tests
+        run: tar -czhf ethereum-tests.tar.gz -C src/tests .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ethereum-tests-fixtures
+          path: ethereum-tests.tar.gz
+          retention-days: 1
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pyspec-fixtures
+          path: pyspec-fixtures.tar.gz
+          retention-days: 1
+
   # 14 groups × 2 variants (checked / no-intrinsics).
   tests:
     name: tests ${{ matrix.group }} [${{ matrix.variant.label }}]
+    needs: [fetch-fixtures]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -63,16 +114,15 @@ jobs:
         with:
           submodules: false
 
-      - name: Fetch ethereum/tests fixtures
-        # See nethermind-tests.yml for the SHA-resolution / symlink-exclude rationale.
+      - name: Download ethereum/tests fixtures
+        if: ${{ contains(fromJSON('["spec-core","spec-tx-rlp-trie"]'), matrix.group) }}
+        uses: actions/download-artifact@v8
+        with:
+          name: ethereum-tests-fixtures
+      - name: Extract ethereum/tests fixtures
         if: ${{ contains(fromJSON('["spec-core","spec-tx-rlp-trie"]'), matrix.group) }}
         shell: bash
-        run: |
-          SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
-          test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
-          mkdir -p src/tests
-          curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
-            | tar -xz --strip-components=1 --exclude='*/src' -C src/tests
+        run: mkdir -p src/tests && tar -xzf ethereum-tests.tar.gz -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -170,6 +220,7 @@ jobs:
   # Heavy chunked tests under both variants — TEST_SKIP_HEAVY=1 keeps each chunk tractable.
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
+    needs: [fetch-fixtures]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -207,16 +258,31 @@ jobs:
         with:
           submodules: false
 
-      - name: Fetch ethereum/tests fixtures
-        # Pyspec pulls its own fixtures at runtime via TestFixtureDownloader.
+      - name: Download ethereum/tests fixtures
+        if: ${{ !startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') }}
+        uses: actions/download-artifact@v8
+        with:
+          name: ethereum-tests-fixtures
+      - name: Extract ethereum/tests fixtures
         if: ${{ !startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') }}
         shell: bash
+        run: mkdir -p src/tests && tar -xzf ethereum-tests.tar.gz -C src/tests
+
+      - name: Download Pyspec fixtures
+        if: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') }}
+        uses: actions/download-artifact@v8
+        with:
+          name: pyspec-fixtures
+      - name: Seed Pyspec fixture cache
+        if: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') }}
+        shell: bash
+        env:
+          CACHE_DIR: /tmp/nethermind-eest/PyTests/${{ needs.fetch-fixtures.outputs.pyspec_version }}/${{ needs.fetch-fixtures.outputs.pyspec_stem }}
+          VERSION: ${{ needs.fetch-fixtures.outputs.pyspec_version }}
         run: |
-          SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
-          test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
-          mkdir -p src/tests
-          curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
-            | tar -xz --strip-components=1 --exclude='*/src' -C src/tests
+          mkdir -p "$CACHE_DIR"
+          tar -xzf pyspec-fixtures.tar.gz -C "$CACHE_DIR"
+          printf '%s' "$VERSION" > "$CACHE_DIR/.completed"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
