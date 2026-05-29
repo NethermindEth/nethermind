@@ -902,7 +902,10 @@ public class DebugRpcModule(
             return ResultWrapper<Witness>.Fail("Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
         }
 
-        callRequest.Gas ??= header.GasLimit;
+        if (callRequest.Gas is null or 0)
+        {
+            callRequest.Gas = header.GasLimit;
+        }
 
         Result<Transaction> txResult = callRequest.ToTransaction(validateUserInput: false);
         if (!txResult.Success(out Transaction? tx, out string? error))

@@ -282,6 +282,40 @@ public partial class DebugRpcModuleTests
             "key count should match between with-gas and without-gas calls");
     }
 
+    [Test]
+    public async Task Debug_executionWitnessCall_with_zero_gas_still_records_full_witness()
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain blockchain = ctx.Blockchain;
+
+        Block transferBlock = await CreateTransferTx(blockchain);
+        Address contractAddress = await CreateDeployTx(blockchain, transferBlock.Number);
+
+        long blockNumber = blockchain.BlockTree.Head!.Number;
+
+        JsonRpcResponse withGas = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
+            new { to = contractAddress.ToString(), gas = "0x30D40" },
+            $"0x{blockNumber:x}");
+
+        JsonRpcResponse withZeroGas = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
+            new { to = contractAddress.ToString(), gas = "0x0" },
+            $"0x{blockNumber:x}");
+
+        using Witness witnessWithGas = RpcTest.AssertSuccess<Witness>(withGas);
+        using Witness witnessWithZeroGas = RpcTest.AssertSuccess<Witness>(withZeroGas);
+
+        Assert.That(witnessWithZeroGas.State, Is.Not.Empty,
+            "zero gas must not empty the state node set");
+        Assert.That(witnessWithZeroGas.Codes, Is.Not.Empty,
+            "zero gas must still capture called-contract bytecode");
+        Assert.That(witnessWithZeroGas.State.Count, Is.EqualTo(witnessWithGas.State.Count),
+            "state-node count should match between with-gas and zero-gas calls");
+        Assert.That(witnessWithZeroGas.Codes.Count, Is.EqualTo(witnessWithGas.Codes.Count),
+            "code count should match between with-gas and zero-gas calls");
+        Assert.That(witnessWithZeroGas.Keys.Count, Is.EqualTo(witnessWithGas.Keys.Count),
+            "key count should match between with-gas and zero-gas calls");
+    }
+
     private static IEnumerable<TestCaseData> ExecutionWitnessSource()
     {
         // 7 blocks in the test where this test case source is used
