@@ -10,20 +10,20 @@ internal class WebhookSlackNotifier(string webhookUrl) : INotifier
 {
     private readonly HttpClient _client = new();
 
-    public Task NotifyMismatchAsync(MismatchInfo info, CancellationToken ct)
+    public Task NotifyFailureAsync(TestFailure failure, CancellationToken ct)
     {
         string text =
             $"""
-             *RPC response mismatch* at block #{info.Head:#}
-             Test: `{info.Test.Definition.FilePath}`
-             Method: `{info.Request.MethodOrUnknown}`
+             *RPC response mismatch* at block #{failure.Head:#}
+             Test: `{failure.Test.Definition.FilePath}`
+             Method: `{failure.Request.MethodOrUnknown}`
              """;
 
         object[] attachments =
         [
-            MakeAttachment("request.json", "#d3d3d3", info.Request.ToPrettyString()),
-            MakeAttachment("target-response.json", "#ff6b35", info.TargetResponse.ToPrettyString()),
-            MakeAttachment("reference-response.json", "#36a64f", info.ReferenceResponse.ToPrettyString())
+            MakeAttachment("request.json", "#d3d3d3", failure.Request.ToPrettyString()),
+            MakeAttachment("target-response.json", "#ff6b35", failure.TargetResponse.ToPrettyString()),
+            MakeAttachment("reference-response.json", "#36a64f", failure.ReferenceResponse.ToPrettyString())
         ];
 
         return PostAsync(new { text, attachments }, ct);

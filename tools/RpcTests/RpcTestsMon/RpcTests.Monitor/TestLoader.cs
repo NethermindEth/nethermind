@@ -10,10 +10,9 @@ namespace Nethermind.RpcTests.Monitor;
 internal class TestDefinition
 {
     public required string FilePath { get; init; }
+    public required int Index { get; init; }
     public required DynamicJson<TestContext> OnChanged { get; init; }
     public required DynamicJson<TestContext> Request { get; init; }
-    public required TestContext BaseContext { get; init; }
-    public JsonNode? LastOnChangedValue { get; set; }
 }
 
 internal static class TestLoader
@@ -37,15 +36,12 @@ internal static class TestLoader
                 foreach (JsonNode? testNode in tests)
                 {
                     if (testNode?["onChanged"] is not { } onChangedNode || testNode["request"] is not { } requestNode)
-                        continue;
-
-                    int shift = HashCode.Combine(path, testIndex++);
-                    TestContext baseContext = new(new BlockInfo(0, ""), new RequestContext(0), shift);
+                        throw new Exception($"Test \"{path}\" doesn't have required properties 'onChanged' and 'request'");
 
                     definitions.Add(new TestDefinition
                     {
                         FilePath = path,
-                        BaseContext = baseContext,
+                        Index = ++testIndex,
                         OnChanged = new DynamicJson<TestContext>(onChangedNode),
                         Request = new DynamicJson<TestContext>(requestNode)
                     });

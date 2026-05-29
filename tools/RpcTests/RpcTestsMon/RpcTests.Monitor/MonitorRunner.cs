@@ -8,24 +8,22 @@ using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal record RequestContext(long Number);
-
-internal record TestRun(BlockInfo Head, TestDefinition Definition, RequestContext RequestCtx);
-
-internal record struct TestContext(BlockInfo Head, RequestContext Request, int TestNumber)
+internal record struct TestContext(TestDefinition Definition, BlockInfo? Head = null)
 {
     public static string Hex(int n) => $"0x{n:x}";
     public static string Hex(long n) => $"0x{n:x}";
+
+    public JsonNode? LastOnChangedValue;
 }
 
-internal record MismatchInfo(TestRun Test, JsonNode Request, JsonNode TargetResponse, JsonNode ReferenceResponse)
+internal record TestFailure(TestContext Test, JsonNode Request, JsonNode TargetResponse, JsonNode ReferenceResponse)
 {
-    public BlockInfo Head => Test.Head;
+    public BlockInfo Head => Test.Head!;
 }
 
 internal class MonitorRunner(INotifier notifier)
 {
-    private long _requestNumber;
+    private TestContext[] _testContexts = [];
 
     public async Task RunAsync(ExecutionArgs args, CancellationToken ct)
     {
@@ -33,9 +31,11 @@ internal class MonitorRunner(INotifier notifier)
         Console.WriteLine($"Loaded {tests.Length} tests");
         if (tests.Length == 0) return;
 
+        _testContexts = [.. tests.Select(static t => new TestContext(t))];
+
         using HttpClient client = new();
         (ITargetBlock<BlockInfo> startBlock, IDataflowBlock endBlock) =
-            BuildPipeline(args, tests, new RequestSender(client), ct);
+            BuildPipeline(args, new RequestSender(client), ct);
 
         HeadMonitor headMonitor = new(args.TargetUrl, notifier);
         try
@@ -54,27 +54,27 @@ internal class MonitorRunner(INotifier notifier)
     }
 
     private (ITargetBlock<BlockInfo> start, IDataflowBlock end) BuildPipeline(
-        ExecutionArgs args, TestDefinition[] tests, RequestSender sender, CancellationToken ct)
+        ExecutionArgs args, RequestSender sender, CancellationToken ct)
     {
         BufferBlock<BlockInfo> headBuffer = new(new DataflowBlockOptions { BoundedCapacity = 2 });
 
         DataflowLinkOptions propagate = new() { PropagateCompletion = true };
 
         // filter tests that need to run for this head
-        TransformManyBlock<BlockInfo, TestRun> filterBlock = new(
-            head => FilterTests(tests, head),
-            new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1, BoundedCapacity = tests.Length }
+        TransformManyBlock<BlockInfo, TestContext> filterBlock = new(
+            FilterTests,
+            new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1, BoundedCapacity = _testContexts.Length }
         );
 
         // run each triggered test against both nodes, yield on mismatch
-        TransformBlock<TestRun, MismatchInfo?> runnerBlock = new(
+        TransformBlock<TestContext, TestFailure?> runnerBlock = new(
             pending => RunTestAsync(pending, sender, args, ct),
             new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = args.Parallelism, BoundedCapacity = args.Parallelism }
         );
 
         // send mismatch notifications
-        ActionBlock<MismatchInfo?> notifyBlock = new(
-            info => info is not null ? notifier.NotifyMismatchAsync(info, ct) : Task.CompletedTask,
+        ActionBlock<TestFailure?> notifyBlock = new(
+            info => info is not null ? notifier.NotifyFailureAsync(info, ct) : Task.CompletedTask,
             new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1 }
         );
 
@@ -85,22 +85,22 @@ internal class MonitorRunner(INotifier notifier)
         return (headBuffer, notifyBlock);
     }
 
-    private IEnumerable<TestRun> FilterTests(TestDefinition[] tests, BlockInfo head)
+    private IEnumerable<TestContext> FilterTests(BlockInfo head)
     {
-        foreach (TestDefinition test in tests)
+        for (int i = 0; i < _testContexts.Length; i++)
         {
-            TestRun? pending = null;
-            RequestContext request = new(++_requestNumber);
-
+            ref TestContext state = ref _testContexts[i];
+            TestContext? pending = null;
             try
             {
                 // TODO: optimize via comparing simple value
-                JsonNode? changed = test.OnChanged.Compile(test.BaseContext with { Head = head });
-                if (!ValuesEqual(changed, test.LastOnChangedValue))
+                TestContext ctx = state with { Head = head };
+                JsonNode? changed = state.Definition.OnChanged.Compile(ctx);
+                if (!ValuesEqual(changed, state.LastOnChangedValue))
                     continue;
 
-                test.LastOnChangedValue = changed;
-                pending = new TestRun(head, test, request);
+                state.LastOnChangedValue = changed;
+                pending = ctx;
             }
             catch (Exception ex)
             {
@@ -108,17 +108,16 @@ internal class MonitorRunner(INotifier notifier)
             }
 
             if (pending is not null)
-                yield return pending;
+                yield return pending.Value;
         }
     }
 
-    private async Task<MismatchInfo?> RunTestAsync(
-        TestRun test, RequestSender sender, ExecutionArgs args, CancellationToken ct)
+    private async Task<TestFailure?> RunTestAsync(
+        TestContext test, RequestSender sender, ExecutionArgs args, CancellationToken ct)
     {
         try
         {
-            JsonNode request = test.Definition.Request.Compile(
-                test.Definition.BaseContext with { Head = test.Head, Request = test.RequestCtx })!;
+            JsonNode request = test.Definition.Request.Compile(test)!;
             JsonNode targetResp = await sender.SendAsync(args.TargetUrl, request, ct);
             JsonNode refResp = await sender.SendAsync(args.ReferenceUrl, request, ct);
 
@@ -126,7 +125,7 @@ internal class MonitorRunner(INotifier notifier)
                 return null;
 
             Console.Error.WriteLine($"Mismatch on test \"{test.Definition.FilePath}\" at block #{test.Head:#}");
-            return new MismatchInfo(test, request, targetResp, refResp);
+            return new TestFailure(test, request, targetResp, refResp);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

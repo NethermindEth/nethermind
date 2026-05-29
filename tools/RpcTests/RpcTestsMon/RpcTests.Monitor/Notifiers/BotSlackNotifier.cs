@@ -21,22 +21,22 @@ internal class BotSlackNotifier(BotSlackConfig config) : INotifier
         .UseApiToken(config.BotToken)
         .GetApiClient();
 
-    public async Task NotifyMismatchAsync(MismatchInfo info, CancellationToken ct)
+    public async Task NotifyFailureAsync(TestFailure failure, CancellationToken ct)
     {
         string header =
             $"""
-             *RPC response mismatch* at block #{info.Head:#}
-             Test: `{info.Test.Definition.FilePath}`
-             Method: `{info.Request.MethodOrUnknown}`
+             *RPC response mismatch* at block #{failure.Head:#}
+             Test: `{failure.Test.Definition.FilePath}`
+             Method: `{failure.Request.MethodOrUnknown}`
              """;
 
         try
         {
             (string name, string content)[] files =
             [
-                ("request.json", info.Request.ToPrettyString()),
-                ("target-response.json", info.TargetResponse.ToPrettyString()),
-                ("reference-response.json", info.ReferenceResponse.ToPrettyString())
+                ("request.json", failure.Request.ToPrettyString()),
+                ("target-response.json", failure.TargetResponse.ToPrettyString()),
+                ("reference-response.json", failure.ReferenceResponse.ToPrettyString())
             ];
 
             IList<ExternalFileReference> fileRefs = await Task.WhenAll(
