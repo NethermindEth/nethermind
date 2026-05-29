@@ -21,6 +21,12 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   TERM: xterm
+  # Runtime tuning: server GC parallelizes collection across cores (worth it
+  # for Pyspec/Legacy.Blockchain chunks that run 10+ min). Tiered PGO is on
+  # by default in .NET 10 but explicit keeps it on if a runner image flips.
+  DOTNET_TieredPGO: 1
+  DOTNET_GCServer: 1
+  DOTNET_GCConcurrent: 1
 
 defaults:
   run:
@@ -129,7 +135,12 @@ jobs:
           fi
 
           # One solution build amortized across all projects in the group.
-          dotnet build Nethermind.slnx -c release -m -v minimal
+          # `/p:RestoreDisableParallel=true` works around a Windows-only NuGet
+          # race: `dotnet build -m` parallelises restore, and concurrent
+          # writers to the same `*.dat-new` cache file deadlock against the
+          # Defender file handle and surface as "fatal device hardware error".
+          # Serial restore eliminates the race; parallel build (`-m`) is kept.
+          dotnet build Nethermind.slnx -c release -m -v minimal /p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
           # Flaky-tagged tests run in the dedicated `tests-flaky` job.
@@ -263,7 +274,7 @@ jobs:
             coverage_args="--coverage --coverage-output-format cobertura --coverage-settings codecoverage.json"
           fi
 
-          dotnet build EthereumTests.slnx -c release -m -v minimal
+          dotnet build EthereumTests.slnx -c release -m -v minimal /p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
           # Flaky-tagged tests run in the dedicated `tests-flaky` job. 2-wide
@@ -376,7 +387,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
           set -e
-          dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal
+          dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal /p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
           # Flaky-tagged tests run in the dedicated `tests-flaky` job.
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
@@ -421,7 +432,7 @@ jobs:
         # Ethereum.* project, also build EthereumTests.slnx here.
         working-directory: src/Nethermind
         run: |
-          dotnet build Nethermind.slnx -c release -m -v minimal
+          dotnet build Nethermind.slnx -c release -m -v minimal /p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
       - name: Run flaky tests

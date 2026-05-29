@@ -28,12 +28,7 @@ public class LogIndexBuilderTests
 {
     private class TestLogIndexStorage : ILogIndexStorage
     {
-        // LogIndexBuilder runs forward and backward sync as two concurrent
-        // ActionBlocks that both call AddReceiptsAsync; production storage is
-        // thread-safe, so this mock must be too. Without this lock, the
-        // check-then-act sequence below races and a later write can overwrite
-        // an earlier one — observable as off-by-one MaxBlockNumber in tests.
-        private readonly object _gate = new();
+        private readonly Lock _gate = new();
         private int? _minBlockNumber;
         private int? _maxBlockNumber;
 

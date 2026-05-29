@@ -15,6 +15,10 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   TERM: xterm
   TEST_USE_FLAT: 1
+  # Runtime tuning — see nethermind-tests.yml for rationale.
+  DOTNET_TieredPGO: 1
+  DOTNET_GCServer: 1
+  DOTNET_GCConcurrent: 1
 
 jobs:
   # Base unit/spec projects collapse into 2 grouped jobs. Solution-level build
@@ -68,7 +72,7 @@ jobs:
               ;;
           esac
 
-          dotnet build "$solution" -c release -m -v minimal
+          dotnet build "$solution" -c release -m -v minimal /p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
           # Flaky-tagged tests run in the central `tests-flaky` job in nethermind-tests.yml.
@@ -134,7 +138,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           set -e
-          dotnet build Ethereum.Legacy.Blockchain.Test.csproj -c release -v minimal
+          dotnet build Ethereum.Legacy.Blockchain.Test.csproj -c release -v minimal /p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
           # Flaky-tagged tests run in the central `tests-flaky` job.
           dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release \
@@ -223,7 +227,7 @@ jobs:
           trap 'kill $monitor_pid 2>/dev/null || true; wait $monitor_pid 2>/dev/null || true' EXIT
 
           set -e
-          dotnet build Ethereum.Blockchain.Pyspec.Test.csproj -c release -v minimal
+          dotnet build Ethereum.Blockchain.Pyspec.Test.csproj -c release -v minimal /p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
           # Flaky-tagged tests run in the central `tests-flaky` job — append to
           # this label's filter so we don't double-run them here.
