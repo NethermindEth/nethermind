@@ -141,6 +141,12 @@ public sealed class PersistedSnapshotRepository(
             // Delete any blob arena file no loaded snapshot referenced — recoverable
             // orphans from a mid-write crash.
             _blobs.SweepUnreferenced();
+
+            // Build blooms only for the maximal-covering snapshot in each contiguous
+            // range. The catalog-load itself stays cheap; this pass produces the same
+            // end-state as the runtime would after all of its compactions, while
+            // building only one bloom per uncovered slot instead of one per snapshot.
+            ReconstructBloom();
         }
     }
 
@@ -153,19 +159,10 @@ public sealed class PersistedSnapshotRepository(
         // reservation lease before rethrowing — no repository-side cleanup needed.
         PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs, _arena.Tier, entry.BlobRange);
 
-        // One WholeReadSession, one Build call. The bloom covers all key flavours
-        // (address / slot / SD / state-trie / storage-trie) in a single filter.
-        BloomFilter bloom;
-        if (BloomEnabled)
-        {
-            using WholeReadSession session = snapshot.BeginWholeReadSession();
-            bloom = PersistedSnapshotBloomBuilder.Build(session, snapshot, _bloomBitsPerKey);
-        }
-        else
-        {
-            bloom = BloomFilter.AlwaysTrue();
-        }
-        RegisterBlooms(snapshot, bloom);
+        // Bloom is intentionally NOT built here — the bloom subsystem starts empty after
+        // LoadFromCatalog. Callers must invoke ReconstructBloom() before queries to get
+        // bloom filtering. Until then, LeaseOrSentinel returns the AlwaysTrue sentinel —
+        // correct (no false negatives) but unfiltered.
 
         // LoadFromCatalog already holds `_catalogLock`. Catalog order is insertion order, so
         // the last entry processed wins as the tip.
@@ -590,6 +587,80 @@ public sealed class PersistedSnapshotRepository(
     /// </summary>
     private void RegisterBlooms(PersistedSnapshot snapshot, BloomFilter bloom) =>
         _bloomManager.Register(new PersistedSnapshotBloom(snapshot.From, snapshot.To, bloom));
+
+    /// <summary>
+    /// Build and register blooms for every loaded snapshot, matching the manager's
+    /// end-state after a long-running session's compactions: blocks covered by a
+    /// compacted/persistable snapshot use that snapshot's merged bloom; blocks not
+    /// covered by any compaction use a per-base bloom. Walks the union of every
+    /// bucket's <c>To</c> ids newest→oldest; at each state, if the manager already
+    /// has a slot entry (a previously-registered wider bloom's range walk already
+    /// covered this state), skip; otherwise pick the widest snapshot at this state
+    /// by range (compacted bucket can be wider OR narrower than the CompactSize-wide
+    /// persistable; base is always range == 1), build its bloom by scanning its HSST
+    /// metadata, and register.
+    /// Invoked from <see cref="LoadFromCatalog"/>; caller holds <c>_catalogLock</c>.
+    /// </summary>
+    private void ReconstructBloom()
+    {
+        if (!BloomEnabled) return;
+
+        // Snapshot the base StateId graph once so the parentLookup closure (passed
+        // into the bloom manager) is a cheap dict probe. Bases are usually contiguous
+        // by block number, but PruneBefore can leave gaps at the bottom — missing
+        // predecessor blocks are surfaced as a default StateId, which Register treats
+        // as "anchor the chain here" via its own boundary check.
+        Dictionary<long, StateId> parentByBlock = new(_baseStateIds.Count);
+        foreach (StateId id in _baseStateIds) parentByBlock[id.BlockNumber] = id;
+        Func<long, StateId> parentLookup = block =>
+            parentByBlock.TryGetValue(block, out StateId id) ? id : default;
+
+        // The catalog is keyed by <c>To</c> alone, so a persistable / compacted entry
+        // at the same <c>To</c> as a base overwrites the base on disk — on reload only
+        // one of the three buckets carries a snapshot at that <c>To</c>. Walk the union
+        // of every bucket's <c>To</c> id to ensure no slot is missed.
+        SortedSet<StateId> allTos = [.. _baseStateIds, .. _compactedStateIds, .. _persistableStateIds];
+
+        foreach (StateId to in allTos.Reverse())
+        {
+            if (_bloomManager.ContainsSlot(to)) continue;
+
+            PersistedSnapshot? snap = PickWidest(
+                _baseSnapshots.TryGetValue(to, out PersistedSnapshot? b) ? b : null,
+                _compactedSnapshots.TryGetValue(to, out PersistedSnapshot? c) ? c : null,
+                _persistableCompactedSnapshots.TryGetValue(to, out PersistedSnapshot? p) ? p : null);
+            if (snap is null) continue;
+
+            BloomFilter bloom = BuildBloomFor(snap);
+            _bloomManager.Register(new PersistedSnapshotBloom(snap.From, snap.To, bloom), parentLookup);
+        }
+    }
+
+    private BloomFilter BuildBloomFor(PersistedSnapshot snap)
+    {
+        using WholeReadSession session = snap.BeginWholeReadSession();
+        return PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey);
+    }
+
+    // Pick the snapshot with the largest (To - From) range across the three buckets.
+    // After a reload, only one of the three is non-null at a given <c>To</c> (the
+    // catalog overwrites at that key); during a running session there can be a base
+    // alongside a compacted / persistable at the same <c>To</c>. The compacted bucket
+    // can hold either sub-CompactSize sub-merges or hierarchical (>CompactSize) merges,
+    // so the widest is decided by range, not by bucket precedence.
+    private static PersistedSnapshot? PickWidest(
+        PersistedSnapshot? baseSnap, PersistedSnapshot? compacted, PersistedSnapshot? persistable)
+    {
+        PersistedSnapshot? best = null;
+        long bestRange = -1;
+        foreach (PersistedSnapshot? cand in (ReadOnlySpan<PersistedSnapshot?>)[baseSnap, compacted, persistable])
+        {
+            if (cand is null) continue;
+            long range = cand.To.BlockNumber - cand.From.BlockNumber;
+            if (range > bestRange) { best = cand; bestRange = range; }
+        }
+        return best;
+    }
 
     private void RemoveFromCatalog(in StateId to)
     {

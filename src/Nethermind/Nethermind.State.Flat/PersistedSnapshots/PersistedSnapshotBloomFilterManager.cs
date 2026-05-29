@@ -45,7 +45,7 @@ public sealed class PersistedSnapshotBloomFilterManager : IDisposable
     /// inserting here would break future chain walks. The caller's creation lease
     /// is released by this method.
     /// </summary>
-    public void Register(PersistedSnapshotBloom bloom)
+    public void Register(PersistedSnapshotBloom bloom, Func<long, StateId>? parentLookup = null)
     {
         long fromBlock = bloom.From.BlockNumber;
         long newRange = bloom.To.BlockNumber - fromBlock;
@@ -78,22 +78,48 @@ public sealed class PersistedSnapshotBloomFilterManager : IDisposable
             }
             else
             {
-                if (!isBase)
+                if (isBase)
                 {
-                    // Compacted register on an unpopulated key: stop without inserting.
-                    // Inserting here would break the parent-state chain that future
-                    // compactions rely on.
+                    if (!bloom.TryAcquire()) return;
+                    if (_blooms.TryAdd(cur, new BloomEntry(bloom, bloom.From)))
+                        break;
+                    bloom.Dispose(); // raced with a concurrent insert; retry via the update path
+                    continue;
+                }
+
+                if (parentLookup is null)
+                {
+                    // Runtime compaction path: compacted register on an unpopulated key
+                    // stops without inserting. Inserting here would break the parent-state
+                    // chain that future compactions rely on.
                     break;
                 }
+
+                // ReconstructBloom path: parentLookup gives us the predecessor StateId
+                // (from the known base-snapshot graph), so we can synthesize the chain
+                // entry instead of breaking. The predecessor for this slot is the base
+                // at (cur.BlockNumber - 1); when we'd step past the bloom's own From, we
+                // anchor at bloom.From so the next loop iteration terminates the walk.
                 if (!bloom.TryAcquire()) return;
-                if (_blooms.TryAdd(cur, new BloomEntry(bloom, bloom.From)))
-                    break;
-                bloom.Dispose(); // raced with a concurrent insert; retry via the update path
+                StateId parent = cur.BlockNumber - 1 > fromBlock
+                    ? parentLookup(cur.BlockNumber - 1)
+                    : bloom.From;
+                if (!_blooms.TryAdd(cur, new BloomEntry(bloom, parent)))
+                {
+                    bloom.Dispose(); // raced; retry via the update path on next iteration
+                    continue;
+                }
+                cur = parent;
             }
         }
 
         bloom.Dispose(); // creation lease
     }
+
+    /// <summary>True iff the manager already has a slot entry for <paramref name="to"/>.
+    /// Used by <see cref="PersistedSnapshotRepository.ReconstructBloom"/> to skip states
+    /// whose slot was already filled by a previous (wider) registration's range walk.</summary>
+    public bool ContainsSlot(StateId to) => _blooms.ContainsKey(to);
 
     /// <summary>
     /// Lease the bloom keyed by <paramref name="to"/>. Acquires an additional lease for

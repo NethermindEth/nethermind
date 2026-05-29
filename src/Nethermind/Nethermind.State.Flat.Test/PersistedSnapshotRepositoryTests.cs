@@ -514,4 +514,76 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(bases[0].To, Is.EqualTo(ids[3]));
         Assert.That(bases[^1].From, Is.EqualTo(ids[0]));
     }
+
+    /// <summary>
+    /// Regression for the ReconstructBloom pass inside LoadFromCatalog: after a restart,
+    /// the bloom manager's slots must be filled from the WIDEST snapshot covering each
+    /// state (a compacted/persistable bloom wins over a per-base bloom in its range),
+    /// and every slot inside a compacted snapshot's range must resolve to the SAME bloom
+    /// instance via LeaseOrSentinel. Mirrors the manager end-state runtime would produce
+    /// after a long-running session's compactions, without building one bloom per loaded
+    /// snapshot the way the pre-fix LoadFromCatalog did.
+    /// </summary>
+    [Test]
+    public void LoadFromCatalog_ReconstructsBloom_FromWidestCoveringSnapshot()
+    {
+        StateId[] ids = new StateId[5];
+        ids[0] = new(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= 4; i++) ids[i] = new(i, Keccak.Compute($"s{i}"));
+
+        MemDb catalogDb = new();
+        string arenaDir = Path.Combine(_testDir, "arenas", "base");
+        string blobDir = Path.Combine(_testDir, "blobs", "base");
+
+        // Session 1: 4 bases + a CompactSize=4 persistable covering all 4 of them.
+        using (ArenaManager arena1 = new(arenaDir, 0, maxArenaSize: 64 * 1024))
+        using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024, PersistedSnapshotTier.Persisted))
+        using (PersistedSnapshotBloomFilterManager bloomMgr1 = new())
+        using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), bloomMgr1))
+        {
+            repo.LoadFromCatalog();
+            for (int i = 1; i <= 4; i++)
+                repo.ConvertSnapshotToPersistedSnapshot(
+                    CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
+
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(
+                repo, arena1, config,
+                ScheduleHelper.CreateWithOffset(config, 0),
+                Nethermind.Logging.LimboLogs.Instance, bloomMgr1,
+                minCompactSize: 2, maxCompactSize: config.PersistedSnapshotMaxCompactSize);
+            compactor.DoCompactPersistable(ids[4]);  // persistable at To=4 covering (0, 4]
+        }
+
+        // Session 2: reload. LoadFromCatalog now auto-calls ReconstructBloom.
+        using PersistedSnapshotBloomFilterManager bloomMgr2 = new();
+        using ArenaManager arena2 = new(arenaDir, 0, maxArenaSize: 64 * 1024);
+        using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024, PersistedSnapshotTier.Persisted);
+        using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), bloomMgr2);
+        repo2.LoadFromCatalog();
+
+        // Every slot in (0, 4] must resolve to the SAME bloom instance — the persistable's
+        // merged bloom, which the range walk in Register spread across the slot dict.
+        using PersistedSnapshotBloom b1 = bloomMgr2.LeaseOrSentinel(ids[1]);
+        using PersistedSnapshotBloom b2 = bloomMgr2.LeaseOrSentinel(ids[2]);
+        using PersistedSnapshotBloom b3 = bloomMgr2.LeaseOrSentinel(ids[3]);
+        using PersistedSnapshotBloom b4 = bloomMgr2.LeaseOrSentinel(ids[4]);
+
+        Assert.That(b1, Is.Not.SameAs(PersistedSnapshotBloom.AlwaysTrue),
+            "ReconstructBloom must have built a real bloom for every covered slot");
+        Assert.That(b1, Is.SameAs(b2), "slots in compacted range share the same bloom instance");
+        Assert.That(b2, Is.SameAs(b3));
+        Assert.That(b3, Is.SameAs(b4));
+        Assert.That(b1.From.BlockNumber, Is.EqualTo(0));
+        Assert.That(b1.To.BlockNumber, Is.EqualTo(4));
+
+        // Every address written across the 4 bases must be present in the merged bloom —
+        // it was built from the persistable's HSST, not from any one base.
+        for (int i = 1; i <= 4; i++)
+        {
+            ulong key = PersistedSnapshotBloomBuilder.AddressKey(TestItem.Addresses[i - 1]);
+            Assert.That(b1.Bloom.MightContain(key), Is.True,
+                $"AddressKey for base {i} must be in the persistable's merged bloom");
+        }
+    }
 }
