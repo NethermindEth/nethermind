@@ -1,0 +1,28 @@
+name: Agent skills sync
+
+on:
+  pull_request:
+    paths:
+      - ".agents/skills/**"
+      - ".claude/skills/**"
+      - ".cursor/skills/**"
+      - "scripts/sync-skills.sh"
+      - ".github/workflows/sync-skills.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Check skill copies are in sync
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Verify tool skill copies match .agents/skills/
+        run: scripts/sync-skills.sh --check
