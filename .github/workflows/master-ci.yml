@@ -39,11 +39,9 @@ jobs:
     name: Code quality
     uses: ./.github/workflows/_code-quality.yml
 
-  security-scans:
-    name: Security scans
-    uses: ./.github/workflows/_security-scans.yml
-    with:
-      scans: 'trivy'
+  trivy:
+    name: Trivy scanner
+    uses: ./.github/workflows/trivy.yml
 
   stateless-tests:
     name: Stateless execution tests

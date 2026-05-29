@@ -318,13 +318,17 @@ jobs:
     if: needs.select.outputs.docs_only != 'true'
     uses: ./.github/workflows/stateless-tests.yml
 
-  security-scans:
-    name: Security scans
+  trivy:
+    name: Trivy scanner
     needs: select
     if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
-    uses: ./.github/workflows/_security-scans.yml
-    with:
-      scans: 'trivy,dependency-review'
+    uses: ./.github/workflows/trivy.yml
+
+  dependency-review:
+    name: Dependency review
+    needs: select
+    if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/dependency-review.yml
 
   nethermind-tests-checked:
     name: Nethermind extra test variants
@@ -383,7 +387,8 @@ jobs:
       - nethermind-tests-checked
       - nethermind-tests-flat
       - stateless-tests
-      - security-scans
+      - trivy
+      - dependency-review
       - sync-pr-gate
       - evm-opcode-benchmark-diff
       - taiko-integration
