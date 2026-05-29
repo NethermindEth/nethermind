@@ -329,5 +329,10 @@ public sealed class SparsePatriciaTree : IDisposable
     /// <summary>Exposes the internal subtrie for testing.</summary>
     internal SparseSubtrie Subtrie => _subtrie;
 
+    /// <summary>Calls <see cref="SparseSubtrie.Prune"/> on this trie. Cold paths whose full
+    /// keys are not in <paramref name="isRetained"/> collapse to Blinded entries, freeing
+    /// arena slots. Must be called after <see cref="ComputeRoot"/>.</summary>
+    public void Prune(Func<ReadOnlySpan<byte>, bool> isRetained) => _subtrie.Prune(isRetained);
+
     public void Dispose() => _subtrie.Dispose();
 }

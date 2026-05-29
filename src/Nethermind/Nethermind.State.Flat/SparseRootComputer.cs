@@ -63,6 +63,12 @@ public sealed class SparseRootComputer : IDisposable
         if (!_storageChanges.TryGetValue(accountPathHash, out (Hash256 PreviousStorageRoot, Dictionary<Hash256, LeafUpdate> Updates) entry))
             return Keccak.EmptyTreeHash;
 
+        // Touch LFU for every slot we're about to update. Hot slots will stay revealed
+        // after the next Prune; cold slots collapse back to Blinded.
+        _trie.TouchLfu(accountPathHash);
+        foreach (Hash256 slotKey in entry.Updates.Keys)
+            _trie.TouchSlotLfu(accountPathHash, slotKey);
+
         if (entry.PreviousStorageRoot == Keccak.EmptyTreeHash && entry.Updates.Count == 0)
             return Keccak.EmptyTreeHash;
 
@@ -201,6 +207,10 @@ public sealed class SparseRootComputer : IDisposable
     {
         if (_accountChanges is null || _accountChanges.Count == 0)
             return _previousStateRoot;
+
+        // Touch LFU for every account we're about to update so hot accounts survive Prune.
+        foreach (Hash256 accountKey in _accountChanges.Keys)
+            _trie.TouchLfu(accountKey);
 
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
 

@@ -929,5 +929,140 @@ public sealed class SparseSubtrie : IDisposable
         return minLen;
     }
 
+    /// <summary>
+    /// LFU-driven pruning. Walks the trie depth-first. For each leaf whose full key is not
+    /// in <paramref name="isRetained"/>, replaces it with a Blinded entry holding the leaf's
+    /// CachedRlp in the parent branch's child slot. For each branch all of whose children
+    /// become Blinded, recursively collapses the branch into a single Blinded entry up the
+    /// chain. Frees the arena slots of collapsed nodes.
+    /// <remarks>
+    /// Must be called AFTER ComputeRoot â€” every node touched must have a valid CachedRlp,
+    /// since that's what becomes the Blinded entry's hash/inline reference. The retained
+    /// keys typically come from a per-block LFU touch + DecayAndEvict cycle.
+    /// </remarks>
+    /// </summary>
+    public void Prune(Func<ReadOnlySpan<byte>, bool> isRetained)
+    {
+        if (Root < 0) return;
+        byte[] path = [];
+        PruneResult res = PruneRecursive(Root, path, isRetained);
+        if (res.BecameBlinded)
+        {
+            // Whole trie collapses: root becomes a single Blinded node holding the original
+            // root's full-RLP hash. We still need a root node, so allocate one.
+            FreeNode(Root);
+            Root = AllocNode(SparseTrieNode.CreateBlinded(res.BlindedRlp));
+        }
+        // Otherwise Root stays at the same idx â€” its children were updated in place.
+    }
+
+    private readonly struct PruneResult(bool becameBlinded, RlpNode blindedRlp)
+    {
+        public readonly bool BecameBlinded = becameBlinded;
+        public readonly RlpNode BlindedRlp = blindedRlp;
+        public static PruneResult Keep => default;
+    }
+
+    private PruneResult PruneRecursive(int nodeIdx, byte[] pathSoFar, Func<ReadOnlySpan<byte>, bool> isRetained)
+    {
+        ref SparseTrieNode node = ref _arena[nodeIdx];
+        if (node.IsBlinded() || node.IsEmpty()) return PruneResult.Keep;
+
+        if (node.IsLeaf())
+        {
+            byte[] shortKey = node.ShortKey ?? [];
+            byte[] fullKey = new byte[pathSoFar.Length + shortKey.Length];
+            pathSoFar.AsSpan().CopyTo(fullKey);
+            shortKey.AsSpan().CopyTo(fullKey.AsSpan(pathSoFar.Length));
+            if (isRetained(fullKey)) return PruneResult.Keep;
+            // Cold leaf â€” parent will replace this entry with Blinded(CachedRlp).
+            return new PruneResult(true, node.CachedRlp);
+        }
+
+        if (!node.IsBranch()) return PruneResult.Keep;
+
+        // Branch (possibly with ShortKey). Walk every revealed child, recurse, replace any
+        // child that becomes Blinded. If ALL children end up Blinded, the branch itself
+        // collapses (its CachedRlp/InnerBranchRlp+extension wrapper is what the parent now
+        // references directly).
+        byte[] branchPath;
+        {
+            byte[] sk = node.ShortKey ?? [];
+            branchPath = new byte[pathSoFar.Length + sk.Length];
+            pathSoFar.AsSpan().CopyTo(branchPath);
+            sk.AsSpan().CopyTo(branchPath.AsSpan(pathSoFar.Length));
+        }
+
+        TrieMask mask = node.StateMask;
+        int childrenStart = node.ChildrenStart;
+        int totalChildren = mask.CountBits();
+        int blindedChildren = 0;
+        byte[] childPath = new byte[branchPath.Length + 1];
+        branchPath.AsSpan().CopyTo(childPath);
+
+        for (int n = 0; n < 16; n++)
+        {
+            if (!mask.IsBitSet(n)) continue;
+            int denseIdx = childrenStart + mask.DenseIndex(n);
+            SparseChildEntry childEntry = _children[denseIdx];
+            if (childEntry.IsBlinded)
+            {
+                blindedChildren++;
+                continue;
+            }
+
+            childPath[branchPath.Length] = (byte)n;
+            PruneResult childRes = PruneRecursive(childEntry.ArenaIndex, childPath, isRetained);
+            if (childRes.BecameBlinded)
+            {
+                FreeSubtree(childEntry.ArenaIndex);
+                _children[denseIdx] = SparseChildEntry.Blinded(childRes.BlindedRlp);
+                blindedChildren++;
+            }
+        }
+
+        // Refresh BlindedMask to include the newly-collapsed slots.
+        TrieMask newBlinded = TrieMask.Empty;
+        for (int n = 0; n < 16; n++)
+        {
+            if (!mask.IsBitSet(n)) continue;
+            int d = childrenStart + mask.DenseIndex(n);
+            if (_children[d].IsBlinded) newBlinded = newBlinded.SetBit(n);
+        }
+        _arena[nodeIdx].BlindedMask = newBlinded;
+
+        if (totalChildren > 0 && blindedChildren == totalChildren)
+        {
+            // All children blinded â€” the branch itself can collapse. The parent will replace
+            // its entry with Blinded(this branch's CachedRlp, which is the extension wrapper
+            // form for branches-with-ShortKey or the inner branch form for plain branches â€”
+            // both are the correct child-ref).
+            return new PruneResult(true, _arena[nodeIdx].CachedRlp);
+        }
+
+        return PruneResult.Keep;
+    }
+
+    /// <summary>Recursively frees all arena slots in a subtree rooted at <paramref name="nodeIdx"/>.
+    /// Does NOT free the children-array slice (left dangling until arena recycling lands).</summary>
+    private void FreeSubtree(int nodeIdx)
+    {
+        if (nodeIdx < 0) return;
+        ref SparseTrieNode node = ref _arena[nodeIdx];
+        if (node.IsBranch())
+        {
+            TrieMask mask = node.StateMask;
+            int cStart = node.ChildrenStart;
+            for (int n = 0; n < 16; n++)
+            {
+                if (!mask.IsBitSet(n)) continue;
+                int d = cStart + mask.DenseIndex(n);
+                SparseChildEntry e = _children[d];
+                if (e.IsRevealed) FreeSubtree(e.ArenaIndex);
+            }
+        }
+        FreeNode(nodeIdx);
+    }
+
     public void Dispose() { }
 }

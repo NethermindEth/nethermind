@@ -77,6 +77,18 @@ public interface IFlatDbConfig : IConfig
         "Significant CPU cost — use only for bug-hunting.", DefaultValue = "false")]
     bool SparseTrieShadowStorageCompare { get; set; }
 
+    [ConfigItem(Description = "M3 LFU retention: maximum number of HOT accounts kept revealed in the " +
+        "preserved sparse trie across blocks. Accounts touched by an update are moved to the top of " +
+        "the LFU; the coldest accounts evict back to Blinded entries on commit. Lower values reduce " +
+        "memory at the cost of more proof reads next block; higher values keep more of the trie warm.",
+        DefaultValue = "50000")]
+    int SparseTrieMaxHotAccounts { get; set; }
+
+    [ConfigItem(Description = "M3 LFU retention: maximum number of HOT (account, slot) pairs kept " +
+        "revealed in the preserved sparse trie across blocks. Same eviction semantics as " +
+        "SparseTrieMaxHotAccounts. Tune for storage-heavy workloads.", DefaultValue = "200000")]
+    int SparseTrieMaxHotSlots { get; set; }
+
     [ConfigItem(Description = "Selects which trie warmer implementation runs during execution. " +
         "'Legacy' (default) uses the Patricia-walking TrieWarmer which warms DB pages via real trie traversals. " +
         "'SparseProof' (EXPERIMENTAL) issues sparse-style root-to-leaf proof reads for hint targets and discards the " +

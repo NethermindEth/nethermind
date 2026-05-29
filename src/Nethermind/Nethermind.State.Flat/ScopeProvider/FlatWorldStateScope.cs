@@ -135,6 +135,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 _sparseRootComputer = new SparseRootComputer(proofReader, prevRoot);
             }
 
+            // M3 LFU retention. Caps come from config; touches happen inside SparseRootComputer
+            // before each update batch; the actual collapse runs in Commit before StoreAnchored.
+            _sparseRootComputer.Trie.SetHotCacheCapacities(
+                configuration.SparseTrieMaxHotAccounts,
+                configuration.SparseTrieMaxHotSlots);
+
             // Sparse drives commit/root only when explicitly opted-in via SparseTrieSkipPatricia
             // AND we've seen 10 consecutive matching roots from this provider (or shadow-compare
             // is off, meaning we have no observed matches but the operator has chosen to trust
@@ -443,7 +449,30 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             if (_preservedSparseTrie is not null && _sparseStateTrie is not null)
             {
                 if (_sparseComputedRoot is not null && _sparseComputedRoot == newRoot)
+                {
+                    // M3 LFU prune: collapse paths not in the hot-set to Blinded entries.
+                    // Bounds memory across long block sequences while keeping recently-touched
+                    // accounts/slots warm so the next block skips proof reads on them.
+                    try
+                    {
+                        _sparseStateTrie.Prune(
+                            _configuration.SparseTrieMaxHotAccounts,
+                            _configuration.SparseTrieMaxHotSlots);
+                    }
+                    catch (Exception ex)
+                    {
+                        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                        if (logger.IsWarn) logger.Warn($"Sparse trie prune failed: {ex.Message}. " +
+                            $"Falling back to Cleared store â€” next block starts cold.");
+                        _preservedSparseTrie.StoreCleared(_sparseStateTrie);
+                        _sparseStateTrie = null;
+                        _sparseRootComputer.Dispose();
+                        _sparseRootComputer = null;
+                        _sparseComputedRoot = null;
+                        return;
+                    }
                     _preservedSparseTrie.StoreAnchored(_sparseStateTrie, newRoot);
+                }
                 else
                     _preservedSparseTrie.StoreCleared(_sparseStateTrie);
                 _sparseStateTrie = null;

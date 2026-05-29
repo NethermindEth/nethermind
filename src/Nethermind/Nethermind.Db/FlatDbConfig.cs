@@ -26,5 +26,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool SparseTrieSkipPatricia { get; set; } = false;
     public bool SparseTrieAuthoritativeStorage { get; set; } = true;
     public bool SparseTrieShadowStorageCompare { get; set; } = false;
+    public int SparseTrieMaxHotAccounts { get; set; } = 50_000;
+    public int SparseTrieMaxHotSlots { get; set; } = 200_000;
     public SparseTrieWarmerVariant SparseTrieWarmer { get; set; } = SparseTrieWarmerVariant.Legacy;
 }

@@ -121,11 +121,60 @@ public sealed class SparseStateTrie : IDisposable
     /// </summary>
     public void Prune(int maxHotAccounts, int maxHotSlots)
     {
-        // M3 stub: LFU decay and evict, then prune account trie and storage tries.
-        // Full implementation requires SparsePatriciaTree.Prune(retainedLeaves) which
-        // collapses non-retained paths to Blinded. Deferred to full M3 integration.
+        // Step 1: decay the LFU caches down to capacity and snapshot the retained sets.
         _hotAccountsLfu?.DecayAndEvict(maxHotAccounts);
         _hotSlotsLfu?.DecayAndEvict(maxHotSlots);
+
+        if (_accountTrie is not null && _hotAccountsLfu is not null)
+        {
+            HashSet<HashKey> retained = new(_hotAccountsLfu.Count);
+            foreach (Hash256 k in _hotAccountsLfu.RetainedKeys)
+                retained.Add(new HashKey(Nibbles.BytesToNibbleBytes(k.Bytes)));
+            _accountTrie.Prune(nibbles => retained.Contains(new HashKey(nibbles.ToArray())));
+        }
+
+        if (_hotSlotsLfu is not null)
+        {
+            // Group retained slots by accountPathHash so each storage trie is pruned with a
+            // smaller set + a single allocator pass.
+            Dictionary<Hash256, HashSet<HashKey>> byAccount = [];
+            foreach ((Hash256 acc, Hash256 slot) in _hotSlotsLfu.RetainedKeys)
+            {
+                if (!byAccount.TryGetValue(acc, out HashSet<HashKey>? set))
+                {
+                    set = [];
+                    byAccount[acc] = set;
+                }
+                set.Add(new HashKey(Nibbles.BytesToNibbleBytes(slot.Bytes)));
+            }
+            foreach (KeyValuePair<Hash256, SparsePatriciaTree> kvp in _storageTries)
+            {
+                if (byAccount.TryGetValue(kvp.Key, out HashSet<HashKey>? retained))
+                {
+                    kvp.Value.Prune(nibbles => retained.Contains(new HashKey(nibbles.ToArray())));
+                }
+                else
+                {
+                    // No retained slots for this contract â€” drop the whole storage trie.
+                    kvp.Value.Dispose();
+                    _storageTries.TryRemove(kvp.Key, out _);
+                }
+            }
+        }
+    }
+
+    /// <summary>Wrapper that gives byte[] structural equality + hash for HashSet membership.</summary>
+    private readonly struct HashKey(byte[] bytes) : IEquatable<HashKey>
+    {
+        private readonly byte[] _bytes = bytes;
+        public bool Equals(HashKey other) => _bytes.AsSpan().SequenceEqual(other._bytes);
+        public override bool Equals(object? obj) => obj is HashKey k && Equals(k);
+        public override int GetHashCode()
+        {
+            uint h = 2166136261u;
+            foreach (byte b in _bytes) { h ^= b; h *= 16777619u; }
+            return (int)h;
+        }
     }
 
     public void Clear()
