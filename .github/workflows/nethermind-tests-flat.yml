@@ -4,28 +4,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Flat-DB variant exercises the alternative DB layout — only changes to
-# state/DB/trie/blockchain code (or shared base) can plausibly regress it.
 on:
   pull_request:
-    paths:
-      - 'src/Nethermind/Nethermind.Db*/**'
-      - 'src/Nethermind/Nethermind.State*/**'
-      - 'src/Nethermind/Nethermind.Trie*/**'
-      - 'src/Nethermind/Nethermind.Blockchain*/**'
-      - 'src/Nethermind/Nethermind.Evm*/**'
-      - 'src/Nethermind/Nethermind.Consensus*/**'
-      - 'src/Nethermind/Nethermind.Core/**'
-      - 'src/Nethermind/Nethermind.Crypto/**'
-      - 'src/Nethermind/Ethereum.Blockchain.Pyspec.Test/**'
-      - 'src/Nethermind/Ethereum.Legacy.Blockchain.Block.Test/**'
-      - 'src/Nethermind/Ethereum.Legacy.Blockchain.Test/**'
-      - 'src/Nethermind/Ethereum.Legacy.Transition.Test/**'
-      - 'src/Nethermind/Ethereum.Legacy.VM.Test/**'
-      - 'src/Nethermind/Directory.Build.props'
-      - 'Directory.Packages.props'
-      - 'global.json'
-      - '.github/workflows/nethermind-tests-flat.yml'
   push:
     branches: [master]
   workflow_dispatch:
@@ -37,7 +17,8 @@ env:
   TEST_USE_FLAT: 1
 
 jobs:
-  # Base unit/spec projects (19 of them) collapse into 2 grouped jobs.
+  # Base unit/spec projects collapse into 2 grouped jobs. Solution-level build
+  # + MTP cross-module parallelism keeps wall-clock low.
   tests:
     name: tests ${{ matrix.group }}
     runs-on: ubuntu-latest
@@ -52,7 +33,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          # Only flat-spec needs Ethereum.* submodules.
           submodules: ${{ matrix.group == 'flat-spec' && 'recursive' || 'false' }}
 
       - name: Set up .NET
@@ -65,10 +45,12 @@ jobs:
         run: |
           case "$GROUP" in
             flat-spec)
-              projects=(Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Blockchain.Block.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test)
+              solution=EthereumTests.slnx
+              filter='FullyQualifiedName~Ethereum.Abi|FullyQualifiedName~Ethereum.Basic|FullyQualifiedName~Ethereum.Blockchain.Block|FullyQualifiedName~Ethereum.Difficulty|FullyQualifiedName~Ethereum.HexPrefix|FullyQualifiedName~Ethereum.KeyAddress|FullyQualifiedName~Ethereum.KeyStore|FullyQualifiedName~Ethereum.Legacy.Blockchain.Block|FullyQualifiedName~Ethereum.Legacy.Transition|FullyQualifiedName~Ethereum.Legacy.VM|FullyQualifiedName~Ethereum.PoW|FullyQualifiedName~Ethereum.Rlp|FullyQualifiedName~Ethereum.Transaction|FullyQualifiedName~Ethereum.Trie'
               ;;
             flat-nethermind)
-              projects=(Nethermind.Consensus.Test Nethermind.Core.Test Nethermind.Db.Test Nethermind.Merge.Plugin.Test Nethermind.Runner.Test)
+              solution=Nethermind.slnx
+              filter='FullyQualifiedName~Nethermind.Consensus.Test|FullyQualifiedName~Nethermind.Core.Test|FullyQualifiedName~Nethermind.Db.Test|FullyQualifiedName~Nethermind.Merge.Plugin.Test|FullyQualifiedName~Nethermind.Runner.Test'
               ;;
             *)
               echo "::error::Unknown group: $GROUP"
@@ -77,24 +59,20 @@ jobs:
           esac
 
           set -e
-          for project in "${projects[@]}"; do
-            echo "::group::$project"
-            dotnet build "$project/$project.csproj" -c release -v minimal
-            dotnet build-server shutdown || true
-            dotnet test --project "$project/$project.csproj" -c release \
-              --no-build --no-restore -v minimal
-            echo "::endgroup::"
-          done
+          dotnet build "$solution" -c release -m -v minimal
+          dotnet build-server shutdown || true
+          dotnet test "$solution" -c release --no-build --no-restore -v minimal \
+            --filter "$filter" --maximum-parallel-test-modules 4
 
-  # Legacy.Blockchain chunks — kept chunked because the suite is large.
+  # Legacy.Blockchain chunks — 8 → 4 chunks (same total work, larger chunks).
   tests-legacy-chunked:
     name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: true
       matrix:
-        chunk: [1of8, 2of8, 3of8, 4of8, 5of8, 6of8, 7of8, 8of8]
+        chunk: [1of4, 2of4, 3of4, 4of4]
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -116,12 +94,12 @@ jobs:
             --no-build --no-restore -v minimal
 
   # Pyspec runs: Sequential (default) + 6 Amsterdam fixture variants.
-  # Each variant is a filter-based pass over Pyspec.Test; chunked because each
-  # chunk is ~10 min wall-clock.
+  # Each variant is a filter-based pass; 16 → 12 chunks per label
+  # (same total work, ~30% larger chunks, still well under 25-min timeout).
   tests-pyspec:
     name: Pyspec [${{ matrix.label }}] (${{ matrix.chunk }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: true
       matrix:
@@ -134,22 +112,18 @@ jobs:
           - BatchReadEngine
           - ParallelFullEngine
         chunk:
-          - 1of16
-          - 2of16
-          - 3of16
-          - 4of16
-          - 5of16
-          - 6of16
-          - 7of16
-          - 8of16
-          - 9of16
-          - 10of16
-          - 11of16
-          - 12of16
-          - 13of16
-          - 14of16
-          - 15of16
-          - 16of16
+          - 1of12
+          - 2of12
+          - 3of12
+          - 4of12
+          - 5of12
+          - 6of12
+          - 7of12
+          - 8of12
+          - 9of12
+          - 10of12
+          - 11of12
+          - 12of12
     steps:
       - name: Free up disk space
         uses: jlumbroso/free-disk-space@v1.3.1

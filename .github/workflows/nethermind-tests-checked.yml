@@ -4,31 +4,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# The "checked" variant catches Debug.Assert failures (only firing under
-# TRACE;DEBUG defines) and "no-intrinsics" catches SIMD-fallback bugs (only
-# firing with DOTNET_EnableHWIntrinsic=0). Both bug classes are confined to
-# EVM/state/crypto/consensus code, so the path filter is bounded by what the
-# variants can actually detect.
 on:
   pull_request:
-    paths:
-      - 'src/Nethermind/Nethermind.Evm*/**'
-      - 'src/Nethermind/Nethermind.State*/**'
-      - 'src/Nethermind/Nethermind.Trie*/**'
-      - 'src/Nethermind/Nethermind.Consensus*/**'
-      - 'src/Nethermind/Nethermind.Stateless*/**'
-      - 'src/Nethermind/Nethermind.Core/**'
-      - 'src/Nethermind/Nethermind.Crypto/**'
-      - 'src/Nethermind/Nethermind.Specs/**'
-      - 'src/Nethermind/Ethereum.Blockchain.Pyspec.Test/**'
-      - 'src/Nethermind/Ethereum.Legacy.Blockchain.Block.Test/**'
-      - 'src/Nethermind/Ethereum.Legacy.Blockchain.Test/**'
-      - 'src/Nethermind/Ethereum.Legacy.Transition.Test/**'
-      - 'src/Nethermind/Ethereum.Legacy.VM.Test/**'
-      - 'src/Nethermind/Directory.Build.props'
-      - 'Directory.Packages.props'
-      - 'global.json'
-      - '.github/workflows/nethermind-tests-checked.yml'
   push:
     branches: [master]
   workflow_dispatch:
@@ -43,9 +20,8 @@ defaults:
     shell: bash
 
 jobs:
-  # 13 groups × 2 variants (checked / no-intrinsics) = 26 jobs.
-  # Variant args are baked into `dotnet build` at compile time; `hw` is applied
-  # at test runtime via DOTNET_EnableHWIntrinsic.
+  # 8 groups × 2 variants (checked / no-intrinsics) = 16 jobs.
+  # Solution-level build + MTP cross-module parallelism within each job.
   tests:
     name: tests ${{ matrix.group }} [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
@@ -58,16 +34,11 @@ jobs:
           - { label: no-intrinsics, args: '', hw: '0' }
         group:
           - sync
-          - merge-plugin
-          - blockchain
+          - merge
           - network
-          - network-sub
           - rpc
-          - state
-          - trie-db
-          - consensus
-          - core
-          - misc
+          - state-evm
+          - mixed
           - spec-core
           - spec-tx-rlp-trie
     env:
@@ -76,7 +47,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          # Only spec-* groups touch Ethereum.* projects that need the ethereum/tests submodule.
+          # Only spec-* groups need ethereum/tests submodule.
           submodules: ${{ contains(fromJSON('["spec-core","spec-tx-rlp-trie"]'), matrix.group) && 'recursive' || 'false' }}
 
       - name: Set up .NET
@@ -89,44 +60,37 @@ jobs:
         run: |
           case "$GROUP" in
             sync)
-              projects=(Nethermind.Synchronization.Test)
+              solution=Nethermind.slnx
+              filter='FullyQualifiedName~Nethermind.Synchronization'
               ;;
-            merge-plugin)
-              projects=(Nethermind.Merge.Plugin.Test)
-              ;;
-            blockchain)
-              projects=(Nethermind.Blockchain.Test Nethermind.Merge.AuRa.Test)
+            merge)
+              solution=Nethermind.slnx
+              filter='FullyQualifiedName~Nethermind.Merge|FullyQualifiedName~Nethermind.Blockchain'
               ;;
             network)
-              projects=(Nethermind.Network.Test Nethermind.Sockets.Test Nethermind.TxPool.Test)
-              ;;
-            network-sub)
-              projects=(Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.EthStats.Test)
+              solution=Nethermind.slnx
+              filter='FullyQualifiedName~Nethermind.Network|FullyQualifiedName~Nethermind.Sockets|FullyQualifiedName~Nethermind.TxPool|FullyQualifiedName~Nethermind.EthStats'
               ;;
             rpc)
-              projects=(Nethermind.JsonRpc.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Runner.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test)
+              solution=Nethermind.slnx
+              filter='FullyQualifiedName~Nethermind.JsonRpc|FullyQualifiedName~Nethermind.Hive|FullyQualifiedName~Nethermind.Runner|FullyQualifiedName~Nethermind.Flashbots|FullyQualifiedName~Nethermind.KeyStore|FullyQualifiedName~Nethermind.Wallet'
               ;;
-            state)
-              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.Facade.Test)
+            state-evm)
+              solution=Nethermind.slnx
+              filter='FullyQualifiedName~Nethermind.Evm|FullyQualifiedName~Nethermind.State|FullyQualifiedName~Nethermind.Trie|FullyQualifiedName~Nethermind.Db|FullyQualifiedName~Nethermind.Facade'
               ;;
-            trie-db)
-              projects=(Nethermind.Trie.Test Nethermind.Db.Test Nethermind.State.Test.Runner.Test)
-              ;;
-            consensus)
-              projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test)
-              ;;
-            core)
-              projects=(Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Specs.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test)
-              ;;
-            misc)
+            mixed)
+              solution=Nethermind.slnx
               # Note: EraE not covered by this workflow upstream.
-              projects=(Nethermind.Era1.Test Nethermind.History.Test Nethermind.Optimism.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
+              filter='FullyQualifiedName~Nethermind.Consensus|FullyQualifiedName~Nethermind.AuRa|FullyQualifiedName~Nethermind.Clique|FullyQualifiedName~Nethermind.Ethash|FullyQualifiedName~Nethermind.Mining|FullyQualifiedName~Nethermind.Shutter|FullyQualifiedName~Nethermind.Abi|FullyQualifiedName~Nethermind.Api|FullyQualifiedName~Nethermind.Config|FullyQualifiedName~Nethermind.Core|FullyQualifiedName~Nethermind.Specs|FullyQualifiedName~Nethermind.Logging|FullyQualifiedName~Nethermind.Monitoring|FullyQualifiedName~Nethermind.HealthChecks|FullyQualifiedName~Nethermind.Era1|FullyQualifiedName~Nethermind.History|FullyQualifiedName~Nethermind.Optimism|FullyQualifiedName~Nethermind.Taiko|FullyQualifiedName~Nethermind.Xdc|FullyQualifiedName~Nethermind.Serialization.Ssz'
               ;;
             spec-core)
-              projects=(Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Blockchain.Block.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test)
+              solution=EthereumTests.slnx
+              filter='FullyQualifiedName~Ethereum.Abi|FullyQualifiedName~Ethereum.Basic|FullyQualifiedName~Ethereum.Blockchain.Block|FullyQualifiedName~Ethereum.Difficulty|FullyQualifiedName~Ethereum.HexPrefix|FullyQualifiedName~Ethereum.KeyAddress|FullyQualifiedName~Ethereum.KeyStore'
               ;;
             spec-tx-rlp-trie)
-              projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test)
+              solution=EthereumTests.slnx
+              filter='FullyQualifiedName~Ethereum.Legacy.Blockchain.Block|FullyQualifiedName~Ethereum.Legacy.Transition|FullyQualifiedName~Ethereum.Legacy.VM|FullyQualifiedName~Ethereum.PoW|FullyQualifiedName~Ethereum.Rlp|FullyQualifiedName~Ethereum.Transaction|FullyQualifiedName~Ethereum.Trie'
               ;;
             *)
               echo "::error::Unknown group: $GROUP"
@@ -135,20 +99,17 @@ jobs:
           esac
 
           set -e
-          for project in "${projects[@]}"; do
-            echo "::group::$project [${{ matrix.variant.label }}]"
-            dotnet build "$project/$project.csproj" -c release -v minimal ${{ matrix.variant.args }}
-            dotnet build-server shutdown || true
-            dotnet test --project "$project/$project.csproj" -c release \
-              --no-build --no-restore -v minimal ${{ matrix.variant.args }}
-            echo "::endgroup::"
-          done
+          dotnet build "$solution" -c release -m -v minimal ${{ matrix.variant.args }}
+          dotnet build-server shutdown || true
+          dotnet test "$solution" -c release --no-build --no-restore -v minimal \
+            --filter "$filter" --maximum-parallel-test-modules 4 ${{ matrix.variant.args }}
 
   # Heavy chunked tests under both variants. TEST_SKIP_HEAVY=1 limits each chunk.
+  # Legacy.Blockchain: 8 → 4 chunks (same total work, larger chunks).
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: true
       matrix:
@@ -156,14 +117,10 @@ jobs:
           - { label: checked, args: '-p:DefineConstants=TRACE%3BDEBUG', hw: '' }
           - { label: no-intrinsics, args: '', hw: '0' }
         test:
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 5of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of4 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of4 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of4 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }

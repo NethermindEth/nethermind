@@ -27,9 +27,10 @@ defaults:
     shell: bash
 
 jobs:
-  # Unit tests as 11 grouped jobs per OS + macOS subset. Each group runs its
-  # projects sequentially in one runner; MSBuild's incremental compile makes the
-  # first project the only one that pays the full graph cost.
+  # Unit tests run as 6 grouped jobs per OS + macOS subset. Each job does ONE
+  # solution build, then `dotnet test Nethermind.slnx --filter "..."` with MTP
+  # cross-module parallelism — multiple test modules execute concurrently in
+  # one runner.
   tests:
     name: tests ${{ matrix.group }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
@@ -45,18 +46,12 @@ jobs:
           - windows-latest
         group:
           - sync
-          - merge-plugin
-          - blockchain
+          - merge
           - network
-          - network-sub
           - rpc
-          - state
-          - trie-db
-          - consensus
-          - core
-          - misc
+          - state-evm
+          - mixed
         include:
-          # macOS only runs the OS-sensitive subset (I/O, networking, sockets) as one group.
           - { runner: macos-latest, group: os-sensitive }
     steps:
       - name: Check out repository
@@ -70,46 +65,31 @@ jobs:
         env:
           GROUP: ${{ matrix.group }}
         run: |
-          coverage_args=()
-          if [[ "${{ matrix.runner }}" == "ubuntu-latest" && "${{ env.COLLECT_COVERAGE }}" == "true" ]]; then
-            coverage_args=(--coverage --coverage-output-format cobertura --coverage-settings codecoverage.json)
-          fi
+          # FQN substring filters. Each Nethermind.<X>.Test project has its
+          # test classes under namespace `Nethermind.<X>.Test.*`, so substring
+          # matching by the prefix is precise.
           case "$GROUP" in
             sync)
-              projects=(Nethermind.Synchronization.Test)
+              filter='FullyQualifiedName~Nethermind.Synchronization'
               ;;
-            merge-plugin)
-              projects=(Nethermind.Merge.Plugin.Test)
-              ;;
-            blockchain)
-              projects=(Nethermind.Blockchain.Test Nethermind.Merge.AuRa.Test)
+            merge)
+              filter='FullyQualifiedName~Nethermind.Merge|FullyQualifiedName~Nethermind.Blockchain'
               ;;
             network)
-              projects=(Nethermind.Network.Test Nethermind.Sockets.Test Nethermind.TxPool.Test)
-              ;;
-            network-sub)
-              projects=(Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.EthStats.Test)
+              filter='FullyQualifiedName~Nethermind.Network|FullyQualifiedName~Nethermind.Sockets|FullyQualifiedName~Nethermind.TxPool|FullyQualifiedName~Nethermind.EthStats'
               ;;
             rpc)
-              projects=(Nethermind.JsonRpc.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.Hive.Test Nethermind.Runner.Test Nethermind.Flashbots.Test Nethermind.KeyStore.Test Nethermind.Wallet.Test)
+              filter='FullyQualifiedName~Nethermind.JsonRpc|FullyQualifiedName~Nethermind.Hive|FullyQualifiedName~Nethermind.Runner|FullyQualifiedName~Nethermind.Flashbots|FullyQualifiedName~Nethermind.KeyStore|FullyQualifiedName~Nethermind.Wallet'
               ;;
-            state)
-              projects=(Nethermind.Evm.Test Nethermind.State.Test Nethermind.Facade.Test)
+            state-evm)
+              filter='FullyQualifiedName~Nethermind.Evm|FullyQualifiedName~Nethermind.State|FullyQualifiedName~Nethermind.Trie|FullyQualifiedName~Nethermind.Db|FullyQualifiedName~Nethermind.Facade'
               ;;
-            trie-db)
-              projects=(Nethermind.Trie.Test Nethermind.Db.Test Nethermind.State.Test.Runner.Test)
-              ;;
-            consensus)
-              projects=(Nethermind.Consensus.Test Nethermind.AuRa.Test Nethermind.Clique.Test Nethermind.Ethash.Test Nethermind.Mining.Test Nethermind.Shutter.Test)
-              ;;
-            core)
-              projects=(Nethermind.Abi.Test Nethermind.Api.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.Specs.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.HealthChecks.Test)
-              ;;
-            misc)
-              projects=(Nethermind.Era1.Test Nethermind.EraE.Test Nethermind.History.Test Nethermind.Optimism.Test Nethermind.Taiko.Test Nethermind.Xdc.Test Nethermind.Serialization.Ssz.Test)
+            mixed)
+              filter='FullyQualifiedName~Nethermind.Consensus|FullyQualifiedName~Nethermind.AuRa|FullyQualifiedName~Nethermind.Clique|FullyQualifiedName~Nethermind.Ethash|FullyQualifiedName~Nethermind.Mining|FullyQualifiedName~Nethermind.Shutter|FullyQualifiedName~Nethermind.Abi|FullyQualifiedName~Nethermind.Api|FullyQualifiedName~Nethermind.Config|FullyQualifiedName~Nethermind.Core|FullyQualifiedName~Nethermind.Specs|FullyQualifiedName~Nethermind.Logging|FullyQualifiedName~Nethermind.Monitoring|FullyQualifiedName~Nethermind.HealthChecks|FullyQualifiedName~Nethermind.Era|FullyQualifiedName~Nethermind.History|FullyQualifiedName~Nethermind.Optimism|FullyQualifiedName~Nethermind.Taiko|FullyQualifiedName~Nethermind.Xdc|FullyQualifiedName~Nethermind.Serialization.Ssz'
               ;;
             os-sensitive)
-              projects=(Nethermind.Db.Test Nethermind.JsonRpc.Test Nethermind.KeyStore.Test Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Network.Test Nethermind.Runner.Test Nethermind.Sockets.Test Nethermind.Synchronization.Test)
+              # Curated macOS subset — I/O, networking, sockets, runner lifecycle.
+              filter='FullyQualifiedName~Nethermind.Db.Test|FullyQualifiedName~Nethermind.JsonRpc.Test|FullyQualifiedName~Nethermind.KeyStore.Test|FullyQualifiedName~Nethermind.Network|FullyQualifiedName~Nethermind.Sockets.Test|FullyQualifiedName~Nethermind.Runner.Test|FullyQualifiedName~Nethermind.Synchronization.Test'
               ;;
             *)
               echo "::error::Unknown group: $GROUP"
@@ -117,16 +97,16 @@ jobs:
               ;;
           esac
 
-          # fail-fast within the group: any project's failure aborts the rest.
+          coverage_args=()
+          if [[ "${{ matrix.runner }}" == "ubuntu-latest" && "${{ env.COLLECT_COVERAGE }}" == "true" ]]; then
+            coverage_args=(--coverage --coverage-output-format cobertura --coverage-settings codecoverage.json)
+          fi
+
           set -e
-          for project in "${projects[@]}"; do
-            echo "::group::$project"
-            dotnet build "$project/$project.csproj" -c release -v minimal
-            dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-            dotnet test --project "$project/$project.csproj" -c release \
-              --no-build --no-restore -v minimal "${coverage_args[@]}"
-            echo "::endgroup::"
-          done
+          dotnet build Nethermind.slnx -c release -m -v minimal
+          dotnet build-server shutdown || true
+          dotnet test Nethermind.slnx -c release --no-build --no-restore -v minimal \
+            --filter "$filter" --maximum-parallel-test-modules 4 "${coverage_args[@]}"
 
       - name: Upload coverage reports
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
@@ -137,8 +117,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-  # Ethereum.* spec tests — 13 projects grouped into 2 groups × 2 OS.
-  # Legacy.VM chunked on ubuntu-latest only; linux-arm runs it unchunked.
+  # Ethereum.* spec tests via EthereumTests.slnx + MTP cross-module parallelism.
+  # Legacy.VM still chunked on ubuntu-latest because the suite is large.
   tests-spec:
     name: spec ${{ matrix.group }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
@@ -180,17 +160,17 @@ jobs:
           fi
           case "$GROUP" in
             spec-core)
-              projects=(Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Blockchain.Block.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test)
+              filter='FullyQualifiedName~Ethereum.Abi|FullyQualifiedName~Ethereum.Basic|FullyQualifiedName~Ethereum.Blockchain.Block|FullyQualifiedName~Ethereum.Difficulty|FullyQualifiedName~Ethereum.HexPrefix|FullyQualifiedName~Ethereum.KeyAddress|FullyQualifiedName~Ethereum.KeyStore'
               ;;
             spec-tx-rlp-trie)
-              # Linux-arm absorbs the unchunked Legacy.VM.Test (covers what the ubuntu-latest chunks cover).
-              projects=(Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Transaction.Test Ethereum.Trie.Test)
+              filter='FullyQualifiedName~Ethereum.Legacy.Blockchain.Block|FullyQualifiedName~Ethereum.Legacy.Transition|FullyQualifiedName~Ethereum.PoW|FullyQualifiedName~Ethereum.Rlp|FullyQualifiedName~Ethereum.Transaction|FullyQualifiedName~Ethereum.Trie'
+              # linux-arm absorbs the unchunked Legacy.VM here.
               if [[ "${{ matrix.runner }}" == "ubuntu-24.04-arm" ]]; then
-                projects+=(Ethereum.Legacy.VM.Test)
+                filter="$filter|FullyQualifiedName~Ethereum.Legacy.VM"
               fi
               ;;
             spec-legacy-vm)
-              projects=(Ethereum.Legacy.VM.Test)
+              filter='FullyQualifiedName~Ethereum.Legacy.VM'
               ;;
             *)
               echo "::error::Unknown group: $GROUP"
@@ -199,14 +179,18 @@ jobs:
           esac
 
           set -e
-          for project in "${projects[@]}"; do
-            echo "::group::$project${TEST_CHUNK:+ ($TEST_CHUNK)}"
-            dotnet build "$project/$project.csproj" -c release -v minimal
+          if [[ "$GROUP" == "spec-legacy-vm" ]]; then
+            # Single chunk per job — TEST_CHUNK env tells the test runner which slice to use.
+            dotnet build Ethereum.Legacy.VM.Test/Ethereum.Legacy.VM.Test.csproj -c release -v minimal
             dotnet build-server shutdown || true
-            dotnet test --project "$project/$project.csproj" -c release \
+            dotnet test --project Ethereum.Legacy.VM.Test/Ethereum.Legacy.VM.Test.csproj -c release \
               --no-build --no-restore -v minimal "${coverage_args[@]}"
-            echo "::endgroup::"
-          done
+          else
+            dotnet build EthereumTests.slnx -c release -m -v minimal
+            dotnet build-server shutdown || true
+            dotnet test EthereumTests.slnx -c release --no-build --no-restore -v minimal \
+              --filter "$filter" --maximum-parallel-test-modules 4 "${coverage_args[@]}"
+          fi
 
       - name: Upload coverage reports
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
@@ -217,12 +201,14 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-  # Pyspec / Legacy.Blockchain — kept chunked (the chunks exist for parallelism on
-  # genuinely slow tests, not orchestration convenience).
+  # Pyspec / Legacy.Blockchain — kept chunked. Each chunk is a single project
+  # run with a TEST_CHUNK env that the test code uses to pick its slice.
+  # Legacy.Blockchain: 8 → 4 chunks. Pyspec Sequential: 16 → 12 chunks.
+  # Same total work, ~2x wall-clock per chunk (still well under 25-min timeout).
   tests-chunked:
     name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: true
       matrix:
@@ -232,31 +218,23 @@ jobs:
           - windows-latest
           - macos-latest
         test:
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 5of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of4 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of4 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of4 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of4 }
         include:
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of12, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of12, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of12, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of12, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of12, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of12, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of12, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of12, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of12, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of12, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of12, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of12, label: Sequential } }
     steps:
       - name: Enable long paths (Windows)
         if: runner.os == 'Windows'
