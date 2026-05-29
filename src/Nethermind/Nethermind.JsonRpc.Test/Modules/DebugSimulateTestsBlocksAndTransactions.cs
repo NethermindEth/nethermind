@@ -79,6 +79,46 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
     }
 
     [Test]
+    public async Task Test_debug_simulate_with_gas_cap_zero_treats_missing_gas_as_uncapped()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        chain.Container.Resolve<IJsonRpcConfig>().GasCap = 0;
+
+        Address contractAddress = new("0xc200000000000000000000000000000000000000");
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { contractAddress, new AccountOverride { Code = Bytes.FromHexString("0x5a60005260206000f3") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractAddress,
+                            GasPrice = 0
+                        }
+                    ]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = chain.DebugRpcModule.debug_simulateV1(payload, BlockParameter.Latest);
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        GethLikeTxTrace trace = result.Data.First().Traces.First();
+        Assert.That(trace.Failed, Is.False, "GasCap=0 should keep debug_simulateV1 on the uncapped simulate path");
+
+        UInt256 gasAvailable = new(trace.ReturnValue, isBigEndian: true);
+        Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+    }
+
+    [Test]
     public async Task TestTransferLogsAddress()
     {
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
