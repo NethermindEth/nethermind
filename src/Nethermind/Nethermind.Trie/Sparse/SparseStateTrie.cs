@@ -28,12 +28,36 @@ public sealed class SparseStateTrie : IDisposable
     private BucketedLfu<Hash256>? _hotAccountsLfu;
     private BucketedLfu<(Hash256, Hash256)>? _hotSlotsLfu;
 
+    // Pool of cleared storage tries kept for reuse instead of being GC'd when pruning drops a
+    // cold contract. SparsePatriciaTree.Clear() wipes the arena back to empty but RETAINS the
+    // allocated backing arrays, so a pooled instance hands a freshly-touched contract a warm
+    // arena and avoids re-growing from the initial capacity. Mirrors Reth keeping cleared
+    // storage tries. Bounded so a one-off churn spike can't pin unbounded memory in the pool.
+    private const int MaxPooledStorageTries = 1024;
+    private readonly ConcurrentBag<SparsePatriciaTree> _storageTriePool = [];
+
     public bool IsRevealed => _accountTrie is not null;
 
     public SparsePatriciaTree AccountTrie => _accountTrie ??= new SparsePatriciaTree();
 
     public SparsePatriciaTree GetOrCreateStorageTrie(Hash256 accountPathHash) =>
-        _storageTries.GetOrAdd(accountPathHash, static _ => new SparsePatriciaTree());
+        _storageTries.GetOrAdd(accountPathHash, RentStorageTrie);
+
+    private SparsePatriciaTree RentStorageTrie(Hash256 _) =>
+        _storageTriePool.TryTake(out SparsePatriciaTree? pooled) ? pooled : new SparsePatriciaTree();
+
+    /// <summary>Returns a no-longer-referenced storage trie to the pool (cleared) instead of
+    /// dropping it, unless the pool is at capacity, in which case it is disposed.</summary>
+    private void ReturnStorageTrieToPool(SparsePatriciaTree trie)
+    {
+        if (_storageTriePool.Count >= MaxPooledStorageTries)
+        {
+            trie.Dispose();
+            return;
+        }
+        trie.Clear(); // wipe contents, keep backing arrays for reuse
+        _storageTriePool.Add(trie);
+    }
 
     /// <summary>
     /// Live view over storage tries. Caller must not mutate the dictionary during enumeration.
@@ -229,9 +253,11 @@ public sealed class SparseStateTrie : IDisposable
                 }
                 else
                 {
-                    // No retained slots for this contract â€” drop the whole storage trie.
-                    kvp.Value.Dispose();
-                    _storageTries.TryRemove(kvp.Key, out _);
+                    // No retained slots for this contract â€” remove it from the live set and
+                    // return the (cleared) trie to the pool for reuse rather than disposing,
+                    // avoiding arena re-allocation when a later block touches a fresh contract.
+                    if (_storageTries.TryRemove(kvp.Key, out SparsePatriciaTree? dropped))
+                        ReturnStorageTrieToPool(dropped);
                 }
             }
         }
@@ -266,5 +292,8 @@ public sealed class SparseStateTrie : IDisposable
         foreach (KeyValuePair<Hash256, SparsePatriciaTree> kvp in _storageTries)
             kvp.Value.Dispose();
         _storageTries.Clear();
+        // Drain the reuse pool too â€” its tries hold arena backing arrays.
+        while (_storageTriePool.TryTake(out SparsePatriciaTree? pooled))
+            pooled.Dispose();
     }
 }
