@@ -54,6 +54,8 @@ rootCommand.SetAction(async (parseResult, ct) =>
     using HttpClient client = new();
     MonitorRunner runner = new(args, GetNotifier(), client);
     await runner.RunAsync(ct);
+
+    Console.WriteLine("Monitoring finished");
 });
 
 return await rootCommand.Parse(args).InvokeAsync();
