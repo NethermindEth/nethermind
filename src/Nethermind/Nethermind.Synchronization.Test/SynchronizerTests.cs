@@ -17,6 +17,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -137,7 +138,10 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
                 if (started)
                 {
-                    result[filled++] = block.Header;
+                    // Deep-clone so the synchronizer's downstream mutations (Hash recompute,
+                    // TotalDifficulty rewrite, etc.) cannot bleed back into the peer's stored
+                    // Blocks — and through them into the test's `peer.HeadHeader` reference.
+                    result[filled++] = Rlp.Decode<BlockHeader>(Rlp.Encode(block.Header).Bytes);
                 }
 
                 if (filled >= maxBlocks)
