@@ -322,11 +322,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             // One shared bloom manager covers both tiers — see FlatWorldStateModule. A
             // per-tier split here would let a stale narrow bloom in one tier under-cover
             // a wider compacted snapshot leased from the other tier (silent false
-            // negatives on bundle reads).
+            // negatives on bundle reads). Pass both bounds so a registration race that
+            // left a narrower bloom at the To slot is rejected in favour of AlwaysTrue.
             ArrayPoolList<PersistedSnapshotBloom> persistedBlooms = new(assembled.Persisted.Count);
             for (int i = 0; i < assembled.Persisted.Count; i++)
             {
-                persistedBlooms.Add(_persistedBloomManager.LeaseOrSentinel(assembled.Persisted[i].To));
+                PersistedSnapshot persisted = assembled.Persisted[i];
+                persistedBlooms.Add(_persistedBloomManager.LeaseOrSentinel(persisted.From, persisted.To));
             }
 
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics, assembled.Persisted, persistedBlooms);
