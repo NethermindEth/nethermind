@@ -2124,6 +2124,24 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_createAccessList_with_explicit_zero_gas_and_uncapped_config_treats_it_as_omitted()
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.GasCap = 0;
+
+        string withoutGas = $$"""{"from":"{{CreateAccessListSender}}","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""";
+        string withZeroGas = $$"""{"from":"{{CreateAccessListSender}}","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","gas":"0x0"}""";
+
+        (JToken omittedResult, long omittedGasUsed) = await CallCreateAccessList(ctx, withoutGas, stateOverrideJson: null, optimize: true);
+        (JToken zeroGasResult, long zeroGasUsed) = await CallCreateAccessList(ctx, withZeroGas, stateOverrideJson: null, optimize: true);
+
+        Assert.That(omittedResult["error"], Is.Null);
+        Assert.That(zeroGasResult["error"], Is.Null);
+        Assert.That(zeroGasUsed, Is.EqualTo(omittedGasUsed));
+        Assert.That(zeroGasResult["accessList"]!.ToArray(), Is.EqualTo(omittedResult["accessList"]!.ToArray()));
+    }
+
+    [Test]
     public async Task Eth_create_access_list_with_state_override()
     {
         using Context ctx = await Context.Create();

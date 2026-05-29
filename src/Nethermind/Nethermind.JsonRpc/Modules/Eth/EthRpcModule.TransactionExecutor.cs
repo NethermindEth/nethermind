@@ -199,11 +199,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Dictionary<Address, AccountOverride>? stateOverride = null,
                 SearchResult<BlockHeader>? searchResult = null)
             {
-                // Match Geth: eth_createAccessList treats gas: 0x0 the same as an omitted gas field and
-                // defaults to gasCap through ToTransaction rather than passing a literal zero gas limit.
+                // Match Geth: eth_createAccessList treats gas: 0x0 the same as an omitted gas field.
+                // With a configured gasCap we normalize to that cap; with gasCap unset/0 ("no cap")
+                // we leave Gas omitted so ToTransaction keeps the uncapped default path.
                 if (transactionCall.Gas is null or 0)
                 {
-                    transactionCall.Gas = _rpcConfig.GasCap;
+                    transactionCall.Gas = _rpcConfig.GasCap is null or 0 ? null : _rpcConfig.GasCap;
                 }
 
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
