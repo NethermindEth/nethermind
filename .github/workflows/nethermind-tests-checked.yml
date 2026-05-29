@@ -54,9 +54,9 @@ jobs:
       DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw }}
     steps:
       - name: Free up disk space
-        # spec-* groups build EthereumTests.slnx which copies large Pyspec/
-        # Blockchain test fixtures into bin/release/ — exhausts default disk.
-        if: contains(fromJSON('["spec-core","spec-tx-rlp-trie"]'), matrix.group)
+        # Both solutions hit the disk: Nethermind.slnx copies coverage native
+        # libs into every test project's bin/release/, and EthereumTests.slnx
+        # additionally copies large test fixtures. Always free.
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           large-packages: true

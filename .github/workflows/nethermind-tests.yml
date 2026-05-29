@@ -64,6 +64,18 @@ jobs:
         include:
           - { runner: macos-latest, group: os-sensitive }
     steps:
+      - name: Free up disk space
+        # Nethermind.slnx build copies Microsoft.Testing.Extensions.CodeCoverage
+        # native libs (linux-x64, linux-musl-x64, win-x64) into every test
+        # project's bin/release/ × ~40 test projects — exhausts ubuntu-latest
+        # default ~14 GB disk.
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: true
+          tool-cache: false
+          swap-storage: false
+
       - name: Check out repository
         uses: actions/checkout@v6
 
@@ -341,6 +353,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Free up disk space
+        # Same Nethermind.slnx-native-libs disk issue as the main tests job.
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: true
+          tool-cache: false
+          swap-storage: false
+
       - name: Check out repository
         uses: actions/checkout@v6
         # No submodules needed — all current Flaky-tagged tests are in
