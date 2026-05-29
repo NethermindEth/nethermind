@@ -80,6 +80,16 @@ public class HistoryPrunerTests
             /*expectedPruneBelow:*/ 20L,
             /*finalCutoff:*/ BeaconGenesisBlockNumber
         ).SetName("Prunes_up_to_sync_pivot");
+
+        // 5 epochs × 32 slots = 160 blocks of retention > chain length (100) — CalculateRollingCutoff
+        // Retention window (5 × 32 = 160 blocks) exceeds chain length (100), so the cutoff is clamped to 0 and no pruning occurs.
+        yield return new TestCaseData(
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 5, PruningInterval = 0 },
+            /*syncPivot:*/ (long)blocks,
+            /*primeWithOldestRead:*/ false,
+            /*expectedPruneBelow:*/ 1L,
+            /*finalCutoff:*/ 0L
+        ).SetName("Rolling_mode_with_retention_larger_than_chain_age_does_not_prune");
     }
 
     private static IEnumerable<TestCaseData> BalPruningCases()
