@@ -12,50 +12,64 @@ namespace Nethermind.Trie.Sparse;
 /// or a 32-byte keccak hash (for larger nodes). Used as the cached representation of
 /// a node in the sparse trie after hashing.
 /// </summary>
+/// <remarks>
+/// The hash case stores a <see cref="ValueHash256"/> inline (value type, 32 bytes on the
+/// struct) instead of a heap <c>byte[32]</c>. The hash form is the overwhelmingly common
+/// one â€” every dirty node â‰¥ 32 bytes produces one during the hash phase, thousands per
+/// block â€” so eliminating that per-node allocation is the single biggest GC win on the
+/// sparse hot path. Inline RLP (&lt; 32 bytes) still uses a <c>byte[]</c>, which is
+/// already shared with the node's FullRlp buffer so it costs nothing extra here.
+///
+/// Discriminator: <see cref="_isHash"/> true â‡’ read <see cref="_hash"/>; false with
+/// non-null <see cref="_data"/> â‡’ inline RLP; false with null <see cref="_data"/> â‡’ null/empty.
+/// </remarks>
 public readonly struct RlpNode : IEquatable<RlpNode>
 {
-    private readonly byte[] _data;
+    private readonly byte[]? _data;     // inline RLP bytes (only when !_isHash)
+    private readonly ValueHash256 _hash; // 32-byte keccak (only when _isHash)
     private readonly bool _isHash;
 
-    private RlpNode(byte[] data, bool isHash)
+    private RlpNode(byte[]? data)
     {
         _data = data;
-        _isHash = isHash;
+        _isHash = false;
     }
 
-    public static RlpNode FromRlp(byte[] rlp) => new(rlp, isHash: false);
-    public static RlpNode FromHash(Hash256 hash) => new(hash.Bytes.ToArray(), isHash: true);
-
-    /// <summary>Avoids the intermediate Hash256 class allocation when wrapping a 32-byte span.</summary>
-    public static RlpNode FromHashSpan(ReadOnlySpan<byte> hashBytes)
+    private RlpNode(in ValueHash256 hash)
     {
-        byte[] data = new byte[32];
-        hashBytes.CopyTo(data);
-        return new(data, isHash: true);
+        _hash = hash;
+        _isHash = true;
     }
 
-    /// <summary>Computes keccak of the RLP bytes and stores as a hash RlpNode (no Hash256 class alloc).</summary>
-    public static RlpNode FromRlpHashed(ReadOnlySpan<byte> rlp)
-    {
-        byte[] data = new byte[32];
-        Nethermind.Core.Crypto.ValueHash256 hash = Nethermind.Core.Crypto.ValueKeccak.Compute(rlp);
-        hash.Bytes.CopyTo(data);
-        return new(data, isHash: true);
-    }
+    public static RlpNode FromRlp(byte[] rlp) => new(rlp);
+    public static RlpNode FromHash(Hash256 hash) => new(hash.ValueHash256);
 
-    public ReadOnlySpan<byte> AsSpan() => _data;
-    public int Length => _data?.Length ?? 0;
-    public bool IsNull => _data is null;
+    /// <summary>Wraps a 32-byte hash span without any heap allocation.</summary>
+    public static RlpNode FromHashSpan(ReadOnlySpan<byte> hashBytes) =>
+        new(new ValueHash256(hashBytes));
+
+    /// <summary>Computes keccak of the RLP bytes and stores the hash inline (no allocation).</summary>
+    public static RlpNode FromRlpHashed(ReadOnlySpan<byte> rlp) =>
+        new(ValueKeccak.Compute(rlp));
 
     /// <summary>
-    /// Internal accessor exposing the backing byte[] without a copy. Callers that need a
-    /// content-equal dictionary key can wrap this directly instead of <c>AsSpan().ToArray()</c>,
-    /// which allocates a fresh array per call. The returned reference is stable for the
-    /// lifetime of this RlpNode â€” do not mutate it.
+    /// Span over the underlying bytes. For the hash form this is the 32 hash bytes; for the
+    /// inline form it is the raw RLP. Callers historically use this both as the child-ref
+    /// payload and to read the hash, so both forms must expose their bytes.
     /// </summary>
-    internal byte[]? UnderlyingBytes => _data;
+    public ReadOnlySpan<byte> AsSpan() => _isHash ? _hash.Bytes : _data;
 
-    /// <summary>True if this was explicitly created from a hash (not from raw RLP).</summary>
+    public int Length => _isHash ? 32 : (_data?.Length ?? 0);
+    public bool IsNull => !_isHash && _data is null;
+
+    /// <summary>
+    /// Internal accessor exposing the inline backing <c>byte[]</c> without a copy (null for
+    /// the hash form). Callers that need a content-equal dictionary key for inline RLP can
+    /// wrap this directly instead of <c>AsSpan().ToArray()</c>. Do not mutate.
+    /// </summary>
+    internal byte[]? UnderlyingBytes => _isHash ? null : _data;
+
+    /// <summary>True if this was created from a hash (not from raw RLP).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsHash() => _isHash;
 
@@ -65,16 +79,23 @@ public readonly struct RlpNode : IEquatable<RlpNode>
     /// </summary>
     public Hash256 AsHash()
     {
+        if (_isHash) return _hash.ToCommitment();
         if (_data is null) return Keccak.EmptyTreeHash;
-        if (_isHash) return new Hash256(_data);
         return Keccak.Compute(_data);
     }
 
     /// <summary>
-    /// Returns the RLP bytes to embed as a child reference in a parent node's encoding.
-    /// For hash nodes: RLP-encoded hash (33 bytes: 0xa0 prefix + 32 bytes).
-    /// For inline nodes: raw RLP bytes (as-is).
+    /// Returns the hash as a value type, avoiding the <see cref="Hash256"/> class allocation
+    /// that <see cref="AsHash"/> incurs. Prefer this on hot paths that immediately re-hash or
+    /// compare; only convert to <see cref="Hash256"/> at reader/persistence boundaries.
     /// </summary>
+    public ValueHash256 AsValueHash()
+    {
+        if (_isHash) return _hash;
+        if (_data is null) return Keccak.EmptyTreeHash.ValueHash256;
+        return ValueKeccak.Compute(_data);
+    }
+
     /// <summary>
     /// Writes this node as a child reference in a parent node's RLP encoding.
     /// If the node's RLP is >= 32 bytes, writes the keccak hash (33 bytes: 0xa0 prefix + hash).
@@ -83,16 +104,16 @@ public readonly struct RlpNode : IEquatable<RlpNode>
     /// </summary>
     public int WriteChildRef(Span<byte> buffer)
     {
+        if (_isHash)
+        {
+            buffer[0] = 0xa0;
+            _hash.Bytes.CopyTo(buffer[1..]);
+            return 33;
+        }
         if (_data is null)
         {
             buffer[0] = 0x80;
             return 1;
-        }
-        if (_isHash)
-        {
-            buffer[0] = 0xa0;
-            _data.AsSpan().CopyTo(buffer[1..]);
-            return 33;
         }
         if (_data.Length >= 32)
         {
@@ -107,12 +128,25 @@ public readonly struct RlpNode : IEquatable<RlpNode>
     }
 
     /// <summary>RLP length contribution when this node is a child reference in a parent.</summary>
-    public int ChildRefLength => _data is null ? 1 : (_isHash || _data.Length >= 32) ? 33 : Length;
+    public int ChildRefLength => _isHash ? 33 : _data is null ? 1 : _data.Length >= 32 ? 33 : _data.Length;
 
-    public bool Equals(RlpNode other) => AsSpan().SequenceEqual(other.AsSpan());
+    public bool Equals(RlpNode other)
+    {
+        if (_isHash || other._isHash)
+        {
+            // Mixed forms can still be content-equal (a hash form vs an inline form that
+            // hashes to it would not be, by design these never compare equal). Compare by
+            // discriminator first, then by payload.
+            return _isHash == other._isHash && _hash == other._hash;
+        }
+        return AsSpan().SequenceEqual(other.AsSpan());
+    }
+
     public override bool Equals(object? obj) => obj is RlpNode other && Equals(other);
+
     public override int GetHashCode()
     {
+        if (_isHash) return _hash.GetHashCode();
         if (_data is null) return 0;
         HashCode hc = new();
         hc.AddBytes(_data);
