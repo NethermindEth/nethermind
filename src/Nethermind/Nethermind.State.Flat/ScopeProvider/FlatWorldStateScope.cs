@@ -27,7 +27,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PreservedSparseTrie? _preservedSparseTrie;
 
     private readonly ConcurrencyController _concurrencyQuota;
-    private readonly PatriciaTree _warmupStateTree;
+    // Constructed only when the configured warmer actually walks the warmup tree
+    // (SparseTrieWarmer == Legacy). Other variants (None â†’ DI returns NoopTrieWarmer;
+    // SparseProof â†’ uses the proof reader) never touch this field, so allocating a fresh
+    // PatriciaTree per scope was pure waste under sparse mode.
+    private readonly PatriciaTree? _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private SparseRootComputer? _sparseRootComputer;
@@ -97,13 +101,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             RootHash = currentStateId.StateRoot.ToCommitment()
         };
 
-        _warmupStateTree = new(
-            new StateTrieStoreWarmerAdapter(snapshotBundle),
-            logManager
-        )
+        // Legacy is the only warmer variant that walks _warmupStateTree (see WarmUpStateTrie).
+        // For None the DI module substitutes NoopTrieWarmer; for SparseProof we issue proof
+        // reads directly. In those cases the warmup tree is dead weight.
+        if (configuration.SparseTrieWarmer == SparseTrieWarmerVariant.Legacy
+            && configuration.TrieWarmerWorkerCount != 0)
         {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
+            _warmupStateTree = new(
+                new StateTrieStoreWarmerAdapter(snapshotBundle),
+                logManager
+            )
+            {
+                RootHash = currentStateId.StateRoot.ToCommitment()
+            };
+        }
 
         _configuration = configuration;
         _logManager = logManager;
@@ -335,7 +346,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 _ = Nethermind.Trie.Sparse.MultiProofReader.ReadAccountProofs(
                     _proofReader, _prevStateRoot, [Keccak.Compute(address.Bytes)]);
             }
-            else
+            else if (_warmupStateTree is not null)
             {
                 _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
             }

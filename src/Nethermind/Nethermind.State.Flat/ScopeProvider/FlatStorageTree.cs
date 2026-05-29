@@ -20,7 +20,9 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
     private readonly StorageTree _tree;
-    private readonly StorageTree _warmupStorageTree;
+    // Only constructed when the warmer actually walks it (Legacy variant). Other variants
+    // (None â†’ noop warmer; SparseProof â†’ direct proof reads) never touch this field.
+    private readonly StorageTree? _warmupStorageTree;
     private readonly Address _address;
     private readonly IFlatDbConfig _config;
     private readonly ITrieWarmer _trieCacheWarmer;
@@ -53,17 +55,23 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
-        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
 
         _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
         {
             RootHash = storageRoot
         };
 
-        // Set the rootref manually. Cut the call to find nodes by about 1/4th.
-        _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
-        _warmupStorageTree.SetRootHash(storageRoot, false);
-        _warmupStorageTree.RootRef = _tree.RootRef;
+        // Warmup tree is only needed for the Legacy walker. SparseProof/None never call
+        // WarmUpStorageTrie, so allocating one per contract per scope is pure waste.
+        if (config.SparseTrieWarmer == SparseTrieWarmerVariant.Legacy
+            && config.TrieWarmerWorkerCount != 0)
+        {
+            StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
+            _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
+            _warmupStorageTree.SetRootHash(storageRoot, false);
+            // Share the live tree's RootRef so the warmup walker skips a top-level lookup.
+            _warmupStorageTree.RootRef = _tree.RootRef;
+        }
 
         _config = config;
     }
@@ -128,7 +136,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 _ = Nethermind.Trie.Sparse.MultiProofReader.ReadStorageProofs(
                     _scope.SparseProofReader, _addressHash, _tree.RootHash, [key.ToCommitment()]);
             }
-            else
+            else if (_warmupStorageTree is not null)
             {
                 // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
                 // this is just to warm up the nodes.

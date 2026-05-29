@@ -700,15 +700,17 @@ public sealed class SparseSubtrie : IDisposable
 
         if (parallelRoots.Count >= ParallelMinRoots)
         {
-            int[] arr = parallelRoots.ToArray();
-            // Cap the degree explicitly. Without this an account trie root with 200+ dirty
-            // depth-2 subtries can spin up dozens of pool workers, which on top of any
-            // ambient parallelism (e.g. another trie's compute) oversubscribes the pool and
-            // costs more than it saves. ProcessorCount is a sensible upper bound for a
-            // CPU-bound walk; we still let the runtime decide actual concurrency up to that.
-            int maxDop = Math.Min(arr.Length, Math.Max(1, Environment.ProcessorCount));
+            // Cap MaxDegreeOfParallelism so a fat account trie can't spin up dozens of pool
+            // workers and oversubscribe alongside any ambient parallelism (per-contract
+            // storage compute is already running on its own pool fan-out). ProcessorCount is
+            // a sensible upper bound for a CPU-bound walk; the runtime still picks the
+            // actual concurrency up to that limit.
+            int maxDop = Math.Min(parallelRoots.Count, Math.Max(1, Environment.ProcessorCount));
             System.Threading.Tasks.ParallelOptions opts = new() { MaxDegreeOfParallelism = maxDop };
-            System.Threading.Tasks.Parallel.For(0, arr.Length, opts, i => HashNode(arr[i]));
+            // Iterate the List<int> directly â€” the previous ToArray() copy allocated a fresh
+            // int[] per ComputeRoot for no benefit, since List<int> indexers are safe to read
+            // concurrently after writes have completed in CollectParallelRoots.
+            System.Threading.Tasks.Parallel.For(0, parallelRoots.Count, opts, i => HashNode(parallelRoots[i]));
         }
         else
         {

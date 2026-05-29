@@ -298,9 +298,13 @@ public sealed class SparsePatriciaTree : IDisposable
         Dictionary<ValueHash256, LeafUpdate> updates,
         Action<ValueHash256, byte>? proofRequired)
     {
+        // The hash key is always 32 bytes â†’ 64 nibbles. Stack-allocate the buffer once and
+        // overwrite per update so we don't allocate a 64-byte managed array per leaf. On a
+        // realblocks-sized block this trims tens of thousands of heap allocations.
+        Span<byte> nibblePath = stackalloc byte[64];
         foreach (KeyValuePair<ValueHash256, LeafUpdate> kvp in updates)
         {
-            byte[] nibblePath = Nibbles.BytesToNibbleBytes(kvp.Key.Bytes);
+            Nibbles.BytesToNibbleBytes(kvp.Key.Bytes, nibblePath);
             SparseSubtrie.UpdateResult result = _subtrie.UpdateSingleLeaf(
                 nibblePath, kvp.Value, out TreePath proofTarget);
 
