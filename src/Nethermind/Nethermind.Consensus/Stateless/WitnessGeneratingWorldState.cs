@@ -28,7 +28,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = [];
 
-    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = [];
+    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new(GenericEqualityComparer.GetOptimized<ValueHash256>());
 
     public Witness GetWitness(BlockHeader parentHeader)
     {
