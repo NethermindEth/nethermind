@@ -35,12 +35,23 @@ public class BatchWriteTests
         writeBatch.Received(1).Dispose();
     }
 
+    [Test]
+    public void Constructor_WhenFactoryThrows_ReleasesLock()
+    {
+        object writeLock = new();
+        Exception failure = new("factory failed");
+
+        Assert.That(() => new BatchWrite(writeLock, () => throw failure), Throws.Exception.SameAs(failure));
+        Assert.That(() => Monitor.Exit(writeLock), Throws.TypeOf<SynchronizationLockException>(),
+            "the write lock must be released when the factory fails — otherwise it would deadlock all future writers");
+    }
+
     private static (BatchWrite Batch, IWriteBatch WriteBatch, object WriteLock, Exception Failure) CreateFailingBatch()
     {
         object writeLock = new();
         Exception failure = new("commit failed");
         IWriteBatch writeBatch = Substitute.For<IWriteBatch>();
         writeBatch.When(static b => b.Dispose()).Do(_ => throw failure);
-        return (new BatchWrite(writeLock, writeBatch), writeBatch, writeLock, failure);
+        return (new BatchWrite(writeLock, () => writeBatch), writeBatch, writeLock, failure);
     }
 }
