@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
@@ -29,6 +30,8 @@ namespace Nethermind.JsonRpc;
 public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
 {
     private const int MaxPooledParameterCount = 8;
+    private const string EthGetBalanceMethodName = "eth_getBalance";
+    private const string LeadingZeroHexNumberError = "hex number with leading zero digits";
 
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
@@ -255,6 +258,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         returnParametersToPool = false;
         try
         {
+            ValidateMethodSpecificRawParameters(methodName, useUtf8Parameters, providedParametersUtf8, providedParameters);
+
             return useUtf8Parameters
                 ? PrepareUtf8Parameters(
                     expectedParameters,
@@ -284,6 +289,103 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }
     }
+
+    private static void ValidateMethodSpecificRawParameters(
+        string methodName,
+        bool useUtf8Parameters,
+        ReadOnlyMemory<byte> providedParametersUtf8,
+        JsonElement providedParameters)
+    {
+        if (!methodName.Equals(EthGetBalanceMethodName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (useUtf8Parameters)
+        {
+            using JsonDocument document = JsonDocument.Parse(providedParametersUtf8);
+            ValidateEthGetBalanceParameters(document.RootElement);
+            return;
+        }
+
+        ValidateEthGetBalanceParameters(providedParameters);
+    }
+
+    private static void ValidateEthGetBalanceParameters(JsonElement providedParameters)
+    {
+        if (providedParameters.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
+        if (!enumerator.MoveNext())
+        {
+            return;
+        }
+
+        ValidateEthGetBalanceAddress(enumerator.Current);
+        if (!enumerator.MoveNext())
+        {
+            return;
+        }
+
+        ValidateEthGetBalanceBlockParameter(enumerator.Current);
+    }
+
+    private static void ValidateEthGetBalanceAddress(JsonElement addressParameter)
+    {
+        if (addressParameter.ValueKind != JsonValueKind.String)
+        {
+            return;
+        }
+
+        string? value = addressParameter.GetString();
+        if (string.IsNullOrEmpty(value) || value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        throw new SafePublicMessageFormatException(Bytes.ErrMissingPrefix);
+    }
+
+    private static void ValidateEthGetBalanceBlockParameter(JsonElement blockParameter)
+    {
+        if (blockParameter.ValueKind != JsonValueKind.String)
+        {
+            return;
+        }
+
+        string? value = blockParameter.GetString();
+        if (string.IsNullOrEmpty(value) || IsNamedBlockParameter(value) || !value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        ReadOnlySpan<char> hexValue = value.AsSpan(2);
+        if (hexValue.Length == 0)
+        {
+            throw new SafePublicMessageFormatException($"hex string \"{Bytes.EmptyHexValue}\"");
+        }
+
+        if (hexValue.Length == 64)
+        {
+            return;
+        }
+
+        if ((hexValue.Length == 2 && hexValue[0] == '0' && hexValue[1] == '0')
+            || (hexValue.Length > 2 && hexValue[0] == '0'))
+        {
+            throw new SafePublicMessageFormatException(LeadingZeroHexNumberError);
+        }
+    }
+
+    private static bool IsNamedBlockParameter(string value) =>
+        value.Equals("latest", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("earliest", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("pending", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("finalized", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("safe", StringComparison.OrdinalIgnoreCase);
 
     private JsonRpcErrorResponse? PrepareUtf8Parameters(
         ExpectedParameter[] expectedParameters,

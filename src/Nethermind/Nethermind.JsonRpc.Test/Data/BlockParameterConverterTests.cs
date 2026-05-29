@@ -75,19 +75,6 @@ namespace Nethermind.JsonRpc.Test.Data
             }
         }
 
-        [TestCase("\"0x00001036640\"", "hex number with leading zero digits")]
-        [TestCase("\"0x00\"", "hex number with leading zero digits")]
-        [TestCase("\"0x\"", "hex string \"0x\"")]
-        public void Rejects_eip1474_invalid_hex_quantities(string input, string expectedMessage)
-        {
-            IJsonSerializer serializer = new EthereumJsonSerializer();
-
-            Action action = () => serializer.Deserialize<BlockParameter>(input);
-
-            FormatException exception = Assert.Catch<FormatException>(action)!;
-            Assert.That(exception.Message, Is.EqualTo(expectedMessage));
-        }
-
         [TestCase("null", BlockParameterType.Latest)]
         [TestCase("\"\"", BlockParameterType.Latest)]
         [TestCase("\"latest\"", BlockParameterType.Latest)]

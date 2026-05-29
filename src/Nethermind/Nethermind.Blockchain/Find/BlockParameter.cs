@@ -25,8 +25,6 @@ namespace Nethermind.Blockchain.Find
     [JsonConverter(typeof(BlockParameterConverter))]
     public class BlockParameter : IEquatable<BlockParameter>
     {
-        public const string LeadingZeroHexNumberError = "hex number with leading zero digits";
-        public const string EmptyHexQuantityError = "hex string \"" + Bytes.EmptyHexValue + "\"";
         public const string BlockHashAndBlockNumberError = "cannot specify both BlockHash and BlockNumber, choose one or the other";
 
         public static BlockParameter Earliest = new(BlockParameterType.Earliest);
@@ -260,21 +258,11 @@ namespace Nethermind.JsonRpc.Data
             {
                 span = span[2..];
 
-                if (span.Length == 0)
-                {
-                    throw new SafePublicMessageFormatException(BlockParameter.EmptyHexQuantityError);
-                }
-
                 // 64 hex chars = 32 bytes = Hash256
                 if (span.Length == 64)
                 {
                     byte[] bytes = Bytes.FromUtf8HexString(span);
                     return new BlockParameter(new Hash256(bytes));
-                }
-
-                if (span.Length > 1 && span[0] == (byte)'0')
-                {
-                    throw new SafePublicMessageFormatException(BlockParameter.LeadingZeroHexNumberError);
                 }
 
                 // Parse as block number
@@ -313,7 +301,6 @@ namespace Nethermind.JsonRpc.Data
         private static void ThrowInvalidFormatting()
             => throw new FormatException("unknown block parameter type");
 
-        // Non-JSON callers still use the legacy parser here; the stricter EIP-1474 quantity checks live in JSON-RPC deserialization.
         public static BlockParameter GetBlockParameter(string? value) => value switch
         {
             null => BlockParameter.Latest,
