@@ -235,25 +235,33 @@ namespace Nethermind.State
             }
             catch
             {
-                _isInScope = false;
+                EndScope();
                 throw;
             }
 
             return new Reactive.AnonymousDisposable(() =>
             {
-                try
+                EndScope();
+                if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
+            });
+        }
+
+        private void EndScope()
+        {
+            try
+            {
+                if (_currentScope is not null)
                 {
                     Reset();
                     _stateProvider.SetScope(null);
-                    _currentScope?.Dispose();
+                    _currentScope.Dispose();
                 }
-                finally
-                {
-                    _currentScope = null;
-                    _isInScope = false;
-                }
-                if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
-            });
+            }
+            finally
+            {
+                _currentScope = null;
+                _isInScope = false;
+            }
         }
 
         public bool IsInScope => _currentScope is not null;
