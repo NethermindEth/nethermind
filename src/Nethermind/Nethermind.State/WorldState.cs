@@ -229,19 +229,41 @@ namespace Nethermind.State
 
             if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
 
-            _currentScope = ScopeProvider.BeginScope(baseBlock);
-            _stateProvider.SetScope(_currentScope);
-            _persistentStorageProvider.SetBackendScope(_currentScope);
+            try
+            {
+                _currentScope = ScopeProvider.BeginScope(baseBlock);
+                _stateProvider.SetScope(_currentScope);
+                _persistentStorageProvider.SetBackendScope(_currentScope);
+            }
+            catch
+            {
+                EndScope();
+                throw;
+            }
 
             return new Reactive.AnonymousDisposable(() =>
             {
-                Reset();
-                _stateProvider.SetScope(null);
-                _currentScope.Dispose();
-                _currentScope = null;
-                _isInScope = false;
+                EndScope();
                 if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
             });
+        }
+
+        private void EndScope()
+        {
+            try
+            {
+                if (_currentScope is not null)
+                {
+                    Reset();
+                    _stateProvider.SetScope(null);
+                    _currentScope.Dispose();
+                }
+            }
+            finally
+            {
+                _currentScope = null;
+                _isInScope = false;
+            }
         }
 
         public bool IsInScope => _currentScope is not null;
