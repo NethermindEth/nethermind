@@ -32,22 +32,17 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         // Warmer wiring:
         //   â€¢ TrieWarmerWorkerCount == 0 â†’ user explicitly disabled warming.
         //   â€¢ SparseTrieWarmer == None â†’ user explicitly disabled warming.
-        //   â€¢ UseSparseRootComputation=true with Legacy warmer â†’ FORCE Noop. The Legacy
-        //     warmer walks Patricia, which is duplicate work once the sparse trie is
-        //     authoritative for root computation. Until the sparse-aware prefetcher (M5)
-        //     lands, the right behaviour is no warmer in sparse mode â€” the Patricia walks
-        //     materially distort sparse-mode benchmarks (extra DB reads, allocator pressure)
-        //     and never actually populate the sparse trie's reveal state.
-        //   â€¢ SparseTrieWarmer == SparseProof â†’ EXPERIMENTAL DB-page-cache prefetcher, kept
-        //     opt-in until proof results are fed back into the sparse trie.
-        //   â€¢ Otherwise â†’ Legacy Patricia warmer (correct for pure-Patricia mode).
-        bool sparseAuthoritative = flatDbConfig.UseSparseRootComputation;
-        bool legacyIsRedundantInSparseMode = sparseAuthoritative
-            && flatDbConfig.SparseTrieWarmer == SparseTrieWarmerVariant.Legacy;
+        //   â€¢ Legacy / SparseProof / default â†’ run the warmer. Even in sparse-authoritative
+        //     mode the Legacy walker is NOT pure waste: it loads Patricia nodes through
+        //     ReadOnlySnapshotBundle / flat-DB columns and so primes the OS page cache for
+        //     the same byte ranges the sparse MultiProofReader will read milliseconds later.
+        //     EXPB 26636221404 proved removing it costs ~70 ms p95 on realblocks (MIN
+        //     jumps 0.5 â†’ 35 ms once every block pays full cold I/O). Drop the warmer only
+        //     after the sparse-aware prefetcher (M5) is in place; that one will warm the
+        //     same pages without the Patricia-side allocations.
         bool useNoopWarmer =
             flatDbConfig.TrieWarmerWorkerCount == 0
-            || flatDbConfig.SparseTrieWarmer == SparseTrieWarmerVariant.None
-            || legacyIsRedundantInSparseMode;
+            || flatDbConfig.SparseTrieWarmer == SparseTrieWarmerVariant.None;
 
         builder
 
