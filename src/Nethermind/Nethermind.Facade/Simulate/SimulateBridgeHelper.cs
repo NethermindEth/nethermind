@@ -42,23 +42,43 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         TransactionWithSourceDetails[]? calls = blockStateCall.Calls;
         if (calls is not null)
         {
-            for (int i = 0; i < calls.Length; i++)
+            if (calls.Length == 1)
             {
-                Transaction transaction = calls[i].Transaction;
-                if (transaction.SenderAddress is not null)
+                Transaction transaction = calls[0].Transaction;
+                Address? sender = transaction.SenderAddress;
+                if (sender is not null)
                 {
-                    stateProvider.CreateAccountIfNotExists(transaction.SenderAddress, 0, 0);
+                    stateProvider.CreateAccountIfNotExists(sender, 0, 0);
                 }
 
-                if (transaction.To is not null)
+                Address? to = transaction.To;
+                if (to is not null && !Equals(sender, to))
                 {
-                    stateProvider.CreateAccountIfNotExists(transaction.To, 0, 0);
+                    stateProvider.CreateAccountIfNotExists(to, 0, 0);
+                }
+            }
+            else
+            {
+                HashSet<Address> seenAddresses = new(calls.Length * 2, Address.EqualityComparer);
+                for (int i = 0; i < calls.Length; i++)
+                {
+                    Transaction transaction = calls[i].Transaction;
+                    CreateAccountIfNotExists(transaction.SenderAddress, stateProvider, seenAddresses);
+                    CreateAccountIfNotExists(transaction.To, stateProvider, seenAddresses);
                 }
             }
         }
 
         stateProvider.Commit(releaseSpec, commitRoots: true);
         stateProvider.CommitTree(blockNumber);
+    }
+
+    private static void CreateAccountIfNotExists(Address? address, IWorldState stateProvider, HashSet<Address> seenAddresses)
+    {
+        if (address is not null && seenAddresses.Add(address))
+        {
+            stateProvider.CreateAccountIfNotExists(address, 0, 0);
+        }
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
