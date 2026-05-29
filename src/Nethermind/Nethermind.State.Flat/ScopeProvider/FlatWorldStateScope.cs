@@ -522,17 +522,23 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     }
 
                     // Observability for the cross-block cache. With pruning off the retained
-                    // storage-trie count grows unbounded (one arena per contract ever touched);
-                    // log it at Debug so operators can see growth and size the budget.
+                    // storage-trie count grows unbounded (one arena per contract ever touched).
+                    // Logged at Debug every commit, plus an Info sample every 250 blocks so the
+                    // natural working-set high-water is visible in benchmark/operator logs (where
+                    // Debug is usually off) without per-block spam â€” this is the number that tells
+                    // you how to size SparseTrieMaxRetainedStorageTries.
                     ILogger sizeLogger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                    if (sizeLogger.IsDebug)
+                    bool sample = blockNumber % 250 == 0;
+                    if (sizeLogger.IsDebug || (sample && sizeLogger.IsInfo))
                     {
                         SparseStateTrie.CacheSize cs = _sparseStateTrie.GetCacheSize();
-                        sizeLogger.Debug(
-                            $"Sparse cross-block cache: storageTries={cs.StorageTrieCount}, " +
+                        string msg =
+                            $"Sparse cross-block cache @ block {blockNumber}: storageTries={cs.StorageTrieCount}, " +
                             $"accountArenaNodes={cs.AccountArenaNodes}, storageArenaNodes={cs.StorageArenaNodes}, " +
                             $"lfuPrune={(lfuPruneEnabled ? "on" : "off")}, " +
-                            $"memTrigger={(overMemoryBudget ? "FIRED" : "idle")}");
+                            $"memTrigger={(overMemoryBudget ? "FIRED" : "idle")}";
+                        if (sample && sizeLogger.IsInfo) sizeLogger.Info(msg);
+                        else sizeLogger.Debug(msg);
                     }
 
                     _preservedSparseTrie.StoreAnchored(_sparseStateTrie, newRoot);
