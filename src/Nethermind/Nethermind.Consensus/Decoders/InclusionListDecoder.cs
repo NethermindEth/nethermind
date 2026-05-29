@@ -3,12 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Decoders;
@@ -27,9 +29,10 @@ namespace Nethermind.Consensus.Decoders;
 public class InclusionListDecoder(
     IEthereumEcdsa? ecdsa,
     ISpecProvider? specProvider,
-    Logging.ILogManager? logManager)
+    ILogManager? logManager)
 {
     private readonly RecoverSignatures _recoverSignatures = new(ecdsa, specProvider, logManager);
+    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<InclusionListDecoder>();
 
     // ILs are bounded by Eip7805Constants.MaxTransactionsPerInclusionList (16), so the
     // parallel threshold is set low. Above 3 the Parallel.For dispatch cost is comfortably
@@ -58,10 +61,10 @@ public class InclusionListDecoder(
                 0,
                 txBytes.Length,
                 ParallelUnbalancedWork.DefaultOptions,
-                (slots, txBytes, rlpDecoder, recoverer: _recoverSignatures, spec),
+                (slots, txBytes, rlpDecoder, recoverer: _recoverSignatures, spec, logger: _logger),
                 static (i, state) =>
                 {
-                    state.slots[i] = TryDecodeAndRecover(state.txBytes[i], state.rlpDecoder, state.recoverer, state.spec);
+                    state.slots[i] = TryDecodeAndRecover(state.txBytes[i], state.rlpDecoder, state.recoverer, state.spec, state.logger);
                     return state;
                 });
         }
@@ -69,7 +72,7 @@ public class InclusionListDecoder(
         {
             for (int i = 0; i < txBytes.Length; i++)
             {
-                slots[i] = TryDecodeAndRecover(txBytes[i], rlpDecoder, _recoverSignatures, spec);
+                slots[i] = TryDecodeAndRecover(txBytes[i], rlpDecoder, _recoverSignatures, spec, _logger);
             }
         }
 
@@ -80,7 +83,8 @@ public class InclusionListDecoder(
         byte[] bytes,
         IRlpDecoder<Transaction> rlpDecoder,
         RecoverSignatures recoverer,
-        IReleaseSpec spec)
+        IReleaseSpec spec,
+        ILogger logger)
     {
         Transaction tx;
         try
@@ -100,12 +104,15 @@ public class InclusionListDecoder(
         {
             recoverer.RecoverOne(tx, spec);
         }
-        catch (Exception)
+        catch (Exception e) when (e is InvalidDataException or ArgumentException or System.Security.Cryptography.CryptographicException)
         {
-            // Keep the partially-decoded tx even if signature recovery fails. The validator
-            // already guards on `tx.SenderAddress is null` and treats those entries as
-            // not-appendable, so the IL satisfaction check stays correct without us having
-            // to drop the entry here.
+            // Signature recovery failed for a malformed tx (null signature, bad recovery
+            // bytes, etc. that nonetheless passed RLP decode). SenderAddress stays null;
+            // the validator treats null-sender entries as not-appendable, so the IL check
+            // stays correct without us dropping the entry. Log at trace so anomalous IL
+            // traffic from a misbehaving CL is still observable. Narrow filter keeps
+            // unrelated regressions (NRE, OOM, …) from being silently swallowed.
+            if (logger.IsTrace) logger.Trace($"IL signature recovery failed for tx {tx.Hash}: {e.GetType().Name}: {e.Message}");
         }
 
         return tx;
