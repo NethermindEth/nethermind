@@ -132,12 +132,13 @@ jobs:
           dotnet build Nethermind.slnx -c release -m -v minimal
           dotnet build-server shutdown || true
 
-          # Tests tagged [Category("Flaky")] are excluded here and run in the
-          # dedicated `tests-flaky` job (which runs them sequentially with
-          # retries). Non-flaky tests don't depend on full CPU, so we can run
-          # them in parallel within the group.
+          # Flaky-tagged tests run in the dedicated `tests-flaky` job.
+          # Non-flaky tests run 2-wide within the group: enough to hide build/
+          # restore/teardown latency on multi-project groups, but capped at 2
+          # so timing-sensitive tests don't trip on CPU contention (4-wide on
+          # Windows runners exposed flakes beyond our [Category("Flaky")] list).
           MAX_PARALLEL=$(nproc 2>/dev/null || echo 2)
-          (( MAX_PARALLEL > 4 )) && MAX_PARALLEL=4
+          (( MAX_PARALLEL > 2 )) && MAX_PARALLEL=2
           results_dir=$(mktemp -d)
           running=0
           for project in "${projects[@]}"; do
@@ -263,9 +264,10 @@ jobs:
           dotnet build-server shutdown || true
 
           # Flaky-tagged tests run in the dedicated `tests-flaky` job.
-          # Non-flaky tests parallel within the group, capped at runner cores.
+          # Non-flaky tests run 2-wide within the group, capped at 2 to avoid
+          # CPU contention on multi-vCPU runners.
           MAX_PARALLEL=$(nproc 2>/dev/null || echo 2)
-          (( MAX_PARALLEL > 4 )) && MAX_PARALLEL=4
+          (( MAX_PARALLEL > 2 )) && MAX_PARALLEL=2
           results_dir=$(mktemp -d)
           running=0
           for project in "${projects[@]}"; do

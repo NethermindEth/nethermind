@@ -72,9 +72,10 @@ jobs:
           dotnet build-server shutdown || true
 
           # Flaky-tagged tests run in the central `tests-flaky` job in nethermind-tests.yml.
-          # Non-flaky tests parallel within the group, capped at runner cores.
+          # Non-flaky tests run 2-wide within the group, capped at 2 to avoid
+          # CPU contention on multi-vCPU runners.
           MAX_PARALLEL=$(nproc 2>/dev/null || echo 2)
-          (( MAX_PARALLEL > 4 )) && MAX_PARALLEL=4
+          (( MAX_PARALLEL > 2 )) && MAX_PARALLEL=2
           results_dir=$(mktemp -d)
           running=0
           for project in "${projects[@]}"; do
