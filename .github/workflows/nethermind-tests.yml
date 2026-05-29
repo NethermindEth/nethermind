@@ -421,11 +421,13 @@ jobs:
       - name: Run flaky tests
         working-directory: src/Nethermind
         run: |
-          # `--ignore-exit-code 5` treats "no tests matched filter" as success
-          # — most modules in the solution have no Flaky tests, and MTP returns
-          # exit 5 for them. Real test failures still return exit 1.
+          # Most modules in the solution have no Flaky tests. When the filter
+          # matches nothing in a module, MTP returns exit 5 (NUnit's adapter
+          # short-circuit) or exit 8 (MTP's "minimum expected tests" policy);
+          # both mean "no Flaky tests here, that's fine". Real test failures
+          # still return exit 1 (fail) or exit 2 (execution error).
           dotnet test Nethermind.slnx -c release --no-build --no-restore -v minimal \
-            --filter "TestCategory=Flaky" --ignore-exit-code 5
+            --filter "TestCategory=Flaky" --ignore-exit-code "5;8"
 
   tests-summary:
     name: Tests summary
