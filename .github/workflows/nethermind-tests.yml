@@ -132,26 +132,43 @@ jobs:
           dotnet build Nethermind.slnx -c release -m -v minimal
           dotnet build-server shutdown || true
 
-          # Sequential within the group (avoids CPU contention on timing-
-          # sensitive tests). Run ALL projects in the group, collect failures,
-          # exit non-zero at end. Matrix-level `fail-fast: true` still cancels
-          # other groups on first group failure — but within one group we want
-          # to see every failure in one run, not chase them across re-pushes.
-          #
           # Tests tagged [Category("Flaky")] are excluded here and run in the
-          # dedicated `tests-flaky` job instead, so a single flake re-run
-          # doesn't drag the whole matrix with it.
+          # dedicated `tests-flaky` job (which runs them sequentially with
+          # retries). Non-flaky tests don't depend on full CPU, so we can run
+          # them in parallel within the group.
+          MAX_PARALLEL=$(nproc 2>/dev/null || echo 2)
+          (( MAX_PARALLEL > 4 )) && MAX_PARALLEL=4
+          results_dir=$(mktemp -d)
+          running=0
+          for project in "${projects[@]}"; do
+            if (( running >= MAX_PARALLEL )); then
+              wait -n || true
+              running=$((running - 1))
+            fi
+            (
+              if dotnet test --project "$project/$project.csproj" -c release \
+                  --no-build --no-restore -v minimal $coverage_args \
+                  --filter "TestCategory!=Flaky" \
+                  > "$results_dir/$project.log" 2>&1; then
+                echo "0" > "$results_dir/$project.exitcode"
+              else
+                echo "$?" > "$results_dir/$project.exitcode"
+              fi
+            ) &
+            running=$((running + 1))
+          done
+          wait
+
           fail=0
           for project in "${projects[@]}"; do
-            echo "::group::$project"
-            if dotnet test --project "$project/$project.csproj" -c release \
-                --no-build --no-restore -v minimal $coverage_args \
-                --filter "TestCategory!=Flaky"; then
-              :
+            rc=$(cat "$results_dir/$project.exitcode" 2>/dev/null || echo "?")
+            if [[ "$rc" == "0" ]]; then
+              echo "::group::✓ $project"
             else
-              echo "::error::Tests failed in $project (exit $?)"
+              echo "::group::✗ $project (exit $rc)"
               fail=1
             fi
+            cat "$results_dir/$project.log" 2>/dev/null || true
             echo "::endgroup::"
           done
           exit $fail
@@ -245,19 +262,41 @@ jobs:
           dotnet build EthereumTests.slnx -c release -m -v minimal
           dotnet build-server shutdown || true
 
-          # Sequential within the group, collect-then-exit so we see every failure.
           # Flaky-tagged tests run in the dedicated `tests-flaky` job.
+          # Non-flaky tests parallel within the group, capped at runner cores.
+          MAX_PARALLEL=$(nproc 2>/dev/null || echo 2)
+          (( MAX_PARALLEL > 4 )) && MAX_PARALLEL=4
+          results_dir=$(mktemp -d)
+          running=0
+          for project in "${projects[@]}"; do
+            if (( running >= MAX_PARALLEL )); then
+              wait -n || true
+              running=$((running - 1))
+            fi
+            (
+              if dotnet test --project "$project/$project.csproj" -c release \
+                  --no-build --no-restore -v minimal $coverage_args \
+                  --filter "TestCategory!=Flaky" \
+                  > "$results_dir/$project.log" 2>&1; then
+                echo "0" > "$results_dir/$project.exitcode"
+              else
+                echo "$?" > "$results_dir/$project.exitcode"
+              fi
+            ) &
+            running=$((running + 1))
+          done
+          wait
+
           fail=0
           for project in "${projects[@]}"; do
-            echo "::group::$project${TEST_CHUNK:+ ($TEST_CHUNK)}"
-            if dotnet test --project "$project/$project.csproj" -c release \
-                --no-build --no-restore -v minimal $coverage_args \
-                --filter "TestCategory!=Flaky"; then
-              :
+            rc=$(cat "$results_dir/$project.exitcode" 2>/dev/null || echo "?")
+            if [[ "$rc" == "0" ]]; then
+              echo "::group::✓ $project${TEST_CHUNK:+ ($TEST_CHUNK)}"
             else
-              echo "::error::Tests failed in $project${TEST_CHUNK:+ ($TEST_CHUNK)} (exit $?)"
+              echo "::group::✗ $project${TEST_CHUNK:+ ($TEST_CHUNK)} (exit $rc)"
               fail=1
             fi
+            cat "$results_dir/$project.log" 2>/dev/null || true
             echo "::endgroup::"
           done
           exit $fail

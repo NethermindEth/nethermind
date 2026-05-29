@@ -131,19 +131,41 @@ jobs:
           dotnet build "$solution" -c release -m -v minimal $VARIANT_ARGS
           dotnet build-server shutdown || true
 
-          # Sequential within the group, collect-then-exit so we see every failure.
           # Flaky-tagged tests run in the central `tests-flaky` job in nethermind-tests.yml.
+          # Non-flaky tests parallel within the group, capped at runner cores.
+          MAX_PARALLEL=$(nproc 2>/dev/null || echo 2)
+          (( MAX_PARALLEL > 4 )) && MAX_PARALLEL=4
+          results_dir=$(mktemp -d)
+          running=0
+          for project in "${projects[@]}"; do
+            if (( running >= MAX_PARALLEL )); then
+              wait -n || true
+              running=$((running - 1))
+            fi
+            (
+              if dotnet test --project "$project/$project.csproj" -c release \
+                  --no-build --no-restore -v minimal $VARIANT_ARGS \
+                  --filter "TestCategory!=Flaky" \
+                  > "$results_dir/$project.log" 2>&1; then
+                echo "0" > "$results_dir/$project.exitcode"
+              else
+                echo "$?" > "$results_dir/$project.exitcode"
+              fi
+            ) &
+            running=$((running + 1))
+          done
+          wait
+
           fail=0
           for project in "${projects[@]}"; do
-            echo "::group::$project [${{ matrix.variant.label }}]"
-            if dotnet test --project "$project/$project.csproj" -c release \
-                --no-build --no-restore -v minimal $VARIANT_ARGS \
-                --filter "TestCategory!=Flaky"; then
-              :
+            rc=$(cat "$results_dir/$project.exitcode" 2>/dev/null || echo "?")
+            if [[ "$rc" == "0" ]]; then
+              echo "::group::✓ $project [${{ matrix.variant.label }}]"
             else
-              echo "::error::Tests failed in $project [${{ matrix.variant.label }}] (exit $?)"
+              echo "::group::✗ $project [${{ matrix.variant.label }}] (exit $rc)"
               fail=1
             fi
+            cat "$results_dir/$project.log" 2>/dev/null || true
             echo "::endgroup::"
           done
           exit $fail
