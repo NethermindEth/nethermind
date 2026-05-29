@@ -1031,7 +1031,7 @@ public partial class EthRpcModule(
         return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
     }
 
-    public ResultWrapper<AccountForRpc?> eth_getAccount(Address accountAddress, BlockParameter? blockParameter)
+    public ResultWrapper<AccountForRpc?> eth_getAccount(Address accountAddress, BlockParameter blockParameter)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
@@ -1048,7 +1048,7 @@ public partial class EthRpcModule(
                 : null);
     }
 
-    public ResultWrapper<AccountInfoForRpc?> eth_getAccountInfo(Address accountAddress, BlockParameter? blockParameter)
+    public ResultWrapper<AccountInfoForRpc?> eth_getAccountInfo(Address accountAddress, BlockParameter blockParameter)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)

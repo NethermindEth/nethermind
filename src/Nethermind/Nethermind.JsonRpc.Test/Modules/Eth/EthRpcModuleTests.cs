@@ -1585,15 +1585,13 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_account_no_block_argument()
+    public async Task Eth_get_account_no_block_argument_returns_invalid_params()
     {
         using Context ctx = await Context.Create();
         string account_address = TestBlockchain.AccountC.ToString();
 
         string serialized = await ctx.Test.TestEthRpc("eth_getAccount", account_address);
-        string expected = "{\"jsonrpc\":\"2.0\",\"result\":{\"codeHash\":\"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470\",\"storageRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"balance\":\"0x3635c9adc5dea00000\",\"nonce\":\"0x0\"},\"id\":67}";
-
-        Assert.That(serialized, Is.EqualTo(expected));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
     }
 
     [Test]
@@ -1628,14 +1626,13 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_account_info_no_block_argument()
+    public async Task Eth_get_account_info_no_block_argument_returns_invalid_params()
     {
         using Context ctx = await Context.Create();
         string account_address = TestBlockchain.AccountC.ToString();
 
         string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", account_address);
-
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"code\":\"0x\",\"balance\":\"0x3635c9adc5dea00000\",\"nonce\":\"0x0\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
     }
 
 
