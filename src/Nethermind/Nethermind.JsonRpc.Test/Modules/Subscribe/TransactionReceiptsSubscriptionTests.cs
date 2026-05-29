@@ -89,15 +89,28 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 filter);
 
             List<JsonRpcResult> jsonRpcResults = [];
-            SemaphoreSlim semaphoreSlim = new(0, 1);
+            // Delivery callbacks run sequentially on the subscription's single-reader pump, so this
+            // counts down to zero exactly when the expected results have all arrived.
+            using CountdownEvent received = new(Math.Max(expectedCount, 1));
 
             subscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
                 jsonRpcResults.Add(j);
+                if (!received.IsSet) received.Signal();
             }));
 
             _receiptCanonicalityMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
-            semaphoreSlim.Wait(TimeSpan.FromMilliseconds(500));
+
+            if (expectedCount > 0)
+            {
+                // Return as soon as the expected results arrive; the timeout is only a safety net.
+                received.Wait(TimeSpan.FromSeconds(1));
+            }
+            else
+            {
+                // No results expected — allow the pipeline a moment to (not) deliver anything.
+                Thread.Sleep(200);
+            }
 
             subscriptionId = subscription.Id;
             return jsonRpcResults;
