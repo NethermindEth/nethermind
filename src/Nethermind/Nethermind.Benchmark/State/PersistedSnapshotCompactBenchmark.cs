@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -58,7 +59,7 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
             PersistedSnapshotTier.Persisted);
         _repo = new PersistedSnapshotRepository(
             _arena, _blobs, new MemDb(),
-            new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
         _repo.LoadFromCatalog();
         _pool = new ResourcePool(new FlatDbConfig());
 

@@ -109,7 +109,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     ctx.Resolve<ArenaManager>(),
                     ctx.Resolve<BlobArenaManager>(),
                     catalogDb, cfg,
-                    ctx.Resolve<PersistedSnapshotBloomFilterManager>());
+                    ctx.Resolve<PersistedSnapshotBloomFilterManager>(),
+                    ctx.Resolve<ILogManager>());
                 repo.LoadFromCatalog();
                 return repo;
             })

@@ -3,12 +3,15 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
@@ -29,8 +32,17 @@ public sealed class PersistedSnapshotRepository(
     IBlobArenaManager blobArenaManager,
     IDb catalogDb,
     IFlatDbConfig config,
-    PersistedSnapshotBloomFilterManager bloomManager) : IPersistedSnapshotRepository
+    PersistedSnapshotBloomFilterManager bloomManager,
+    ILogManager logManager) : IPersistedSnapshotRepository
 {
+    // Below this many catalog entries / bloom picks we skip the progress logger and
+    // the heartbeat timer — the cost of one Parallel.ForEach over a tiny input is in
+    // the µs range, well below the bookkeeping overhead the logger adds per tick.
+    private const int ParallelLoadThreshold = 1024;
+    // Heartbeat for the progress logger inside the parallel sections. The logger
+    // itself dedups via state-change comparison, so sub-second ticks are cheap.
+    private const int ProgressLogIntervalMs = 1000;
+
     private readonly IArenaManager _arena = arenaManager;
     private readonly IBlobArenaManager _blobs = blobArenaManager;
     private readonly SnapshotCatalog _catalog = new(catalogDb);
@@ -38,6 +50,8 @@ public sealed class PersistedSnapshotRepository(
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly StringLabel _tierLabel = new(arenaManager.Tier.Name);
+    private readonly ILogManager _logManager = logManager;
+    private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotRepository>();
     // Do NOT iterate these dictionaries on hot or metric paths — entry counts can
     // reach hundreds of thousands in production. Use TryGetValue for point lookups;
     // O(1) aggregates (Base/CompactedSnapshotMemory) are maintained as running totals
@@ -120,7 +134,10 @@ public sealed class PersistedSnapshotRepository(
     /// <summary>
     /// Load the persisted snapshots from the catalog, routing each into its bucket by the
     /// stored <see cref="SnapshotKind"/> (range alone cannot tell a base from a
-    /// sub-<c>CompactSize</c> compacted snapshot apart).
+    /// sub-<c>CompactSize</c> compacted snapshot apart). For catalogs above
+    /// <see cref="ParallelLoadThreshold"/> entries, the per-entry arena/blob lease work
+    /// runs on <see cref="Parallel.ForEach"/> with a heartbeat <see cref="ProgressLogger"/>;
+    /// the non-concurrent <c>SortedSet</c> tip and ordered-id rebuild runs serially after.
     /// </summary>
     public void LoadFromCatalog()
     {
@@ -135,8 +152,22 @@ public sealed class PersistedSnapshotRepository(
             List<SnapshotCatalog.CatalogEntry> entries = [.. _catalog.Entries];
             _arena.Initialize(entries);
 
+            LoadSnapshotsParallel(entries);
+
+            // Serial post-pass: build the SortedSets and the registration tip from the now-
+            // populated dicts. The catalog returns entries already sorted by To.BlockNumber
+            // ascending, so _lastRegisteredState ends on the highest registered StateId
+            // without a separate ComputeLastRegisteredLocked() call.
             foreach (SnapshotCatalog.CatalogEntry entry in entries)
-                LoadSnapshot(entry);
+            {
+                SortedSet<StateId> set = entry.Kind switch
+                {
+                    SnapshotKind.Compacted => _compactedStateIds,
+                    SnapshotKind.Persistable => _persistableStateIds,
+                    _ => _baseStateIds,
+                };
+                RegisterStateIdLocked(set, entry.To);
+            }
 
             // Delete any blob arena file no loaded snapshot referenced — recoverable
             // orphans from a mid-write crash.
@@ -150,6 +181,43 @@ public sealed class PersistedSnapshotRepository(
         }
     }
 
+    private void LoadSnapshotsParallel(List<SnapshotCatalog.CatalogEntry> entries)
+    {
+        ProgressLogger? loadLog = null;
+        Timer? heartbeat = null;
+        if (entries.Count > ParallelLoadThreshold && _logger.IsInfo)
+        {
+            loadLog = new ProgressLogger($"Persisted snapshot load ({_arena.Tier.Name})", _logManager);
+            loadLog.Reset(0, entries.Count);
+            heartbeat = new Timer(ProgressLogIntervalMs);
+            heartbeat.Elapsed += (_, _) => loadLog.LogProgress();
+            heartbeat.Start();
+        }
+
+        try
+        {
+            long loaded = 0;
+            Parallel.ForEach(entries, entry =>
+            {
+                LoadSnapshot(entry);
+                if (loadLog is not null) loadLog.Update(Interlocked.Increment(ref loaded));
+            });
+            loadLog?.LogProgress();
+        }
+        finally
+        {
+            heartbeat?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Routes a single catalog entry into its bucket dictionary and bumps the matching
+    /// metric counters. Safe to call concurrently — only mutates the
+    /// <see cref="ConcurrentDictionary{TKey, TValue}"/> buckets and <see cref="Interlocked"/>
+    /// counters. The non-concurrent <see cref="SortedSet{T}"/> ordered ids and the
+    /// <see cref="_lastRegisteredState"/> tip are populated by the serial post-pass in
+    /// <see cref="LoadFromCatalog"/>.
+    /// </summary>
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
         ArenaReservation reservation = _arena.Open(entry.Location);
@@ -163,9 +231,6 @@ public sealed class PersistedSnapshotRepository(
         // LoadFromCatalog. Callers must invoke ReconstructBloom() before queries to get
         // bloom filtering. Until then, LeaseOrSentinel returns the AlwaysTrue sentinel —
         // correct (no false negatives) but unfiltered.
-
-        // LoadFromCatalog already holds `_catalogLock`. Catalog order is insertion order, so
-        // the last entry processed wins as the tip.
         switch (entry.Kind)
         {
             case SnapshotKind.Compacted:
@@ -173,21 +238,18 @@ public sealed class PersistedSnapshotRepository(
                 Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
                 Interlocked.Increment(ref _compactedSnapshotCount);
                 Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
-                RegisterStateIdLocked(_compactedStateIds, entry.To);
                 break;
             case SnapshotKind.Persistable:
                 _persistableCompactedSnapshots[entry.To] = snapshot;
                 Interlocked.Add(ref _persistableSnapshotMemoryBytes, snapshot.Size);
                 Interlocked.Increment(ref _persistableSnapshotCount);
                 Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
-                RegisterStateIdLocked(_persistableStateIds, entry.To);
                 break;
             default:
                 _baseSnapshots[entry.To] = snapshot;
                 Interlocked.Add(ref _baseSnapshotMemoryBytes, snapshot.Size);
                 Interlocked.Increment(ref _baseSnapshotCount);
                 Interlocked.Add(ref Metrics._persistedSnapshotMemory, snapshot.Size);
-                RegisterStateIdLocked(_baseStateIds, entry.To);
                 break;
         }
         Interlocked.Increment(ref Metrics._persistedSnapshotCount);
@@ -597,38 +659,48 @@ public sealed class PersistedSnapshotRepository(
     /// Build and register blooms for every loaded snapshot, matching the manager's
     /// end-state after a long-running session's compactions: blocks covered by a
     /// compacted/persistable snapshot use that snapshot's merged bloom; blocks not
-    /// covered by any compaction use a per-base bloom. Walks the union of every
-    /// bucket's <c>To</c> ids newest→oldest; at each state, if the manager already
-    /// has a slot entry (a previously-registered wider bloom's range walk already
-    /// covered this state), skip; otherwise pick the widest snapshot at this state
-    /// by range (compacted bucket can be wider OR narrower than the CompactSize-wide
-    /// persistable; base is always range == 1), build its bloom by scanning its HSST
-    /// metadata, and register.
-    /// Invoked from <see cref="LoadFromCatalog"/>; caller holds <c>_catalogLock</c>.
+    /// covered by any compaction use a per-base bloom.
     /// </summary>
+    /// <remarks>
+    /// Three phases: (A) walk the union of every bucket's <c>To</c> ids newest→oldest,
+    /// simulating <see cref="PersistedSnapshotBloomFilterManager.Register"/>'s chain
+    /// walk locally so we know exactly which slots each pick would fill — that lets us
+    /// skip subsequent <c>To</c>s already covered by a wider pick. (B) reverse the
+    /// collected picks so the bigger snapshots (older <c>To</c>s, where persistables
+    /// and hierarchical merges accumulate) sit at the front of the parallel queue —
+    /// LPT-style scheduling minimises wallclock when work sizes vary. (C) parallel
+    /// bloom-build + register; <c>_blooms</c> is a <see cref="ConcurrentDictionary{TKey, TValue}"/>
+    /// and Register's chain walk is CAS-based, and the picks have disjoint slot ranges
+    /// by construction.
+    /// Invoked from <see cref="LoadFromCatalog"/>; caller holds <c>_catalogLock</c>.
+    /// </remarks>
     private void ReconstructBloom()
     {
         if (!BloomEnabled) return;
 
-        // Snapshot the base StateId graph once so the parentLookup closure (passed
-        // into the bloom manager) is a cheap dict probe. Bases are usually contiguous
-        // by block number, but PruneBefore can leave gaps at the bottom — missing
-        // predecessor blocks are surfaced as a default StateId, which Register treats
-        // as "anchor the chain here" via its own boundary check.
+        // Snapshot the base StateId graph once so the parentLookup closure (shared by
+        // both the local skip simulation and Register inside the parallel section) is a
+        // cheap dict probe. Bases are usually contiguous by block number, but PruneBefore
+        // can leave gaps — missing predecessor blocks are surfaced as a default StateId,
+        // which Register treats as "anchor the chain here" via its own boundary check.
         Dictionary<long, StateId> parentByBlock = new(_baseStateIds.Count);
         foreach (StateId id in _baseStateIds) parentByBlock[id.BlockNumber] = id;
         Func<long, StateId> parentLookup = block =>
             parentByBlock.TryGetValue(block, out StateId id) ? id : default;
 
-        // The catalog is keyed by <c>To</c> alone, so a persistable / compacted entry
-        // at the same <c>To</c> as a base overwrites the base on disk — on reload only
-        // one of the three buckets carries a snapshot at that <c>To</c>. Walk the union
-        // of every bucket's <c>To</c> id to ensure no slot is missed.
+        // Phase A — serial collect.
+        // The catalog is keyed by (To, depth), so a persistable / compacted entry at the
+        // same To as a base round-trips independently. Walk the union of every bucket's
+        // To id to ensure no slot is missed. coveredSlots mirrors Register's actual fill
+        // set, so we don't redundantly pick a snapshot whose slot a wider pick already
+        // owns.
         SortedSet<StateId> allTos = [.. _baseStateIds, .. _compactedStateIds, .. _persistableStateIds];
+        HashSet<StateId> coveredSlots = new(allTos.Count);
+        List<PersistedSnapshot> picks = [];
 
         foreach (StateId to in allTos.Reverse())
         {
-            if (_bloomManager.ContainsSlot(to)) continue;
+            if (coveredSlots.Contains(to)) continue;
 
             PersistedSnapshot? snap = PickWidest(
                 _baseSnapshots.TryGetValue(to, out PersistedSnapshot? b) ? b : null,
@@ -636,8 +708,62 @@ public sealed class PersistedSnapshotRepository(
                 _persistableCompactedSnapshots.TryGetValue(to, out PersistedSnapshot? p) ? p : null);
             if (snap is null) continue;
 
-            BloomFilter bloom = BuildBloomFor(snap);
-            _bloomManager.Register(new PersistedSnapshotBloom(snap.From, snap.To, bloom), parentLookup);
+            picks.Add(snap);
+            SimulateRegisterFill(snap, parentLookup, coveredSlots);
+        }
+
+        // Phase B — reverse for LPT scheduling. Phase A produces newest→oldest; the
+        // older end holds the wider (and thus slower-to-build) persistables and
+        // hierarchical merges. Putting them first in the parallel queue stops a
+        // single big bloom-build from dominating the tail.
+        picks.Reverse();
+
+        // Phase C — parallel bloom-build + Register.
+        ProgressLogger? bloomLog = null;
+        Timer? heartbeat = null;
+        if (picks.Count > ParallelLoadThreshold && _logger.IsInfo)
+        {
+            bloomLog = new ProgressLogger($"Persisted snapshot bloom rebuild ({_arena.Tier.Name})", _logManager);
+            bloomLog.Reset(0, picks.Count);
+            heartbeat = new Timer(ProgressLogIntervalMs);
+            heartbeat.Elapsed += (_, _) => bloomLog.LogProgress();
+            heartbeat.Start();
+        }
+
+        try
+        {
+            long built = 0;
+            Parallel.ForEach(picks, snap =>
+            {
+                BloomFilter bloom = BuildBloomFor(snap);
+                _bloomManager.Register(new PersistedSnapshotBloom(snap.From, snap.To, bloom), parentLookup);
+                if (bloomLog is not null) bloomLog.Update(Interlocked.Increment(ref built));
+            });
+            bloomLog?.LogProgress();
+        }
+        finally
+        {
+            heartbeat?.Dispose();
+        }
+    }
+
+    // Mirror PersistedSnapshotBloomFilterManager.Register's chain walk for the
+    // ReconstructBloom path: start at snap.To, step back via parentLookup, mark each
+    // visited StateId as covered. Terminates on the same `cur.BlockNumber > fromBlock`
+    // boundary Register uses, so the covered set matches the slots Register will actually
+    // fill (including the early exit when parentLookup returns default(StateId) past a
+    // pruned gap).
+    private static void SimulateRegisterFill(
+        PersistedSnapshot snap, Func<long, StateId> parentLookup, HashSet<StateId> coveredSlots)
+    {
+        long fromBlock = snap.From.BlockNumber;
+        StateId cur = snap.To;
+        while (cur.BlockNumber > fromBlock)
+        {
+            coveredSlots.Add(cur);
+            cur = cur.BlockNumber - 1 > fromBlock
+                ? parentLookup(cur.BlockNumber - 1)
+                : snap.From;
         }
     }
 
