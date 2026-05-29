@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Test.Producers;
 [Parallelizable(ParallelScope.All)]
 public class BuildBlockRegularlyTests
 {
-    [Test, MaxTime(Timeout.MaxTestTime), Retry(3)]
+    [Test, MaxTime(Timeout.MaxTestTime), Category("Flaky"), Retry(3)]
     public async Task Regular_trigger_works()
     {
         int triggered = 0;

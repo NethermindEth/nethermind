@@ -487,7 +487,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         }
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Init_condition_are_as_expected() =>
         await When.Syncing
             .AfterProcessingGenesis()
@@ -496,7 +496,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .BestSuggested.BlockIsSameAsGenesis()
             .StopAsync();
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_sync_with_one_peer_straight()
     {
         SyncPeerMock peerA = new("A");
@@ -508,7 +508,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_sync_with_one_peer_straight_and_extend_chain()
     {
         SyncPeerMock peerA = new("A");
@@ -521,7 +521,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_extend_chain_by_one_on_new_block_message()
     {
         SyncPeerMock peerA = new("A");
@@ -537,7 +537,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_reorg_on_new_block_message()
     {
         SyncPeerMock peerA = new("A");
@@ -557,7 +557,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     [Ignore("Not supported for now - still analyzing this scenario")]
     public async Task Can_reorg_on_hint_block_message()
     {
@@ -577,7 +577,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_extend_chain_by_one_on_block_hint_message()
     {
         SyncPeerMock peerA = new("A");
@@ -593,7 +593,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_extend_chain_by_more_than_one_on_new_block_message()
     {
         SyncPeerMock peerA = new("A");
@@ -609,7 +609,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Will_ignore_new_block_that_is_far_ahead()
     {
         // this test was designed for no sync-timer sync process
@@ -627,7 +627,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_sync_when_best_peer_is_timing_out()
     {
         SyncPeerMock peerA = new("A");
@@ -697,7 +697,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Will_remove_peer_when_init_fails()
     {
         SyncPeerMock peerA = new("A", true, true);
@@ -729,7 +729,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_reorg_on_add_peer()
     {
         SyncPeerMock peerA = new("A");
@@ -766,7 +766,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     [Ignore("Not supported for now - still analyzing this scenario")]
     public async Task Can_extend_chain_on_hint_block_when_high_difficulty_low_number()
     {
@@ -788,7 +788,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_extend_chain_on_new_block_when_high_difficulty_low_number()
     {
 
@@ -812,7 +812,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Will_not_reorganize_on_same_chain_length()
     {
         SyncPeerMock peerA = new("A");
@@ -830,7 +830,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Will_not_reorganize_more_than_max_reorg_length()
     {
         SyncPeerMock peerA = new("A");
@@ -862,7 +862,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_sync_exactly_one_batch()
     {
         SyncPeerMock peerA = new("A");
@@ -875,7 +875,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test, Category("Flaky"), Retry(3)]
     public async Task Can_stop()
     {
         SyncPeerMock peerA = new("A");

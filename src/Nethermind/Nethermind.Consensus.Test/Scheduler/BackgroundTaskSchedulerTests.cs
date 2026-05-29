@@ -107,7 +107,7 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
-    [Retry(3)]
+    [Category("Flaky"), Retry(3)]
     public async Task Test_task_scheduled_during_block_processing_gets_cancelled_token()
     {
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);

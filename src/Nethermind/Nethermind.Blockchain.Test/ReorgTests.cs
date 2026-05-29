@@ -131,7 +131,7 @@ public class ReorgTests
     public async Task TearDownAsync() => await (_blockchainProcessor?.DisposeAsync() ?? default);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Retry(3)]
+    [Category("Flaky"), Retry(3)]
     public void Test()
     {
         List<Block> events = [];

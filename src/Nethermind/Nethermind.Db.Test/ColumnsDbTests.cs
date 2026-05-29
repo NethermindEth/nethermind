@@ -61,7 +61,7 @@ public class ColumnsDbTests
     }
 
     [Test]
-    [Retry(10)]
+    [Category("Flaky"), Retry(10)]
     public void SmokeTestMemtableSize()
     {
         IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);

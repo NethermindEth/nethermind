@@ -71,7 +71,7 @@ namespace Nethermind.Network.Test
             await stopTask;
         }
 
-        [Test, Retry(5)]
+        [Test, Category("Flaky"), Retry(5)]
         public async Task Disconnect_triggers_refill_without_blocking()
         {
             await using Context ctx = new();
@@ -89,7 +89,7 @@ namespace Nethermind.Network.Test
                 Is.GreaterThan(connectsBefore).After(_delayLong, 10));
         }
 
-        [Test, Retry(5)]
+        [Test, Category("Flaky"), Retry(5)]
         public async Task No_slot_available_before_deadline_does_not_deadlock_refill()
         {
             await using Context ctx = new(maxActivePeers: 1);
@@ -142,7 +142,7 @@ namespace Nethermind.Network.Test
         private const string enode10String =
             "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345:discport=6789";
 
-        [Test, Retry(10)]
+        [Test, Category("Flaky"), Retry(10)]
         public async Task Will_connect_to_a_candidate_node()
         {
             await using Context ctx = new();
@@ -152,7 +152,7 @@ namespace Nethermind.Network.Test
             Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1).After(_delay, 10));
         }
 
-        [Test, Retry(3)]
+        [Test, Category("Flaky"), Retry(3)]
         public async Task Will_only_connect_up_to_max_peers()
         {
             await using Context ctx = new(1);
@@ -366,7 +366,7 @@ namespace Nethermind.Network.Test
 
         private void HandshakeOnCreate(object sender, SessionEventArgs e) => e.Session.Handshake(e.Session.RemoteNodeId);
 
-        [Test, Retry(5)]
+        [Test, Category("Flaky"), Retry(5)]
         public async Task Will_fill_up_on_disconnects()
         {
             await using Context ctx = new();
@@ -381,7 +381,7 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.AtLeast(50));
         }
 
-        [Test, Retry(5)]
+        [Test, Category("Flaky"), Retry(5)]
         public async Task Ok_if_fails_to_connect()
         {
             await using Context ctx = new();
@@ -393,7 +393,7 @@ namespace Nethermind.Network.Test
             Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(0).After(_delay, 10));
         }
 
-        [Test, Retry(3)]
+        [Test, Category("Flaky"), Retry(3)]
         [NonParallelizable]
         public async Task Will_fill_up_over_and_over_again_on_disconnects()
         {
@@ -634,7 +634,7 @@ namespace Nethermind.Network.Test
             Assert.That(() => ctx.PeerManager.ActivePeers.Count(static p => p.Node.IsStatic), Is.EqualTo(nodesCount).After(_delay, 10));
         }
 
-        [Test, Retry(5)]
+        [Test, Category("Flaky"), Retry(5)]
         public async Task Will_disconnect_on_remove_static_node()
         {
             await using Context ctx = new();
@@ -656,7 +656,7 @@ namespace Nethermind.Network.Test
             Assert.That(disconnections, Is.EqualTo(1));
         }
 
-        [Test, Retry(3)]
+        [Test, Category("Flaky"), Retry(3)]
         public async Task Will_connect_and_disconnect_on_peer_management()
         {
             await using Context ctx = new();

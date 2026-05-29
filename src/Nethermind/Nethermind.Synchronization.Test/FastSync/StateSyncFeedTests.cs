@@ -236,7 +236,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         [TestCaseSource(nameof(Scenarios))]
         [Repeat(TestRepeatCount)]
-        [Retry(3)]
+        [Category("Flaky"), Retry(3)]
         public async Task Can_download_with_moving_target((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             RemoteDbContext remote = new(_logManager);

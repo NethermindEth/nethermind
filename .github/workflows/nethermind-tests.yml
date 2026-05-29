@@ -120,16 +120,29 @@ jobs:
           dotnet build Nethermind.slnx -c release -m -v minimal
           dotnet build-server shutdown || true
 
-          # Sequential within the group — tests with hard timing budgets (e.g.
-          # PreWarmCaches concurrency assertions, Process_long_running_branch)
-          # fail when CPU is oversubscribed by parallel test hosts.
-          set -e
+          # Sequential within the group (avoids CPU contention on timing-
+          # sensitive tests). Run ALL projects in the group, collect failures,
+          # exit non-zero at end. Matrix-level `fail-fast: true` still cancels
+          # other groups on first group failure — but within one group we want
+          # to see every failure in one run, not chase them across re-pushes.
+          #
+          # Tests tagged [Category("Flaky")] are excluded here and run in the
+          # dedicated `tests-flaky` job instead, so a single flake re-run
+          # doesn't drag the whole matrix with it.
+          fail=0
           for project in "${projects[@]}"; do
             echo "::group::$project"
-            dotnet test --project "$project/$project.csproj" -c release \
-              --no-build --no-restore -v minimal $coverage_args
+            if dotnet test --project "$project/$project.csproj" -c release \
+                --no-build --no-restore -v minimal $coverage_args \
+                --filter "TestCategory!=Flaky"; then
+              :
+            else
+              echo "::error::Tests failed in $project (exit $?)"
+              fail=1
+            fi
             echo "::endgroup::"
           done
+          exit $fail
 
       - name: Upload coverage reports
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
@@ -209,14 +222,22 @@ jobs:
           dotnet build EthereumTests.slnx -c release -m -v minimal
           dotnet build-server shutdown || true
 
-          # Sequential within the group — avoids CPU contention on timing-sensitive tests.
-          set -e
+          # Sequential within the group, collect-then-exit so we see every failure.
+          # Flaky-tagged tests run in the dedicated `tests-flaky` job.
+          fail=0
           for project in "${projects[@]}"; do
             echo "::group::$project${TEST_CHUNK:+ ($TEST_CHUNK)}"
-            dotnet test --project "$project/$project.csproj" -c release \
-              --no-build --no-restore -v minimal $coverage_args
+            if dotnet test --project "$project/$project.csproj" -c release \
+                --no-build --no-restore -v minimal $coverage_args \
+                --filter "TestCategory!=Flaky"; then
+              :
+            else
+              echo "::error::Tests failed in $project${TEST_CHUNK:+ ($TEST_CHUNK)} (exit $?)"
+              fail=1
+            fi
             echo "::endgroup::"
           done
+          exit $fail
 
       - name: Upload coverage reports
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
@@ -290,12 +311,62 @@ jobs:
           set -e
           dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal
           dotnet build-server shutdown || true
+          # Flaky-tagged tests run in the dedicated `tests-flaky` job.
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
-            --no-build --no-restore -v minimal
+            --no-build --no-restore -v minimal --filter "TestCategory!=Flaky"
+
+  # Single job that runs every test tagged [Category("Flaky")] across both
+  # solutions. Required check — failures block merging — but isolating known
+  # flakes here means a single re-run of THIS job (via "Re-run failed jobs"
+  # in the UI) is enough to retry a flake, instead of dragging the whole
+  # ~250-job matrix.
+  #
+  # Convention for the team: a test observed flaky gets tagged
+  #   [Category("Flaky"), Retry(3)]
+  # The Retry attribute makes NUnit try the test up to 3 times; a test that
+  # fails all 3 attempts is genuinely broken, not transient.
+  tests-flaky:
+    name: Flaky tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Build solutions
+        working-directory: src/Nethermind
+        run: |
+          dotnet build Nethermind.slnx -c release -m -v minimal
+          dotnet build EthereumTests.slnx -c release -m -v minimal
+          dotnet build-server shutdown || true
+
+      - name: Run flaky tests
+        working-directory: src/Nethermind
+        run: |
+          # Both solutions; collect failures across them so we see every flaky
+          # bucket in one report, not one-at-a-time.
+          fail=0
+          for solution in Nethermind.slnx EthereumTests.slnx; do
+            echo "::group::Flaky tests — $solution"
+            if dotnet test "$solution" -c release --no-build --no-restore -v minimal \
+                --filter "TestCategory=Flaky"; then
+              :
+            else
+              echo "::error::Flaky tests failed in $solution"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $fail
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked]
+    needs: [tests, tests-spec, tests-chunked, tests-flaky]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -304,13 +375,16 @@ jobs:
           TESTS_RESULT: ${{ needs.tests.result }}
           SPEC_RESULT: ${{ needs.tests-spec.result }}
           CHUNKED_RESULT: ${{ needs.tests-chunked.result }}
+          FLAKY_RESULT: ${{ needs.tests-flaky.result }}
         run: |
           echo "tests: $TESTS_RESULT"
           echo "tests-spec: $SPEC_RESULT"
           echo "tests-chunked: $CHUNKED_RESULT"
+          echo "tests-flaky: $FLAKY_RESULT"
           [[ "$TESTS_RESULT" == "success" && \
              "$SPEC_RESULT" == "success" && \
-             "$CHUNKED_RESULT" == "success" ]]
+             "$CHUNKED_RESULT" == "success" && \
+             "$FLAKY_RESULT" == "success" ]]
 
   codecov-upload:
     name: Upload Codecov reports

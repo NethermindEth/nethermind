@@ -56,7 +56,7 @@ public class ProgressLoggerTests
     }
 
     [Test]
-    [Retry(3)]
+    [Category("Flaky"), Retry(3)]
     public void Update_twice_total_per_second()
     {
         (ProgressLogger measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
@@ -69,7 +69,7 @@ public class ProgressLoggerTests
     }
 
     [Test]
-    [Retry(3)]
+    [Category("Flaky"), Retry(3)]
     public void Update_twice_current_per_second()
     {
         (ProgressLogger measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();

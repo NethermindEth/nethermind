@@ -30,7 +30,7 @@ public class FileLocalDataSourceTests
         }
     }
 
-    [Ignore("flaky")]
+    [Category("Flaky"), Retry(3)]
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task correctly_updates_from_existing_file()
     {
@@ -61,7 +61,7 @@ public class FileLocalDataSourceTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Ignore("flaky test")]
+    [Category("Flaky"), Retry(3)]
     public async Task correctly_updates_from_new_file()
     {
         using (TempPath tempFile = TempPath.GetTempFile())
@@ -95,8 +95,7 @@ public class FileLocalDataSourceTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Retry(10)]
-    [Ignore("Causing repeated pains on GitHub actions.")]
+    [Category("Flaky"), Retry(10)]
     public async Task retries_loading_file()
     {
         using (TempPath tempFile = TempPath.GetTempFile())
@@ -122,7 +121,7 @@ public class FileLocalDataSourceTests
         }
     }
 
-    [Ignore("flaky test")]
+    [Category("Flaky"), Retry(3)]
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task loads_default_when_deleted_file()
     {

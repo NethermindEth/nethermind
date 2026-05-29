@@ -121,14 +121,22 @@ jobs:
           dotnet build "$solution" -c release -m -v minimal $VARIANT_ARGS
           dotnet build-server shutdown || true
 
-          # Sequential within the group — avoids CPU contention on timing-sensitive tests.
-          set -e
+          # Sequential within the group, collect-then-exit so we see every failure.
+          # Flaky-tagged tests run in the central `tests-flaky` job in nethermind-tests.yml.
+          fail=0
           for project in "${projects[@]}"; do
             echo "::group::$project [${{ matrix.variant.label }}]"
-            dotnet test --project "$project/$project.csproj" -c release \
-              --no-build --no-restore -v minimal $VARIANT_ARGS
+            if dotnet test --project "$project/$project.csproj" -c release \
+                --no-build --no-restore -v minimal $VARIANT_ARGS \
+                --filter "TestCategory!=Flaky"; then
+              :
+            else
+              echo "::error::Tests failed in $project [${{ matrix.variant.label }}] (exit $?)"
+              fail=1
+            fi
             echo "::endgroup::"
           done
+          exit $fail
 
   # Heavy chunked tests under both variants. TEST_SKIP_HEAVY=1 limits each chunk.
   # Legacy.Blockchain: 8 → 4 chunks (same total work, larger chunks).
@@ -179,8 +187,10 @@ jobs:
           set -e
           dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal ${{ matrix.variant.args }}
           dotnet build-server shutdown || true
+          # Flaky-tagged tests run in the central `tests-flaky` job.
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
-            --no-build --no-restore -v minimal ${{ matrix.variant.args }}
+            --no-build --no-restore -v minimal ${{ matrix.variant.args }} \
+            --filter "TestCategory!=Flaky"
 
   tests-summary:
     name: Tests summary
