@@ -34,6 +34,20 @@ namespace Nethermind.State.Flat;
 /// producer (execution thread) only writes to the channel; it never touches the trie. Completion
 /// is signalled by <see cref="Finish"/>, after which <see cref="GetRootAsync"/> returns the
 /// computed root (or faults, which the caller treats as "fall back to synchronous").
+///
+/// WIRING STATUS (read before extending): this class is built, root-equivalence-tested against
+/// the synchronous M3 path and Patricia, and gated behind SparseTrieParallelRoot â€” but it is NOT
+/// yet constructed in FlatWorldStateScope, because the only place that would yield real overlap is
+/// a per-tx hook inside WorldState.Commit(commitRoots:false), and that requires a non-destructive
+/// "changed-since-last-commit-phase" delta cursor that PartialStorageProviderBase /
+/// PersistentStorageProvider do not currently expose. Adding that cursor touches core state code
+/// shared by ALL world-state modes (hash, halfpath, flat), so it is a wide-blast-radius change.
+/// Profiling (this branch, realblocks) showed synchronous root compute is ~1-3 ms warm and root is
+/// ~4% of block time, so the achievable overlap is &lt;=~3 ms best case â€” below run-to-run noise.
+/// The decision was therefore to land the proven streaming core (this file) and DEFER the invasive
+/// per-tx hook until either the cursor is needed for another reason or the root cost grows. Wiring
+/// it at UpdateRootHash instead (after execution finishes) would add threading overhead with zero
+/// overlap, so that shortcut was explicitly rejected.
 /// </remarks>
 public sealed class SparseTrieTask : IAsyncDisposable
 {
