@@ -96,11 +96,15 @@ public sealed class SparseStateTrie : IDisposable
     /// <summary>
     /// Initializes LFU caches for cross-block hot path retention.
     /// Called at the start of each block from PreservedSparseTrie.Take().
+    /// When a capacity is int.MaxValue, the corresponding LFU stays null so touches and
+    /// pruning are no-ops â€” lets operators turn cross-block hot tracking off entirely.
     /// </summary>
     public void SetHotCacheCapacities(int maxHotAccounts, int maxHotSlots)
     {
-        _hotAccountsLfu ??= new BucketedLfu<Hash256>(maxHotAccounts);
-        _hotSlotsLfu ??= new BucketedLfu<(Hash256, Hash256)>(maxHotSlots);
+        if (maxHotAccounts < int.MaxValue)
+            _hotAccountsLfu ??= new BucketedLfu<Hash256>(maxHotAccounts);
+        if (maxHotSlots < int.MaxValue)
+            _hotSlotsLfu ??= new BucketedLfu<(Hash256, Hash256)>(maxHotSlots);
     }
 
     /// <summary>

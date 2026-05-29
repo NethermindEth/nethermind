@@ -35,7 +35,11 @@ public sealed class BucketedLfu<TKey> where TKey : notnull
     public BucketedLfu(int capacity)
     {
         _capacity = Math.Max(1, capacity);
-        _entries = new Dictionary<TKey, EntryMeta>(_capacity);
+        // Cap initial dictionary capacity so callers passing int.MaxValue (effectively "no
+        // eviction") don't trigger the Dictionary ctor to allocate a 2 billion-entry table.
+        // Dictionary grows on insertion; starting small is fine for the LFU usage pattern.
+        int initialCap = _capacity > 16_384 ? 16_384 : _capacity;
+        _entries = new Dictionary<TKey, EntryMeta>(initialCap);
         _buckets = new List<TKey>[MaxFrequency + 1];
         for (int i = 0; i <= MaxFrequency; i++)
             _buckets[i] = [];
