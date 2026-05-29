@@ -20,7 +20,6 @@ public interface ICensorshipDetector
 {
     IEnumerable<BlockNumberHash> GetCensoredBlocks();
     bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash);
-    Task ProcessingTaskFor(long blockNumber, ValueHash256 blockHash);
 }
 
 public class NoopCensorshipDetector : ICensorshipDetector
@@ -28,8 +27,6 @@ public class NoopCensorshipDetector : ICensorshipDetector
     public IEnumerable<BlockNumberHash> GetCensoredBlocks() => [];
 
     public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash) => false;
-
-    public Task ProcessingTaskFor(long blockNumber, ValueHash256 blockHash) => Task.CompletedTask;
 }
 
 public class CensorshipDetector : IDisposable, ICensorshipDetector

@@ -571,6 +571,7 @@ public class SyncServerTests
         int frequencyAlignedBlocks = Enumerable.Range(startBlock + 1, blocksCount).Count(x => x % frequency == 0);
 
         CountdownEvent[] perPeerSignals = peers.Select(_ => new CountdownEvent(frequencyAlignedBlocks)).ToArray();
+        int[] perPeerCalls = new int[peers.Length];
         for (int i = 0; i < peers.Length; i++)
         {
             int idx = i;
@@ -578,7 +579,10 @@ public class SyncServerTests
                 .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
                 .Do(_ =>
                 {
-                    if (!perPeerSignals[idx].IsSet) perPeerSignals[idx].Signal();
+                    // Saturate at frequencyAlignedBlocks: Signal() throws once CurrentCount hits 0,
+                    // and the production code may emit more notifications than the countdown was sized for.
+                    if (Interlocked.Increment(ref perPeerCalls[idx]) <= frequencyAlignedBlocks)
+                        perPeerSignals[idx].Signal();
                 });
         }
 

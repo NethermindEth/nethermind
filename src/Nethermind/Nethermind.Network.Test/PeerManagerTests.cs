@@ -409,13 +409,10 @@ namespace Nethermind.Network.Test
 
             try
             {
-                int target = 25;
                 for (int i = 0; i < 10; i++)
                 {
-                    await ctx.RlpxPeer.WaitForConnectCallsAsync(target, TimeSpan.FromSeconds(60));
-                    Assert.That(ctx.PeerPool.ActivePeers.Count, Is.AtLeast(25));
+                    await ctx.WaitForActivePeersAsync(25, TimeSpan.FromSeconds(60));
                     ctx.DisconnectAllSessions();
-                    target += 25;
                 }
             }
             finally
@@ -811,6 +808,31 @@ namespace Nethermind.Network.Test
                 foreach (Session session in clone)
                 {
                     session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
+                }
+            }
+
+            public async Task WaitForActivePeersAsync(int target, TimeSpan timeout)
+            {
+                // ActivePeers is updated synchronously by RlpxHostOnSessionCreated (subscribed by
+                // PeerManager), which the mock invokes before raising ConnectCalled. So every time
+                // ConnectCalled fires we have just gained — or could lose to a pending OnDisconnected —
+                // an active peer. Re-evaluate on each ConnectCalled signal until we observe the target.
+                if (PeerPool.ActivePeers.Count >= target) return;
+
+                TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                Action handler = () =>
+                {
+                    if (PeerPool.ActivePeers.Count >= target) tcs.TrySetResult();
+                };
+                RlpxPeer.ConnectCalled += handler;
+                try
+                {
+                    if (PeerPool.ActivePeers.Count >= target) return;
+                    await tcs.Task.WaitAsync(timeout);
+                }
+                finally
+                {
+                    RlpxPeer.ConnectCalled -= handler;
                 }
             }
 

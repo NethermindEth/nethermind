@@ -376,7 +376,10 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             {
                 if (predicate(BlockTree.BestSuggestedHeader))
                     return;
-                tcs.Task.Wait(timeoutMs);
+                if (!tcs.Task.Wait(timeoutMs))
+                {
+                    Assert.Fail($"Timed out after {timeoutMs}ms waiting for predicate on BestSuggestedHeader. Current: {BlockTree.BestSuggestedHeader}");
+                }
             }
             finally
             {
