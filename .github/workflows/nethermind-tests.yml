@@ -189,9 +189,17 @@ jobs:
           dotnet build "$build_target" -c release -m -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
-          # 2-wide within the group; 4-wide on multi-vCPU runners surfaces flakes
-          # beyond our [Category("Flaky")] list. PID tracking (not `wait -n`)
-          # because macOS GitHub runners ship bash 3.2.
+          # Single-project groups: stream output live so progress is visible.
+          # Multi-project groups: 2-wide bash parallelism with per-project log
+          # files so concurrent streams don't interleave; logs dumped at the end.
+          if (( ${#projects[@]} == 1 )); then
+            project="${projects[0]}"
+            dotnet test --project "$project/$project.csproj" -c release \
+              --no-build --no-restore -v minimal $coverage_args \
+              --filter "TestCategory!=Flaky"
+            exit $?
+          fi
+
           MAX_PARALLEL=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 2)
           (( MAX_PARALLEL > 2 )) && MAX_PARALLEL=2
           results_dir=$(mktemp -d)
@@ -320,6 +328,15 @@ jobs:
 
           dotnet build EthereumTests.slnx -c release -m -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
+
+          # Single-project groups stream live (see comment in `tests` job).
+          if (( ${#projects[@]} == 1 )); then
+            project="${projects[0]}"
+            dotnet test --project "$project/$project.csproj" -c release \
+              --no-build --no-restore -v minimal $coverage_args \
+              --filter "TestCategory!=Flaky"
+            exit $?
+          fi
 
           MAX_PARALLEL=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 2)
           (( MAX_PARALLEL > 2 )) && MAX_PARALLEL=2

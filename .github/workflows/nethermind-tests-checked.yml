@@ -187,6 +187,16 @@ jobs:
           dotnet build "$build_target" -c release -m -v minimal $VARIANT_ARGS -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
+          # Single-project groups stream output live; multi-project groups
+          # use a 2-wide bash loop with per-project log files.
+          if (( ${#projects[@]} == 1 )); then
+            project="${projects[0]}"
+            dotnet test --project "$project/$project.csproj" -c release \
+              --no-build --no-restore -v minimal $VARIANT_ARGS \
+              --filter "TestCategory!=Flaky"
+            exit $?
+          fi
+
           MAX_PARALLEL=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 2)
           (( MAX_PARALLEL > 2 )) && MAX_PARALLEL=2
           results_dir=$(mktemp -d)
