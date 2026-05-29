@@ -93,6 +93,7 @@ public partial class BlockAccessListManager(
     public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
+    public bool BatchReadEnabled { get; private set; }
 
     /// <summary>
     /// When set, the manager always builds the constructed GeneratedBlockAccessList even on
@@ -122,6 +123,10 @@ public partial class BlockAccessListManager(
             && !_isBuilding
             && suggestedBlock.BlockAccessList is not null
             && stateProvider.IsInScope;
+
+        // BAL-driven read warming: mirrors BlockCachePreWarmer.IsBalReadWarmingEnabled so
+        // HintBal honours the same opt-in config as the prewarmer path.
+        BatchReadEnabled = Enabled && blocksConfig.ParallelExecutionBatchRead;
 
         if (Enabled)
         {
