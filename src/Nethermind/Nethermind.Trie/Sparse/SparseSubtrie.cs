@@ -287,9 +287,17 @@ public sealed class SparseSubtrie : IDisposable
     public int CollapseBranch(int branchIdx)
     {
         int childCount = _arena[branchIdx].ChildCount();
+        // Capture the children slice up front. The 1-slot (or 0-slot) slice that backs this
+        // branch is no longer referenced once we free/promote the branch node, so we must
+        // return it to the size-bucketed free list. Deletion-heavy workloads hit this path
+        // thousands of times per block; previously every collapse leaked the slice.
+        int oldChildrenStart = _arena[branchIdx].ChildrenStart;
+
         if (childCount == 0)
         {
             FreeNode(branchIdx);
+            // RemoveChildFromBranch already returns the slice to the free list when it drops
+            // to zero children, so we don't double-free here.
             return AllocNode(SparseTrieNode.CreateEmpty());
         }
         if (childCount > 1) return branchIdx;
@@ -300,7 +308,7 @@ public sealed class SparseSubtrie : IDisposable
             if (_arena[branchIdx].StateMask.IsBitSet(n)) { remainingNibble = n; break; }
         }
 
-        SparseChildEntry remainingEntry = _children[_arena[branchIdx].ChildrenStart];
+        SparseChildEntry remainingEntry = _children[oldChildrenStart];
         if (remainingEntry.IsBlinded) return -1;
 
         int childIdx = remainingEntry.ArenaIndex;
@@ -328,6 +336,7 @@ public sealed class SparseSubtrie : IDisposable
             _arena[childIdx].ShortKey = newKey;
             _arena[childIdx].MarkDirty();
             FreeNode(branchIdx);
+            FreeChildren(oldChildrenStart, 1);
             return childIdx;
         }
 
@@ -340,6 +349,7 @@ public sealed class SparseSubtrie : IDisposable
             _arena[childIdx].ShortKey = newShortKey;
             _arena[childIdx].MarkDirty();
             FreeNode(branchIdx);
+            FreeChildren(oldChildrenStart, 1);
             return childIdx;
         }
 

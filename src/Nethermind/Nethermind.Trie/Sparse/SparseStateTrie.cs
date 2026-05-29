@@ -55,16 +55,16 @@ public sealed class SparseStateTrie : IDisposable
 
     public void UpdateStorageLeaves(
         Hash256 accountPathHash,
-        Dictionary<Hash256, LeafUpdate> updates,
-        Action<Hash256, byte>? proofRequired)
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        Action<ValueHash256, byte>? proofRequired)
     {
         SparsePatriciaTree storageTrie = GetOrCreateStorageTrie(accountPathHash);
         storageTrie.UpdateLeaves(updates, proofRequired);
     }
 
     public void UpdateAccountLeaves(
-        Dictionary<Hash256, LeafUpdate> updates,
-        Action<Hash256, byte>? proofRequired) =>
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        Action<ValueHash256, byte>? proofRequired) =>
         AccountTrie.UpdateLeaves(updates, proofRequired);
 
     public Hash256 ComputeStorageRoot(Hash256 accountPathHash)
@@ -113,6 +113,15 @@ public sealed class SparseStateTrie : IDisposable
         if (maxHotSlots < int.MaxValue)
             _hotSlotsLfu ??= new BucketedLfu<(Hash256, Hash256)>(maxHotSlots);
     }
+
+    /// <summary>True when the account-LFU is enabled (cap is &lt; int.MaxValue). Used to
+    /// short-circuit per-update touch loops when the default "Prune disabled" config is in
+    /// effect â€” iterating the updates dictionary just to call a null-checking no-op shows up
+    /// on storage-heavy blocks.</summary>
+    public bool HasAccountLfu => _hotAccountsLfu is not null;
+
+    /// <summary>True when the slot-LFU is enabled. See <see cref="HasAccountLfu"/>.</summary>
+    public bool HasSlotLfu => _hotSlotsLfu is not null;
 
     /// <summary>
     /// Touches account and slot keys in the LFU caches during UpdateLeaves.

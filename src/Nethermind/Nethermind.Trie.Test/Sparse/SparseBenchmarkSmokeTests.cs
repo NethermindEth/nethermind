@@ -52,7 +52,7 @@ public class SparseBenchmarkSmokeTests
         // Sparse
         Stopwatch swSparse = Stopwatch.StartNew();
         using SparsePatriciaTree sparse = new();
-        Dictionary<Hash256, LeafUpdate> updates = new(n);
+        Dictionary<ValueHash256, LeafUpdate> updates = new(n);
         for (int i = 0; i < n; i++)
             updates[keys[i]] = LeafUpdate.Changed(values[i]);
         sparse.UpdateLeaves(updates, null);

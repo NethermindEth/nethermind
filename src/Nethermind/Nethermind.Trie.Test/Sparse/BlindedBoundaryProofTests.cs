@@ -54,7 +54,7 @@ public class BlindedBoundaryProofTests
         sparse.RevealNodes([rootOnlyProof.AccountNodes[0]]);
 
         // Step 2: apply the update — should hit a blinded boundary.
-        Dictionary<Hash256, LeafUpdate> updates = new()
+        Dictionary<ValueHash256, LeafUpdate> updates = new()
         {
             [TestItem.Keccaks[2]] = LeafUpdate.Changed(newValue)
         };
@@ -63,7 +63,7 @@ public class BlindedBoundaryProofTests
         for (int retry = 0; retry < maxRetries; retry++)
         {
             List<Hash256> targets = [];
-            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key));
+            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key.ToCommitment()));
             if (targets.Count == 0) break;
 
             List<MultiProofReader.BlindedProofTarget> blinded = [];
@@ -130,7 +130,7 @@ public class BlindedBoundaryProofTests
         // Reveal ONLY the first node (the extension wrapper). Skip the inner branch.
         sparse.RevealNodes([rootOnly.AccountNodes[0]]);
 
-        Dictionary<Hash256, LeafUpdate> updates = new()
+        Dictionary<ValueHash256, LeafUpdate> updates = new()
         {
             [k0] = LeafUpdate.Changed(newValue)
         };
@@ -139,7 +139,7 @@ public class BlindedBoundaryProofTests
         for (int retry = 0; retry < maxRetries; retry++)
         {
             List<Hash256> targets = [];
-            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key));
+            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key.ToCommitment()));
             if (targets.Count == 0) break;
 
             List<MultiProofReader.BlindedProofTarget> blinded = [];
@@ -200,14 +200,14 @@ public class BlindedBoundaryProofTests
         using SparsePatriciaTree sparse = new();
         sparse.RevealNodes([rootOnly.AccountNodes[0]]);
 
-        Dictionary<Hash256, LeafUpdate> updates = new() { [k0] = LeafUpdate.Deleted() };
+        Dictionary<ValueHash256, LeafUpdate> updates = new() { [k0] = LeafUpdate.Deleted() };
 
         const int maxRetries = 8;
         int retries = 0;
         for (int retry = 0; retry < maxRetries; retry++)
         {
             List<Hash256> targets = [];
-            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key));
+            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key.ToCommitment()));
             if (targets.Count == 0) break;
 
             List<MultiProofReader.BlindedProofTarget> blinded = [];
@@ -272,7 +272,7 @@ public class BlindedBoundaryProofTests
             Hash256 patriciaRoot = tree.RootHash;
 
             // Update sparse via the blinded-boundary proof path.
-            Dictionary<Hash256, LeafUpdate> updates = new()
+            Dictionary<ValueHash256, LeafUpdate> updates = new()
             {
                 [TestItem.Keccaks[idx]] = LeafUpdate.Changed(newValue)
             };
@@ -280,7 +280,7 @@ public class BlindedBoundaryProofTests
             for (int retry = 0; retry < maxRetries; retry++)
             {
                 List<Hash256> targets = [];
-                sparse.UpdateLeaves(updates, (key, _) => targets.Add(key));
+                sparse.UpdateLeaves(updates, (key, _) => targets.Add(key.ToCommitment()));
                 if (targets.Count == 0) break;
 
                 List<MultiProofReader.BlindedProofTarget> blinded = [];

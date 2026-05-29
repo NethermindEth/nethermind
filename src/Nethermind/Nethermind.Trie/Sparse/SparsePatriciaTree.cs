@@ -289,11 +289,16 @@ public sealed class SparsePatriciaTree : IDisposable
     /// proof reader can then skip nodes ABOVE minLen for that target (they're already revealed
     /// in this sparse trie). This mirrors Reth's ProofV2Target.with_min_len() optimization.
     /// </summary>
+    /// <remarks>
+    /// Keys are <see cref="ValueHash256"/> â€” the value-type hash form â€” so callers can
+    /// produce keys via <c>ValueKeccak.Compute</c> without per-slot <see cref="Hash256"/>
+    /// (class) allocations. This is the dominant per-block alloc source under sparse mode.
+    /// </remarks>
     public void UpdateLeaves(
-        Dictionary<Hash256, LeafUpdate> updates,
-        Action<Hash256, byte>? proofRequired)
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        Action<ValueHash256, byte>? proofRequired)
     {
-        foreach (KeyValuePair<Hash256, LeafUpdate> kvp in updates)
+        foreach (KeyValuePair<ValueHash256, LeafUpdate> kvp in updates)
         {
             byte[] nibblePath = Nibbles.BytesToNibbleBytes(kvp.Key.Bytes);
             SparseSubtrie.UpdateResult result = _subtrie.UpdateSingleLeaf(

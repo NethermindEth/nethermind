@@ -36,7 +36,7 @@ public class SparsePatriciaTreeTests
         return tree.RootHash;
     }
 
-    private static Hash256 SparseRootFromDirectInserts(Dictionary<Hash256, LeafUpdate> updates)
+    private static Hash256 SparseRootFromDirectInserts(Dictionary<ValueHash256, LeafUpdate> updates)
     {
         using SparsePatriciaTree sparse = new();
         sparse.UpdateLeaves(updates, null);
@@ -307,7 +307,7 @@ public class SparsePatriciaTreeTests
                 t.Set(TestItem.Keccaks[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
         });
 
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         for (int i = 0; i < count; i++)
             updates[TestItem.Keccaks[i]] = LeafUpdate.Changed(TestItem.GenerateIndexedAccountRlp(i));
 
@@ -373,7 +373,7 @@ public class SparsePatriciaTreeTests
                 t.Set(TestItem.Keccaks[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
         });
 
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         for (int i = 0; i < count; i++)
             updates[TestItem.Keccaks[i]] = LeafUpdate.Changed(TestItem.GenerateIndexedAccountRlp(i));
 
@@ -452,7 +452,7 @@ public class SparsePatriciaTreeTests
         List<Hash256> proofRequests = [];
         sparse.UpdateLeaves(
             new() { [TestItem.Keccaks[5]] = LeafUpdate.Changed(MakeValue(99)) },
-            (key, _) => proofRequests.Add(key));
+            (key, _) => proofRequests.Add(key.ToCommitment()));
 
         proofRequests.Should().NotBeEmpty("Updating a key not in the proof should request a proof");
     }
@@ -478,7 +478,7 @@ public class SparsePatriciaTreeTests
         List<Hash256> proofRequests = [];
         sparse.UpdateLeaves(
             new() { [TestItem.Keccaks[5]] = LeafUpdate.Changed(MakeValue(99)) },
-            (key, _) => proofRequests.Add(key));
+            (key, _) => proofRequests.Add(key.ToCommitment()));
         proofRequests.Should().NotBeEmpty();
 
         // Now reveal the path for key 5
@@ -489,7 +489,7 @@ public class SparsePatriciaTreeTests
         proofRequests.Clear();
         sparse.UpdateLeaves(
             new() { [TestItem.Keccaks[5]] = LeafUpdate.Changed(MakeValue(99)) },
-            (key, _) => proofRequests.Add(key));
+            (key, _) => proofRequests.Add(key.ToCommitment()));
 
         proofRequests.Should().BeEmpty("After revealing the path, the update should succeed without proof requests");
     }

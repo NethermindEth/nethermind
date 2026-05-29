@@ -62,7 +62,7 @@ public class SparseTrieUpdateBenchmarks
     [Params(10, 100, 1_000)]
     public int N;
 
-    private Dictionary<Hash256, LeafUpdate> _updates = null!;
+    private Dictionary<ValueHash256, LeafUpdate> _updates = null!;
     private SparsePatriciaTree _prePopulated = null!;
 
     [GlobalSetup]
@@ -87,7 +87,7 @@ public class SparseTrieUpdateBenchmarks
     public Hash256 UpdateAndComputeRoot()
     {
         Random rng = new(123);
-        Dictionary<Hash256, LeafUpdate> changes = [];
+        Dictionary<ValueHash256, LeafUpdate> changes = [];
         foreach (Hash256 key in _updates.Keys)
         {
             if (rng.Next(100) < 70)
@@ -146,7 +146,7 @@ public class EndToEndBenchmarks
     public Hash256 Sparse_UpdateAndRoot()
     {
         using SparsePatriciaTree sparse = new();
-        Dictionary<Hash256, LeafUpdate> updates = new(N);
+        Dictionary<ValueHash256, LeafUpdate> updates = new(N);
         for (int i = 0; i < N; i++)
             updates[_keys[i]] = LeafUpdate.Changed(_values[i]);
         sparse.UpdateLeaves(updates, null);

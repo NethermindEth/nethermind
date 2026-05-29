@@ -113,7 +113,7 @@ public class SparseStorageDivergenceRepro
         if (seedProof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? seedNodes))
             sparse.RevealNodes(seedNodes);
 
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         ValueHash256 keyBuf = default;
         foreach ((UInt256 slot, byte[] value) in UsdtUpdates)
         {
@@ -139,7 +139,7 @@ public class SparseStorageDivergenceRepro
         for (int retry = 0; retry < maxRetries; retry++)
         {
             List<Hash256> targets = [];
-            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key));
+            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key.ToCommitment()));
             if (targets.Count == 0) break;
 
             DecodedMultiProof proof = MultiProofReader.ReadStorageProofs(
@@ -261,7 +261,7 @@ public class SparseStorageDivergenceRepro
             if (seedProof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? seedNodes))
                 sparse.RevealNodes(seedNodes);
 
-            Dictionary<Hash256, LeafUpdate> updates = [];
+            Dictionary<ValueHash256, LeafUpdate> updates = [];
             ValueHash256 keyBuf = default;
             foreach ((UInt256 slot, byte[] value) in shuffled)
             {
@@ -284,7 +284,7 @@ public class SparseStorageDivergenceRepro
             for (int retry = 0; retry < 10; retry++)
             {
                 List<Hash256> targets = [];
-                sparse.UpdateLeaves(updates, (key, _) => targets.Add(key));
+                sparse.UpdateLeaves(updates, (key, _) => targets.Add(key.ToCommitment()));
                 if (targets.Count == 0) break;
                 DecodedMultiProof proof = MultiProofReader.ReadStorageProofs(
                     reader, accountPathHash, seedRoot, targets.ToArray());
@@ -347,7 +347,7 @@ public class SparseStorageDivergenceRepro
         if (seedProof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? seedNodes))
             sparse.RevealNodes(seedNodes);
 
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         ValueHash256 keyBuf = default;
         foreach ((UInt256 slot, byte[] value) in UsdtUpdates)
         {
@@ -372,7 +372,7 @@ public class SparseStorageDivergenceRepro
         for (int retry = 0; retry < maxRetries; retry++)
         {
             List<Hash256> targets = [];
-            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key));
+            sparse.UpdateLeaves(updates, (key, _) => targets.Add(key.ToCommitment()));
             if (targets.Count == 0) break;
 
             DecodedMultiProof proof = MultiProofReader.ReadStorageProofs(

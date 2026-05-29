@@ -60,13 +60,13 @@ public class SparseRevealTests
         sparse.RevealNodes(proof.AccountNodes);
 
         // Step 3: Apply the update
-        Dictionary<Hash256, LeafUpdate> updates = new()
+        Dictionary<ValueHash256, LeafUpdate> updates = new()
         {
             [TestItem.Keccaks[2]] = LeafUpdate.Changed(newValue)
         };
 
         List<Hash256> proofTargets = [];
-        sparse.UpdateLeaves(updates, (key, _) => proofTargets.Add(key));
+        sparse.UpdateLeaves(updates, (key, _) => proofTargets.Add(key.ToCommitment()));
 
         TestContext.Out.WriteLine($"Proof targets after update: {proofTargets.Count}");
         foreach (Hash256 target in proofTargets)
@@ -79,7 +79,7 @@ public class SparseRevealTests
                 reader, originalRoot, proofTargets.ToArray());
             sparse.RevealNodes(extraProof.AccountNodes);
             proofTargets.Clear();
-            sparse.UpdateLeaves(updates, (key, _) => proofTargets.Add(key));
+            sparse.UpdateLeaves(updates, (key, _) => proofTargets.Add(key.ToCommitment()));
         }
 
         // Step 4: Compute root
@@ -181,7 +181,7 @@ public class SparseRevealTests
         HalfPathTrieNodeReader reader = new(new NodeStorage(db));
         using State.Flat.SparseRootComputer computer = new(reader, originalRoot);
 
-        Dictionary<Hash256, LeafUpdate> accountUpdates = new()
+        Dictionary<ValueHash256, LeafUpdate> accountUpdates = new()
         {
             [TestItem.Keccaks[2]] = LeafUpdate.Changed(newAccountRlp)
         };
@@ -208,7 +208,7 @@ public class SparseRevealTests
         Hash256 originalRoot = tree.RootHash;
 
         // Update 10 accounts
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         for (int i = 0; i < 10; i++)
         {
             byte[] newRlp = TestItem.GenerateIndexedAccountRlp(100 + i);
@@ -263,7 +263,7 @@ public class SparseRevealTests
         HalfPathTrieNodeReader reader = new(new NodeStorage(db));
         using State.Flat.SparseRootComputer computer = new(reader, block1Root);
 
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         for (int i = 0; i < 5; i++)
             updates[TestItem.Keccaks[i]] = LeafUpdate.Changed(newRlps[i]);
 
@@ -287,7 +287,7 @@ public class SparseRevealTests
         tree.Commit();
         Hash256 originalRoot = tree.RootHash;
 
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         for (int i = 0; i < 50; i++)
         {
             byte[] newRlp = TestItem.GenerateIndexedAccountRlp(500 + i);
@@ -343,7 +343,7 @@ public class SparseRevealTests
             byte[] newRlp = TestItem.GenerateIndexedAccountRlp(50000 + k);
             refTree.Set(keys[k].Bytes, newRlp);
 
-            Dictionary<Hash256, LeafUpdate> oneUpdate = new()
+            Dictionary<ValueHash256, LeafUpdate> oneUpdate = new()
             {
                 [keys[k]] = LeafUpdate.Changed(newRlp)
             };
@@ -396,7 +396,7 @@ public class SparseRevealTests
         tree.UpdateRootHash();
         tree.Commit();
 
-        Dictionary<Hash256, LeafUpdate> updates = new() { [keys[0]] = LeafUpdate.Changed(newRlp) };
+        Dictionary<ValueHash256, LeafUpdate> updates = new() { [keys[0]] = LeafUpdate.Changed(newRlp) };
         sparse.UpdateLeaves(updates, (_, _) => { });
         Hash256 sparseRoot = sparse.ComputeRoot();
         sparseRoot.Should().Be(tree.RootHash, "Post-update root must match Patricia");
@@ -483,9 +483,9 @@ public class SparseRevealTests
         sparse.RevealNodes(initialProof.AccountNodes);
 
         // 2. Apply update — may hit blinded nodes
-        Dictionary<Hash256, LeafUpdate> updates = new() { [TestItem.Keccaks[0]] = LeafUpdate.Changed(newRlp) };
+        Dictionary<ValueHash256, LeafUpdate> updates = new() { [TestItem.Keccaks[0]] = LeafUpdate.Changed(newRlp) };
         List<Hash256> proofTargets = [];
-        sparse.UpdateLeaves(updates, (key, _) => proofTargets.Add(key));
+        sparse.UpdateLeaves(updates, (key, _) => proofTargets.Add(key.ToCommitment()));
 
         // 3. Retry: read new proofs (which include root again) and re-reveal
         while (proofTargets.Count > 0)
@@ -494,7 +494,7 @@ public class SparseRevealTests
                 reader, originalRoot, proofTargets.ToArray());
             sparse.RevealNodes(retryProof.AccountNodes);
             proofTargets.Clear();
-            sparse.UpdateLeaves(updates, (key, _) => proofTargets.Add(key));
+            sparse.UpdateLeaves(updates, (key, _) => proofTargets.Add(key.ToCommitment()));
         }
 
         Hash256 sparseRoot = sparse.ComputeRoot();
@@ -520,7 +520,7 @@ public class SparseRevealTests
         tree.Commit();
         Hash256 originalRoot = tree.RootHash;
 
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         for (int i = 0; i < updateCount; i++)
         {
             byte[] newRlp = TestItem.GenerateIndexedAccountRlp(50000 + i);
@@ -562,7 +562,7 @@ public class SparseRevealTests
         tree.Commit();
         Hash256 originalRoot = tree.RootHash;
 
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         for (int i = 0; i < updateCount; i++)
         {
             byte[] newRlp = TestItem.GenerateIndexedAccountRlp(50000 + i);
@@ -617,7 +617,7 @@ public class SparseRevealTests
 
         for (int block = 0; block < numBlocks; block++)
         {
-            Dictionary<Hash256, LeafUpdate> updates = [];
+            Dictionary<ValueHash256, LeafUpdate> updates = [];
             int startIdx = rng.Next(0, trieSize - changesPerBlock);
             for (int i = startIdx; i < startIdx + changesPerBlock; i++)
             {

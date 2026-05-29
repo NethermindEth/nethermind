@@ -30,8 +30,8 @@ public sealed class SparseRootComputer : IDisposable
     /// PersistentStorageProvider.UpdateRootHashesMultiThread's parallel worker threads,
     /// one per contract.
     /// </summary>
-    private readonly ConcurrentDictionary<Hash256, (Hash256 PreviousStorageRoot, Dictionary<Hash256, LeafUpdate> Updates)> _storageChanges = new();
-    private Dictionary<Hash256, LeafUpdate>? _accountChanges;
+    private readonly ConcurrentDictionary<Hash256, (Hash256 PreviousStorageRoot, Dictionary<ValueHash256, LeafUpdate> Updates)> _storageChanges = new();
+    private Dictionary<ValueHash256, LeafUpdate>? _accountChanges;
 
     public SparseRootComputer(ITrieNodeReader reader, Hash256 previousStateRoot)
         : this(new SparseStateTrie(), reader, previousStateRoot, ownsTrie: true) { }
@@ -47,10 +47,10 @@ public sealed class SparseRootComputer : IDisposable
         _ownsTrie = ownsTrie;
     }
 
-    public void AddStorageChanges(Hash256 accountPathHash, Hash256 previousStorageRoot, Dictionary<Hash256, LeafUpdate> slotUpdates) =>
+    public void AddStorageChanges(Hash256 accountPathHash, Hash256 previousStorageRoot, Dictionary<ValueHash256, LeafUpdate> slotUpdates) =>
         _storageChanges[accountPathHash] = (previousStorageRoot, slotUpdates);
 
-    public void SetAccountChanges(Dictionary<Hash256, LeafUpdate> accountUpdates) =>
+    public void SetAccountChanges(Dictionary<ValueHash256, LeafUpdate> accountUpdates) =>
         _accountChanges = accountUpdates;
 
     // USDT contract hash — when DiagDumpForContract matches, we dump every proof read and
@@ -60,14 +60,20 @@ public sealed class SparseRootComputer : IDisposable
 
     public Hash256 ComputeStorageRoot(Hash256 accountPathHash)
     {
-        if (!_storageChanges.TryGetValue(accountPathHash, out (Hash256 PreviousStorageRoot, Dictionary<Hash256, LeafUpdate> Updates) entry))
+        if (!_storageChanges.TryGetValue(accountPathHash, out (Hash256 PreviousStorageRoot, Dictionary<ValueHash256, LeafUpdate> Updates) entry))
             return Keccak.EmptyTreeHash;
 
-        // Touch LFU for every slot we're about to update. Hot slots will stay revealed
-        // after the next Prune; cold slots collapse back to Blinded.
-        _trie.TouchLfu(accountPathHash);
-        foreach (Hash256 slotKey in entry.Updates.Keys)
-            _trie.TouchSlotLfu(accountPathHash, slotKey);
+        // Touch LFU for every slot we're about to update so hot slots survive Prune.
+        // Default-disabled LFU (caps = int.MaxValue) means the per-slot virtual call would
+        // be a wasted pass over the updates dictionary; HasAccountLfu / HasSlotLfu let us
+        // short-circuit the loop entirely in the common case.
+        if (_trie.HasAccountLfu)
+            _trie.TouchLfu(accountPathHash);
+        if (_trie.HasSlotLfu)
+        {
+            foreach (ValueHash256 slotKey in entry.Updates.Keys)
+                _trie.TouchSlotLfu(accountPathHash, slotKey.ToCommitment());
+        }
 
         if (entry.PreviousStorageRoot == Keccak.EmptyTreeHash && entry.Updates.Count == 0)
             return Keccak.EmptyTreeHash;
@@ -93,12 +99,12 @@ public sealed class SparseRootComputer : IDisposable
             Console.Error.WriteLine($"DIAG_STORAGE_REUSE_EXISTING_TRIE subtrieRoot={storageTrie.Subtrie.Root} cachedRoot={(storageTrie.Subtrie.Root < 0 ? "empty" : storageTrie.ComputeRoot().ToString())}");
         }
 
-        Dictionary<Hash256, LeafUpdate> updates = entry.Updates;
-        Hash256? lastFirstTarget = null;
+        Dictionary<ValueHash256, LeafUpdate> updates = entry.Updates;
+        ValueHash256? lastFirstTarget = null;
         int sameTargetCount = 0;
         for (int retry = 0; retry < MaxRetries; retry++)
         {
-            List<(Hash256 key, byte minLen)> targets = [];
+            List<(ValueHash256 key, byte minLen)> targets = [];
             storageTrie.UpdateLeaves(updates, (key, minLen) => targets.Add((key, minLen)));
             if (targets.Count == 0) break;
 
@@ -106,8 +112,8 @@ public sealed class SparseRootComputer : IDisposable
             // paths, never the sibling that the collapse needs. If the same first target keeps
             // returning NeedsProof, resolve the blinded sibling directly from the sparse trie's
             // known blinded hashes. Mirrors the account-loop's TryResolveBlindedSiblings.
-            Hash256 firstTarget = targets[0].key;
-            if (lastFirstTarget is not null && lastFirstTarget == firstTarget) sameTargetCount++;
+            ValueHash256 firstTarget = targets[0].key;
+            if (lastFirstTarget is not null && lastFirstTarget.Value == firstTarget) sameTargetCount++;
             else sameTargetCount = 0;
             lastFirstTarget = firstTarget;
 
@@ -120,7 +126,7 @@ public sealed class SparseRootComputer : IDisposable
             {
                 // Dump the stuck state so we can build an offline reproducer
                 Console.Error.WriteLine($"DIAG_STUCK_BEGIN addr={accountPathHash} prevRoot={entry.PreviousStorageRoot} updates={entry.Updates.Count}");
-                foreach ((Hash256 key, byte _) in targets)
+                foreach ((ValueHash256 key, byte _) in targets)
                 {
                     Console.Error.WriteLine($"DIAG_STUCK_TARGET key={key} isDelete={(updates.TryGetValue(key, out LeafUpdate u) ? u.IsDelete : false)}");
                     byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
@@ -139,7 +145,7 @@ public sealed class SparseRootComputer : IDisposable
 
             // P0 minLen: same blinded-boundary optimization as the account loop.
             List<MultiProofReader.BlindedProofTarget> blinded = [];
-            foreach ((Hash256 key, byte _) in targets)
+            foreach ((ValueHash256 key, byte _) in targets)
             {
                 byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
                 if (storageTrie.Subtrie.TryFindBlindedEntryOnPath(
@@ -188,7 +194,7 @@ public sealed class SparseRootComputer : IDisposable
     public long LastUpdateLeavesMs { get; private set; }
     public long LastComputeRootMs { get; private set; }
     public int LastRetryCount { get; private set; }
-    internal Dictionary<Hash256, LeafUpdate>? LastAccountChanges => _accountChanges;
+    internal Dictionary<ValueHash256, LeafUpdate>? LastAccountChanges => _accountChanges;
 
     /// <summary>The underlying trie for persistence and cross-block storage.</summary>
     internal SparseStateTrie Trie => _trie;
@@ -199,7 +205,7 @@ public sealed class SparseRootComputer : IDisposable
     /// enumeration of the concurrent dictionary (no snapshot copy).</summary>
     public IEnumerable<Hash256> DirtyStorageAccountHashes()
     {
-        foreach (KeyValuePair<Hash256, (Hash256, Dictionary<Hash256, LeafUpdate>)> kvp in _storageChanges)
+        foreach (KeyValuePair<Hash256, (Hash256, Dictionary<ValueHash256, LeafUpdate>)> kvp in _storageChanges)
             yield return kvp.Key;
     }
 
@@ -209,8 +215,12 @@ public sealed class SparseRootComputer : IDisposable
             return _previousStateRoot;
 
         // Touch LFU for every account we're about to update so hot accounts survive Prune.
-        foreach (Hash256 accountKey in _accountChanges.Keys)
-            _trie.TouchLfu(accountKey);
+        // Skip the loop entirely when the account-LFU is disabled (default Prune-off path).
+        if (_trie.HasAccountLfu)
+        {
+            foreach (ValueHash256 accountKey in _accountChanges.Keys)
+                _trie.TouchLfu(accountKey.ToCommitment());
+        }
 
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
 
@@ -242,20 +252,20 @@ public sealed class SparseRootComputer : IDisposable
         LastRevealMs = 0;
 
         long updateMsAccum = 0;
-        Hash256? lastTarget = null;
+        ValueHash256? lastTarget = null;
         int sameTargetCount = 0;
         for (int retry = 0; retry < MaxRetries; retry++)
         {
             long ts = System.Diagnostics.Stopwatch.GetTimestamp();
-            List<(Hash256 key, byte minLen)> targets = [];
+            List<(ValueHash256 key, byte minLen)> targets = [];
             _trie.UpdateAccountLeaves(_accountChanges, (key, minLen) => targets.Add((key, minLen)));
             updateMsAccum += (System.Diagnostics.Stopwatch.GetTimestamp() - ts) * 1000 / System.Diagnostics.Stopwatch.Frequency;
             LastRetryCount = retry;
             if (targets.Count == 0) break;
 
             // Detect stuck-on-same-target case: track if the same target keeps coming back
-            Hash256 firstTarget = targets[0].key;
-            if (lastTarget is not null && lastTarget == firstTarget) sameTargetCount++;
+            ValueHash256 firstTarget = targets[0].key;
+            if (lastTarget is not null && lastTarget.Value == firstTarget) sameTargetCount++;
             else sameTargetCount = 0;
             lastTarget = firstTarget;
 
@@ -264,8 +274,8 @@ public sealed class SparseRootComputer : IDisposable
             // sparse trie's known blinded hashes and inject it as a ProofNode.
             if (sameTargetCount >= 1)
             {
-                List<Hash256> deletionTargets = [];
-                foreach ((Hash256 k, _) in targets) deletionTargets.Add(k);
+                List<ValueHash256> deletionTargets = [];
+                foreach ((ValueHash256 k, _) in targets) deletionTargets.Add(k);
                 TryResolveBlindedSiblings(deletionTargets);
             }
 
@@ -281,7 +291,7 @@ public sealed class SparseRootComputer : IDisposable
             // Diagnostic isolation confirmed the previous wrong-root failure was in storage,
             // not here, so re-enable for accounts.
             List<MultiProofReader.BlindedProofTarget> blinded = [];
-            foreach ((Hash256 key, byte _) in targets)
+            foreach ((ValueHash256 key, byte _) in targets)
             {
                 byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
                 if (_trie.AccountTrie.Subtrie.TryFindBlindedEntryOnPath(
@@ -321,9 +331,9 @@ public sealed class SparseRootComputer : IDisposable
     /// directly via the reader (using the hash stored as the blinded child's RlpNode) and
     /// reveal it. This unsticks the retry loop for blinded-sibling-deletion cases.
     /// </summary>
-    private void TryResolveBlindedSiblings(List<Hash256> targets)
+    private void TryResolveBlindedSiblings(List<ValueHash256> targets)
     {
-        foreach (Hash256 target in targets)
+        foreach (ValueHash256 target in targets)
         {
             if (!_accountChanges!.TryGetValue(target, out LeafUpdate upd) || !upd.IsDelete)
                 continue;
@@ -369,10 +379,10 @@ public sealed class SparseRootComputer : IDisposable
     private void TryResolveBlindedStorageSiblings(
         SparsePatriciaTree storageTrie,
         Hash256 accountPathHash,
-        Dictionary<Hash256, LeafUpdate> updates,
-        List<(Hash256 key, byte minLen)> targets)
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        List<(ValueHash256 key, byte minLen)> targets)
     {
-        foreach ((Hash256 target, _) in targets)
+        foreach ((ValueHash256 target, _) in targets)
         {
             if (!updates.TryGetValue(target, out LeafUpdate upd) || !upd.IsDelete)
                 continue;

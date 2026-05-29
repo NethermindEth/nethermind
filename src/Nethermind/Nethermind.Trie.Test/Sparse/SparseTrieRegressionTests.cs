@@ -86,12 +86,12 @@ public class SparseTrieRegressionTests
         tree.Commit();
 
         using SparsePatriciaTree sparse = new();
-        sparse.UpdateLeaves(new Dictionary<Hash256, LeafUpdate>
+        sparse.UpdateLeaves(new Dictionary<ValueHash256, LeafUpdate>
         {
             [keyA] = LeafUpdate.Changed(valA),
             [keyB] = LeafUpdate.Changed(valB),
         }, null);
-        sparse.UpdateLeaves(new Dictionary<Hash256, LeafUpdate> { [keyB] = LeafUpdate.Deleted() }, null);
+        sparse.UpdateLeaves(new Dictionary<ValueHash256, LeafUpdate> { [keyB] = LeafUpdate.Deleted() }, null);
         Hash256 sparseRoot = sparse.ComputeRoot();
 
         sparseRoot.Should().Be(tree.RootHash);
@@ -116,11 +116,11 @@ public class SparseTrieRegressionTests
         tree.Commit();
 
         using SparsePatriciaTree sparse = new();
-        Dictionary<Hash256, LeafUpdate> inserts = [];
+        Dictionary<ValueHash256, LeafUpdate> inserts = [];
         for (int i = 0; i < 3; i++) inserts[keys[i]] = LeafUpdate.Changed(vals[i]);
         sparse.UpdateLeaves(inserts, null);
 
-        sparse.UpdateLeaves(new Dictionary<Hash256, LeafUpdate> { [keys[1]] = LeafUpdate.Deleted() }, null);
+        sparse.UpdateLeaves(new Dictionary<ValueHash256, LeafUpdate> { [keys[1]] = LeafUpdate.Deleted() }, null);
         Hash256 sparseRoot = sparse.ComputeRoot();
 
         sparseRoot.Should().Be(tree.RootHash);

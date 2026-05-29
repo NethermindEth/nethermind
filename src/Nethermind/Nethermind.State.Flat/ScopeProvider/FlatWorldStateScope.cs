@@ -563,13 +563,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     }
                 }
 
-                // Feed account changes to SparseRootComputer
+                // Feed account changes to SparseRootComputer. ValueKeccak.Compute returns the
+                // value-type hash directly so the per-account hash never allocates a Hash256
+                // (class). At 10k+ accounts/block this is one of the dominant alloc sources.
                 if (scope._sparseRootComputer is not null)
                 {
-                    Dictionary<Hash256, LeafUpdate> sparseAccountUpdates = new(_dirtyAccounts.Count);
+                    Dictionary<ValueHash256, LeafUpdate> sparseAccountUpdates = new(_dirtyAccounts.Count);
                     foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                     {
-                        Hash256 hashedAddr = Keccak.Compute(kv.Key.Value.Bytes);
+                        ValueHash256 hashedAddr = ValueKeccak.Compute(kv.Key.Value.Bytes);
                         if (kv.Value is null)
                         {
                             sparseAccountUpdates[hashedAddr] = LeafUpdate.Deleted();

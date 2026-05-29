@@ -64,7 +64,7 @@ public class SparseRootComputerFlatDbTests
         // Sparse via HalfPath (proven to work)
         HalfPathTrieNodeReader halfPathReader = new(new NodeStorage(trieDb));
         using SparseRootComputer halfPathComputer = new(halfPathReader, block1Root);
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         for (int i = 0; i < 5; i++)
             updates[TestItem.Keccaks[i]] = LeafUpdate.Changed(newRlps[i]);
         halfPathComputer.SetAccountChanges(updates);
@@ -213,7 +213,7 @@ public class SparseRootComputerFlatDbTests
         {
             // Determine which accounts to update
             int startIdx = rng.Next(0, trieSize - changesPerBlock);
-            Dictionary<Hash256, LeafUpdate> sparseUpdates = new(changesPerBlock);
+            Dictionary<ValueHash256, LeafUpdate> sparseUpdates = new(changesPerBlock);
 
             for (int i = startIdx; i < startIdx + changesPerBlock; i++)
             {
@@ -328,7 +328,7 @@ public class SparseRootComputerFlatDbTests
         for (int block = 1; block <= numBlocks; block++)
         {
             int startIdx = rng.Next(0, trieSize - changesPerBlock);
-            Dictionary<Hash256, LeafUpdate> sparseUpdates = new(changesPerBlock);
+            Dictionary<ValueHash256, LeafUpdate> sparseUpdates = new(changesPerBlock);
 
             for (int i = startIdx; i < startIdx + changesPerBlock; i++)
             {

@@ -125,7 +125,7 @@ public class UsdtMainnetReproducer
         foreach (ProofNode pn in reader.AllProofNodes())
             sparse.RevealNodes([pn]);
 
-        Dictionary<Hash256, LeafUpdate> updates = BuildUpdates();
+        Dictionary<ValueHash256, LeafUpdate> updates = BuildUpdates();
 
         const int maxRetries = 16;
         int retriesUsed = 0;
@@ -133,7 +133,7 @@ public class UsdtMainnetReproducer
         for (int retry = 0; retry < maxRetries; retry++)
         {
             List<Hash256> needsProof = [];
-            sparse.UpdateLeaves(updates, (key, _) => needsProof.Add(key));
+            sparse.UpdateLeaves(updates, (key, _) => needsProof.Add(key.ToCommitment()));
             if (needsProof.Count == 0) break;
             totalBlindedReports += needsProof.Count;
 
@@ -186,7 +186,7 @@ public class UsdtMainnetReproducer
         byte[] rootRlp = reader.LoadStorageRlp(UsdtAddressHash, TreePath.Empty, UsdtPrevStorageRoot);
         sparse.RevealNodes([MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty)]);
 
-        Dictionary<Hash256, LeafUpdate> deletes = [];
+        Dictionary<ValueHash256, LeafUpdate> deletes = [];
         ValueHash256 keyBuf = default;
         foreach ((UInt256 slot, byte[] value) in UsdtUpdates)
         {
@@ -198,18 +198,18 @@ public class UsdtMainnetReproducer
         }
         TestContext.Out.WriteLine($"Deletes prepared: {deletes.Count}");
 
-        Hash256? lastFirstTarget = null;
+        ValueHash256? lastFirstTarget = null;
         int sameTargetCount = 0;
         for (int retry = 0; retry < 10; retry++)
         {
-            List<(Hash256 key, byte minLen)> targets = [];
+            List<(ValueHash256 key, byte minLen)> targets = [];
             sparse.UpdateLeaves(deletes, (key, minLen) => targets.Add((key, minLen)));
             TestContext.Out.WriteLine($"retry {retry}: targets.Count={targets.Count}");
             if (targets.Count == 0) break;
 
             // Mirror SparseRootComputer.ComputeStorageRoot sameTargetCount detection
-            Hash256 firstTarget = targets[0].key;
-            if (lastFirstTarget == firstTarget) sameTargetCount++;
+            ValueHash256 firstTarget = targets[0].key;
+            if (lastFirstTarget.HasValue && lastFirstTarget.Value == firstTarget) sameTargetCount++;
             else sameTargetCount = 0;
             lastFirstTarget = firstTarget;
 
@@ -217,7 +217,7 @@ public class UsdtMainnetReproducer
             {
                 TestContext.Out.WriteLine($"   sameTarget triggered; calling TryFindBlindedSiblingForDeletion");
                 int resolved = 0;
-                foreach ((Hash256 key, byte _) in targets)
+                foreach ((ValueHash256 key, byte _) in targets)
                 {
                     if (!deletes.TryGetValue(key, out LeafUpdate upd) || !upd.IsDelete) continue;
                     byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
@@ -245,7 +245,7 @@ public class UsdtMainnetReproducer
             }
 
             List<MultiProofReader.BlindedProofTarget> blinded = [];
-            foreach ((Hash256 key, byte _) in targets)
+            foreach ((ValueHash256 key, byte _) in targets)
             {
                 byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
                 if (sparse.Subtrie.TryFindBlindedEntryOnPath(
@@ -287,18 +287,18 @@ public class UsdtMainnetReproducer
         byte[] rootRlp = reader.LoadStorageRlp(UsdtAddressHash, TreePath.Empty, UsdtPrevStorageRoot);
         sparse.RevealNodes([MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty)]);
 
-        Dictionary<Hash256, LeafUpdate> updates = BuildUpdates();
+        Dictionary<ValueHash256, LeafUpdate> updates = BuildUpdates();
 
         const int maxRetries = 10;
         int retriesUsed = 0;
         for (int retry = 0; retry < maxRetries; retry++)
         {
-            List<(Hash256 key, byte minLen)> targets = [];
+            List<(ValueHash256 key, byte minLen)> targets = [];
             sparse.UpdateLeaves(updates, (key, minLen) => targets.Add((key, minLen)));
             if (targets.Count == 0) break;
 
             List<MultiProofReader.BlindedProofTarget> blinded = [];
-            foreach ((Hash256 key, byte _) in targets)
+            foreach ((ValueHash256 key, byte _) in targets)
             {
                 byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
                 if (sparse.Subtrie.TryFindBlindedEntryOnPath(
@@ -311,7 +311,7 @@ public class UsdtMainnetReproducer
             {
                 // Deletion-with-blinded-sibling: directly resolve via Subtrie.TryFindBlindedSiblingForDeletion
                 bool resolved = false;
-                foreach ((Hash256 key, byte _) in targets)
+                foreach ((ValueHash256 key, byte _) in targets)
                 {
                     if (!updates.TryGetValue(key, out LeafUpdate upd) || !upd.IsDelete) continue;
                     byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
@@ -379,7 +379,7 @@ public class UsdtMainnetReproducer
         sparse.RevealNodes([MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty)]);
         foreach (ProofNode pn in reader.AllProofNodes()) sparse.RevealNodes([pn]);
 
-        Dictionary<Hash256, LeafUpdate> batch = [];
+        Dictionary<ValueHash256, LeafUpdate> batch = [];
         ValueHash256 keyBuf = default;
         foreach ((UInt256 slot, byte[] value) in UsdtUpdates)
         {
@@ -438,7 +438,7 @@ public class UsdtMainnetReproducer
             StorageTree.ComputeKeyWithLookup(slot, ref keyBuf);
             Hash256 slotHash = keyBuf.ToCommitment();
             byte[] encoded = Rlp.Encode(value).Bytes;
-            Dictionary<Hash256, LeafUpdate> oneUpdate = new() { [slotHash] = LeafUpdate.Changed(encoded) };
+            Dictionary<ValueHash256, LeafUpdate> oneUpdate = new() { [slotHash] = LeafUpdate.Changed(encoded) };
             sparse.UpdateLeaves(oneUpdate, (_, _) => { });
 
             patricia.UpdateRootHash();
@@ -491,7 +491,7 @@ public class UsdtMainnetReproducer
         foreach (ProofNode pn in reader.AllProofNodes())
             sparse.RevealNodes([pn]);
 
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         ValueHash256 keyBuf = default;
         int skipped = 0;
         foreach ((UInt256 slot, byte[] value) in UsdtUpdates)
@@ -511,7 +511,7 @@ public class UsdtMainnetReproducer
         for (int retry = 0; retry < maxRetries; retry++)
         {
             List<Hash256> needsProof = [];
-            sparse.UpdateLeaves(updates, (key, _) => needsProof.Add(key));
+            sparse.UpdateLeaves(updates, (key, _) => needsProof.Add(key.ToCommitment()));
             if (needsProof.Count == 0) break;
             DecodedMultiProof retryProof = MultiProofReader.ReadStorageProofs(
                 reader, UsdtAddressHash, UsdtPrevStorageRoot, [.. needsProof]);
@@ -527,9 +527,9 @@ public class UsdtMainnetReproducer
         TestContext.Out.WriteLine("(They should differ because deletions are skipped — but this isolates the compute path.)");
     }
 
-    private static Dictionary<Hash256, LeafUpdate> BuildUpdates()
+    private static Dictionary<ValueHash256, LeafUpdate> BuildUpdates()
     {
-        Dictionary<Hash256, LeafUpdate> updates = [];
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
         ValueHash256 keyBuf = default;
         foreach ((UInt256 slot, byte[] value) in UsdtUpdates)
         {

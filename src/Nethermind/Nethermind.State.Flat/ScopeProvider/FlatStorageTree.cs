@@ -213,7 +213,11 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         private readonly SparseRootComputer _sparseRootComputer = sparseRootComputer;
         private readonly Action<Address, Hash256> _onRootUpdated = onRootUpdated;
         private readonly Hash256 _previousStorageRoot = storageTree._tree.RootHash;
-        private readonly Dictionary<Hash256, LeafUpdate> _slotUpdates = new(estimatedEntries);
+        // Keyed by ValueHash256 (struct) so the per-slot key avoids the Hash256 (class)
+        // allocation that ToCommitment used to produce. On storage-heavy blocks the slot
+        // keccak â†’ Hash256 path was the single largest GC contributor; using the struct
+        // key directly eliminates that alloc.
+        private readonly Dictionary<ValueHash256, LeafUpdate> _slotUpdates = new(estimatedEntries);
         // Diagnostic: capture raw (slot, value) pairs to drive a parallel Patricia
         // computation when SparseTrieShadowStorageCompare is on.
         private readonly List<(UInt256 Index, byte[] Value)>? _rawUpdates
@@ -226,16 +230,14 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             _wasSetCalled = true;
             ValueHash256 slotKey = default;
             StorageTree.ComputeKeyWithLookup(index, ref slotKey);
-            Hash256 slotHash = slotKey.ToCommitment();
 
             // Patricia's StorageTree.CreateBulkSetEntry: zero/null → empty (delete);
             // otherwise → RLP-encoded bytes (storage leaf value). Sparse must store the
             // same encoded form, otherwise the storage root differs and the account RLP
-            // ends up pointing at a wrong subtree. This was the root cause of the
-            // InvalidStateRoot at the first authoritative block.
+            // ends up pointing at a wrong subtree.
             if (value.IsZero())
             {
-                _slotUpdates[slotHash] = LeafUpdate.Deleted();
+                _slotUpdates[slotKey] = LeafUpdate.Deleted();
             }
             else
             {
@@ -243,11 +245,11 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 byte[]? encodedBytes = rlpEncoded?.Bytes;
                 if (encodedBytes is null || encodedBytes.Length == 0)
                 {
-                    _slotUpdates[slotHash] = LeafUpdate.Deleted();
+                    _slotUpdates[slotKey] = LeafUpdate.Deleted();
                 }
                 else
                 {
-                    _slotUpdates[slotHash] = LeafUpdate.Changed(encodedBytes);
+                    _slotUpdates[slotKey] = LeafUpdate.Changed(encodedBytes);
                 }
             }
 
