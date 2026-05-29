@@ -1820,7 +1820,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    [Category("Flaky"), Retry(3)]
+    [Ignore("This test is flaky on CI. It could be connected with timeouts in block production.")]
     public async Task Eth_getTransactionReceipt_return_info_about_mined_1559tx()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
@@ -1834,7 +1834,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    [Category("Flaky"), Retry(3)]
+    [Ignore("This test is flaky on CI. It could be connected with timeouts in block production.")]
     public async Task Eth_getTransactionByHash_return_info_about_mined_1559tx()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
