@@ -451,25 +451,31 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 if (_sparseComputedRoot is not null && _sparseComputedRoot == newRoot)
                 {
                     // M3 LFU prune: collapse paths not in the hot-set to Blinded entries.
-                    // Bounds memory across long block sequences while keeping recently-touched
-                    // accounts/slots warm so the next block skips proof reads on them.
-                    try
+                    // Skip entirely when capacities are int.MaxValue (effectively "never prune")
+                    // â€” keeps all revealed paths warm across blocks. Used while we validate
+                    // Prune doesn't introduce reveal-cycle regressions.
+                    bool pruneEnabled = _configuration.SparseTrieMaxHotAccounts < int.MaxValue
+                                     || _configuration.SparseTrieMaxHotSlots < int.MaxValue;
+                    if (pruneEnabled)
                     {
-                        _sparseStateTrie.Prune(
-                            _configuration.SparseTrieMaxHotAccounts,
-                            _configuration.SparseTrieMaxHotSlots);
-                    }
-                    catch (Exception ex)
-                    {
-                        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                        if (logger.IsWarn) logger.Warn($"Sparse trie prune failed: {ex.Message}. " +
-                            $"Falling back to Cleared store â€” next block starts cold.");
-                        _preservedSparseTrie.StoreCleared(_sparseStateTrie);
-                        _sparseStateTrie = null;
-                        _sparseRootComputer.Dispose();
-                        _sparseRootComputer = null;
-                        _sparseComputedRoot = null;
-                        return;
+                        try
+                        {
+                            _sparseStateTrie.Prune(
+                                _configuration.SparseTrieMaxHotAccounts,
+                                _configuration.SparseTrieMaxHotSlots);
+                        }
+                        catch (Exception ex)
+                        {
+                            ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                            if (logger.IsWarn) logger.Warn($"Sparse trie prune failed: {ex.Message}. " +
+                                $"Falling back to Cleared store â€” next block starts cold.");
+                            _preservedSparseTrie.StoreCleared(_sparseStateTrie);
+                            _sparseStateTrie = null;
+                            _sparseRootComputer.Dispose();
+                            _sparseRootComputer = null;
+                            _sparseComputedRoot = null;
+                            return;
+                        }
                     }
                     _preservedSparseTrie.StoreAnchored(_sparseStateTrie, newRoot);
                 }

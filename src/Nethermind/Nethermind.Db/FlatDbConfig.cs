@@ -26,7 +26,10 @@ public class FlatDbConfig : IFlatDbConfig
     public bool SparseTrieSkipPatricia { get; set; } = false;
     public bool SparseTrieAuthoritativeStorage { get; set; } = true;
     public bool SparseTrieShadowStorageCompare { get; set; } = false;
-    public int SparseTrieMaxHotAccounts { get; set; } = 50_000;
-    public int SparseTrieMaxHotSlots { get; set; } = 200_000;
+    // Default to effectively-unbounded retention until we are confident Prune handles every
+    // edge case (it currently triggers retry-loop failures on some realblocks blocks â€” see
+    // the in-flight investigation). Set to lower values to actually prune.
+    public int SparseTrieMaxHotAccounts { get; set; } = int.MaxValue;
+    public int SparseTrieMaxHotSlots { get; set; } = int.MaxValue;
     public SparseTrieWarmerVariant SparseTrieWarmer { get; set; } = SparseTrieWarmerVariant.Legacy;
 }
