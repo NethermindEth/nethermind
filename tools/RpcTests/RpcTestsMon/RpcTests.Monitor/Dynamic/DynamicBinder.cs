@@ -49,7 +49,7 @@ internal static class DynamicBinder<TContext>
         Interpreter interpreter = new();
 
         foreach ((string name, Delegate method) in _staticMethods)
-            interpreter.SetVariable(name, method);
+            interpreter.SetVariable(name, method, method.GetType());
 
         return interpreter;
     }

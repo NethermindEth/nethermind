@@ -35,8 +35,8 @@ internal class BotSlackNotifier(BotSlackConfig config) : INotifier
             (string name, string content)[] files =
             [
                 ("request.json", failure.Request.ToPrettyString()),
-                ("target-response.json", failure.ActualResponse.ToPrettyString()),
-                ("reference-response.json", failure.ExpectedResponse.ToPrettyString())
+                ("actual-response.json", failure.ActualResponse.ToPrettyString()),
+                ("expected-response.json", failure.ExpectedResponse.ToPrettyString())
             ];
 
             IList<ExternalFileReference> fileRefs = await Task.WhenAll(
