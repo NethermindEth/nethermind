@@ -526,11 +526,12 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
     {
         SyncPeerMock peerA = new("A");
         peerA.AddBlocksUpTo(1);
+        BlockHeader initialHead = peerA.HeadHeader;
 
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(initialHead)
             .After(() => peerA.AddBlocksUpTo(2))
             .AfterNewBlockMessage(peerA.HeadBlock, peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
@@ -550,7 +551,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
             .AfterPeerIsAdded(peerB)
-            .WaitUntilInitialized()
+            .BestSuggestedBlockHasNumber(3)
             .After(() => peerB.AddBlocksUpTo(6))
             .AfterNewBlockMessage(peerB.HeadBlock, peerB)
             .BestSuggestedHeaderIs(peerB.HeadHeader)
@@ -582,11 +583,12 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
     {
         SyncPeerMock peerA = new("A");
         peerA.AddBlocksUpTo(1);
+        BlockHeader initialHead = peerA.HeadHeader;
 
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(initialHead)
             .After(() => peerA.AddBlocksUpTo(2))
             .AfterHintBlockMessage(peerA.HeadBlock, peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
@@ -598,11 +600,12 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
     {
         SyncPeerMock peerA = new("A");
         peerA.AddBlocksUpTo(1);
+        BlockHeader initialHead = peerA.HeadHeader;
 
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(initialHead)
             .After(() => peerA.AddBlocksUpTo(8))
             .AfterNewBlockMessage(peerA.HeadBlock, peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
@@ -616,11 +619,12 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         // now it checks something different
         SyncPeerMock peerA = new("A");
         peerA.AddBlocksUpTo(1);
+        BlockHeader initialHead = peerA.HeadHeader;
 
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(initialHead)
             .After(() => peerA.AddBlocksUpTo(16))
             .AfterNewBlockMessage(peerA.HeadBlock, peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
@@ -802,12 +806,11 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(peerA.HeadHeader)
             .AfterPeerIsAdded(peerB)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(peerB.HeadHeader)
             .After(() => peerB.AddHighDifficultyBlocksUpTo(6, 0, 1))
             .AfterNewBlockMessage(peerB.HeadBlock, peerB)
-            .WaitUntilInitialized()
             .BestSuggestedHeaderIs(peerB.HeadHeader)
             .StopAsync();
     }
