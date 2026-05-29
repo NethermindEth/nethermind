@@ -19,8 +19,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     private readonly bool _isAura;
 
     /// <summary>
-    /// Hacky flag to execution options, to pass information how original validate should behave.
-    /// Needed to decide if we need to subtract transaction value.
+    /// Initializes a processor for system-transaction execution paths.
     /// </summary>
     public SystemTransactionProcessor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
@@ -44,7 +43,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         }
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
-        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+        return base.Execute(tx, tracer, !coreOpts.HasFlag(ExecutionOptions.SkipValidation)
             ? opts | ExecutionOptions.OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
