@@ -16,7 +16,7 @@ start_dotmemory() {
       echo "Error: DIAG_DOTMEMORY_TIMER must be in HH:MM:SS format (got: $DIAG_DOTMEMORY_TIMER)" >&2
       exit 1
     fi
-    args+=("--trigger-on-timer=$DIAG_DOTMEMORY_TIMER")
+    args+=("--trigger-timer=$DIAG_DOTMEMORY_TIMER")
     if [ -n "${DIAG_DOTMEMORY_MAX_SNAPSHOTS:-}" ]; then
       if [[ ! "$DIAG_DOTMEMORY_MAX_SNAPSHOTS" =~ ^[1-9][0-9]*$ ]]; then
         echo "Error: DIAG_DOTMEMORY_MAX_SNAPSHOTS must be a positive integer (got: $DIAG_DOTMEMORY_MAX_SNAPSHOTS)" >&2
