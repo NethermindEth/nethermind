@@ -75,7 +75,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
                 message.PathsWithAccounts = pathsWithAccounts;
                 pathsWithAccounts = null;
-                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.AccountRangeProofsRlpLimit);
                 memoryOwner = null;
 
                 byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
