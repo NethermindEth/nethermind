@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -30,9 +31,10 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider, IDisposable
     private readonly ISyncReport _syncReport;
 
     private readonly Lock _cacheLock = new();
-    private BlockHeader[]? _cachedHeaders;
+    private BlockHeader?[]? _cachedHeaders;
     private Hash256? _cachedProcessDestinationHash;
     private long _cachedProcessDestinationNumber;
+    private int _cachedSkipLastN;
 
     public PosForwardHeaderProvider(
         IChainLevelHelper chainLevelHelper,
@@ -89,7 +91,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider, IDisposable
         int fetchSize = Math.Max(maxHeader * CacheBatchMultiplier, MinCachedHeaderBatchSize);
         // Forward `skipLastN` so `ChainLevelHelper` enforces the same chain-tip exclusion as the
         // pre-cache implementation; trim the slice tail again at serve time to honour per-call values.
-        BlockHeader?[]? fresh = _chainLevelHelper.GetNextHeaders(fetchSize, long.MaxValue, skipLastBlockCount: skipLastN);
+        BlockHeader[]? fresh = _chainLevelHelper.GetNextHeaders(fetchSize, long.MaxValue, skipLastBlockCount: skipLastN);
         if (fresh is null || fresh.Length <= 1)
         {
             if (_logger.IsTrace) _logger.Trace("Chain level helper got no headers suggestion");
@@ -97,104 +99,99 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider, IDisposable
         }
 
         // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
-        ValidateSeals(fresh!, cancellation);
+        ValidateSeals(fresh, cancellation);
 
         // Only cache a full-sized batch; a truncated fetch implies we reached the chain tip and the
         // cached tail would diverge from the original `skipLastBlockCount` semantics on later calls.
-        if (fresh.Length >= fetchSize) UpdateCache(fresh!);
+        if (fresh.Length >= fetchSize) UpdateCache(fresh, skipLastN);
 
-        return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(BuildSlice(fresh!, maxHeader, skipLastN: 0));
+        int take = Math.Min(fresh.Length, maxHeader);
+        ArrayPoolList<BlockHeader?> result = new(take);
+        result.AddRange(((BlockHeader?[])fresh).AsSpan(0, take));
+        return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(result);
     }
 
     private ArrayPoolList<BlockHeader?>? TryServeFromCache(int maxHeader, int skipLastN)
     {
-        BlockHeader[]? cached;
+        BlockHeader?[]? cached;
         Hash256? cachedHash;
         long cachedNumber;
+        int cachedSkip;
         lock (_cacheLock)
         {
             cached = _cachedHeaders;
             cachedHash = _cachedProcessDestinationHash;
             cachedNumber = _cachedProcessDestinationNumber;
+            cachedSkip = _cachedSkipLastN;
         }
 
-        if (cached is null) return null;
+        if (cached is null || cachedSkip != skipLastN) return null;
 
         BlockHeader? processDestination = _beaconPivot.ProcessDestination;
         Hash256? currentHash = processDestination?.Hash;
         long currentNumber = processDestination?.Number ?? long.MaxValue;
         if (cachedHash != currentHash || cachedNumber != currentNumber) return null;
 
-        // `ChainLevelHelper.GetStartingPoint` returns the *anchor* (last processed block) in the
-        // active beacon-sync walk-back path, i.e. `headers[0].Number == BestKnownNumber`.
-        // Use `BestKnownNumber` (not `+1`) so the served slice retains the anchor at index 0,
-        // matching the contract `BlockDownloader.AssembleRequest` relies on.
+        // `cached[0]` is the anchor that `BlockDownloader.AssembleRequest` consumes as `parentHeader`;
+        // start at `BestKnownNumber` (not `+1`) so the anchor stays at slice index 0.
         long desiredStart = Math.Min(_blockTree.BestKnownNumber, currentNumber);
-        long cacheStart = cached[0].Number;
-        long cacheEnd = cached[^1].Number;
+        long cacheStart = cached[0]!.Number;
+        long cacheEnd = cached[^1]!.Number;
         if (desiredStart < cacheStart || desiredStart > cacheEnd) return null;
 
         int offset = (int)(desiredStart - cacheStart);
-        int available = cached.Length - offset - skipLastN;
+        int available = cached.Length - offset;
         if (available <= 1) return null;
 
         int take = Math.Min(available, maxHeader);
         ArrayPoolList<BlockHeader?> slice = new(take);
-        for (int i = 0; i < take; i++) slice.Add(cached[offset + i]);
+        slice.AddRange(cached.AsSpan(offset, take));
         return slice;
     }
 
-    private void UpdateCache(BlockHeader[] headers)
+    private void UpdateCache(BlockHeader[] headers, int skipLastN)
     {
-        if (headers.Length < MinCachedHeaderBatchSize) return;
-
         BlockHeader? destination = _beaconPivot.ProcessDestination;
         lock (_cacheLock)
         {
             _cachedHeaders = headers;
             _cachedProcessDestinationHash = destination?.Hash;
             _cachedProcessDestinationNumber = destination?.Number ?? long.MaxValue;
+            _cachedSkipLastN = skipLastN;
         }
     }
 
     private void BlockTreeOnUpdateMainChain(object? sender, OnUpdateMainChainArgs e)
     {
-        if (e.Blocks.Count == 0) return;
-
-        Block firstBlock = e.Blocks[0];
-        long firstNumber = firstBlock.Number;
-        Hash256? firstHash = firstBlock.Hash;
+        IReadOnlyList<Block> blocks = e.Blocks;
+        if (blocks.Count == 0) return;
 
         lock (_cacheLock)
         {
-            BlockHeader[]? cached = _cachedHeaders;
+            BlockHeader?[]? cached = _cachedHeaders;
             if (cached is null) return;
 
-            long cacheStart = cached[0].Number;
-            long cacheEnd = cached[^1].Number;
-            if (firstNumber < cacheStart || firstNumber > cacheEnd) return;
+            long cacheStart = cached[0]!.Number;
+            long cacheEnd = cached[^1]!.Number;
 
-            int idx = (int)(firstNumber - cacheStart);
-            if (cached[idx].Hash != firstHash)
+            // `UpdateMainChain` can fire in either ascending or descending order, and reorgs may
+            // start below `cacheStart`; scan until we hit a block inside the cached range.
+            for (int i = 0; i < blocks.Count; i++)
             {
-                _cachedHeaders = null;
-                _cachedProcessDestinationHash = null;
-                _cachedProcessDestinationNumber = 0;
+                Block block = blocks[i];
+                if (block.Number < cacheStart || block.Number > cacheEnd) continue;
+
+                int idx = (int)(block.Number - cacheStart);
+                if (cached[idx]!.Hash != block.Hash)
+                {
+                    _cachedHeaders = null;
+                    _cachedProcessDestinationHash = null;
+                    _cachedProcessDestinationNumber = 0;
+                    _cachedSkipLastN = 0;
+                }
+                return;
             }
         }
-    }
-
-    private static IOwnedReadOnlyList<BlockHeader?> BuildSlice(BlockHeader?[] fresh, int maxHeader, int skipLastN)
-    {
-        int take = Math.Max(0, Math.Min(fresh.Length - skipLastN, maxHeader));
-        if (take == fresh.Length)
-        {
-            return fresh.ToPooledList(fresh.Length);
-        }
-
-        ArrayPoolList<BlockHeader?> result = new(take);
-        for (int i = 0; i < take; i++) result.Add(fresh[i]);
-        return result;
     }
 
     private void TryUpdateTerminalBlock(BlockHeader currentHeader) =>

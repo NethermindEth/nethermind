@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -73,36 +74,72 @@ public class PosForwardHeaderProviderCacheTests
     private void AssertChainLevelCalls(int expected) =>
         _chainLevelHelper.ReceivedWithAnyArgs(expected).GetNextHeaders(default, default, default);
 
-    [Test]
-    public async Task Second_call_with_same_inputs_is_served_from_cache()
+    private async Task ExpectCalls(int expected, Action<IOwnedReadOnlyList<BlockHeader?>> between, int firstSkip = 0, int firstMax = Requested, int secondSkip = 0, int secondMax = Requested)
     {
-        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
-        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
-
-        AssertChainLevelCalls(1);
+        using IOwnedReadOnlyList<BlockHeader?>? first = await Get(firstSkip, firstMax);
+        between(first!);
+        using IOwnedReadOnlyList<BlockHeader?>? _ = await Get(secondSkip, secondMax);
+        AssertChainLevelCalls(expected);
     }
 
     [Test]
-    public async Task Cache_is_invalidated_when_process_destination_hash_changes()
+    public Task Second_call_with_same_inputs_is_served_from_cache() =>
+        ExpectCalls(expected: 1, between: _ => { });
+
+    [Test]
+    public Task Cache_is_invalidated_when_process_destination_hash_changes() =>
+        ExpectCalls(expected: 2, between: _ =>
+            _beaconPivot.ProcessDestination = BuildHeader(1_000, TestItem.KeccakB));
+
+    [Test]
+    public Task Cache_miss_when_best_known_number_advances_past_cached_range() =>
+        ExpectCalls(expected: 2, between: _ =>
+            _blockTree.BestKnownNumber.Returns((long)CachedBatchSize + 10));
+
+    [Test]
+    public Task Cache_is_invalidated_when_skipLastN_changes() =>
+        ExpectCalls(expected: 2, between: _ => { }, secondSkip: 4);
+
+    [Test]
+    public Task Cache_is_invalidated_on_reorg_within_cached_range() =>
+        ExpectCalls(expected: 2, between: first =>
+        {
+            Block reorgBlock = Build.A.Block.WithNumber(10).WithDifficulty(2).TestObject;
+            Assert.That(reorgBlock.Header.Hash, Is.Not.EqualTo(first[10]!.Hash));
+            RaiseMainChainUpdate(reorgBlock);
+        });
+
+    [Test]
+    public async Task Cache_is_invalidated_on_ascending_reorg_starting_below_cached_range()
     {
+        const long cacheStart = 100;
+        _chainLevelHelper.GetNextHeaders(default, default, default).ReturnsForAnyArgs(_ => BuildSequentialHeaders(start: cacheStart, count: CachedBatchSize));
+        _blockTree.BestKnownNumber.Returns(cacheStart);
+
         using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
 
-        _beaconPivot.ProcessDestination = BuildHeader(1_000, TestItem.KeccakB);
-        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
+        Block belowBlock = Build.A.Block.WithNumber(cacheStart - 5).WithDifficulty(2).TestObject;
+        Block insideBlock = Build.A.Block.WithNumber(cacheStart + 3).WithDifficulty(2).TestObject;
+        Assert.That(insideBlock.Header.Hash, Is.Not.EqualTo(first![3]!.Hash));
+        RaiseMainChainUpdate(belowBlock, insideBlock);
 
+        using IOwnedReadOnlyList<BlockHeader?>? _ = await Get();
         AssertChainLevelCalls(2);
     }
 
     [Test]
-    public async Task Cache_miss_when_best_known_number_advances_past_cached_range()
-    {
-        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
+    public Task Cache_is_invalidated_on_descending_reorg_with_top_above_cache() =>
+        ExpectCalls(expected: 2, between: _ =>
+        {
+            Block above = Build.A.Block.WithNumber(CachedBatchSize + 50).WithDifficulty(2).TestObject;
+            Block inside = Build.A.Block.WithNumber(10).WithDifficulty(2).TestObject;
+            RaiseMainChainUpdate(above, inside);
+        });
 
-        _blockTree.BestKnownNumber.Returns((long)CachedBatchSize + 10);
-        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
-
-        AssertChainLevelCalls(2);
-    }
+    [Test]
+    public Task Cache_survives_main_chain_update_that_matches_cached_hash() =>
+        ExpectCalls(expected: 1, between: first =>
+            RaiseMainChainUpdate(new Block(first[5]!, new BlockBody())));
 
     [Test]
     public async Task Cached_slice_advances_with_best_known_number()
@@ -116,49 +153,6 @@ public class PosForwardHeaderProviderCacheTests
 
         Assert.That(second!.Count, Is.EqualTo(Requested));
         Assert.That(second[0]!.Number, Is.EqualTo(20));
-        AssertChainLevelCalls(1);
-    }
-
-    [Test]
-    public async Task SkipLastN_is_honored_on_cache_hit()
-    {
-        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
-
-        // Request more than the cache holds after the skip-tail trim so the front-cap
-        // exposes `skipLastN`; otherwise `min(available, maxHeader) == maxHeader` and a silently
-        // dropped `skipLastN` would still satisfy the assertion.
-        const int skip = 4;
-        using IOwnedReadOnlyList<BlockHeader?>? sliced = await Get(skip: skip, max: CachedBatchSize);
-
-        Assert.That(sliced!.Count, Is.EqualTo(CachedBatchSize - skip));
-        Assert.That(sliced[^1]!.Number, Is.EqualTo(CachedBatchSize - skip - 1));
-        AssertChainLevelCalls(1);
-    }
-
-    [Test]
-    public async Task Cache_is_invalidated_on_reorg_within_cached_range()
-    {
-        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
-
-        Block reorgBlock = Build.A.Block.WithNumber(10).WithDifficulty(2).TestObject;
-        Assert.That(reorgBlock.Header.Hash, Is.Not.EqualTo(first![10]!.Hash!));
-        RaiseMainChainUpdate(reorgBlock);
-
-        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
-
-        AssertChainLevelCalls(2);
-    }
-
-    [Test]
-    public async Task Cache_survives_main_chain_update_that_matches_cached_hash()
-    {
-        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
-
-        Block extensionBlock = new(first![5]!, new BlockBody());
-        RaiseMainChainUpdate(extensionBlock);
-
-        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
-
         AssertChainLevelCalls(1);
     }
 
