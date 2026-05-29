@@ -135,12 +135,12 @@ jobs:
           fi
 
           # One solution build amortized across all projects in the group.
-          # `/p:RestoreDisableParallel=true` works around a Windows-only NuGet
+          # `-p:RestoreDisableParallel=true` works around a Windows-only NuGet
           # race: `dotnet build -m` parallelises restore, and concurrent
           # writers to the same `*.dat-new` cache file deadlock against the
           # Defender file handle and surface as "fatal device hardware error".
           # Serial restore eliminates the race; parallel build (`-m`) is kept.
-          dotnet build Nethermind.slnx -c release -m -v minimal /p:RestoreDisableParallel=true
+          dotnet build Nethermind.slnx -c release -m -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
           # Flaky-tagged tests run in the dedicated `tests-flaky` job.
@@ -274,7 +274,7 @@ jobs:
             coverage_args="--coverage --coverage-output-format cobertura --coverage-settings codecoverage.json"
           fi
 
-          dotnet build EthereumTests.slnx -c release -m -v minimal /p:RestoreDisableParallel=true
+          dotnet build EthereumTests.slnx -c release -m -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
           # Flaky-tagged tests run in the dedicated `tests-flaky` job. 2-wide
@@ -333,7 +333,7 @@ jobs:
   tests-chunked:
     name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 25
+    timeout-minutes: 20
     strategy:
       fail-fast: true
       matrix:
@@ -387,7 +387,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
           set -e
-          dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal /p:RestoreDisableParallel=true
+          dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
           # Flaky-tagged tests run in the dedicated `tests-flaky` job.
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
@@ -406,10 +406,10 @@ jobs:
   tests-flaky:
     name: Flaky tests
     runs-on: ubuntu-latest
-    # 25 min gives the retry budget room to exhaust and produce a legible
-    # failure: build ~5 min + worst-case Retry(30) × 60 s/attempt headroom.
-    # Tighter (15 min) risked masking real failures behind a timeout.
-    timeout-minutes: 25
+    # Cap matches the rest of the test matrix at 20 min. Build ~5 min leaves
+    # ~15 min for tests; any Flaky test that genuinely needs more than that
+    # to fail under its Retry budget is too slow to be a useful flake marker.
+    timeout-minutes: 20
     steps:
       - name: Free up disk space
         # Same Nethermind.slnx-native-libs disk issue as the main tests job.
@@ -432,7 +432,7 @@ jobs:
         # Ethereum.* project, also build EthereumTests.slnx here.
         working-directory: src/Nethermind
         run: |
-          dotnet build Nethermind.slnx -c release -m -v minimal /p:RestoreDisableParallel=true
+          dotnet build Nethermind.slnx -c release -m -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
       - name: Run flaky tests

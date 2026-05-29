@@ -72,7 +72,7 @@ jobs:
               ;;
           esac
 
-          dotnet build "$solution" -c release -m -v minimal /p:RestoreDisableParallel=true
+          dotnet build "$solution" -c release -m -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
           # Flaky-tagged tests run in the central `tests-flaky` job in nethermind-tests.yml.
@@ -118,7 +118,7 @@ jobs:
   tests-legacy-chunked:
     name: Run Ethereum.Legacy.Blockchain.Test (${{ matrix.chunk }})
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     strategy:
       fail-fast: true
       matrix:
@@ -138,7 +138,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           set -e
-          dotnet build Ethereum.Legacy.Blockchain.Test.csproj -c release -v minimal /p:RestoreDisableParallel=true
+          dotnet build Ethereum.Legacy.Blockchain.Test.csproj -c release -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
           # Flaky-tagged tests run in the central `tests-flaky` job.
           dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release \
@@ -150,7 +150,7 @@ jobs:
   tests-pyspec:
     name: Pyspec [${{ matrix.label }}] (${{ matrix.chunk }})
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     strategy:
       fail-fast: true
       matrix:
@@ -227,7 +227,7 @@ jobs:
           trap 'kill $monitor_pid 2>/dev/null || true; wait $monitor_pid 2>/dev/null || true' EXIT
 
           set -e
-          dotnet build Ethereum.Blockchain.Pyspec.Test.csproj -c release -v minimal /p:RestoreDisableParallel=true
+          dotnet build Ethereum.Blockchain.Pyspec.Test.csproj -c release -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
           # Flaky-tagged tests run in the central `tests-flaky` job — append to
           # this label's filter so we don't double-run them here.

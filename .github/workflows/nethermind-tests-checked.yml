@@ -135,7 +135,7 @@ jobs:
               ;;
           esac
 
-          dotnet build "$solution" -c release -m -v minimal $VARIANT_ARGS /p:RestoreDisableParallel=true
+          dotnet build "$solution" -c release -m -v minimal $VARIANT_ARGS -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
 
           # Flaky-tagged tests run in the central `tests-flaky` job in nethermind-tests.yml.
@@ -184,7 +184,7 @@ jobs:
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     strategy:
       fail-fast: true
       matrix:
@@ -230,7 +230,7 @@ jobs:
           TEST_SKIP_HEAVY: 1
         run: |
           set -e
-          dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal ${{ matrix.variant.args }} /p:RestoreDisableParallel=true
+          dotnet build ${{ matrix.test.project }}.csproj -c release -v minimal ${{ matrix.variant.args }} -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
           # Flaky-tagged tests run in the central `tests-flaky` job.
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
