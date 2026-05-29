@@ -707,23 +707,20 @@ public class DebugRpcModule(
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
         // debug_traceCallMany defaults missing gas to gasCap (not block gas limit). The simulate engine
-        // decides "explicit vs default" from the request's Gas field, so we set it here to opt out of the
-        // engine's BlockGasLeft fallback. eth_simulateV1 deliberately does not do this.
-        // When gasCap is unset/0 ("no cap"), we leave Gas null so the engine's normal fallback applies.
-        if (jsonRpcConfig.GasCap is not null and not 0)
+        // decides "explicit vs default" from the request's Gas field, so we normalize here before
+        // SimulateTxExecutor captures HadGasLimitInRequest.
+        // With gasCap unset/0 ("no cap"), both missing gas and gas: 0x0 should stay omitted so the
+        // engine's normal fallback applies.
+        foreach (TransactionBundle bundle in bundles)
         {
-            foreach (TransactionBundle bundle in bundles)
+            foreach (TransactionForRpc call in bundle.Transactions)
             {
-                foreach (TransactionForRpc call in bundle.Transactions)
+                if (call.Gas is null or 0)
                 {
-                    if (call.Gas is null or 0)
-                    {
-                        call.Gas = jsonRpcConfig.GasCap;
-                    }
+                    call.Gas = jsonRpcConfig.GasCap is null or 0 ? null : jsonRpcConfig.GasCap;
                 }
             }
         }
-
         SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>

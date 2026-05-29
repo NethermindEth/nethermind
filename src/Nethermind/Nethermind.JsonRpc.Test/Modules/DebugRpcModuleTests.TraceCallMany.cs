@@ -308,4 +308,38 @@ public partial class DebugRpcModuleTests
         UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
         Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
     }
+
+    [Test]
+    public async Task Debug_traceCallMany_with_explicit_zero_gas_and_uncapped_config_treats_it_as_omitted()
+    {
+        using Context ctx = await CreateContext();
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = 0;
+
+        Address contractAddress = new("0xc200000000000000000000000000000000000000");
+
+        TransactionBundle omittedGasBundle = new()
+        {
+            Transactions = [new LegacyTransactionForRpc { To = contractAddress }],
+            StateOverrides = new Dictionary<Address, AccountOverride>
+            {
+                [contractAddress] = new() { Code = Bytes.FromHexString("5a60005260206000f3") }
+            }
+        };
+
+        TransactionBundle zeroGasBundle = new()
+        {
+            Transactions = [new LegacyTransactionForRpc { To = contractAddress, Gas = 0 }],
+            StateOverrides = new Dictionary<Address, AccountOverride>
+            {
+                [contractAddress] = new() { Code = Bytes.FromHexString("5a60005260206000f3") }
+            }
+        };
+
+        string omittedGasResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { omittedGasBundle }, "latest");
+        string zeroGasResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { zeroGasBundle }, "latest");
+
+        Assert.That(zeroGasResponse, Is.EqualTo(omittedGasResponse));
+        Assert.That(zeroGasResponse, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-38013,\"message\":\"Failure: Not enough gas provided to pay for intrinsic gas for a transaction\"},\"id\":67}"));
+    }
 }
