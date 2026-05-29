@@ -288,7 +288,6 @@ jobs:
     uses: ./.github/workflows/build-solutions.yml
     with:
       include_debug: ${{ github.event_name == 'merge_group' }}
-      upload_artifact: ${{ github.event_name == 'pull_request' && 'nethermind-build-release' || '' }}
 
   build-tools:
     name: Build tools
@@ -312,7 +311,6 @@ jobs:
       tests_matrix: ${{ needs.select.outputs.tests_matrix }}
       spec_runners: ${{ needs.select.outputs.spec_runners }}
       chunked_runners: ${{ needs.select.outputs.chunked_runners }}
-      build_artifact: nethermind-build-release
 
   stateless-tests:
     name: Stateless execution tests

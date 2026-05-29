@@ -23,11 +23,6 @@ on:
         required: false
         type: string
         default: '["ubuntu-latest","ubuntu-24.04-arm","windows-latest","macos-latest"]'
-      build_artifact:
-        description: Artifact name to download in place of a local `dotnet build`. Only honored on Linux x64 runners.
-        required: false
-        type: string
-        default: ''
 
 env:
   COLLECT_COVERAGE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master') || inputs.coverage }}
@@ -55,23 +50,13 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Download release artifact
-        id: artifact
-        if: inputs.build_artifact != '' && runner.os == 'Linux' && runner.arch == 'X64'
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ inputs.build_artifact }}
-          path: src/Nethermind
-
       - name: ${{ matrix.project }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
           flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
-          if [[ "${{ steps.artifact.outcome }}" != "success" ]]; then
-            dotnet build ${{ matrix.project }}.csproj -c release
-            dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          fi
+          dotnet build ${{ matrix.project }}.csproj -c release
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           test_args=(--no-build --no-restore)
 
           set +e

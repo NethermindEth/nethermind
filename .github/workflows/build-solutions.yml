@@ -8,11 +8,6 @@ on:
         required: false
         type: boolean
         default: true
-      upload_artifact:
-        description: When non-empty, upload `src/Nethermind/artifacts/` under this artifact name after the Nethermind release build.
-        required: false
-        type: string
-        default: ''
 
 jobs:
   build:
@@ -46,12 +41,3 @@ jobs:
 
       - name: Build ${{ matrix.solution }}.slnx
         run: dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore
-
-      - name: Upload release artifact
-        if: inputs.upload_artifact != '' && matrix.solution == 'Nethermind' && matrix.config == 'release'
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ inputs.upload_artifact }}
-          path: src/Nethermind/artifacts/
-          retention-days: 1
-          if-no-files-found: error
