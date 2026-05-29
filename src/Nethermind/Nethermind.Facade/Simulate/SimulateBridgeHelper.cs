@@ -14,7 +14,6 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.State;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Evm.State;
@@ -40,11 +39,22 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     {
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
 
-        IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
-        IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
-        foreach (Address address in senders.Union(targets).Where(static t => t is not null))
+        TransactionWithSourceDetails[]? calls = blockStateCall.Calls;
+        if (calls is not null)
         {
-            stateProvider.CreateAccountIfNotExists(address, 0, 0);
+            for (int i = 0; i < calls.Length; i++)
+            {
+                Transaction transaction = calls[i].Transaction;
+                if (transaction.SenderAddress is not null)
+                {
+                    stateProvider.CreateAccountIfNotExists(transaction.SenderAddress, 0, 0);
+                }
+
+                if (transaction.To is not null)
+                {
+                    stateProvider.CreateAccountIfNotExists(transaction.To, 0, 0);
+                }
+            }
         }
 
         stateProvider.Commit(releaseSpec, commitRoots: true);
@@ -59,7 +69,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         long gasCapLimit,
         CancellationToken cancellationToken)
     {
-        List<SimulateBlockResult<TTrace>> list = [];
+        int blockCount = payload.BlockStateCalls?.Count ?? 0;
+        List<SimulateBlockResult<TTrace>> list = new(blockCount);
         SimulateOutput<TTrace> result = new()
         {
             Items = list
@@ -121,9 +132,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 TransactionWithSourceDetails[] calls = blockCall.Calls ?? [];
 
-                env.SimulateRequestState.TxsWithExplicitGas = calls
-                    .Select((c) => c.HadGasLimitInRequest)
-                    .ToArray();
+                env.SimulateRequestState.SetTxsWithExplicitGas(calls);
 
                 PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
@@ -170,9 +179,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         Dictionary<Address, ulong> nonceCache,
         IReleaseSpec spec)
     {
-        Transaction[] transactions = calls
-            .Select(t => CreateTransaction(t, stateProvider, nonceCache))
-            .ToArray();
+        Transaction[] transactions = new Transaction[calls.Length];
+        for (int i = 0; i < calls.Length; i++)
+        {
+            transactions[i] = CreateTransaction(calls[i], stateProvider, nonceCache);
+        }
 
         Withdrawal[]? withdrawals = null;
         if (spec.WithdrawalsEnabled)
@@ -194,7 +205,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             parent = latestBlock?.Header ?? blockTree.Head!.Header;
         }
 
-        BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
+        BlockStateCall<TransactionWithSourceDetails>? firstBlock =
+            payload.BlockStateCalls is { Count: > 0 } blockStateCalls
+                ? blockStateCalls[0]
+                : null;
 
         ulong lastKnown = (ulong)latestBlockNumber;
         if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
