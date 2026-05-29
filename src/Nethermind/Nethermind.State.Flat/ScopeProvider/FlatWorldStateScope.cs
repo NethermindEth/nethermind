@@ -157,9 +157,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             // is off, meaning we have no observed matches but the operator has chosen to trust
             // sparse anyway). Promoting to authoritative when Patricia still runs would silently
             // waste BulkSet work on every block.
+            //
+            // SparseTrieForceAuthoritative bypasses the 10-block warmup entirely (benchmark-only,
+            // see config docs). dotTrace showed the realblocks profile is dominated by the
+            // Patricia work that runs ALONGSIDE sparse until promotion; without this switch the
+            // benchmark can never observe true sparse-only processing.
             _sparseIsAuthoritative = !configuration.SparseTrieVerificationMode
                 && configuration.SparseTrieSkipPatricia
-                && _sparseTracker.ConsecutiveMatches >= 10;
+                && (configuration.SparseTrieForceAuthoritative
+                    || _sparseTracker.ConsecutiveMatches >= 10);
         }
 
         _warmer.OnEnterScope();

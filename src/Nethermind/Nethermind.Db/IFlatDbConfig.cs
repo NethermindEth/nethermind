@@ -65,6 +65,13 @@ public interface IFlatDbConfig : IConfig
         "Recommended only after extensive verification-mode validation.", DefaultValue = "false")]
     bool SparseTrieSkipPatricia { get; set; }
 
+    [ConfigItem(Description = "UNSAFE / benchmark-only. Promotes the sparse trie to authoritative from the very " +
+        "first block instead of waiting for 10 consecutive shadow-compare matches. This is the only way to " +
+        "measure true sparse-only block processing (no Patricia BulkSet/Commit running alongside) without a " +
+        "10-block warmup skewing the average. Requires SparseTrieSkipPatricia=true. Never enable in production: " +
+        "a sparse bug would corrupt state with no Patricia cross-check.", DefaultValue = "false")]
+    bool SparseTrieForceAuthoritative { get; set; }
+
     [ConfigItem(Description = "When true (default), sparse storage tries replace Patricia's at the per-contract " +
         "level once authoritative. Set to false to keep Patricia storage running even with SkipPatricia=true; " +
         "useful for isolating bugs in the sparse storage path while still benefiting from sparse account " +

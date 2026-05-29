@@ -24,6 +24,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool UseSparseRootComputation { get; set; } = false;
     public bool SparseTrieVerificationMode { get; set; } = false;
     public bool SparseTrieSkipPatricia { get; set; } = false;
+    public bool SparseTrieForceAuthoritative { get; set; } = false;
     public bool SparseTrieAuthoritativeStorage { get; set; } = true;
     public bool SparseTrieShadowStorageCompare { get; set; } = false;
     // Prune defaults match the IFlatDbConfig docs (now both int.MaxValue = disabled).
