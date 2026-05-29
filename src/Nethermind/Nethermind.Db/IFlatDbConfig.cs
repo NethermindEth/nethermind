@@ -72,6 +72,15 @@ public interface IFlatDbConfig : IConfig
         "a sparse bug would corrupt state with no Patricia cross-check.", DefaultValue = "false")]
     bool SparseTrieForceAuthoritative { get; set; }
 
+    [ConfigItem(Description = "M4 EXPERIMENTAL. Streams per-commit state deltas to a background sparse trie task " +
+        "that reveals proofs and builds the state root concurrently with EVM execution, instead of computing it " +
+        "synchronously at RecalculateStateRoot. Runs in SHADOW mode: the background root is computed and compared " +
+        "against the authoritative synchronous root but is never trusted, so it cannot affect consensus â€” it only " +
+        "lets us validate the streaming pipeline and measure overlap. Note: profiling shows synchronous root " +
+        "computation is already ~1-3ms warm (the cross-block cache eliminates proof reads), so the achievable " +
+        "overlap is small; this exists to prove the M4 architecture, not as a guaranteed win.", DefaultValue = "false")]
+    bool SparseTrieParallelRoot { get; set; }
+
     [ConfigItem(Description = "When true (default), sparse storage tries replace Patricia's at the per-contract " +
         "level once authoritative. Set to false to keep Patricia storage running even with SkipPatricia=true; " +
         "useful for isolating bugs in the sparse storage path while still benefiting from sparse account " +
