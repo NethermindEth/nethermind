@@ -40,6 +40,14 @@ public sealed class SparseSubtrie : IDisposable
     public int NumLeaves { get; internal set; }
     public int NumDirtyLeaves { get; internal set; }
 
+    /// <summary>
+    /// High-water mark of arena slots ever used (live + freed). A cheap proxy for this
+    /// subtrie's retained memory footprint â€” used by cross-block cache size reporting so
+    /// operators can see preserved-trie growth without walking the arena. Not the exact live
+    /// count (freed slots aren't subtracted), but monotonic with real allocation pressure.
+    /// </summary>
+    public int ArenaHighWater => _arenaCount;
+
     public SparseSubtrie()
     {
         _arena = new SparseTrieNode[InitialArenaCapacity];

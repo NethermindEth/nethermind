@@ -494,6 +494,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             return;
                         }
                     }
+
+                    // Observability for the cross-block cache. With pruning off the retained
+                    // storage-trie count grows unbounded (one arena per contract ever touched);
+                    // log it periodically so operators can see growth and size the prune caps.
+                    ILogger sizeLogger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                    if (sizeLogger.IsDebug)
+                    {
+                        SparseStateTrie.CacheSize cs = _sparseStateTrie.GetCacheSize();
+                        sizeLogger.Debug(
+                            $"Sparse cross-block cache: storageTries={cs.StorageTrieCount}, " +
+                            $"accountArenaNodes={cs.AccountArenaNodes}, storageArenaNodes={cs.StorageArenaNodes}, " +
+                            $"prune={(pruneEnabled ? "on" : "off")}");
+                    }
+
                     _preservedSparseTrie.StoreAnchored(_sparseStateTrie, newRoot);
                 }
                 else

@@ -41,6 +41,25 @@ public sealed class SparseStateTrie : IDisposable
     /// </summary>
     public ConcurrentDictionary<Hash256, SparsePatriciaTree> StorageTries => _storageTries;
 
+    /// <summary>Snapshot of the cross-block cache's retained size, for observability/metrics.</summary>
+    public readonly record struct CacheSize(int StorageTrieCount, int AccountArenaNodes, long StorageArenaNodes);
+
+    /// <summary>
+    /// Reports the preserved trie's retained footprint so operators can watch cross-block
+    /// cache growth and size the LFU prune caps. <see cref="CacheSize.StorageTrieCount"/> is the
+    /// number of contracts whose storage subtrie is currently held in memory (this is the value
+    /// that grows unbounded when pruning is off); the arena-node counts are cheap high-water
+    /// proxies for the account trie and the sum across all storage tries.
+    /// </summary>
+    public CacheSize GetCacheSize()
+    {
+        int accountNodes = _accountTrie?.ArenaHighWater ?? 0;
+        long storageNodes = 0;
+        foreach (KeyValuePair<Hash256, SparsePatriciaTree> kvp in _storageTries)
+            storageNodes += kvp.Value.ArenaHighWater;
+        return new CacheSize(_storageTries.Count, accountNodes, storageNodes);
+    }
+
     public void RevealMultiproof(DecodedMultiProof proof)
     {
         if (proof.AccountNodes.Count > 0)
