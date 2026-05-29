@@ -577,8 +577,57 @@ public sealed class SparseSubtrie : IDisposable
     {
         if (Root == -1) return RlpNode.FromRlp([0x80]);
         if (_arena[Root].IsEmpty()) return RlpNode.FromRlp([0x80]);
-        HashNode(Root);
+        HashNodeRootParallel(Root);
         return _arena[Root].CachedRlp;
+    }
+
+    /// <summary>Same as <see cref="HashNode"/> but parallelizes recursion across the root's
+    /// dirty children when there are enough of them to amortize threadpool overhead. Each
+    /// child's subtree hash is independent (writes only to its own arena slots, reads only
+    /// from blinded refs / its own cached children), so parallel execution is safe as long
+    /// as no allocator calls fire â€” HashNode and its callees only mutate existing arena
+    /// slots and allocate GC heap byte[]s for RLP, never AllocNode/AllocChildren/AllocValue.</summary>
+    private void HashNodeRootParallel(int nodeIdx)
+    {
+        if (_arena[nodeIdx].IsCached() || _arena[nodeIdx].IsBlinded()) return;
+        if (_arena[nodeIdx].IsLeaf()) { EncodeLeaf(nodeIdx); return; }
+        if (!_arena[nodeIdx].IsBranch()) return;
+
+        if (_arena[nodeIdx].HasShortKey() && _arena[nodeIdx].StateMask == TrieMask.Empty)
+        {
+            EncodeExtensionOnly(nodeIdx);
+            return;
+        }
+
+        TrieMask mask = _arena[nodeIdx].StateMask;
+        int childrenStart = _arena[nodeIdx].ChildrenStart;
+
+        // Gather dirty children up front so we can launch them in parallel.
+        Span<int> dirty = stackalloc int[16];
+        int dirtyCount = 0;
+        for (int n = 0; n < 16; n++)
+        {
+            if (!mask.IsBitSet(n)) continue;
+            int denseIdx = childrenStart + mask.DenseIndex(n);
+            SparseChildEntry entry = _children[denseIdx];
+            if (entry.IsRevealed && _arena[entry.ArenaIndex].IsDirty())
+                dirty[dirtyCount++] = entry.ArenaIndex;
+        }
+
+        const int ParallelThreshold = 4;
+        if (dirtyCount >= ParallelThreshold)
+        {
+            int[] arr = new int[dirtyCount];
+            for (int i = 0; i < dirtyCount; i++) arr[i] = dirty[i];
+            System.Threading.Tasks.Parallel.For(0, dirtyCount, i => HashNode(arr[i]));
+        }
+        else
+        {
+            for (int i = 0; i < dirtyCount; i++) HashNode(dirty[i]);
+        }
+
+        EncodeBranch(nodeIdx);
+        if (_arena[nodeIdx].HasShortKey()) WrapBranchWithExtension(nodeIdx);
     }
 
     private void HashNode(int nodeIdx)
