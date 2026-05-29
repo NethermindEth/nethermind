@@ -107,11 +107,14 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             api.LogManager, api.JsonRpcLocalStats!, api.EthereumJsonSerializer, api.FileSystem);
         jsonIpcRunner.Start(cancellationToken);
 
-#pragma warning disable 4014
+        // Drain in-flight JSON-RPC requests before the rest of the dispose stack (DBs, block tree, world state)
+        // is torn down. The disposer runs registered disposables in LIFO order and awaits each async one, so
+        // pushing this after the stores were registered guarantees Kestrel's graceful shutdown completes before
+        // those stores are closed - otherwise a long-running request (e.g. trace_replayBlockTransactions) can read
+        // an already-disposed database and throw ObjectDisposedException.
         api.DisposeStack.Push(
-            new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
-        api.DisposeStack.Push(jsonIpcRunner); // do not await
-#pragma warning restore 4014
+            new Reactive.AnonymousAsyncDisposable(() => new ValueTask(jsonRpcRunner.StopAsync())));
+        api.DisposeStack.Push(jsonIpcRunner);
     }
     private static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
     {
