@@ -20,7 +20,19 @@ namespace Nethermind.State.Repositories
             _writeBatchFactory = writeBatchFactory;
             Monitor.Enter(_lockObject, ref _lockTaken);
 
-            WriteBatch = _writeBatchFactory();
+            try
+            {
+                WriteBatch = _writeBatchFactory();
+            }
+            catch
+            {
+                if (_lockTaken)
+                {
+                    _lockTaken = false;
+                    Monitor.Exit(_lockObject);
+                }
+                throw;
+            }
         }
 
         /// <summary>Writes the accumulated batch and starts a fresh one, keeping the write lock held.</summary>
