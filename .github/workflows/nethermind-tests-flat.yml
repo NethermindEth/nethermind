@@ -15,10 +15,8 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   TERM: xterm
   TEST_USE_FLAT: 1
-  # Runtime tuning — see nethermind-tests.yml for rationale.
-  DOTNET_TieredPGO: 1
+  # Server GC — see nethermind-tests.yml for rationale.
   DOTNET_GCServer: 1
-  DOTNET_GCConcurrent: 1
 
 jobs:
   # Base unit/spec projects collapse into 2 grouped jobs. Solution-level build
@@ -47,7 +45,21 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ matrix.group == 'flat-spec' && 'recursive' || 'false' }}
+          submodules: false
+
+      - name: Fetch ethereum/tests fixtures
+        # Only flat-spec needs ethereum/tests; flat-nethermind builds
+        # Nethermind.slnx without referencing src/tests.
+        if: matrix.group == 'flat-spec'
+        shell: bash
+        run: |
+          # SHA resolved from the parent repo's submodule pointer — single
+          # source of truth, bumped via the normal submodule update flow.
+          SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
+          test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
+          mkdir -p src/tests
+          curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
+            | tar -xz --strip-components=1 -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -127,7 +139,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Fetch ethereum/tests fixtures
+        shell: bash
+        run: |
+          # SHA resolved from the parent repo's submodule pointer — single
+          # source of truth, bumped via the normal submodule update flow.
+          SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
+          test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
+          mkdir -p src/tests
+          curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
+            | tar -xz --strip-components=1 -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5

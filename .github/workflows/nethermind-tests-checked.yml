@@ -14,10 +14,8 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   TERM: xterm
-  # Runtime tuning — see nethermind-tests.yml for rationale.
-  DOTNET_TieredPGO: 1
+  # Server GC — see nethermind-tests.yml for rationale.
   DOTNET_GCServer: 1
-  DOTNET_GCConcurrent: 1
 
 defaults:
   run:
@@ -70,8 +68,21 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          # Only spec-* groups need ethereum/tests submodule.
-          submodules: ${{ contains(fromJSON('["spec-core","spec-tx-rlp-trie"]'), matrix.group) && 'recursive' || 'false' }}
+          submodules: false
+
+      - name: Fetch ethereum/tests fixtures
+        # Only spec-* groups consume ethereum/tests; other groups build
+        # Nethermind.slnx and don't reference src/tests at all.
+        if: ${{ contains(fromJSON('["spec-core","spec-tx-rlp-trie"]'), matrix.group) }}
+        shell: bash
+        run: |
+          # SHA resolved from the parent repo's submodule pointer — single
+          # source of truth, bumped via the normal submodule update flow.
+          SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
+          test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
+          mkdir -p src/tests
+          curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
+            | tar -xz --strip-components=1 -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -218,7 +229,20 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+          submodules: false
+
+      - name: Fetch ethereum/tests fixtures
+        # Only Legacy.* uses ethereum/tests; Pyspec pulls its own at runtime.
+        if: ${{ !startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') }}
+        shell: bash
+        run: |
+          # SHA resolved from the parent repo's submodule pointer — single
+          # source of truth, bumped via the normal submodule update flow.
+          SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
+          test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
+          mkdir -p src/tests
+          curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
+            | tar -xz --strip-components=1 -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5

@@ -21,12 +21,10 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   TERM: xterm
-  # Runtime tuning: server GC parallelizes collection across cores (worth it
-  # for Pyspec/Legacy.Blockchain chunks that run 10+ min). Tiered PGO is on
-  # by default in .NET 10 but explicit keeps it on if a runner image flips.
-  DOTNET_TieredPGO: 1
+  # Server GC parallelizes collection across cores — worth it for the
+  # multi-minute Pyspec / Legacy.Blockchain chunks. Default for test host
+  # is workstation GC, so this opt-in is meaningful.
   DOTNET_GCServer: 1
-  DOTNET_GCConcurrent: 1
 
 defaults:
   run:
@@ -234,7 +232,21 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Fetch ethereum/tests fixtures
+        shell: bash
+        run: |
+          # Resolve the fixture SHA from the parent repo's submodule pointer
+          # — single source of truth, bumped via the normal submodule update
+          # flow (`git -C src/tests checkout <ref>` + `git add src/tests`).
+          # We never actually clone the submodule; we just read its pinned
+          # commit from the parent tree and pull the matching tarball.
+          SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
+          test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
+          mkdir -p src/tests
+          curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
+            | tar -xz --strip-components=1 -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -376,7 +388,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+          submodules: false
+
+      - name: Fetch ethereum/tests fixtures
+        # Only Legacy.* uses ethereum/tests; Pyspec downloads its own
+        # fixtures at test runtime via TestFixtureDownloader.
+        if: ${{ !startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') }}
+        shell: bash
+        run: |
+          # Resolve the fixture SHA from the parent repo's submodule pointer
+          # — single source of truth, bumped via the normal submodule update
+          # flow (`git -C src/tests checkout <ref>` + `git add src/tests`).
+          # We never actually clone the submodule; we just read its pinned
+          # commit from the parent tree and pull the matching tarball.
+          SHA=$(git ls-tree HEAD src/tests | awk '{print $3}')
+          test -n "$SHA" || { echo "::error::Could not resolve src/tests submodule SHA"; exit 1; }
+          mkdir -p src/tests
+          curl -fsSL "https://github.com/ethereum/tests/archive/${SHA}.tar.gz" \
+            | tar -xz --strip-components=1 -C src/tests
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
