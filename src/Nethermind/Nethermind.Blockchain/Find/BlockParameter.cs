@@ -18,7 +18,6 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Blockchain.Find
 {
     using Nethermind.JsonRpc.Data;
-    using Nethermind.Core.Extensions;
 
     public sealed class BlockParameterParseException(string message) : FormatException(message), IExceptionWithSafePublicMessage;
 
