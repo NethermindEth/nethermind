@@ -835,6 +835,10 @@ namespace Nethermind.Network.Test
                     if (PeerPool.ActivePeers.Count >= target) return;
                     await tcs.Task.WaitAsync(timeout);
                 }
+                catch (TimeoutException)
+                {
+                    Assert.Fail($"Timed out after {timeout} waiting for {target} active peers (current: {PeerPool.ActivePeers.Count})");
+                }
                 finally
                 {
                     RlpxPeer.ConnectCalled -= handler;
@@ -900,6 +904,10 @@ namespace Nethermind.Network.Test
                 {
                     if (ConnectAsyncCallsCount >= totalCount) return;
                     await tcs.Task.WaitAsync(timeout);
+                }
+                catch (TimeoutException)
+                {
+                    Assert.Fail($"Timed out after {timeout} waiting for {totalCount} ConnectAsync calls (current: {ConnectAsyncCallsCount})");
                 }
                 finally
                 {

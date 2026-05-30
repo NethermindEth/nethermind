@@ -60,16 +60,21 @@ public class FileLocalDataSourceTests
 
     private static async Task WaitForData(FileLocalDataSource<string[]> source, string[] expected, SemaphoreSlim handle)
     {
+        if (!await WaitForCondition(handle, () => source.Data is { } data && data.SequenceEqual(expected)))
+            Assert.Fail($"Data did not converge to expected value within {Timeout.MaxWaitTime}ms");
+    }
+
+    private static async Task<bool> WaitForCondition(SemaphoreSlim handle, Func<bool> predicate)
+    {
         TimeSpan slice = TimeSpan.FromMilliseconds(100);
         TimeSpan budget = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
         while (budget > TimeSpan.Zero)
         {
             await handle.WaitAsync(slice);
-            if (source.Data is { } data && data.SequenceEqual(expected))
-                return;
+            if (predicate()) return true;
             budget -= slice;
         }
-        Assert.Fail($"Data did not converge to expected value within {Timeout.MaxWaitTime}ms");
+        return false;
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -152,15 +157,7 @@ public class FileLocalDataSourceTests
 
                 int afterFirst = Volatile.Read(ref changedRaised);
                 File.Delete(tempFile.Path);
-                TimeSpan slice = TimeSpan.FromMilliseconds(100);
-                TimeSpan budget = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
-                while (budget > TimeSpan.Zero)
-                {
-                    await handle.WaitAsync(slice);
-                    if (fileLocalDataSource.Data is null)
-                        break;
-                    budget -= slice;
-                }
+                await WaitForCondition(handle, () => fileLocalDataSource.Data is null);
                 Assert.That(fileLocalDataSource.Data, Is.Null);
                 Assert.That(Volatile.Read(ref changedRaised), Is.GreaterThan(afterFirst));
             }
