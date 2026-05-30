@@ -34,7 +34,6 @@ jobs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
     env:
       DOTNET_GCConserveMemory: 9
-      DOTNET_gcServer: 0
     strategy:
       fail-fast: false
       matrix:
