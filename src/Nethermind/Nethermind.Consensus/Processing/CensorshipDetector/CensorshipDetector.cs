@@ -38,6 +38,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
     private readonly ILogger _logger;
     private readonly Dictionary<AddressAsKey, Transaction?>? _bestTxPerObservedAddresses;
     private readonly LruCache<BlockNumberHash, BlockCensorshipInfo> _potentiallyCensoredBlocks;
+    private readonly LruCache<BlockNumberHash, Task> _processingTasks;
     private readonly WrapAroundArray<BlockNumberHash> _censoredBlocks;
     private readonly uint _blockCensorshipThreshold;
     private readonly int _cacheSize;
@@ -75,6 +76,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         }
 
         _potentiallyCensoredBlocks = new(_cacheSize, _cacheSize, "potentiallyCensoredBlocks");
+        _processingTasks = new(_cacheSize, _cacheSize, "censorshipProcessingTasks");
         _censoredBlocks = new(_cacheSize);
         _blockProcessor.BlockProcessing += OnBlockProcessing;
     }
@@ -108,8 +110,14 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
             }
         }
 
-        Task.Run(() => Cache(e.Block));
+        BlockNumberHash key = new(e.Block);
+        _processingTasks.Set(key, Task.Run(() => Cache(e.Block)));
     }
+
+    public Task ProcessingTaskFor(long blockNumber, ValueHash256 blockHash) =>
+        _processingTasks.TryGet(new BlockNumberHash(blockNumber, blockHash), out Task task)
+            ? task
+            : Task.CompletedTask;
 
     private void Cache(Block block)
     {

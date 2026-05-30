@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Producers;
@@ -17,10 +18,10 @@ namespace Nethermind.AuRa.Test
     public class BuildBlocksOnAuRaStepsTests
     {
         [Test]
-        [Retry(3)]
         public async Task should_cancel_block_production_trigger_on_next_step_if_not_finished_yet()
         {
             List<BlockProductionEventArgs> args = [];
+            using SemaphoreSlim eventReceived = new(0);
             await using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(new TestAuRaStepCalculator(), LimboLogs.Instance))
             {
                 buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
@@ -28,11 +29,12 @@ namespace Nethermind.AuRa.Test
                     args.Add(e);
                     e.BlockProductionTask = TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan * 10, e.CancellationToken)
                         .ContinueWith(t => (Block?)null, e.CancellationToken);
+                    eventReceived.Release();
                 };
 
-                while (args.Count < 4)
+                for (int i = 0; i < 4; i++)
                 {
-                    await TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan);
+                    Assert.That(await eventReceived.WaitAsync(TimeSpan.FromSeconds(30)), Is.True, $"Trigger event #{i + 1} did not arrive within 30s");
                 }
             }
 
@@ -45,16 +47,18 @@ namespace Nethermind.AuRa.Test
         public async Task should_not_cancel_block_production_trigger_on_next_step_finished()
         {
             List<BlockProductionEventArgs> args = [];
+            using SemaphoreSlim eventReceived = new(0);
 
             BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(new TestAuRaStepCalculator(), LimboLogs.Instance);
             buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
             {
                 args.Add(e);
+                eventReceived.Release();
             };
 
-            while (args.Count < 2)
+            for (int i = 0; i < 2; i++)
             {
-                await TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan);
+                Assert.That(await eventReceived.WaitAsync(TimeSpan.FromSeconds(30)), Is.True);
             }
 
             IEnumerable<bool> enumerable = args.Select(e => e.CancellationToken.IsCancellationRequested).ToArray();
