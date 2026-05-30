@@ -12,10 +12,10 @@
           "from": "{{Address.WETH}}",
           "to": "{{Address.Zero}}",
           "gas": "0x5208",
-          "gasPrice": "{{Hex(Head.BaseFeePerGas - 1)}}",
+          "gasPrice": "0x1",
           "value": "0x0"
         },
-        "{{Hex(RecentBlock)}}"
+        "{{Hex(Head.Number)}}"
       ],
       "id": "{{Request.Number}}"
     },
