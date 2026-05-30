@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Core;
@@ -34,7 +35,7 @@ public static class SszCodec
 
     public static int EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp, IBufferWriter<byte> writer)
     {
-        SszBytes8[]? pidList = null;
+        ulong[]? pidList = null;
         if (resp.PayloadId is not null)
         {
             ReadOnlySpan<char> hex = resp.PayloadId.AsSpan();
@@ -43,7 +44,7 @@ public static class SszCodec
                 throw new InvalidOperationException($"Invalid payload id '{resp.PayloadId}': expected 16 hex chars, got {hex.Length}");
             Span<byte> stack = stackalloc byte[8];
             Bytes.FromHexString(hex, stack);
-            pidList = [SszBytes8.FromSpan(stack)];
+            pidList = [BinaryPrimitives.ReadUInt64LittleEndian(stack)];
         }
 
         return EncodeToWriter(new ForkchoiceUpdatedResponseWire
