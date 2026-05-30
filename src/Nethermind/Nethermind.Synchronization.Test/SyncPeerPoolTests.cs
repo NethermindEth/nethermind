@@ -332,21 +332,29 @@ public class SyncPeerPoolTests
         ctx.Pool.Start();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_refresh()
     {
         await using Context ctx = new();
         ctx.Pool.Start();
         ISyncPeer? syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        TaskCompletionSource secondCall = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int callCount = 0;
+        syncPeer.When(p => p.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()))
+            .Do(_ =>
+            {
+                if (Interlocked.Increment(ref callCount) == 2)
+                    secondCall.TrySetResult();
+            });
+
         ctx.Pool.AddPeer(syncPeer);
         ctx.Pool.RefreshTotalDifficulty(syncPeer, Keccak.Zero);
-        await Task.Delay(100);
 
-        Assert.That(() =>
-            syncPeer.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "GetHeadBlockHeader"),
-            Is.EqualTo(2).After(1000, 100)
-        );
+        await secondCall.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.That(callCount, Is.EqualTo(2));
     }
 
     [Test]

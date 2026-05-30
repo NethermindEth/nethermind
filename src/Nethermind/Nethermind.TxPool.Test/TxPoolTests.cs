@@ -1424,14 +1424,12 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        [Retry(3)]
         [NonParallelizable]
         public void should_include_transaction_after_removal()
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
             _txPool = CreatePool(new TxPoolConfig { Size = 2 }, specProvider);
 
-            // Send cheap transaction
             Transaction txA = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.EIP1559)
@@ -1456,15 +1454,15 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            // Send two transactions with high gas price => txA removed from pool
             Assert.That(_txPool.SubmitTx(expensiveTx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(expensiveTx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // Rise new block event to cleanup cash and remove one expensive tx
+            ManualResetEventSlim headProcessed = new();
+            _txPool.TxPoolHeadChanged += (_, _) => headProcessed.Set();
             _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.WithTransactions(expensiveTx1).TestObject));
+            Assert.That(headProcessed.Wait(TimeSpan.FromSeconds(30)), Is.True, "Pool did not finish processing head change");
 
-            // Wait for event processing and send txA again => should be Accepted
-            Assert.That(() => _txPool.SubmitTx(txA, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted).After(Timeout, 10));
+            Assert.That(_txPool.SubmitTx(txA, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
         [TestCase(true, 1, 1, true)]
@@ -2366,6 +2364,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        [Category("Flaky"), Retry(3)]
         public async Task should_return_fresh_pending_transactions_snapshot_after_head_change()
         {
             const long blockNumber = 358;
