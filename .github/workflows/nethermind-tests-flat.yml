@@ -20,6 +20,9 @@ jobs:
     name: Run ${{ matrix.project }}${{ matrix.label && format(' [{0}]', matrix.label) || '' }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DOTNET_GCConserveMemory: 9
+      DOTNET_gcServer: 0
     strategy:
       fail-fast: false
       matrix:
