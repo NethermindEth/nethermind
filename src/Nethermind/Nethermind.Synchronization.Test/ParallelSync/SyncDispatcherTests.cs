@@ -244,7 +244,7 @@ public class SyncDispatcherTests
             {
                 if (HighestRequested >= target) return Task.CompletedTask;
                 _watchedTarget = target;
-                _watchedReached ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _watchedReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 return _watchedReached.Task;
             }
         }
