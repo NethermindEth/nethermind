@@ -9,12 +9,12 @@
       "method": "eth_getLogs",
       "params": [
         {
-          "address": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+          "address": "{{Address.USDT}}",
           "fromBlock": "{{Hex(RecentBlock - 2)}}",
           "toBlock": "{{Hex(RecentBlock)}}",
           "topics": [
             [
-              "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925"
+              "{{Topic.Approval}}"
             ]
           ]
         }

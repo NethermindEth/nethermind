@@ -10,9 +10,9 @@
       "params": [{
         "fromBlock": "{{Hex(RecentBlock - 9)}}",
         "toBlock": "{{Hex(RecentBlock)}}",
-        "address": ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", "0xdac17f958d2ee523a2206206994597c13d831ec7"],
+        "address": ["{{Address.WETH}}", "{{Address.USDT}}"],
         "topics": [
-          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "{{Topic.Transfer}}",
           null,
           "0x0000000000000000000000003fc91a3afd70395cd496c647d5a6cc9d4b2b7fad"
         ]
