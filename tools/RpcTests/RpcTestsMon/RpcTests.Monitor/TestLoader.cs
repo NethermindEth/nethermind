@@ -55,8 +55,7 @@ internal static class TestLoader
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Failed to load test \"{path}\": {ex.Message}");
-                throw;
+                throw new Exception("Failed to load test definition: " + ex.Message, ex);
             }
         }
 

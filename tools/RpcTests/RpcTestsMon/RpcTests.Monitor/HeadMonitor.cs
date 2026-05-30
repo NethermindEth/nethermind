@@ -5,11 +5,11 @@ using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Nodes;
-using Nethermind.RpcTests.Monitor.Notifiers;
+using System.Threading.Channels;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class HeadMonitor(Uri nodeUrl, INotifier notifier)
+internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
 {
     private const string SubscribeRequest =
         """{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}""";
@@ -17,8 +17,52 @@ internal class HeadMonitor(Uri nodeUrl, INotifier notifier)
     public static Uri DeriveWsUrl(Uri httpUrl) =>
         new UriBuilder(httpUrl) { Scheme = httpUrl.Scheme == "https" ? "wss" : "ws" }.Uri;
 
-    // TODO: add automatic reconnection with exponential backoff
     public async IAsyncEnumerable<BlockInfo> SubscribeAsync([EnumeratorCancellation] CancellationToken ct = default)
+    {
+        Channel<BlockInfo> channel = Channel.CreateUnbounded<BlockInfo>();
+        _ = ProduceWithRetryAsync(channel.Writer, ct);
+
+        await foreach (BlockInfo head in channel.Reader.ReadAllAsync(ct))
+            yield return head;
+    }
+
+    private async Task ProduceWithRetryAsync(ChannelWriter<BlockInfo> writer, CancellationToken ct)
+    {
+        int retryDelaySec = 1;
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    await ConnectAndProduceAsync(writer, ct);
+                    retryDelaySec = 1;
+
+                    if (!ct.IsCancellationRequested)
+                        Console.Error.WriteLine("WebSocket disconnected, reconnecting...");
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    errorReporter.Report("WebSocket connection error", ex);
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(retryDelaySec), ct)
+                    .ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+
+                retryDelaySec = Math.Min(retryDelaySec * 2, 60);
+            }
+        }
+        finally
+        {
+            writer.Complete();
+        }
+    }
+
+    private async Task ConnectAndProduceAsync(ChannelWriter<BlockInfo> writer, CancellationToken ct)
     {
         using ClientWebSocket ws = new();
         await ws.ConnectAsync(DeriveWsUrl(nodeUrl), ct);
@@ -29,34 +73,24 @@ internal class HeadMonitor(Uri nodeUrl, INotifier notifier)
         while (!ct.IsCancellationRequested)
         {
             JsonNode? message = await ReadMessageAsync(ws, buffer, ms, ct);
-            if (message is null)
-                yield break;
+            if (message is null) return;
 
             BlockInfo? head = TryParseHead(message);
             if (head is not null)
-                yield return head;
+                await writer.WriteAsync(head, ct);
         }
     }
 
     private BlockInfo? TryParseHead(JsonNode message)
     {
-        if (message["error"] is { } error)
-        {
-            string errorMsg = $"WebSocket error: {error}";
-            Console.Error.WriteLine(errorMsg);
-            _ = notifier.NotifyErrorAsync(errorMsg);
-        }
-
-        JsonNode? result = message["params"]?["result"];
-        if (result is null) return null;
-
         try
         {
-            return new BlockInfo(result);
+            if (message["error"] is { } error) throw new Exception(error.ToCompactString());
+            return message["params"]?["result"] is { } result ? new BlockInfo(result) : null;
         }
         catch (Exception exception)
         {
-            Console.Error.WriteLine($"Failed to parse head JSON: {exception.Message}");
+            errorReporter.Report("Error parsing block info", exception);
             return null;
         }
     }

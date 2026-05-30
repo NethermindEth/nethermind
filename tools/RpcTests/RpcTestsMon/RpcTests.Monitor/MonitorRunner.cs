@@ -10,6 +10,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, HttpClient 
 {
     private readonly TestDefinition[] _tests = TestLoader.Load(args.TestGlobs, requiresResponse: args.ReferenceUrl is null);
     private readonly TestExecutor _executor = new(client);
+    private readonly ErrorReporter _errorReporter = new(notifier);
 
     public async Task RunAsync(CancellationToken ct)
     {
@@ -19,7 +20,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, HttpClient 
 
         (ITargetBlock<BlockInfo> startBlock, IDataflowBlock endBlock) = BuildPipeline(ct);
 
-        HeadMonitor headMonitor = new(args.TargetUrl, notifier);
+        HeadMonitor headMonitor = new(args.TargetUrl, _errorReporter);
         try
         {
             Console.WriteLine($"Monitoring {args.TargetUrl}");
@@ -80,7 +81,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, HttpClient 
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Error on test \"{def.FilePath}\" run condition evaluation: {ex.Message}");
+                _errorReporter.Report($"Error on test \"{def.FilePath}\" run condition evaluation", ex);
             }
 
             if (shouldRun)
@@ -100,9 +101,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, HttpClient 
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            string errorMsg = $"Error on test \"{test.Definition.FilePath}\" invocation at block #{test.Head:#}: {ex.Message}";
-            Console.Error.WriteLine(errorMsg);
-            _ = notifier.NotifyErrorAsync(errorMsg);
+            _errorReporter.Report($"Error on test \"{test.Definition.FilePath}\" invocation at block #{test.Head:#}", ex);
             return null;
         }
     }
