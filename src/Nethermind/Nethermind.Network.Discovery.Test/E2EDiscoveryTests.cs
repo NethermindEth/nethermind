@@ -63,7 +63,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     private int AssignDiscoveryIp() => Interlocked.Increment(ref _discoveryIp);
 
     [Test]
-    [Retry(3)]
+    [Category("Flaky"), Retry(3)]
     [Parallelizable(ParallelScope.None)]
     public async Task TestDiscovery()
     {

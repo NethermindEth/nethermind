@@ -6,7 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <PackageReference Include="Nethermind.Numerics.Int256" />
+    <PackageReference Include="Nethermind.Zkvm.Abstractions" Condition="'$(EnableZkEvm)' == 'true'" />
   </ItemGroup>
 
 </Project>
