@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
+    <!--<ProjectReference Include="..\..\..\..\rocksdb-bindings\src\RocksDbSharp.csproj" />-->
 
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Nethermind.Db.Test</_Parameter1>
@@ -17,6 +18,6 @@
   <ItemGroup>
     <PackageReference Include="ConcurrentHashSet" />
     <PackageReference Include="NonBlocking" />
-    <PackageReference Include="RocksDB" />
+    <PackageReference Include="Nethermind.RocksDB.Bindings" />
   </ItemGroup>
 </Project>

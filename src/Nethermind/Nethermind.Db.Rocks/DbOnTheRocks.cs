@@ -82,7 +82,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly IFileSystem _fileSystem;
 
-    protected readonly RocksDbSharp.Native _rocksDbNative;
+    protected readonly Native _rocksDbNative;
 
     private ITunableDb.TuneType _currentTune = ITunableDb.TuneType.Default;
 

@@ -5,7 +5,6 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using RocksDbSharp;
-using RocksDbNative = RocksDbSharp.Native;
 
 namespace Nethermind.Db.Rocks;
 
@@ -18,7 +17,7 @@ internal static class RocksDbExtensions
         ref byte ptr = ref MemoryMarshal.GetReference(span);
         nint intPtr = new(Unsafe.AsPointer(ref ptr));
 
-        RocksDbNative.Instance.rocksdb_free(intPtr);
+        Native.Instance.rocksdb_free(intPtr);
     }
 
     internal static unsafe Span<byte> GetSpan(this RocksDb db, scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null, ReadOptions? readOptionObj = null)
@@ -36,8 +35,8 @@ internal static class RocksDbExtensions
         {
             nuint keyLengthPtr = (UIntPtr)keyLength;
             result = cf is null
-                ? RocksDbNative.Instance.rocksdb_get(db.Handle, readOptions, ptr, keyLengthPtr, out valueLength, out error)
-                : RocksDbNative.Instance.rocksdb_get_cf(db.Handle, readOptions, cf.Handle, ptr, keyLengthPtr, out valueLength, out error);
+                ? Native.Instance.rocksdb_get(db.Handle, readOptions, ptr, keyLengthPtr, out valueLength, out error)
+                : Native.Instance.rocksdb_get_cf(db.Handle, readOptions, cf.Handle, ptr, keyLengthPtr, out valueLength, out error);
 
         }
 

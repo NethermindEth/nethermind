@@ -65,7 +65,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     /// </summary>
     internal static void DestroyReadOptions(ReadOptions options)
     {
-        RocksDbSharp.Native.Instance.rocksdb_readoptions_destroy(options.Handle);
+        Native.Instance.rocksdb_readoptions_destroy(options.Handle);
         GC.SuppressFinalize(options);
     }
 
