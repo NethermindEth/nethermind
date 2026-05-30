@@ -192,8 +192,7 @@ jobs:
           if (( ${#projects[@]} == 1 )); then
             project="${projects[0]}"
             dotnet test --project "$project/$project.csproj" -c release \
-              --no-build --no-restore -v minimal $VARIANT_ARGS \
-              --filter "TestCategory!=Flaky"
+              --no-build --no-restore -v minimal $VARIANT_ARGS
             exit $?
           fi
 
@@ -209,7 +208,6 @@ jobs:
             (
               if dotnet test --project "$project/$project.csproj" -c release \
                   --no-build --no-restore -v minimal $VARIANT_ARGS \
-                  --filter "TestCategory!=Flaky" \
                   > "$results_dir/$project.log" 2>&1; then
                 echo "0" > "$results_dir/$project.exitcode"
               else
@@ -312,8 +310,7 @@ jobs:
         run: |
           set -e
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
-            -v minimal ${{ matrix.variant.args }} -p:RestoreDisableParallel=true \
-            --filter "TestCategory!=Flaky"
+            -v minimal ${{ matrix.variant.args }} -p:RestoreDisableParallel=true
 
   tests-summary:
     name: Tests summary

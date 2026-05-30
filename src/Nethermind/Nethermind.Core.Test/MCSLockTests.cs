@@ -56,7 +56,7 @@ public class MCSLockTests
     }
 
     [Test]
-    [Category("Flaky"), Retry(3)]
+    [Retry(3)]
     public void LockFairnessTest()
     {
         int numberOfThreads = 10;

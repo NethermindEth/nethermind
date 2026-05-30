@@ -1424,7 +1424,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        [Category("Flaky"), Retry(3)]
+        [Retry(3)]
         [NonParallelizable]
         public void should_include_transaction_after_removal()
         {
@@ -2366,7 +2366,6 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        [Category("Flaky"), Retry(3)]
         public async Task should_return_fresh_pending_transactions_snapshot_after_head_change()
         {
             const long blockNumber = 358;

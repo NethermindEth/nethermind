@@ -141,7 +141,6 @@ jobs:
             (
               if dotnet test --project "$project/$project.csproj" -c release \
                   --no-build --no-restore -v minimal \
-                  --filter "TestCategory!=Flaky" \
                   > "$results_dir/$project.log" 2>&1; then
                 echo "0" > "$results_dir/$project.exitcode"
               else
@@ -201,7 +200,7 @@ jobs:
           dotnet build Ethereum.Legacy.Blockchain.Test.csproj -c release -v minimal -p:RestoreDisableParallel=true
           dotnet build-server shutdown || true
           dotnet test --project Ethereum.Legacy.Blockchain.Test.csproj -c release \
-            --no-build --no-restore -v minimal --filter "TestCategory!=Flaky"
+            --no-build --no-restore -v minimal
 
   # Pyspec Sequential + 6 Amsterdam fixture variants, each chunked 1of12..12of12.
   tests-pyspec:
@@ -299,7 +298,7 @@ jobs:
 
           set -e
           dotnet test --project Ethereum.Blockchain.Pyspec.Test.csproj -c release \
-            -v minimal -p:RestoreDisableParallel=true --filter "${filter}&TestCategory!=Flaky"
+            -v minimal -p:RestoreDisableParallel=true --filter "${filter}"
 
   tests-summary:
     name: Tests summary

@@ -332,7 +332,7 @@ public class SyncPeerPoolTests
         ctx.Pool.Start();
     }
 
-    [Test, Category("Flaky"), Retry(3)]
+    [Test, Retry(3)]
     public async Task Can_refresh()
     {
         await using Context ctx = new();

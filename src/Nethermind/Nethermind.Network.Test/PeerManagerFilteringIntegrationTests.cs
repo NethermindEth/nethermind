@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class PeerManagerFilteringIntegrationTests
 {
-    [Test, Category("Flaky"), Retry(3)]
+    [Test, Retry(3)]
     public async Task PeerManager_CallsShouldContactBeforeConnectAsync()
     {
         CallOrderTrackingMock trackingMock = new();
@@ -76,7 +76,7 @@ public class PeerManagerFilteringIntegrationTests
 
     [TestCase(true, false, Description = "Static peer bypasses subnet filter")]
     [TestCase(false, true, Description = "Bootnode peer bypasses subnet filter")]
-    [Category("Flaky"), Retry(3)]
+    [Retry(3)]
     public async Task PrivilegedPeer_BypassesSubnetFilter(bool isStatic, bool isBootnode)
     {
         await using Context ctx = new();
@@ -97,7 +97,7 @@ public class PeerManagerFilteringIntegrationTests
             "Privileged peer should bypass the subnet filter and trigger ConnectAsync");
     }
 
-    [Test, Category("Flaky"), Retry(3)]
+    [Test, Retry(3)]
     public async Task RegularPeer_BlockedByIpFilter()
     {
         await using Context ctx = new();
@@ -114,7 +114,7 @@ public class PeerManagerFilteringIntegrationTests
         Assert.That(ctx.RlpxMock.ConnectedNodeIds, Is.Empty, "Regular peer should be blocked by the IP filter");
     }
 
-    [Test, Category("Flaky"), Retry(3)]
+    [Test, Retry(3)]
     public async Task StaticAndRegularPeers_OnlyStaticBypasses()
     {
         await using Context ctx = new();

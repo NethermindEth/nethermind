@@ -195,8 +195,7 @@ jobs:
           if (( ${#projects[@]} == 1 )); then
             project="${projects[0]}"
             dotnet test --project "$project/$project.csproj" -c release \
-              --no-build --no-restore -v minimal $coverage_args \
-              --filter "TestCategory!=Flaky"
+              --no-build --no-restore -v minimal $coverage_args
             exit $?
           fi
 
@@ -212,7 +211,6 @@ jobs:
             (
               if dotnet test --project "$project/$project.csproj" -c release \
                   --no-build --no-restore -v minimal $coverage_args \
-                  --filter "TestCategory!=Flaky" \
                   > "$results_dir/$project.log" 2>&1; then
                 echo "0" > "$results_dir/$project.exitcode"
               else
@@ -333,8 +331,7 @@ jobs:
           if (( ${#projects[@]} == 1 )); then
             project="${projects[0]}"
             dotnet test --project "$project/$project.csproj" -c release \
-              --no-build --no-restore -v minimal $coverage_args \
-              --filter "TestCategory!=Flaky"
+              --no-build --no-restore -v minimal $coverage_args
             exit $?
           fi
 
@@ -350,7 +347,6 @@ jobs:
             (
               if dotnet test --project "$project/$project.csproj" -c release \
                   --no-build --no-restore -v minimal $coverage_args \
-                  --filter "TestCategory!=Flaky" \
                   > "$results_dir/$project.log" 2>&1; then
                 echo "0" > "$results_dir/$project.exitcode"
               else
@@ -471,49 +467,11 @@ jobs:
         run: |
           set -e
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
-            -v minimal -p:RestoreDisableParallel=true --filter "TestCategory!=Flaky"
-
-  # Single job for every test tagged [Category("Flaky")]. Required check, so
-  # flaky failures still block merging — but one re-run of THIS job is enough
-  # to retry a flake instead of dragging the whole ~250-job matrix.
-  # Convention: tag a flaky test with `[Category("Flaky"), Retry(N)]`.
-  tests-flaky:
-    name: Flaky tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Free up disk space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: true
-          tool-cache: false
-          swap-storage: false
-
-      # All current Flaky-tagged tests are in Nethermind.* projects; if a Flaky
-      # test ever lands in an Ethereum.* project, also build EthereumTests.slnx.
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-
-      - name: Build Nethermind.slnx
-        working-directory: src/Nethermind
-        run: |
-          dotnet build Nethermind.slnx -c release -m -v minimal -p:RestoreDisableParallel=true
-          dotnet build-server shutdown || true
-
-      # Modules without Flaky tests return MTP exit 5 (NUnit "no match") or
-      # 8 (MTP "minimum expected"); both are fine here. Real failures stay 1/2.
-      - name: Run flaky tests
-        working-directory: src/Nethermind
-        run: |
-          dotnet test Nethermind.slnx -c release --no-build --no-restore -v minimal \
-            --filter "TestCategory=Flaky" --ignore-exit-code "5;8"
+            -v minimal -p:RestoreDisableParallel=true
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked, tests-flaky]
+    needs: [tests, tests-spec, tests-chunked]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -522,16 +480,13 @@ jobs:
           TESTS_RESULT: ${{ needs.tests.result }}
           SPEC_RESULT: ${{ needs.tests-spec.result }}
           CHUNKED_RESULT: ${{ needs.tests-chunked.result }}
-          FLAKY_RESULT: ${{ needs.tests-flaky.result }}
         run: |
           echo "tests: $TESTS_RESULT"
           echo "tests-spec: $SPEC_RESULT"
           echo "tests-chunked: $CHUNKED_RESULT"
-          echo "tests-flaky: $FLAKY_RESULT"
           [[ "$TESTS_RESULT" == "success" && \
              "$SPEC_RESULT" == "success" && \
-             "$CHUNKED_RESULT" == "success" && \
-             "$FLAKY_RESULT" == "success" ]]
+             "$CHUNKED_RESULT" == "success" ]]
 
   codecov-upload:
     name: Upload Codecov reports

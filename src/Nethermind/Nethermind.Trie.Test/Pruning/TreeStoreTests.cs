@@ -1000,7 +1000,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        [Category("Flaky"), Retry(3)]
+        [Retry(3)]
         [NonParallelizable]
         public async Task Will_RemovePastKeys_OnSnapshot()
         {

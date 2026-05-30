@@ -626,7 +626,7 @@ public class SessionTests
         Assert.That(message.WasDisposed, Is.True);
     }
 
-    [Test, Category("Flaky"), Retry(3)]
+    [Test, Retry(3)]
     [Parallelizable(ParallelScope.None)] // It touches global metrics
     public void Can_receive_messages()
     {

@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test.Tracing
     public class CancellationTracerTests
     {
         [Test]
-        [Category("Flaky"), Retry(3)]
+        [Retry(3)]
         public void Throw_operation_canceled_after_given_timeout()
         {
             TimeSpan timeout = TimeSpan.FromMilliseconds(10);

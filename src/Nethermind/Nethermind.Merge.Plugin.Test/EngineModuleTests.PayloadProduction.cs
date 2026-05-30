@@ -186,7 +186,7 @@ public partial class EngineModuleTests
 
     [TestCaseSource(nameof(WaitTestCases))]
     [Parallelizable(ParallelScope.None)] // Timing sensitive
-    [Category("Flaky"), Retry(3)]
+    [Retry(3)]
     public async Task getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay, bool hasTx)
     {
         TaskCompletionSource yieldedTransaction = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -336,7 +336,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("Flaky"), Retry(3)]
+    [Retry(3)]
     [Obsolete]
     public async Task consecutive_blockImprovements_should_be_disposed()
     {
@@ -390,7 +390,7 @@ public partial class EngineModuleTests
     }
 
     [Parallelizable(ParallelScope.None)] // Timing sensitive
-    [Test, Category("Flaky"), Retry(3)]
+    [Test, Retry(3)]
     public async Task getPayloadV1_picks_transactions_from_pool_constantly_improving_blocks()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
@@ -430,7 +430,7 @@ public partial class EngineModuleTests
         Assert.That(txs.Length, Is.EqualTo(11));
     }
 
-    [Test, Category("Flaky"), Retry(3)]
+    [Test, Retry(3)]
     public async Task TestTwoTransaction_SameContract_WithBlockImprovement()
     {
         string tx1Hex =
@@ -487,7 +487,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("Flaky"), Retry(3)]
+    [Retry(3)]
     public async Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);

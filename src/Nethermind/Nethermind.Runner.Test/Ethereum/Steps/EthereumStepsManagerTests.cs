@@ -39,7 +39,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
-        [Category("Flaky"), Retry(3)]
+        [Retry(3)]
         public async Task With_steps_from_here_AuRa()
         {
             await using IContainer container = CreateAuraApi(

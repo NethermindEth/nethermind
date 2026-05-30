@@ -84,7 +84,7 @@ public class StartupTreeFixerTests
         Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
     }
 
-    [Category("Flaky"), Retry(30)]
+    [Retry(30)]
     [MaxTime(Timeout.MaxTestTime * 4)]
     [TestCase(0)]
     [TestCase(1)]

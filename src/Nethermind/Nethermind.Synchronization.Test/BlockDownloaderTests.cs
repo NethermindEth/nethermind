@@ -443,7 +443,7 @@ public partial class BlockDownloaderTests
 
     [TestCase(33L)]
     [TestCase(65L)]
-    [Category("Flaky"), Retry(3)]
+    [Retry(3)]
     public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies(long headNumber)
     {
         await using IContainer node = CreateNode();
