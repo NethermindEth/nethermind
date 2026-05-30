@@ -397,7 +397,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         {
             ReadOnlySpan<CodeChange> codeChanges = accountChanges.CodeChanges;
             if (codeChanges.Length == 0) continue;
-            codeChangesByHash ??= [];
+            codeChangesByHash ??= new(GenericEqualityComparer.GetOptimized<ValueHash256>());
             foreach (CodeChange codeChange in codeChanges)
             {
                 if (!codeChangesByHash.TryGetValue(codeChange.CodeHash, out (uint Index, byte[] Code) existing)
