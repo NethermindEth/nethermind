@@ -15,6 +15,7 @@ internal readonly record struct TestContext(TestDefinition Definition, BlockInfo
     #region Helper Methods
 
     public static string Hex(long n) => $"0x{n:x}";
+    public long RecentBlock => Math.Max(1, Head.Number - 5); // recent, but old enough to assume available in all nodes
 
     #endregion
 

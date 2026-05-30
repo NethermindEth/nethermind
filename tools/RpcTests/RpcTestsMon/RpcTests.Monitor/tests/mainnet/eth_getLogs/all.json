@@ -2,14 +2,14 @@
   {
     "run": "EveryBlock",
     "test": {
-      "description": "eth_getLogs @ head-2"
+      "description": "All events"
     },
     "request": {
       "jsonrpc":"2.0",
       "method":"eth_getLogs",
       "params":[{
-        "fromBlock":"{{Hex(Head.Number - 2)}}",
-        "toBlock":"{{Hex(Head.Number - 2)}}"
+        "fromBlock":"{{Hex(RecentBlock)}}",
+        "toBlock":"{{Hex(RecentBlock)}}"
       }],
       "id": "{{Request.Number}}"
     }
