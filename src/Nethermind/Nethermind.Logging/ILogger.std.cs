@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Logging;
 
+#pragma warning disable NETH003 // Build variant: only one of ILogger.std.cs / ILogger.zkevm.cs is compiled per build
 /// <summary>
 /// Struct to wrap InterfaceLogger in that when created sets values in struct for
 /// IsTrace, IsDebug, IsInfo, IsWarn, IsError so the guards are a fast check inline against

@@ -13,4 +13,3 @@ public interface IKademliaMessageSender<TKey, TNode>
     Task Ping(TNode receiver, CancellationToken token);
     Task<TNode[]> FindNeighbours(TNode receiver, TKey target, CancellationToken token);
 }
-

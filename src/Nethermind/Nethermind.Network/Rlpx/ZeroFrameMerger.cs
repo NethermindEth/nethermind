@@ -44,10 +44,24 @@ namespace Nethermind.Network.Rlpx
             FrameHeaderReader.FrameInfo frame = _headerReader.ReadFrameHeader(input);
             if (frame.IsFirst)
             {
+                if (_zeroPacket is not null)
+                {
+                    // Offending frame is intentionally not processed: the CorruptedFrameException
+                    // propagates up the pipeline and closes the peer connection.
+                    _zeroPacket.Release();
+                    _zeroPacket = null;
+                    throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a new first chunk before the in-progress packet completed");
+                }
+
                 ReadFirstChunk(context, input, frame);
             }
             else
             {
+                if (_zeroPacket is null)
+                {
+                    throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a continuation chunk with no in-progress packet");
+                }
+
                 ReadChunk(input, frame);
             }
 

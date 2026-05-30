@@ -443,7 +443,6 @@ public partial class BlockDownloaderTests
 
     [TestCase(33L)]
     [TestCase(65L)]
-    [Retry(3)]
     public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies(long headNumber)
     {
         await using IContainer node = CreateNode();
@@ -910,20 +909,21 @@ public partial class BlockDownloaderTests
 
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
-            AutoResetEvent autoResetEvent = new(true);
+            SemaphoreSlim peerSemaphore = new(1, 1);
             SyncPeerAllocation peerAllocation = new(peerInfo, AllocationContexts.Blocks, null);
 
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                .Returns((c) =>
+                .Returns(async ci =>
                 {
-                    if (!autoResetEvent.WaitOne(100)) return Task.FromResult<SyncPeerAllocation?>(null)!;
-                    return Task.FromResult(peerAllocation);
+                    CancellationToken token = ci.ArgAt<CancellationToken>(3);
+                    await peerSemaphore.WaitAsync(token);
+                    return peerAllocation;
                 });
 
             PeerPool
                 .When((p) => p.Free(peerAllocation))
-                .Do((c) => autoResetEvent.Set());
+                .Do((c) => peerSemaphore.Release());
         }
 
         public async Task SyncUntilNoRequest(SyncFeedComponent<BlocksRequest> component, PeerInfo peerInfo)
