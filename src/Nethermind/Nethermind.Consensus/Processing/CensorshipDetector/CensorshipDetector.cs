@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -111,7 +112,14 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         }
 
         BlockNumberHash key = new(e.Block);
-        _processingTasks.Set(key, Task.Run(() => Cache(e.Block)));
+        Task task = Task.Run(() => Cache(e.Block));
+        _processingTasks.Set(key, task);
+        _ = task.ContinueWith(static (completed, state) =>
+        {
+            (LruCache<BlockNumberHash, Task> cache, BlockNumberHash k) = ((LruCache<BlockNumberHash, Task>, BlockNumberHash))state!;
+            if (cache.TryGet(k, out Task? current) && ReferenceEquals(current, completed))
+                cache.Delete(k);
+        }, (_processingTasks, key), CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
     }
 
     public Task ProcessingTaskFor(long blockNumber, ValueHash256 blockHash) =>
