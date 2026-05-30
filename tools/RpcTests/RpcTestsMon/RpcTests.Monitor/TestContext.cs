@@ -39,6 +39,7 @@ internal record TestFailure(TestContext Test, JsonNode Request, JsonNode ActualR
 
 internal class KnownAddresses
 {
+    public string Zero => "0x0000000000000000000000000000000000000000";
     public string WETH => "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
     public string USDT => "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 }

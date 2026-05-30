@@ -32,13 +32,13 @@ internal class HeadMonitor(Uri nodeUrl, INotifier notifier)
             if (message is null)
                 yield break;
 
-            BlockInfo? head = ParseHead(message);
+            BlockInfo? head = TryParseHead(message);
             if (head is not null)
                 yield return head;
         }
     }
 
-    private BlockInfo? ParseHead(JsonNode message)
+    private BlockInfo? TryParseHead(JsonNode message)
     {
         if (message["error"] is { } error)
         {
@@ -50,12 +50,15 @@ internal class HeadMonitor(Uri nodeUrl, INotifier notifier)
         JsonNode? result = message["params"]?["result"];
         if (result is null) return null;
 
-        string? numberHex = result["number"]?.GetValue<string>();
-        string? hash = result["hash"]?.GetValue<string>();
-        if (numberHex is null || hash is null) return null;
-
-        // TODO: forward more info
-        return new BlockInfo(Convert.ToInt64(numberHex, 16), hash);
+        try
+        {
+            return new BlockInfo(result);
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Failed to parse head JSON: {exception.Message}");
+            return null;
+        }
     }
 
     private static async Task<JsonNode?> ReadMessageAsync(ClientWebSocket ws, byte[] buffer, MemoryStream ms, CancellationToken ct)
