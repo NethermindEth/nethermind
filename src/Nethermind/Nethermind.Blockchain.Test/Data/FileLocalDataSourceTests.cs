@@ -30,7 +30,6 @@ public class FileLocalDataSourceTests
         }
     }
 
-    [Ignore("flaky")]
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task correctly_updates_from_existing_file()
     {
@@ -44,40 +43,56 @@ public class FileLocalDataSourceTests
                 SemaphoreSlim handle = new(0);
                 fileLocalDataSource.Changed += (sender, args) =>
                 {
-                    changedRaised++;
+                    Interlocked.Increment(ref changedRaised);
                     handle.Release();
                 };
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
-                await handle.WaitAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime));
-                Assert.That(changedRaised, Is.EqualTo(1));
-                Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "C", "B" }));
+                await WaitForData(fileLocalDataSource, ["C", "B"], handle);
+                Assert.That(changedRaised, Is.GreaterThanOrEqualTo(1));
 
+                int afterFirst = Volatile.Read(ref changedRaised);
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("E", "F"));
-                await handle.WaitAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime));
-                Assert.That(changedRaised, Is.EqualTo(2));
-                Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "E", "F" }));
+                await WaitForData(fileLocalDataSource, ["E", "F"], handle);
+                Assert.That(Volatile.Read(ref changedRaised), Is.GreaterThan(afterFirst));
             }
         }
     }
 
+    private static async Task WaitForData(FileLocalDataSource<string[]> source, string[] expected, SemaphoreSlim handle)
+    {
+        if (!await WaitForCondition(handle, () => source.Data is { } data && data.SequenceEqual(expected)))
+            Assert.Fail($"Data did not converge to expected value within {Timeout.MaxWaitTime}ms");
+    }
+
+    private static async Task<bool> WaitForCondition(SemaphoreSlim handle, Func<bool> predicate)
+    {
+        TimeSpan slice = TimeSpan.FromMilliseconds(100);
+        TimeSpan budget = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
+        while (budget > TimeSpan.Zero)
+        {
+            await handle.WaitAsync(slice);
+            if (predicate()) return true;
+            budget -= slice;
+        }
+        return false;
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Ignore("flaky test")]
     public async Task correctly_updates_from_new_file()
     {
         using (TempPath tempFile = TempPath.GetTempFile())
         using (FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, 10))
         {
-            bool changedRaised = false;
+            int changedRaised = 0;
             SemaphoreSlim handle = new(0);
             fileLocalDataSource.Changed += (sender, args) =>
             {
-                changedRaised = true;
+                Interlocked.Increment(ref changedRaised);
                 handle.Release();
             };
             await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A", "B"));
-            await handle.WaitAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime));
-            Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "A", "B" }));
-            Assert.That(changedRaised, Is.True);
+            await WaitForData(fileLocalDataSource, ["A", "B"], handle);
+            Assert.That(changedRaised, Is.GreaterThanOrEqualTo(1));
         }
     }
 
@@ -95,7 +110,6 @@ public class FileLocalDataSourceTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Retry(10)]
     [Ignore("Causing repeated pains on GitHub actions.")]
     public async Task retries_loading_file()
     {
@@ -122,7 +136,6 @@ public class FileLocalDataSourceTests
         }
     }
 
-    [Ignore("flaky test")]
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task loads_default_when_deleted_file()
     {
@@ -135,19 +148,18 @@ public class FileLocalDataSourceTests
                 SemaphoreSlim handle = new(0);
                 fileLocalDataSource.Changed += (sender, args) =>
                 {
-                    changedRaised++;
+                    Interlocked.Increment(ref changedRaised);
                     handle.Release();
                 };
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
-                await handle.WaitAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime));
-                Assert.That(changedRaised, Is.EqualTo(1));
+                await WaitForData(fileLocalDataSource, ["C", "B"], handle);
+                Assert.That(changedRaised, Is.GreaterThanOrEqualTo(1));
 
-                Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "C", "B" }));
-
+                int afterFirst = Volatile.Read(ref changedRaised);
                 File.Delete(tempFile.Path);
-                await handle.WaitAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime));
-                Assert.That(changedRaised, Is.EqualTo(2));
+                await WaitForCondition(handle, () => fileLocalDataSource.Data is null);
                 Assert.That(fileLocalDataSource.Data, Is.Null);
+                Assert.That(Volatile.Read(ref changedRaised), Is.GreaterThan(afterFirst));
             }
         }
     }
