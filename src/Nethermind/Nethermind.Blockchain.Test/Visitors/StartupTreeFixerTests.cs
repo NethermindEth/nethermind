@@ -84,7 +84,6 @@ public class StartupTreeFixerTests
         Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
     }
 
-    [Retry(30)]
     [MaxTime(Timeout.MaxTestTime * 4)]
     [TestCase(0)]
     [TestCase(1)]
@@ -102,19 +101,17 @@ public class StartupTreeFixerTests
 
         SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
 
-        await testRpc.RestartBlockchainProcessor();
-
         Task waitTask = suggestedBlocksAmount != 0
             ? testRpc.WaitForNewHeadWhere(b => b.Number == startingBlockNumber + suggestedBlocksAmount)
             : Task.CompletedTask;
-        // fixing after restart
+
+        await testRpc.RestartBlockchainProcessor();
+
         StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
         await tree.Accept(fixer, CancellationToken.None);
 
-        // waiting for N new heads
         await waitTask;
 
-        // add a new block at the end
         await testRpc.AddBlock();
         Assert.That(tree.Head!.Number, Is.EqualTo(startingBlockNumber + suggestedBlocksAmount + 1));
     }
