@@ -86,6 +86,7 @@ public sealed class SpmcRingBuffer<T>
         // sees the payload after seeing seq.
         Volatile.Write(ref _sequences[index], tail + 1);
 
+        // Single producer owns tail; EstimatedJobCount only uses this as a stale-tolerant hint.
         _tail.Value = tail + 1;
 
         return true;

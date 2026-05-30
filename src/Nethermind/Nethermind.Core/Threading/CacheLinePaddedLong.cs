@@ -10,9 +10,9 @@ namespace Nethermind.Core.Threading;
 /// suffer false sharing with neighbouring fields.
 /// </summary>
 /// <remarks>
-/// The field sits at offset 64 within a <see cref="CacheLineSize"/>-byte block, so the padding follows the
-/// value. This isolates it from anything laid out after it; callers must not place another hot field
-/// immediately before an instance.
+/// The field sits at offset 64 within a <see cref="CacheLineSize"/>-byte block. This separates it from
+/// fields laid out before the struct on 64-byte cache-line machines; callers should avoid placing another
+/// hot field immediately after an instance unless the surrounding layout and alignment are known.
 /// </remarks>
 [StructLayout(LayoutKind.Explicit, Size = CacheLineSize)]
 public struct CacheLinePaddedLong(long value)
