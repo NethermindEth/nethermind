@@ -217,8 +217,13 @@ public sealed class SparseStateTrie : IDisposable
     /// Entries not in the retained set are collapsed back to Blinded stubs.
     /// Storage tries with zero retained slots are cleared and pooled for reuse.
     /// </summary>
-    public void Prune(int maxHotAccounts, int maxHotSlots)
+    /// <returns>The number of whole storage tries evicted (returned to the pool) this prune.
+    /// Mirrors Reth's prune-returns-evicted-count so the trigger site can log/meter how much the
+    /// memory bound actually reclaimed.</returns>
+    public int Prune(int maxHotAccounts, int maxHotSlots)
     {
+        int evictedStorageTries = 0;
+
         // Step 1: decay the LFU caches down to capacity and snapshot the retained sets.
         _hotAccountsLfu?.DecayAndEvict(maxHotAccounts);
         _hotSlotsLfu?.DecayAndEvict(maxHotSlots);
@@ -257,10 +262,15 @@ public sealed class SparseStateTrie : IDisposable
                     // return the (cleared) trie to the pool for reuse rather than disposing,
                     // avoiding arena re-allocation when a later block touches a fresh contract.
                     if (_storageTries.TryRemove(kvp.Key, out SparsePatriciaTree? dropped))
+                    {
                         ReturnStorageTrieToPool(dropped);
+                        evictedStorageTries++;
+                    }
                 }
             }
         }
+
+        return evictedStorageTries;
     }
 
     /// <summary>Wrapper that gives byte[] structural equality + hash for HashSet membership.</summary>

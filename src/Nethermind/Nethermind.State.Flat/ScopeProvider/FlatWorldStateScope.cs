@@ -498,6 +498,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     bool overMemoryBudget = retainedStorageTries > _configuration.SparseTrieMaxRetainedStorageTries;
 
                     bool shouldPrune = lfuPruneEnabled || overMemoryBudget;
+                    int evictedStorageTries = 0;
                     if (shouldPrune)
                     {
                         // When only the memory-budget trigger fired, the operator may not have set
@@ -514,7 +515,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                         try
                         {
-                            _sparseStateTrie.Prune(hotAccounts, hotSlots);
+                            evictedStorageTries = _sparseStateTrie.Prune(hotAccounts, hotSlots);
                         }
                         catch (Exception ex)
                         {
@@ -545,7 +546,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             $"Sparse cross-block cache @ block {blockNumber}: storageTries={cs.StorageTrieCount}, " +
                             $"accountArenaNodes={cs.AccountArenaNodes}, storageArenaNodes={cs.StorageArenaNodes}, " +
                             $"lfuPrune={(lfuPruneEnabled ? "on" : "off")}, " +
-                            $"memTrigger={(overMemoryBudget ? "FIRED" : "idle")}";
+                            $"memTrigger={(overMemoryBudget ? "FIRED" : "idle")}, " +
+                            $"evictedStorageTries={evictedStorageTries}";
                         if (sample && sizeLogger.IsInfo) sizeLogger.Info(msg);
                         else sizeLogger.Debug(msg);
                     }
