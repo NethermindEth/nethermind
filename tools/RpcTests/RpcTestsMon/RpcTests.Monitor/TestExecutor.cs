@@ -14,7 +14,7 @@ internal class TestExecutor(HttpClient httpClient)
     public async Task<TestFailure?> ExecuteAsync(ExecutionArgs args, TestContext test, CancellationToken ct = default)
     {
         RequestContext requestContext = new(Interlocked.Increment(ref _requestNumber));
-        test = test with {Request = requestContext};
+        test = test with { Request = requestContext };
 
         JsonNode request = test.Definition.Request.Compile(test);
         using JsonContent content = JsonContent.Create(request);

@@ -8,7 +8,7 @@ namespace Nethermind.RpcTests.Monitor.Dynamic;
 
 internal class DynamicJson<TContext>
 {
-    private class JsonCompileException(IEnumerable<object> path, Exception exception):
+    private class JsonCompileException(IEnumerable<object> path, Exception exception) :
         Exception($"Error at path '{string.Join('.', path)}': {exception.Message}", exception);
 
     private readonly JsonNode _template;
