@@ -7,6 +7,32 @@ namespace Nethermind.RpcTests.Monitor;
 
 internal static class ResponseComparer
 {
-    public static bool Compare(JsonNode target, JsonNode reference) =>
-        JsonNode.DeepEquals(target, reference);
+    // attempts to match Erigon rpc-tests comparison
+    public static bool Compare(JsonNode actual, JsonNode expected, bool isStatic)
+    {
+        if (actual is not JsonObject actualObj || expected is not JsonObject expectedObj)
+            return false;
+
+        bool actualHasResult = actualObj.ContainsKey("result");
+        bool expectedHasResult = expectedObj.ContainsKey("result");
+        bool actualHasError = actualObj.ContainsKey("error");
+        bool expectedHasError = expectedObj.ContainsKey("error");
+
+        if (isStatic)
+        {
+            // "result": null → don't care about actual result value
+            if (isStatic && actualHasResult && expectedHasResult && expectedObj["result"] is null)
+                return true;
+
+            // "error": null → don't care about error details
+            if (actualHasError && expectedHasError && expectedObj["error"] is null)
+                return true;
+
+            // only "jsonrpc" & "id" → don't care about response content
+            if (!expectedHasResult && !expectedHasError && expectedObj.Count == 2)
+                return true;
+        }
+
+        return JsonNode.DeepEquals(actual, expected);
+    }
 }

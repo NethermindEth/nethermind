@@ -34,11 +34,12 @@
           }
         }
       ],
-      "id": 1
+      "id": "{{Request.Number}}"
     },
     "response": {
-      "id": 1,
-      "jsonrpc": "2.0"
+      "id": "{{Request.Number}}",
+      "jsonrpc": "2.0",
+      "result": "0x"
     }
   }
 ]

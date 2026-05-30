@@ -19,11 +19,11 @@ internal class TestExecutor(HttpClient httpClient)
         JsonNode request = test.Definition.Request.Compile(test);
         using JsonContent content = JsonContent.Create(request);
 
+        JsonNode? expectedStatic = test.Definition.Response?.Compile(test);
         JsonNode actual = await SendAsync(args.TargetUrl, content, ct);
-        JsonNode expected = test.Definition.Response?.Compile(test)
-            ?? await SendAsync(args.ReferenceUrl!, content, ct);
+        JsonNode expected = expectedStatic ?? await SendAsync(args.ReferenceUrl!, content, ct);
 
-        return ResponseComparer.Compare(actual, expected)
+        return ResponseComparer.Compare(actual, expected, isStatic: expectedStatic is not null)
             ? null
             : new TestFailure(test, request, actual, expected);
     }
