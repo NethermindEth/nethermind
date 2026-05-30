@@ -1567,6 +1567,15 @@
         "resolved": "1.5.0",
         "contentHash": "MWNOdamJdcWMmytUNNGn0xmwa+GGY97j8TRtqp4UiqOWjn4Ygxs9m+7t2OoTh1Wd+DtouGsjzPuUdS8tyI3Ygw=="
       },
+      "Nethermind.RocksDB.Bindings": {
+        "type": "CentralTransitive",
+        "requested": "[10.4.2-preview.1, )",
+        "resolved": "10.4.2-preview.1",
+        "contentHash": "4s+F0tDmYmZm2cC9ZG4KQSBj4L6ebwGOvkJiR9hfP+EXWdiTLePiz5nT/SFW9dQYi84uyqvU3NpHoO9WoC8yFQ==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.8"
+        }
+      },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
         "requested": "[1.0.0, )",
@@ -1777,6 +1786,15 @@
         "resolved": "1.0.5",
         "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
       },
+      "Nethermind.RocksDB.Bindings": {
+        "type": "CentralTransitive",
+        "requested": "[10.4.2-preview.1, )",
+        "resolved": "10.4.2-preview.1",
+        "contentHash": "4s+F0tDmYmZm2cC9ZG4KQSBj4L6ebwGOvkJiR9hfP+EXWdiTLePiz5nT/SFW9dQYi84uyqvU3NpHoO9WoC8yFQ==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.8"
+        }
+      },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
         "requested": "[1.0.0, )",
@@ -1868,6 +1886,15 @@
         "requested": "[1.0.5, )",
         "resolved": "1.0.5",
         "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
+      },
+      "Nethermind.RocksDB.Bindings": {
+        "type": "CentralTransitive",
+        "requested": "[10.4.2-preview.1, )",
+        "resolved": "10.4.2-preview.1",
+        "contentHash": "4s+F0tDmYmZm2cC9ZG4KQSBj4L6ebwGOvkJiR9hfP+EXWdiTLePiz5nT/SFW9dQYi84uyqvU3NpHoO9WoC8yFQ==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.8"
+        }
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
@@ -1961,6 +1988,15 @@
         "resolved": "1.0.5",
         "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
       },
+      "Nethermind.RocksDB.Bindings": {
+        "type": "CentralTransitive",
+        "requested": "[10.4.2-preview.1, )",
+        "resolved": "10.4.2-preview.1",
+        "contentHash": "4s+F0tDmYmZm2cC9ZG4KQSBj4L6ebwGOvkJiR9hfP+EXWdiTLePiz5nT/SFW9dQYi84uyqvU3NpHoO9WoC8yFQ==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.8"
+        }
+      },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
         "requested": "[1.0.0, )",
@@ -2053,6 +2089,15 @@
         "resolved": "1.0.5",
         "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
       },
+      "Nethermind.RocksDB.Bindings": {
+        "type": "CentralTransitive",
+        "requested": "[10.4.2-preview.1, )",
+        "resolved": "10.4.2-preview.1",
+        "contentHash": "4s+F0tDmYmZm2cC9ZG4KQSBj4L6ebwGOvkJiR9hfP+EXWdiTLePiz5nT/SFW9dQYi84uyqvU3NpHoO9WoC8yFQ==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.8"
+        }
+      },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
         "requested": "[1.0.0, )",
@@ -2144,6 +2189,15 @@
         "requested": "[1.0.5, )",
         "resolved": "1.0.5",
         "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
+      },
+      "Nethermind.RocksDB.Bindings": {
+        "type": "CentralTransitive",
+        "requested": "[10.4.2-preview.1, )",
+        "resolved": "10.4.2-preview.1",
+        "contentHash": "4s+F0tDmYmZm2cC9ZG4KQSBj4L6ebwGOvkJiR9hfP+EXWdiTLePiz5nT/SFW9dQYi84uyqvU3NpHoO9WoC8yFQ==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.8"
+        }
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
