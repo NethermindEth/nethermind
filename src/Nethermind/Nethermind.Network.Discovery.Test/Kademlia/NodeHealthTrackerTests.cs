@@ -61,7 +61,7 @@ public class NodeHealthTrackerTests
     {
         IKademliaMessageSender<ValueHash256, string> sender = Substitute.For<IKademliaMessageSender<ValueHash256, string>>();
         sender.Ping(Stale, Arg.Any<CancellationToken>())
-            .Returns(Task.FromException(new OperationCanceledException()));
+            .Returns(Task.FromException<bool>(new OperationCanceledException()));
 
         (NodeHealthTracker<ValueHash256, string> tracker, RoutingTableStub routing, _) = CreateTracker(
             toRefresh: Stale,
@@ -78,7 +78,7 @@ public class NodeHealthTrackerTests
     public async Task TryRefresh_ShouldKeepNode_WhenPingSucceeds(CancellationToken token)
     {
         IKademliaMessageSender<ValueHash256, string> sender = Substitute.For<IKademliaMessageSender<ValueHash256, string>>();
-        sender.Ping(Stale, Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        sender.Ping(Stale, Arg.Any<CancellationToken>()).Returns(true);
 
         (NodeHealthTracker<ValueHash256, string> tracker, RoutingTableStub routing, _) = CreateTracker(
             toRefresh: Stale,

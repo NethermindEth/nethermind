@@ -69,7 +69,10 @@ public class DiscoveryPersistenceManager(
             {
                 // Reputation must be set before Ping so the routing table has the correct reputation when the Pong is received.
                 _nodeStatsManager.GetOrAdd(node).CurrentPersistedNodeReputation = networkNode.Reputation;
-                await _discv4Adapter.Ping(node, cancellationToken);
+                if (!await _discv4Adapter.Ping(node, cancellationToken))
+                {
+                    continue;
+                }
             }
             catch (OperationCanceledException)
             {

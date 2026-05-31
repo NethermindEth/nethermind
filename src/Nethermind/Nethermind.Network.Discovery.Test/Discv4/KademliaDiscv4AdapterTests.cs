@@ -80,7 +80,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             _logManager = LimboLogs.Instance;
             _timestamper = Substitute.For<ITimestamper>();
-            _timestamper.UnixTime.Returns(new UnixTime(new(2021, 5, 3, 0, 0, 0, DateTimeKind.Utc)));
+            DateTime now = new(2021, 5, 3, 0, 0, 0, DateTimeKind.Utc);
+            _timestamper.UtcNow.Returns(now);
+            _timestamper.UnixTime.Returns(new UnixTime(now));
             _msgSender = Substitute.For<IMsgSender>();
             _msgSender.SendMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
 
@@ -97,7 +99,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _adapter = new KademliaDiscv4Adapter(
                 new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
                 new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
-                new DiscoveryConfig(),
+                new DiscoveryConfig
+                {
+                    EnrTimeout = 100,
+                    PingTimeout = 100,
+                    SendNodeTimeout = 100,
+                    BondWaitTime = 1,
+                },
                 _kademliaConfig,
                 nodeRecordProvider,
                 _nodeStatsManager,
@@ -156,8 +164,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         {
             ConfigureBondCallback();
 
-            await _adapter.Ping(_receiver, token);
+            bool result = await _adapter.Ping(_receiver, token);
 
+            Assert.That(result, Is.True);
             await _msgSender.Received(1).SendMsg(Arg.Is<PingMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address)));
         }
@@ -186,7 +195,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                     Task.Run(() => _adapter.OnIncomingMsg(neighbors2));
                 });
 
-            Node[] result = await _adapter.FindNeighbours(_receiver, TestItem.PublicKeyC, token);
+            Node[]? result = await _adapter.FindNeighbours(_receiver, TestItem.PublicKeyC, token);
             Assert.That(result, Is.EquivalentTo(expected));
         }
 
@@ -207,15 +216,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                     Task.Run(() => _adapter.OnIncomingMsg(response));
                 });
 
-            EnrResponseMsg result = await _adapter.SendEnrRequest(_receiver, token);
+            EnrResponseMsg? result = await _adapter.SendEnrRequest(_receiver, token);
 
             await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
-            Assert.That(result.NodeRecord.GetHex(), Is.EqualTo(_selfNodeRecord.GetHex()));
+            Assert.That(result?.NodeRecord.GetHex(), Is.EqualTo(_selfNodeRecord.GetHex()));
         }
 
         [Test]
         [CancelAfter(10000)]
-        public void SendEnrRequest_should_reject_unsolicited_response_with_wrong_keccak(CancellationToken token)
+        public async Task SendEnrRequest_should_reject_unsolicited_response_with_wrong_keccak(CancellationToken token)
         {
             ConfigureBondCallback();
 
@@ -229,11 +238,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                     Task.Run(() => _adapter.OnIncomingMsg(response));
                 });
 
-            using CancellationTokenSource shortTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-            shortTimeout.CancelAfter(500);
+            EnrResponseMsg? result = await _adapter.SendEnrRequest(_receiver, token);
 
-            Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(),
-                async () => await _adapter.SendEnrRequest(_receiver, shortTimeout.Token));
+            Assert.That(result, Is.Null);
         }
 
         [Test]
@@ -247,10 +254,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             pingMsg = AddReceiverFarAddress(pingMsg);
             await _adapter.OnIncomingMsg(pingMsg);
 
-            using CancellationTokenSource requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-            requestTimeout.CancelAfter(50);
+            EnrResponseMsg? result = await _adapter.SendEnrRequest(_receiver, token);
 
-            Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), async () => await _adapter.SendEnrRequest(_receiver, requestTimeout.Token));
+            Assert.That(result, Is.Null);
 
             _nodeHealthTracker.ClearReceivedCalls();
 
@@ -260,6 +266,73 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 new(new byte[32]));
             response = AddReceiverFarAddress(response);
 
+            await _adapter.OnIncomingMsg(response);
+
+            _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Ping_timeout_should_return_false_and_record_failure_once(CancellationToken token)
+        {
+            bool result = await _adapter.Ping(_receiver, token);
+
+            Assert.That(result, Is.False);
+            _nodeHealthTracker.Received(1).OnRequestFailed(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task FindNeighbours_timeout_should_return_null_and_record_failure_once(CancellationToken token)
+        {
+            ConfigureBondCallback();
+
+            Node[]? result = await _adapter.FindNeighbours(_receiver, TestItem.PublicKeyC, token);
+
+            Assert.That(result, Is.Null);
+            _nodeHealthTracker.Received(1).OnRequestFailed(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task FindNeighbours_should_not_send_find_node_when_bond_ping_times_out(CancellationToken token)
+        {
+            Node[]? result = await _adapter.FindNeighbours(_receiver, TestItem.PublicKeyC, token);
+
+            Assert.That(result, Is.Null);
+            await _msgSender.Received(1).SendMsg(Arg.Is<DiscoveryMsg>(m => m is PingMsg));
+            await _msgSender.DidNotReceive().SendMsg(Arg.Is<DiscoveryMsg>(m => m is FindNodeMsg));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public void Ping_should_throw_on_lifecycle_cancellation(CancellationToken token)
+        {
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cts.Cancel();
+
+            Assert.CatchAsync<OperationCanceledException>(async () => await _adapter.Ping(_receiver, cts.Token));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Failed_send_should_remove_response_handler(CancellationToken token)
+        {
+            PingMsg? sent = null;
+            _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(callInfo =>
+            {
+                sent = (PingMsg)callInfo[0]!;
+                return Task.FromException(new InvalidOperationException("send failed"));
+            });
+
+            Assert.ThrowsAsync<InvalidOperationException>(async () => await _adapter.Ping(_receiver, token));
+            Assert.That(sent, Is.Not.Null);
+            sent = AddReceiverFarAddress(sent!);
+
+            _nodeHealthTracker.ClearReceivedCalls();
+
+            PongMsg response = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 1, sent!.Mdc!);
+            response = AddReceiverFarAddress(response);
             await _adapter.OnIncomingMsg(response);
 
             _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
@@ -289,6 +362,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         public async Task OnIncomingMsg_find_node_should_respond_with_neighbors(CancellationToken token)
         {
             ConfigureBondCallback();
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+            _msgSender.ClearReceivedCalls();
 
             FindNodeMsg findNodeMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _testPublicKey.Bytes);
             findNodeMsg = AddReceiverFarAddress(findNodeMsg);
@@ -321,6 +396,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         public async Task OnIncomingMsg_enr_request_should_respond_with_enr_response(CancellationToken token)
         {
             ConfigureBondCallback();
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+            _msgSender.ClearReceivedCalls();
 
             EnrRequestMsg enrRequestMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20);
             enrRequestMsg = AddReceiverFarAddress(enrRequestMsg);

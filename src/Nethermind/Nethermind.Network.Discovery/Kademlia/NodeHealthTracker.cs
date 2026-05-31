@@ -43,10 +43,12 @@ public class NodeHealthTracker<TKey, TNode>(
                 using CancellationTokenSource cts = new(_refreshPingTimeout);
                 try
                 {
-                    await kademliaMessageSender.Ping(toRefresh, cts.Token);
-                    OnIncomingMessageFrom(toRefresh);
+                    if (await kademliaMessageSender.Ping(toRefresh, cts.Token))
+                    {
+                        OnIncomingMessageFrom(toRefresh);
+                    }
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (cts.IsCancellationRequested)
                 {
                     OnRequestFailed(toRefresh);
                 }

@@ -110,9 +110,9 @@ namespace Nethermind.Network.Discovery.Test
             _networkStorage.UpdateNodes([NodeA, NodeB]);
 
             _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeA.NodeId)), Arg.Any<CancellationToken>())
-                .Returns(Task.CompletedTask);
+                .Returns(true);
             _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeB.NodeId)), Arg.Any<CancellationToken>())
-                .Returns(x => throw new Exception("Test exception"));
+                .Returns(Task.FromException<bool>(new Exception("Test exception")));
 
             await _persistenceManager.LoadPersistedNodes(cancellationToken);
         }

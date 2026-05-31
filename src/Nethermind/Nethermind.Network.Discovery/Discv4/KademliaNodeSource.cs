@@ -47,9 +47,12 @@ public class KademliaNodeSource(
                     }
                     try
                     {
-                        await discv4Adapter.Ping(node, token);
+                        if (!await discv4Adapter.Ping(node, token))
+                        {
+                            continue;
+                        }
                     }
-                    catch (OperationCanceledException)
+                    catch (OperationCanceledException) when (!token.IsCancellationRequested)
                     {
                         continue;
                     }

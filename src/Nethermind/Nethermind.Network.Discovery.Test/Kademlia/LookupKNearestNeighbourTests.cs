@@ -68,7 +68,44 @@ public class LookupKNearestNeighbourTests
         cts.CancelAfter(100);
 
         _ = await task;
-        health.Received().OnRequestFailed(Seed1);
+        health.DidNotReceive().OnRequestFailed(Seed1);
+    }
+
+    [TestCase(1)]
+    [TestCase(3)]
+    [CancelAfter(10000)]
+    public async Task Lookup_should_record_request_failure_on_hard_timeout(int alpha, CancellationToken token)
+    {
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
+            CreateLookup(alpha, TimeSpan.FromMilliseconds(100), [Seed1]);
+
+        _ = await lookup.Lookup(
+            Seed1,
+            8,
+            async (_, t) =>
+            {
+                await Task.Delay(Timeout.Infinite, t);
+                return null;
+            },
+            token);
+
+        health.Received(1).OnRequestFailed(Seed1);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_should_not_mark_node_healthy_when_find_neighbours_returns_null(CancellationToken token)
+    {
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
+            CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1]);
+
+        _ = await lookup.Lookup(
+            Seed1,
+            8,
+            (_, _) => Task.FromResult<ValueHash256[]?>(null),
+            token);
+
+        health.DidNotReceive().OnIncomingMessageFrom(Seed1);
     }
 
     [TestCase(1)]
