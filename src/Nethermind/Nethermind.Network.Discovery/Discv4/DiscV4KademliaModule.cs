@@ -42,7 +42,6 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
 
                 // Lookup wraps bonding plus FindNode; keep one SendNodeTimeout of slack for scheduling/rate-limit delay.
                 LookupFindNeighbourHardTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout + discoveryConfig.BondWaitTime + (2L * discoveryConfig.SendNodeTimeout)),
-                RefreshPingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout),
                 RefreshInterval = TimeSpan.FromMilliseconds(discoveryConfig.DiscoveryInterval),
                 BootNodes = bootNodes
             })
