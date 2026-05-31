@@ -5,7 +5,6 @@ using System.Net.Http.Json;
 
 namespace Nethermind.RpcTests.Monitor.Notifiers;
 
-// TODO: rate limit a bit
 internal class WebhookSlackNotifier(string webhookUrl) : INotifier
 {
     private readonly HttpClient _client = new();

@@ -13,7 +13,6 @@ internal class BotSlackConfig
     public required string ChannelId { get; init; }
 }
 
-// TODO: rate limit a bit
 internal class BotSlackNotifier(BotSlackConfig config) : INotifier
 {
     private readonly HttpClient _httpClient = new();
