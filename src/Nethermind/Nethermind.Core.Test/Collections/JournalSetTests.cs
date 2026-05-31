@@ -57,16 +57,12 @@ namespace Nethermind.Core.Test.Collections
         }
 
         [Test]
-        public void Indexer_uses_insertion_order()
+        public void Single_returns_the_only_item()
         {
             JournalSet<int> journalSet = CreateJournalSet();
             journalSet.Add(3);
-            journalSet.Add(1);
-            journalSet.Add(2);
 
-            Assert.That(journalSet[0], Is.EqualTo(3));
-            Assert.That(journalSet[1], Is.EqualTo(1));
-            Assert.That(journalSet[2], Is.EqualTo(2));
+            Assert.That(journalSet.Single, Is.EqualTo(3));
         }
     }
 }

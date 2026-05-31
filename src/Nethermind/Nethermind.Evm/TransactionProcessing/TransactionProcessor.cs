@@ -329,7 +329,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                     else if (count == 1)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, destroyList[0]);
+                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.Single);
                     }
                 }
 
@@ -374,11 +374,6 @@ namespace Nethermind.Evm.TransactionProcessing
             bool hasValueTransfer = !value.IsZero;
             bool senderIsRecipient = tx.SenderAddress == recipient;
             bool isTracingActions = tracer.IsTracingActions;
-            // Keep tracer event order aligned with VirtualMachine.ExecuteCall.
-            if (isTracingActions)
-            {
-                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
-            }
 
             // Self-send: sender account is already touched/warmed by gas charging and any
             // +/- value balance ops would cancel to a net no-op, so skip both state writes.
@@ -396,13 +391,19 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
             }
 
+            // Keep tracer event order aligned with VirtualMachine.ExecuteCall.
+            if (isTracingActions)
+            {
+                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
+            }
+
             TransactionSubstate substate = new(
                 bytes: default,
                 refund: 0,
                 destroyList: null,
                 logs: logs,
                 shouldRevert: false,
-                isTracerConnected: false,
+                isTracerConnected: false, // safe: the ctor reads this only when shouldRevert is true
                 logger: Logger);
 
             if (isTracingActions)

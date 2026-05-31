@@ -72,7 +72,11 @@ namespace Nethermind.Core.Collections
         public bool IsReadOnly => false;
         void ICollection<T>.Add(T item) => Add(item);
         public bool Contains(T item) => _set.Contains(item);
-        public T this[int index] => _items[index];
+        /// <summary>
+        /// Gets the only item in the set.
+        /// </summary>
+        /// <remarks>The caller must ensure <see cref="Count"/> is exactly 1.</remarks>
+        public T Single => _items[0];
         public void CopyTo(T[] array, int arrayIndex) => _set.CopyTo(array, arrayIndex);
     }
 }
