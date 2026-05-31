@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class PeerManagerFilteringIntegrationTests
 {
-    [Test, Retry(3)]
+    [Test]
     public async Task PeerManager_CallsShouldContactBeforeConnectAsync()
     {
         CallOrderTrackingMock trackingMock = new();
@@ -60,11 +60,9 @@ public class PeerManagerFilteringIntegrationTests
 
             testNodeSource.AddNode(new Node(new PrivateKeyGenerator().Generate().PublicKey, "203.0.113.1", 30303));
 
-            Assert.That(
-                () => trackingMock.CallsToConnectAsync.Count,
-                Is.GreaterThanOrEqualTo(1).After(2000, 50),
-                "PeerManager should trigger ConnectAsync for the discovered peer");
+            await trackingMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
+            Assert.That(trackingMock.CallsToConnectAsync, Is.Not.Empty);
             Assert.That(trackingMock.CallsToShouldContact, Is.Not.Empty, "ShouldContact should have been called before ConnectAsync");
         }
         finally
@@ -76,7 +74,6 @@ public class PeerManagerFilteringIntegrationTests
 
     [TestCase(true, false, Description = "Static peer bypasses subnet filter")]
     [TestCase(false, true, Description = "Bootnode peer bypasses subnet filter")]
-    [Retry(3)]
     public async Task PrivilegedPeer_BypassesSubnetFilter(bool isStatic, bool isBootnode)
     {
         await using Context ctx = new();
@@ -91,30 +88,31 @@ public class PeerManagerFilteringIntegrationTests
         ctx.PeerPool.Start();
         ctx.PeerManager.Start();
 
-        Assert.That(
-            () => ctx.RlpxMock.ConnectedNodeIds.Count,
-            Is.GreaterThanOrEqualTo(1).After(2000, 50),
-            "Privileged peer should bypass the subnet filter and trigger ConnectAsync");
+        await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Is.Not.Empty, "Privileged peer should bypass the subnet filter and trigger ConnectAsync");
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task RegularPeer_BlockedByIpFilter()
     {
         await using Context ctx = new();
         Node regularNode = new(new PrivateKeyGenerator().Generate().PublicKey, "203.0.113.3", 30303);
+        Node staticBeacon = new(new PrivateKeyGenerator().Generate().PublicKey, "203.0.113.99", 30303) { IsStatic = true };
 
+        ctx.StaticNodesManager
+            .DiscoverNodes(Arg.Any<CancellationToken>())
+            .Returns(new[] { staticBeacon }.ToAsyncEnumerable());
         ctx.TestNodeSource.AddNode(regularNode);
 
         ctx.PeerPool.Start();
         ctx.PeerManager.Start();
 
-        // Give it time — the peer should NOT be connected
-        await Task.Delay(1000);
+        await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Is.Empty, "Regular peer should be blocked by the IP filter");
+        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(regularNode.Id), "Regular peer should be blocked by the IP filter");
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task StaticAndRegularPeers_OnlyStaticBypasses()
     {
         await using Context ctx = new();
@@ -129,11 +127,8 @@ public class PeerManagerFilteringIntegrationTests
         ctx.PeerPool.Start();
         ctx.PeerManager.Start();
 
-        Assert.That(
-            () => ctx.RlpxMock.ConnectedNodeIds,
-            Has.Member(staticNode.Id).After(2000, 50),
-            "Static peer should be connected");
-
+        Node connected = await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.That(connected.Id, Is.EqualTo(staticNode.Id), "First peer connected should be the static one");
         Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(regularNode.Id), "Regular peer should be blocked by the IP filter");
     }
 
@@ -183,12 +178,14 @@ public class PeerManagerFilteringIntegrationTests
     private class FilterRejectingRlpxMock : IRlpxHost
     {
         public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = [];
+        public TaskCompletionSource<Node> FirstConnect { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false) => exactOnly;
 
         public Task<bool> ConnectAsync(Node node)
         {
             ConnectedNodeIds.Add(node.Id);
+            FirstConnect.TrySetResult(node);
 
             Session session = new(30303, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
@@ -208,6 +205,7 @@ public class PeerManagerFilteringIntegrationTests
     {
         public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = [];
         public ConcurrentBag<Node> CallsToConnectAsync { get; } = [];
+        public TaskCompletionSource<Node> FirstConnect { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false)
         {
@@ -218,6 +216,7 @@ public class PeerManagerFilteringIntegrationTests
         public Task<bool> ConnectAsync(Node node)
         {
             CallsToConnectAsync.Add(node);
+            FirstConnect.TrySetResult(node);
             return Task.FromResult(true);
         }
 

@@ -82,7 +82,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
         private readonly bool _parallel;
-        private long _blockCumulativeReceiptGas;
         private long _blockCumulativeRegularGas;
         private long _blockCumulativeStateGas;
 
@@ -117,7 +116,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
-            _blockCumulativeReceiptGas = 0;
             _blockCumulativeRegularGas = 0;
             _blockCumulativeStateGas = 0;
             VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
@@ -541,11 +539,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 tx.BlockGasUsed = spentGas.EffectiveBlockGas;
             }
 
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-            {
-                _blockCumulativeReceiptGas += spentGas.SpentGas;
-            }
-
             //only main thread updates transaction
             if (!opts.HasFlag(ExecutionOptions.Warmup))
                 tx.SpentGas = spentGas.SpentGas;
@@ -925,11 +918,8 @@ namespace Nethermind.Evm.TransactionProcessing
                     return TransactionResult.Ok;
                 }
 
-                long gasUsedForAllowance = _parallel ? 0 : spec switch
-                {
-                    { IsEip7778Enabled: true } => _blockCumulativeReceiptGas,
-                    _ => header.GasUsed,
-                };
+                // Admission must use the same basis as block accounting (header.GasUsed): pre-refund under EIP-7778, post-refund otherwise.
+                long gasUsedForAllowance = _parallel ? 0 : header.GasUsed;
 
                 long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
                 if (tx.GasLimit > maxTransactionGasLimit)

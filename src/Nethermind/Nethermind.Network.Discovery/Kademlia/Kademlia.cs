@@ -126,7 +126,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             }
         });
 
-        if (_logger.IsInfo) _logger.Info($"Online bootnodes: {onlineBootNodes}");
+        if (_logger.IsDebug) _logger.Debug($"Online bootnodes: {onlineBootNodes}");
 
         TKey currentNodeIdAsKey = _keyOperator.GetKey(_currentNodeId);
         await LookupNodesClosest(currentNodeIdAsKey, token);
