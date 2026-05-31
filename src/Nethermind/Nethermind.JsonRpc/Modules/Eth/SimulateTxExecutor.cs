@@ -98,6 +98,9 @@ public class SimulateTxExecutor<TTrace>(
         if (call.BlockStateCalls is null)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
 
+        if (call.BlockStateCalls.Count == 0)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.EmptyBlockStateCalls, ErrorCodes.InvalidParams);
+
         if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
@@ -321,4 +324,10 @@ internal static class SimulateErrorMessages
     /// the execution-apis spec.
     /// </summary>
     public const string BlockNumberNotIncreasing = "Block number in sequence did not increase";
+
+    /// <summary>
+    /// Returned when <c>blockStateCalls</c> is an empty array
+    /// (error code <see cref="ErrorCodes.InvalidParams"/>).
+    /// </summary>
+    public const string EmptyBlockStateCalls = "empty input";
 }
