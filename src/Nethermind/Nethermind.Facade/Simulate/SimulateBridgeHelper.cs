@@ -47,7 +47,12 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
 
-        stateProvider.Commit(releaseSpec, commitRoots: true);
+        // State overrides are simulation-only mutations and must not trigger EIP-158 empty-account
+        // deletion. Without this, an account that is empty after override mutations would be marked
+        // deleted in the in-memory state, causing HasStorage to short-circuit to false and breaking
+        // EIP-7610 collision detection in subsequent simulated blocks.
+        IReleaseSpec commitSpec = blockStateCall.StateOverrides is not null ? new NoEip158Spec(releaseSpec) : releaseSpec;
+        stateProvider.Commit(commitSpec, commitRoots: true);
         stateProvider.CommitTree(blockNumber);
     }
 
@@ -241,6 +246,15 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         transaction.Hash ??= transaction.CalculateHash();
 
         return transaction;
+    }
+
+    /// <summary>
+    /// Wraps a release spec and disables EIP-158 empty-account removal so that state-override
+    /// commits do not spuriously mark accounts as deleted.
+    /// </summary>
+    private sealed class NoEip158Spec(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
+    {
+        public override bool IsEip158Enabled => false;
     }
 
     private (BlockHeader, IReleaseSpec) GetCallHeader(

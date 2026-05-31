@@ -546,10 +546,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                 case ChangeType.Touch:
                 case ChangeType.Update:
                     {
-                        // EIP-158 deletes empty accounts: nonce=0, balance=0, code=empty, storage=empty.
-                        // An account with non-empty storage root is not empty per the spec and must
-                        // be preserved so EIP-7610 can detect it as a CREATE/CREATE2 collision target.
-                        if (releaseSpec.IsEip158Enabled && change.Account.IsTotallyEmpty && !isGenesis)
+                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
                         {
                             if (isTracing) TraceRemoveEmpty(change);
                             SetState(change.Address, null);
@@ -566,7 +563,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                     }
                 case ChangeType.New:
                     {
-                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsTotallyEmpty || isGenesis)
+                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
                         {
                             if (isTracing) TraceCreate(change);
                             SetState(change.Address, change.Account);
