@@ -726,6 +726,7 @@
           "Nethermind.Crypto.SecP256k1": "[1.6.0, )",
           "Nethermind.Logging": "[1.39.0-unstable, )",
           "Nethermind.Numerics.Int256": "[1.5.0, )",
+          "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
           "Testably.Abstractions": "[10.2.0, )"
         }
@@ -993,8 +994,7 @@
       "nethermind.merkleization": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.39.0-unstable, )",
-          "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )"
+          "Nethermind.Numerics.Int256": "[1.5.0, )"
         }
       },
       "nethermind.monitoring": {
@@ -1113,7 +1113,7 @@
       "nethermind.serialization.ssz": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.39.0-unstable, )"
+          "Nethermind.Numerics.Int256": "[1.5.0, )"
         }
       },
       "nethermind.shutter": {
