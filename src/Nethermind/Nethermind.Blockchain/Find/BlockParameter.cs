@@ -12,15 +12,20 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Find
 {
     using Nethermind.JsonRpc.Data;
 
+    public sealed class BlockParameterParseException(string message) : FormatException(message), IExceptionWithSafePublicMessage;
+
     [JsonConverter(typeof(BlockParameterConverter))]
     public class BlockParameter : IEquatable<BlockParameter>
     {
+        public const string BlockHashAndBlockNumberError = "cannot specify both BlockHash and BlockNumber, choose one or the other";
+
         public static BlockParameter Earliest = new(BlockParameterType.Earliest);
 
         public static BlockParameter Pending = new(BlockParameterType.Pending);
@@ -178,11 +183,16 @@ namespace Nethermind.JsonRpc.Data
                 }
             }
 
+            if (blockHash is not null && blockNumberParam is not null)
+            {
+                throw new BlockParameterParseException(BlockParameter.BlockHashAndBlockNumberError);
+            }
+
             return (blockHash, blockNumberParam) switch
             {
-                (blockHash: not null, blockNumberParam: _) => new BlockParameter(blockHash, requireCanonical),
+                (blockHash: not null, blockNumberParam: null) => new BlockParameter(blockHash, requireCanonical),
                 (blockHash: null, blockNumberParam: not null) => blockNumberParam,
-                _ => throw new FormatException("unknown block parameter type")
+                _ => throw new BlockParameterParseException("unknown block parameter type")
             };
         }
 

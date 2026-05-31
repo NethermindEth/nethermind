@@ -2,30 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Nethermind.Serialization.Ssz;
+namespace Nethermind.Merge.Plugin.SszRest;
 
 /// <summary>
-/// 48-byte fixed-size byte vector used for KZG commitments and proofs in
-/// engine-API blob bundles. Stored inline so an <c>SszKzgCommitment[]</c>
-/// is a single contiguous heap allocation of <c>count * 48</c> bytes — no
-/// per-element <c>byte[48]</c> headers. SSZ wire format for a fixed-size
-/// byte vector is just the raw bytes, so the basic-type custom encode/decode
-/// templates produce identical output to the previous
-/// <c>[SszContainer]</c>-with-<c>byte[]</c> shape.
+/// Inline 48-byte KZG commitment/proof representation used by Engine API SSZ wire types.
 /// </summary>
-[InlineArray(KzgCommitmentLength)]
+[StructLayout(LayoutKind.Sequential, Size = 48)]
 public struct SszKzgCommitment
 {
     public const int KzgCommitmentLength = 48;
-    private byte _e0;
 
     public static SszKzgCommitment FromSpan(ReadOnlySpan<byte> span)
     {
         if (span.Length != KzgCommitmentLength)
-            throw new ArgumentException($"SszKzgCommitment requires exactly {KzgCommitmentLength} bytes", nameof(span));
+        {
+            throw new InvalidDataException($"{nameof(SszKzgCommitment)} expects input of length {KzgCommitmentLength} and received {span.Length}");
+        }
 
         SszKzgCommitment result = default;
         span.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.As<SszKzgCommitment, byte>(ref result), KzgCommitmentLength));
