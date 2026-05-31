@@ -1584,23 +1584,28 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"header not found\"},\"id\":67}"));
     }
 
-    [Test]
-    public async Task Eth_get_account_no_block_argument_returns_invalid_params()
+    private static IEnumerable<TestCaseData> AccountRpcMissingBlockArgumentCases()
     {
-        using Context ctx = await Context.Create();
-        string account_address = TestBlockchain.AccountC.ToString();
-
-        string serialized = await ctx.Test.TestEthRpc("eth_getAccount", account_address);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
+        yield return new TestCaseData("eth_getAccount", false)
+            .SetName("Eth_getAccount omitting block argument returns invalid params");
+        yield return new TestCaseData("eth_getAccount", true)
+            .SetName("Eth_getAccount explicit null block argument returns invalid params");
+        yield return new TestCaseData("eth_getAccountInfo", false)
+            .SetName("Eth_getAccountInfo omitting block argument returns invalid params");
+        yield return new TestCaseData("eth_getAccountInfo", true)
+            .SetName("Eth_getAccountInfo explicit null block argument returns invalid params");
     }
 
-    [Test]
-    public async Task Eth_get_account_explicit_null_block_argument_returns_invalid_params()
+    [TestCaseSource(nameof(AccountRpcMissingBlockArgumentCases))]
+    public async Task Eth_account_rpcs_missing_required_block_argument_return_invalid_params(string rpcMethod, bool explicitNullBlock)
     {
         using Context ctx = await Context.Create();
-        string account_address = TestBlockchain.AccountC.ToString();
+        string accountAddress = TestBlockchain.AccountC.ToString();
+        object?[] parameters = explicitNullBlock
+            ? [accountAddress, null]
+            : [accountAddress];
 
-        string serialized = await ctx.Test.TestEthRpc("eth_getAccount", account_address, null);
+        string serialized = await ctx.Test.TestEthRpc(rpcMethod, parameters);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
     }
 
@@ -1634,27 +1639,6 @@ public partial class EthRpcModuleTests
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"header not found\"},\"id\":67}"));
     }
-
-    [Test]
-    public async Task Eth_get_account_info_no_block_argument_returns_invalid_params()
-    {
-        using Context ctx = await Context.Create();
-        string account_address = TestBlockchain.AccountC.ToString();
-
-        string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", account_address);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_get_account_info_explicit_null_block_argument_returns_invalid_params()
-    {
-        using Context ctx = await Context.Create();
-        string account_address = TestBlockchain.AccountC.ToString();
-
-        string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", account_address, null);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 1\"},\"id\":67}"));
-    }
-
 
     [Test]
     public async Task Eth_get_block_by_number_with_recovering_sender_from_receipts()

@@ -90,7 +90,13 @@ public class JsonRpcServiceTests
             """["0xaa00000000000000000000000000000000000000",null]""",
             "missing value for required argument 1",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getAccount(Arg.Any<Address>(), Arg.Any<BlockParameter>())))
-            .SetName("ExplicitMissingTypedArgumentToken");
+            .SetName("Explicit null required block argument");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getAccountInfo),
+            """["0xaa00000000000000000000000000000000000000",null]""",
+            "missing value for required argument 1",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getAccountInfo(Arg.Any<Address>(), Arg.Any<BlockParameter>())))
+            .SetName("Explicit null required accountInfo block argument");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBlockByNumber),
             """["0x1",false,"extra"]""",
