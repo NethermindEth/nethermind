@@ -51,7 +51,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         // deletion. Without this, an account that is empty after override mutations would be marked
         // deleted in the in-memory state, causing HasStorage to short-circuit to false and breaking
         // EIP-7610 collision detection in subsequent simulated blocks.
-        IReleaseSpec commitSpec = blockStateCall.StateOverrides is not null ? new NoEip158Spec(releaseSpec) : releaseSpec;
+        IReleaseSpec commitSpec = blockStateCall.StateOverrides?.Count > 0 ? new NoEip158Spec(releaseSpec) : releaseSpec;
         stateProvider.Commit(commitSpec, commitRoots: true);
         stateProvider.CommitTree(blockNumber);
     }

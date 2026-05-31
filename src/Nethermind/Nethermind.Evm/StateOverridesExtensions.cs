@@ -60,7 +60,7 @@ public static class StateOverridesExtensions
         // deletion. Without this, an account that is empty after override mutations would be marked
         // deleted in the in-memory state. IsNonZeroAccount short-circuits on a null IBS entry before
         // checking storage, so EIP-7610 CREATE collision detection would silently miss existing storage.
-        IReleaseSpec commitSpec = overrides is not null ? new NoEip158Spec(spec) : spec;
+        IReleaseSpec commitSpec = overrides?.Count > 0 ? new NoEip158Spec(spec) : spec;
         state.Commit(commitSpec, commitRoots: true);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();

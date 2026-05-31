@@ -2745,4 +2745,52 @@ public partial class EthRpcModuleTests
             _auraCtx?.Dispose();
         }
     }
+
+    /// <summary>
+    /// Builds the state-override and transaction for EIP-7610 CREATE2 collision regression tests.
+    /// Used by eth_call, eth_estimateGas, and trace_call tests.
+    /// </summary>
+    /// <remarks>
+    /// The factory at 0xf1f1… calls CREATE2 with a zero salt and initCode that writes storage[0]=42
+    /// then deploys a 1-byte STOP runtime. The CREATE2 target (contractC) is given storage[0]=42
+    /// via state override but has no code, balance, or nonce — EIP-158 empty by those fields.
+    /// Without the NoEip158Spec fix the state-override commit deletes contractC from the trie,
+    /// causing IsNonZeroAccount to short-circuit before the storage check, and EIP-7610 to miss the
+    /// collision.
+    /// </remarks>
+    internal static (object StateOverride, object Transaction) BuildEip7610Fixture()
+    {
+        byte[] initCode = Bytes.FromHexString("602a6000556001601160003960016000f300");
+
+        Address factoryAddress = new("0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1");
+        byte[] create2Input = new byte[85];
+        create2Input[0] = 0xff;
+        factoryAddress.Bytes.CopyTo(create2Input.AsSpan(1, 20));
+        // bytes 21-52: salt = 0 (already zeroed)
+        Keccak.Compute(initCode).Bytes.CopyTo(create2Input.AsSpan(53, 32));
+        Address contractC = new(Keccak.Compute(create2Input).Bytes[12..]);
+
+        const string factoryBytecode =
+            "0x601260376000397f0000000000000000000000000000000000000000000000000000000000000000" +
+            "601260006000f5600052602060" +
+            "00f3602a6000556001601160003960016000f300";
+
+        object stateOverride = JsonSerializer.Deserialize<object>($$"""
+            {
+                "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1": { "code": "{{factoryBytecode}}", "balance": "0xde0b6b3a7640000" },
+                "0xca11e1ca11e1ca11e1ca11e1ca11e1ca11e1ca11": { "balance": "0xde0b6b3a7640000" },
+                "{{contractC}}": { "stateDiff": { "0x0000000000000000000000000000000000000000000000000000000000000000": "0x000000000000000000000000000000000000000000000000000000000000002a" } }
+            }
+            """)!;
+
+        object transaction = JsonSerializer.Deserialize<object>("""
+            {
+                "from": "0xca11e1ca11e1ca11e1ca11e1ca11e1ca11e1ca11",
+                "to": "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
+                "gas": "0xf4240"
+            }
+            """)!;
+
+        return (stateOverride, transaction);
+    }
 }
