@@ -238,15 +238,23 @@ public partial class DebugRpcModuleTests
         Assert.That(witness.Codes, Is.Not.Empty, "calling a contract should capture its bytecode");
     }
 
-    [Test]
-    public async Task Debug_executionWitnessCall_without_gas_field_still_records_full_witness()
+    private static IEnumerable<TestCaseData> ExecutionWitnessMissingGasCases()
+    {
+        yield return new TestCaseData(false)
+            .SetName("Debug_executionWitnessCall without gas field still records full witness");
+        yield return new TestCaseData(true)
+            .SetName("Debug_executionWitnessCall with zero gas still records full witness");
+    }
+
+    [TestCaseSource(nameof(ExecutionWitnessMissingGasCases))]
+    public async Task Debug_executionWitnessCall_with_implicit_or_zero_gas_still_records_full_witness(bool useZeroGas)
     {
         // Regression guard: the handler advertises that `gas` is optional via
-        // `callRequest.Gas ??= header.GasLimit;` — callers reasonably assume the
-        // witness is recorded the same whether or not they pass gas explicitly. If that
-        // symmetry breaks again the caller ends up with a near-empty witness (just the
-        // state-root node) that silently succeeds but fails stateless re-execution
-        // downstream. Seen in the wild with surge-raiko's L1STATICCALL preflight.
+        // `callRequest.Gas ??= header.GasLimit;`, and this PR extends the same
+        // omitted-gas behavior to explicit `gas: 0x0`. If either path diverges
+        // again the caller gets a near-empty witness (just the state-root node)
+        // that still looks successful but fails stateless re-execution downstream.
+        // Seen in the wild with surge-raiko's L1STATICCALL preflight.
         using Context ctx = await Context.Create();
         TestRpcBlockchain blockchain = ctx.Blockchain;
 
@@ -260,60 +268,28 @@ public partial class DebugRpcModuleTests
             new { to = contractAddress.ToString(), gas = "0x30D40" },
             $"0x{blockNumber:x}");
 
-        // Without gas — what most call sites end up sending. `{to, data}` is the natural
-        // shape for a view call, and users don't want to have to know the block's gas limit.
-        JsonRpcResponse withoutGas = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
-            new { to = contractAddress.ToString() },
+        object request = useZeroGas
+            ? new { to = contractAddress.ToString(), gas = "0x0" }
+            : new { to = contractAddress.ToString() };
+        JsonRpcResponse withImplicitOrZeroGas = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
+            request,
             $"0x{blockNumber:x}");
 
         using Witness witnessWithGas = RpcTest.AssertSuccess<Witness>(withGas);
-        using Witness witnessWithoutGas = RpcTest.AssertSuccess<Witness>(withoutGas);
+        using Witness witnessWithImplicitOrZeroGas = RpcTest.AssertSuccess<Witness>(withImplicitOrZeroGas);
 
-        // The two paths must produce witnesses of the same shape.
-        Assert.That(witnessWithoutGas.State, Is.Not.Empty,
-            "omitting gas must not empty the state node set");
-        Assert.That(witnessWithoutGas.Codes, Is.Not.Empty,
-            "omitting gas must still capture called-contract bytecode");
-        Assert.That(witnessWithoutGas.State.Count, Is.EqualTo(witnessWithGas.State.Count),
-            "state-node count should match between with-gas and without-gas calls");
-        Assert.That(witnessWithoutGas.Codes.Count, Is.EqualTo(witnessWithGas.Codes.Count),
-            "code count should match between with-gas and without-gas calls");
-        Assert.That(witnessWithoutGas.Keys.Count, Is.EqualTo(witnessWithGas.Keys.Count),
-            "key count should match between with-gas and without-gas calls");
-    }
+        string requestKind = useZeroGas ? "zero gas" : "omitting gas";
 
-    [Test]
-    public async Task Debug_executionWitnessCall_with_zero_gas_still_records_full_witness()
-    {
-        using Context ctx = await Context.Create();
-        TestRpcBlockchain blockchain = ctx.Blockchain;
-
-        Block transferBlock = await CreateTransferTx(blockchain);
-        Address contractAddress = await CreateDeployTx(blockchain, transferBlock.Number);
-
-        long blockNumber = blockchain.BlockTree.Head!.Number;
-
-        JsonRpcResponse withGas = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
-            new { to = contractAddress.ToString(), gas = "0x30D40" },
-            $"0x{blockNumber:x}");
-
-        JsonRpcResponse withZeroGas = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
-            new { to = contractAddress.ToString(), gas = "0x0" },
-            $"0x{blockNumber:x}");
-
-        using Witness witnessWithGas = RpcTest.AssertSuccess<Witness>(withGas);
-        using Witness witnessWithZeroGas = RpcTest.AssertSuccess<Witness>(withZeroGas);
-
-        Assert.That(witnessWithZeroGas.State, Is.Not.Empty,
-            "zero gas must not empty the state node set");
-        Assert.That(witnessWithZeroGas.Codes, Is.Not.Empty,
-            "zero gas must still capture called-contract bytecode");
-        Assert.That(witnessWithZeroGas.State.Count, Is.EqualTo(witnessWithGas.State.Count),
-            "state-node count should match between with-gas and zero-gas calls");
-        Assert.That(witnessWithZeroGas.Codes.Count, Is.EqualTo(witnessWithGas.Codes.Count),
-            "code count should match between with-gas and zero-gas calls");
-        Assert.That(witnessWithZeroGas.Keys.Count, Is.EqualTo(witnessWithGas.Keys.Count),
-            "key count should match between with-gas and zero-gas calls");
+        Assert.That(witnessWithImplicitOrZeroGas.State, Is.Not.Empty,
+            $"{requestKind} must not empty the state node set");
+        Assert.That(witnessWithImplicitOrZeroGas.Codes, Is.Not.Empty,
+            $"{requestKind} must still capture called-contract bytecode");
+        Assert.That(witnessWithImplicitOrZeroGas.State.Count, Is.EqualTo(witnessWithGas.State.Count),
+            $"state-node count should match between with-gas and {requestKind} calls");
+        Assert.That(witnessWithImplicitOrZeroGas.Codes.Count, Is.EqualTo(witnessWithGas.Codes.Count),
+            $"code count should match between with-gas and {requestKind} calls");
+        Assert.That(witnessWithImplicitOrZeroGas.Keys.Count, Is.EqualTo(witnessWithGas.Keys.Count),
+            $"key count should match between with-gas and {requestKind} calls");
     }
 
     private static IEnumerable<TestCaseData> ExecutionWitnessSource()
