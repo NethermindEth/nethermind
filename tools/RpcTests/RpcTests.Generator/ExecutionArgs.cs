@@ -8,7 +8,7 @@ namespace Nethermind.RpcTests.Generator;
 public class ExecutionArgs
 {
     public required FilePos[] Sources { get; init; }
-    public required Uri[]? Clients { get; init; }
+    public required Uri? Client { get; init; }
     public required int Parallelism { get; init; }
     public required string? Include { get; init; }
     public required string? Exclude { get; init; }

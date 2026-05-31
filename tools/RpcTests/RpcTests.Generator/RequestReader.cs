@@ -12,7 +12,7 @@ public class RequestReader(FilePos[] sources, Filter filter)
     private int _lineN;
     private int _requestN;
 
-    public async Task ReadIntoAsync(ITargetBlock<RequestInfo> target, CancellationToken ct)
+    public async Task ReadIntoAsync(ITargetBlock<TestInfo> target, CancellationToken ct)
     {
         foreach (FilePos startLocation in sources)
         {
@@ -40,7 +40,7 @@ public class RequestReader(FilePos[] sources, Filter filter)
                 if (data is null) continue;
                 if (!filter.IncludeRequest(data)) continue;
 
-                await target.SendAsync(new RequestInfo(pos, ++_requestN, data), ct);
+                await target.SendAsync(new TestInfo(pos, ++_requestN, data), ct);
             }
         }
 
@@ -48,7 +48,7 @@ public class RequestReader(FilePos[] sources, Filter filter)
     }
 }
 
-public record RequestInfo(FilePos Pos, int Number, JsonNode Data)
+public record TestInfo(FilePos Pos, int Number, JsonNode Data)
 {
     public string Id => Data.GetId() ?? $"{Number}";
 }

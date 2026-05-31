@@ -13,10 +13,9 @@ Option<string[]> requestsOption = new("--requests", "-r")
     Required = true
 };
 
-Option<string[]?> clientsOption = new("--client", "-c")
+Option<string?> clientsOption = new("--client", "-c")
 {
-    Description = "Client URL(s) to fetch responses from",
-    AllowMultipleArgumentsPerToken = true
+    Description = "Client URL to fetch responses from"
 };
 
 Option<int> parallelismOption = new("--parallelism", "-p")
@@ -75,7 +74,7 @@ rootCommand.SetAction(async (parseResult, ct) =>
     ExecutionArgs args = new()
     {
         Sources = [.. parseResult.GetRequiredValue(requestsOption).Select(FilePos.Parse)],
-        Clients = parseResult.GetValue(clientsOption)?.Select(static s => new Uri(s)).ToArray(),
+        Client = parseResult.GetValue(clientsOption) is { } c ? new Uri(c) : null,
         Parallelism = parseResult.GetValue(parallelismOption),
         Include = parseResult.GetValue(includeOption),
         Exclude = parseResult.GetValue(excludeOption),

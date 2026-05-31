@@ -7,26 +7,26 @@ using System.Text.Json.Nodes;
 
 namespace Nethermind.RpcTests.Generator;
 
-public class RequestSender(Uri[] clientUrls, HttpClient httpClient)
+public class RequestSender(Uri clientUrl, HttpClient httpClient)
 {
     private const int LogPerRequests = 10;
     private int _requestN;
 
-    public async Task<ResponseInfo> SendAsync(RequestInfo request)
+    public async Task<TestCase> SendAsync(TestInfo test)
     {
         if (Interlocked.Increment(ref _requestN) % LogPerRequests == 0)
             await Console.Out.WriteLineAsync($"Sending request #{_requestN}");
 
-        JsonNode[] responses = await Task.WhenAll(clientUrls.Select(url => SendToClientAsync(url, request.Data)));
-        return new ResponseInfo(request, responses);
+        JsonNode response = await SendToClientAsync(test.Data);
+        return new TestCase(test, response);
     }
 
-    private async Task<JsonNode> SendToClientAsync(Uri url, JsonNode requestData)
+    private async Task<JsonNode> SendToClientAsync(JsonNode requestData)
     {
         try
         {
             using JsonContent content = JsonContent.Create(requestData);
-            using HttpResponseMessage response = await httpClient.PostAsync(url, content);
+            using HttpResponseMessage response = await httpClient.PostAsync(clientUrl, content);
             response.EnsureSuccessStatusCode();
 
             JsonNode responseData = await JsonNode.ParseAsync(await response.Content.ReadAsStreamAsync())
@@ -42,12 +42,11 @@ public class RequestSender(Uri[] clientUrls, HttpClient httpClient)
             await Console.Error.WriteLineAsync(
                 $"""
                  Request error: {ex.Message}
-                   Client: {url}
+                   Client: {clientUrl}
                    Request: {requestData.ToCompactString()}
                  """
             );
 
-            //return;
             throw;
         }
     }
@@ -67,4 +66,3 @@ public readonly record struct FilePos(string FilePath, int LineNumber)
     }
 }
 
-public record ResponseInfo(RequestInfo Request, JsonNode[] Responses);

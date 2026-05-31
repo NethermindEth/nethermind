@@ -15,7 +15,7 @@ public class ReportReader(FilePos[] sources, Filter filter)
     private int _lineN;
     private int _requestN;
 
-    private readonly Dictionary<string, RequestInfo> _pendingRequests = [];
+    private readonly Dictionary<string, TestInfo> _pendingRequests = [];
 
     public async Task ReadIntoAsync(ITargetBlock<TestCase> target, CancellationToken ct)
     {
@@ -31,7 +31,7 @@ public class ReportReader(FilePos[] sources, Filter filter)
 
                 if (GetResponse(line) is { } response && response.GetId() is { } responseId)
                 {
-                    if (!_pendingRequests.Remove(responseId, out RequestInfo? request))
+                    if (!_pendingRequests.Remove(responseId, out TestInfo? request))
                     {
                         await Console.Error.WriteLineAsync($"Request not found for response id: {responseId}");
                         continue;
@@ -60,7 +60,7 @@ public class ReportReader(FilePos[] sources, Filter filter)
                 if (!filter.IncludeRequest(requestJson)) continue;
                 if (requestJson.GetId() is not { } requestId) continue;
 
-                if (!_pendingRequests.TryAdd(requestId, new RequestInfo(pos, ++_requestN, requestJson)))
+                if (!_pendingRequests.TryAdd(requestId, new TestInfo(pos, ++_requestN, requestJson)))
                     throw new AmbiguousReportException($"Multiple requests with the same id: {requestId}");
             }
         }
