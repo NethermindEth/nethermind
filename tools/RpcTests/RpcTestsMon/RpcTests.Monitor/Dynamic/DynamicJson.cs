@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using DynamicExpresso;
 
@@ -27,15 +28,15 @@ internal class DynamicJson<TContext>
 
         foreach ((object[] path, Lambda expr) in _expressions)
         {
-            JsonValue value = JsonValue.Create(expr.Invoke(args))!;
+            JsonNode node = JsonSerializer.SerializeToNode(expr.Invoke(args))!;
             if (path.Length == 0)
-                return value;
+                return node;
 
             JsonNode? parent = Navigate(result, path);
             if (path[^1] is string lastKey)
-                ((JsonObject)parent!)[lastKey] = value;
+                ((JsonObject)parent!)[lastKey] = node;
             else
-                ((JsonArray)parent!)[(int)path[^1]] = value;
+                ((JsonArray)parent!)[(int)path[^1]] = node;
         }
 
         return result;
