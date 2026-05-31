@@ -225,6 +225,34 @@ public class BlockAccessListDecoderTests
                 .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
     }
 
+    // An empty-list element (0xc0) inside the slot's storage_changes array must be rejected, not
+    // substituted with a default(StorageChange). Otherwise malformed RLP decodes to a zero change.
+    [Test]
+    public void Decode_slot_changes_with_empty_list_storage_change_throws_RlpException()
+    {
+        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(1);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>());
+    }
+
+    // storage_reads (UInt256), balance/nonce/code changes are value-type arrays: an empty-list
+    // element (0xc0) must throw, not decode to default(T) (zero), which is indistinguishable from a
+    // legitimate zero entry. Field index is the position after the address in the AccountChanges sequence.
+    [TestCase(1, TestName = "storage_reads")]
+    [TestCase(2, TestName = "balance_changes")]
+    [TestCase(3, TestName = "nonce_changes")]
+    [TestCase(4, TestName = "code_changes")]
+    public void Decode_account_changes_with_empty_list_element_in_value_array_throws_RlpException(int malformedFieldIndex)
+    {
+        byte[] encoded = EncodeAccountChangesWithEmptyListElement(TestItem.AddressA, malformedFieldIndex);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>());
+    }
+
     [Test]
     public void Can_decode_then_encode_balance_change()
     {
@@ -629,6 +657,38 @@ public class BlockAccessListDecoderTests
         stream.Encode(Rlp.OfEmptyList);
         stream.Encode(Rlp.OfEmptyList);
         stream.Encode(Rlp.OfEmptyList);
+        return stream.Data.ToArray()!;
+    }
+
+    // Builds a 6-field AccountChanges sequence where every list field is empty (0xc0) except the one at
+    // malformedFieldIndex (0-based, after the address), which is a list holding a single empty-list element.
+    private static byte[] EncodeAccountChangesWithEmptyListElement(Address address, int malformedFieldIndex)
+    {
+        const int fieldCount = 5;
+        int malformedFieldLength = Rlp.LengthOfSequence(Rlp.OfEmptyList.Length);
+
+        int contentLength = Rlp.LengthOfAddressRlp;
+        for (int i = 0; i < fieldCount; i++)
+        {
+            contentLength += i == malformedFieldIndex ? malformedFieldLength : Rlp.OfEmptyList.Length;
+        }
+
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        stream.Encode(address);
+        for (int i = 0; i < fieldCount; i++)
+        {
+            if (i == malformedFieldIndex)
+            {
+                stream.StartSequence(Rlp.OfEmptyList.Length);
+                stream.Encode(Rlp.OfEmptyList);
+            }
+            else
+            {
+                stream.Encode(Rlp.OfEmptyList);
+            }
+        }
+
         return stream.Data.ToArray()!;
     }
 
