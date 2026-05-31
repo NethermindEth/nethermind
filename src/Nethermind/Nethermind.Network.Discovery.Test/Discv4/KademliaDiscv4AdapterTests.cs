@@ -30,6 +30,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4
     [TestFixture]
     public class KademliaDiscv4AdapterTests
     {
+        public enum NoResponseRequest
+        {
+            Ping,
+            FindNeighbours,
+            SendEnrRequest
+        }
+
         private IKademliaDiscv4Adapter _adapter = null!;
 
         private IKademlia<PublicKey, Node> _kademliaMessageReceiver = null!;
@@ -158,6 +165,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             return msg;
         }
 
+        private async Task<bool> HasResponse(NoResponseRequest request, CancellationToken token) =>
+            request switch
+            {
+                NoResponseRequest.Ping => await _adapter.Ping(_receiver, token),
+                NoResponseRequest.FindNeighbours => await _adapter.FindNeighbours(_receiver, TestItem.PublicKeyC, token) is not null,
+                NoResponseRequest.SendEnrRequest => await _adapter.SendEnrRequest(_receiver, token) is not null,
+                _ => throw new ArgumentOutOfRangeException(nameof(request), request, null)
+            };
+
         [Test]
         [CancelAfter(10000)]
         public async Task Ping_should_send_ping_and_receive_pong(CancellationToken token)
@@ -271,25 +287,20 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
         }
 
-        [Test]
+        [TestCase(NoResponseRequest.Ping)]
+        [TestCase(NoResponseRequest.FindNeighbours)]
+        [TestCase(NoResponseRequest.SendEnrRequest)]
         [CancelAfter(10000)]
-        public async Task Ping_timeout_should_return_false_and_record_failure_once(CancellationToken token)
+        public async Task Request_timeout_should_return_no_response_and_record_failure_once(NoResponseRequest request, CancellationToken token)
         {
-            bool result = await _adapter.Ping(_receiver, token);
+            if (request is not NoResponseRequest.Ping)
+            {
+                ConfigureBondCallback();
+            }
 
-            Assert.That(result, Is.False);
-            _nodeHealthTracker.Received(1).OnRequestFailed(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
-        }
+            bool hasResponse = await HasResponse(request, token);
 
-        [Test]
-        [CancelAfter(10000)]
-        public async Task FindNeighbours_timeout_should_return_null_and_record_failure_once(CancellationToken token)
-        {
-            ConfigureBondCallback();
-
-            Node[]? result = await _adapter.FindNeighbours(_receiver, TestItem.PublicKeyC, token);
-
-            Assert.That(result, Is.Null);
+            Assert.That(hasResponse, Is.False);
             _nodeHealthTracker.Received(1).OnRequestFailed(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
         }
 
