@@ -45,14 +45,8 @@ public class KademliaNodeSource(
                         // Tried ping before and did not receive a response
                         continue;
                     }
-                    try
-                    {
-                        if (!await discv4Adapter.Ping(node, token))
-                        {
-                            continue;
-                        }
-                    }
-                    catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                    // Ping returns false on timeout; it only throws on lifecycle cancellation, which we let propagate.
+                    if (!await discv4Adapter.Ping(node, token))
                     {
                         continue;
                     }

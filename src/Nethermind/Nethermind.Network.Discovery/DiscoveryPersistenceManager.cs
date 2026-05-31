@@ -76,7 +76,8 @@ public class DiscoveryPersistenceManager(
             }
             catch (OperationCanceledException)
             {
-                continue;
+                // Ping returns false on timeout; an OCE here means lifecycle cancellation, so stop promptly.
+                throw;
             }
             catch (Exception e)
             {
