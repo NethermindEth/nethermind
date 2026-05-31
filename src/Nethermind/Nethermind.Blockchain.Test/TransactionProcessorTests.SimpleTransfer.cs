@@ -51,7 +51,10 @@ public partial class TransactionProcessorTests
         Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)1));
         Assert.That(tx.SpentGas, Is.EqualTo(testCase.ExpectedSpentGas));
         Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore - testCase.ExpectedSenderDebit));
-        Assert.That(_stateProvider.GetBalance(recipient), Is.EqualTo(recipientBalanceBefore + testCase.Value));
+        if (recipient != TestItem.AddressA)
+        {
+            Assert.That(_stateProvider.GetBalance(recipient), Is.EqualTo(recipientBalanceBefore + testCase.Value));
+        }
     }
 
     [Test]
@@ -175,6 +178,8 @@ public partial class TransactionProcessorTests
             .SetName("Empty-code recipient with value uses fast path");
         yield return new TestCaseData(new SimpleTransferFastPathCase((state, spec) => CreateEmptyCodeRecipient(state, spec, 1100), UInt256.Zero, false, 0, GasCostOf.Transaction, GasCostOf.Transaction))
             .SetName("Empty-code recipient with zero value uses fast path");
+        yield return new TestCaseData(new SimpleTransferFastPathCase((_, _) => TestItem.AddressA, 1.Wei, false, 0, GasCostOf.Transaction, GasCostOf.Transaction))
+            .SetName("Self-send with value uses fast path and only charges gas");
         yield return new TestCaseData(new SimpleTransferFastPathCase((state, spec) => CreateContractRecipient(state, spec, 1101), 1.Wei, false, 1, GasCostOf.Transaction, 1.Wei + GasCostOf.Transaction))
             .SetName("Contract recipient enters VM");
         yield return new TestCaseData(new SimpleTransferFastPathCase((_, _) => IdentityPrecompile.Address, 1.Wei, false, 1, GasCostOf.Transaction + 15, 1.Wei + GasCostOf.Transaction + 15))
