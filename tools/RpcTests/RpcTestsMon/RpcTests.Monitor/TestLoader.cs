@@ -4,18 +4,8 @@
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.FileSystemGlobbing.Abstractions;
-using Nethermind.RpcTests.Monitor.Dynamic;
 
 namespace Nethermind.RpcTests.Monitor;
-
-internal class TestDefinition
-{
-    public required string FilePath { get; init; }
-    public required int Index { get; init; }
-    public required DynamicExpression<TestContext, bool> Run { get; init; }
-    public required DynamicJson<TestContext> Request { get; init; }
-    public DynamicJson<TestContext>? Response { get; init; }
-}
 
 internal static class TestLoader
 {
@@ -35,23 +25,9 @@ internal static class TestLoader
                 string fullPath = Path.Combine(_testDir.Name, path);
                 JsonArray tests = JsonNode.Parse(File.ReadAllText(fullPath))!.AsArray();
                 int testIndex = 0;
+
                 foreach (JsonNode? testNode in tests)
-                {
-                    if (testNode?["run"]?.GetValue<string>() is not { } runExpr || testNode["request"] is not { } requestNode)
-                        throw new Exception("Test is missing required properties 'run' and 'request'");
-
-                    if (requiresResponse && testNode["response"] is null)
-                        throw new Exception("Test is missing required 'response' property");
-
-                    definitions.Add(new TestDefinition
-                    {
-                        FilePath = path,
-                        Index = ++testIndex,
-                        Run = new DynamicExpression<TestContext, bool>(runExpr),
-                        Request = new DynamicJson<TestContext>(requestNode),
-                        Response = testNode["response"] is { } responseNode ? new DynamicJson<TestContext>(responseNode) : null
-                    });
-                }
+                    definitions.Add(new TestDefinition(++testIndex, path, testNode!, requiresResponse));
             }
             catch (Exception ex)
             {

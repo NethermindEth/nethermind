@@ -2,27 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Nodes;
+using Nethermind.RpcTests.Monitor.Dynamic;
 
 namespace Nethermind.RpcTests.Monitor;
 
 // ReSharper disable UnusedMember.Global
 // ReSharper disable NotAccessedPositionalProperty.Global
 // ReSharper disable MemberCanBePrivate.Global
-internal class BlockInfo(JsonNode json) : IFormattable
-{
-    public long Number { get; } = Convert.ToInt64(json["number"]!.GetValue<string>(), 16);
-    public string Hash { get; } = json["hash"]!.GetValue<string>();
-    public long BaseFeePerGas { get; } = Convert.ToInt64(json["baseFeePerGas"]!.GetValue<string>(), 16);
 
-    public override string ToString() => $"{Number} ({Hash})";
-
-    public string ToString(string? format, IFormatProvider? formatProvider) => format?.Equals("#") == true
-        ? Number.ToString()
-        : ToString();
-}
-
-internal record struct RequestContext(long Number) { }
-
+/// <summary>
+/// Contains properties and methods accessible in tests JSONs when compiling new request.
+/// </summary>
 internal readonly record struct TestContext(TestDefinition Definition, BlockInfo Head)
 {
     public RequestContext Request { get; init; }
@@ -47,6 +37,38 @@ internal readonly record struct TestContext(TestDefinition Definition, BlockInfo
 
     #endregion
 }
+
+internal class BlockInfo(JsonNode json) : IFormattable
+{
+    public long Number { get; } = Convert.ToInt64(json["number"]!.GetValue<string>(), 16);
+    public string Hash { get; } = json["hash"]!.GetValue<string>();
+    public long BaseFeePerGas { get; } = Convert.ToInt64(json["baseFeePerGas"]!.GetValue<string>(), 16);
+
+    public override string ToString() => $"{Number} ({Hash})";
+
+    public string ToString(string? format, IFormatProvider? formatProvider) => format?.Equals("#") == true
+        ? Number.ToString()
+        : ToString();
+}
+
+internal class TestDefinition(int index, string filePath, JsonNode json, bool requiresResponse)
+{
+    public int Index { get; } = index;
+    public string FilePath { get; } = filePath;
+    public string Description { get; } = json["test"]?["description"]?.GetValue<string>() ?? string.Empty;
+
+    public DynamicExpression<TestContext, bool> Run { get; } = new(json["run"]?.GetValue<string>()
+        ?? throw new Exception("Test is missing required property 'run'"));
+
+    public DynamicJson<TestContext> Request { get; } = new(json["request"]
+        ?? throw new Exception("Test is missing required property 'request'"));
+
+    public DynamicJson<TestContext>? Response { get; } = json["response"] is { } responseNode
+        ? new(responseNode)
+        : requiresResponse ? throw new Exception("Test is missing required 'response' property") : null;
+}
+
+internal record struct RequestContext(long Number) { }
 
 internal record TestFailure(TestContext Test, JsonNode Request, JsonNode ActualResponse, JsonNode ExpectedResponse)
 {
