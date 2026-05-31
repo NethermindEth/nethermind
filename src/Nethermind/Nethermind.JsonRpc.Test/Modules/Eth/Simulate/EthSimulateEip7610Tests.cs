@@ -6,12 +6,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 

@@ -975,4 +975,63 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
     }
 
+    /// <summary>
+    /// Regression: state overrides with only storage (no code/balance/nonce) create an account
+    /// that is EIP-158 empty. Without the NoEip158Spec fix, the override commit deleted the account
+    /// from the in-memory state, causing <c>IsNonZeroAccount</c> to short-circuit false before
+    /// checking storage and silently bypassing EIP-7610 CREATE2 collision detection.
+    /// </summary>
+    [Test]
+    public async Task Eth_call_state_override_with_storage_blocks_create2_via_eip7610()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+
+        // Init code deployed by the factory via CREATE2 (bytes 55-72 of FactoryBytecode):
+        //   PUSH1 42, PUSH1 0, SSTORE  — sets storage[0]=42
+        //   then deploys a 1-byte STOP runtime.
+        byte[] initCode = Bytes.FromHexString("602a6000556001601160003960016000f300");
+
+        // Compute the CREATE2 target address: keccak256(0xff ++ factory ++ salt32 ++ keccak256(initCode))[12:]
+        Address factoryAddress = new("0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1");
+        byte[] create2Input = new byte[85];
+        create2Input[0] = 0xff;
+        factoryAddress.Bytes.CopyTo(create2Input.AsSpan(1, 20));
+        // bytes 21-52: salt = 0 (already zeroed)
+        Keccak.Compute(initCode).Bytes.CopyTo(create2Input.AsSpan(53, 32));
+        Address contractC = new(Keccak.Compute(create2Input).Bytes[12..]);
+
+        // State overrides:
+        //   factory  — factory bytecode + ETH to pay for CREATE2
+        //   caller   — ETH to pay for the call
+        //   contractC — storage[0]=42 but no code/balance/nonce (EIP-158 empty by code/balance/nonce)
+        //               Without the fix, EIP-158 would delete contractC from the IBS during override
+        //               commit, causing IsNonZeroAccount to return false before the storage check.
+        const string factoryBytecode =
+            "0x601260376000397f0000000000000000000000000000000000000000000000000000000000000000" +
+            "601260006000f5600052602060" +
+            "00f3602a6000556001601160003960016000f300";
+
+        object? stateOverride = JsonSerializer.Deserialize<object>($$"""
+            {
+                "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1": { "code": "{{factoryBytecode}}", "balance": "0xde0b6b3a7640000" },
+                "0xca11e1ca11e1ca11e1ca11e1ca11e1ca11e1ca11": { "balance": "0xde0b6b3a7640000" },
+                "{{contractC}}": { "stateDiff": { "0x0000000000000000000000000000000000000000000000000000000000000000": "0x000000000000000000000000000000000000000000000000000000000000002a" } }
+            }
+            """);
+
+        object? transaction = JsonSerializer.Deserialize<object>("""
+            {
+                "from": "0xca11e1ca11e1ca11e1ca11e1ca11e1ca11e1ca11",
+                "to": "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
+                "gas": "0xf4240"
+            }
+            """);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        JToken parsed = JToken.Parse(serialized);
+        byte[] returnData = Bytes.FromHexString(parsed["result"]!.Value<string>()!);
+
+        Assert.That(returnData, Is.EqualTo(new byte[32]));
+    }
+
 }

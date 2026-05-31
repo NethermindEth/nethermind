@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using Nethermind.Core.Crypto;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
