@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
@@ -93,6 +94,8 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
+
+    public Task HintBal(ReadOnlyBlockAccessList bal) => _innerWorldState.HintBal(bal);
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
@@ -394,7 +397,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         {
             ReadOnlySpan<CodeChange> codeChanges = accountChanges.CodeChanges;
             if (codeChanges.Length == 0) continue;
-            codeChangesByHash ??= [];
+            codeChangesByHash ??= new(GenericEqualityComparer.GetOptimized<ValueHash256>());
             foreach (CodeChange codeChange in codeChanges)
             {
                 if (!codeChangesByHash.TryGetValue(codeChange.CodeHash, out (uint Index, byte[] Code) existing)

@@ -81,7 +81,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                         innerCtx.Check(checkPosition);
                         return new PathWithStorageSlot(in path.ValueHash256, value);
                     }, limit: SnapMessageLimits.StorageRangeSlotsPerAccountRlpLimit), limit: SnapMessageLimits.StorageRangeAccountsRlpLimit);
-                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.StorageRangeProofsRlpLimit);
                 memoryOwner = null;
 
                 byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));

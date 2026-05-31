@@ -34,6 +34,13 @@ public class EraImporter(
     private readonly ILogger _logger = logManager.GetClassLogger<EraImporter>();
     private readonly int _maxEra1Size = eraConfig.MaxEra1Size;
 
+    /// <summary>
+    /// Snapshot of the pacer used by the current import run. <see cref="BlockTreeSuggestPacer.WaitForPausedAsync"/>
+    /// lets callers (notably tests) wait deterministically for the importer to back off when its suggest queue
+    /// outruns the chain head, instead of relying on real-time delays.
+    /// </summary>
+    public BlockTreeSuggestPacer? CurrentPacer { get; private set; }
+
     public async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
     {
         if (!fileSystem.Directory.Exists(src))
@@ -107,6 +114,7 @@ public class EraImporter(
         long blocksProcessed = 0;
 
         using BlockTreeSuggestPacer pacer = new(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
+        CurrentPacer = pacer;
         long blockNumber = from;
 
         long suggestFromBlock = (blockTree.Head?.Number ?? 0) + 1;
