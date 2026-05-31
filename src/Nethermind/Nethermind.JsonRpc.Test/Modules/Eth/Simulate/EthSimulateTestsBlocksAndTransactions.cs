@@ -207,7 +207,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Assert.That((bool)result.Result, Is.False);
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
-        Assert.That(result.Result.Error, Is.EqualTo("empty input"));
+        Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.EmptyBlockStateCalls));
     }
 
     /// <summary>
