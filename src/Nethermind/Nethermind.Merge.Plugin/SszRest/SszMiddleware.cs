@@ -8,9 +8,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
 using System.Net.Mime;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Net.Http.Headers;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
@@ -345,29 +347,46 @@ public sealed class SszMiddleware
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsSszRequest(HttpContext ctx)
     {
-        string path = ctx.Request.Path.Value ?? string.Empty;
-        if (!path.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase))
+        const string Octet = MediaTypeNames.Application.Octet;
+
+        PathString path = ctx.Request.Path;
+        if (!path.HasValue || path.Value?.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase) != true)
             return false;
 
-        switch (ctx.Request.Method)
-        {
-            case "POST":
-                return ctx.Request.ContentType?.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase) == true;
-            case "GET":
-                {
-                    foreach (string? v in ctx.Request.Headers.Accept)
-                    {
-                        if (v is not null && v.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
-                            return true;
-                    }
+        return AcceptsSszResponse(ctx);
 
-                    return false;
-                }
-            default:
-                return false;
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static bool AcceptsSszResponse(HttpContext ctx) =>
+            ctx.Request.Method switch
+            {
+                "POST" => HasOctetMediaValue(ctx.Request.ContentType),
+                "GET" => AcceptsOctet(ctx.Request),
+                _ => false
+            };
+
+
+        static bool AcceptsOctet(HttpRequest request)
+        {
+            // GetTypedHeaders parses the Accept header per RFC: each entry is one media range
+            // with commas, quoted-strings and ;q= parameters already split out. So MediaType
+            // is the bare type/subtype, and an exact match is all that's needed here.
+            IList<MediaTypeHeaderValue> accept = request.GetTypedHeaders().Accept;
+            int count = accept.Count;
+            for (int i = 0; i < count; i++)
+            {
+                if (accept[i].MediaType.Equals(Octet, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
         }
+
+        static bool HasOctetMediaValue(string? headerValue)
+            => headerValue  is not null && headerValue.StartsWith(Octet, StringComparison.OrdinalIgnoreCase) &&
+                (headerValue.Length == Octet.Length || headerValue[Octet.Length] is ';' or ' ' or '\t');
     }
 
     /// <summary>

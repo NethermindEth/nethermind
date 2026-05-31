@@ -191,6 +191,44 @@ public class SszMiddlewareTests
         await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadV2(Arg.Any<byte[]>());
     }
 
+    // The Accept header reaches the middleware as StringValues, which carries BOTH forms a client
+    // may send: a single header line holding a comma-separated list of media ranges, and several
+    // distinct header lines (a string[]). SSZ negotiation must inspect every range across every
+    // entry, so octet-stream is honored regardless of which entry or position it appears in.
+    private static IEnumerable<TestCaseData> AcceptHeaderCases()
+    {
+        // Single StringValues entry (one header line), octet-stream in various positions.
+        yield return new TestCaseData((object)new[] { OctetStream }, true).SetName("single_octet_only");
+        yield return new TestCaseData((object)new[] { OctetStream + ", application/json" }, true).SetName("single_octet_first");
+        yield return new TestCaseData((object)new[] { "application/json, " + OctetStream }, true).SetName("single_octet_last");
+        yield return new TestCaseData((object)new[] { "text/html, " + OctetStream + ";q=0.9, */*" }, true).SetName("single_octet_middle_with_q");
+        yield return new TestCaseData((object)new[] { "application/json" }, false).SetName("single_no_octet");
+        yield return new TestCaseData((object)new[] { "application/json, text/html" }, false).SetName("single_csv_no_octet");
+        yield return new TestCaseData((object)new[] { "application/octet-streamx" }, false).SetName("single_octet_substring");
+
+        // Multiple StringValues entries (Accept sent as separate header lines / string[]).
+        yield return new TestCaseData((object)new[] { OctetStream, "application/json" }, true).SetName("multi_octet_first_entry");
+        yield return new TestCaseData((object)new[] { "application/json", OctetStream }, true).SetName("multi_octet_last_entry");
+        yield return new TestCaseData((object)new[] { "application/json", "text/html, " + OctetStream }, true).SetName("multi_octet_in_csv_entry");
+        yield return new TestCaseData((object)new[] { "application/json", "text/html" }, false).SetName("multi_no_octet");
+    }
+
+    [TestCaseSource(nameof(AcceptHeaderCases))]
+    public async Task Get_negotiates_ssz_across_all_accept_ranges(string[] acceptValues, bool handledAsSsz)
+    {
+        bool nextInvoked = false;
+        SszMiddleware mw = BuildMiddleware(_ => { nextInvoked = true; return Task.CompletedTask; });
+
+        DefaultHttpContext ctx = MakeBaseContext("GET", "/engine/v1/payloads/0x0102030405060708", AuthenticatedPort);
+        ctx.Request.Headers.Accept = acceptValues;
+        ctx.Request.Body = Stream.Null;
+
+        await mw.InvokeAsync(ctx);
+
+        // Recognized as SSZ -> middleware answers it and never delegates; otherwise it passes through.
+        Assert.That(nextInvoked, Is.EqualTo(!handledAsSsz));
+    }
+
     [TestCase("/engine/v1/forkchoice", 1)]
     [TestCase("/engine/v2/forkchoice", 2)]
     [TestCase("/engine/v3/forkchoice", 3)]
