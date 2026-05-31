@@ -367,12 +367,14 @@ public sealed class SszMiddleware
                 _ => false
             };
 
-
         static bool AcceptsOctet(HttpRequest request)
         {
             // GetTypedHeaders parses the Accept header per RFC: each entry is one media range
             // with commas, quoted-strings and ;q= parameters already split out. So MediaType
-            // is the bare type/subtype, and an exact match is all that's needed here.
+            // is the bare type/subtype, and an exact match is all that's needed here. This
+            // allocates a RequestHeaders wrapper and a List<MediaTypeHeaderValue> (one per range):
+            // acceptable on the comparatively cold GET path - the hot POST/newPayload path keeps
+            // the raw-string HasOctetMediaValue check below.
             IList<MediaTypeHeaderValue> accept = request.GetTypedHeaders().Accept;
             int count = accept.Count;
             for (int i = 0; i < count; i++)
@@ -385,7 +387,7 @@ public sealed class SszMiddleware
         }
 
         static bool HasOctetMediaValue(string? headerValue)
-            => headerValue  is not null && headerValue.StartsWith(Octet, StringComparison.OrdinalIgnoreCase) &&
+            => headerValue is not null && headerValue.StartsWith(Octet, StringComparison.OrdinalIgnoreCase) &&
                 (headerValue.Length == Octet.Length || headerValue[Octet.Length] is ';' or ' ' or '\t');
     }
 

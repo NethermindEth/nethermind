@@ -219,13 +219,38 @@ public class SszMiddlewareTests
         bool nextInvoked = false;
         SszMiddleware mw = BuildMiddleware(_ => { nextInvoked = true; return Task.CompletedTask; });
 
-        DefaultHttpContext ctx = MakeBaseContext("GET", "/engine/v1/payloads/0x0102030405060708", AuthenticatedPort);
+        // Use an unrouted engine resource: a recognized SSZ request resolves to 404 without invoking
+        // any handler, so the test isolates the negotiation decision and never depends on engine
+        // module return values. Recognized -> middleware answers it (404) and never delegates;
+        // not recognized -> it passes through to next().
+        DefaultHttpContext ctx = MakeBaseContext("GET", "/engine/v1/negotiation-probe", AuthenticatedPort);
         ctx.Request.Headers.Accept = acceptValues;
         ctx.Request.Body = Stream.Null;
 
         await mw.InvokeAsync(ctx);
 
-        // Recognized as SSZ -> middleware answers it and never delegates; otherwise it passes through.
+        Assert.That(nextInvoked, Is.EqualTo(!handledAsSsz));
+    }
+
+    // POST negotiation uses the raw-string HasOctetMediaValue boundary check on Content-Type
+    // (single-valued, hot path). Guards both directions: a substring like "...streamx" must NOT
+    // match, while a parameterized "...; charset=utf-8" must (the ';' is a valid token boundary).
+    [TestCase(OctetStream, true)]
+    [TestCase("application/octet-stream; charset=utf-8", true)]
+    [TestCase("application/octet-streamx", false)]
+    [TestCase("application/json", false)]
+    public async Task Post_negotiates_ssz_on_content_type_boundary(string contentType, bool handledAsSsz)
+    {
+        bool nextInvoked = false;
+        SszMiddleware mw = BuildMiddleware(_ => { nextInvoked = true; return Task.CompletedTask; });
+
+        DefaultHttpContext ctx = MakeBaseContext("POST", "/engine/v1/negotiation-probe", AuthenticatedPort);
+        ctx.Request.ContentType = contentType;
+        ctx.Request.ContentLength = 0;
+        ctx.Request.Body = Stream.Null;
+
+        await mw.InvokeAsync(ctx);
+
         Assert.That(nextInvoked, Is.EqualTo(!handledAsSsz));
     }
 
