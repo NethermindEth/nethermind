@@ -27,8 +27,6 @@ public class BlockAccessListDecoderTests
         Assert.That(bal, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(bal).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -225,8 +223,6 @@ public class BlockAccessListDecoderTests
                 .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
     }
 
-    // An empty-list element (0xc0) inside the slot's storage_changes array must be rejected, not
-    // substituted with a default(StorageChange). Otherwise malformed RLP decodes to a zero change.
     [Test]
     public void Decode_slot_changes_with_empty_list_storage_change_throws_RlpException()
     {
@@ -237,14 +233,12 @@ public class BlockAccessListDecoderTests
             Throws.TypeOf<RlpException>());
     }
 
-    // storage_reads (UInt256), balance/nonce/code changes are value-type arrays: an empty-list
-    // element (0xc0) must throw, not decode to default(T) (zero), which is indistinguishable from a
-    // legitimate zero entry. Field index is the position after the address in the AccountChanges sequence.
+    [TestCase(0, TestName = "storage_changes")]
     [TestCase(1, TestName = "storage_reads")]
     [TestCase(2, TestName = "balance_changes")]
     [TestCase(3, TestName = "nonce_changes")]
     [TestCase(4, TestName = "code_changes")]
-    public void Decode_account_changes_with_empty_list_element_in_value_array_throws_RlpException(int malformedFieldIndex)
+    public void Decode_account_changes_with_empty_list_element_in_field_throws_RlpException(int malformedFieldIndex)
     {
         byte[] encoded = EncodeAccountChangesWithEmptyListElement(TestItem.AddressA, malformedFieldIndex);
 
@@ -263,8 +257,6 @@ public class BlockAccessListDecoderTests
         Assert.That(balanceChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(balanceChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -293,8 +285,6 @@ public class BlockAccessListDecoderTests
         Assert.That(nonceChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(nonceChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -311,8 +301,6 @@ public class BlockAccessListDecoderTests
         Assert.That(slotChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(slotChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(expectedRlp);
         Assert.That(encoded, Is.EqualTo(expectedRlp));
     }
 
@@ -328,8 +316,6 @@ public class BlockAccessListDecoderTests
         Assert.That(storageChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(storageChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(expectedRlp);
         Assert.That(encoded, Is.EqualTo(expectedRlp));
     }
 
@@ -344,8 +330,6 @@ public class BlockAccessListDecoderTests
         Assert.That(codeChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(codeChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -358,8 +342,6 @@ public class BlockAccessListDecoderTests
         Assert.That(accountChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(accountChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
