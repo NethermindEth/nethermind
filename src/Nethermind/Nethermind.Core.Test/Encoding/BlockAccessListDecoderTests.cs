@@ -660,8 +660,6 @@ public class BlockAccessListDecoderTests
         return stream.Data.ToArray()!;
     }
 
-    // Builds a 6-field AccountChanges sequence where every list field is empty (0xc0) except the one at
-    // malformedFieldIndex (0-based, after the address), which is a list holding a single empty-list element.
     private static byte[] EncodeAccountChangesWithEmptyListElement(Address address, int malformedFieldIndex)
     {
         const int fieldCount = 5;
