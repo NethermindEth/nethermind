@@ -55,7 +55,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         IHeaderStore headerStore = rootLifetimeScope.Resolve<IHeaderStore>();
         WitnessGeneratingHeaderFinder headerFinder = new(headerStore);
-        WitnessGeneratingWorldState witnessWorldState = new(baseWorldState, stateReader, trieStore, codeDb, headerFinder);
+        WitnessGeneratingWorldState witnessWorldState = new(baseWorldState, worldStateManager.GlobalStateReader, trieStore, codeDb, headerFinder);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder => builder
             .AddScoped<IStateReader>(stateReader)
