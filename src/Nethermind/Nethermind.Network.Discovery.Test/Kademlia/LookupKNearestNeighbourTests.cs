@@ -70,7 +70,7 @@ public class LookupKNearestNeighbourTests
             },
             cts.Token);
 
-        await requestInFlight.Task;
+        await requestInFlight.Task.WaitAsync(token);
         await cts.CancelAsync();
 
         _ = await task;
