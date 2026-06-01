@@ -6,9 +6,6 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
-using FluentAssertions.Execution;
-using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -55,10 +52,10 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", txArgs);
 
         JToken result = JToken.Parse(response)["result"]!;
-        ((bool)result["failed"]!).Should().BeTrue("pre-flight failures surface as failed:true under streaming");
-        ((string)result["returnValue"]!).Should().Be("0x");
-        ((string)result["error"]!).Should().StartWith(expectedErrorPrefix, "Geth-compatible wording must be preserved verbatim");
-        ((int)result["errorCode"]!).Should().Be(expectedErrorCode, "errorCode mirrors Geth's per-scenario JSON-RPC code");
+        Assert.That(((bool)result["failed"]!), Is.True, "pre-flight failures surface as failed:true under streaming");
+        Assert.That(((string)result["returnValue"]!), Is.EqualTo("0x"));
+        Assert.That(((string)result["error"]!), Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
+        Assert.That(((int)result["errorCode"]!), Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
     }
 
     private static IEnumerable<TestCaseData> TraceCallGethCompatFailureCases()
@@ -103,7 +100,7 @@ public partial class DebugRpcModuleTests
             $"{lastBlockHash}"
         );
 
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        RpcTest.AssertSuccess(response);
     }
 
     [TestCase(
@@ -140,12 +137,12 @@ public partial class DebugRpcModuleTests
         );
 
         JToken result = JToken.Parse(response)["result"]!;
-        ((bool)result["failed"]!).Should().BeFalse($"trace for case '{name}' must succeed");
+        Assert.That(((bool)result["failed"]!), Is.False, $"trace for case '{name}' must succeed");
 
         if (expectedValue is not null)
         {
             byte[] returnValueBytes = Bytes.FromHexString((string)result["returnValue"]!);
-            Convert.ToHexString(returnValueBytes).Should().BeEquivalentTo(expectedValue);
+            Assert.That(returnValueBytes.ToHexString(), Is.EqualTo(expectedValue));
         }
     }
 
@@ -170,8 +167,8 @@ public partial class DebugRpcModuleTests
         );
 
         long gasAvailable = (long)ParseReturnValue(response).ToUInt256();
-        gasAvailable.Should().BeLessThan(gasCap);
-        gasAvailable.Should().BeGreaterThan(0);
+        Assert.That(gasAvailable, Is.LessThan(gasCap));
+        Assert.That(gasAvailable, Is.GreaterThan(0));
     }
 
     [Test]
@@ -197,8 +194,10 @@ public partial class DebugRpcModuleTests
         );
 
         UInt256 gasAvailable = ParseReturnValue(response).ToUInt256();
-        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
-            "gas available should reflect gasCap ({0}), not block gas limit ({1})", gasCap, blockGasLimit);
+        Assert.That(
+            gasAvailable > (UInt256)blockGasLimit,
+            Is.True,
+            $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
     }
 
     private static byte[] ParseReturnValue(string responseJson)
@@ -259,11 +258,8 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        using (new AssertionScope())
-        {
-            JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
-            JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
-        }
+        Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+        Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -297,7 +293,7 @@ public partial class DebugRpcModuleTests
             string result = await RpcTest.TestSerializedRequest(
                 ctx.DebugRpcModule, "debug_traceCall", transaction, null, tracerOptions);
 
-            result.Should().Contain("\"code\":\"0x00\"",
+            Assert.That(result, Does.Contain("\"code\":\"0x00\""),
                 $"call #{i} must complete and report the deployed runtime in post.code — " +
                 "the persisted-code hint must not survive overlay reset");
         }

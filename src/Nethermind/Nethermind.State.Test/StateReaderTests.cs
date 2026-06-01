@@ -6,7 +6,6 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -179,7 +178,7 @@ namespace Nethermind.Store.Test
             CommitEverything();
             Hash256 stateRoot0 = provider.StateRoot;
 
-            reader.GetStorage(Build.A.BlockHeader.WithStateRoot(stateRoot0).TestObject, _address1, storageCell.Index + 1).ToArray().Should().BeEquivalentTo(new byte[] { 0 });
+            Assert.That(reader.GetStorage(Build.A.BlockHeader.WithStateRoot(stateRoot0).TestObject, _address1, storageCell.Index + 1).ToArray(), Is.EqualTo(new byte[] { 0 }));
         }
 
         private Task StartTask(IStateReader reader, BlockHeader baseBlock, UInt256 value) => Task.Run(
@@ -199,7 +198,7 @@ namespace Nethermind.Store.Test
                     for (int i = 0; i < 1000; i++)
                     {
                         byte[] result = reader.GetStorage(baseBlock, storageCell.Address, storageCell.Index).ToArray();
-                        result.Should().BeEquivalentTo(value);
+                        Assert.That(result, Is.EqualTo(value));
                     }
                 });
 
@@ -230,7 +229,7 @@ namespace Nethermind.Store.Test
             }
 
             byte[] retrieved = reader.GetStorage(baseBlock, _address1, storageCell.Index).ToArray();
-            retrieved.Should().BeEquivalentTo(initialValue);
+            Assert.That(retrieved, Is.EqualTo(initialValue));
 
             /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
 
@@ -256,7 +255,7 @@ namespace Nethermind.Store.Test
                We will try to retrieve the value by taking the state root from the processor.*/
 
             retrieved = reader.GetStorage(baseBlock, storageCell.Address, storageCell.Index).ToArray();
-            retrieved.Should().BeEquivalentTo(newValue);
+            Assert.That(retrieved, Is.EqualTo(newValue));
 
             /* If it failed then it means that the blockchain bridge cached the previous call value */
         }
@@ -267,13 +266,13 @@ namespace Nethermind.Store.Test
             get
             {
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
-                    r.CollectStats(h, new MemDb(), Logger).AccountCount.Should().Be(1))).SetName("CollectStats");
+                    Assert.That(r.CollectStats(h, new MemDb(), Logger).AccountCount, Is.EqualTo(1)))).SetName("CollectStats");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
                     r.RunTreeVisitor(new TrieStatsCollector(new MemDb(), LimboLogs.Instance), h))).SetName("RunTreeVisitor");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
-                    r.DumpState(h).Should().NotBeEmpty())).SetName("DumpState");
+                    Assert.That(r.DumpState(h), Is.Not.Empty))).SetName("DumpState");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
-                    r.HasStateForBlock(h).Should().BeTrue())).SetName("HasStateForBlock");
+                    Assert.That(r.HasStateForBlock(h), Is.True))).SetName("HasStateForBlock");
             }
         }
 
@@ -344,7 +343,7 @@ namespace Nethermind.Store.Test
             // (StateReader => AccountStruct.TotallyEmpty, FlatStateReader => default).
             bool result = ctx.Reader.TryGetAccount(header, TestItem.AddressB, out _);
 
-            result.Should().BeFalse();
+            Assert.That(result, Is.False);
         }
 
         [Test]
@@ -352,8 +351,8 @@ namespace Nethermind.Store.Test
         {
             using Context ctx = new(useFlat);
 
-            ctx.Reader.GetCode(Keccak.OfAnEmptyString).Should().BeEmpty();
-            ctx.Reader.GetCode(Keccak.OfAnEmptyString.ValueHash256).Should().BeEmpty();
+            Assert.That(ctx.Reader.GetCode(Keccak.OfAnEmptyString), Is.Empty);
+            Assert.That(ctx.Reader.GetCode(Keccak.OfAnEmptyString.ValueHash256), Is.Empty);
         }
 
         [Test]
@@ -368,9 +367,8 @@ namespace Nethermind.Store.Test
                 state.InsertCode(TestItem.AddressA, codeHash, code, MuirGlacier.Instance);
             });
 
-            ctx.Reader.GetCode((Hash256)codeHash).Should().Equal(code);
-            ctx.Reader.GetCode(codeHash).Should().Equal(code);
+            Assert.That(ctx.Reader.GetCode((Hash256)codeHash), Is.EqualTo(code));
+            Assert.That(ctx.Reader.GetCode(codeHash), Is.EqualTo(code));
         }
-
     }
 }

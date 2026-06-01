@@ -24,7 +24,7 @@ namespace Nethermind.Core.Test
         private readonly IBlockTree _remoteTree;
         private readonly ISyncServer? _remoteSyncServer;
         private readonly ISnapSyncPeer? _snapSyncPeer;
-        private readonly TaskCompletionSource _closeTaskCompletionSource = new();
+        private readonly TaskCompletionSource _closeTaskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public SyncPeerMock(IBlockTree remoteTree, ISyncServer? remoteSyncServer = null, PublicKey? remotePublicKey = null, string remoteClientId = "", ISnapSyncPeer? snapSyncPeer = null)
         {

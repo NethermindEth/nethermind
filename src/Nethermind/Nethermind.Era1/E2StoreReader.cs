@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Snappier;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 

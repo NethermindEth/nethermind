@@ -33,10 +33,12 @@ public abstract class GetPayloadBodiesByHashHandler<TResult>(IBlockTree blockTre
             Block? block = _blockTree.FindBlock(blockHashes[i]);
             results[i] = block is null ? null : CreateResult(block, blockHashes[i]);
         }
-        return ResultWrapper<IReadOnlyList<TResult?>>.Success(results);
+        return ResultWrapper<IReadOnlyList<TResult?>>.Success(CreateResponse(results));
     }
 
     protected abstract TResult? CreateResult(Block block, Hash256 blockHash);
+
+    protected virtual IReadOnlyList<TResult?> CreateResponse(TResult?[] results) => results;
 }
 
 public class GetPayloadBodiesByHashV1Handler(IBlockTree blockTree, ILogManager logManager)
@@ -44,4 +46,7 @@ public class GetPayloadBodiesByHashV1Handler(IBlockTree blockTree, ILogManager l
 {
     protected override ExecutionPayloadBodyV1Result CreateResult(Block block, Hash256 blockHash) =>
         new(block.Transactions, block.Withdrawals);
+
+    protected override IReadOnlyList<ExecutionPayloadBodyV1Result?> CreateResponse(ExecutionPayloadBodyV1Result?[] results) =>
+        new PayloadBodiesV1DirectResponse(results);
 }

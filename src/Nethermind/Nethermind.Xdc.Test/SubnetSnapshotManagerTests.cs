@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -51,7 +50,7 @@ internal class SubnetSnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(0, _xdcReleaseSpec);
 
         // Assert
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -67,7 +66,7 @@ internal class SubnetSnapshotManagerTests
         // Act
         SubnetSnapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock) as SubnetSnapshot;
 
-        result.Should().BeEquivalentTo(snapshot);
+        Assert.That(result, Is.EqualTo(snapshot).UsingXdcProperties());
     }
 
     [Test]
@@ -107,8 +106,10 @@ internal class SubnetSnapshotManagerTests
         blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([new Block(header)], true));
         Snapshot? result = snapshotManager.GetSnapshotByGapNumber(gapNumber);
 
-        SubnetSnapshot subnetSnapshot = result.Should().BeOfType<SubnetSnapshot>().Subject;
-        subnetSnapshot.HeaderHash.Should().Be(header.Hash!);
-        subnetSnapshot.NextEpochPenalties.Should().BeEquivalentTo(penalties);
+        Assert.That(result, Is.TypeOf<SubnetSnapshot>());
+        SubnetSnapshot subnetSnapshot = (SubnetSnapshot)result!;
+        Assert.That(subnetSnapshot.HeaderHash, Is.EqualTo(header.Hash!));
+        Assert.That(subnetSnapshot.NextEpochPenalties, Is.EquivalentTo(penalties));
     }
+
 }

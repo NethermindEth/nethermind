@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -43,14 +42,15 @@ public class BalRecordingBranchProcessorTests
 
         Block[] result = sut.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
 
-        switchDuringProcess.Should().Be(expectedSwitchDuringProcess, "the prewarmer reads the spec switch inside inner.Process");
-        balSwitch.Enabled.Should().BeFalse("the switch must be reset once the branch is processed");
-        observedBlock.Should().BeSameAs(block);
+        Assert.That(switchDuringProcess, Is.EqualTo(expectedSwitchDuringProcess), "the prewarmer reads the spec switch inside inner.Process");
+        Assert.That(balSwitch.Enabled, Is.False, "the switch must be reset once the branch is processed");
+        Assert.That(observedBlock, Is.SameAs(block));
         if (seedBal)
-            block.BlockAccessList.Should().BeSameAs(seeded, "the replayed BAL must be attached before the prewarmer runs");
+            Assert.That(block.BlockAccessList, Is.SameAs(seeded), "the replayed BAL must be attached before the prewarmer runs");
         else
-            block.BlockAccessList.Should().BeNull();
-        result.Should().ContainSingle().Which.Should().BeSameAs(block);
+            Assert.That(block.BlockAccessList, Is.Null);
+        Assert.That(result, Has.Length.EqualTo(1));
+        Assert.That(result[0], Is.SameAs(block));
     }
 
     [Test]
@@ -71,9 +71,9 @@ public class BalRecordingBranchProcessorTests
         inner.RaiseBlocksProcessing([block]);
         inner.RaiseBlockProcessing(block);
 
-        processed.Should().BeSameAs(block);
-        processing.Should().BeSameAs(block);
-        batch.Should().Equal(block);
+        Assert.That(processed, Is.SameAs(block));
+        Assert.That(processing, Is.SameAs(block));
+        Assert.That(batch, Is.EqualTo(new[] { block }));
     }
 
     private sealed class StubBranchProcessor : IBranchProcessor

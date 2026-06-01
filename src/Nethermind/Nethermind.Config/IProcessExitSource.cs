@@ -18,7 +18,7 @@ public class ProcessExitSource : IProcessExitSource
 {
     private static readonly CancellationToken _cancelledToken = new(canceled: true);
     private CancellationTokenSource? _cancellationTokenSource;
-    private readonly TaskCompletionSource _exitResult = new();
+    private readonly TaskCompletionSource _exitResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public ProcessExitSource(CancellationToken cancellationToken)
     {

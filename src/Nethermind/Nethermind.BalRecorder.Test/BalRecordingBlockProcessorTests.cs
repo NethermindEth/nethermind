@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -35,12 +34,17 @@ public class BalRecordingBlockProcessorTests
 
         (Block block, _) = sut.ProcessOne(processed, ProcessingOptions.None, NullBlockTracer.Instance, Substitute.For<IReleaseSpec>(), CancellationToken.None);
 
-        block.Should().BeSameAs(processed);
+        Assert.That(block, Is.SameAs(processed));
         balManager.Received(1).ForceConstructGeneratedBlockAccessList = recordingEnabled;
         if (recordingEnabled)
-            store.Inserted.Should().ContainSingle().Which.Should().Be((9L, generated));
+        {
+            Assert.That(store.Inserted, Has.Count.EqualTo(1));
+            Assert.That(store.Inserted[0], Is.EqualTo((9L, generated)));
+        }
         else
-            store.Inserted.Should().BeEmpty();
+        {
+            Assert.That(store.Inserted, Is.Empty);
+        }
     }
 
     [Test]
@@ -53,7 +57,7 @@ public class BalRecordingBlockProcessorTests
         sut.TransactionsExecuted += () => count++;
         inner.RaiseTransactionsExecuted();
 
-        count.Should().Be(1);
+        Assert.That(count, Is.EqualTo(1));
     }
 
     private sealed class StubBlockProcessor : IBlockProcessor

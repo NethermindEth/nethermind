@@ -1015,11 +1015,32 @@ namespace Nethermind.Core.Extensions
 
         private static void FromHexString(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
         {
-            bool isSuccess = oddMod == 0 && BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) && chars.Length >= Vector128<ushort>.Count * 2
-                ? HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan)
-                : HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
+            bool isSuccess = TryDecodeFromUtf16(chars, writeToSpan, oddMod);
 
             if (!isSuccess) throw new FormatException(ErrSyntax);
+        }
+
+        private static bool TryDecodeFromUtf16(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
+        {
+            if (oddMod == 0 && BitConverter.IsLittleEndian)
+            {
+                if (Avx512BW.IsSupported && chars.Length >= Vector512<ushort>.Count * 2)
+                {
+                    return HexConverter.TryDecodeFromUtf16_Vector512(chars, writeToSpan);
+                }
+
+                if (Avx2.IsSupported && chars.Length >= Vector256<ushort>.Count * 2)
+                {
+                    return HexConverter.TryDecodeFromUtf16_Vector256(chars, writeToSpan);
+                }
+
+                if ((Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) && chars.Length >= Vector128<ushort>.Count * 2)
+                {
+                    return HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan);
+                }
+            }
+
+            return HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
         }
 
         private static ReadOnlySpan<char> Trim0X(ReadOnlySpan<char> hexString)

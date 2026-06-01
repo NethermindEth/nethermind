@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using FluentAssertions;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
 using NUnit.Framework;
 
@@ -44,26 +43,26 @@ public class CmSketchTests
     public void test_error_single_bucket()
     {
         CmSketch sketch = _oneBucketOneHashFunction;
-        sketch.ErrorPerItem.Should().Be(0d);
+        Assert.That(sketch.ErrorPerItem, Is.EqualTo(0d));
         // error = 2 / buckets;
-        sketch.Error.Should().Be(2d);
+        Assert.That(sketch.Error, Is.EqualTo(2d));
 
         sketch.Update(Ulong0);
         sketch.Update(Ulong1);
 
         // we have made two updates error per item should be 4
-        sketch.ErrorPerItem.Should().Be(4d);
+        Assert.That(sketch.ErrorPerItem, Is.EqualTo(4d));
         // querying an unseen item should give the total number of updates done;
-        sketch.Query(Ulong2).Should().Be(2);
+        Assert.That(sketch.Query(Ulong2), Is.EqualTo(2UL));
     }
 
     [Test]
     public void test_error_two_buckets()
     {
         CmSketch sketch = _twoBucketsSixHashFunctions;
-        sketch.ErrorPerItem.Should().Be(0d);
+        Assert.That(sketch.ErrorPerItem, Is.EqualTo(0d));
         // error = 2 / buckets;
-        sketch.Error.Should().Be(1d);
+        Assert.That(sketch.Error, Is.EqualTo(1d));
 
         sketch.Update(Ulong0);
 
@@ -72,36 +71,36 @@ public class CmSketchTests
         sketch.Update(Ulong1);
 
         // we have made four updates error per item should be 4
-        sketch.ErrorPerItem.Should().Be(4d);
+        Assert.That(sketch.ErrorPerItem, Is.EqualTo(4d));
 
-        sketch.Query(Ulong0).Should().BeInRange(1, 1 + 4);
+        Assert.That(sketch.Query(Ulong0), Is.InRange(1UL, 1UL + 4UL));
 
-        sketch.Query(Ulong1).Should().BeInRange(3, 3 + 4);
+        Assert.That(sketch.Query(Ulong1), Is.InRange(3UL, 3UL + 4UL));
 
         // unseen item error
-        sketch.Query(Ulong2).Should().BeLessThanOrEqualTo(4);
+        Assert.That(sketch.Query(Ulong2), Is.LessThanOrEqualTo(4UL));
     }
 
     [Test]
     public void test_error_sketch_with_01_error()
     {
         CmSketch sketch = _error01Confidence99;
-        sketch.Error.Should().BeLessThanOrEqualTo(.01d);
+        Assert.That(sketch.Error, Is.LessThanOrEqualTo(.01d));
         sketch.Update(Ulong0);
         make_n_updates(Ulong1, 40, sketch);
         make_n_updates(Ulong2, 59, sketch);
 
         // we have made 100 (1 + 40 + 59) updates, expected max error per item should be 100 * 0.01
-        sketch.ErrorPerItem.Should().BeLessThanOrEqualTo(1d);
+        Assert.That(sketch.ErrorPerItem, Is.LessThanOrEqualTo(1d));
 
-        sketch.Query(Ulong0).Should().BeInRange(1, 2);
+        Assert.That(sketch.Query(Ulong0), Is.InRange(1UL, 2UL));
 
-        sketch.Query(Ulong1).Should().BeInRange(40, 41);
+        Assert.That(sketch.Query(Ulong1), Is.InRange(40UL, 41UL));
 
-        sketch.Query(Ulong2).Should().BeInRange(59, 60);
+        Assert.That(sketch.Query(Ulong2), Is.InRange(59UL, 60UL));
 
         // unseen item error
-        sketch.Query(Ulong3).Should().BeLessThanOrEqualTo(1);
+        Assert.That(sketch.Query(Ulong3), Is.LessThanOrEqualTo(1UL));
     }
 
 
@@ -116,7 +115,7 @@ public class CmSketchTests
         sketch.Reset();
 
         for (ulong i = 0; i <= 10; i++)
-            sketch.Query(i).Should().Be(0);
+            Assert.That(sketch.Query(i), Is.EqualTo(0UL));
     }
 
     [Test]
@@ -126,9 +125,9 @@ public class CmSketchTests
         CmSketch sketch = _highAccuracyHighConfidence;
         for (ulong i = 0; i < (ulong)buckets; i++)
         {
-            sketch.Query(i).Should().Be(0UL);
+            Assert.That(sketch.Query(i), Is.EqualTo(0UL));
             sketch.Update(i);
-            sketch.Query(i).Should().Be(1UL);
+            Assert.That(sketch.Query(i), Is.EqualTo(1UL));
         }
     }
 
@@ -176,7 +175,7 @@ public class CmSketchTests
         // expect at least 100 * sketch.Confidence successes. Allow a 10-trial slack
         // for marginal parameter sets like (3, 10, 5) where Confidence = 0.875,
         // so the asymptotic expected success count is only ~87.5.
-        observedConfidence.Should().BeGreaterThanOrEqualTo(trials * sketch.Confidence - 10);
+        Assert.That(observedConfidence, Is.GreaterThanOrEqualTo(trials * sketch.Confidence - 10));
     }
 
     // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= confidence
@@ -194,7 +193,7 @@ public class CmSketchTests
             // our upper error bound
             ulong expectedMaxCount = trueCount + (ulong)Math.Round(sketch.ErrorPerItem);
             //our lower bound should never be violated
-            trueCount.Should().BeLessThanOrEqualTo(observedCount);
+            Assert.That(trueCount, Is.LessThanOrEqualTo(observedCount));
             // we count the number of times our upper bound was broken
             if (observedCount > expectedMaxCount)
                 ++countOfGreaterThanExpectedError;
