@@ -117,9 +117,7 @@ jobs:
           - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
     steps:
       - name: Check out repository
-        uses: ./.github/actions/checkout-submodules
-        with:
-          submodules: 'false'
+        uses: actions/checkout@v6
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -197,7 +195,10 @@ jobs:
           - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 8of8 }
     steps:
       - name: Check out repository
-        uses: ./.github/actions/checkout-submodules
+        uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
 
@@ -288,7 +289,10 @@ jobs:
           swap-storage: false
 
       - name: Check out repository
-        uses: ./.github/actions/checkout-submodules
+        uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
         with:
           submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
 

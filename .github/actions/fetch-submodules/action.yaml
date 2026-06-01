@@ -1,5 +1,5 @@
-name: Checkout with submodule retry
-description: Checks out the repo and fetches submodules with retry + exponential backoff.
+name: Fetch submodules with retry
+description: Fetches submodules with retry + exponential backoff. Must run after actions/checkout.
 
 inputs:
   submodules:
@@ -9,10 +9,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v6
-      with:
-        submodules: false
-
     - if: inputs.submodules != 'false'
       shell: bash
       env:
