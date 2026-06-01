@@ -181,4 +181,3 @@ dotnet_diagnostic.IDE0130.severity = none
 # IDE0130: Xdc test builders intentionally exposed under Nethermind.Core.Test.Builders for discoverability.
 [src/Nethermind/Nethermind.Xdc.Test/{BuildExtensions,Helpers/XdcBlockHeaderBuilder,Helpers/XdcSubnetBlockHeaderBuilder}.cs]
 dotnet_diagnostic.IDE0130.severity = none
-

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -66,6 +68,63 @@ public interface IWorldStateScopeProvider
         /// first.
         /// </summary>
         void Commit(long blockNumber);
+
+        /// <summary>
+        /// Hint that the given Block Access List will be accessed during block execution.
+        /// Walks the BAL in parallel and, per account, enqueues trie-warmer jobs for the
+        /// addresses + changed storage slots. When <paramref name="sink"/> is supplied, the
+        /// same pass also reads each account and slot value (changed + read-only) and forwards
+        /// them to the sink — letting the prewarmer populate its caches without paying a
+        /// second <c>GetAccount</c> per entry.
+        /// Non-prewarmer scopes may ignore the hint or treat it as a no-op.
+        /// </summary>
+        /// <param name="bal">The Block Access List describing addresses and storage slots to prefetch.</param>
+        /// <param name="sink">Optional sink that receives each account/slot value read during the pass.</param>
+        /// <returns>A task that completes when the asynchronous warmup finishes.</returns>
+        Task HintBal(ReadOnlyBlockAccessList bal, IAsyncBalReaderSink? sink = null);
+    }
+
+    /// <summary>
+    /// Sink that receives account and storage values read from the underlying
+    /// trie/db during a BAL (Block Access List) scan.
+    /// </summary>
+    public interface IAsyncBalReaderSink
+    {
+        /// <summary>
+        /// Called when an account has been read for the given address.
+        /// </summary>
+        /// <param name="address">The account address from the BAL.</param>
+        /// <param name="account">The account data, or null if the account does not exist.</param>
+        void OnAccountRead(Address address, Account? account);
+
+        /// <summary>
+        /// Called when a storage slot has been read for the given cell.
+        /// </summary>
+        /// <param name="storageCell">The storage cell (address + slot index).</param>
+        /// <param name="value">The storage value bytes.</param>
+        void OnStorageRead(in StorageCell storageCell, byte[] value);
+
+        /// <summary>
+        /// Returns whether the BAL reader should still fetch the given account.
+        /// Implementations backed by a cache can return <c>false</c> and hand back the
+        /// cached <paramref name="account"/> to let the reader skip the fetch.
+        /// </summary>
+        /// <param name="address">The account address from the BAL.</param>
+        /// <param name="account">The cached account, or null when not cached.</param>
+        /// <returns><c>true</c> if the reader should fetch; <c>false</c> if it should skip.</returns>
+        bool StillNeeded(Address address, out Account? account)
+        {
+            account = null;
+            return true;
+        }
+
+        /// <summary>
+        /// Returns whether the BAL reader should still fetch the given storage cell.
+        /// Implementations backed by a cache can return <c>false</c> to let the reader skip the fetch.
+        /// </summary>
+        /// <param name="storageCell">The storage cell from the BAL.</param>
+        /// <returns><c>true</c> if the reader should fetch; <c>false</c> if it should skip.</returns>
+        bool StillNeeded(in StorageCell storageCell) => true;
     }
 
     public interface ICodeDb
