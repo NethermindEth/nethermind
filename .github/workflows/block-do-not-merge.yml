@@ -1,13 +1,18 @@
 name: Block "DO NOT MERGE"
 
 on:
-  pull_request_target:
-    types: [labeled, unlabeled]
+  pull_request:
+    types: [labeled, unlabeled, opened, reopened, synchronize]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
     name: Check for "DO NOT MERGE" label
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - name: Fail if "DO NOT MERGE" label is present
         uses: actions/github-script@v8
