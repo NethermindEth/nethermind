@@ -1,0 +1,21 @@
+name: Block "DO NOT MERGE"
+
+on:
+  pull_request_target:
+    types: [labeled, unlabeled]
+
+jobs:
+  check:
+    name: Check for "DO NOT MERGE" label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if "DO NOT MERGE" label is present
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const labels = context.payload.pull_request.labels.map(l => l.name);
+            if (labels.some(l => l.toLowerCase() === 'do not merge')) {
+              core.setFailed('This PR has the "DO NOT MERGE" label and must not be merged.');
+            } else {
+              core.info('No "DO NOT MERGE" label present.');
+            }
