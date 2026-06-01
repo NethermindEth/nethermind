@@ -76,7 +76,7 @@ public class XdcPool<T> where T : IXdcPoolItem
         }
     }
 
-    public IEnumerable<IReadOnlyCollection<T>> GetGroupsByRound(ulong round)
+    public IReadOnlyList<IReadOnlyCollection<T>> GetGroupsByRound(ulong round)
     {
         using McsLock.Disposable lockRelease = _lock.Acquire();
         List<IReadOnlyCollection<T>> result = [];
