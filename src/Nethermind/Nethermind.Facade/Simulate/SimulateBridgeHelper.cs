@@ -38,8 +38,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         long blockNumber,
         IReleaseSpec releaseSpec)
     {
-        stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
-
         IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
         IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
         foreach (Address address in senders.Union(targets).Where(static t => t is not null))
@@ -47,11 +45,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
 
-        // State overrides are simulation-only; EIP-158 must not delete accounts whose code/nonce
-        // were zeroed while storage remains, or EIP-7610 CREATE collision checks will miss it.
-        IReleaseSpec commitSpec = blockStateCall.StateOverrides?.Count > 0 ? new NoEip158Spec(releaseSpec) : releaseSpec;
-        stateProvider.Commit(commitSpec, commitRoots: true);
-        stateProvider.CommitTree(blockNumber);
+        stateProvider.ApplyStateOverrides(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec, blockNumber);
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
@@ -244,15 +238,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         transaction.Hash ??= transaction.CalculateHash();
 
         return transaction;
-    }
-
-    /// <summary>
-    /// Wraps a release spec and disables EIP-158 empty-account removal so that state-override
-    /// commits do not spuriously mark accounts as deleted.
-    /// </summary>
-    private sealed class NoEip158Spec(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
-    {
-        public override bool IsEip158Enabled => false;
     }
 
     private (BlockHeader, IReleaseSpec) GetCallHeader(

@@ -56,9 +56,8 @@ public static class StateOverridesExtensions
     {
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
 
-        //State overrides are simulation-only changes and must not trigger EIP-158 account deletion. 
-        //Otherwise, an empty overridden account may be marked deleted, causing EIP-7610 CREATE 
-        //collision checks to miss existing storage.
+        // State overrides are simulation-only; EIP-158 must not delete accounts whose code/nonce
+        // were zeroed while storage remains, or EIP-7610 CREATE collision checks will miss it.
         IReleaseSpec commitSpec = overrides?.Count > 0 ? new NoEip158Spec(spec) : spec;
         state.Commit(commitSpec, commitRoots: true);
         state.CommitTree(blockNumber);
@@ -161,11 +160,3 @@ public static class StateOverridesExtensions
     }
 }
 
-/// <summary>
-/// Wraps a release spec and disables EIP-158 empty-account removal so that state-override
-/// commits do not spuriously mark accounts as deleted.
-/// </summary>
-file sealed class NoEip158Spec(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
-{
-    public override bool IsEip158Enabled => false;
-}
