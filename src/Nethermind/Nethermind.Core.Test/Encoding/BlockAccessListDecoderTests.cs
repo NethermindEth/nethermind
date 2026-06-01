@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -223,6 +225,22 @@ public class BlockAccessListDecoderTests
             () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpLimitException>()
                 .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
+    }
+
+    [Test]
+    public void DecodeArray_with_decoder_stays_constrained_to_reference_types()
+    {
+        MethodInfo decodeArray = typeof(Rlp.ValueDecoderContext)
+            .GetMethods()
+            .Single(m => m.Name == nameof(Rlp.ValueDecoderContext.DecodeArray)
+                && m.IsGenericMethodDefinition
+                && m.GetParameters()[0].ParameterType.IsGenericType
+                && m.GetParameters()[0].ParameterType.GetGenericTypeDefinition() == typeof(IRlpDecoder<>));
+
+        GenericParameterAttributes constraints = decodeArray.GetGenericArguments()[0].GenericParameterAttributes;
+
+        Assert.That(constraints.HasFlag(GenericParameterAttributes.ReferenceTypeConstraint), Is.True,
+            "DecodeArray(IRlpDecoder<T>, ...) must stay constrained to reference types: a value-type T would otherwise silently substitute default(T) for an empty-list (0xc0) element instead of throwing.");
     }
 
     [Test]

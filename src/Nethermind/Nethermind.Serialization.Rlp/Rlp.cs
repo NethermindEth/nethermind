@@ -1439,6 +1439,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             public T[] DecodeArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+                where T : class?
             {
                 decoder ??= GetDecoder<T>()
                     ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
