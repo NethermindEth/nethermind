@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -38,6 +39,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
     private readonly ILogger _logger;
     private readonly Dictionary<AddressAsKey, Transaction?>? _bestTxPerObservedAddresses;
     private readonly LruCache<BlockNumberHash, BlockCensorshipInfo> _potentiallyCensoredBlocks;
+    private readonly LruCache<BlockNumberHash, Task> _processingTasks;
     private readonly WrapAroundArray<BlockNumberHash> _censoredBlocks;
     private readonly uint _blockCensorshipThreshold;
     private readonly int _cacheSize;
@@ -75,6 +77,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         }
 
         _potentiallyCensoredBlocks = new(_cacheSize, _cacheSize, "potentiallyCensoredBlocks");
+        _processingTasks = new(_cacheSize, _cacheSize, "censorshipProcessingTasks");
         _censoredBlocks = new(_cacheSize);
         _blockProcessor.BlockProcessing += OnBlockProcessing;
     }
@@ -108,8 +111,21 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
             }
         }
 
-        Task.Run(() => Cache(e.Block));
+        BlockNumberHash key = new(e.Block);
+        Task task = Task.Run(() => Cache(e.Block));
+        _processingTasks.Set(key, task);
+        _ = task.ContinueWith(static (completed, state) =>
+        {
+            (LruCache<BlockNumberHash, Task> cache, BlockNumberHash k) = ((LruCache<BlockNumberHash, Task>, BlockNumberHash))state!;
+            if (cache.TryGet(k, out Task? current) && ReferenceEquals(current, completed))
+                cache.Delete(k);
+        }, (_processingTasks, key), CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
     }
+
+    public Task ProcessingTaskFor(long blockNumber, ValueHash256 blockHash) =>
+        _processingTasks.TryGet(new BlockNumberHash(blockNumber, blockHash), out Task task)
+            ? task
+            : Task.CompletedTask;
 
     private void Cache(Block block)
     {

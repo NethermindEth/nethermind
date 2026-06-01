@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         private EventHandler<ProtocolInitializedEventArgs>? _protocolInitialized;
         private EventHandler<ProtocolEventArgs>? _subprotocolRequested;
 
-        private readonly TaskCompletionSource<MessageBase> _initCompletionSource = new();
+        private readonly TaskCompletionSource<MessageBase> _initCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected ProtocolHandlerBase(ISession session,
             INodeStatsManager nodeStats,

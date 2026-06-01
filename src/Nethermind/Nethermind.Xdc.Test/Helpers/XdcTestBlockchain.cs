@@ -30,6 +30,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
@@ -170,6 +171,7 @@ public class XdcTestBlockchain : TestBlockchain
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
             .AddSingleton<IRewardCalculator, ZeroRewardCalculator>()
+            .AddSingleton<ITimestamper>((_) => Timestamper)
             .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
 
             .AddSingleton<ITxPool>((ctx) =>
@@ -547,6 +549,8 @@ public class XdcTestBlockchain : TestBlockchain
             //by setting the correct signer the block producer runner should trigger trying to propose a block
             Address leader = ConsensusModule.GetLeaderAddress(head, XdcContext.CurrentRound, spec);
             Signer.SetSigner(MasterNodeCandidates.First(k => k.Address == leader));
+            Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + (ulong)spec.MinePeriod)).UtcDateTime);
+            ConsensusModule.StartRoundTask(head, XdcContext.CurrentRound);
 
             Task waitingForHead = await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
             if (waitingForHead != newHeadWaitHandle.Task)

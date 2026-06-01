@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RLP;
 
 public sealed class XdcHeaderDecoder : BaseXdcHeaderDecoder<XdcBlockHeader>
 {

@@ -19,11 +19,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             {
                 From = TestItem.AddressA,
                 Gas = 12345,
-                Input = [6, 7, 8, 9, 0],
+                Input = new byte[] { 6, 7, 8, 9, 0 },
                 To = TestItem.AddressB,
                 Value = 24680,
                 CallType = "call",
-                TraceAddress = [1, 3, 5, 7]
+                TraceAddress = new[] { 1, 3, 5, 7 }
             };
 
             TestToJson(action, "{\"callType\":\"call\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"gas\":\"0x3039\",\"input\":\"0x0607080900\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x6068\"}", ParityTraceActionConverter.Instance);
@@ -44,11 +44,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             {
                 From = TestItem.AddressA,
                 Gas = 12345,
-                Input = [6, 7, 8, 9, 0],
+                Input = new byte[] { 6, 7, 8, 9, 0 },
                 To = TestItem.AddressB,
                 Value = 24680,
                 CallType = "call",
-                TraceAddress = [1, 3, 5, 7],
+                TraceAddress = new[] { 1, 3, 5, 7 },
                 Error = "error",
                 Result = null
             };

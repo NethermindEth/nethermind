@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -35,14 +34,14 @@ public class FlatReadOnlyTrieStoreTests
 
     [Test]
     public void HasRoot_StateRootOnly_AlwaysTrue() =>
-        _store.HasRoot(TestItem.KeccakA).Should().BeTrue();
+        Assert.That(_store.HasRoot(TestItem.KeccakA), Is.True);
 
     [Test]
     public void HasRoot_WithBlockNumber_DelegatesToFlatDbManager()
     {
         _flatDbManager.HasStateForBlock(Arg.Any<StateId>()).Returns(true);
 
-        _store.HasRoot(TestItem.KeccakA, 42).Should().BeTrue();
+        Assert.That(_store.HasRoot(TestItem.KeccakA, 42), Is.True);
         _flatDbManager.Received(1).HasStateForBlock(Arg.Any<StateId>());
     }
 
@@ -75,8 +74,8 @@ public class FlatReadOnlyTrieStoreTests
 
         using IDisposable scope = _store.BeginScope(Build.A.BlockHeader.TestObject);
 
-        _store.FindCachedOrUnknown(null, path, Keccak.Zero).Should().BeSameAs(stateNode);
-        _store.FindCachedOrUnknown(storageAddress, path, Keccak.Zero).Should().BeSameAs(storageNode);
+        Assert.That(_store.FindCachedOrUnknown(null, path, Keccak.Zero), Is.SameAs(stateNode));
+        Assert.That(_store.FindCachedOrUnknown(storageAddress, path, Keccak.Zero), Is.SameAs(storageNode));
     }
 
     [Test]
@@ -94,15 +93,15 @@ public class FlatReadOnlyTrieStoreTests
     [Test]
     public void BeginCommit_ReturnsNullCommitter_NoOps()
     {
-        _store.BeginBlockCommit(1).Should().NotBeNull();
-        _store.BeginCommit(null, null, WriteFlags.None).Should().NotBeNull();
+        Assert.That(_store.BeginBlockCommit(1), Is.Not.Null);
+        Assert.That(_store.BeginCommit(null, null, WriteFlags.None), Is.Not.Null);
     }
 
     [Test]
     public void GetTrieStore_ReturnsScopedAdapter()
     {
-        _store.GetTrieStore(TestItem.KeccakA).Should().NotBeNull();
-        _store.GetTrieStore(null).Should().NotBeNull();
+        Assert.That(_store.GetTrieStore(TestItem.KeccakA), Is.Not.Null);
+        Assert.That(_store.GetTrieStore(null), Is.Not.Null);
     }
 
     [Test]

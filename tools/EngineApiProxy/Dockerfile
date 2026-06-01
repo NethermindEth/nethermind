@@ -28,4 +28,4 @@ EXPOSE 8551
 
 COPY --from=build /publish .
 
-ENTRYPOINT ["./EngineApiProxy"] 
+ENTRYPOINT ["./EngineApiProxy"]

@@ -5,7 +5,7 @@ using Nethermind.EraE.Config;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
 using Nethermind.History;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 
 namespace Nethermind.EraE;
 

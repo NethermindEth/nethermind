@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -13,7 +12,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
 public class TimeoutTests
 {
@@ -81,7 +80,7 @@ public class TimeoutTests
         signatures.Add(lastTimeoutMsg.Signature!);
 
         TimeoutCertificate expectedTC = new(round, signatures.ToArray(), gap);
-        ctx.HighestTC.Should().BeEquivalentTo(expectedTC);
+        Assert.That(ctx.HighestTC, Is.EqualTo(expectedTC).UsingXdcProperties());
         Assert.That(ctx.CurrentRound, Is.EqualTo(round + 1));
     }
 }

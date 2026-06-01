@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -56,8 +55,8 @@ public class FlatStateRootIndexTests
         {
             for (int i = 0; i < 30; i++)
             {
-                index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
-                    .Should().Be(i is >= 10 and < 20, $"state root index {i}");
+                Assert.That(index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray())),
+                    Is.EqualTo(i is >= 10 and < 20), $"state root index {i}");
             }
         }
     }
@@ -69,9 +68,9 @@ public class FlatStateRootIndexTests
         using (index)
         {
             Hash256 root = blocks[^1].StateRoot!;
-            index.TryGetStateId(root, out StateId stateId).Should().BeTrue();
-            stateId.StateRoot.Should().Be(root);
-            stateId.BlockNumber.Should().Be(blocks[^1].Number);
+            Assert.That(index.TryGetStateId(root, out StateId stateId), Is.True);
+            Assert.That(stateId.StateRoot, Is.EqualTo(root));
+            Assert.That(stateId.BlockNumber, Is.EqualTo(blocks[^1].Number));
         }
     }
 
@@ -81,7 +80,7 @@ public class FlatStateRootIndexTests
         (_, _, FlatStateRootIndex index) = BuildIndex(5);
         using (index)
         {
-            index.TryGetStateId(Keccak.Compute(Bytes.FromHexString("deadbeef")), out _).Should().BeFalse();
+            Assert.That(index.TryGetStateId(Keccak.Compute(Bytes.FromHexString("deadbeef")), out _), Is.False);
         }
     }
 
@@ -95,8 +94,8 @@ public class FlatStateRootIndexTests
 
             for (int i = 0; i < 30; i++)
             {
-                index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
-                    .Should().Be(i is >= 11 and < 21, $"state root index {i}");
+                Assert.That(index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray())),
+                    Is.EqualTo(i is >= 11 and < 21), $"state root index {i}");
             }
         }
     }
@@ -111,10 +110,10 @@ public class FlatStateRootIndexTests
 
             for (int i = 0; i < 30; i++)
             {
-                index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
-                    .Should().Be(i is >= 6 and < 15, $"state root index {i}");
+                Assert.That(index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray())),
+                    Is.EqualTo(i is >= 6 and < 15), $"state root index {i}");
             }
-            index.HasStateRoot(Keccak.Compute(100.ToBigEndianByteArray())).Should().BeTrue();
+            Assert.That(index.HasStateRoot(Keccak.Compute(100.ToBigEndianByteArray())), Is.True);
         }
     }
 
@@ -126,6 +125,6 @@ public class FlatStateRootIndexTests
 
         AppendBlock(tree, blocks[^1], 999);
 
-        index.HasStateRoot(Keccak.Compute(999.ToBigEndianByteArray())).Should().BeFalse();
+        Assert.That(index.HasStateRoot(Keccak.Compute(999.ToBigEndianByteArray())), Is.False);
     }
 }

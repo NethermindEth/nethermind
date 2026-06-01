@@ -5,8 +5,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
@@ -101,7 +101,7 @@ namespace Nethermind.Config.Test
             };
             IConfigProvider configProvider = new ConfigProvider(blocksConfig);
 
-            configProvider.GetConfig<IBlocksConfig>().MinGasPrice.Should().Be(12345);
+            Assert.That(configProvider.GetConfig<IBlocksConfig>().MinGasPrice, Is.EqualTo((UInt256)12345));
         }
     }
 
