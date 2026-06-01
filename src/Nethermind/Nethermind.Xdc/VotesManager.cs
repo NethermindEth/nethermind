@@ -74,8 +74,11 @@ internal class VotesManager : IVotesManager, IDisposable
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
-        if (e.Block.Header is XdcBlockHeader xdcHeader)
-            _ = OnNewBlock(xdcHeader);
+        if (e.Block.Header is not XdcBlockHeader xdcHeader)
+            return;
+        // Fire-and-forget; log any failure
+        try { OnNewBlock(xdcHeader); }
+        catch (Exception ex) { if (_logger.IsError) _logger.Error("XDC: failed to process votes for new head block", ex); }
     }
 
     public Task CastVote(BlockRoundInfo blockInfo)
