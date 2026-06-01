@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.IntegrationTests;
@@ -70,7 +69,7 @@ public class EngineApiProxyTests
         using HttpClient proxyClient = await CreateAuthenticatedProxyClientAsync();
         JsonNode result = await Utils.SendEngineRequestAsync(proxyClient, "eth_blockNumber");
 
-        result.GetValue<string>().Should().Be("0x0");
+        Assert.That(result.GetValue<string>(), Is.EqualTo("0x0"));
     }
 
     [Test]
@@ -83,7 +82,7 @@ public class EngineApiProxyTests
         using HttpClient proxyClient = await CreateAuthenticatedProxyClientAsync();
         JsonNode result = await Utils.SendEngineRequestAsync(proxyClient, "web3_clientVersion");
 
-        result.GetValue<string>().Should().StartWith("Nethermind/");
+        Assert.That(result.GetValue<string>(), Does.StartWith("Nethermind/"));
     }
 
     [Test]
@@ -102,7 +101,7 @@ public class EngineApiProxyTests
         await Utils.CreateBlocksAsync(proxyClient, count: 1, version: 3, minimumTimestamp: SepoliaCancunTimestamp);
 
         JsonNode head = await Utils.SendEngineRequestAsync(proxyClient, "eth_blockNumber");
-        head.GetValue<string>().Should().Be("0x1");
+        Assert.That(head.GetValue<string>(), Is.EqualTo("0x1"));
     }
 
     [Test]
@@ -121,7 +120,7 @@ public class EngineApiProxyTests
         await Utils.CreateBlocksAsync(proxyClient, count: 1, version: 3, minimumTimestamp: SepoliaCancunTimestamp);
 
         JsonNode head = await Utils.SendEngineRequestAsync(proxyClient, "eth_blockNumber");
-        head.GetValue<string>().Should().Be("0x1");
+        Assert.That(head.GetValue<string>(), Is.EqualTo("0x1"));
     }
 
     [Test]
@@ -159,9 +158,9 @@ public class EngineApiProxyTests
 
         JsonNode fcuResult = await Utils.SendEngineRequestAsync(proxyClient, "engine_forkchoiceUpdatedV3", forkchoiceState, payloadAttributes);
 
-        fcuResult["payloadStatus"]["status"].GetValue<string>().Should().Be("VALID");
-        fcuResult["payloadStatus"]["latestValidHash"].GetValue<string>().Should().Be(parentHash);
-        fcuResult["payloadId"].Should().BeNull("Merged mode hides payloadId from CL even when EL produced one");
+        Assert.That(fcuResult["payloadStatus"]["status"].GetValue<string>(), Is.EqualTo("VALID"));
+        Assert.That(fcuResult["payloadStatus"]["latestValidHash"].GetValue<string>(), Is.EqualTo(parentHash));
+        Assert.That(fcuResult["payloadId"], Is.Null, "Merged mode hides payloadId from CL even when EL produced one");
     }
 
     [Test]
@@ -178,7 +177,7 @@ public class EngineApiProxyTests
 
         string stdout = await _proxyContainer.GetCleanStdoutAsync();
         string stderr = await _proxyContainer.GetCleanStderrAsync();
-        (stdout + stderr).Should().Contain("Execution Client endpoint is required");
+        Assert.That(stdout + stderr, Does.Contain("Execution Client endpoint is required"));
     }
 
     [Test]
@@ -207,8 +206,8 @@ public class EngineApiProxyTests
         };
 
         JsonNode error = await SendRawJsonRpcAndReturnErrorAsync(proxyClient, "eth_blockNumber");
-        error.Should().NotBeNull("proxy must return a structured JSON-RPC error when the EL is unreachable");
-        error["code"].GetValue<int>().Should().Be(-32603);
+        Assert.That(error, Is.Not.Null, "proxy must return a structured JSON-RPC error when the EL is unreachable");
+        Assert.That(error["code"].GetValue<int>(), Is.EqualTo(-32603));
     }
 
     private async Task StartNethermindAndProxyAsync(
@@ -269,7 +268,7 @@ public class EngineApiProxyTests
     private async Task<HttpClient> CreateAuthenticatedProxyClientAsync()
     {
         ExecResult jwtRead = await _nethermindContainer.ExecAsync(new[] { "cat", "jwt.hex" });
-        jwtRead.ExitCode.Should().Be(0, $"could not read jwt.hex from Nethermind container: {jwtRead.Stderr}");
+        Assert.That(jwtRead.ExitCode, Is.EqualTo(0), $"could not read jwt.hex from Nethermind container: {jwtRead.Stderr}");
         string jwtToken = Utils.CreateJwtToken(jwtRead.Stdout.Trim());
 
         Uri proxyUrl = new($"http://{_proxyContainer.Hostname}:{_proxyContainer.GetMappedPublicPort(ProxyPort)}");

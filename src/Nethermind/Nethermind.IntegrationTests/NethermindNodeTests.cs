@@ -5,7 +5,6 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
-using FluentAssertions;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -52,15 +51,15 @@ public class NethermindNodeTests
     public async Task Nethermind_ShouldRespondTo_EthBlockNumber()
     {
         await StartContainerAsync();
-        _nethermindContainer.State.Should().Be(TestcontainersStates.Running);
+        Assert.That(_nethermindContainer.State, Is.EqualTo(TestcontainersStates.Running));
 
         Uri rpcUrl = new($"http://{_nethermindContainer.Hostname}:{_nethermindContainer.GetMappedPublicPort(8545)}");
 
         using BasicJsonRpcClient rpcClient = new(rpcUrl, new EthereumJsonSerializer(), LimboLogs.Instance);
         string response = await rpcClient.Post("eth_blockNumber");
 
-        response.Should().NotBeNullOrEmpty();
-        response.Should().Contain("\"result\":");
+        Assert.That(response, Is.Not.Null.And.Not.Empty);
+        Assert.That(response, Does.Contain("\"result\":"));
     }
 
     [Test]
@@ -70,8 +69,8 @@ public class NethermindNodeTests
 
         string cleanStdout = await _nethermindContainer.GetCleanStdoutAsync();
 
-        cleanStdout.Should().Contain("Nethermind is starting up");
-        cleanStdout.Should().Contain("Initialization Completed");
+        Assert.That(cleanStdout, Does.Contain("Nethermind is starting up"));
+        Assert.That(cleanStdout, Does.Contain("Initialization Completed"));
     }
 
     [Test]
@@ -87,7 +86,7 @@ public class NethermindNodeTests
         string cleanStderr = await _nethermindContainer.GetCleanStderrAsync();
 
         string combinedLogs = cleanStdout + cleanStderr;
-        combinedLogs.Should().Contain("Configuration file not found");
+        Assert.That(combinedLogs, Does.Contain("Configuration file not found"));
     }
 
     [Test]
@@ -111,12 +110,12 @@ public class NethermindNodeTests
             "--Sync.SnapSync", "false"
         };
         await StartContainerAsync(command);
-        _nethermindContainer.State.Should().Be(TestcontainersStates.Running);
+        Assert.That(_nethermindContainer.State, Is.EqualTo(TestcontainersStates.Running));
 
         ExecResult execResult = await _nethermindContainer.ExecAsync(new[] { "cat", "jwt.hex" });
-        execResult.ExitCode.Should().Be(0);
+        Assert.That(execResult.ExitCode, Is.EqualTo(0));
         string jwtSecretHex = execResult.Stdout.Trim();
-        jwtSecretHex.Should().NotBeNullOrEmpty();
+        Assert.That(jwtSecretHex, Is.Not.Null.And.Not.Empty);
 
         string jwtToken = Utils.CreateJwtToken(jwtSecretHex);
 
@@ -132,9 +131,9 @@ public class NethermindNodeTests
         // Verify block is produced using standard RPC
         JsonNode currentBlockStr = await Utils.SendEngineRequestAsync(httpClient, "eth_blockNumber");
         string currentBlock = currentBlockStr.GetValue<string>();
-        currentBlock.Should().Be("0x1");
+        Assert.That(currentBlock, Is.EqualTo("0x1"));
         JsonNode result = await Utils.SendEngineRequestAsync(httpClient, "eth_syncing");
-        result.GetValue<bool>().Should().Be(false);
+        Assert.That(result.GetValue<bool>(), Is.False);
     }
 
     [Test]
@@ -158,7 +157,7 @@ public class NethermindNodeTests
             "--Sync.SnapSync", "false"
         };
         await StartContainerAsync(command);
-        _nethermindContainer.State.Should().Be(TestcontainersStates.Running);
+        Assert.That(_nethermindContainer.State, Is.EqualTo(TestcontainersStates.Running));
 
         ExecResult execResult = await _nethermindContainer.ExecAsync(new[] { "cat", "jwt.hex" });
         string jwtSecretHex = execResult.Stdout.Trim();
@@ -182,6 +181,6 @@ public class NethermindNodeTests
         JsonNode currentBlockStr = await Utils.SendEngineRequestAsync(httpClient, "eth_blockNumber");
         string currentBlock = currentBlockStr.GetValue<string>();
         // 300 blocks produced, 0x12c
-        currentBlock.Should().Be("0x12c");
+        Assert.That(currentBlock, Is.EqualTo("0x12c"));
     }
 }

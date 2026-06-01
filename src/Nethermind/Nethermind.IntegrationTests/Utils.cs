@@ -12,11 +12,11 @@ using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Images;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using NUnit.Framework;
 
 namespace Nethermind.IntegrationTests;
 
@@ -378,7 +378,7 @@ public static class Utils
             }
 
             string payloadId = fcuResult1["payloadId"]?.GetValue<string>();
-            payloadId.Should().NotBeNullOrEmpty();
+            Assert.That(payloadId, Is.Not.Null.And.Not.Empty);
 
             JsonNode getPayloadResult = await SendEngineRequestAsync(httpClient, $"engine_getPayloadV{getPayloadVersion}", payloadId);
             JsonNode executionPayload = version == 1 ? getPayloadResult : getPayloadResult["executionPayload"];
@@ -433,7 +433,7 @@ public static class Utils
                 finalizedBlockHash = newBlockHash
             };
             JsonNode fcuResult2 = await SendEngineRequestAsync(httpClient, $"engine_forkchoiceUpdatedV{fcuVersion}", finalForkchoiceState);
-            fcuResult2["payloadStatus"]["status"].GetValue<string>().Should().BeOneOf("VALID", "SYNCING", "ACCEPTED");
+            Assert.That(fcuResult2["payloadStatus"]["status"].GetValue<string>(), Is.AnyOf("VALID", "SYNCING", "ACCEPTED"));
         }
     }
 }

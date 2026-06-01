@@ -9,7 +9,6 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -94,11 +93,11 @@ public class OpcodeTracingPluginTests
             "--OpcodeTracing.EndBlock", "1",
             "--OpcodeTracing.OutputDirectory", OutputDir));
 
-        _container.State.Should().Be(TestcontainersStates.Running);
+        Assert.That(_container.State, Is.EqualTo(TestcontainersStates.Running));
 
         string stdout = await _container.GetCleanStdoutAsync();
-        stdout.Should().Contain("Initialization Completed");
-        stdout.Should().Contain("Opcode tracing plugin initialized");
+        Assert.That(stdout, Does.Contain("Initialization Completed"));
+        Assert.That(stdout, Does.Contain("Opcode tracing plugin initialized"));
     }
 
     [Test]
@@ -111,13 +110,13 @@ public class OpcodeTracingPluginTests
         await ProduceBlocksAsync(version: 1, count: 1);
 
         string stdout = await _container.GetCleanStdoutAsync();
-        stdout.Should().NotContain("Opcode tracing plugin initialized");
+        Assert.That(stdout, Does.Not.Contain("Opcode tracing plugin initialized"));
 
         ExecResult ls = await _container.ExecAsync(new[] { "ls", "-1", OutputDir });
         // Either the directory was never created (non-zero exit) or it is empty.
         if (ls.ExitCode == 0)
         {
-            ls.Stdout.Trim().Should().BeEmpty($"output dir should be empty when plugin is disabled, got: {ls.Stdout}");
+            Assert.That(ls.Stdout.Trim(), Is.Empty, $"output dir should be empty when plugin is disabled, got: {ls.Stdout}");
         }
     }
 
@@ -138,11 +137,11 @@ public class OpcodeTracingPluginTests
         JsonNode root = JsonNode.Parse(json);
         JsonNode metadata = root["metadata"];
 
-        metadata["startBlock"].GetValue<long>().Should().Be(1);
-        metadata["endBlock"].GetValue<long>().Should().Be(5);
-        metadata["mode"].GetValue<string>().Should().Be("Retrospective");
-        metadata["completionStatus"].GetValue<string>().Should().Be("complete");
-        root["opcodeCounts"].Should().NotBeNull("opcodeCounts must be present even if empty");
+        Assert.That(metadata["startBlock"].GetValue<long>(), Is.EqualTo(1));
+        Assert.That(metadata["endBlock"].GetValue<long>(), Is.EqualTo(5));
+        Assert.That(metadata["mode"].GetValue<string>(), Is.EqualTo("Retrospective"));
+        Assert.That(metadata["completionStatus"].GetValue<string>(), Is.EqualTo("complete"));
+        Assert.That(root["opcodeCounts"], Is.Not.Null, "opcodeCounts must be present even if empty");
     }
 
     [Test]
@@ -165,11 +164,10 @@ public class OpcodeTracingPluginTests
         string cumulativeName = await WaitForCumulativeFileAsync(TimeSpan.FromSeconds(60));
         string cumulativeJson = await ReadFileAsync($"{OutputDir}/{cumulativeName}");
         JsonNode cumRoot = JsonNode.Parse(cumulativeJson);
-        // cumRoot["metadata"]["completionStatus"].GetValue<string>().Should().Be("complete");
 
         string perBlock1 = await ReadFileAsync($"{OutputDir}/opcode-trace-block-1.json");
         JsonNode block1Root = JsonNode.Parse(perBlock1);
-        block1Root["metadata"]["blockNumber"].GetValue<long>().Should().Be(1);
+        Assert.That(block1Root["metadata"]["blockNumber"].GetValue<long>(), Is.EqualTo(1));
     }
 
     [Test]
@@ -186,12 +184,12 @@ public class OpcodeTracingPluginTests
         await Task.Delay(TimeSpan.FromSeconds(5));
 
         string stdout = await _container.GetCleanStdoutAsync();
-        stdout.Should().Contain("Invalid range: StartBlock (10) > EndBlock (5)");
+        Assert.That(stdout, Does.Contain("Invalid range: StartBlock (10) > EndBlock (5)"));
 
         ExecResult ls = await _container.ExecAsync(new[] { "ls", "-1", OutputDir });
         if (ls.ExitCode == 0)
         {
-            ls.Stdout.Trim().Should().BeEmpty($"no trace files should be produced for invalid config, got: {ls.Stdout}");
+            Assert.That(ls.Stdout.Trim(), Is.Empty, $"no trace files should be produced for invalid config, got: {ls.Stdout}");
         }
     }
 
@@ -268,22 +266,21 @@ public class OpcodeTracingPluginTests
                 perBlockTotals[entry.Key] = perBlockTotals.GetValueOrDefault(entry.Key) + entry.Value.GetValue<long>();
             }
         }
-        sawInitCodeOpcodes.Should().BeTrue("at least one per-block file should record init-code opcodes (PUSH1, RETURN) from the contract-creation tx");
+        Assert.That(sawInitCodeOpcodes, Is.True, "at least one per-block file should record init-code opcodes (PUSH1, RETURN) from the contract-creation tx");
 
         string cumulativeName = await WaitForCumulativeFileAsync(TimeSpan.FromSeconds(60));
         string cumulativeJson = await ReadFileAsync($"{OutputDir}/{cumulativeName}");
         TestContext.Progress.WriteLine($"=== {cumulativeName} ===\n{cumulativeJson}");
         JsonNode cumRoot = JsonNode.Parse(cumulativeJson);
-        // cumRoot["metadata"]["completionStatus"].GetValue<string>().Should().Be("complete");
-        cumRoot["metadata"]["sessionId"].GetValue<string>().Should().NotBeNullOrWhiteSpace();
+        Assert.That(string.IsNullOrWhiteSpace(cumRoot["metadata"]["sessionId"].GetValue<string>()), Is.False);
         JsonObject cumulativeCounts = AssertOpcodeCountsShape(cumRoot["opcodeCounts"], requireNonEmpty: true);
-        cumulativeCounts.ContainsKey("PUSH1").Should().BeTrue($"cumulative opcodeCounts should contain PUSH1 from the init-code; got {cumulativeCounts.ToJsonString()}");
-        cumulativeCounts.ContainsKey("RETURN").Should().BeTrue($"cumulative opcodeCounts should contain RETURN from the init-code; got {cumulativeCounts.ToJsonString()}");
+        Assert.That(cumulativeCounts.ContainsKey("PUSH1"), Is.True, $"cumulative opcodeCounts should contain PUSH1 from the init-code; got {cumulativeCounts.ToJsonString()}");
+        Assert.That(cumulativeCounts.ContainsKey("RETURN"), Is.True, $"cumulative opcodeCounts should contain RETURN from the init-code; got {cumulativeCounts.ToJsonString()}");
 
         foreach (KeyValuePair<string, long> entry in perBlockTotals)
         {
-            cumulativeCounts.ContainsKey(entry.Key).Should().BeTrue($"cumulative file should contain opcode '{entry.Key}' summed across per-block files");
-            cumulativeCounts[entry.Key].GetValue<long>().Should().BeGreaterThanOrEqualTo(entry.Value,
+            Assert.That(cumulativeCounts.ContainsKey(entry.Key), Is.True, $"cumulative file should contain opcode '{entry.Key}' summed across per-block files");
+            Assert.That(cumulativeCounts[entry.Key].GetValue<long>(), Is.GreaterThanOrEqualTo(entry.Value),
                 $"cumulative count for '{entry.Key}' must be >= sum of per-block counts");
         }
     }
@@ -376,12 +373,12 @@ public class OpcodeTracingPluginTests
             JsonNode skipped = root["metadata"]["skippedBlocks"];
             if (skipped is not null)
             {
-                skipped.AsArray().Count.Should().Be(0, $"all blocks should be replayable; got skipped={skipped.ToJsonString()}");
+                Assert.That(skipped.AsArray().Count, Is.EqualTo(0), $"all blocks should be replayable; got skipped={skipped.ToJsonString()}");
             }
 
             JsonObject counts = AssertOpcodeCountsShape(root["opcodeCounts"], requireNonEmpty: true);
-            counts.ContainsKey("PUSH1").Should().BeTrue($"opcodeCounts should contain PUSH1 from the init code; got {counts.ToJsonString()}");
-            counts.ContainsKey("RETURN").Should().BeTrue($"opcodeCounts should contain RETURN from the init code; got {counts.ToJsonString()}");
+            Assert.That(counts.ContainsKey("PUSH1"), Is.True, $"opcodeCounts should contain PUSH1 from the init code; got {counts.ToJsonString()}");
+            Assert.That(counts.ContainsKey("RETURN"), Is.True, $"opcodeCounts should contain RETURN from the init code; got {counts.ToJsonString()}");
         }
         finally
         {
@@ -468,17 +465,17 @@ public class OpcodeTracingPluginTests
             JsonNode skipped = root["metadata"]["skippedBlocks"];
             if (skipped is not null)
             {
-                skipped.AsArray().Count.Should().Be(0,
+                Assert.That(skipped.AsArray().Count, Is.EqualTo(0),
                     $"all Amsterdam blocks should replay cleanly under Blocks.ParallelExecution={blocksParallelExecution}; got skipped={skipped.ToJsonString()}");
             }
 
             JsonObject counts = AssertOpcodeCountsShape(root["opcodeCounts"], requireNonEmpty: true);
-            counts.ContainsKey("PUSH1").Should().BeTrue($"opcodeCounts should contain PUSH1 under Blocks.ParallelExecution={blocksParallelExecution}; got {counts.ToJsonString()}");
-            counts.ContainsKey("RETURN").Should().BeTrue($"opcodeCounts should contain RETURN under Blocks.ParallelExecution={blocksParallelExecution}; got {counts.ToJsonString()}");
+            Assert.That(counts.ContainsKey("PUSH1"), Is.True, $"opcodeCounts should contain PUSH1 under Blocks.ParallelExecution={blocksParallelExecution}; got {counts.ToJsonString()}");
+            Assert.That(counts.ContainsKey("RETURN"), Is.True, $"opcodeCounts should contain RETURN under Blocks.ParallelExecution={blocksParallelExecution}; got {counts.ToJsonString()}");
 
             string stdout = await _container.GetCleanStdoutAsync();
-            stdout.Should().NotContain("Unhandled", "no unhandled errors should occur during replay");
-            stdout.Should().NotContain("Fatal", "no fatal errors should occur during replay");
+            Assert.That(stdout, Does.Not.Contain("Unhandled"), "no unhandled errors should occur during replay");
+            Assert.That(stdout, Does.Not.Contain("Fatal"), "no fatal errors should occur during replay");
         }
         finally
         {
@@ -489,38 +486,40 @@ public class OpcodeTracingPluginTests
 
     private static void AssertCommonMetadata(JsonNode metadata, long expectedStart, long expectedEnd, string expectedMode, bool requireCompletion)
     {
-        metadata.Should().NotBeNull("metadata must be present");
-        metadata["startBlock"].GetValue<long>().Should().Be(expectedStart);
-        metadata["endBlock"].GetValue<long>().Should().Be(expectedEnd);
+        Assert.That(metadata, Is.Not.Null, "metadata must be present");
+        Assert.That(metadata["startBlock"].GetValue<long>(), Is.EqualTo(expectedStart));
+        Assert.That(metadata["endBlock"].GetValue<long>(), Is.EqualTo(expectedEnd));
 
         JsonNode mode = metadata["mode"];
         if (mode is not null)
         {
-            mode.GetValue<string>().Should().Be(expectedMode);
+            Assert.That(mode.GetValue<string>(), Is.EqualTo(expectedMode));
         }
 
         JsonNode completion = metadata["completionStatus"];
         if (requireCompletion)
         {
-            completion.Should().NotBeNull("completionStatus must be present");
-            completion.GetValue<string>().Should().Be("complete");
+            Assert.That(completion, Is.Not.Null, "completionStatus must be present");
+            Assert.That(completion.GetValue<string>(), Is.EqualTo("complete"));
         }
         else if (completion is not null)
         {
-            completion.GetValue<string>().Should().BeOneOf(s_completionStatuses);
+            Assert.That(s_completionStatuses, Does.Contain(completion.GetValue<string>()));
         }
 
         JsonNode timestamp = metadata["timestamp"];
         if (timestamp is not null)
         {
-            DateTime.TryParse(timestamp.GetValue<string>(), null, System.Globalization.DateTimeStyles.RoundtripKind, out _)
-                .Should().BeTrue($"timestamp '{timestamp.GetValue<string>()}' must parse as ISO-8601");
+            Assert.That(
+                DateTime.TryParse(timestamp.GetValue<string>(), null, System.Globalization.DateTimeStyles.RoundtripKind, out _),
+                Is.True,
+                $"timestamp '{timestamp.GetValue<string>()}' must parse as ISO-8601");
         }
 
         JsonNode duration = metadata["duration"];
         if (duration is not null)
         {
-            duration.GetValue<long>().Should().BeGreaterThanOrEqualTo(0);
+            Assert.That(duration.GetValue<long>(), Is.GreaterThanOrEqualTo(0));
         }
 
         JsonNode warnings = metadata["warnings"];
@@ -529,80 +528,84 @@ public class OpcodeTracingPluginTests
             JsonArray warningArray = warnings.AsArray();
             foreach (JsonNode warning in warningArray)
             {
-                warning.GetValue<string>().Should().NotBeNull();
+                Assert.That(warning.GetValue<string>(), Is.Not.Null);
             }
         }
     }
 
     private static void AssertCumulativeMetadata(JsonNode metadata, long expectedFirst, long expectedLast, bool requireCompletion)
     {
-        metadata.Should().NotBeNull("cumulative metadata must be present");
-        metadata["firstBlock"].GetValue<long>().Should().Be(expectedFirst);
-        metadata["lastBlock"].GetValue<long>().Should().Be(expectedLast);
-        metadata["totalBlocksProcessed"].GetValue<long>().Should().BeGreaterThanOrEqualTo(expectedLast - expectedFirst + 1);
-        metadata["sessionId"].GetValue<string>().Should().NotBeNullOrWhiteSpace();
+        Assert.That(metadata, Is.Not.Null, "cumulative metadata must be present");
+        Assert.That(metadata["firstBlock"].GetValue<long>(), Is.EqualTo(expectedFirst));
+        Assert.That(metadata["lastBlock"].GetValue<long>(), Is.EqualTo(expectedLast));
+        Assert.That(metadata["totalBlocksProcessed"].GetValue<long>(), Is.GreaterThanOrEqualTo(expectedLast - expectedFirst + 1));
+        Assert.That(string.IsNullOrWhiteSpace(metadata["sessionId"].GetValue<string>()), Is.False);
 
         JsonNode mode = metadata["mode"];
         if (mode is not null)
         {
-            mode.GetValue<string>().Should().Be("RealTime");
+            Assert.That(mode.GetValue<string>(), Is.EqualTo("RealTime"));
         }
 
         JsonNode completion = metadata["completionStatus"];
         if (requireCompletion)
         {
-            completion.Should().NotBeNull("completionStatus must be present");
-            completion.GetValue<string>().Should().Be("complete");
+            Assert.That(completion, Is.Not.Null, "completionStatus must be present");
+            Assert.That(completion.GetValue<string>(), Is.EqualTo("complete"));
         }
 
         JsonNode duration = metadata["duration"];
         if (duration is not null)
         {
-            duration.GetValue<long>().Should().BeGreaterThanOrEqualTo(0);
+            Assert.That(duration.GetValue<long>(), Is.GreaterThanOrEqualTo(0));
         }
     }
 
     private static void AssertPerBlockMetadata(JsonNode metadata, long expectedBlockNumber)
     {
-        metadata.Should().NotBeNull("per-block metadata must be present");
-        metadata["blockNumber"].GetValue<long>().Should().Be(expectedBlockNumber);
+        Assert.That(metadata, Is.Not.Null, "per-block metadata must be present");
+        Assert.That(metadata["blockNumber"].GetValue<long>(), Is.EqualTo(expectedBlockNumber));
 
         JsonNode parentHash = metadata["parentHash"];
         if (parentHash is not null)
         {
-            Regex.IsMatch(parentHash.GetValue<string>(), "^0x[0-9a-fA-F]{64}$")
-                .Should().BeTrue($"parentHash '{parentHash.GetValue<string>()}' must be a 32-byte hex string");
+            Assert.That(
+                Regex.IsMatch(parentHash.GetValue<string>(), "^0x[0-9a-fA-F]{64}$"),
+                Is.True,
+                $"parentHash '{parentHash.GetValue<string>()}' must be a 32-byte hex string");
         }
 
         JsonNode timestamp = metadata["timestamp"];
         if (timestamp is not null)
         {
-            timestamp.GetValue<long>().Should().BeGreaterThanOrEqualTo(0);
+            Assert.That(timestamp.GetValue<long>(), Is.GreaterThanOrEqualTo(0));
         }
 
         JsonNode txCount = metadata["transactionCount"];
         if (txCount is not null)
         {
-            txCount.GetValue<int>().Should().BeGreaterThanOrEqualTo(0);
+            Assert.That(txCount.GetValue<int>(), Is.GreaterThanOrEqualTo(0));
         }
 
         JsonNode gasUsed = metadata["gasUsed"];
         if (gasUsed is not null)
         {
-            gasUsed.GetValue<long>().Should().BeGreaterThanOrEqualTo(0);
+            Assert.That(gasUsed.GetValue<long>(), Is.GreaterThanOrEqualTo(0));
         }
 
         JsonNode tracedAt = metadata["tracedAt"];
         if (tracedAt is not null)
         {
-            DateTime.TryParse(tracedAt.GetValue<string>(), null, System.Globalization.DateTimeStyles.RoundtripKind, out _)
-                .Should().BeTrue($"tracedAt '{tracedAt.GetValue<string>()}' must parse as ISO-8601");
+            Assert.That(
+                DateTime.TryParse(tracedAt.GetValue<string>(), null, System.Globalization.DateTimeStyles.RoundtripKind, out _),
+                Is.True,
+                $"tracedAt '{tracedAt.GetValue<string>()}' must parse as ISO-8601");
         }
     }
 
     private static JsonObject AssertOpcodeCountsShape(JsonNode opcodeCounts, bool requireNonEmpty)
     {
-        opcodeCounts.Should().NotBeNull("opcodeCounts must be present");
+        Assert.That(opcodeCounts, Is.Not.Null, "opcodeCounts must be present");
         JsonObject counts = opcodeCounts.AsObject();
 
         // Always echo what was actually emitted so a failed assertion (or a passing run)
@@ -611,15 +614,17 @@ public class OpcodeTracingPluginTests
 
         if (requireNonEmpty)
         {
-            counts.Count.Should().BeGreaterThan(0,
+            Assert.That(counts.Count, Is.GreaterThan(0),
                 $"opcodeCounts must contain at least one entry; got: {opcodeCounts.ToJsonString()}");
         }
 
         foreach (KeyValuePair<string, JsonNode> entry in counts)
         {
-            s_opcodeKeyPattern.IsMatch(entry.Key)
-                .Should().BeTrue($"opcode key '{entry.Key}' must be either an uppercase mnemonic (e.g. ADD) or hex form (e.g. 0xfe)");
-            entry.Value.GetValue<long>().Should().BeGreaterThan(0, $"count for opcode '{entry.Key}' must be > 0");
+            Assert.That(
+                s_opcodeKeyPattern.IsMatch(entry.Key),
+                Is.True,
+                $"opcode key '{entry.Key}' must be either an uppercase mnemonic (e.g. ADD) or hex form (e.g. 0xfe)");
+            Assert.That(entry.Value.GetValue<long>(), Is.GreaterThan(0), $"count for opcode '{entry.Key}' must be > 0");
         }
 
         return counts;
@@ -674,7 +679,7 @@ public class OpcodeTracingPluginTests
     private async Task<int> ProduceBlocksAsync(int version, int count, long? timestamp = null, int contractCreationsToSubmit = 0)
     {
         ExecResult jwt = await _container.ExecAsync(new[] { "cat", "jwt.hex" });
-        jwt.ExitCode.Should().Be(0);
+        Assert.That(jwt.ExitCode, Is.EqualTo(0));
         string jwtToken = Utils.CreateJwtToken(jwt.Stdout.Trim());
 
         Uri engineUrl = new($"http://{_container.Hostname}:{_container.GetMappedPublicPort(8551)}");
@@ -732,7 +737,7 @@ public class OpcodeTracingPluginTests
         foreach (string h in txHashes)
         {
             JsonNode r = await Utils.SendJsonRpcRequestAsync(ethHttp, "eth_getTransactionReceipt", h);
-            r.Should().NotBeNull($"tx {h} should be mined within {blocksProduced} blocks");
+            Assert.That(r, Is.Not.Null, $"tx {h} should be mined within {blocksProduced} blocks");
             TestContext.Progress.WriteLine($"tx {h} mined in block {r["blockNumber"]?.GetValue<string>()}");
         }
 
@@ -760,7 +765,7 @@ public class OpcodeTracingPluginTests
     private async Task<string> ReadFileAsync(string path)
     {
         ExecResult result = await _container.ExecAsync(new[] { "cat", path });
-        result.ExitCode.Should().Be(0, $"cat {path} failed: {result.Stderr}");
+        Assert.That(result.ExitCode, Is.EqualTo(0), $"cat {path} failed: {result.Stderr}");
         return result.Stdout;
     }
 
