@@ -20,7 +20,10 @@ internal readonly record struct TestContext(TestDefinition Definition, BlockInfo
     #region Helper Methods
 
     // TODO: store actual block info
-    public long RecentBlock => Math.Max(1, Head.Number - 5); // recent, but old enough to assume available in all nodes
+    /// <summary>
+    /// Number of a block close to the latest head, but old enough to assume to be available in all nodes.
+    /// </summary>
+    public long RecentBlock => Math.Max(1, Head.Number - 5);
 
     public static string Hex(long n) => $"0x{n:x}";
     public static string AsTopic(string address) => address.StartsWith("0x") ? address[2..].PadLeft(64, '0') : address.PadLeft(64, '0');
