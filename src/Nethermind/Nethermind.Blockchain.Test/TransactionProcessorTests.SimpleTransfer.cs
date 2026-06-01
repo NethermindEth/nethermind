@@ -112,6 +112,28 @@ public partial class TransactionProcessorTests
         Assert.That(_stateProvider.AccountExists(recipient), Is.False);
     }
 
+    [Test]
+    [NonParallelizable]
+    public void Simple_transfer_fast_path_does_not_increment_empty_call_metric()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address recipient = CreateEmptyCodeRecipient(_stateProvider, spec, 1402);
+        _stateProvider.Commit(spec);
+        _stateProvider.CommitTree(0);
+
+        (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(_specProvider);
+
+        Transaction tx = BuildSimpleTransfer(recipient, 7.Wei, withAuthorizationList: false);
+        Block block = BuildPragueBlock(tx);
+        long emptyCallsBefore = Nethermind.Evm.Metrics.EmptyCalls;
+
+        TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+        Assert.That(Nethermind.Evm.Metrics.EmptyCalls, Is.EqualTo(emptyCallsBefore));
+    }
+
     [TestCase(false, 1ul, true, true)]
     [TestCase(false, 1ul, false, true)]
     [TestCase(false, 0ul, true, false)]

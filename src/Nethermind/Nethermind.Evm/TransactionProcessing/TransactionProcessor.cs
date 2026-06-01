@@ -316,17 +316,23 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (count > 1)
                     {
                         Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
-                        destroyList.CopyTo(buffer, 0);
-                        buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
-                        for (int i = 0; i < count; i++)
+                        try
                         {
-                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i]);
+                            destroyList.CopyTo(buffer, 0);
+                            buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
+                            for (int i = 0; i < count; i++)
+                            {
+                                FinalizeDestroyedAccount(WorldState, in substate, buffer[i]);
+                            }
                         }
-                        SafeArrayPool<Address>.Shared.Return(buffer);
+                        finally
+                        {
+                            SafeArrayPool<Address>.Shared.Return(buffer);
+                        }
                     }
                     else if (count == 1)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First);
+                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.Single);
                     }
                 }
 
@@ -365,20 +371,10 @@ namespace Nethermind.Evm.TransactionProcessing
             in UInt256 senderReservedGasPayment,
             in UInt256 blobBaseFee)
         {
-            Metrics.IncrementEmptyCalls();
-
             ref readonly UInt256 value = ref tx.ValueRef;
             bool hasValueTransfer = !value.IsZero;
             bool senderIsRecipient = tx.SenderAddress == recipient;
             bool isTracingActions = tracer.IsTracingActions;
-
-            // Self-send: sender account is already touched/warmed by gas charging and any
-            // +/- value balance ops would cancel to a net no-op, so skip both state writes.
-            if (!senderIsRecipient)
-            {
-                if (hasValueTransfer) PayValue(tx, spec, opts);
-                WorldState.AddToBalanceAndCreateIfNotExists(recipient, in hasValueTransfer ? ref value : ref UInt256.Zero, spec);
-            }
 
             JournalCollection<LogEntry>? logs = null;
             if (spec.IsEip7708Enabled && hasValueTransfer && !senderIsRecipient)
@@ -388,10 +384,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
             }
 
-            // Keep tracer event order aligned with VirtualMachine.ExecuteCall.
             if (isTracingActions)
             {
                 TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
+            }
+
+            // Self-send: sender account is already touched/warmed by gas charging and any
+            // +/- value balance ops would cancel to a net no-op, so skip both state writes.
+            if (!senderIsRecipient)
+            {
+                if (hasValueTransfer) PayValue(tx, spec, opts);
+                WorldState.AddToBalanceAndCreateIfNotExists(recipient, in hasValueTransfer ? ref value : ref UInt256.Zero, spec);
             }
 
             TransactionSubstate substate = new(

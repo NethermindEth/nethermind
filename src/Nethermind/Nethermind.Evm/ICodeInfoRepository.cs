@@ -10,7 +10,11 @@ namespace Nethermind.Evm;
 
 public interface ICodeInfoRepository
 {
+    /// <summary>
+    /// Gets whether transaction-local code overrides can change code lookup results.
+    /// </summary>
     bool IsCodeOverridable => false;
+
     CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress);
     void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);
