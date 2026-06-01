@@ -56,9 +56,10 @@ on:
         required: false
         default: 256
         type: number
+  workflow_call:
 
 concurrency:
-  group: hive-${{ github.ref }}-${{ github.event_name }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -87,6 +88,8 @@ jobs:
             elif [[ "$ref" == refs/heads/release/* ]]; then
               need_consensus=true
             fi
+          elif [[ "$event" == "pull_request" ]]; then
+            need_static=true
           elif [[ "$event" == "workflow_dispatch" ]]; then
             case "$suite" in
               all)
@@ -184,6 +187,8 @@ jobs:
 
   build-image:
     name: Build Nethermind image
+    needs: setup
+    if: needs.setup.outputs.matrix != '[]'
     runs-on: ubuntu-latest
     steps:
       - name: Check out Nethermind repository
@@ -233,7 +238,7 @@ jobs:
           path: nethermind
 
       - name: Download image artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: nethermind-image-${{ github.run_id }}
 
