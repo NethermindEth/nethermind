@@ -55,17 +55,23 @@ public class LookupKNearestNeighbourTests
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
 
+        // Signalled once a findNeighbour request is actually dispatched, so cancellation deterministically
+        // interrupts an in-flight request (which records OnRequestFailed) instead of racing worker startup.
+        TaskCompletionSource requestInFlight = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         Task<ValueHash256[]> task = lookup.Lookup(
             Seed1,
             8,
             async (_, t) =>
             {
+                requestInFlight.TrySetResult();
                 await Task.Delay(Timeout.Infinite, t);
                 return null;
             },
             cts.Token);
 
-        cts.CancelAfter(100);
+        await requestInFlight.Task;
+        await cts.CancelAsync();
 
         _ = await task;
         health.Received().OnRequestFailed(Seed1);
