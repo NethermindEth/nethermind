@@ -66,7 +66,9 @@ public sealed class SparseTrieTask : IAsyncDisposable
     public readonly record struct HashedDelta(
         IReadOnlyList<(ValueHash256 AccountPath, LeafUpdate Update)> AccountUpdates,
         IReadOnlyList<(Hash256 AccountPath, Hash256 PreviousStorageRoot, ValueHash256 SlotPath, LeafUpdate Update)> StorageUpdates,
-        IReadOnlyList<Hash256>? WipedStorageAccounts = null);
+        IReadOnlyList<Hash256>? WipedStorageAccounts = null,
+        IReadOnlyList<ValueHash256>? PrefetchAccounts = null,
+        IReadOnlyList<(Hash256 AccountPath, Hash256 PreviousStorageRoot, ValueHash256 SlotPath)>? PrefetchSlots = null);
 
     private readonly Channel<HashedDelta> _channel;
     private readonly SparseRootComputer _computer;
@@ -145,6 +147,36 @@ public sealed class SparseTrieTask : IAsyncDisposable
                         entry.Slots = [];
                     }
                     entry.Slots[slot] = upd;
+                }
+
+                // Prefetch targets (Reth on_prewarm_targets): insert a Touched marker ONLY where no
+                // real update exists yet, so the key's proof is fetched+revealed in the normal flow
+                // without overriding an actual write. A Touched leaf is a no-op on the root (neither
+                // changes nor deletes a value), so prefetch can never alter the result - it only
+                // warms the trie. TryAdd ensures a real write already present is never clobbered; a
+                // real update arriving in a LATER delta overwrites the Touched via the branches
+                // above (last-writer-wins).
+                if (delta.PrefetchAccounts is { Count: > 0 } pAccts)
+                {
+                    foreach (ValueHash256 acc in pAccts)
+                        _accounts.TryAdd(acc, LeafUpdate.Touched());
+                }
+                if (delta.PrefetchSlots is { Count: > 0 } pSlots)
+                {
+                    foreach ((Hash256 accPath, Hash256 prevRoot, ValueHash256 slot) in pSlots)
+                    {
+                        ref (Hash256 PrevRoot, Dictionary<ValueHash256, LeafUpdate> Slots) entry =
+                            ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(_storage, accPath, out bool exists);
+                        if (!exists)
+                        {
+                            entry.PrevRoot = prevRoot;
+                            entry.Slots = [];
+                        }
+                        entry.Slots.TryAdd(slot, LeafUpdate.Touched());
+                        // Touch the account leaf too so its path is revealed for the storage-root
+                        // update, mirroring Reth's "touch corresponding account leaf".
+                        _accounts.TryAdd(accPath.ValueHash256, LeafUpdate.Touched());
+                    }
                 }
             }
         }

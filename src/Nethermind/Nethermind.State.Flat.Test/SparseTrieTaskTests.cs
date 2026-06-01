@@ -130,4 +130,56 @@ public class SparseTrieTaskTests
         await act.Should().ThrowAsync<InvalidOperationException>(
             "a cancelled/poisoned drain must not yield a trusted root");
     }
+
+    [Test]
+    public async Task PrefetchOnly_DoesNotChangeRoot()
+    {
+        // Prefetch targets insert Touched markers, which are no-ops on the root. A block that
+        // only prefetches (no real writes) must reproduce the parent root exactly.
+        (Hash256 block1Root, _, _, MemDb db) = BuildTwoBlocks(total: 20, changed: 5);
+
+        using SparseRootComputer streamComputer = new(new HalfPathTrieNodeReader(new NodeStorage(db)), block1Root);
+        await using SparseTrieTask task = new(streamComputer, LimboLogs.Instance.GetClassLogger<SparseTrieTaskTests>(), CancellationToken.None);
+
+        // Prefetch several account keys, no real updates.
+        List<ValueHash256> prefetch = [];
+        for (int i = 0; i < 8; i++) prefetch.Add(TestItem.Keccaks[i].ValueHash256);
+        task.Enqueue(new SparseTrieTask.HashedDelta([], [], PrefetchAccounts: prefetch));
+        task.Finish();
+
+        Hash256 root = await task.GetRootAsync();
+        root.Should().Be(block1Root, "prefetch-only (Touched markers) must leave the root unchanged");
+    }
+
+    [Test]
+    public async Task PrefetchThenUpdate_MatchesUpdateAlone()
+    {
+        // Prefetching the same keys that are later really written must not change the result vs
+        // writing them with no prefetch. Touched is superseded by the real Changed update.
+        (Hash256 block1Root, _, byte[][] newRlps, MemDb db) = BuildTwoBlocks(total: 20, changed: 5);
+
+        using SparseRootComputer baseline = new(new HalfPathTrieNodeReader(new NodeStorage(db)), block1Root);
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
+        for (int i = 0; i < newRlps.Length; i++)
+            updates[TestItem.Keccaks[i].ValueHash256] = LeafUpdate.Changed(newRlps[i]);
+        baseline.SetAccountChanges(updates);
+        Hash256 baselineRoot = baseline.ComputeStateRoot();
+
+        using SparseRootComputer streamComputer = new(new HalfPathTrieNodeReader(new NodeStorage(db)), block1Root);
+        await using SparseTrieTask task = new(streamComputer, LimboLogs.Instance.GetClassLogger<SparseTrieTaskTests>(), CancellationToken.None);
+
+        // Batch 1: prefetch the keys (and some extras). Batch 2: the real writes.
+        List<ValueHash256> prefetch = [];
+        for (int i = 0; i < 10; i++) prefetch.Add(TestItem.Keccaks[i].ValueHash256);
+        task.Enqueue(new SparseTrieTask.HashedDelta([], [], PrefetchAccounts: prefetch));
+
+        List<(ValueHash256, LeafUpdate)> realWrites = [];
+        for (int i = 0; i < newRlps.Length; i++)
+            realWrites.Add((TestItem.Keccaks[i].ValueHash256, LeafUpdate.Changed(newRlps[i])));
+        task.Enqueue(new SparseTrieTask.HashedDelta(realWrites, []));
+        task.Finish();
+
+        Hash256 streamedRoot = await task.GetRootAsync();
+        streamedRoot.Should().Be(baselineRoot, "prefetch must not alter the root vs writing the same keys directly");
+    }
 }
