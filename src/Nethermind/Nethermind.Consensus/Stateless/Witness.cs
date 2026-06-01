@@ -66,12 +66,27 @@ public static class WitnessExtensions
             ReadOnlySpan<byte[]> headersSpan = headers.AsSpan();
             ArrayPoolList<BlockHeader> decodedHeaders = new(headersSpan.Length, headersSpan.Length);
 
+            // Witness headers must form a contiguous chain ordered by ascending block number:
+            // each header's parent hash must equal the hash (keccak of the RLP) of the preceding
+            // header. This mirrors the stateless verifier's rule in EELS (validate_headers) and
+            // rejects witnesses whose headers were reordered or are otherwise non-contiguous. The
+            // previous header's hash is carried across iterations so each keccak is computed once.
+            ValueHash256 previousHeaderHash = default;
+
             for (int i = 0; i < headersSpan.Length; i++)
             {
                 Rlp.ValueDecoderContext stream = new(headersSpan[i]);
 
                 decodedHeaders[i] = _decoder.Decode(ref stream)
                     ?? throw new InvalidOperationException($"No header decoded at index {i}");
+
+                if (i > 0 && decodedHeaders[i].ParentHash?.ValueHash256 != previousHeaderHash)
+                {
+                    decodedHeaders.Dispose();
+                    throw new InvalidOperationException("Witness headers are not contiguous");
+                }
+
+                previousHeaderHash = ValueKeccak.Compute(headers[i]);
             }
 
             return decodedHeaders;
