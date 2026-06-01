@@ -46,7 +46,7 @@ dotnet run -- \
 
 Custom output path per request (since Erigon test runner expects a single file per test)
 ```bash
-dotnet run -- -r recorded.jsonl -o "{FileDir}/out/test_{TestN:0000}.json"
+dotnet run -- -r rpc.1.txt -o "{FileDir}/out/test_{TestN:0000}.json"
 ```
 
 ## Output format
