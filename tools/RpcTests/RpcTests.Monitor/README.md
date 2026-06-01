@@ -98,6 +98,8 @@ sends the requests to the target and optionally a reference node,
 compares responses, and notifies on any discrepancy.
 
 ## Notification options
+<img width="1022" height="168" alt="image" src="https://github.com/user-attachments/assets/5abf1004-7aeb-4c43-994a-3baf16484fe2" />
+
 Only Slack is supported for now, configuration is provided via environment variables:
 - `RPC_MONITOR_WEBHOOK_URL` - post messages directly to a Slack webhook, can truncate large data due to its limitations,
 - `RPC_MONITOR_BOT_TOKEN` + `RPC_MONITOR_CHANNEL_ID` - post messages to a Slack channel via a bot user, uploads responses as files.
