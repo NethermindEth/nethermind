@@ -36,9 +36,10 @@ public static class TestChunkFilter
     /// <summary>
     /// Returns true when the given test name belongs to the currently selected
     /// chunk, or when no chunk is configured (no-op pass-through).
-    /// Partitioning is deterministic across runs and processes — it uses a
-    /// stable FNV-1a hash of <paramref name="stableTestName"/> rather than
-    /// <see cref="string.GetHashCode()"/> (which is randomized per-process).
+    /// Partitioning is deterministic across runs, processes, and platforms — it
+    /// uses a stable FNV-1a-style hash of <paramref name="stableTestName"/>
+    /// rather than <see cref="string.GetHashCode()"/> (which is randomized
+    /// per-process).
     /// </summary>
     public static bool ShouldRunInChunk(string stableTestName)
     {
@@ -99,8 +100,11 @@ public static class TestChunkFilter
     }
 
     /// <summary>
-    /// 32-bit FNV-1a hash. Deterministic across processes and platforms,
+    /// 32-bit FNV-1a-style stable hash. Deterministic across processes and platforms,
     /// unlike <see cref="string.GetHashCode()"/> which is randomized.
+    /// Processes each UTF-16 char as two byte rounds (low byte then high byte), which
+    /// deviates from canonical byte-stream FNV-1a but preserves the only property we
+    /// rely on here: identical input ⇒ identical hash across runners.
     /// </summary>
     private static uint StableHash(string value)
     {

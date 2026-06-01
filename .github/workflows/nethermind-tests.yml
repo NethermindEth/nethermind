@@ -99,7 +99,6 @@ jobs:
           - { runner: macos-latest, project: Nethermind.Network.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.Sockets.Test, chunk: '' }
-          # Nethermind.Synchronization.Test chunked across all four runners (2438 standalone tests).
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
