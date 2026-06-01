@@ -233,7 +233,7 @@ public class VotesManagerTests
             .FindHeader(Arg.Any<Hash256>())
             .Returns(header);
         blockTree.Head.Returns(new Block(header));
-        VotesManager votesManager = new VoteManagerBuilder { Context = ctx, BlockTree = blockTree}.Build();
+        VotesManager votesManager = new VoteManagerBuilder { Context = ctx, BlockTree = blockTree }.Build();
 
         BlockRoundInfo blockInfo = new(Hash256.Zero, 1, 100);
         QuorumCertificate qc = new(blockInfo, null, 0);
@@ -286,7 +286,7 @@ public class VotesManagerTests
     public void VerifyVotingRules_CheckExtendingFromAncestor_ReturnsExpected(IBlockTree tree, QuorumCertificate lockQc, BlockRoundInfo blockInfo, bool expected)
     {
         XdcConsensusContext ctx = new() { CurrentRound = 5, LockQC = lockQc };
-        VotesManager votesManager = new VoteManagerBuilder { Context = ctx, BlockTree = tree}.Build();
+        VotesManager votesManager = new VoteManagerBuilder { Context = ctx, BlockTree = tree }.Build();
         QuorumCertificate qc = new(new BlockRoundInfo(Hash256.Zero, 3, 99), null, 0);
 
         Assert.That(votesManager.VerifyVotingRules(blockInfo, qc, out _), Is.EqualTo(expected));
