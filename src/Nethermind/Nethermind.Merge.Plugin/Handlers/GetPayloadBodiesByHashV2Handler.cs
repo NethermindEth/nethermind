@@ -5,6 +5,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -13,7 +14,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager logManager, IBlockAccessListStore balStore)
+public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager logManager, IBlockAccessListStore balStore, IBlockStore blockStore)
     : IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>
 {
     private const int MaxCount = 1024;
@@ -38,14 +39,20 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
             for (int i = 0; i < blockHashes.Count; i++)
             {
                 Hash256 blockHash = blockHashes[i];
-                Block? block = blockTree.FindBlock(blockHash, LookupOptions);
-                if (block is null)
+                BlockHeader? header = blockTree.FindHeader(blockHash, LookupOptions);
+                if (header is null)
                 {
                     continue;
                 }
 
-                MemoryManager<byte>? blockAccessList = balStore.GetRlp(block.Number, blockHash);
-                results[i] = PayloadBodiesV2DirectResponse.CreatePayloadBody(block.Transactions, block.Withdrawals, blockAccessList);
+                byte[]? blockRlp = blockStore.GetRlp(header.Number, blockHash);
+                if (blockRlp is null)
+                {
+                    continue;
+                }
+
+                MemoryManager<byte>? blockAccessList = balStore.GetRlp(header.Number, blockHash);
+                results[i] = PayloadBodiesV2DirectResponse.CreatePayloadBody(blockRlp, blockAccessList);
             }
         }
         catch

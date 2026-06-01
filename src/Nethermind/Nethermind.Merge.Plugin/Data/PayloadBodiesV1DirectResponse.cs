@@ -149,11 +149,12 @@ internal static class PayloadBodiesDirectResponseWriter
     public static void WritePayloadBody(
         IBufferWriter<byte> writer,
         byte[] blockRlp,
-        Withdrawal[]? withdrawals)
+        Withdrawal[]? withdrawals,
+        MemoryManager<byte>? blockAccessList = null)
     {
         writer.Write("{\"transactions\":"u8);
         WriteTransactionsFromBlockRlp(writer, blockRlp);
-        WritePayloadBodySuffix(writer, withdrawals, null);
+        WritePayloadBodySuffix(writer, withdrawals, blockAccessList);
     }
 
     private static void WritePayloadBodySuffix(

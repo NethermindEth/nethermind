@@ -72,6 +72,21 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
+    internal static PayloadBody CreatePayloadBody(
+        byte[] blockRlp,
+        MemoryManager<byte>? blockAccessList)
+    {
+        try
+        {
+            return new PayloadBody(blockRlp, blockAccessList);
+        }
+        catch
+        {
+            (blockAccessList as IDisposable)?.Dispose();
+            throw;
+        }
+    }
+
     internal static void DisposeItems(PayloadBody?[] items)
     {
         for (int i = 0; i < items.Length; i++)
@@ -95,17 +110,55 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    internal readonly struct PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, MemoryManager<byte>? blockAccessList) : IDisposable
+    internal readonly struct PayloadBody : IDisposable
     {
-        public void WriteTo(PipeWriter writer) =>
-            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, transactions, withdrawals, blockAccessList);
+        private readonly Transaction[]? _transactions;
+        private readonly byte[]? _blockRlp;
+        private readonly Withdrawal[]? _withdrawals;
+        private readonly MemoryManager<byte>? _blockAccessList;
 
-        public ExecutionPayloadBodyV2Result ToResult() =>
-            new(
-                transactions,
-                withdrawals,
-                blockAccessList?.Memory.ToArray());
+        public PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, MemoryManager<byte>? blockAccessList)
+        {
+            _transactions = transactions;
+            _blockRlp = null;
+            _withdrawals = withdrawals;
+            _blockAccessList = blockAccessList;
+        }
 
-        public void Dispose() => (blockAccessList as IDisposable)?.Dispose();
+        public PayloadBody(byte[] blockRlp, MemoryManager<byte>? blockAccessList)
+        {
+            _transactions = null;
+            _blockRlp = blockRlp;
+            _withdrawals = PayloadBodiesDirectResponseWriter.DecodeWithdrawals(blockRlp);
+            _blockAccessList = blockAccessList;
+        }
+
+        public void WriteTo(PipeWriter writer)
+        {
+            if (_blockRlp is { } blockRlp)
+            {
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _withdrawals, _blockAccessList);
+                return;
+            }
+
+            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _transactions!, _withdrawals, _blockAccessList);
+        }
+
+        public ExecutionPayloadBodyV2Result ToResult()
+        {
+            ExecutionPayloadBodyV2Result result = new(
+                _transactions ?? [],
+                _withdrawals,
+                _blockAccessList?.Memory.ToArray());
+
+            if (_blockRlp is { } blockRlp)
+            {
+                result.Transactions = PayloadBodiesDirectResponseWriter.GetTransactionsFromBlockRlp(blockRlp);
+            }
+
+            return result;
+        }
+
+        public void Dispose() => (_blockAccessList as IDisposable)?.Dispose();
     }
 }
