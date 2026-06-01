@@ -77,6 +77,10 @@ public partial class BlockAccessListManager(
     private int _suggestedChargeableStorageReads;
     private int _generatedChargeableStorageReads;
     private bool _hasGeneratedValidationIndexUpdates;
+    // Count of validation calls resolved by the column-index fast path. Exposed for tests to
+    // assert the perf-critical path is actually taken — the fast and slow paths are otherwise
+    // behaviourally identical, so a silent regression to the slow path is invisible without it.
+    internal int FastPathHits { get; private set; }
     // Latched when a per-tx slice surfaces a generated-only account that the column index
     // can't see (no lane data on either side). Forces the validator's fallback walk so the
     // same "missing account changes" error fires as on the sequential path.
@@ -260,6 +264,7 @@ public partial class BlockAccessListManager(
         _hasGeneratedValidationIndexUpdates = false;
         _hasGeneratedRequiredReadAccountMismatch = false;
         _currentGeneratedBlockAccessList = null;
+        FastPathHits = 0;
     }
 
     [DoesNotReturn]
