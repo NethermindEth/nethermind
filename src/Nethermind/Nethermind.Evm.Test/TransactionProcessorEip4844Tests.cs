@@ -123,6 +123,42 @@ internal class TransactionProcessorEip4844Tests
         }
     }
 
+    [Test]
+    public void Rejects_blob_tx_with_combined_upfront_cost_in_error_detail()
+    {
+        _stateProvider.CreateAccount(TestItem.AddressA, UInt256.Zero);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+        _stateProvider.CommitTree(0);
+
+        Transaction blobTx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(0x100000)
+            .WithValue(UInt256.Zero)
+            .WithMaxFeePerGas((UInt256)10_000_000_000)
+            .WithMaxPriorityFeePerGas((UInt256)1_000_000_000)
+            .WithMaxFeePerBlobGas((UInt256)10_000_000_000)
+            .WithShardBlobTxTypeAndFields(1)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions(blobTx)
+            .WithGasLimit(0x100000)
+            .WithExcessBlobGas(0ul)
+            .WithBaseFeePerGas(1)
+            .TestObject;
+
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
+        TransactionResult result = _transactionProcessor.Execute(blobTx, blkCtx, NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("want 11796480000000000"));
+        }
+    }
+
     public static IEnumerable<TestCaseData> BalanceIsAffectedByBlobGasTestCaseSource()
     {
         yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob), 1, 1ul, 0ul, 0ul)

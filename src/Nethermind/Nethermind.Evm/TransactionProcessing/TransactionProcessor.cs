@@ -788,21 +788,22 @@ namespace Nethermind.Evm.TransactionProcessing
             bool overflows;
             if (spec.IsEip1559Enabled && !tx.IsFree())
             {
-                overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
-                if (overflows || balanceLeft < maxGasFee)
-                {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
-                    return InsufficientFundsForGas(tx, senderBalance, tx.MaxFeePerGas);
-                }
+                overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxUpfrontCost);
 
                 if (tx.SupportsBlobs)
                 {
                     overflows = UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(tx), (UInt256)tx.MaxFeePerBlobGas!, out UInt256 maxBlobGasFee);
-                    if (overflows || UInt256.AddOverflow(maxGasFee, maxBlobGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
-                    {
-                        TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                        return InsufficientFundsForGas(tx, senderBalance, effectiveGasPrice);
-                    }
+                    if (!overflows)
+                        overflows = UInt256.AddOverflow(maxUpfrontCost, maxBlobGasFee, out maxUpfrontCost);
+                }
+
+                if (overflows || balanceLeft < maxUpfrontCost)
+                {
+                    TraceLogInvalidTx(tx,
+                        tx.SupportsBlobs
+                            ? $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}"
+                            : $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
+                    return InsufficientFundsForGas(tx, senderBalance, tx.MaxFeePerGas, tx.SupportsBlobs ? tx.MaxFeePerBlobGas : null, tx.GetBlobCount());
                 }
             }
 
@@ -836,10 +837,17 @@ namespace Nethermind.Evm.TransactionProcessing
             TransactionResult.ErrorType.InsufficientSenderBalance.WithDetail(
                 $"insufficient sender balance for transfer: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {tx.Value}");
 
-        private static TransactionResult InsufficientFundsForGas(Transaction tx, UInt256 senderBalance, UInt256 gasPrice)
+        private static TransactionResult InsufficientFundsForGas(Transaction tx, UInt256 senderBalance, UInt256 gasPrice, UInt256? maxFeePerBlobGas = null, int blobCount = 0)
         {
             UInt256.MultiplyOverflow((UInt256)tx.GasLimit, gasPrice, out UInt256 gasCost);
             UInt256.AddOverflow(gasCost, tx.Value, out UInt256 want);
+
+            if (maxFeePerBlobGas is not null && blobCount > 0 &&
+                BlobGasCalculator.TryCalculateBlobMaxFee(blobCount, maxFeePerBlobGas.Value, out UInt256 blobWant))
+            {
+                UInt256.AddOverflow(want, blobWant, out want);
+            }
+
             return TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
                 $"insufficient sender balance for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {want}");
         }

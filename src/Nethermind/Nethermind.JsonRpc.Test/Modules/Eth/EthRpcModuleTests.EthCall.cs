@@ -985,6 +985,30 @@ public partial class EthRpcModuleTests
             Does.Contain(BlockErrorMessages.InsufficientMaxFeePerBlobGas));
     }
 
+    [Test]
+    public async Task Eth_call_insufficient_funds_includes_blob_gas_in_want_amount()
+    {
+        ISpecProvider specProvider = new TestSpecProvider(Cancun.Instance);
+        Block[] blocks = [Build.A.Block.WithNumber(0).WithExcessBlobGas(0ul).TestObject];
+        BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
+
+        using TestRpcBlockchain test = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(blockTree)
+            .Build(specProvider);
+
+        object? tx = JsonSerializer.Deserialize<object>(
+            """{"from":"0x1111111111111111111111111111111111111111","to":"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045","gas":"0x100000","value":"0x0","maxFeePerGas":"0x2540BE400","maxPriorityFeePerGas":"0x3B9ACA00","maxFeePerBlobGas":"0x2540BE400","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"]}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0x1111111111111111111111111111111111111111":{"balance":"0x0"}}""");
+
+        string serialized = await test.TestEthRpc("eth_call", tx, "latest", stateOverride);
+
+        Assert.That(
+            JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
+            Does.Contain("want 11796480000000000"));
+    }
+
     [TestCase(
         """{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","value":"0x0","type":"0x4","authorizationList":[]}""",
         TxErrorMessages.MissingAuthorizationList,
