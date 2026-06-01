@@ -2748,16 +2748,7 @@ public partial class EthRpcModuleTests
 
     /// <summary>
     /// Builds the state-override and transaction for EIP-7610 CREATE2 collision regression tests.
-    /// Used by eth_call, eth_estimateGas, and trace_call tests.
     /// </summary>
-    /// <remarks>
-    /// The factory at 0xf1f1… calls CREATE2 with a zero salt and initCode that writes storage[0]=42
-    /// then deploys a 1-byte STOP runtime. The CREATE2 target (contractC) is given storage[0]=42
-    /// via state override but has no code, balance, or nonce — EIP-158 empty by those fields.
-    /// Without the NoEip158Spec fix the state-override commit deletes contractC from the trie,
-    /// causing IsNonZeroAccount to short-circuit before the storage check, and EIP-7610 to miss the
-    /// collision.
-    /// </remarks>
     internal static (object StateOverride, object Transaction) BuildEip7610Fixture()
     {
         byte[] initCode = Bytes.FromHexString("602a6000556001601160003960016000f300");

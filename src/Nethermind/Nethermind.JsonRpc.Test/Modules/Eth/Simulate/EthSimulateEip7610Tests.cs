@@ -22,36 +22,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 [TestFixture]
 public class EthSimulateEip7610Tests
 {
-    // Factory runtime code (73 bytes = 55 bytes logic + 18 bytes embedded init code).
-    //
-    // Logic (bytes 0..54):
-    //   60 12       PUSH1 0x12        — init code length = 18
-    //   60 37       PUSH1 0x37        — init code position in factory = 55 (0x37)
-    //   60 00       PUSH1 0x00        — memory dest
-    //   39          CODECOPY          — copy 18 bytes of init code into memory[0..17]
-    //   7f 00..00   PUSH32 0x00..00   — salt = 0
-    //   60 12       PUSH1 0x12        — CREATE2 init code length
-    //   60 00       PUSH1 0x00        — CREATE2 memory offset
-    //   60 00       PUSH1 0x00        — value = 0
-    //   f5          CREATE2           — deploy; new address left on stack
-    //   60 00       PUSH1 0x00        — MSTORE offset
-    //   52          MSTORE            — store address left-padded in memory[0..31]
-    //   60 20       PUSH1 0x20        — return 32 bytes
-    //   60 00       PUSH1 0x00
-    //   f3          RETURN
-    //
-    // Init code (bytes 55..72):
-    //   60 2a       PUSH1 42
-    //   60 00       PUSH1 0
-    //   55          SSTORE            — storage[0] = 42
-    //   60 01       PUSH1 1           — 1-byte runtime to return
-    //   60 11       PUSH1 17          — position 17 in init code (the trailing STOP byte)
-    //   60 00       PUSH1 0           — memory dest
-    //   39          CODECOPY
-    //   60 01       PUSH1 1           — RETURN length
-    //   60 00       PUSH1 0           — RETURN offset
-    //   f3          RETURN            — deploy the 1-byte runtime
-    //   00          STOP              — the deployed runtime code for C
     private const string FactoryBytecode =
         "0x601260376000397f0000000000000000000000000000000000000000000000000000000000000000" +
         "601260006000f5600052602060" +
@@ -74,7 +44,6 @@ public class EthSimulateEip7610Tests
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
 
-        // Step 1: run block 1 alone to discover C's address from the CREATE2 return value.
         SimulatePayload<TransactionForRpc> block1Only = new()
         {
             BlockStateCalls = [BuildBlock1Call()],
@@ -93,8 +62,6 @@ public class EthSimulateEip7610Tests
         Address contractC = new(block1ReturnData.Skip(12).Take(20).ToArray());
         Assert.That(contractC, Is.Not.EqualTo(Address.Zero), "Deployed contract C address must be non-zero");
 
-        // Step 2: two-block simulation — block 1 deploys C, block 2 clears C's code+nonce
-        // then calls the factory again with the same salt.
         SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =

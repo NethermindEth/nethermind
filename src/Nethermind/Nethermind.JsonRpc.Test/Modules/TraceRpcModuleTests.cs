@@ -1509,7 +1509,6 @@ public class TraceRpcModuleTests
         JToken parsed = JToken.Parse(serialized);
         Assert.That(parsed["error"], Is.Null, $"trace_call failed: {parsed["error"]}");
 
-        // Factory returns 32 zero bytes when EIP-7610 fires (CREATE2 returned 0).
         string output = parsed["result"]!["output"]!.Value<string>()!;
         Assert.That(output, Is.EqualTo("0x" + new string('0', 64)));
     }

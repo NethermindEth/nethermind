@@ -977,9 +977,7 @@ public partial class EthRpcModuleTests
 
     /// <summary>
     /// Regression: state overrides with only storage (no code/balance/nonce) create an account
-    /// that is EIP-158 empty. Without the NoEip158Spec fix, the override commit deleted the account
-    /// from the in-memory state, causing <c>IsNonZeroAccount</c> to short-circuit false before
-    /// checking storage and silently bypassing EIP-7610 CREATE2 collision detection.
+    /// that is EIP-158 empty.
     /// </summary>
     [Test]
     public async Task Eth_call_state_override_with_storage_blocks_create2_via_eip7610()
