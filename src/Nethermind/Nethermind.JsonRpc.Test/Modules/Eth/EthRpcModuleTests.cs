@@ -30,6 +30,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Json;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -500,6 +501,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_storage_at_missing_trie_node()
     {
+        if (new FlatDbConfig().Enabled) Assert.Ignore("Test requires TrieStore — tests trie-specific missing node error");
         using Context ctx = await Context.Create();
         await Task.Delay(100); // Wait a bit for pruning
         ctx.Test.WorldStateManager.FlushCache(CancellationToken.None);

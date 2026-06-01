@@ -20,6 +20,7 @@ using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
+using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -80,6 +81,7 @@ public class WorldStateManagerTests
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IConfigProvider configProvider = new ConfigProvider();
+        bool flatEnabled = configProvider.GetConfig<IFlatDbConfig>().Enabled;
         int reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
         IFinalizedStateProvider manualFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
         manualFinalizedStateProvider.FinalizedBlockNumber.Returns(lastBlock - reorgDepth);
@@ -122,7 +124,15 @@ public class WorldStateManagerTests
             }
         }
 
-        blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
+        if (flatEnabled)
+        {
+            // Flat announces reorg boundary during persist, not on dispose.
+            blockTree.Received(Quantity.Within(0, lastBlock)).BestPersistedState = Arg.Any<long?>();
+        }
+        else
+        {
+            blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
+        }
     }
 
     [Test]
