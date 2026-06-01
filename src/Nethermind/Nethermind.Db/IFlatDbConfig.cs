@@ -140,5 +140,11 @@ public enum SparseTrieWarmerVariant
     /// Until the M5 background sparse task is wired, this only warms DB/OS page cache and burns CPU
     /// on RLP decode that nothing consumes. Don't use as a permanent default.</summary>
     SparseProof,
+    /// <summary>Flat-native warmer: on a hint, performs the SAME flat read the EVM will do
+    /// (SnapshotBundle slot/account lookup -> persistence -> RocksDB), warming the RocksDB block
+    /// cache and the flat read path WITHOUT walking/decoding Patricia nodes. In flat mode the EVM
+    /// reads go through SnapshotBundle, not Patricia, so the Legacy warmer's Patricia-node decode
+    /// (~59k OwnTime in profiling) is wasted CPU - this variant warms the actual read path instead.</summary>
+    Flat,
     None,
 }

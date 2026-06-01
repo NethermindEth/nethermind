@@ -122,6 +122,15 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 return false;
             }
 
+            // Flat-native warmer: warm the actual read path (SnapshotBundle -> persistence ->
+            // RocksDB) the EVM will hit at commit, with no Patricia decode. This is the read
+            // GetSlot performs, so it primes the RocksDB block cache + flat lookup cheaply.
+            if (_config.SparseTrieWarmer == SparseTrieWarmerVariant.Flat)
+            {
+                _ = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
+                return true;
+            }
+
             ValueHash256 key = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(index, ref key);
 

@@ -361,6 +361,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             //     the prewarm-off benchmark (+69% without any warmer) shows the Legacy Patricia
             //     warmer remains load-bearing, so it stays the default.
             //   None â€” gated at DI by NoopTrieWarmer (never reaches this method).
+            // Flat-native warmer: warm the actual account read path (SnapshotBundle -> persistence
+            // -> RocksDB) the EVM will hit, with no Patricia decode. Mirrors the storage-side Flat
+            // variant in FlatStorageTree.WarmUpStorageTrie.
+            if (_configuration.SparseTrieWarmer == SparseTrieWarmerVariant.Flat)
+            {
+                _ = _snapshotBundle.GetAccount(address);
+                return true;
+            }
+
             if (_configuration.SparseTrieWarmer == SparseTrieWarmerVariant.SparseProof
                 && _proofReader is not null && _prevStateRoot is not null)
             {
