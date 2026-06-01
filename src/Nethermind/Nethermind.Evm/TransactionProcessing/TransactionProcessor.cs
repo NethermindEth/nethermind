@@ -231,12 +231,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
 
-            if (useSimpleTransferFastPath)
-            {
-                return ExecuteSimpleTransfer(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, recipient!, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee);
-            }
-
-            return ExecuteEvmTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee, preloadedCodeInfo, preloadedDelegationAddress);
+            return useSimpleTransferFastPath
+                ? ExecuteSimpleTransfer(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, recipient!, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee)
+                : ExecuteEvmTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee, preloadedCodeInfo, preloadedDelegationAddress);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -329,7 +326,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                     else if (count == 1)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.Single);
+                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First);
                     }
                 }
 
@@ -423,7 +420,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 ReportSimpleTransferAccess(tx, spec, tracer, recipient);
             }
 
-            return CompleteTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, recipient, in substate, in spentGas, premiumPerGas, blobBaseFee, statusCode);
+            UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, blobBaseFee, statusCode);
+            return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, recipient, in substate, spentGas, statusCode);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -494,29 +492,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-        }
-
-        [SkipLocalsInit]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private TransactionResult CompleteTransaction(
-            Transaction tx,
-            BlockHeader header,
-            IReleaseSpec spec,
-            ITxTracer tracer,
-            ExecutionOptions opts,
-            bool restore,
-            bool commit,
-            bool deleteCallerAccount,
-            in UInt256 senderReservedGasPayment,
-            Address executingAccount,
-            in TransactionSubstate substate,
-            in GasConsumed spentGas,
-            in UInt256 premiumPerGas,
-            in UInt256 blobBaseFee,
-            int statusCode)
-        {
-            UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, blobBaseFee, statusCode);
-            return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, executingAccount, in substate, spentGas, statusCode);
         }
 
         [SkipLocalsInit]
