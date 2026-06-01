@@ -44,6 +44,13 @@ namespace Nethermind.Network.Enr
 
         protected abstract void EncodeValue(Span<byte> buffer, ref int position);
 
+        protected static void EncodeInteger(Span<byte> buffer, ref int position, long value)
+        {
+            int length = Rlp.LengthOf(value);
+            Rlp.Encode(value, buffer.Slice(position, length));
+            position += length;
+        }
+
         public override int GetHashCode() => Key.GetHashCode();
 
         private static int EncodeAscii(Span<byte> buffer, int position, string value)

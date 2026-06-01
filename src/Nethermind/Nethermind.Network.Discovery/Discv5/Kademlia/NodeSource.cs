@@ -9,7 +9,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery.Discv5;
+namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 
 public class NodeSource(
     IKademlia<PublicKey, Node> kademlia,

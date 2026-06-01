@@ -19,6 +19,7 @@ using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Discovery.Discv5.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Serialization.Rlp;

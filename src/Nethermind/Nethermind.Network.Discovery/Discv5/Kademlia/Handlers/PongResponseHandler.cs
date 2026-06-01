@@ -4,7 +4,7 @@
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery.Discv5.Handlers;
+namespace Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 
 internal sealed class PongResponseHandler(Node receiver) : ResponseHandler<PongMsg>(MessageType.Pong)
 {

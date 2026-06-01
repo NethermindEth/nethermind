@@ -309,7 +309,9 @@ public class NodeRecord
         int contentLength = GetContentLengthWithSignature();
         position = Rlp.StartSequence(buffer, position, contentLength);
         position = Rlp.Encode(buffer, position, Signature!.Bytes);
-        position += Rlp.Encode(EnrSequence, buffer[position..]).Length; // a different sequence here (not RLP sequence)
+        int sequenceLength = Rlp.LengthOf(EnrSequence);
+        Rlp.Encode(EnrSequence, buffer.Slice(position, sequenceLength)); // a different sequence here (not RLP sequence)
+        position += sequenceLength;
         foreach ((_, EnrContentEntry contentEntry) in Entries)
         {
             contentEntry.Encode(buffer, ref position);

@@ -5,11 +5,11 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
-using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Packets;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery.Discv5;
+namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 
 /// <summary>
 /// Specifies the protocol-specific Kademlia services used by discv5.

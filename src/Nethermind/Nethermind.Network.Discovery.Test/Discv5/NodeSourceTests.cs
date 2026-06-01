@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Discovery.Discv5.Kademlia;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;

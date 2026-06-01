@@ -208,7 +208,7 @@ public class CodecTests
         using TalkReqMsg message = new([0, 0, 0, 3], "eth"u8.ToArray(), new byte[] { 1, 2, 3, 4 });
 
         using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
-        using Discv5Message decoded = MessageCodec.Decode(encoded);
+        using Discv5Message decoded = MessageCodec.DecodeCopied(encoded);
 
         Assert.That(decoded, Is.InstanceOf<TalkReqMsg>());
         TalkReqMsg decodedTalkReq = (TalkReqMsg)decoded;
@@ -223,12 +223,21 @@ public class CodecTests
         using TalkRespMsg message = new([0, 0, 0, 4], new byte[] { 5, 6, 7, 8 });
 
         using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
-        using Discv5Message decoded = MessageCodec.Decode(encoded);
+        using Discv5Message decoded = MessageCodec.DecodeCopied(encoded);
 
         Assert.That(decoded, Is.InstanceOf<TalkRespMsg>());
         TalkRespMsg decodedTalkResp = (TalkRespMsg)decoded;
         Assert.That(decodedTalkResp.RequestId, Is.EqualTo(message.RequestId));
         Assert.That(decodedTalkResp.Response.ToArray(), Is.EqualTo(message.Response.ToArray()));
+    }
+
+    [Test]
+    public void MessageCodec_Requires_Owned_Memory_For_Talk_Messages()
+    {
+        using TalkRespMsg message = new([0, 0, 0, 4], new byte[] { 5, 6, 7, 8 });
+        using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
+
+        Assert.That(() => MessageCodec.Decode(encoded), Throws.TypeOf<RlpException>());
     }
 
     [Test]

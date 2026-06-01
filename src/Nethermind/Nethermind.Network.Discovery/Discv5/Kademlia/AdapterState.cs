@@ -8,7 +8,7 @@ using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery.Discv5;
+namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 
 internal readonly record struct SessionKey(Hash256 NodeId, IPEndPoint Endpoint);
 
@@ -17,6 +17,8 @@ internal readonly record struct ChallengeKey(Hash256 NodeId, IPEndPoint Endpoint
 internal readonly record struct PendingNonceKey(IPEndPoint Endpoint, NonceKey Nonce);
 
 internal readonly record struct ResponseKey(Hash256 NodeId, RequestId RequestId, MessageType MessageType);
+
+internal readonly record struct SentChallengeExpiry(ChallengeKey Key, long CreatedAtMilliseconds);
 
 internal readonly record struct NonceKey(ulong Prefix, uint Suffix)
 {

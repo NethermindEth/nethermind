@@ -59,7 +59,7 @@ namespace Nethermind.Network.Discovery.Test
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
             using CancellationTokenSource cancellationSource = new(10_000);
-            IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
+            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _handler
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
             ValueTask<bool> readTask = enumerator.MoveNextAsync();
@@ -69,9 +69,9 @@ namespace Nethermind.Network.Discovery.Test
             _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
 
             Assert.That(await readTask, Is.True);
-            UdpReceiveResult forwardedPacket = enumerator.Current;
+            PooledUdpReceiveResult forwardedPacket = enumerator.Current;
 
-            Assert.That(forwardedPacket.Buffer, Is.EqualTo(data));
+            Assert.That(forwardedPacket.Buffer.ToArray(), Is.EqualTo(data));
             Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(from));
         }
 
@@ -85,7 +85,7 @@ namespace Nethermind.Network.Discovery.Test
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
             using CancellationTokenSource cancellationSource = new(10_000);
-            IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
+            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _handler
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
             ValueTask<bool> readTask = enumerator.MoveNextAsync();
@@ -98,7 +98,7 @@ namespace Nethermind.Network.Discovery.Test
             _handler.Close();
 
             Assert.That(await readTask, Is.True);
-            Assert.That(enumerator.Current.Buffer, Is.EqualTo(data));
+            Assert.That(enumerator.Current.Buffer.ToArray(), Is.EqualTo(data));
             Assert.That(await enumerator.MoveNextAsync(), Is.False);
         }
 
@@ -106,7 +106,7 @@ namespace Nethermind.Network.Discovery.Test
         public async Task ChannelInactiveStopsReader()
         {
             using CancellationTokenSource cancellationSource = new(10_000);
-            IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
+            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _handler
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
             ValueTask<bool> readTask = enumerator.MoveNextAsync();

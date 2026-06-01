@@ -8,14 +8,14 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
-using Nethermind.Network.Discovery.Discv5.Handlers;
+using Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Enr;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery.Discv5;
+namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 
 /// <summary>
 /// Maps discv5 FINDNODE distance requests onto the protocol-specific Kademlia table.
@@ -50,6 +50,8 @@ public class KademliaAdapter(
     private readonly ILogger _logger = logManager.GetClassLogger<KademliaAdapter>();
     private readonly LruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions");
     private readonly LruCache<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges, "discv5 sent challenges");
+    private readonly Queue<SentChallengeExpiry> _sentChallengeExpiries = new();
+    private readonly object _sentChallengeExpiriesLock = new();
     private long _lastSentChallengeTrimMilliseconds;
     private readonly LruCache<PendingNonceKey, PendingRequest> _pendingByNonce = new(MaxPendingRequests, "discv5 pending requests");
     private readonly LruCache<ResponseKey, IResponseHandler> _responseHandlers = new(MaxResponseHandlers, "discv5 response handlers");
@@ -135,7 +137,7 @@ public class KademliaAdapter(
     {
         try
         {
-            await foreach (UdpReceiveResult result in discoveryHandler.ReadMessagesAsync(token))
+            await foreach (PooledUdpReceiveResult result in discoveryHandler.ReadMessagesAsync(token))
             {
                 await HandlePacket(result, token);
             }
@@ -244,7 +246,7 @@ public class KademliaAdapter(
         await discoveryHandler.SendAsync(packet, receiver.Address);
     }
 
-    private async Task HandlePacket(UdpReceiveResult udpPacket, CancellationToken token)
+    private async Task HandlePacket(PooledUdpReceiveResult udpPacket, CancellationToken token)
     {
         if (!packetCodec.TryDecode(udpPacket.Buffer, out Packet packet))
         {
@@ -294,7 +296,7 @@ public class KademliaAdapter(
 
     private async Task HandleOrdinary(IPEndPoint endpoint, Packet packet, CancellationToken token)
     {
-        if (!PacketCodec.TryGetSourceNodeId(packet, out Hash256 nodeId))
+        if (!PacketCodec.TryGetSourceNodeId(packet, out Hash256? nodeId))
         {
             return;
         }
@@ -319,7 +321,7 @@ public class KademliaAdapter(
 
     private async Task HandleHandshake(IPEndPoint endpoint, Packet packet, CancellationToken token)
     {
-        if (!PacketCodec.TryGetSourceNodeId(packet, out Hash256 nodeId))
+        if (!PacketCodec.TryGetSourceNodeId(packet, out Hash256? nodeId))
         {
             return;
         }
@@ -337,24 +339,24 @@ public class KademliaAdapter(
             return;
         }
 
-        NodeRecord? messageRecord = knownRecord;
-        if (nodeRecord is not null)
-        {
-            if (!HasExpectedNodeId(nodeRecord, nodeId))
-            {
-                return;
-            }
-
-            if (IsAcceptableNodeRecord(nodeRecord, nodeId, IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(endpoint.Address)))
-            {
-                SetKnownRecord(nodeId, nodeRecord);
-                messageRecord = nodeRecord;
-            }
-        }
-
-        SetSession(new SessionKey(nodeId, endpoint), session);
         try
         {
+            NodeRecord? messageRecord = knownRecord;
+            if (nodeRecord is not null)
+            {
+                if (!HasExpectedNodeId(nodeRecord, nodeId))
+                {
+                    return;
+                }
+
+                if (IsAcceptableNodeRecord(nodeRecord, nodeId, IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(endpoint.Address)))
+                {
+                    SetKnownRecord(nodeId, nodeRecord);
+                    messageRecord = nodeRecord;
+                }
+            }
+
+            SetSession(new SessionKey(nodeId, endpoint), session);
             await HandleMessage(session.RemotePublicKey, endpoint, message, token, messageRecord);
         }
         finally
@@ -612,6 +614,10 @@ public class KademliaAdapter(
         long now = Environment.TickCount64;
         TryTrimExpiredChallenges(now);
         _sentChallenges.Set(challengeKey, new SentChallenge(challenge, packet, now));
+        lock (_sentChallengeExpiriesLock)
+        {
+            _sentChallengeExpiries.Enqueue(new SentChallengeExpiry(challengeKey, now));
+        }
     }
 
     private void TryTrimExpiredChallenges(long now)
@@ -628,11 +634,17 @@ public class KademliaAdapter(
 
     private void TrimExpiredChallenges(long now)
     {
-        foreach (KeyValuePair<ChallengeKey, SentChallenge> kv in _sentChallenges.ToArray())
+        lock (_sentChallengeExpiriesLock)
         {
-            if (IsExpired(kv.Value, now))
+            while (_sentChallengeExpiries.TryPeek(out SentChallengeExpiry expiry) &&
+                   now - expiry.CreatedAtMilliseconds > SentChallengeTtlMilliseconds)
             {
-                _sentChallenges.TryRemove(kv.Key, out _);
+                _sentChallengeExpiries.Dequeue();
+                if (_sentChallenges.TryGet(expiry.Key, out SentChallenge challenge) &&
+                    challenge.CreatedAtMilliseconds == expiry.CreatedAtMilliseconds)
+                {
+                    _sentChallenges.TryRemove(expiry.Key, out _);
+                }
             }
         }
     }

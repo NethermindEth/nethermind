@@ -16,9 +16,11 @@ using Nethermind.Db;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv5.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
+using Discv5KademliaModule = Nethermind.Network.Discovery.Discv5.Kademlia.KademliaModule;
 
 [assembly: InternalsVisibleTo("Nethermind.Network.Discovery.Test")]
 
@@ -63,7 +65,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
             builder.RegisterInstance(timestamper).As<ITimestamper>();
             builder
-                .AddModule(new KademliaModule(nodeKey.PublicKey, bootNodes))
+                .AddModule(new Discv5KademliaModule(nodeKey.PublicKey, bootNodes))
                 .AddSingleton<Services>();
 
             configureServices?.Invoke(builder);

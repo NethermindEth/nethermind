@@ -33,6 +33,6 @@ public class EthEntry(byte[] forkHash, long nextBlock) : EnrContentEntry<ForkId>
         position = Rlp.StartSequence(buffer, position, contentLength + 1);
         position = Rlp.StartSequence(buffer, position, contentLength);
         position = Rlp.Encode(buffer, position, Value.ForkHash);
-        position += Rlp.Encode((ulong)Value.NextBlock, buffer[position..]).Length;
+        EncodeInteger(buffer, ref position, Value.NextBlock);
     }
 }

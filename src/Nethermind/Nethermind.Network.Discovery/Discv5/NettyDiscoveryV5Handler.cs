@@ -9,8 +9,8 @@ using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Core.Collections;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
@@ -77,19 +77,28 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
         }
     }
 
-    public async IAsyncEnumerable<UdpReceiveResult> ReadMessagesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)
+    internal async IAsyncEnumerable<PooledUdpReceiveResult> ReadMessagesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)
     {
         Interlocked.Increment(ref _activeReaders);
         try
         {
             await foreach (DatagramPacket packet in _inboundQueue.Reader.ReadAllAsync(token))
             {
+                PooledUdpReceiveResult receiveResult = default;
+                bool hasReceiveResult = false;
                 try
                 {
-                    yield return new UdpReceiveResult(packet.Content.ReadAllBytesAsArray(), (IPEndPoint)packet.Sender);
+                    receiveResult = CreateReceiveResult(packet);
+                    hasReceiveResult = true;
+                    yield return receiveResult;
                 }
                 finally
                 {
+                    if (hasReceiveResult)
+                    {
+                        receiveResult.Dispose();
+                    }
+
                     ReferenceCountUtil.Release(packet);
                 }
             }
@@ -98,6 +107,26 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
         {
             Interlocked.Decrement(ref _activeReaders);
             ReleaseQueuedPackets();
+        }
+    }
+
+    private static PooledUdpReceiveResult CreateReceiveResult(DatagramPacket packet)
+    {
+        ArrayPoolSpan<byte> buffer = new(packet.Content.ReadableBytes);
+        try
+        {
+            Span<byte> bytes = buffer;
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = packet.Content.ReadByte();
+            }
+
+            return new PooledUdpReceiveResult((IPEndPoint)packet.Sender, buffer);
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
         }
     }
 

@@ -8,7 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Discovery.Discv5.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;

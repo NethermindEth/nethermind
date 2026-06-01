@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery.Discv5;
+namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 
 /// <summary>
 /// Adapts discv5 distance-based FINDNODE requests to the protocol-specific Kademlia routing table.

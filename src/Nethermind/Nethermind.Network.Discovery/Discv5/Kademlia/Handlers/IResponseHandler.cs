@@ -3,7 +3,7 @@
 
 using Nethermind.Network.Discovery.Discv5.Messages;
 
-namespace Nethermind.Network.Discovery.Discv5.Handlers;
+namespace Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 
 internal interface IResponseHandler
 {

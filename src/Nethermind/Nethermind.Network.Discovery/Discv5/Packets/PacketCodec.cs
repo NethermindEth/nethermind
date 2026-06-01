@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Collections;
@@ -118,6 +119,9 @@ public sealed class PacketCodec(
     internal bool TryDecode(byte[] packet, out Packet decoded)
         => TryDecode(packet.AsMemory(), _localNodeId, out decoded);
 
+    internal bool TryDecode(ReadOnlyMemory<byte> packet, out Packet decoded)
+        => TryDecode(packet, _localNodeId, out decoded);
+
     internal static bool TryDecode(byte[] packet, ReadOnlySpan<byte> localNodeId, out Packet decoded)
         => TryDecode(packet.AsMemory(), localNodeId, out decoded);
 
@@ -212,7 +216,7 @@ public sealed class PacketCodec(
                 packet.MessageAd.Span);
 
             ownerTransferred = true;
-            message = MessageCodec.Decode(plaintext.AsReadOnlyMemory(), plaintext);
+            message = MessageCodec.DecodeOwned(plaintext.AsReadOnlyMemory(), plaintext);
             return true;
         }
         catch (CryptographicException)
@@ -259,7 +263,7 @@ public sealed class PacketCodec(
         message = null!;
         nodeRecord = null;
 
-        if (!TryReadHandshakeAuthData(packet.AuthData, out Hash256 sourceNodeId, out ReadOnlyMemory<byte> idSignature, out CompressedPublicKey ephemeralPublicKey, out ReadOnlyMemory<byte> recordBytes))
+        if (!TryReadHandshakeAuthData(packet.AuthData, out Hash256? sourceNodeId, out ReadOnlyMemory<byte> idSignature, out CompressedPublicKey? ephemeralPublicKey, out ReadOnlyMemory<byte> recordBytes))
         {
             return false;
         }
@@ -305,9 +309,9 @@ public sealed class PacketCodec(
         return true;
     }
 
-    internal static bool TryGetSourceNodeId(Packet packet, out Hash256 sourceNodeId)
+    internal static bool TryGetSourceNodeId(Packet packet, [NotNullWhen(true)] out Hash256? sourceNodeId)
     {
-        sourceNodeId = null!;
+        sourceNodeId = null;
         switch (packet.Flag)
         {
             case PacketFlag.Ordinary when packet.AuthData.Length == NodeIdSize:
@@ -611,14 +615,14 @@ public sealed class PacketCodec(
 
     private static bool TryReadHandshakeAuthData(
         ReadOnlyMemory<byte> authDataMemory,
-        out Hash256 sourceNodeId,
+        [NotNullWhen(true)] out Hash256? sourceNodeId,
         out ReadOnlyMemory<byte> idSignature,
-        out CompressedPublicKey ephemeralPublicKey,
+        [NotNullWhen(true)] out CompressedPublicKey? ephemeralPublicKey,
         out ReadOnlyMemory<byte> record)
     {
-        sourceNodeId = null!;
+        sourceNodeId = null;
         idSignature = ReadOnlyMemory<byte>.Empty;
-        ephemeralPublicKey = null!;
+        ephemeralPublicKey = null;
         record = ReadOnlyMemory<byte>.Empty;
 
         ReadOnlySpan<byte> authData = authDataMemory.Span;
