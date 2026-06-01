@@ -49,11 +49,11 @@ public class ZkGasTxTracerTests
     {
         (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
 
-        // ADD = 0x01, multiplier = ZkGasSchedule.OpcodeMultipliers[0x01]
+        // ADD = 0x01, multiplier = ZkGasSchedule.OpcodeMultipliers.Span[0x01]
         tracer.StartOperation(0, Instruction.ADD, gas: 100, env: Env());
         tracer.ReportOperationRemainingGas(97); // 3 raw gas
 
-        ulong expected = 3UL * ZkGasSchedule.OpcodeMultipliers[0x01];
+        ulong expected = 3UL * ZkGasSchedule.OpcodeMultipliers.Span[0x01];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
@@ -71,8 +71,8 @@ public class ZkGasTxTracerTests
         tracer.StartOperation(1, Instruction.MUL, gas: 97, env: Env());
         tracer.ReportOperationRemainingGas(94); // 3 raw
 
-        ulong expected = 3UL * ZkGasSchedule.OpcodeMultipliers[0x02]   // MUL = 0x02
-                       + 3UL * ZkGasSchedule.OpcodeMultipliers[0x01];  // ADD = 0x01
+        ulong expected = 3UL * ZkGasSchedule.OpcodeMultipliers.Span[0x02]   // MUL = 0x02
+                       + 3UL * ZkGasSchedule.OpcodeMultipliers.Span[0x01];  // ADD = 0x01
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
@@ -99,7 +99,7 @@ public class ZkGasTxTracerTests
         tracer.ReportOperationRemainingGas(0);
 
         // ChargeOpcode multiplies rawGas by OpcodeMultipliers[opcode], so spawn estimate is also multiplied
-        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers[0xf1];
+        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers.Span[0xf1];
         ulong stopCharge = 0; // STOP raw=0 → 0
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(spawnCharge + stopCharge));
     }
@@ -121,7 +121,7 @@ public class ZkGasTxTracerTests
         tracer.StartOperation(1, Instruction.STOP, gas: 0, env: Env());
         tracer.ReportOperationRemainingGas(0);
 
-        ulong expected = 3_000UL * ZkGasSchedule.OpcodeMultipliers[0xf1];
+        ulong expected = 3_000UL * ZkGasSchedule.OpcodeMultipliers.Span[0xf1];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
@@ -148,7 +148,7 @@ public class ZkGasTxTracerTests
         tracer.StartOperation(1, Instruction.STOP, gas: 0, env: Env());
         tracer.ReportOperationRemainingGas(0);
 
-        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCreate * ZkGasSchedule.OpcodeMultipliers[0xf0];
+        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCreate * ZkGasSchedule.OpcodeMultipliers.Span[0xf0];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(spawnCharge));
     }
 
@@ -170,7 +170,7 @@ public class ZkGasTxTracerTests
         tracer.StartOperation(1, Instruction.STOP, gas: 0, env: Env());
         tracer.ReportOperationRemainingGas(0);
 
-        ulong rawCharge = 32UL * ZkGasSchedule.OpcodeMultipliers[0xf0];
+        ulong rawCharge = 32UL * ZkGasSchedule.OpcodeMultipliers.Span[0xf0];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(rawCharge));
     }
 
@@ -190,7 +190,7 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
         tracer.ReportActionEnd(10_000, ReadOnlyMemory<byte>.Empty);
 
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers[0xf1]));
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers.Span[0xf1]));
     }
 
     /// <summary>
@@ -209,7 +209,7 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CREATE);
         tracer.ReportActionEnd(30_000, TestItem.AddressC, ReadOnlyMemory<byte>.Empty);
 
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCreate * ZkGasSchedule.OpcodeMultipliers[0xf0]));
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCreate * ZkGasSchedule.OpcodeMultipliers.Span[0xf0]));
     }
 
     /// <summary>
@@ -227,7 +227,7 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
         tracer.ReportActionError(EvmExceptionType.OutOfGas);
 
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers[0xf1]));
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers.Span[0xf1]));
     }
 
     /// <summary>
@@ -244,7 +244,7 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
         tracer.ReportActionRevert(0, ReadOnlyMemory<byte>.Empty);
 
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers[0xf1]));
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers.Span[0xf1]));
     }
 
     // ── precompile charging ───────────────────────────────────────────────────
@@ -264,7 +264,7 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL, isPrecompileCall: true);
         tracer.ReportActionEnd(400, ReadOnlyMemory<byte>.Empty); // 600 gas used
 
-        ulong expected = 600UL * ZkGasSchedule.PrecompileMultipliers[0x01]; // ecrecover = address byte 1
+        ulong expected = 600UL * ZkGasSchedule.PrecompileMultipliers.Span[0x01]; // ecrecover = address byte 1
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
@@ -284,7 +284,7 @@ public class ZkGasTxTracerTests
         tracer.ReportActionError(EvmExceptionType.PrecompileFailure);
 
         // gasStart=800, gasRemaining=0 → gasUsed=800
-        ulong expected = 800UL * ZkGasSchedule.PrecompileMultipliers[0x01];
+        ulong expected = 800UL * ZkGasSchedule.PrecompileMultipliers.Span[0x01];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
@@ -301,7 +301,7 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL, isPrecompileCall: true);
         tracer.ReportActionRevert(300, ReadOnlyMemory<byte>.Empty); // 700 gas used
 
-        ulong expected = 700UL * ZkGasSchedule.PrecompileMultipliers[0x02]; // sha256 = byte 2
+        ulong expected = 700UL * ZkGasSchedule.PrecompileMultipliers.Span[0x02]; // sha256 = byte 2
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
@@ -324,8 +324,8 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL, isPrecompileCall: true);
         tracer.ReportActionEnd(8_500, ReadOnlyMemory<byte>.Empty); // precompile used 500 gas
 
-        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers[0xf1];
-        ulong precompileCharge = 500UL * ZkGasSchedule.PrecompileMultipliers[0x04]; // identity = byte 4
+        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers.Span[0xf1];
+        ulong precompileCharge = 500UL * ZkGasSchedule.PrecompileMultipliers.Span[0x04]; // identity = byte 4
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(spawnCharge + precompileCharge));
     }
 

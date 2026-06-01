@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using Nethermind.Core.Exceptions;
 using Nethermind.Taiko.ZkGas;
 using NUnit.Framework;
 
 namespace Nethermind.Taiko.Test.ZkGas;
 
 /// <summary>
-/// Pins the per-network Unzen ZK gas block limit and the chain ids it keys off.
-/// Mirrors <c>test_taiko_genesis_chain_ids_are_pinned</c> /
-/// <c>schedule_for_returns_masaya_schedule</c> in alethia-reth's PR
-/// <see href="https://github.com/taikoxyz/alethia-reth/pull/170"/>.
+/// Pins the Unzen ZK gas block limits and chain ids, and covers
+/// <see cref="ZkGasSchedule.BuildOverriddenTable"/> — the chainspec-driven multiplier resolution
+/// that replaces the former chain-id table dispatch. A network that finalized Unzen under a
+/// different schedule (e.g. Masaya) pins it in its chainspec, not in code.
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
@@ -47,76 +49,46 @@ public class ZkGasScheduleTests
         Assert.That(meter.BlockZkGasLimit, Is.EqualTo(ZkGasSchedule.MasayaBlockZkGasLimit));
     }
 
-    // ── per-network multiplier dispatch (taiko-mono#21720 / alethia-reth#187) ─
+    // ── chainspec-driven multiplier resolution (taiko-mono#21720 / alethia-reth#187) ─
 
-    [TestCase(ZkGasSchedule.TaikoMainnetChainId, TestName = "Mainnet")]
-    [TestCase(ZkGasSchedule.TaikoDevnetChainId, TestName = "Devnet")]
-    [TestCase(ZkGasSchedule.TaikoHoodiChainId, TestName = "Hoodi")]
-    [TestCase(0UL, TestName = "Unknown chain id falls through to default")]
-    public void OpcodeMultipliersFor_returns_recalibrated_default_for_non_masaya_chains(ulong chainId)
+    [TestCase(true, TestName = "null override")]
+    [TestCase(false, TestName = "empty override")]
+    public void BuildOverriddenTable_returns_defaults_when_no_override(bool useNull)
     {
-        ReadOnlySpan<ushort> resolved = ZkGasSchedule.OpcodeMultipliersFor(chainId).Span;
-        Assert.That(resolved[0x20], Is.EqualTo((ushort)31), "keccak256 recalibrated");
-        Assert.That(resolved[0xf1], Is.EqualTo((ushort)20), "call recalibrated");
-        Assert.That(resolved[0x01], Is.EqualTo((ushort)19), "add recalibrated");
-    }
-
-    [TestCase(ZkGasSchedule.TaikoMainnetChainId, TestName = "Mainnet")]
-    [TestCase(ZkGasSchedule.TaikoDevnetChainId, TestName = "Devnet")]
-    [TestCase(ZkGasSchedule.TaikoHoodiChainId, TestName = "Hoodi")]
-    [TestCase(0UL, TestName = "Unknown chain id falls through to default")]
-    public void PrecompileMultipliersFor_returns_recalibrated_default_for_non_masaya_chains(ulong chainId)
-    {
-        ReadOnlySpan<ushort> resolved = ZkGasSchedule.PrecompileMultipliersFor(chainId).Span;
-        Assert.That(resolved[0x05], Is.EqualTo((ushort)923), "modexp recalibrated");
-        Assert.That(resolved[0x01], Is.EqualTo((ushort)47), "ecrecover recalibrated");
-        Assert.That(resolved[0x04], Is.EqualTo((ushort)6), "identity recalibrated");
+        Dictionary<long, long>? overrides = useNull ? null : [];
+        ReadOnlyMemory<ushort> resolved = ZkGasSchedule.BuildOverriddenTable(overrides, ZkGasSchedule.OpcodeMultipliers);
+        Assert.That(resolved.Span.SequenceEqual(ZkGasSchedule.OpcodeMultipliers.Span), Is.True);
     }
 
     [Test]
-    public void OpcodeMultipliersFor_Masaya_returns_frozen_table()
+    public void BuildOverriddenTable_applies_listed_entries_and_failsafe_fills_the_rest()
     {
-        ReadOnlySpan<ushort> resolved = ZkGasSchedule.OpcodeMultipliersFor(ZkGasSchedule.TaikoMasayaChainId).Span;
-        Assert.That(resolved[0x20], Is.EqualTo((ushort)85), "keccak256 stays frozen on Masaya");
-        Assert.That(resolved[0xf1], Is.EqualTo((ushort)25), "call stays frozen on Masaya");
-        Assert.That(resolved[0x01], Is.EqualTo((ushort)12), "add stays frozen on Masaya");
+        // A Masaya-style pin: list only the entries the network uses; everything unlisted is fail-safe.
+        Dictionary<long, long> frozen = new() { [0x20] = 85, [0xf1] = 25 };
+        ReadOnlyMemory<ushort> resolved = ZkGasSchedule.BuildOverriddenTable(frozen, ZkGasSchedule.OpcodeMultipliers);
+
+        Assert.That(resolved.Span[0x20], Is.EqualTo((ushort)85), "listed entry is applied");
+        Assert.That(resolved.Span[0xf1], Is.EqualTo((ushort)25), "listed entry is applied");
+        Assert.That(resolved.Span[0x01], Is.EqualTo(ZkGasSchedule.FailsafeMultiplier), "unlisted entry is fail-safe");
+        Assert.That(resolved.Span[0x20], Is.Not.EqualTo(ZkGasSchedule.OpcodeMultipliers.Span[0x20]),
+            "override diverges from the recalibrated default it replaces");
     }
 
-    [Test]
-    public void PrecompileMultipliersFor_Masaya_returns_frozen_table()
+    [TestCase(-1L, TestName = "negative index")]
+    [TestCase(256L, TestName = "index past 0xff")]
+    public void BuildOverriddenTable_rejects_out_of_range_index(long index)
     {
-        ReadOnlySpan<ushort> resolved = ZkGasSchedule.PrecompileMultipliersFor(ZkGasSchedule.TaikoMasayaChainId).Span;
-        Assert.That(resolved[0x05], Is.EqualTo((ushort)1363), "modexp stays frozen on Masaya");
-        Assert.That(resolved[0x01], Is.EqualTo((ushort)81), "ecrecover stays frozen on Masaya");
-        Assert.That(resolved[0x04], Is.EqualTo((ushort)2), "identity stays frozen on Masaya");
+        Dictionary<long, long> overrides = new() { [index] = 1 };
+        Assert.That(() => ZkGasSchedule.BuildOverriddenTable(overrides, ZkGasSchedule.OpcodeMultipliers),
+            Throws.TypeOf<InvalidConfigurationException>());
     }
 
-    [Test]
-    public void Default_and_Masaya_tables_diverge_on_a_recalibrated_entry()
+    [TestCase(-1L, TestName = "negative multiplier")]
+    [TestCase(65536L, TestName = "multiplier past ushort.MaxValue")]
+    public void BuildOverriddenTable_rejects_out_of_range_multiplier(long multiplier)
     {
-        // Behavioural inequality matters: if the resolver were ever bugged to return the
-        // default table for Masaya, callers would silently bill keccak256 at 31 instead of 85
-        // and Masaya consensus would diverge. Spot-check a known-recalibrated entry on each
-        // table to guard against that drift.
-        ReadOnlySpan<ushort> defaultOpcodes = ZkGasSchedule.OpcodeMultipliersFor(ZkGasSchedule.TaikoDevnetChainId).Span;
-        ReadOnlySpan<ushort> masayaOpcodes = ZkGasSchedule.OpcodeMultipliersFor(ZkGasSchedule.TaikoMasayaChainId).Span;
-        Assert.That(masayaOpcodes[0x20], Is.Not.EqualTo(defaultOpcodes[0x20]),
-            "keccak256 must differ between default (31) and Masaya (85)");
-
-        ReadOnlySpan<ushort> defaultPrecompiles = ZkGasSchedule.PrecompileMultipliersFor(ZkGasSchedule.TaikoDevnetChainId).Span;
-        ReadOnlySpan<ushort> masayaPrecompiles = ZkGasSchedule.PrecompileMultipliersFor(ZkGasSchedule.TaikoMasayaChainId).Span;
-        Assert.That(masayaPrecompiles[0x05], Is.Not.EqualTo(defaultPrecompiles[0x05]),
-            "modexp must differ between default (923) and Masaya (1363)");
-    }
-
-    [TestCase(ZkGasSchedule.TaikoMainnetChainId, TestName = "Mainnet")]
-    [TestCase(ZkGasSchedule.TaikoDevnetChainId, TestName = "Devnet")]
-    [TestCase(ZkGasSchedule.TaikoHoodiChainId, TestName = "Hoodi")]
-    public void Meter_With_NonMasaya_ChainId_Uses_Recalibrated_Tables(ulong chainId)
-    {
-        ZkGasMeter meter = new(chainId: chainId);
-        meter.ChargeOpcode(0x20, 1);
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.OpcodeMultipliers[0x20]),
-            $"chainId {chainId} must use the recalibrated keccak256 multiplier");
+        Dictionary<long, long> overrides = new() { [0x01] = multiplier };
+        Assert.That(() => ZkGasSchedule.BuildOverriddenTable(overrides, ZkGasSchedule.OpcodeMultipliers),
+            Throws.TypeOf<InvalidConfigurationException>());
     }
 }

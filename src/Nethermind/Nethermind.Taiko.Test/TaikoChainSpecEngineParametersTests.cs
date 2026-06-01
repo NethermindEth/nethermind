@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using Nethermind.Serialization.Json;
 using Nethermind.Taiko.TaikoSpec;
+using Nethermind.Taiko.ZkGas;
 using NUnit.Framework;
 
 namespace Nethermind.Taiko.Test;
@@ -91,5 +94,33 @@ public class TaikoChainSpecEngineParametersTests
 
         Assert.That(timestamps, Is.Empty,
             "RIP-7728 and L1StaticCall at genesis must be filtered too");
+    }
+
+    [Test]
+    public void Unzen_multiplier_overrides_deserialize_from_chainspec_and_resolve()
+    {
+        // The engine.Taiko params block a network (e.g. Masaya) uses to pin its Unzen schedule
+        // entirely from chainspec — hex or decimal keys/values both parse. This is the path that
+        // replaced chain-id-based table selection in code.
+        const string json = @"{
+            ""unzenTimestamp"": ""0x1"",
+            ""unzenOpcodeZkGasMultipliers"": { ""0x20"": ""0x55"", ""0xf1"": 25 },
+            ""unzenPrecompileZkGasMultipliers"": { ""0x05"": 1363 }
+        }";
+
+        TaikoChainSpecEngineParameters parameters =
+            new EthereumJsonSerializer().Deserialize<TaikoChainSpecEngineParameters>(json);
+
+        Assert.That(parameters.UnzenOpcodeZkGasMultipliers, Is.Not.Null);
+        Assert.That(parameters.UnzenOpcodeZkGasMultipliers![0x20], Is.EqualTo(85L), "hex value parses");
+        Assert.That(parameters.UnzenOpcodeZkGasMultipliers[0xf1], Is.EqualTo(25L), "decimal value parses");
+        Assert.That(parameters.UnzenPrecompileZkGasMultipliers![0x05], Is.EqualTo(1363L));
+
+        // The resolved table the spec provider hands to the meter.
+        ReadOnlyMemory<ushort> opcodes =
+            ZkGasSchedule.BuildOverriddenTable(parameters.UnzenOpcodeZkGasMultipliers, ZkGasSchedule.OpcodeMultipliers);
+        Assert.That(opcodes.Span[0x20], Is.EqualTo((ushort)85), "frozen keccak256 from chainspec");
+        Assert.That(opcodes.Span[0xf1], Is.EqualTo((ushort)25), "frozen call from chainspec");
+        Assert.That(opcodes.Span[0x01], Is.EqualTo(ZkGasSchedule.FailsafeMultiplier), "unlisted opcode is fail-safe");
     }
 }

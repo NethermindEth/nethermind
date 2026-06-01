@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Taiko.ZkGas;
 using NUnit.Framework;
 
@@ -20,58 +21,56 @@ public class ZkGasMeterTests
     public void OpcodeMultipliers_Spot_Check_Spec_Values()
     {
         // Recalibrated default schedule (taiko-mono#21720 / alethia-reth#187).
-        Assert.That(ZkGasSchedule.OpcodeMultipliers[0x20], Is.EqualTo((ushort)31)); // keccak256
-        Assert.That(ZkGasSchedule.OpcodeMultipliers[0xf1], Is.EqualTo((ushort)20)); // call
-        Assert.That(ZkGasSchedule.OpcodeMultipliers[0xfe], Is.EqualTo((ushort)0));  // invalid (terminal)
-        Assert.That(ZkGasSchedule.OpcodeMultipliers[0xac], Is.EqualTo(ushort.MaxValue)); // unlisted -> failsafe
+        Assert.That(ZkGasSchedule.OpcodeMultipliers.Span[0x20], Is.EqualTo((ushort)31)); // keccak256
+        Assert.That(ZkGasSchedule.OpcodeMultipliers.Span[0xf1], Is.EqualTo((ushort)20)); // call
+        Assert.That(ZkGasSchedule.OpcodeMultipliers.Span[0xfe], Is.EqualTo((ushort)0));  // invalid (terminal)
+        Assert.That(ZkGasSchedule.OpcodeMultipliers.Span[0xac], Is.EqualTo(ushort.MaxValue)); // unlisted -> failsafe
     }
 
     [Test]
     public void PrecompileMultipliers_Spot_Check_Spec_Values()
     {
         // Recalibrated default schedule (taiko-mono#21720 / alethia-reth#187).
-        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x05], Is.EqualTo((ushort)923)); // modexp
-        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x01], Is.EqualTo((ushort)47));  // ecrecover
-        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x04], Is.EqualTo((ushort)6));   // identity
-        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x14], Is.EqualTo(ushort.MaxValue)); // unlisted -> failsafe
+        Assert.That(ZkGasSchedule.PrecompileMultipliers.Span[0x05], Is.EqualTo((ushort)923)); // modexp
+        Assert.That(ZkGasSchedule.PrecompileMultipliers.Span[0x01], Is.EqualTo((ushort)47));  // ecrecover
+        Assert.That(ZkGasSchedule.PrecompileMultipliers.Span[0x04], Is.EqualTo((ushort)6));   // identity
+        Assert.That(ZkGasSchedule.PrecompileMultipliers.Span[0x14], Is.EqualTo(ushort.MaxValue)); // unlisted -> failsafe
     }
 
     [Test]
-    public void MasayaOpcodeMultipliers_Are_Frozen_At_Pre_Recalibration_Values()
+    public void Meter_charges_using_supplied_override_table()
     {
-        // The recalibration changes the default tables but Masaya stays frozen at the
-        // pre-recalibration values to preserve consensus on its already-finalized Unzen blocks.
-        // Spot-check: keccak256 went 85 -> 31 (default), Masaya stays at 85;
-        // modexp went 1363 -> 923 (default), Masaya stays at 1363.
-        Assert.That(ZkGasSchedule.MasayaOpcodeMultipliers[0x20], Is.EqualTo((ushort)85));
-        Assert.That(ZkGasSchedule.MasayaOpcodeMultipliers[0xf1], Is.EqualTo((ushort)25));
-        Assert.That(ZkGasSchedule.MasayaPrecompileMultipliers[0x05], Is.EqualTo((ushort)1363));
-        Assert.That(ZkGasSchedule.MasayaPrecompileMultipliers[0x01], Is.EqualTo((ushort)81));
-        Assert.That(ZkGasSchedule.MasayaPrecompileMultipliers[0x04], Is.EqualTo((ushort)2));
+        // A meter built with an explicit table (as the chainspec-driven path supplies) charges
+        // against that table, not the recalibrated default. This is what lets a network such as
+        // Masaya pin its own frozen schedule purely from chainspec, with no chain-id branching in code.
+        ushort[] frozenOpcodes = new ushort[256];
+        frozenOpcodes.AsSpan().Fill(ZkGasSchedule.FailsafeMultiplier);
+        frozenOpcodes[0x20] = 85; // pre-recalibration keccak256 (default is 31)
 
-        // Guardrails: the two tables must differ. If they ever realign, that's either a
-        // mistaken revert of the recalibration or a Masaya-policy change that needs review.
-        Assert.That(
-            ZkGasSchedule.MasayaOpcodeMultipliers[0x20],
-            Is.Not.EqualTo(ZkGasSchedule.OpcodeMultipliers[0x20]));
-        Assert.That(
-            ZkGasSchedule.MasayaPrecompileMultipliers[0x05],
-            Is.Not.EqualTo(ZkGasSchedule.PrecompileMultipliers[0x05]));
-    }
-
-    [Test]
-    public void Meter_With_Masaya_ChainId_Uses_Frozen_Tables()
-    {
-        ZkGasMeter masayaMeter = new(chainId: ZkGasSchedule.TaikoMasayaChainId);
+        ZkGasMeter overrideMeter = new(opcodeMultipliers: frozenOpcodes);
         ZkGasMeter defaultMeter = new();
 
-        // ChargeOpcode(0x20, 1) gives 1 * multiplier per table.
-        masayaMeter.ChargeOpcode(0x20, 1);
+        overrideMeter.ChargeOpcode(0x20, 1);
         defaultMeter.ChargeOpcode(0x20, 1);
 
-        Assert.That(masayaMeter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.MasayaOpcodeMultipliers[0x20]));
-        Assert.That(defaultMeter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.OpcodeMultipliers[0x20]));
-        Assert.That(masayaMeter.TxZkGasUsed, Is.Not.EqualTo(defaultMeter.TxZkGasUsed));
+        Assert.That(overrideMeter.TxZkGasUsed, Is.EqualTo(85UL), "override table is used");
+        Assert.That(defaultMeter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.OpcodeMultipliers.Span[0x20]),
+            "default meter still uses the recalibrated table");
+        Assert.That(overrideMeter.TxZkGasUsed, Is.Not.EqualTo(defaultMeter.TxZkGasUsed));
+    }
+
+    [Test]
+    public void Meter_with_empty_override_falls_back_to_recalibrated_default()
+    {
+        // Empty tables (the no-override sentinel passed through from a spec with no chainspec
+        // override) must resolve to the recalibrated default rather than charging nothing.
+        ZkGasMeter meter = new(opcodeMultipliers: default, precompileMultipliers: default);
+
+        meter.ChargeOpcode(0x20, 1);
+        meter.ChargePrecompile(0x05, 1);
+
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(
+            (ulong)ZkGasSchedule.OpcodeMultipliers.Span[0x20] + ZkGasSchedule.PrecompileMultipliers.Span[0x05]));
     }
 
     [Test]
@@ -95,7 +94,7 @@ public class ZkGasMeterTests
         meter.ChargeOpcode(addOpcode, 3);
         meter.CommitTransaction();
 
-        ulong expected = 3UL * ZkGasSchedule.OpcodeMultipliers[addOpcode];
+        ulong expected = 3UL * ZkGasSchedule.OpcodeMultipliers.Span[addOpcode];
         Assert.That(meter.BlockZkGasUsed, Is.EqualTo(expected));
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(0UL));
     }
@@ -193,7 +192,7 @@ public class ZkGasMeterTests
     {
         ZkGasMeter meter = new();
         byte opcode = 0x01; // add, multiplier = 19 (recalibrated)
-        ulong overflowRawGas = ulong.MaxValue / ZkGasSchedule.OpcodeMultipliers[opcode] + 1;
+        ulong overflowRawGas = ulong.MaxValue / ZkGasSchedule.OpcodeMultipliers.Span[opcode] + 1;
 
         bool result = meter.ChargeOpcode(opcode, overflowRawGas);
         Assert.That(result, Is.False);
@@ -205,7 +204,7 @@ public class ZkGasMeterTests
     {
         ZkGasMeter meter = new();
         byte precompile = 0x01; // ecrecover, multiplier = 47 (recalibrated)
-        ulong overflowRawGas = ulong.MaxValue / ZkGasSchedule.PrecompileMultipliers[precompile] + 1;
+        ulong overflowRawGas = ulong.MaxValue / ZkGasSchedule.PrecompileMultipliers.Span[precompile] + 1;
 
         bool result = meter.ChargePrecompile(precompile, overflowRawGas);
         Assert.That(result, Is.False);

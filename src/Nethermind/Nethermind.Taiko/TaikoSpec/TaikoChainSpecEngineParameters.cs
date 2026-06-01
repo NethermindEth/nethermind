@@ -17,6 +17,23 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? UnzenTimestamp { get; set; }
     public ulong? UnzenBlockZkGasLimit { get; set; }
     public ulong? UnzenTxIntrinsicZkGas { get; set; }
+
+    /// <summary>
+    /// Optional per-opcode Unzen ZK gas multiplier table, keyed by opcode byte (0x00–0xff) with the
+    /// multiplier as value. When set, it fully replaces the recalibrated default opcode table: any
+    /// opcode not listed is charged at the fail-safe multiplier (<see cref="ushort.MaxValue"/>).
+    /// Networks that finalized Unzen blocks under an earlier schedule (e.g. Masaya) pin it here to
+    /// keep consensus on that history, instead of the schedule being selected by chain id in code.
+    /// </summary>
+    public Dictionary<long, long>? UnzenOpcodeZkGasMultipliers { get; set; }
+
+    /// <summary>
+    /// Optional per-precompile Unzen ZK gas multiplier table, keyed by the precompile address low
+    /// byte with the multiplier as value. Same override semantics as
+    /// <see cref="UnzenOpcodeZkGasMultipliers"/>.
+    /// </summary>
+    public Dictionary<long, long>? UnzenPrecompileZkGasMultipliers { get; set; }
+
     public bool? UseSurgeGasPriceOracle { get; set; }
     public ulong? Rip7728TransitionTimestamp { get; set; }
     public ulong? L1StaticCallTransitionTimestamp { get; set; }

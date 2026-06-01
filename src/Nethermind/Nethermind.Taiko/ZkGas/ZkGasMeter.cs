@@ -11,21 +11,23 @@ namespace Nethermind.Taiko.ZkGas;
 /// </summary>
 /// <param name="blockZkGasLimit">Maximum ZK gas permitted within a single block.</param>
 /// <param name="txIntrinsicZkGas">Flat ZK gas charged once per transaction before any opcode runs.</param>
-/// <param name="chainId">Chain id used to dispatch between the recalibrated default multiplier
-/// tables and the Masaya-frozen tables (see <see cref="ZkGasSchedule.OpcodeMultipliersFor"/>).
-/// Defaults to 0 — i.e. the recalibrated default schedule used by Devnet / Hoodi / Mainnet.</param>
+/// <param name="opcodeMultipliers">Per-opcode multiplier table charged against, indexed by opcode byte.
+/// Empty selects the recalibrated <see cref="ZkGasSchedule.OpcodeMultipliers"/> default.</param>
+/// <param name="precompileMultipliers">Per-precompile multiplier table, indexed by address low byte.
+/// Empty selects the recalibrated <see cref="ZkGasSchedule.PrecompileMultipliers"/> default.</param>
 public class ZkGasMeter(
     ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
     ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas,
-    ulong chainId = 0)
+    ReadOnlyMemory<ushort> opcodeMultipliers = default,
+    ReadOnlyMemory<ushort> precompileMultipliers = default)
 {
     /// <summary>Per-block ZK gas ceiling captured at construction time.</summary>
     private readonly ulong _blockZkGasLimit = blockZkGasLimit;
 
     private readonly ulong _txIntrinsicZkGas = txIntrinsicZkGas;
 
-    private readonly ReadOnlyMemory<ushort> _opcodeMultipliers = ZkGasSchedule.OpcodeMultipliersFor(chainId);
-    private readonly ReadOnlyMemory<ushort> _precompileMultipliers = ZkGasSchedule.PrecompileMultipliersFor(chainId);
+    private readonly ReadOnlyMemory<ushort> _opcodeMultipliers = opcodeMultipliers.IsEmpty ? ZkGasSchedule.OpcodeMultipliers : opcodeMultipliers;
+    private readonly ReadOnlyMemory<ushort> _precompileMultipliers = precompileMultipliers.IsEmpty ? ZkGasSchedule.PrecompileMultipliers : precompileMultipliers;
 
     /// <summary>Finalized ZK gas accumulated from fully committed transactions.</summary>
     private ulong _blockZkGasUsed;

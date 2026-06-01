@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using Nethermind.Core;
@@ -17,6 +18,20 @@ public interface ITaikoReleaseSpec : IReleaseSpec
     public bool IsUnzenEnabled { get; }
     public ulong UnzenBlockZkGasLimit { get; }
     public ulong UnzenTxIntrinsicZkGas { get; }
+
+    /// <summary>
+    /// Resolved 256-entry per-opcode ZK gas multiplier table for Unzen, indexed by opcode byte.
+    /// Holds the recalibrated default schedule unless the chainspec overrides it via
+    /// <c>unzenOpcodeZkGasMultipliers</c>.
+    /// </summary>
+    ReadOnlyMemory<ushort> UnzenOpcodeZkGasMultipliers { get; }
+
+    /// <summary>
+    /// Resolved 256-entry per-precompile ZK gas multiplier table for Unzen, indexed by the
+    /// precompile address low byte. Overridable via <c>unzenPrecompileZkGasMultipliers</c>.
+    /// </summary>
+    ReadOnlyMemory<ushort> UnzenPrecompileZkGasMultipliers { get; }
+
     public bool UseSurgeGasPriceOracle { get; }
     public Address TaikoL2Address { get; }
     public bool IsRip7728Enabled { get; }

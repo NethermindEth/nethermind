@@ -29,6 +29,8 @@ public class TaikoChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.IsUnzenEnabled = (chainSpecEngineParameters.UnzenTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
         releaseSpec.UnzenBlockZkGasLimit = chainSpecEngineParameters.UnzenBlockZkGasLimit ?? ZkGasSchedule.BlockZkGasLimit;
         releaseSpec.UnzenTxIntrinsicZkGas = chainSpecEngineParameters.UnzenTxIntrinsicZkGas ?? ZkGasSchedule.TxIntrinsicZkGas;
+        releaseSpec.UnzenOpcodeZkGasMultipliers = ZkGasSchedule.BuildOverriddenTable(chainSpecEngineParameters.UnzenOpcodeZkGasMultipliers, ZkGasSchedule.OpcodeMultipliers);
+        releaseSpec.UnzenPrecompileZkGasMultipliers = ZkGasSchedule.BuildOverriddenTable(chainSpecEngineParameters.UnzenPrecompileZkGasMultipliers, ZkGasSchedule.PrecompileMultipliers);
         releaseSpec.UseSurgeGasPriceOracle = chainSpecEngineParameters.UseSurgeGasPriceOracle ?? false;
         releaseSpec.TaikoL2Address = chainSpecEngineParameters.TaikoL2Address;
         releaseSpec.IsRip7728Enabled = (chainSpecEngineParameters.Rip7728TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
