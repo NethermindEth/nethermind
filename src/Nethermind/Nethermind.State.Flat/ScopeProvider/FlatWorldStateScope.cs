@@ -229,6 +229,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 _sparseComputedRoot = _sparseRootComputer.ComputeStateRoot();
                 sw.Stop();
 
+                // Observability (cheap, set once per block): root compute time + proof activity.
+                Metrics.SparseRootComputeTime.Observe(sw.ElapsedMilliseconds);
+                Metrics.SparseProofNodesRead += _sparseRootComputer.LastProofNodeCount;
+                if (_sparseRootComputer.LastRetryCount > 0)
+                    Metrics.SparseProofRetries += _sparseRootComputer.LastRetryCount;
+
                 if (!_sparseIsAuthoritative)
                 {
                     // Validation mode: run Patricia too and compare
@@ -537,8 +543,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     // natural working-set high-water is visible in benchmark/operator logs (where
                     // Debug is usually off) without per-block spam â€” this is the number that tells
                     // you how to size SparseTrieMaxRetainedStorageTries.
+                    if (evictedStorageTries > 0) Metrics.SparseEvictedStorageTries += evictedStorageTries;
+
                     ILogger sizeLogger = _logManager.GetClassLogger<FlatWorldStateScope>();
                     bool sample = blockNumber % 250 == 0;
+                    // Refresh the cross-block cache gauges once per sample (cheap arena-count walk;
+                    // avoid doing it every block). These let operators watch retained memory grow
+                    // and size SparseTrieMaxRetainedStorageTries against a budget.
+                    if (sample)
+                    {
+                        SparseStateTrie.CacheSize gauge = _sparseStateTrie.GetCacheSize();
+                        Metrics.SparseRetainedStorageTries = gauge.StorageTrieCount;
+                        Metrics.SparseAccountArenaNodes = gauge.AccountArenaNodes;
+                        Metrics.SparseStorageArenaNodes = gauge.StorageArenaNodes;
+                    }
                     if (sizeLogger.IsDebug || (sample && sizeLogger.IsInfo))
                     {
                         SparseStateTrie.CacheSize cs = _sparseStateTrie.GetCacheSize();
