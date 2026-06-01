@@ -134,10 +134,10 @@ public partial class BlockAccessListManager(
             // Build the column-oriented validation index once per block; per-tx ChangesEqual
             // then collapses to row-aligned span compares. Tally suggested chargeable storage
             // reads here so the per-tx surplus-reads gas check avoids re-walking the BAL.
-            // Only the parallel path feeds the generated side (via RegisterGeneratedSlice in
-            // MergeAndReturnBal); the sequential NextTransaction merges directly into
-            // GeneratedBlockAccessList, so the fast path never fires there — skip the build.
-            if (ParallelExecutionEnabled && suggestedBlock.BlockAccessList is not null)
+            // Built on every validating path (parallel and sequential) — both feed the generated
+            // side via RegisterGeneratedSlice. Skipped only when building a block (no suggested
+            // BAL to compare against) or when the BAL body isn't decoded (RLP fixtures).
+            if (!_isBuilding && suggestedBlock.BlockAccessList is not null)
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;

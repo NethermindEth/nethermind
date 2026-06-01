@@ -353,7 +353,12 @@ public partial class BlockAccessListManager
 
         public void MergeAndReturnBal(uint _, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null)
         {
-            if (target is not null) _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
+            // The single reusable slice still holds this tx's changes (NextTransaction clears it
+            // only afterwards). Both Merge and the validation-index Add copy the data out, so
+            // feeding the same slice to onSlice is safe.
+            BlockAccessListAtIndex slice = _txProcessorWithWorldState.WorldState.GetGeneratingBlockAccessList()!;
+            if (target is not null) target.Merge(slice);
+            onSlice?.Invoke(slice);
         }
     }
 
