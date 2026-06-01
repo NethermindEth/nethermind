@@ -299,7 +299,9 @@ internal static class PayloadBodiesDirectResponseWriter
         // Keep a span over the current transaction, then advance the cursor
         // so the caller can continue iterating without decoding the transaction.
         ctx.SkipItem(); // current transaction
-        // transaction[0] is safe: a transaction in a validated block is never an empty RLP item.
+        // transaction[0] is in bounds: callers bound the loop by txsEnd / item count, so this only
+        // runs for a transaction present in the list (an empty block never reaches here), and
+        // PeekNextItem always returns at least the one-byte RLP prefix.
         if (transaction[0] >= Rlp.OfEmptyList[0])
         {
             return transaction;
