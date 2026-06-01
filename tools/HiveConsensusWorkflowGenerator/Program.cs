@@ -4,11 +4,21 @@ namespace HiveConsensusWorkflowGenerator;
 
 public static class Program
 {
-    const int MaxJobsCount = 256;
+    const int DefaultMaxJobsCount = 256;
 
-    static void Main(string[] args)
+    static int Main(string[] args)
     {
-        string path = args.FirstOrDefault() is not null ? args.First() : "src/tests";
+        string path = args.Length > 0 ? args[0] : "src/tests";
+        int maxJobsCount = DefaultMaxJobsCount;
+
+        if (args.Length > 1)
+        {
+            if (!int.TryParse(args[1], out maxJobsCount) || maxJobsCount <= 0)
+            {
+                Console.Error.WriteLine($"Invalid shard count '{args[1]}'. Expected a positive integer.");
+                return 1;
+            }
+        }
 
         IEnumerable<string> directories = GetTestsDirectories(path);
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
@@ -23,7 +33,7 @@ public static class Program
             long size = 0;
             List<string>? testsList = null;
 
-            if (groupedTestNames.Count == MaxJobsCount)
+            if (groupedTestNames.Count == maxJobsCount)
             {
                 KeyValuePair<long, List<string>> smallestGroup = groupedTestNames.First();
                 testsList = [.. smallestGroup.Value];
@@ -57,6 +67,7 @@ public static class Program
         string jsonString = JsonSerializer.Serialize(jsonGroups, new JsonSerializerOptions { WriteIndented = true });
 
         File.WriteAllText("matrix.json", jsonString);
+        return 0;
     }
 
     private static IEnumerable<string> GetTestsDirectories(string path)
