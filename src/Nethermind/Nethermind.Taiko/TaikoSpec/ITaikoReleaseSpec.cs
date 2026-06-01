@@ -21,16 +21,16 @@ public interface ITaikoReleaseSpec : IReleaseSpec
 
     /// <summary>
     /// Resolved 256-entry per-opcode ZK gas multiplier table for Unzen, indexed by opcode byte.
-    /// Holds the recalibrated default schedule unless the chainspec overrides it via
-    /// <c>unzenOpcodeZkGasMultipliers</c>.
+    /// Sourced from the chainspec's active <c>unzenZkGasSchedules</c> entry.
     /// </summary>
     ReadOnlyMemory<ushort> UnzenOpcodeZkGasMultipliers { get; }
 
     /// <summary>
-    /// Resolved 256-entry per-precompile ZK gas multiplier table for Unzen, indexed by the
-    /// precompile address low byte. Overridable via <c>unzenPrecompileZkGasMultipliers</c>.
+    /// Resolved per-precompile ZK gas multiplier dictionary for Unzen, keyed by full precompile
+    /// address. Sourced from the chainspec's active <c>unzenZkGasSchedules</c> entry. Addresses
+    /// not in the dictionary are charged at <see cref="ZkGas.ZkGasSchedule.FailsafeMultiplier"/>.
     /// </summary>
-    ReadOnlyMemory<ushort> UnzenPrecompileZkGasMultipliers { get; }
+    FrozenDictionary<AddressAsKey, ushort> UnzenPrecompileZkGasMultipliers { get; }
 
     public bool UseSurgeGasPriceOracle { get; }
     public Address TaikoL2Address { get; }

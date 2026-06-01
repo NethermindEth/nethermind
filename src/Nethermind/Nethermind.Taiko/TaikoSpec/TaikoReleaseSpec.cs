@@ -17,7 +17,7 @@ public class TaikoReleaseSpec : ReleaseSpec, ITaikoReleaseSpec
     public ulong UnzenBlockZkGasLimit { get; set; }
     public ulong UnzenTxIntrinsicZkGas { get; set; }
     public ReadOnlyMemory<ushort> UnzenOpcodeZkGasMultipliers { get; set; }
-    public ReadOnlyMemory<ushort> UnzenPrecompileZkGasMultipliers { get; set; }
+    public FrozenDictionary<AddressAsKey, ushort> UnzenPrecompileZkGasMultipliers { get; set; } = FrozenDictionary<AddressAsKey, ushort>.Empty;
     public bool UseSurgeGasPriceOracle { get; set; }
     public required Address TaikoL2Address { get; set; }
     public bool IsRip7728Enabled { get; set; }

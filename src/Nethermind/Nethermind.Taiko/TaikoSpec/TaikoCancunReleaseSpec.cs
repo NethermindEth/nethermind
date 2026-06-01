@@ -25,8 +25,8 @@ public class TaikoOntakeReleaseSpec : Shanghai, ITaikoReleaseSpec
     public bool IsUnzenEnabled { get; set; }
     public ulong UnzenBlockZkGasLimit { get; set; } = ZkGasSchedule.BlockZkGasLimit;
     public ulong UnzenTxIntrinsicZkGas { get; set; } = ZkGasSchedule.TxIntrinsicZkGas;
-    public ReadOnlyMemory<ushort> UnzenOpcodeZkGasMultipliers { get; set; } = ZkGasSchedule.OpcodeMultipliers;
-    public ReadOnlyMemory<ushort> UnzenPrecompileZkGasMultipliers { get; set; } = ZkGasSchedule.PrecompileMultipliers;
+    public ReadOnlyMemory<ushort> UnzenOpcodeZkGasMultipliers { get; set; }
+    public FrozenDictionary<AddressAsKey, ushort> UnzenPrecompileZkGasMultipliers { get; set; } = FrozenDictionary<AddressAsKey, ushort>.Empty;
     public bool UseSurgeGasPriceOracle { get; set; }
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
     public bool IsRip7728Enabled { get; set; }
@@ -69,8 +69,8 @@ public class TaikoUnzenReleaseSpec : Osaka, ITaikoReleaseSpec
     public bool IsUnzenEnabled { get; set; }
     public ulong UnzenBlockZkGasLimit { get; set; } = ZkGasSchedule.BlockZkGasLimit;
     public ulong UnzenTxIntrinsicZkGas { get; set; } = ZkGasSchedule.TxIntrinsicZkGas;
-    public ReadOnlyMemory<ushort> UnzenOpcodeZkGasMultipliers { get; set; } = ZkGasSchedule.OpcodeMultipliers;
-    public ReadOnlyMemory<ushort> UnzenPrecompileZkGasMultipliers { get; set; } = ZkGasSchedule.PrecompileMultipliers;
+    public ReadOnlyMemory<ushort> UnzenOpcodeZkGasMultipliers { get; set; }
+    public FrozenDictionary<AddressAsKey, ushort> UnzenPrecompileZkGasMultipliers { get; set; } = FrozenDictionary<AddressAsKey, ushort>.Empty;
     public bool UseSurgeGasPriceOracle { get; set; }
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
     public bool IsRip7728Enabled { get; set; }

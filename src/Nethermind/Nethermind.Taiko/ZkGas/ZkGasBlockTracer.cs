@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -23,7 +24,7 @@ public sealed class ZkGasBlockTracer : IBlockTracer
         ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
         ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas,
         ReadOnlyMemory<ushort> opcodeMultipliers = default,
-        ReadOnlyMemory<ushort> precompileMultipliers = default)
+        FrozenDictionary<AddressAsKey, ushort>? precompileMultipliers = null)
     {
         _inner = inner;
         _meter = new ZkGasMeter(blockZkGasLimit, txIntrinsicZkGas, opcodeMultipliers, precompileMultipliers);

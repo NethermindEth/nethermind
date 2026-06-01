@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
+using Nethermind.Core;
 
 namespace Nethermind.Taiko.ZkGas;
 
@@ -12,22 +14,33 @@ namespace Nethermind.Taiko.ZkGas;
 /// <param name="blockZkGasLimit">Maximum ZK gas permitted within a single block.</param>
 /// <param name="txIntrinsicZkGas">Flat ZK gas charged once per transaction before any opcode runs.</param>
 /// <param name="opcodeMultipliers">Per-opcode multiplier table charged against, indexed by opcode byte.
-/// Empty selects the recalibrated <see cref="ZkGasSchedule.OpcodeMultipliers"/> default.</param>
-/// <param name="precompileMultipliers">Per-precompile multiplier table, indexed by address low byte.
-/// Empty selects the recalibrated <see cref="ZkGasSchedule.PrecompileMultipliers"/> default.</param>
+/// Empty selects an all-<see cref="ZkGasSchedule.FailsafeMultiplier"/> table (used pre-Unzen, when the
+/// tracer still runs but its totals are discarded by the block processor).</param>
+/// <param name="precompileMultipliers">Per-precompile multiplier dictionary, keyed by full
+/// precompile address. Addresses not in the dictionary (including a null/empty argument) are
+/// charged at <see cref="ZkGasSchedule.FailsafeMultiplier"/>.</param>
 public class ZkGasMeter(
     ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
     ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas,
     ReadOnlyMemory<ushort> opcodeMultipliers = default,
-    ReadOnlyMemory<ushort> precompileMultipliers = default)
+    FrozenDictionary<AddressAsKey, ushort>? precompileMultipliers = null)
 {
+    private static readonly ReadOnlyMemory<ushort> _failsafeOpcodeTable = BuildFailsafeOpcodeTable();
+
+    private static ushort[] BuildFailsafeOpcodeTable()
+    {
+        ushort[] a = new ushort[256];
+        a.AsSpan().Fill(ZkGasSchedule.FailsafeMultiplier);
+        return a;
+    }
+
     /// <summary>Per-block ZK gas ceiling captured at construction time.</summary>
     private readonly ulong _blockZkGasLimit = blockZkGasLimit;
 
     private readonly ulong _txIntrinsicZkGas = txIntrinsicZkGas;
 
-    private readonly ReadOnlyMemory<ushort> _opcodeMultipliers = opcodeMultipliers.IsEmpty ? ZkGasSchedule.OpcodeMultipliers : opcodeMultipliers;
-    private readonly ReadOnlyMemory<ushort> _precompileMultipliers = precompileMultipliers.IsEmpty ? ZkGasSchedule.PrecompileMultipliers : precompileMultipliers;
+    private readonly ReadOnlyMemory<ushort> _opcodeMultipliers = opcodeMultipliers.IsEmpty ? _failsafeOpcodeTable : opcodeMultipliers;
+    private readonly FrozenDictionary<AddressAsKey, ushort> _precompileMultipliers = precompileMultipliers ?? FrozenDictionary<AddressAsKey, ushort>.Empty;
 
     /// <summary>Finalized ZK gas accumulated from fully committed transactions.</summary>
     private ulong _blockZkGasUsed;
@@ -121,12 +134,14 @@ public class ZkGasMeter(
     }
 
     /// <summary>
-    /// Charges ZK gas for a single precompile execution.
-    /// Returns false if the charge would exceed the block limit.
+    /// Charges ZK gas for a single precompile execution, keyed by the precompile's full address
+    /// so canonical EVM precompiles and Taiko-extended precompiles can coexist without colliding
+    /// by low byte. Returns false if the charge would exceed the block limit. An address absent
+    /// from the multiplier dictionary is charged at <see cref="ZkGasSchedule.FailsafeMultiplier"/>.
     /// </summary>
-    public bool ChargePrecompile(byte addressLowByte, ulong gasUsed)
+    public bool ChargePrecompile(Address address, ulong gasUsed)
     {
-        ulong multiplier = _precompileMultipliers.Span[addressLowByte];
+        ulong multiplier = _precompileMultipliers.TryGetValue(address, out ushort m) ? m : ZkGasSchedule.FailsafeMultiplier;
         return ChargeAmount(gasUsed, multiplier);
     }
 

@@ -19,20 +19,13 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? UnzenTxIntrinsicZkGas { get; set; }
 
     /// <summary>
-    /// Optional per-opcode Unzen ZK gas multiplier table, keyed by opcode byte (0x00–0xff) with the
-    /// multiplier as value. When set, it fully replaces the recalibrated default opcode table: any
-    /// opcode not listed is charged at the fail-safe multiplier (<see cref="ushort.MaxValue"/>).
-    /// Networks that finalized Unzen blocks under an earlier schedule (e.g. Masaya) pin it here to
-    /// keep consensus on that history, instead of the schedule being selected by chain id in code.
+    /// Ordered list of Unzen ZK gas multiplier schedules, each pinned to its activation timestamp.
+    /// The chainspec is the only source of truth for these tables — no defaults live in code. The
+    /// schedule with the largest <see cref="TaikoUnzenZkGasSchedule.Timestamp"/> not exceeding the
+    /// active block timestamp is the one in effect, with the earliest-timestamp entry acting as a
+    /// floor so a meter always has a table.
     /// </summary>
-    public Dictionary<long, long>? UnzenOpcodeZkGasMultipliers { get; set; }
-
-    /// <summary>
-    /// Optional per-precompile Unzen ZK gas multiplier table, keyed by the precompile address low
-    /// byte with the multiplier as value. Same override semantics as
-    /// <see cref="UnzenOpcodeZkGasMultipliers"/>.
-    /// </summary>
-    public Dictionary<long, long>? UnzenPrecompileZkGasMultipliers { get; set; }
+    public List<TaikoUnzenZkGasSchedule>? UnzenZkGasSchedules { get; set; }
 
     public bool? UseSurgeGasPriceOracle { get; set; }
     public ulong? Rip7728TransitionTimestamp { get; set; }
@@ -76,6 +69,21 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
         if (UnzenTimestamp is { } u && u > 0)
         {
             timestamps.Add(u);
+        }
+
+        // Each schedule's activation timestamp is itself a consensus change, so it must be folded
+        // into the EIP-2124 fork-id walk. The SortedSet dedups a schedule that activates exactly at
+        // UnzenTimestamp. The MaxValue-1 placeholder used to register a default schedule that has
+        // no scheduled real-world activation is filtered out the same way Shasta=0 / Unzen=0 are.
+        if (UnzenZkGasSchedules is not null)
+        {
+            foreach (TaikoUnzenZkGasSchedule schedule in UnzenZkGasSchedules)
+            {
+                if (schedule.Timestamp > 0 && schedule.Timestamp < ulong.MaxValue - 1)
+                {
+                    timestamps.Add(schedule.Timestamp);
+                }
+            }
         }
     }
 }
