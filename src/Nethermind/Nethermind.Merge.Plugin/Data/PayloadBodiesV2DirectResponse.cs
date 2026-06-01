@@ -110,6 +110,8 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
+    // Exactly one source representation is active: either _transactions (+_withdrawals) or _blockRlp.
+    // _blockRlp takes priority when set; a default-constructed value (both null) is invalid.
     internal readonly struct PayloadBody : IDisposable
     {
         private readonly Transaction[]? _transactions;

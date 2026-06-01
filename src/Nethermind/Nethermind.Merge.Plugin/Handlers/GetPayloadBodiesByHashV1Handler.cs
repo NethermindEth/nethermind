@@ -12,7 +12,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetPayloadBodiesByHashV1Handler(IBlockTree blockTree, IBlockStore blockStore, ILogManager logManager)
+public sealed class GetPayloadBodiesByHashV1Handler(IBlockTree blockTree, IBlockStore blockStore, ILogManager logManager)
     : IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>
 {
     private const int MaxCount = 1024;

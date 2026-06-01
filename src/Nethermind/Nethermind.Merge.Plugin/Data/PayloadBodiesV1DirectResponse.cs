@@ -287,6 +287,8 @@ internal static class PayloadBodiesDirectResponseWriter
         // Transactions are the second top-level block item; skip the header
         // so the returned context is positioned on the transactions list.
         ctx.SkipItem(); // header
+        // ReadSequenceLength advances ctx.Position past the list prefix; txsEnd is read after that
+        // advance (left-to-right evaluation), so it points to the end of the transactions list.
         txsEnd = ctx.ReadSequenceLength() + ctx.Position;
         return ctx;
     }
@@ -297,6 +299,7 @@ internal static class PayloadBodiesDirectResponseWriter
         // Keep a span over the current transaction, then advance the cursor
         // so the caller can continue iterating without decoding the transaction.
         ctx.SkipItem(); // current transaction
+        // transaction[0] is safe: a transaction in a validated block is never an empty RLP item.
         if (transaction[0] >= Rlp.OfEmptyList[0])
         {
             return transaction;
