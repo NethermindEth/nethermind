@@ -40,6 +40,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether to pre-warm the state when processing blocks. This can lead to an up to 2x speed-up in the main loop block processing.", DefaultValue = "True")]
     bool PreWarmStateOnBlockProcessing { get; set; }
 
+    [ConfigItem(Description = "Number of most recent canonical blocks to re-process at startup (read-only, without persisting or moving the head) purely to warm the cross-block state caches before normal operation. " +
+        "0 disables. Intended for benchmarking and diagnostics: it lets a fresh process reach the warm-cache steady state that a long-running node enjoys, so the first benchmark payloads are not skewed by cold-cache warmup. " +
+        "Works with any state backend (sparse trie cross-block cache, flat trie-node cache, or legacy Patricia). Higher values warm more of the working set at the cost of longer startup.",
+        DefaultValue = "0", HiddenFromDocs = true)]
+    int PreWarmReprocessBlockCount { get; set; }
+
     [ConfigItem(Description = "Whether to cache precompile results when processing blocks.", DefaultValue = "True", HiddenFromDocs = true)]
     bool CachePrecompilesOnBlockProcessing { get; set; }
 

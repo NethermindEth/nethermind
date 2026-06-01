@@ -54,6 +54,17 @@ public interface IFlatDbConfig : IConfig
         "Milestone M2 hybrid mode.", DefaultValue = "false")]
     bool UseSparseRootComputation { get; set; }
 
+    [ConfigItem(Description = "EXPERIMENTAL / benchmark-only. When true AND UseSparseRootComputation=false, retains the " +
+        "warmed, resolved Patricia StateTree node graph across consecutive blocks (keyed by state root) so the next " +
+        "block reuses the warm structure instead of re-resolving nodes from caches/disk. This is the legacy-Patricia " +
+        "analogue of the sparse cross-block preserved trie, intended to isolate whether structural cross-block " +
+        "preservation helps independently of the sparse algorithm. Off by default; no effect when " +
+        "UseSparseRootComputation=true or on read-only scopes. The Patricia tree's UpdateRootHash still computes the " +
+        "authoritative root from the live graph every block, and reuse is gated on an exact parent-root match, so this " +
+        "cannot affect consensus — a mismatch falls back to a fresh tree.",
+        DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreservePatriciaTrie { get; set; }
+
     [ConfigItem(Description = "When enabled alongside UseSparseRootComputation, always compute roots via BOTH Patricia and " +
         "sparse trie and compare results every block. Prevents the sparse trie from becoming authoritative — " +
         "Patricia always remains the source of truth for persistence and root hash.", DefaultValue = "false")]

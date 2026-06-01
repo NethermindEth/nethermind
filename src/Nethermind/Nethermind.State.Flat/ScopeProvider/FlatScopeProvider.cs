@@ -25,6 +25,13 @@ public class FlatScopeProvider(
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
     private readonly PreservedSparseTrie _preservedSparseTrie = new();
     private readonly SparseAuthoritativeTracker _sparseTracker = new();
+    // Cross-block preservation of the warmed Patricia account tree (non-sparse path). Constructed
+    // once and shared across consecutive scopes, mirroring _preservedSparseTrie. Null unless the
+    // opt-in flag is set and we're a writable, non-sparse scope.
+    private readonly PreservedPatriciaTrie? _preservedPatriciaTrie =
+        configuration.PreservePatriciaTrie && !configuration.UseSparseRootComputation && !isReadOnly
+            ? new PreservedPatriciaTrie()
+            : null;
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
@@ -42,6 +49,7 @@ public class FlatScopeProvider(
             trieWarmer,
             _preservedSparseTrie,
             _sparseTracker,
+            _preservedPatriciaTrie,
             logManager,
             isReadOnly: isReadOnly);
     }

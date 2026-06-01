@@ -36,6 +36,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // PatriciaTree per scope was pure waste under sparse mode.
     private readonly PatriciaTree? _warmupStateTree;
     private readonly StateTree _stateTree;
+    // When PreservePatriciaTrie is on (non-sparse path), the account StateTree is reused across blocks
+    // via _preservedPatriciaTrie. On the fresh-tree path we capture a rebinder for this block's adapter
+    // so the store can repoint it at the next block's bundle on reuse; null on the reuse path (the store
+    // already holds the rebinder) and when preservation is off.
+    private readonly PreservedPatriciaTrie? _preservedPatriciaTrie;
+    private readonly PreservedPatriciaTrie.Rebinder? _stateTreeRebinder;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private SparseRootComputer? _sparseRootComputer;
 
@@ -90,6 +96,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ITrieWarmer trieCacheWarmer,
         PreservedSparseTrie? preservedSparseTrie,
         SparseAuthoritativeTracker sparseTracker,
+        PreservedPatriciaTrie? preservedPatriciaTrie,
         ILogManager logManager,
         bool isReadOnly = false)
     {
@@ -99,15 +106,31 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CodeDb = codeDb;
         _commitTarget = commitTarget;
         _preservedSparseTrie = preservedSparseTrie;
+        _preservedPatriciaTrie = preservedPatriciaTrie;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount);
-        _stateTree = new(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
-            logManager
-        )
+        Hash256 stateRoot = currentStateId.StateRoot.ToCommitment();
+        // Cross-block reuse of the warmed Patricia account tree when opted in (non-sparse path).
+        // On a parent-root match the preserved tree is handed back with its adapter rebound to this
+        // block's bundle; otherwise we build a fresh tree and keep its adapter so it can be anchored
+        // on commit. The tree's RootRef already equals stateRoot on reuse, and UpdateRootHash
+        // recomputes the authoritative root every block, so reuse cannot change the result.
+        if (_preservedPatriciaTrie is not null
+            && _preservedPatriciaTrie.TryTake(stateRoot, snapshotBundle, _concurrencyQuota, out StateTree reused))
         {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
+            _stateTree = reused;
+            _stateTreeRebinder = null; // rebinder is owned by the preserved store on the reuse path
+        }
+        else
+        {
+            StateTrieStoreAdapter adapter = new(snapshotBundle, _concurrencyQuota);
+            // Only capture the rebinder when preservation is on, so the fresh tree can be anchored.
+            _stateTreeRebinder = _preservedPatriciaTrie is not null ? adapter.Rebind : null;
+            _stateTree = new(adapter, logManager)
+            {
+                RootHash = stateRoot
+            };
+        }
 
         // Legacy is the only warmer variant that walks _warmupStateTree (see WarmUpStateTrie).
         // For None the DI module substitutes NoopTrieWarmer; for SparseProof we issue proof
@@ -198,6 +221,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _preservedSparseTrie.TryStoreCleared(_sparseStateTrie);
             _sparseStateTrie = null;
         }
+
+        // Patricia counterpart: if the scope was disposed without a successful Commit (reorg/exception),
+        // the preserved store is still CheckedOut — reset it so next block starts from a fresh tree
+        // rather than throwing on the next TryTake. No-op if Commit already stored ownership back.
+        _preservedPatriciaTrie?.TryStoreCleared();
 
         _sparseRootComputer?.Dispose();
         _snapshotBundle.Dispose();
@@ -752,6 +780,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _sparseRootComputer.Dispose();
             _sparseRootComputer = null;
             _sparseComputedRoot = null;
+        }
+
+        // Cross-block reuse of the warmed Patricia account tree (non-sparse path). _stateTree.Commit()
+        // already ran above and left _stateTree.RootHash == the new state root. Anchor it for next
+        // block only when the root matches (it does on the happy path; the guard is the safety belt
+        // for read-only / no-op-commit edge cases). On the fresh-tree path we pass the adapter so the
+        // store can rebind it next block; on the reuse path _stateTreeAdapter is null and the store
+        // keeps the adapter it already holds.
+        if (_preservedPatriciaTrie is not null)
+        {
+            Hash256 newRoot = newStateId.StateRoot.ToCommitment();
+            if (_stateTree.RootHash == newRoot)
+                _preservedPatriciaTrie.StoreAnchored(_stateTree, _stateTreeRebinder, newRoot);
+            else
+                _preservedPatriciaTrie.StoreCleared();
         }
 
         _pausePrewarmer = false;

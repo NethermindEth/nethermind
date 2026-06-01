@@ -145,6 +145,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 trieWarmer,
                 preservedSparseTrie: null,
                 sparseTracker: new SparseAuthoritativeTracker(),
+                preservedPatriciaTrie: null,
                 logManager);
         }
     }

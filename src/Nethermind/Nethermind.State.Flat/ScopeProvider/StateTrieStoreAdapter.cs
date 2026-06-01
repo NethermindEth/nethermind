@@ -14,22 +14,36 @@ internal sealed class StateTrieStoreAdapter(
     ConcurrencyController concurrencyQuota
 ) : AbstractMinimalTrieStore
 {
+    // Mutable so a StateTree preserved across blocks (PreservePatriciaTrie) can be rebound to the
+    // current block's SnapshotBundle/quota. The bundle is per-block and disposed at end of block, so
+    // a reused tree MUST swap to the new bundle before any resolve/commit. When preservation is off
+    // the adapter is constructed fresh per block and Rebind is never called — behaviour is unchanged.
+    private SnapshotBundle _bundle = bundle;
+    private ConcurrencyController _concurrencyQuota = concurrencyQuota;
+
+    /// <summary>Repoints this adapter at a new block's bundle/quota for a reused (preserved) tree.</summary>
+    public void Rebind(SnapshotBundle newBundle, ConcurrencyController newQuota)
+    {
+        _bundle = newBundle;
+        _concurrencyQuota = newQuota;
+    }
+
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        TrieNode node = bundle.FindStateNodeOrUnknown(path, hash);
+        TrieNode node = _bundle.FindStateNodeOrUnknown(path, hash);
         return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStateRlp(path, hash, flags);
+        _bundle.TryLoadStateRlp(path, hash, flags);
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-        new Committer(bundle, concurrencyQuota);
+        new Committer(_bundle, _concurrencyQuota);
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
         if (address is null) return this;
-        return new StorageTrieStoreAdapter(bundle, concurrencyQuota, address);
+        return new StorageTrieStoreAdapter(_bundle, _concurrencyQuota, address);
     }
 
     private class Committer(SnapshotBundle bundle, ConcurrencyController concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)

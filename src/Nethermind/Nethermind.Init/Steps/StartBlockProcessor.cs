@@ -8,7 +8,7 @@ using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain))]
+    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(WarmUpReprocessBlocks))]
     public class StartBlockProcessor(IMainProcessingContext mainProcessingContext) : IStep
     {
         public Task Execute(CancellationToken _)

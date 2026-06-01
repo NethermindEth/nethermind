@@ -101,6 +101,7 @@ public class FlatWorldStateScopeProviderTests
                 .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
                 .WithParameter(TypedParameter.From<PreservedSparseTrie?>(null))
                 .WithParameter(TypedParameter.From(new SparseAuthoritativeTracker()))
+                .WithParameter(TypedParameter.From<PreservedPatriciaTrie?>(null))
                 ;
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
@@ -809,6 +810,80 @@ public class FlatWorldStateScopeProviderTests
 
         // Slot from before self-destruct (in read-only snapshot) should be blocked
         Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
+    }
+
+    #endregion
+
+    #region PreservePatriciaTrie (cross-block warm StateTree reuse)
+
+    [Test]
+    public void PreservedPatriciaTrie_ProtocolReuseAndClear()
+    {
+        PreservedPatriciaTrie preserved = new();
+        Hash256 rootA = TestItem.KeccakA;
+        Hash256 rootB = TestItem.KeccakB;
+
+        // The store only forwards the bundle/quota to the supplied rebinder (which we control), so a
+        // null bundle is fine here — we assert the rebinder fires, not what it does with the bundle.
+        SnapshotBundle bundle = null!;
+
+        // Nothing anchored yet -> caller must build fresh.
+        Assert.That(preserved.TryTake(rootA, bundle, new(1), out _), Is.False);
+        // A failed take leaves the store CheckedOut; reset before re-anchoring.
+        preserved.StoreCleared();
+
+        // Anchor a tree at rootA, then a matching parent take should reuse it and rebind.
+        StateTree tree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        preserved.TryTake(rootA, bundle, new(1), out _); // -> CheckedOut so StoreAnchored is legal
+        bool rebound = false;
+        preserved.StoreAnchored(tree, (_, _) => rebound = true, rootA);
+        Assert.That(preserved.TryTake(rootA, bundle, new(1), out StateTree reused), Is.True);
+        Assert.That(reused, Is.SameAs(tree));
+        Assert.That(rebound, Is.True, "reuse must rebind the adapter to the new bundle");
+
+        // Re-anchor (reuse path passes null rebinder) then a NON-matching parent take must NOT reuse.
+        preserved.StoreAnchored(tree, null, rootA);
+        Assert.That(preserved.TryTake(rootB, bundle, new(1), out _), Is.False, "anchor root mismatch must fall back to fresh");
+
+        // After a mismatched take the store is CheckedOut; StoreCleared resets it.
+        preserved.StoreCleared();
+        Assert.That(preserved.TryTake(rootA, bundle, new(1), out _), Is.False);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void StorageRoot_IsIdentical_WithAndWithoutPreservation(bool preserve)
+    {
+        // The PreservePatriciaTrie flag must never change the computed root; this asserts the
+        // single-scope multi-slot/multi-commit root matches the canonical StorageTree both ways.
+        using TestContext ctx = new(new FlatDbConfig { PreservePatriciaTrie = preserve });
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slot1 = 1, slot2 = 2, slot3 = 100;
+        byte[] value1 = { 0x01, 0x02 }, value2 = { 0xAA, 0xBB, 0xCC }, value3 = { 0xFF };
+
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(TestItem.GenerateRandomAccount());
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 3);
+            storageBatch.Set(slot1, value1);
+            storageBatch.Set(slot2, value2);
+            storageBatch.Set(slot3, value3);
+            storageBatch.Dispose();
+        }
+        scope.Commit(1);
+
+        TestMemDb testDb = new();
+        StorageTree expectedTree = new(new RawScopedTrieStore(testDb), LimboLogs.Instance);
+        expectedTree.Set(slot1, value1);
+        expectedTree.Set(slot2, value2);
+        expectedTree.Set(slot3, value3);
+        expectedTree.UpdateRootHash();
+
+        Account? resultAccount = scope.Get(testAddress);
+        Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
     }
 
     #endregion
