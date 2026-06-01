@@ -975,4 +975,96 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
     }
 
+    // gasLimit=0x100000 (1,048,576) × maxFeePerGas=10 gwei → want = 10,485,760,000,000,000
+    [Test]
+    public async Task Eth_call_eip1559_zero_balance_want_includes_gas_cost()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+
+        (object stateOverride, object transaction) = (
+            JsonSerializer.Deserialize<object>("""{"0x1111111111111111111111111111111111111111":{"balance":"0x0"}}""")!,
+            JsonSerializer.Deserialize<object>("""
+                {
+                    "from": "0x1111111111111111111111111111111111111111",
+                    "to":   "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                    "gas":  "0x100000",
+                    "value": "0x0",
+                    "maxFeePerGas": "0x2540BE400",
+                    "maxPriorityFeePerGas": "0x3B9ACA00",
+                    "type": "0x2"
+                }
+                """)!
+        );
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        JToken parsed = JToken.Parse(serialized);
+        string message = parsed["error"]!["message"]!.Value<string>()!;
+
+        Assert.That(message, Does.Contain("insufficient sender balance for gas * price + value"));
+        Assert.That(message, Does.Contain("have 0 want 10485760000000000"));
+    }
+
+    // gasLimit=0x100000 × maxFeePerGas=10 gwei + blobGas(131072) × maxFeePerBlobGas=10 gwei
+    // → want = 10,485,760,000,000,000 + 1,310,720,000,000,000 = 11,796,480,000,000,000
+    [Test]
+    public async Task Eth_call_blob_tx_zero_balance_want_includes_blob_fee_cap()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+
+        (object stateOverride, object transaction) = (
+            JsonSerializer.Deserialize<object>("""{"0x1111111111111111111111111111111111111111":{"balance":"0x0"}}""")!,
+            JsonSerializer.Deserialize<object>("""
+                {
+                    "from": "0x1111111111111111111111111111111111111111",
+                    "to":   "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                    "gas":  "0x100000",
+                    "value": "0x0",
+                    "maxFeePerGas": "0x2540BE400",
+                    "maxPriorityFeePerGas": "0x3B9ACA00",
+                    "maxFeePerBlobGas": "0x2540BE400",
+                    "blobVersionedHashes": ["0x0100000000000000000000000000000000000000000000000000000000000000"],
+                    "type": "0x3"
+                }
+                """)!
+        );
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        JToken parsed = JToken.Parse(serialized);
+        string message = parsed["error"]!["message"]!.Value<string>()!;
+
+        Assert.That(message, Does.Contain("insufficient sender balance for gas * price + value"));
+        Assert.That(message, Does.Contain("have 0 want 11796480000000000"));
+    }
+
+    // BlobBaseFee block override = UInt256.MaxValue → blobGas × MaxValue overflows → "invalid blobBaseFee"
+    [Test]
+    public async Task Eth_call_blob_tx_blob_base_fee_overflow_returns_invalid_blob_base_fee()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+
+        (object stateOverride, object transaction, object blockOverride) = (
+            JsonSerializer.Deserialize<object>("""{"0x1111111111111111111111111111111111111111":{"balance":"0x1BC16D674EC80000"}}""")!,
+            JsonSerializer.Deserialize<object>("""
+                {
+                    "from": "0x1111111111111111111111111111111111111111",
+                    "to":   "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                    "gas":  "0x100000",
+                    "value": "0x0",
+                    "maxFeePerGas": "0x2540BE400",
+                    "maxPriorityFeePerGas": "0x3B9ACA00",
+                    "maxFeePerBlobGas": "0x2540BE400",
+                    "blobVersionedHashes": ["0x0100000000000000000000000000000000000000000000000000000000000000"],
+                    "type": "0x3"
+                }
+                """)!,
+            JsonSerializer.Deserialize<object>("""{"blobBaseFee":"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}""")!
+        );
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
+        JToken parsed = JToken.Parse(serialized);
+        string message = parsed["error"]!["message"]!.Value<string>()!;
+
+        Assert.That(message, Does.Contain("invalid blobBaseFee"));
+    }
+
 }

@@ -788,53 +788,71 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(errorDetail);
             }
 
-            UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
-            if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
+            // mgval = gasLimit * effectiveGasPrice — the amount actually deducted from sender.
+            if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment))
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return InsufficientFundsForTransfer(tx, senderBalance);
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}");
+                return RequiredBalanceExceeds256Bits(tx);
             }
 
-            bool overflows;
+            // balanceCheck = gasLimit * MaxFeePerGas (EIP-1559) or mgval — the maximum the sender must hold.
+            UInt256 balanceCheck;
             if (spec.IsEip1559Enabled && !tx.IsFree())
             {
-                overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
-                if (overflows || balanceLeft < maxGasFee)
+                if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out balanceCheck))
                 {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
-                    return InsufficientFundsForGas(tx, senderBalance, tx.MaxFeePerGas);
-                }
-
-                if (tx.SupportsBlobs)
-                {
-                    overflows = UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(tx), (UInt256)tx.MaxFeePerBlobGas!, out UInt256 maxBlobGasFee);
-                    if (overflows || UInt256.AddOverflow(maxGasFee, maxBlobGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
-                    {
-                        TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                        return InsufficientFundsForGas(tx, senderBalance, effectiveGasPrice);
-                    }
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
+                    return RequiredBalanceExceeds256Bits(tx);
                 }
             }
-
-            overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
-            if (!overflows && tx.SupportsBlobs)
+            else
             {
-                overflows = !_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee);
-                if (!overflows)
+                balanceCheck = senderReservedGasPayment;
+            }
+
+            // Include tx.Value in the balance requirement.
+            if (UInt256.AddOverflow(balanceCheck, tx.ValueRef, out balanceCheck))
+            {
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}");
+                return RequiredBalanceExceeds256Bits(tx);
+            }
+
+            if (tx.SupportsBlobs)
+            {
+                UInt256 blobGas = BlobGasCalculator.CalculateBlobGas(tx);
+
+                // Add blob fee cap to balance check.
+                if (UInt256.MultiplyOverflow(blobGas, (UInt256)tx.MaxFeePerBlobGas, out UInt256 maxBlobGasFee)
+                    || UInt256.AddOverflow(balanceCheck, maxBlobGasFee, out balanceCheck))
                 {
-                    if (validate && tx.MaxFeePerBlobGas < feePerBlobGas)
-                    {
-                        TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
-                        return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance, BlockErrorMessages.InsufficientMaxFeePerBlobGas);
-                    }
-                    overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}");
+                    return RequiredBalanceExceeds256Bits(tx);
+                }
+
+                // Compute actual blob fee and add to mgval.
+                if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee))
+                {
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"invalid blobBaseFee: {UInt256.MaxValue}");
+                }
+
+                if (validate && tx.MaxFeePerBlobGas < feePerBlobGas)
+                {
+                    TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
+                    return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance, BlockErrorMessages.InsufficientMaxFeePerBlobGas);
+                }
+
+                if (UInt256.MultiplyOverflow(blobGas, blobBaseFee, out UInt256 actualBlobFee)
+                    || UInt256.AddOverflow(senderReservedGasPayment, actualBlobFee, out senderReservedGasPayment))
+                {
+                    return RequiredBalanceExceeds256Bits(tx);
                 }
             }
 
-            if (overflows || senderReservedGasPayment > balanceLeft)
+            UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress);
+            if (senderBalance < balanceCheck)
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return InsufficientFundsForGas(tx, senderBalance, effectiveGasPrice);
+                return InsufficientFundsForGas(tx, senderBalance, balanceCheck);
             }
 
             if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
@@ -842,17 +860,13 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private static TransactionResult InsufficientFundsForTransfer(Transaction tx, UInt256 senderBalance) =>
-            TransactionResult.ErrorType.InsufficientSenderBalance.WithDetail(
-                $"insufficient sender balance for transfer: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {tx.Value}");
+        private static TransactionResult RequiredBalanceExceeds256Bits(Transaction tx) =>
+            TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
+                $"insufficient sender balance for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} required balance exceeds 256 bits");
 
-        private static TransactionResult InsufficientFundsForGas(Transaction tx, UInt256 senderBalance, UInt256 gasPrice)
-        {
-            UInt256.MultiplyOverflow((UInt256)tx.GasLimit, gasPrice, out UInt256 gasCost);
-            UInt256.AddOverflow(gasCost, tx.Value, out UInt256 want);
-            return TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
+        private static TransactionResult InsufficientFundsForGas(Transaction tx, UInt256 senderBalance, UInt256 want) =>
+            TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
                 $"insufficient sender balance for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {want}");
-        }
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
