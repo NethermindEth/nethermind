@@ -159,6 +159,43 @@ internal class TransactionProcessorEip4844Tests
         }
     }
 
+    [Test]
+    public void Rejects_blob_tx_when_gas_upfront_cost_overflows_even_if_blob_fee_multiplication_does_not()
+    {
+        _stateProvider.CreateAccount(TestItem.AddressA, UInt256.Zero);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+        _stateProvider.CommitTree(0);
+
+        Transaction blobTx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(long.MaxValue)
+            .WithValue(UInt256.Zero)
+            .WithMaxFeePerGas(UInt256.MaxValue)
+            .WithMaxPriorityFeePerGas(UInt256.Zero)
+            .WithMaxFeePerBlobGas(UInt256.One)
+            .WithShardBlobTxTypeAndFields(1)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions(blobTx)
+            .WithGasLimit(long.MaxValue)
+            .WithExcessBlobGas(0ul)
+            .WithBaseFeePerGas(0)
+            .TestObject;
+
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
+        TransactionResult result = _transactionProcessor.Execute(blobTx, blkCtx, NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("insufficient sender balance for gas * price + value"));
+            Assert.That(result.ErrorDescription, Does.Contain("want"));
+        }
+    }
+
     public static IEnumerable<TestCaseData> BalanceIsAffectedByBlobGasTestCaseSource()
     {
         yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob), 1, 1ul, 0ul, 0ul)
