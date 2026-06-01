@@ -16,6 +16,9 @@ public abstract class GetPayloadBodiesByHashHandler<TResult>(IBlockTree blockTre
 {
     protected readonly IBlockTree _blockTree = blockTree;
     private const int MaxCount = 1024;
+    private const BlockTreeLookupOptions LookupOptions =
+        BlockTreeLookupOptions.TotalDifficultyNotNeeded |
+        BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByHashHandler<>));
 
     public ResultWrapper<IReadOnlyList<TResult?>> Handle(IReadOnlyList<Hash256> blockHashes)
@@ -30,7 +33,7 @@ public abstract class GetPayloadBodiesByHashHandler<TResult>(IBlockTree blockTre
         TResult?[] results = new TResult?[blockHashes.Count];
         for (int i = 0; i < blockHashes.Count; i++)
         {
-            Block? block = _blockTree.FindBlock(blockHashes[i]);
+            Block? block = _blockTree.FindBlock(blockHashes[i], LookupOptions);
             results[i] = block is null ? null : CreateResult(block, blockHashes[i]);
         }
         return ResultWrapper<IReadOnlyList<TResult?>>.Success(CreateResponse(results));

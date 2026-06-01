@@ -17,6 +17,9 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
     : IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>
 {
     private const int MaxCount = 1024;
+    private const BlockTreeLookupOptions LookupOptions =
+        BlockTreeLookupOptions.TotalDifficultyNotNeeded |
+        BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
 
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByHashV2Handler));
 
@@ -35,7 +38,7 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
             for (int i = 0; i < blockHashes.Count; i++)
             {
                 Hash256 blockHash = blockHashes[i];
-                Block? block = blockTree.FindBlock(blockHash);
+                Block? block = blockTree.FindBlock(blockHash, LookupOptions);
                 if (block is null)
                 {
                     continue;
