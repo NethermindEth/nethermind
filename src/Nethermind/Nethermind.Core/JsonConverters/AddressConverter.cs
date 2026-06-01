@@ -25,7 +25,7 @@ public class AddressConverter : JsonConverter<Address>
             return new Address(bytes);
         }
 
-        byte[]? addressBytes = ByteArrayConverter.Convert(ref reader);
+        byte[]? addressBytes = ByteArrayConverter.Convert(ref reader, requireEvenLength: true);
         return addressBytes is null ? null : new Address(addressBytes);
     }
 
@@ -51,7 +51,7 @@ public class AddressConverter : JsonConverter<Address>
             return new Address(bytes);
         }
 
-        return new Address(ByteArrayConverter.Convert(ref reader) ?? throw new JsonException("Invalid address property name"));
+        return new Address(ByteArrayConverter.Convert(ref reader, requireEvenLength: true) ?? throw new JsonException("Invalid address property name"));
     }
 
     [SkipLocalsInit]
