@@ -14,7 +14,6 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -37,8 +36,8 @@ namespace Nethermind.Merge.Plugin.Test;
 [TestFixture]
 public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 {
-    private static readonly FieldInfo BlockValidationTasksField =
-        typeof(NewPayloadHandler).GetField("_blockValidationTasks", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static readonly FieldInfo? BlockValidationTasksField =
+        typeof(NewPayloadHandler).GetField("_blockValidationTasks", BindingFlags.Instance | BindingFlags.NonPublic);
 
     [Test]
     public async Task NewPayloadV1_RaceCondition_EventHandling_Should_Not_Throw_When_Multiple_Completions()
@@ -212,7 +211,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             .TestObject;
         block.Header.IsPostMerge = true;
 
-        NewPayloadHandler handler = CreateHandler(
+        using NewPayloadHandler handler = CreateHandler(
             block,
             suggestBlockResult: AddBlockResult.InvalidBlock,
             wasProcessed: false,
@@ -241,13 +240,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
             .Returns(_ => ValueTask.CompletedTask);
 
-        NewPayloadHandler handler = CreateHandler(
+        using NewPayloadHandler handler = CreateHandler(
             block,
             suggestBlockResult: AddBlockResult.Added,
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 25);
+            timeoutMs: 100);
 
         ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
 
@@ -256,10 +255,14 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             "timed out requests must not leave stale entries behind when BlockRemoved never arrives");
     }
 
-    private static int GetPendingValidationTaskCount(NewPayloadHandler handler) =>
-        (int)BlockValidationTasksField.FieldType
+    private static int GetPendingValidationTaskCount(NewPayloadHandler handler)
+    {
+        Assert.That(BlockValidationTasksField, Is.Not.Null, "_blockValidationTasks field not found - was it renamed?");
+
+        return (int)BlockValidationTasksField!.FieldType
             .GetProperty("Count", BindingFlags.Instance | BindingFlags.Public)!
             .GetValue(BlockValidationTasksField.GetValue(handler)!)!;
+    }
 
     private static NewPayloadHandler CreateHandler(
         Block block,
