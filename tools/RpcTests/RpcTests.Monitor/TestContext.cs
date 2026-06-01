@@ -25,6 +25,8 @@ internal readonly record struct TestContext(TestDefinition Definition, BlockInfo
     /// </summary>
     public long RecentBlock => Math.Max(1, Head.Number - 5);
 
+    public static bool Maybe => Random.Shared.Next(0, 2) == 0;
+
     public static string Hex(long n) => $"0x{n:x}";
     public static string AsTopic(string address) => address.StartsWith("0x") ? address[2..].PadLeft(64, '0') : address.PadLeft(64, '0');
 
