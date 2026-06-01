@@ -21,7 +21,7 @@ public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash
         JsonSerializerOptions options)
     {
         Span<byte> bytes = stackalloc byte[Hash256.Size];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat, requireEvenLength: true))
         {
             return new Hash256(bytes);
         }
@@ -40,7 +40,7 @@ public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash
     public override Hash256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         Span<byte> bytes = stackalloc byte[Hash256.Size];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat, requireEvenLength: true))
         {
             return new Hash256(bytes);
         }

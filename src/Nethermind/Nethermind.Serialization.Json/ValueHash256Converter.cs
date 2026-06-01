@@ -21,7 +21,7 @@ public class ValueHash256Converter(bool strictHexFormat = false) : JsonConverter
         JsonSerializerOptions options)
     {
         Span<byte> bytes = stackalloc byte[ValueHash256.MemorySize];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat, requireEvenLength: true))
         {
             return new ValueHash256(bytes);
         }
