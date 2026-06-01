@@ -86,7 +86,7 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         chunk: ['']
-        exclude: # Nethermind.Synchronization.Test unchunked replaced by 4 chunks below (P99 hits 15-min wall on ARM otherwise).
+        exclude: # Synchronization.Test is chunked (see include block) — its unchunked variant hits the 15-min wall on ARM.
           - project: Nethermind.Synchronization.Test
             chunk: ''
         include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
