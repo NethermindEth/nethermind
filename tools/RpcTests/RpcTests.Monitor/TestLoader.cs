@@ -9,10 +9,13 @@ namespace Nethermind.RpcTests.Monitor;
 
 internal static class TestLoader
 {
-    private static readonly DirectoryInfo _testDir = new("tests");
+    private static readonly DirectoryInfo _testDir = new(Path.Combine(AppContext.BaseDirectory, "tests"));
 
     public static TestDefinition[] Load(string[] globs, bool requiresResponse)
     {
+        if (!_testDir.Exists)
+            throw new DirectoryNotFoundException($"Tests directory not found: {_testDir.FullName}");
+
         Matcher matcher = new();
         matcher.AddIncludePatterns(globs);
         PatternMatchingResult matches = matcher.Execute(new DirectoryInfoWrapper(_testDir));

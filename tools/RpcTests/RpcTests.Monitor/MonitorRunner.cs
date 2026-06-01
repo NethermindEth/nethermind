@@ -26,7 +26,8 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, HttpClient 
             Console.WriteLine($"Monitoring {args.TargetUrl}");
             await foreach (BlockInfo head in headMonitor.SubscribeAsync(ct))
             {
-                //Console.WriteLine($"Head #{head}");
+                Console.WriteLine($"New head: {head}");
+
                 if (!startBlock.Post(head))
                     Console.Error.WriteLine($"Head #{head:#} skipped — pipeline busy");
             }

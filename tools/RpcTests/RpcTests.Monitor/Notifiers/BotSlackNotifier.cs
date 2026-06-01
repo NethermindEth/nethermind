@@ -13,7 +13,7 @@ internal class BotSlackConfig
     public required string ChannelId { get; init; }
 }
 
-internal class BotSlackNotifier(BotSlackConfig config) : INotifier
+internal sealed class BotSlackNotifier(BotSlackConfig config) : INotifier
 {
     private readonly HttpClient _httpClient = new();
     private readonly ISlackApiClient _slack = new SlackServiceBuilder()
@@ -79,4 +79,6 @@ internal class BotSlackNotifier(BotSlackConfig config) : INotifier
 
         return new ExternalFileReference { Id = urlResponse.FileId };
     }
+
+    public void Dispose() => _httpClient.Dispose();
 }

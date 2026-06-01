@@ -8,7 +8,7 @@ namespace Nethermind.RpcTests.Monitor.Notifiers;
 /// When the limit is first exceeded, a single warning is forwarded to the inner notifier;
 /// further messages are silently dropped until the window clears.
 /// </summary>
-internal class RateLimitedNotifier(INotifier inner, int maxMessages, TimeSpan window) : INotifier
+internal sealed class RateLimitedNotifier(INotifier inner, int maxMessages, TimeSpan window) : INotifier
 {
     private readonly Queue<DateTime> _timestamps = new(maxMessages);
     private readonly Lock _lock = new();
@@ -54,6 +54,8 @@ internal class RateLimitedNotifier(INotifier inner, int maxMessages, TimeSpan wi
             return false;
         }
     }
+
+    public void Dispose() => inner.Dispose();
 }
 
 internal static class RateLimitedNotifierExtensions

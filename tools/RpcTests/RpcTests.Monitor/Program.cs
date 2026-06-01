@@ -32,12 +32,19 @@ Option<int> parallelismOption = new("--parallelism", "-p")
     DefaultValueFactory = _ => 4
 };
 
+Option<bool> devOption = new("--dev")
+{
+    Description = "Development mode - run without any remote notifications",
+    DefaultValueFactory = _ => false
+};
+
 RootCommand rootCommand = new("Monitors a running node by periodically executing dynamic RPC tests against a reference node")
 {
     targetOption,
     referenceOption,
     testsOption,
-    parallelismOption
+    parallelismOption,
+    devOption
 };
 
 rootCommand.SetAction(async (parseResult, ct) =>
@@ -50,8 +57,8 @@ rootCommand.SetAction(async (parseResult, ct) =>
         Parallelism = parseResult.GetValue(parallelismOption)
     };
 
-    using HttpClient client = new();
-    INotifier notifier = GetNotifier().RateLimited(10, TimeSpan.FromMinutes(1));
+    using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(1) };
+    using INotifier notifier = GetNotifier(parseResult.GetRequiredValue(devOption));
     MonitorRunner runner = new(args, notifier, client);
     await runner.RunAsync(ct);
 
@@ -66,16 +73,23 @@ static Uri UriParser(ArgumentResult arg)
     return new Uri(str.Contains("://") ? str : $"http://{str}");
 }
 
-static INotifier GetNotifier()
+static INotifier GetNotifier(bool isDevelopment)
 {
-    string? botToken = Environment.GetEnvironmentVariable("RPC_MONITOR_BOT_TOKEN");
-    string? channelId = Environment.GetEnvironmentVariable("RPC_MONITOR_CHANNEL_ID");
 
-    if (botToken is not null && channelId is not null)
-        return new BotSlackNotifier(new BotSlackConfig { BotToken = botToken, ChannelId = channelId });
+    if (Environment.GetEnvironmentVariable("RPC_MONITOR_BOT_TOKEN") is { } botToken &&
+        Environment.GetEnvironmentVariable("RPC_MONITOR_CHANNEL_ID") is { } channelId)
+    {
+        return new BotSlackNotifier(new BotSlackConfig { BotToken = botToken, ChannelId = channelId })
+            .RateLimited(10, TimeSpan.FromMinutes(1));
+    }
 
-    string webhookUrl = Environment.GetEnvironmentVariable("RPC_MONITOR_WEBHOOK_URL")
-        ?? throw new InvalidOperationException("Missing RPC_MONITOR_WEBHOOK_URL environment variable");
+    if (Environment.GetEnvironmentVariable("RPC_MONITOR_WEBHOOK_URL") is { } webhookUrl)
+    {
+        return new WebhookSlackNotifier(webhookUrl)
+            .RateLimited(10, TimeSpan.FromMinutes(1));
+    }
 
-    return new WebhookSlackNotifier(webhookUrl);
+    return isDevelopment
+        ? new NullNotifier()
+        : throw new Exception("No remote notification method configured.");
 }

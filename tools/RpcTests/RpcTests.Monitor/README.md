@@ -31,7 +31,7 @@ dotnet run -- \
   -r geth-archive:8545 \
   -g "mainnet/eth_call/*" \
   -g "mainnet/eth_getLogs/*" \
-  --parallelism 8
+  -p 8
 ```
 
 Use static expected responses (no reference node needed):
@@ -85,7 +85,7 @@ Each test can have the following fields:
 
 Some of them support custom C# expressions using [DynamicExpresso](https://github.com/dynamicexpresso/DynamicExpresso/):
 - `run` is always assumed to be a boolean expression, evaluated once per new head;
-- `request` and `response` are intepreted as JSON with support for parameterized properties (or array elements) – these are denoted as `{{ expression }}`.
+- `request` and `response` are interpreted as JSON with support for parameterized properties (or array elements) – these are denoted as `{{ expression }}`.
 
 [TestContext](./TestContext.cs) provides helper methods and properties for common patterns
 available to be called directly (like boolean `EveryBlocks`, `RecentBlock`, `Hex(n)`, etc.)

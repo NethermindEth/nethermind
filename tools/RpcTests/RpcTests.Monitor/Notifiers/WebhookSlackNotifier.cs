@@ -5,7 +5,7 @@ using System.Net.Http.Json;
 
 namespace Nethermind.RpcTests.Monitor.Notifiers;
 
-internal class WebhookSlackNotifier(string webhookUrl) : INotifier
+internal sealed class WebhookSlackNotifier(string webhookUrl) : INotifier
 {
     private readonly HttpClient _client = new();
 
@@ -53,4 +53,6 @@ internal class WebhookSlackNotifier(string webhookUrl) : INotifier
             Console.Error.WriteLine($"Slack notification error: {ex.Message}");
         }
     }
+
+    public void Dispose() => _client.Dispose();
 }

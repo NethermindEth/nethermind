@@ -21,7 +21,7 @@ internal static class ResponseComparer
         if (isStatic)
         {
             // "result": null → don't care about actual result value
-            if (isStatic && actualHasResult && expectedHasResult && expectedObj["result"] is null)
+            if (actualHasResult && expectedHasResult && expectedObj["result"] is null)
                 return true;
 
             // "error": null → don't care about error details

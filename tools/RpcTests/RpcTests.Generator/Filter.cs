@@ -34,9 +34,9 @@ public class Filter(ExecutionArgs args)
         if ((args.MinBlocks is not null || args.MaxBlocks is not null) &&
             request["method"]?.ToString() == "eth_getLogs")
         {
-            int? fromBlock = @params["fromBlock"] is { } fromBlockJson ? Convert.ToInt32(fromBlockJson.ToString(), 16) : null;
-            int? toBlock = @params["toBlock"] is { } toBlockJson ? Convert.ToInt32(toBlockJson.ToString(), 16) : null;
-            int range = fromBlock is null || toBlock is null ? 0 : toBlock.Value - fromBlock.Value;
+            long? fromBlock = @params["fromBlock"] is { } fromBlockJson ? Convert.ToInt64(fromBlockJson.ToString(), 16) : null;
+            long? toBlock = @params["toBlock"] is { } toBlockJson ? Convert.ToInt64(toBlockJson.ToString(), 16) : null;
+            long range = fromBlock is null || toBlock is null ? 0 : toBlock.Value - fromBlock.Value;
 
             if (args.MinBlocks is { } minBlocks && range < minBlocks) return false;
             if (args.MaxBlocks is { } maxBlocks && range > maxBlocks) return false;

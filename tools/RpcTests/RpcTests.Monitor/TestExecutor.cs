@@ -19,7 +19,7 @@ internal class TestExecutor(HttpClient httpClient)
         JsonNode request = test.Definition.Request.Compile(test);
         using JsonContent content = JsonContent.Create(request);
 
-        Console.WriteLine($"\n{test.Definition.FilePath} @ {test.RecentBlock}/{test.Head.Number}\n{request.ToCompactString()}");
+        Console.WriteLine($"{test.Definition.FilePath} @ {test.RecentBlock}/{test.Head.Number}\n{request.ToCompactString()}\n");
 
         JsonNode? expectedStatic = test.Definition.Response?.Compile(test);
         JsonNode actual = await SendAsync(args.TargetUrl, content, ct);

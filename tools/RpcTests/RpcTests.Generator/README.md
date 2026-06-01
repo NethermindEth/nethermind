@@ -32,7 +32,7 @@ dotnet run -- -r rpc.1.txt
 
 Generate tests by sending requests to a reference node (for `--JsonRpc.RpcRecorderState Request`:
 ```bash
-dotnet run -- -r rpc.2.txt -c http://localhost:8545 --parallelism 4
+dotnet run -- -r rpc.2.txt -c http://localhost:8545 -p 4
 ```
 
 Filter `eth_getLogs` requests, limiting range and result length:
