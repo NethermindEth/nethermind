@@ -52,7 +52,7 @@ Option<int?> minResultLenOption = new("--min-result-len")
 Option<Format> outputPathFormat = new("--out", "-o")
 {
     Description = "Output file path, formattable",
-    CustomParser = arg => Smart.Default.Parser.ParseFormat(arg.Tokens.Single().Value),
+    CustomParser = arg => Smart.Default.Parser.ParseFormat(arg.Tokens.Single().Value.Replace(@"\", @"\\")),
     DefaultValueFactory = _ => Smart.Default.Parser.ParseFormat("{FileDir}/{FileName}.test.json")
 };
 
