@@ -46,11 +46,20 @@ public sealed class SparseStateTrie : IDisposable
     private SparsePatriciaTree RentStorageTrie(Hash256 _) =>
         _storageTriePool.TryTake(out SparsePatriciaTree? pooled) ? pooled : new SparsePatriciaTree();
 
+    // A pooled trie keeps its backing arena arrays for reuse. A one-off huge contract (e.g. a
+    // mega-airdrop touching 100k+ slots) would otherwise pin a giant arena in the pool forever,
+    // defeating the memory bound. Above this arena high-water we dispose instead of pooling, so a
+    // fresh contract rents a right-sized arena rather than inheriting the bloated one. This is the
+    // safe analogue of Reth's shrink_nodes_to â€” it bounds pooled memory without the index
+    // remapping that in-place arena compaction would require.
+    private const int MaxPooledArenaHighWater = 16_384;
+
     /// <summary>Returns a no-longer-referenced storage trie to the pool (cleared) instead of
-    /// dropping it, unless the pool is at capacity, in which case it is disposed.</summary>
+    /// dropping it, unless the pool is at capacity or the trie's arena grew oversized, in which
+    /// case it is disposed.</summary>
     private void ReturnStorageTrieToPool(SparsePatriciaTree trie)
     {
-        if (_storageTriePool.Count >= MaxPooledStorageTries)
+        if (_storageTriePool.Count >= MaxPooledStorageTries || trie.ArenaHighWater > MaxPooledArenaHighWater)
         {
             trie.Dispose();
             return;
