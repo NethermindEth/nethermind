@@ -53,7 +53,8 @@ internal class VotesManager(
     private static readonly VoteDecoder _voteDecoder = new();
     private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly ConcurrentDictionary<ulong, byte> _qcBuildStartedByRound = new();
-    private const int _maxBlockDistance = 7; // Maximum allowed backward distance from the chain head
+    private const int _maxBlockDistance = 7; // Maximum allowed distance from the chain head
+    private const int _maxRoundDistance = 7; // Maximum allowed distance from the current round
     private long _highestVotedRound = -1;
 
     public Task CastVote(BlockRoundInfo blockInfo)
@@ -79,17 +80,13 @@ internal class VotesManager(
 
         _highestVotedRound = (long)blockInfo.Round;
 
-        HandleVote(vote);
-        return Task.CompletedTask;
+        return OnReceiveVote(vote);
     }
 
     public Task HandleVote(Vote vote)
     {
-        if ((vote.ProposedBlockInfo.Round != _ctx.CurrentRound) && (vote.ProposedBlockInfo.Round != _ctx.CurrentRound + 1))
-        {
-            //We only care about votes for the current round or the next round
+        if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound)
             return Task.CompletedTask;
-        }
 
         // Collect votes
         _votePool.Add(vote);
@@ -118,8 +115,6 @@ internal class VotesManager(
         {
             throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
         }
-
-        BroadcastVote(vote);
 
         double certThreshold = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertificateThreshold;
         double requiredVotes = masternodeCount * certThreshold;
@@ -198,26 +193,20 @@ internal class VotesManager(
 
     public Task OnReceiveVote(Vote vote)
     {
-        long voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
-        long currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
-        if (Math.Abs(voteBlockNumber - currentBlockNumber) > _maxBlockDistance)
-        {
-            // Discarded propagated vote, too far away
+        long headNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
+        if (Math.Abs(vote.ProposedBlockInfo.BlockNumber - headNumber) > _maxBlockDistance ||
+            Math.Abs((long)vote.ProposedBlockInfo.Round - (long)_ctx.CurrentRound) > _maxRoundDistance)
             return Task.CompletedTask;
-        }
 
-        if (FilterVote(vote))
-        {
+        if (!VerifyVote(vote))
+            return Task.CompletedTask;
 
-            return HandleVote(vote);
-        }
-        return Task.CompletedTask;
+        BroadcastVote(vote);
+        return HandleVote(vote);
     }
 
-    internal bool FilterVote(Vote vote)
+    private bool VerifyVote(Vote vote)
     {
-        if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound) return false;
-
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber((long)vote.GapNumber);
         if (snapshot is null) return false;
         // Verify message signature
