@@ -41,12 +41,16 @@ jobs:
       - name: Build Nethermind Docker image
         run: docker build -t nethermind:integration-tests -f Dockerfile .
 
+      - name: Build EngineApiProxy Docker image
+        run: docker build -t engine-api-proxy:integration-tests -f tools/EngineApiProxy/Dockerfile .
+
       - name: Build integration tests
         run: dotnet build src/Nethermind/Nethermind.IntegrationTests/Nethermind.IntegrationTests.csproj -c Release
 
       - name: Run E2E tests
         env:
           NETHERMIND_IMAGE: nethermind:integration-tests
+          ENGINE_API_PROXY_IMAGE: engine-api-proxy:integration-tests
           WORKERS: ${{ inputs.workers || '4' }}
         run: |
           cat > /tmp/nunit.runsettings <<EOF
