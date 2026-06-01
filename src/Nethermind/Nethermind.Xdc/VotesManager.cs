@@ -26,28 +26,18 @@ using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
-internal class VotesManager(
-    IXdcConsensusContext context,
-    ISyncPeerPool syncPeerPool,
-    IBlockTree tree,
-    IEpochSwitchManager epochSwitchManager,
-    ISnapshotManager snapshotManager,
-    IQuorumCertificateManager quorumCertificateManager,
-    ISpecProvider specProvider,
-    ISigner signer,
-    IForensicsProcessor forensicsProcessor,
-    ILogManager logManager) : IVotesManager
+internal class VotesManager : IVotesManager, IDisposable
 {
-    private readonly IBlockTree _blockTree = tree;
-    private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
-    private readonly ISnapshotManager _snapshotManager = snapshotManager;
-    private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager;
-    private readonly IXdcConsensusContext _ctx = context;
-    private readonly ISyncPeerPool _syncPeerPool = syncPeerPool;
-    private readonly IForensicsProcessor _forensicsProcessor = forensicsProcessor;
-    private readonly ISpecProvider _specProvider = specProvider;
-    private readonly ISigner _signer = signer;
-    private readonly ILogger _logger = logManager.GetClassLogger<VotesManager>();
+    private readonly IBlockTree _blockTree;
+    private readonly IEpochSwitchManager _epochSwitchManager;
+    private readonly ISnapshotManager _snapshotManager;
+    private readonly IQuorumCertificateManager _quorumCertificateManager;
+    private readonly IXdcConsensusContext _ctx;
+    private readonly ISyncPeerPool _syncPeerPool;
+    private readonly IForensicsProcessor _forensicsProcessor;
+    private readonly ISpecProvider _specProvider;
+    private readonly ISigner _signer;
+    private readonly ILogger _logger;
 
     private readonly XdcPool<Vote> _votePool = new();
     private static readonly VoteDecoder _voteDecoder = new();
@@ -56,6 +46,37 @@ internal class VotesManager(
     private const int _maxBlockDistance = 7; // Maximum allowed distance from the chain head
     private const int _maxRoundDistance = 7; // Maximum allowed distance from the current round
     private long _highestVotedRound = -1;
+
+    public VotesManager(
+        IXdcConsensusContext context,
+        ISyncPeerPool syncPeerPool,
+        IBlockTree tree,
+        IEpochSwitchManager epochSwitchManager,
+        ISnapshotManager snapshotManager,
+        IQuorumCertificateManager quorumCertificateManager,
+        ISpecProvider specProvider,
+        ISigner signer,
+        IForensicsProcessor forensicsProcessor,
+        ILogManager logManager)
+    {
+        _blockTree = tree;
+        _epochSwitchManager = epochSwitchManager;
+        _snapshotManager = snapshotManager;
+        _quorumCertificateManager = quorumCertificateManager;
+        _ctx = context;
+        _syncPeerPool = syncPeerPool;
+        _forensicsProcessor = forensicsProcessor;
+        _specProvider = specProvider;
+        _signer = signer;
+        _logger = logManager.GetClassLogger<VotesManager>();
+        _blockTree.NewHeadBlock += OnNewHeadBlock;
+    }
+
+    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+    {
+        if (e.Block.Header is XdcBlockHeader xdcHeader)
+            _ = OnNewBlock(xdcHeader);
+    }
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
@@ -104,37 +125,49 @@ internal class VotesManager(
             return Task.CompletedTask;
         }
 
+        return TryBuildQc(proposedHeader, roundVotes);
+    }
+
+    private Task OnNewBlock(XdcBlockHeader header)
+    {
+        ulong round = header.ExtraConsensusData?.BlockRound ?? 0;
+        foreach (IReadOnlyCollection<Vote> group in _votePool.GetGroupsByRound(round))
+        {
+            if (group.First().ProposedBlockInfo.Hash == header.Hash)
+                return TryBuildQc(header, group);
+        }
+        return Task.CompletedTask;
+    }
+
+    private Task TryBuildQc(XdcBlockHeader proposedHeader, IReadOnlyCollection<Vote> roundVotes)
+    {
         EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(proposedHeader);
         if (epochInfo is null)
-        {
-            //Unknown epoch switch info, cannot process vote
             return Task.CompletedTask;
-        }
+
         int masternodeCount = epochInfo.Masternodes.Length;
         if (masternodeCount == 0)
-        {
-            throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
-        }
+            throw new InvalidOperationException($"Epoch has empty master node list for {proposedHeader.Hash}");
 
-        double certThreshold = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertificateThreshold;
+        double certThreshold = _specProvider.GetXdcSpec(proposedHeader, proposedHeader.ExtraConsensusData!.BlockRound).CertificateThreshold;
         double requiredVotes = masternodeCount * certThreshold;
-        bool thresholdReached = roundVotes.Count >= requiredVotes;
-        if (thresholdReached)
-        {
-            if (!vote.ProposedBlockInfo.ValidateBlockInfo(proposedHeader))
-                return Task.CompletedTask;
+        if (roundVotes.Count < requiredVotes)
+            return Task.CompletedTask;
 
-            Signature[] validSignatures = GetValidSignatures(roundVotes, epochInfo.Masternodes);
-            if (validSignatures.Length < requiredVotes)
-                return Task.CompletedTask;
+        Vote sampleVote = roundVotes.First();
+        if (!sampleVote.ProposedBlockInfo.ValidateBlockInfo(proposedHeader))
+            return Task.CompletedTask;
 
-            // At this point, the QC should be processed for this *round*.
-            // Ensure this runs only once per round:
-            ulong round = vote.ProposedBlockInfo.Round;
-            if (!_qcBuildStartedByRound.TryAdd(round, 0))
-                return Task.CompletedTask;
-            OnVotePoolThresholdReached(validSignatures, vote);
-        }
+        Signature[] validSignatures = GetValidSignatures(roundVotes, epochInfo.Masternodes);
+        if (validSignatures.Length < requiredVotes)
+            return Task.CompletedTask;
+
+        // Ensure QC is built only once per round:
+        ulong round = proposedHeader.ExtraConsensusData!.BlockRound;
+        if (!_qcBuildStartedByRound.TryAdd(round, 0))
+            return Task.CompletedTask;
+
+        OnVotePoolThresholdReached(validSignatures, sampleVote);
         return Task.CompletedTask;
     }
 
@@ -322,4 +355,6 @@ internal class VotesManager(
     }
 
     public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);
+
+    public void Dispose() => _blockTree.NewHeadBlock -= OnNewHeadBlock;
 }

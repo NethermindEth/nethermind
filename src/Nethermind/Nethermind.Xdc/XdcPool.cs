@@ -75,6 +75,18 @@ public class XdcPool<T> where T : IXdcPoolItem
         }
     }
 
+    public IEnumerable<IReadOnlyCollection<T>> GetGroupsByRound(ulong round)
+    {
+        using McsLock.Disposable lockRelease = _lock.Acquire();
+        List<IReadOnlyCollection<T>> result = [];
+        foreach (KeyValuePair<(ulong Round, Hash256 Hash), Dictionary<Address, T>> pair in _items)
+        {
+            if (pair.Key.Round == round)
+                result.Add(pair.Value.Values.ToArray());
+        }
+        return result;
+    }
+
     // Forensics needs same-round votes across different pool keys to detect signer equivocation.
     public IReadOnlyCollection<T> GetItemsFromRoundExcludingKey(T item)
     {
