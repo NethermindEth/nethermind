@@ -47,11 +47,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
 
-        // State overrides are simulation-only; EIP-158 must not delete accounts whose code/nonce
-        // were zeroed while storage remains, or EIP-7610 CREATE collision checks will miss it.
-        IReleaseSpec commitSpec = blockStateCall.StateOverrides?.Count > 0 ? new NoEip158Spec(releaseSpec) : releaseSpec;
-        stateProvider.Commit(commitSpec, commitRoots: true);
-        stateProvider.CommitTree(blockNumber);
+        stateProvider.CommitWithOverrideGuard(releaseSpec, blockStateCall.StateOverrides, blockNumber);
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
