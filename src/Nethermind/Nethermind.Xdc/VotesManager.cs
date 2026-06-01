@@ -72,14 +72,7 @@ internal class VotesManager : IVotesManager, IDisposable
         _blockTree.NewHeadBlock += OnNewHeadBlock;
     }
 
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        if (e.Block.Header is not XdcBlockHeader xdcHeader)
-            return;
-        // Fire-and-forget; log any failure
-        try { OnNewBlock(xdcHeader); }
-        catch (Exception ex) { if (_logger.IsError) _logger.Error("XDC: failed to process votes for new head block", ex); }
-    }
+    private void OnNewHeadBlock(object? sender, BlockEventArgs e) => _ = OnNewBlock((XdcBlockHeader)e.Block.Header);
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
@@ -131,15 +124,24 @@ internal class VotesManager : IVotesManager, IDisposable
         return TryBuildQc(proposedHeader, roundVotes);
     }
 
-    private Task OnNewBlock(XdcBlockHeader header)
+    private async Task OnNewBlock(XdcBlockHeader header)
     {
-        ulong round = header.ExtraConsensusData?.BlockRound ?? 0;
-        foreach (IReadOnlyCollection<Vote> group in _votePool.GetGroupsByRound(round))
+        try
         {
-            if (group.First().ProposedBlockInfo.Hash == header.Hash)
-                return TryBuildQc(header, group);
+            ulong round = header.ExtraConsensusData?.BlockRound ?? 0;
+            foreach (IReadOnlyCollection<Vote> group in _votePool.GetGroupsByRound(round))
+            {
+                if (group.First().ProposedBlockInfo.Hash == header.Hash)
+                {
+                    await TryBuildQc(header, group);
+                    return;
+                }
+            }
         }
-        return Task.CompletedTask;
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error("XDC: failed to process votes for new head block", ex);
+        }
     }
 
     private Task TryBuildQc(XdcBlockHeader proposedHeader, IReadOnlyCollection<Vote> roundVotes)

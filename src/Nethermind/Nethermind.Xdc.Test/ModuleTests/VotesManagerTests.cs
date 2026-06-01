@@ -146,7 +146,7 @@ public class VotesManagerTests
     [TestCase(7UL, 0)]
     [TestCase(6UL, 1)]
     [TestCase(5UL, 1)]
-    public async Task HandleVote_MsgRoundDifferentValues_ReturnsEarlyIfTooFarFromCurrentRound(ulong currentRound,
+    public async Task HandleVote_VoteRoundOlderThanCurrentRound_RejectsVote(ulong currentRound,
         long expectedCount)
     {
         XdcConsensusContext ctx = new() { CurrentRound = currentRound };
@@ -445,7 +445,7 @@ public class VotesManagerTests
     }
 
     [Test]
-    public async Task OnReceiveVote_ValidVoteForOldRound_IsValidatedButNotAccumulatedInPool()
+    public async Task OnReceiveVote_ValidVoteForOldRound_IsValidatedBroadcastAndNotAccumulatedInPool()
     {
         const ulong currentRound = 14;
         const ulong voteRound = 10; // distance=4, within _maxRoundDistance=7
@@ -463,16 +463,21 @@ public class VotesManagerTests
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager.GetSnapshotByGapNumber(450).Returns(new Snapshot(0, Hash256.Zero, masternodes));
 
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+
         VotesManager voteManager = new VoteManagerBuilder
         {
             Context = context,
             BlockTree = blockTree,
-            SnapshotManager = snapshotManager
+            SnapshotManager = snapshotManager,
+            SyncPeerPool = syncPeerPool
         }.Build();
 
         await voteManager.OnReceiveVote(vote);
 
-        // Passed VerifyVote (valid signature, in masternodes) but HandleVote skipped pool accumulation (old round)
+        // Broadcast happens even for old rounds (helps lagging peers catch up)
+        _ = syncPeerPool.Received(1).AllPeers;
+        // Valid signature and in masternodes, but HandleVote skips pool accumulation for old rounds
         Assert.That(voteManager.GetVotesCount(vote), Is.EqualTo(0L));
     }
 
@@ -493,8 +498,9 @@ public class VotesManagerTests
         public ISpecProvider SpecProvider { get; set; } = DefaultSpecProvider();
         public ISigner Signer { get; set; } = DefaultSigner();
         public IForensicsProcessor ForensicsProcessor { get; set; } = Substitute.For<IForensicsProcessor>();
+        public ISyncPeerPool SyncPeerPool { get; set; } = Substitute.For<ISyncPeerPool>();
 
-        public VotesManager Build() => new(Context, Substitute.For<ISyncPeerPool>(), BlockTree, EpochSwitchManager,
+        public VotesManager Build() => new(Context, SyncPeerPool, BlockTree, EpochSwitchManager,
             SnapshotManager, QuorumCertificateManager, SpecProvider, Signer, ForensicsProcessor, NullLogManager.Instance);
 
         private static IEpochSwitchManager DefaultEpochSwitchManager()

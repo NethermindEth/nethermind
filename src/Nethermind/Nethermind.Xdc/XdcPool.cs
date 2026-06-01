@@ -38,6 +38,7 @@ public class XdcPool<T> where T : IXdcPoolItem
     {
         using McsLock.Disposable lockRelease = _lock.Acquire();
         {
+            // Safe: removing during enumeration is allowed in .NET Core 3.0+
             foreach ((ulong Round, Hash256 Hash) key in _items.Keys)
             {
                 if (key.Round <= round)
