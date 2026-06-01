@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+using Nethermind.Logging;
 using NonBlocking;
 
 namespace Nethermind.Kademlia;
@@ -15,12 +14,12 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
     IRoutingTable<TNode, TKadKey> routingTable,
     INodeHashProvider<TNode, TKadKey> nodeHashProvider,
     IKademliaMessageSender<TKey, TNode> kademliaMessageSender,
-    ILoggerFactory? loggerFactory = null
+    ILogManager? logManager = null
 ) : INodeHealthTracker<TNode>, IDisposable
     where TNode : notnull
     where TKadKey : notnull
 {
-    private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<NodeHealthTracker<TKey, TNode, TKadKey>>();
+    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<NodeHealthTracker<TKey, TNode, TKadKey>>();
 
     private readonly ConcurrentDictionary<TKadKey, bool> _isRefreshing = new();
     private readonly ConcurrentDictionary<TKadKey, Task> _refreshTasks = new();
@@ -78,7 +77,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 OnRequestFailed(toRefresh);
-                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug(e, "Error while refreshing node {Node}.", toRefresh);
+                if (_logger.IsDebug) _logger.Debug($"Error while refreshing node {toRefresh}: {e}");
             }
 
             if (_isRefreshing.TryRemove(nodeHash, out _))
@@ -184,7 +183,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
             completed = true;
             if (!HasOnlyCancellationExceptions(e))
             {
-                _logger.LogDebug(e, "Error while disposing node health tracker.");
+                if (_logger.IsDebug) _logger.Debug($"Error while disposing node health tracker: {e}");
             }
         }
 

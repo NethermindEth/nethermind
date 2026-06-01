@@ -3,7 +3,7 @@
 
 using System.Net;
 using Nethermind.Core;
-using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 

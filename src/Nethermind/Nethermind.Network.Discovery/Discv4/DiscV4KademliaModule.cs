@@ -35,17 +35,6 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaDiscv4Adapter>()
             .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
             .AddSingleton<IKeyOperator<PublicKey, Node, Hash256>, PublicKeyKeyOperator>()
-            .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
-            {
-                CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true), // It actually only need masterNode.
-                KSize = discoveryConfig.BucketSize,
-                Alpha = discoveryConfig.Concurrency,
-                Beta = discoveryConfig.BitsPerHop,
-
-                LookupFindNeighbourHardTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout), // TODO: This seems very low.
-                RefreshPingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout),
-                RefreshInterval = TimeSpan.FromMilliseconds(discoveryConfig.DiscoveryInterval),
-                BootNodes = bootNodes
-            })
+            .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => DiscoveryKademliaConfigFactory.Create(masterNode, bootNodes, discoveryConfig))
             ;
 }

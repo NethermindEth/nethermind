@@ -236,6 +236,18 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
+        public void Can_remove_and_return_value()
+        {
+            LruCache<Address, Account> cache = new(Capacity, "test");
+            cache.Set(_addresses[0], _accounts[0]);
+
+            Assert.That(cache.TryRemove(_addresses[0], out Account? removed), Is.True);
+            Assert.That(removed, Is.EqualTo(_accounts[0]));
+            Assert.That(cache.TryRemove(_addresses[0], out removed), Is.False);
+            Assert.That(removed, Is.Null);
+        }
+
+        [Test]
         public void Clear_should_free_all_capacity()
         {
             ICache<Address, Account> cache = Create();

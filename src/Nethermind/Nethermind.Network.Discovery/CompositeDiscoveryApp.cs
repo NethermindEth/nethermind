@@ -10,6 +10,7 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;

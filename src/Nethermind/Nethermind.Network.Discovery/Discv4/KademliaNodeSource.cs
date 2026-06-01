@@ -32,9 +32,7 @@ public class KademliaNodeSource(
         using CancellationTokenSource disposeCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         CancellationToken discoveryToken = disposeCts.Token;
         Channel<Node> ch = Channel.CreateBounded<Node>(ChannelCapacity);
-        LinkedList<ValueHash256> recentlyWrittenNodes = [];
-        Dictionary<ValueHash256, LinkedListNode<ValueHash256>> writtenNodes = [];
-        object writtenNodesLock = new();
+        RecentNodeFilter<ValueHash256> recentlyWrittenNodes = new(_recentNodeLimit);
         int duplicated = 0;
         int total = 0;
 
@@ -66,7 +64,7 @@ public class KademliaNodeSource(
                 anyFound = true;
                 count++;
                 total++;
-                if (!TryReserveNode(node.IdHash))
+                if (!recentlyWrittenNodes.TryReserve(node.IdHash))
                 {
                     duplicated++;
                     continue;
@@ -78,7 +76,7 @@ public class KademliaNodeSource(
                 }
                 catch
                 {
-                    ReleaseReservedNode(node.IdHash);
+                    recentlyWrittenNodes.Release(node.IdHash);
                     throw;
                 }
             }
@@ -150,7 +148,7 @@ public class KademliaNodeSource(
 
         void Handler(object? _, Node addedNode)
         {
-            if (!TryReserveNode(addedNode.IdHash))
+            if (!recentlyWrittenNodes.TryReserve(addedNode.IdHash))
             {
                 return;
             }
@@ -160,40 +158,7 @@ public class KademliaNodeSource(
                 return;
             }
 
-            ReleaseReservedNode(addedNode.IdHash);
-        }
-
-        bool TryReserveNode(ValueHash256 nodeId)
-        {
-            lock (writtenNodesLock)
-            {
-                if (writtenNodes.ContainsKey(nodeId))
-                {
-                    return false;
-                }
-
-                LinkedListNode<ValueHash256> listNode = recentlyWrittenNodes.AddLast(nodeId);
-                writtenNodes.Add(nodeId, listNode);
-                while (writtenNodes.Count > _recentNodeLimit)
-                {
-                    LinkedListNode<ValueHash256> oldestNode = recentlyWrittenNodes.First!;
-                    recentlyWrittenNodes.RemoveFirst();
-                    writtenNodes.Remove(oldestNode.Value);
-                }
-
-                return true;
-            }
-        }
-
-        void ReleaseReservedNode(ValueHash256 nodeId)
-        {
-            lock (writtenNodesLock)
-            {
-                if (writtenNodes.Remove(nodeId, out LinkedListNode<ValueHash256>? listNode))
-                {
-                    recentlyWrittenNodes.Remove(listNode);
-                }
-            }
+            recentlyWrittenNodes.Release(addedNode.IdHash);
         }
     }
 }

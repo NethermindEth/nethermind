@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -55,13 +54,10 @@ public sealed class NodeFilter
         => new(size, exactMatchOnly: true, currentIp: null, (long)timeout.TotalMilliseconds);
 
     public static bool IsLoopbackOrPrivateOrLinkLocal(IPAddress ipAddress)
-        => IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(ipAddress);
+        => IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(ipAddress);
 
     public static bool IsIPv4Multicast(IPAddress ipAddress)
-    {
-        byte[] bytes = ipAddress.GetAddressBytes();
-        return bytes.Length == 4 && bytes[0] is >= 224 and <= 239;
-    }
+        => IPAddressClassifier.IsIPv4Multicast(ipAddress);
 
     /// <summary>
     /// Checks whether <paramref name="ipAddress"/> should be accepted.
@@ -336,41 +332,11 @@ public sealed class NodeFilter
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static IpFamily ReadAddress(IPAddress ip, out uint v4, out ulong hi, out ulong lo)
         {
-            Span<byte> bytes = stackalloc byte[16];
-            if (!ip.TryWriteBytes(bytes, out int written))
-                throw new ArgumentException("Invalid IPAddress.", nameof(ip));
-
-            switch (written)
-            {
-                case 4:
-                    v4 = BinaryPrimitives.ReadUInt32BigEndian(bytes);
-                    hi = 0;
-                    lo = 0;
-                    return IpFamily.IPv4;
-                case 16:
-                    {
-                        hi = BinaryPrimitives.ReadUInt64BigEndian(bytes);
-
-                        // Fast-path IPv4-mapped IPv6 (::ffff:a.b.c.d) - treat as IPv4.
-                        if (hi == 0)
-                        {
-                            uint mid = BinaryPrimitives.ReadUInt32BigEndian(bytes.Slice(8, 4));
-                            if (mid == 0x0000_FFFFu)
-                            {
-                                v4 = BinaryPrimitives.ReadUInt32BigEndian(bytes.Slice(12, 4));
-                                hi = 0;
-                                lo = 0;
-                                return IpFamily.IPv4;
-                            }
-                        }
-
-                        v4 = 0;
-                        lo = BinaryPrimitives.ReadUInt64BigEndian(bytes.Slice(8, 8));
-                        return IpFamily.IPv6;
-                    }
-                default:
-                    throw new ArgumentException("Unsupported address length.", nameof(ip));
-            }
+            IPAddressClassifier.ParsedIPAddress parsed = IPAddressClassifier.Parse(ip);
+            v4 = parsed.V4;
+            hi = parsed.Hi;
+            lo = parsed.Lo;
+            return parsed.Family == IPAddressClassifier.ParsedIPAddressFamily.IPv4 ? IpFamily.IPv4 : IpFamily.IPv6;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -416,29 +382,8 @@ public sealed class NodeFilter
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsLoopbackOrPrivateOrLinkLocal(IpFamily family, uint v4, ulong hi, ulong lo)
-        {
-            if (family == IpFamily.IPv4)
-            {
-                byte a = (byte)(v4 >> 24);
-                byte b = (byte)(v4 >> 16);
-
-                return a == 127                            // Loopback: 127.0.0.0/8
-                       || a == 10                          // RFC1918: 10.0.0.0/8
-                       || a == 172 && (uint)(b - 16) <= 15u // RFC1918: 172.16.0.0/12
-                       || a == 192 && b == 168             // RFC1918: 192.168.0.0/16
-                       || a == 169 && b == 254             // IPv4 link-local: 169.254.0.0/16
-                       || a == 100 && (b & 0xC0) == 0x40;  // CGNAT: 100.64.0.0/10
-            }
-
-            // IPv6 loopback: ::1
-            if (hi == 0 && lo == 1)
-                return true;
-
-            byte first = (byte)(hi >> 56);
-            byte second = (byte)(hi >> 48);
-
-            return (first & 0xFE) == 0xFC                  // ULA: fc00::/7
-                   || first == 0xFE && (second & 0xC0) == 0x80; // IPv6 link-local: fe80::/10
-        }
+            => family == IpFamily.IPv4
+                ? IPAddressClassifier.IsIPv4LoopbackOrPrivateOrLinkLocal(v4)
+                : IPAddressClassifier.IsIPv6LoopbackOrPrivateOrLinkLocal(hi, lo);
     }
 }

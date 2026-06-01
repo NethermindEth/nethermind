@@ -5,7 +5,6 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
-using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 
@@ -25,15 +24,5 @@ public class DiscV5KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
         .AddModule(new KademliaModule<PublicKey, Node, Hash256>())
         .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
         .AddSingleton<IKeyOperator<PublicKey, Node, Hash256>, PublicKeyKeyOperator>()
-        .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
-        {
-            CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true),
-            KSize = discoveryConfig.BucketSize,
-            Alpha = discoveryConfig.Concurrency,
-            Beta = discoveryConfig.BitsPerHop,
-            LookupFindNeighbourHardTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout),
-            RefreshPingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout),
-            RefreshInterval = TimeSpan.FromMilliseconds(discoveryConfig.DiscoveryInterval),
-            BootNodes = bootNodes
-        });
+        .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => DiscoveryKademliaConfigFactory.Create(masterNode, bootNodes, discoveryConfig));
 }

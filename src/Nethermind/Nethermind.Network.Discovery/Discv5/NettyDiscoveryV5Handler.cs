@@ -31,6 +31,18 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
 
     public override void ChannelActive(IChannelHandlerContext context) => OnChannelActivated?.Invoke(this, EventArgs.Empty);
 
+    public override void ChannelInactive(IChannelHandlerContext context)
+    {
+        Close();
+        base.ChannelInactive(context);
+    }
+
+    public override void HandlerRemoved(IChannelHandlerContext context)
+    {
+        Close();
+        base.HandlerRemoved(context);
+    }
+
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
         msg.Retain();
@@ -42,7 +54,7 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
         }
 
         ReferenceCountUtil.Release(queuedPacket);
-        if (_logger.IsDebug)
+        if (_logger.IsWarn)
         {
             _logger.Warn("Skipping discovery v5 message as inbound buffer is full");
         }
@@ -50,7 +62,7 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
 
     public async Task SendAsync(byte[] data, IPEndPoint destination)
     {
-        if (_nettyChannel == null) throw new("Channel for discovery v5 is not initialized");
+        if (_nettyChannel is null) throw new("Channel for discovery v5 is not initialized");
 
         DatagramPacket packet = new(Unpooled.WrappedBuffer(data), destination);
 

@@ -9,7 +9,6 @@ using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv5;
-using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
@@ -84,42 +83,6 @@ public class Discv5KademliaAdapterTests
     }
 
     [Test]
-    public void NodesResponseHandler_ShouldRejectNonRoutableRecordFromPublicReceiver()
-    {
-        Node receiver = new(TestItem.PublicKeyA, "8.8.8.8", 30303);
-        NodeRecord loopbackRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
-        Discv5KademliaAdapter.NodesResponseHandler handler = CreateNodesResponseHandler(receiver, loopbackRecord);
-
-        handler.Handle(new Discv5Nodes([1], 1, [loopbackRecord]));
-
-        Assert.That(handler.GetNodes(), Is.Empty);
-    }
-
-    [Test]
-    public void NodesResponseHandler_ShouldAcceptNonRoutableRecordFromNonRoutableReceiver()
-    {
-        Node receiver = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303);
-        NodeRecord loopbackRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
-        Discv5KademliaAdapter.NodesResponseHandler handler = CreateNodesResponseHandler(receiver, loopbackRecord);
-
-        handler.Handle(new Discv5Nodes([1], 1, [loopbackRecord]));
-
-        Assert.That(handler.GetNodes(), Has.Length.EqualTo(1));
-    }
-
-    [Test]
-    public void NodesResponseHandler_ShouldRejectSpecialUseRecordFromNonRoutableReceiver()
-    {
-        Node receiver = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303);
-        NodeRecord documentationRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("192.0.2.1"));
-        Discv5KademliaAdapter.NodesResponseHandler handler = CreateNodesResponseHandler(receiver, documentationRecord);
-
-        handler.Handle(new Discv5Nodes([1], 1, [documentationRecord]));
-
-        Assert.That(handler.GetNodes(), Is.Empty);
-    }
-
-    [Test]
     public void IsAcceptableNodeRecord_ShouldRejectSpecialUseRecord()
     {
         NodeRecord documentationRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("192.0.2.1"));
@@ -158,29 +121,6 @@ public class Discv5KademliaAdapterTests
             Is.True);
     }
 
-    [Test]
-    public void BoundedMap_ShouldRemoveInsertionOrderEntriesOnRemove()
-    {
-        Discv5KademliaAdapter.BoundedMap<int, string> map = new(2);
-        map.Set(1, "a");
-        map.Set(2, "b");
-
-        Assert.That(map.TryRemove(1, out string? removed), Is.True);
-        Assert.That(removed, Is.EqualTo("a"));
-
-        map.Set(3, "c");
-        map.Set(4, "d");
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(map.Snapshot(), Has.Length.EqualTo(2));
-            Assert.That(map.TryGetValue(1, out _), Is.False);
-            Assert.That(map.TryGetValue(2, out _), Is.False);
-            Assert.That(map.TryGetValue(3, out _), Is.True);
-            Assert.That(map.TryGetValue(4, out _), Is.True);
-        }
-    }
-
     private Discv5KademliaAdapter CreateAdapter() => new(
         new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
         null!,
@@ -206,10 +146,4 @@ public class Discv5KademliaAdapterTests
         return enr;
     }
 
-    private static Discv5KademliaAdapter.NodesResponseHandler CreateNodesResponseHandler(Node receiver, NodeRecord record)
-    {
-        PublicKey nodeId = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)!.Decompress();
-        int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(receiver.Id.Hash, nodeId.Hash);
-        return new Discv5KademliaAdapter.NodesResponseHandler(receiver, new Discv5Distances([distance]), Hash256KademliaDistance.Instance);
-    }
 }

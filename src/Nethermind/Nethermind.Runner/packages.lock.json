@@ -731,7 +731,6 @@
           "Nethermind.Consensus": "[1.39.0-unstable, )",
           "Nethermind.Core": "[1.39.0-unstable, )",
           "Nethermind.JsonRpc": "[1.39.0-unstable, )",
-          "Nethermind.Merkleization": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )",
           "Nethermind.State": "[1.39.0-unstable, )",
@@ -749,7 +748,6 @@
           "Nethermind.Era1": "[1.39.0-unstable, )",
           "Nethermind.History": "[1.39.0-unstable, )",
           "Nethermind.JsonRpc": "[1.39.0-unstable, )",
-          "Nethermind.Merkleization": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )",
           "Nethermind.State": "[1.39.0-unstable, )",
@@ -904,7 +902,6 @@
       "nethermind.kademlia": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.39.0-unstable, )",
           "Nethermind.Logging": "[1.39.0-unstable, )",
           "NonBlocking": "[2.1.2, )"
         }
@@ -921,6 +918,12 @@
       },
       "nethermind.logging": {
         "type": "Project"
+      },
+      "nethermind.logging.microsoft": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Logging": "[1.39.0-unstable, )"
+        }
       },
       "nethermind.logging.nlog": {
         "type": "Project",
@@ -947,14 +950,7 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Api": "[1.39.0-unstable, )",
-          "Nethermind.Merkleization": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )"
-        }
-      },
-      "nethermind.merkleization": {
-        "type": "Project",
-        "dependencies": {
-          "Nethermind.Numerics.Int256": "[1.5.0, )"
         }
       },
       "nethermind.monitoring": {
@@ -1087,8 +1083,8 @@
           "Nethermind.Init": "[1.39.0-unstable, )",
           "Nethermind.Libp2p": "[1.0.0-preview.45, )",
           "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.0.0-preview.45, )",
+          "Nethermind.Logging.Microsoft": "[1.39.0-unstable, )",
           "Nethermind.Merge.Plugin": "[1.39.0-unstable, )",
-          "Nethermind.Merkleization": "[1.39.0-unstable, )",
           "Nethermind.Network.Discovery": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )",
           "Nethermind.Specs": "[1.39.0-unstable, )"

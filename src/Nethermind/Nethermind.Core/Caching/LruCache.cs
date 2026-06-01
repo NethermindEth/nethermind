@@ -149,16 +149,39 @@ namespace Nethermind.Core.Caching
             return DeleteNoLock(key);
         }
 
+        /// <summary>
+        /// Deletes a cached value and returns it when the key is present.
+        /// </summary>
+        public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value)
+        {
+            using McsLock.Disposable lockRelease = _lock.Acquire();
+
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            {
+                value = node.Value.Value;
+                RemoveNoLock(key, node);
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+
         private bool DeleteNoLock(TKey key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
-                LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
-                _cacheMap.Remove(key);
+                RemoveNoLock(key, node);
                 return true;
             }
 
             return false;
+        }
+
+        private void RemoveNoLock(TKey key, LinkedListNode<LruCacheItem> node)
+        {
+            LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
+            _cacheMap.Remove(key);
         }
 
         public bool Contains(TKey key)

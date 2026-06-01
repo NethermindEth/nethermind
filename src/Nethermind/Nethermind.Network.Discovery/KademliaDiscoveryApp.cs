@@ -9,7 +9,7 @@ using Nethermind.Core.ServiceStopper;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;

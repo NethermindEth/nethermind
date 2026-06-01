@@ -101,5 +101,19 @@ namespace Nethermind.Network.Discovery.Test
             Assert.That(enumerator.Current.Buffer, Is.EqualTo(data));
             Assert.That(await enumerator.MoveNextAsync(), Is.False);
         }
+
+        [Test]
+        public async Task ChannelInactiveStopsReader()
+        {
+            using CancellationTokenSource cancellationSource = new(10_000);
+            IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
+                .ReadMessagesAsync(cancellationSource.Token)
+                .GetAsyncEnumerator(cancellationSource.Token);
+            ValueTask<bool> readTask = enumerator.MoveNextAsync();
+
+            _handler.ChannelInactive(Substitute.For<IChannelHandlerContext>());
+
+            Assert.That(await readTask.AsTask().WaitAsync(cancellationSource.Token), Is.False);
+        }
     }
 }

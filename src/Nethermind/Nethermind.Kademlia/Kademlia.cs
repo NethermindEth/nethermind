@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+using Nethermind.Logging;
 
 namespace Nethermind.Kademlia;
 
@@ -41,7 +40,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         ILookupAlgo<TNode, TKadKey> lookupAlgo,
         INodeHealthTracker<TNode> nodeHealthTracker,
         KademliaConfig<TNode> config,
-        ILoggerFactory? loggerFactory = null,
+        ILogManager? logManager = null,
         TimeProvider? timeProvider = null)
     {
         _keyOperator = keyOperator;
@@ -49,7 +48,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         _routingTable = routingTable;
         _lookupAlgo = lookupAlgo;
         _nodeHealthTracker = nodeHealthTracker;
-        _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<Kademlia<TKey, TNode, TKadKey>>();
+        _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<Kademlia<TKey, TNode, TKadKey>>();
 
         _currentNodeId = config.CurrentNodeId;
         _currentNodeIdAsHash = _keyOperator.GetNodeHash(_currentNodeId);
@@ -105,7 +104,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Bootstrap iteration failed.");
+                if (_logger.IsError) _logger.Error("Bootstrap iteration failed.", e);
             }
 
             await Task.Delay(_refreshInterval, token);
@@ -133,13 +132,13 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
             }
             catch (Exception e)
             {
-                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug(e, "Bootnode ping failed for {Node}.", node);
+                if (_logger.IsDebug) _logger.Debug($"Bootnode ping failed for {node}: {e}");
             }
         });
 
-        if (_logger.IsEnabled(LogLevel.Debug))
+        if (_logger.IsDebug)
         {
-            _logger.LogDebug("Online bootnodes: {OnlineBootNodes}", onlineBootNodes);
+            _logger.Debug($"Online bootnodes: {onlineBootNodes}");
         }
 
         TKey currentNodeIdAsKey = _keyOperator.GetKey(_currentNodeId);
@@ -157,9 +156,9 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
             await LookupNodesClosest(keyToLookup, token);
         }
 
-        if (_logger.IsEnabled(LogLevel.Debug))
+        if (_logger.IsDebug)
         {
-            _logger.LogDebug("Bootstrap completed. Took {Elapsed}.", sw.Elapsed);
+            _logger.Debug($"Bootstrap completed. Took {sw.Elapsed}.");
             _routingTable.LogDebugInfo();
         }
     }
