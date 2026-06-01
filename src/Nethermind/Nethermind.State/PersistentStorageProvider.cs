@@ -40,6 +40,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly HashSet<StorageCell> _committedThisRound = [];
 
     /// <summary>
+    /// Optional non-destructive sink for the M4 streaming sparse-trie pipeline. When set (only in
+    /// sparse-parallel mode), each committed storage write is reported as (cell, value) during
+    /// CommitCore so the background task can stream leaf updates concurrently with execution.
+    /// Null in every other mode â€” the capture is a single null-check per committed change, zero
+    /// allocation/work when off. Does not affect the authoritative BlockChange path.
+    /// </summary>
+    internal Action<StorageCell, byte[]>? CommittedStorageSink { get; set; }
+
+    /// <summary>
     /// Reset the storage state
     /// </summary>
     public override void Reset(bool resetBlockChanges = true)
@@ -171,6 +180,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
                     GetOrCreateStorage(change.StorageCell.Address)
                         .SaveChange(change.StorageCell, change.Value);
+
+                    // M4 streaming: report the committed (cell, value) so the background sparse
+                    // task can stream this leaf update during execution. No-op when off.
+                    CommittedStorageSink?.Invoke(change.StorageCell, change.Value);
                 }
 
                 if (isTracing)
