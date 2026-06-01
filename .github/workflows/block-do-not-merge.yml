@@ -14,8 +14,9 @@ jobs:
         with:
           script: |
             const labels = context.payload.pull_request.labels.map(l => l.name);
-            if (labels.some(l => l.toLowerCase() === 'do not merge')) {
-              core.setFailed('This PR has the "DO NOT MERGE" label and must not be merged.');
+            const blocking = labels.filter(l => l.toLowerCase().includes('do not merge'));
+            if (blocking.length > 0) {
+              core.setFailed(`This PR has a blocking label and must not be merged: ${blocking.join(', ')}`);
             } else {
               core.info('No "DO NOT MERGE" label present.');
             }
