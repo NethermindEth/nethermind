@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -60,7 +59,7 @@ public class SparseTrieTaskTests
             updates[TestItem.Keccaks[i]] = LeafUpdate.Changed(newRlps[i]);
         syncComputer.SetAccountChanges(updates);
         Hash256 syncRoot = syncComputer.ComputeStateRoot();
-        syncRoot.Should().Be(block2Root, "synchronous sparse must match Patricia");
+        Assert.That(syncRoot, Is.EqualTo(block2Root), "synchronous sparse must match Patricia");
 
         // M4 streamed path: feed the same updates as a delta batch through the background task.
         using SparseRootComputer streamComputer = new(new HalfPathTrieNodeReader(new NodeStorage(db)), block1Root);
@@ -73,8 +72,8 @@ public class SparseTrieTaskTests
         task.Finish();
 
         Hash256 streamedRoot = await task.GetRootAsync();
-        streamedRoot.Should().Be(block2Root, "streamed M4 root must match Patricia");
-        streamedRoot.Should().Be(syncRoot, "streamed M4 root must match synchronous sparse root");
+        Assert.That(streamedRoot, Is.EqualTo(block2Root), "streamed M4 root must match Patricia");
+        Assert.That(streamedRoot, Is.EqualTo(syncRoot), "streamed M4 root must match synchronous sparse root");
     }
 
     [Test]
@@ -106,7 +105,7 @@ public class SparseTrieTaskTests
         task.Finish();
 
         Hash256 streamedRoot = await task.GetRootAsync();
-        streamedRoot.Should().Be(syncRoot, "last-writer-wins across batches must match single-batch root");
+        Assert.That(streamedRoot, Is.EqualTo(syncRoot), "last-writer-wins across batches must match single-batch root");
     }
 
     [Test]
@@ -126,8 +125,8 @@ public class SparseTrieTaskTests
         cts.Cancel();          // poison the drain
         task.Finish();
 
-        Func<Task> act = async () => await task.GetRootAsync();
-        await act.Should().ThrowAsync<InvalidOperationException>(
+        Assert.That(async () => await task.GetRootAsync(),
+            Throws.InstanceOf<InvalidOperationException>(),
             "a cancelled/poisoned drain must not yield a trusted root");
     }
 
@@ -148,7 +147,7 @@ public class SparseTrieTaskTests
         task.Finish();
 
         Hash256 root = await task.GetRootAsync();
-        root.Should().Be(block1Root, "prefetch-only (Touched markers) must leave the root unchanged");
+        Assert.That(root, Is.EqualTo(block1Root), "prefetch-only (Touched markers) must leave the root unchanged");
     }
 
     [Test]
@@ -180,6 +179,6 @@ public class SparseTrieTaskTests
         task.Finish();
 
         Hash256 streamedRoot = await task.GetRootAsync();
-        streamedRoot.Should().Be(baselineRoot, "prefetch must not alter the root vs writing the same keys directly");
+        Assert.That(streamedRoot, Is.EqualTo(baselineRoot), "prefetch must not alter the root vs writing the same keys directly");
     }
 }

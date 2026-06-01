@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -49,7 +48,7 @@ public class BlindedBoundaryProofTests
         // Step 1: reveal only the root node into the sparse trie.
         DecodedMultiProof rootOnlyProof = MultiProofReader.ReadAccountProofs(
             reader, originalRoot, [TestItem.Keccaks[2]], new byte[] { 0 });
-        rootOnlyProof.AccountNodes.Should().NotBeEmpty();
+        Assert.That(rootOnlyProof.AccountNodes, Is.Not.Empty);
         using SparsePatriciaTree sparse = new();
         sparse.RevealNodes([rootOnlyProof.AccountNodes[0]]);
 
@@ -72,18 +71,17 @@ public class BlindedBoundaryProofTests
                 byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
                 bool found = sparse.Subtrie.TryFindBlindedEntryOnPath(
                     nibbles, out TreePath bPath, out RlpNode bRlp, out int _);
-                found.Should().BeTrue($"sparse trie should know where blinding starts for {key}");
+                Assert.That(found, Is.True, $"sparse trie should know where blinding starts for {key}");
                 blinded.Add(new MultiProofReader.BlindedProofTarget(bPath, bRlp, nibbles));
             }
 
             DecodedMultiProof proof = MultiProofReader.ReadProofsFromBlinded(reader, null, blinded);
-            proof.AccountNodes.Should().NotBeEmpty("blinded-boundary proof must return at least the subtrie root");
+            Assert.That(proof.AccountNodes, Is.Not.Empty, "blinded-boundary proof must return at least the subtrie root");
             sparse.RevealNodes(proof.AccountNodes);
         }
 
         Hash256 sparseRoot = sparse.ComputeRoot();
-        sparseRoot.Should().Be(patriciaNewRoot,
-            $"Blinded-boundary proof read must produce the same root as Patricia. " +
+        Assert.That(sparseRoot, Is.EqualTo(patriciaNewRoot), $"Blinded-boundary proof read must produce the same root as Patricia. " +
             $"Patricia={patriciaNewRoot}, Sparse={sparseRoot}, OriginalRoot={originalRoot}");
     }
 
@@ -125,7 +123,7 @@ public class BlindedBoundaryProofTests
         // This creates the extension-only state in the sparse trie.
         DecodedMultiProof rootOnly = MultiProofReader.ReadAccountProofs(
             reader, originalRoot, [k0], new byte[] { 0 });
-        rootOnly.AccountNodes.Should().NotBeEmpty();
+        Assert.That(rootOnly.AccountNodes, Is.Not.Empty);
         using SparsePatriciaTree sparse = new();
         // Reveal ONLY the first node (the extension wrapper). Skip the inner branch.
         sparse.RevealNodes([rootOnly.AccountNodes[0]]);
@@ -148,7 +146,7 @@ public class BlindedBoundaryProofTests
                 byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
                 bool found = sparse.Subtrie.TryFindBlindedEntryOnPath(
                     nibbles, out TreePath bPath, out RlpNode bRlp, out int _);
-                found.Should().BeTrue($"sparse trie should report blinded boundary for {key}");
+                Assert.That(found, Is.True, $"sparse trie should report blinded boundary for {key}");
                 blinded.Add(new MultiProofReader.BlindedProofTarget(bPath, bRlp, nibbles));
             }
 
@@ -157,8 +155,7 @@ public class BlindedBoundaryProofTests
         }
 
         Hash256 sparseRoot = sparse.ComputeRoot();
-        sparseRoot.Should().Be(patriciaNewRoot,
-            $"Extension-only reveal should walk inner branch correctly. " +
+        Assert.That(sparseRoot, Is.EqualTo(patriciaNewRoot), $"Extension-only reveal should walk inner branch correctly. " +
             $"Patricia={patriciaNewRoot}, Sparse={sparseRoot}");
     }
 
@@ -196,7 +193,7 @@ public class BlindedBoundaryProofTests
         HalfPathTrieNodeReader reader = new(new NodeStorage(db));
         DecodedMultiProof rootOnly = MultiProofReader.ReadAccountProofs(
             reader, originalRoot, [k0], new byte[] { 0 });
-        rootOnly.AccountNodes.Should().NotBeEmpty();
+        Assert.That(rootOnly.AccountNodes, Is.Not.Empty);
         using SparsePatriciaTree sparse = new();
         sparse.RevealNodes([rootOnly.AccountNodes[0]]);
 
@@ -223,15 +220,12 @@ public class BlindedBoundaryProofTests
             retries = retry + 1;
         }
 
-        retries.Should().BeGreaterThan(0,
-            "delete through extension-only must request a proof; if the pre-check let it fall " +
+        Assert.That(retries, Is.GreaterThan(0), "delete through extension-only must request a proof; if the pre-check let it fall " +
             "through to NoChange, retries would stay 0 and sparseRoot would equal originalRoot");
 
         Hash256 sparseRoot = sparse.ComputeRoot();
-        sparseRoot.Should().Be(patriciaNewRoot,
-            $"Extension-only delete should match Patricia. Patricia={patriciaNewRoot}, Sparse={sparseRoot}");
-        sparseRoot.Should().NotBe(originalRoot,
-            "if delete was silently dropped, sparse would still produce the original root");
+        Assert.That(sparseRoot, Is.EqualTo(patriciaNewRoot), $"Extension-only delete should match Patricia. Patricia={patriciaNewRoot}, Sparse={sparseRoot}");
+        Assert.That(sparseRoot, Is.Not.EqualTo(originalRoot), "if delete was silently dropped, sparse would still produce the original root");
     }
 
     /// <summary>
@@ -289,20 +283,17 @@ public class BlindedBoundaryProofTests
                     byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
                     bool found = sparse.Subtrie.TryFindBlindedEntryOnPath(
                         nibbles, out TreePath bPath, out RlpNode bRlp, out int _);
-                    found.Should().BeTrue(
-                        $"block {block}, retry {retry}: sparse trie should know where blinding starts for {key}");
+                    Assert.That(found, Is.True, $"block {block}, retry {retry}: sparse trie should know where blinding starts for {key}");
                     blinded.Add(new MultiProofReader.BlindedProofTarget(bPath, bRlp, nibbles));
                 }
 
                 DecodedMultiProof proof = MultiProofReader.ReadProofsFromBlinded(reader, null, blinded);
-                proof.AccountNodes.Should().NotBeEmpty(
-                    $"block {block}, retry {retry}: blinded-boundary proof must return nodes");
+                Assert.That(proof.AccountNodes, Is.Not.Empty, $"block {block}, retry {retry}: blinded-boundary proof must return nodes");
                 sparse.RevealNodes(proof.AccountNodes);
             }
 
             Hash256 sparseRoot = sparse.ComputeRoot();
-            sparseRoot.Should().Be(patriciaRoot,
-                $"Block {block} root mismatch: Patricia={patriciaRoot}, Sparse={sparseRoot}");
+            Assert.That(sparseRoot, Is.EqualTo(patriciaRoot), $"Block {block} root mismatch: Patricia={patriciaRoot}, Sparse={sparseRoot}");
 
             currentRoot = patriciaRoot;
         }

@@ -6,7 +6,9 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -227,9 +229,17 @@ namespace Nethermind.State
 
             if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
 
-            _currentScope = ScopeProvider.BeginScope(baseBlock);
-            _stateProvider.SetScope(_currentScope);
-            _persistentStorageProvider.SetBackendScope(_currentScope);
+            try
+            {
+                _currentScope = ScopeProvider.BeginScope(baseBlock);
+                _stateProvider.SetScope(_currentScope);
+                _persistentStorageProvider.SetBackendScope(_currentScope);
+            }
+            catch
+            {
+                EndScope();
+                throw;
+            }
 
             // M4 streaming: if the scope wants committed deltas (sparse-parallel mode), attach the
             // provider sinks so each commit phase streams account/storage leaf updates to its
@@ -242,19 +252,40 @@ namespace Nethermind.State
 
             return new Reactive.AnonymousDisposable(() =>
             {
-                Reset();
-                _stateProvider.CommittedAccountSink = null;
-                _persistentStorageProvider.CommittedStorageSink = null;
-                _stateProvider.SetScope(null);
-                _currentScope.Dispose();
-                _currentScope = null;
-                _isInScope = false;
+                EndScope();
                 if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
             });
         }
 
+        private void EndScope()
+        {
+            try
+            {
+                if (_currentScope is not null)
+                {
+                    Reset();
+                    // M4 streaming: detach the committed-delta sinks attached in BeginScope.
+                    _stateProvider.CommittedAccountSink = null;
+                    _persistentStorageProvider.CommittedStorageSink = null;
+                    _stateProvider.SetScope(null);
+                    _currentScope.Dispose();
+                }
+            }
+            finally
+            {
+                _currentScope = null;
+                _isInScope = false;
+            }
+        }
+
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
+
+        public Task HintBal(ReadOnlyBlockAccessList bal)
+        {
+            GuardInScope();
+            return _currentScope!.HintBal(bal);
+        }
 
         public ref readonly UInt256 GetBalance(Address address)
         {

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -39,7 +38,7 @@ public class SparseTrieRegressionTests
         RlpNode sparseRlp = subtrie.UpdateCachedRlp();
         Hash256 sparseHash = sparseRlp.IsHash() ? sparseRlp.AsHash() : Keccak.Compute(sparseRlp.AsSpan());
 
-        sparseHash.Should().Be(tree.RootHash);
+        Assert.That(sparseHash, Is.EqualTo(tree.RootHash));
     }
 
     [Test]
@@ -66,7 +65,7 @@ public class SparseTrieRegressionTests
         RlpNode rootRlp = subtrie.UpdateCachedRlp();
         Hash256 sparseHash = rootRlp.IsHash() ? rootRlp.AsHash() : Keccak.Compute(rootRlp.AsSpan());
 
-        sparseHash.Should().Be(tree.RootHash);
+        Assert.That(sparseHash, Is.EqualTo(tree.RootHash));
     }
 
     [Test]
@@ -94,7 +93,7 @@ public class SparseTrieRegressionTests
         sparse.UpdateLeaves(new Dictionary<ValueHash256, LeafUpdate> { [keyB] = LeafUpdate.Deleted() }, null);
         Hash256 sparseRoot = sparse.ComputeRoot();
 
-        sparseRoot.Should().Be(tree.RootHash);
+        Assert.That(sparseRoot, Is.EqualTo(tree.RootHash));
     }
 
     [Test]
@@ -123,7 +122,7 @@ public class SparseTrieRegressionTests
         sparse.UpdateLeaves(new Dictionary<ValueHash256, LeafUpdate> { [keys[1]] = LeafUpdate.Deleted() }, null);
         Hash256 sparseRoot = sparse.ComputeRoot();
 
-        sparseRoot.Should().Be(tree.RootHash);
+        Assert.That(sparseRoot, Is.EqualTo(tree.RootHash));
     }
 
     [Test]
@@ -152,6 +151,6 @@ public class SparseTrieRegressionTests
         tree.UpdateRootHash();
         tree.Commit();
 
-        sparseHash.Should().Be(tree.RootHash);
+        Assert.That(sparseHash, Is.EqualTo(tree.RootHash));
     }
 }

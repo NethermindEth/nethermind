@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -35,8 +34,8 @@ public class FlatTrieNodeReaderTests
         HalfPathTrieNodeReader reader = new(new NodeStorage(db));
         byte[] rlp = reader.LoadStateRlp(TreePath.Empty, tree.RootHash);
 
-        rlp.Should().NotBeEmpty();
-        Keccak.Compute(rlp).Should().Be(tree.RootHash);
+        Assert.That(rlp, Is.Not.Empty);
+        Assert.That(Keccak.Compute(rlp), Is.EqualTo(tree.RootHash));
     }
 
     [Test]
@@ -61,7 +60,7 @@ public class FlatTrieNodeReaderTests
         DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
             reader, tree.RootHash, [TestItem.Keccaks[0], TestItem.Keccaks[2], TestItem.Keccaks[4]]);
 
-        proof.AccountNodes.Should().NotBeEmpty();
-        proof.AccountNodes.Count.Should().BeGreaterThan(1);
+        Assert.That(proof.AccountNodes, Is.Not.Empty);
+        Assert.That(proof.AccountNodes.Count, Is.GreaterThan(1));
     }
 }

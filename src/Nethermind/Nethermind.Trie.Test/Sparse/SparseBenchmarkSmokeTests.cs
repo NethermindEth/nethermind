@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -60,7 +59,7 @@ public class SparseBenchmarkSmokeTests
         swSparse.Stop();
 
         // Correctness
-        sparseRoot.Should().Be(patriciaRoot, $"N={n}: roots must match");
+        Assert.That(sparseRoot, Is.EqualTo(patriciaRoot), $"N={n}: roots must match");
 
         // KPI reporting — write to file for reliable access
         double ratio = (double)swSparse.ElapsedTicks / swPatricia.ElapsedTicks;

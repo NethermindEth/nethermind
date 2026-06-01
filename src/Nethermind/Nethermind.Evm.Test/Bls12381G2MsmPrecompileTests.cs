@@ -8,9 +8,9 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 // Test data from https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
-public class Bls12381G2MsmPrecompileTests : PrecompileTests<Bls12381G2MsmPrecompile, Bls12381G2MsmPrecompileTests>
+public class Bls12381G2MsmPrecompileTests : PrecompileTests<Bls12381G2MsmPrecompile, Bls12381G2MsmPrecompileTests>, IPrecompileTests
 {
-    public static IEnumerable<string> TestFiles()
+    static IEnumerable<string> IPrecompileTests.TestFiles()
     {
         yield return "Bls/multiexp_G2_bls.json";
         yield return "Bls/fail-multiexp_G2_bls.json";

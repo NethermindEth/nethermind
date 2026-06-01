@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
-        private class SubscriptionSyncingResult
+        internal sealed class SubscriptionSyncingResult
         {
             public long? StartingBlock { get; set; }
             public long? CurrentBlock { get; set; }

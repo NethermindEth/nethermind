@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -149,8 +148,7 @@ public class SparseStorageDivergenceRepro
         }
 
         Hash256 sparseRoot = sparse.ComputeRoot();
-        sparseRoot.Should().Be(patriciaPostRoot,
-            $"Sparse storage root must match Patricia for the 30 USDT updates. " +
+        Assert.That(sparseRoot, Is.EqualTo(patriciaPostRoot), $"Sparse storage root must match Patricia for the 30 USDT updates. " +
             $"Patricia={patriciaPostRoot}, Sparse={sparseRoot}");
     }
 
@@ -203,8 +201,7 @@ public class SparseStorageDivergenceRepro
         sparse.RevealNodes([rootProof]);
 
         Hash256 computed = sparse.ComputeRoot();
-        computed.Should().Be(expectedHash,
-            "Decoding + re-encoding USDT's mainnet root RLP must produce the same hash. " +
+        Assert.That(computed, Is.EqualTo(expectedHash), "Decoding + re-encoding USDT's mainnet root RLP must produce the same hash. " +
             $"Expected={expectedHash}, Computed={computed}");
     }
 
@@ -294,8 +291,7 @@ public class SparseStorageDivergenceRepro
 
             Hash256 sparseRoot = sparse.ComputeRoot();
             if (firstRoot is null) firstRoot = sparseRoot;
-            else sparseRoot.Should().Be(firstRoot,
-                $"shuffleSeed={shuffleSeed}: sparse root must be order-independent");
+            else Assert.That(sparseRoot, Is.EqualTo(firstRoot), $"shuffleSeed={shuffleSeed}: sparse root must be order-independent");
         }
     }
 
@@ -382,8 +378,7 @@ public class SparseStorageDivergenceRepro
         }
 
         Hash256 sparseRoot = sparse.ComputeRoot();
-        sparseRoot.Should().Be(patriciaPostRoot,
-            $"seed={seed}: Sparse storage root must match Patricia for 30 USDT updates over a 10k-slot deep trie. " +
+        Assert.That(sparseRoot, Is.EqualTo(patriciaPostRoot), $"seed={seed}: Sparse storage root must match Patricia for 30 USDT updates over a 10k-slot deep trie. " +
             $"Patricia={patriciaPostRoot}, Sparse={sparseRoot}");
     }
 }

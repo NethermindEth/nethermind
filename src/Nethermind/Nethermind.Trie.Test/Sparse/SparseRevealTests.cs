@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -49,7 +48,7 @@ public class SparseRevealTests
         DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
             reader, originalRoot, [TestItem.Keccaks[2]]);
 
-        proof.AccountNodes.Should().NotBeEmpty("Proof should contain at least the root node");
+        Assert.That(proof.AccountNodes, Is.Not.Empty, "Proof should contain at least the root node");
 
         // Debug: print proof structure
         foreach (ProofNode pn in proof.AccountNodes)
@@ -89,7 +88,7 @@ public class SparseRevealTests
         TestContext.Out.WriteLine($"Sparse root:       {sparseRoot}");
         TestContext.Out.WriteLine($"Original root:     {originalRoot}");
 
-        sparseRoot.Should().Be(patriciaNewRoot, "Sparse trie root after reveal+update must match Patricia");
+        Assert.That(sparseRoot, Is.EqualTo(patriciaNewRoot), "Sparse trie root after reveal+update must match Patricia");
     }
 
     [Test]
@@ -127,7 +126,7 @@ public class SparseRevealTests
         TestContext.Out.WriteLine($"Original root: {originalRoot}");
         TestContext.Out.WriteLine($"Sparse root:   {sparseRoot}");
 
-        sparseRoot.Should().Be(originalRoot, "Sparse trie root after full reveal (no updates) must match original");
+        Assert.That(sparseRoot, Is.EqualTo(originalRoot), "Sparse trie root after full reveal (no updates) must match original");
     }
 
     [Test]
@@ -147,8 +146,8 @@ public class SparseRevealTests
 
         // Root should be a branch with multiple children
         ProofNode root = proof.AccountNodes[0];
-        root.Kind.Should().Be(ProofNodeKind.Branch);
-        root.ChildMask.CountBits().Should().BeGreaterThan(1, "Root branch should have multiple children");
+        Assert.That(root.Kind, Is.EqualTo(ProofNodeKind.Branch));
+        Assert.That(root.ChildMask.CountBits(), Is.GreaterThan(1), "Root branch should have multiple children");
 
         TestContext.Out.WriteLine($"Root: kind={root.Kind}, childMask=0x{root.ChildMask.Raw:X4}, " +
             $"children={root.ChildMask.CountBits()}");
@@ -192,8 +191,7 @@ public class SparseRevealTests
         TestContext.Out.WriteLine($"Patricia new root: {patriciaNewRoot}");
         TestContext.Out.WriteLine($"Sparse root:       {sparseRoot}");
 
-        sparseRoot.Should().Be(patriciaNewRoot,
-            "SparseRootComputer flow must produce same root as Patricia");
+        Assert.That(sparseRoot, Is.EqualTo(patriciaNewRoot), "SparseRootComputer flow must produce same root as Patricia");
     }
 
     [Test]
@@ -225,8 +223,7 @@ public class SparseRevealTests
 
         Hash256 sparseRoot = computer.ComputeStateRoot();
 
-        sparseRoot.Should().Be(patriciaNewRoot,
-            "SparseRootComputer with 10 account updates must match Patricia");
+        Assert.That(sparseRoot, Is.EqualTo(patriciaNewRoot), "SparseRootComputer with 10 account updates must match Patricia");
     }
 
     [Test]
@@ -272,8 +269,7 @@ public class SparseRevealTests
 
         TestContext.Out.WriteLine($"Sparse root:  {sparseRoot}");
 
-        sparseRoot.Should().Be(block2Root,
-            "Two-block SparseRootComputer must match Patricia for block 2");
+        Assert.That(sparseRoot, Is.EqualTo(block2Root), "Two-block SparseRootComputer must match Patricia for block 2");
     }
 
     [Test]
@@ -304,8 +300,7 @@ public class SparseRevealTests
 
         Hash256 sparseRoot = computer.ComputeStateRoot();
 
-        sparseRoot.Should().Be(patriciaNewRoot,
-            "SparseRootComputer with 50/200 account updates must match Patricia");
+        Assert.That(sparseRoot, Is.EqualTo(patriciaNewRoot), "SparseRootComputer with 50/200 account updates must match Patricia");
     }
 
     [TestCase(198, 12)]
@@ -353,7 +348,7 @@ public class SparseRevealTests
             refTree.Commit();
 
             Hash256 sparseRoot = sparse.ComputeRoot();
-            sparseRoot.Should().Be(refTree.RootHash, $"Update[{k}] must match");
+            Assert.That(sparseRoot, Is.EqualTo(refTree.RootHash), $"Update[{k}] must match");
         }
     }
 
@@ -388,7 +383,7 @@ public class SparseRevealTests
 
         // Verify reveal-only root matches
         Hash256 revealRoot = sparse.ComputeRoot();
-        revealRoot.Should().Be(originalRoot, "Reveal-only root must match original");
+        Assert.That(revealRoot, Is.EqualTo(originalRoot), "Reveal-only root must match original");
 
         // Now update a single key and verify
         byte[] newRlp = TestItem.GenerateIndexedAccountRlp(999);
@@ -399,7 +394,7 @@ public class SparseRevealTests
         Dictionary<ValueHash256, LeafUpdate> updates = new() { [keys[0]] = LeafUpdate.Changed(newRlp) };
         sparse.UpdateLeaves(updates, (_, _) => { });
         Hash256 sparseRoot = sparse.ComputeRoot();
-        sparseRoot.Should().Be(tree.RootHash, "Post-update root must match Patricia");
+        Assert.That(sparseRoot, Is.EqualTo(tree.RootHash), "Post-update root must match Patricia");
     }
 
     [Test]
@@ -413,8 +408,8 @@ public class SparseRevealTests
         RlpNode fromRlp = RlpNode.FromRlp(rlp32);
         RlpNode fromHash = RlpNode.FromHash(new Hash256(rlp32));
 
-        fromRlp.IsHash().Should().BeFalse("FromRlp with 32-byte data is NOT a hash");
-        fromHash.IsHash().Should().BeTrue("FromHash is a hash");
+        Assert.That(fromRlp.IsHash(), Is.False, "FromRlp with 32-byte data is NOT a hash");
+        Assert.That(fromHash.IsHash(), Is.True, "FromHash is a hash");
 
         // WriteChildRef for FromRlp(32 bytes) should compute keccak, not copy raw
         byte[] bufRlp = new byte[33];
@@ -422,19 +417,17 @@ public class SparseRevealTests
         int lenRlp = fromRlp.WriteChildRef(bufRlp);
         int lenHash = fromHash.WriteChildRef(bufHash);
 
-        lenRlp.Should().Be(33, "32-byte RLP should produce a 33-byte hash reference");
-        lenHash.Should().Be(33, "Hash should produce a 33-byte hash reference");
+        Assert.That(lenRlp, Is.EqualTo(33), "32-byte RLP should produce a 33-byte hash reference");
+        Assert.That(lenHash, Is.EqualTo(33), "Hash should produce a 33-byte hash reference");
 
         // The hash reference for FromRlp should be keccak(rlp32), not rlp32 itself
         Hash256 expectedHash = Keccak.Compute(rlp32);
-        bufRlp[0].Should().Be(0xa0, "Should have hash prefix");
-        new ReadOnlySpan<byte>(bufRlp, 1, 32).ToArray().Should().BeEquivalentTo(expectedHash.Bytes.ToArray(),
-            "FromRlp(32 bytes) must produce keccak hash, not raw bytes");
+        Assert.That(bufRlp[0], Is.EqualTo(0xa0), "Should have hash prefix");
+        Assert.That(new ReadOnlySpan<byte>(bufRlp, 1, 32).ToArray(), Is.EqualTo(expectedHash.Bytes.ToArray()), "FromRlp(32 bytes) must produce keccak hash, not raw bytes");
 
         // FromHash should copy the hash directly (no re-hashing)
-        bufHash[0].Should().Be(0xa0);
-        new ReadOnlySpan<byte>(bufHash, 1, 32).ToArray().Should().BeEquivalentTo(rlp32,
-            "FromHash must copy hash bytes directly");
+        Assert.That(bufHash[0], Is.EqualTo(0xa0));
+        Assert.That(new ReadOnlySpan<byte>(bufHash, 1, 32).ToArray(), Is.EqualTo(rlp32), "FromHash must copy hash bytes directly");
     }
 
     [Test]
@@ -448,10 +441,10 @@ public class SparseRevealTests
 
         node.MarkDirty();
 
-        node.State.Should().Be(SparseNodeState.Dirty);
-        node.CachedRlp.IsNull.Should().BeTrue("CachedRlp must be cleared");
-        node.FullRlp.Should().BeNull("FullRlp must be cleared");
-        node.InnerBranchRlp.Should().BeNull("InnerBranchRlp must be cleared");
+        Assert.That(node.State, Is.EqualTo(SparseNodeState.Dirty));
+        Assert.That(node.CachedRlp.IsNull, Is.True, "CachedRlp must be cleared");
+        Assert.That(node.FullRlp, Is.Null, "FullRlp must be cleared");
+        Assert.That(node.InnerBranchRlp, Is.Null, "InnerBranchRlp must be cleared");
     }
 
     [Test]
@@ -498,8 +491,7 @@ public class SparseRevealTests
         }
 
         Hash256 sparseRoot = sparse.ComputeRoot();
-        sparseRoot.Should().Be(expectedRoot,
-            "Retry loop must not destroy revealed root — all children must survive re-reveal");
+        Assert.That(sparseRoot, Is.EqualTo(expectedRoot), "Retry loop must not destroy revealed root — all children must survive re-reveal");
     }
 
     [TestCase(200, 50)]
@@ -536,8 +528,7 @@ public class SparseRevealTests
         computer.SetAccountChanges(updates);
 
         Hash256 sparseRoot = computer.ComputeStateRoot();
-        sparseRoot.Should().Be(patriciaNewRoot,
-            $"SparseRootComputer with {updateCount}/{trieSize} keccak-key updates must match Patricia");
+        Assert.That(sparseRoot, Is.EqualTo(patriciaNewRoot), $"SparseRootComputer with {updateCount}/{trieSize} keccak-key updates must match Patricia");
     }
 
     /// <summary>
@@ -585,8 +576,7 @@ public class SparseRevealTests
         TestContext.Out.WriteLine($"Patricia root: {patriciaNewRoot}");
         TestContext.Out.WriteLine($"Sparse root:   {sparseRoot}");
 
-        sparseRoot.Should().Be(patriciaNewRoot,
-            $"SparseRootComputer with {updateCount}/{trieSize} updates must match Patricia (arena resize regression)");
+        Assert.That(sparseRoot, Is.EqualTo(patriciaNewRoot), $"SparseRootComputer with {updateCount}/{trieSize} updates must match Patricia (arena resize regression)");
     }
 
     /// <summary>
@@ -635,8 +625,7 @@ public class SparseRevealTests
 
             TestContext.Out.WriteLine($"Block {block}: prev={Shorten(prevRoot)}, patricia={Shorten(patriciaRoot)}, sparse={Shorten(sparseRoot)}, changes={changesPerBlock}");
 
-            sparseRoot.Should().Be(patriciaRoot,
-                $"Block {block}: sparse root must match Patricia (cross-block reuse, {changesPerBlock}/{trieSize} changes)");
+            Assert.That(sparseRoot, Is.EqualTo(patriciaRoot), $"Block {block}: sparse root must match Patricia (cross-block reuse, {changesPerBlock}/{trieSize} changes)");
 
             prevRoot = patriciaRoot;
         }

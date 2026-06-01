@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -173,7 +172,7 @@ public class UsdtMainnetReproducer
         // doesn't have the sibling RLPs (production fetches them from the persistent DB),
         // the retry loop exhausts and sparse's root reflects only the 28 applied changes.
         // The KEY assertion is that sparse does NOT produce the previously-wrong roots.
-        sparseRoot.Should().NotBe(KnownSparseWrongRoot, "fix must not silently produce the EXPB-captured wrong root");
+        Assert.That(sparseRoot, Is.Not.EqualTo(KnownSparseWrongRoot), "fix must not silently produce the EXPB-captured wrong root");
     }
 
     /// <summary>Just the 2 deletes — does sparse actually delete or silently skip?</summary>
@@ -346,7 +345,7 @@ public class UsdtMainnetReproducer
         // Post-fix invariant: sparse must NOT silently produce the EXPB-captured wrong root.
         // It either matches Patricia (when sibling proofs are available, which they aren't in
         // this offline reader) or correctly fails to apply the deletions (current outcome).
-        sparseRoot.Should().NotBe(KnownSparseWrongRoot, "fix must not silently produce the production-captured wrong root");
+        Assert.That(sparseRoot, Is.Not.EqualTo(KnownSparseWrongRoot), "fix must not silently produce the production-captured wrong root");
     }
 
     /// <summary>
@@ -392,8 +391,7 @@ public class UsdtMainnetReproducer
 
         TestContext.Out.WriteLine($"Patricia (one-by-one): {patriciaRoot}");
         TestContext.Out.WriteLine($"Sparse   (batched 28): {sparseRoot}");
-        sparseRoot.Should().Be(patriciaRoot,
-            "Batched UpdateLeaves must equal sequential single updates");
+        Assert.That(sparseRoot, Is.EqualTo(patriciaRoot), "Batched UpdateLeaves must equal sequential single updates");
     }
 
     /// <summary>

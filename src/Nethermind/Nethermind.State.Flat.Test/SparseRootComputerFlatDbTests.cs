@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -70,7 +69,7 @@ public class SparseRootComputerFlatDbTests
         halfPathComputer.SetAccountChanges(updates);
         Hash256 halfPathSparseRoot = halfPathComputer.ComputeStateRoot();
 
-        halfPathSparseRoot.Should().Be(block2Root, "HalfPath sparse must match Patricia");
+        Assert.That(halfPathSparseRoot, Is.EqualTo(block2Root), "HalfPath sparse must match Patricia");
 
         // Now try with flat DB persistence reader
         // Write block1's trie nodes to a flat DB persistence store
@@ -110,7 +109,7 @@ public class SparseRootComputerFlatDbTests
         TestContext.Out.WriteLine("Flat DB path test deferred - HalfPath works correctly");
 
         // The key assertion: HalfPath sparse matches Patricia
-        halfPathSparseRoot.Should().Be(block2Root);
+        Assert.That(halfPathSparseRoot, Is.EqualTo(block2Root));
     }
 
     [Test]
@@ -140,10 +139,10 @@ public class SparseRootComputerFlatDbTests
         ParentStateTrieNodeReader proofReader = new(bundle);
 
         byte[] result = proofReader.LoadStateRlp(rootPath, rootHash);
-        result.Should().BeEquivalentTo(rootRlp, "ParentStateTrieNodeReader must find node in snapshot chain");
+        Assert.That(result, Is.EqualTo(rootRlp), "ParentStateTrieNodeReader must find node in snapshot chain");
 
         Hash256 resultHash = Keccak.Compute(result);
-        resultHash.Should().Be(rootHash, "Returned RLP must hash to the expected hash");
+        Assert.That(resultHash, Is.EqualTo(rootHash), "Returned RLP must hash to the expected hash");
     }
 
     /// <summary>
@@ -197,7 +196,7 @@ public class SparseRootComputerFlatDbTests
         refTree.UpdateRootHash();
         refTree.Commit();
         Hash256 prevRoot = stateTree.RootHash;
-        prevRoot.Should().Be(refTree.RootHash, "Genesis roots should match");
+        Assert.That(prevRoot, Is.EqualTo(refTree.RootHash), "Genesis roots should match");
 
         // Move genesis nodes to snapshot
         StateId genesisStateId = new(0, prevRoot.ValueHash256);
@@ -231,7 +230,7 @@ public class SparseRootComputerFlatDbTests
             refTree.UpdateRootHash();
             refTree.Commit();
             Hash256 refRoot = refTree.RootHash;
-            patriciaRoot.Should().Be(refRoot, $"Block {block}: Patricia (SnapshotBundle) root should match ref tree");
+            Assert.That(patriciaRoot, Is.EqualTo(refRoot), $"Block {block}: Patricia (SnapshotBundle) root should match ref tree");
 
             // Sparse: read proofs from ParentStateTrieNodeReader, update, compute root
             ParentStateTrieNodeReader proofReader = new(snapshotBundle);
@@ -245,8 +244,7 @@ public class SparseRootComputerFlatDbTests
                 $"sparse={Shorten(sparseRoot)}, accounts={computer.AccountChangeCount}, " +
                 $"proofNodes={computer.LastProofNodeCount}");
 
-            sparseRoot.Should().Be(patriciaRoot,
-                $"Block {block}: sparse root must match Patricia " +
+            Assert.That(sparseRoot, Is.EqualTo(patriciaRoot), $"Block {block}: sparse root must match Patricia " +
                 $"({changesPerBlock}/{trieSize} changes, ParentStateTrieNodeReader path)");
 
             // Commit Patricia to snapshot chain (same as FlatWorldStateScope.Commit)
@@ -363,8 +361,7 @@ public class SparseRootComputerFlatDbTests
                 $"sparse={Shorten(sparseRoot)}, accounts={computer.AccountChangeCount}, " +
                 $"proofNodes={computer.LastProofNodeCount}");
 
-            sparseRoot.Should().Be(patriciaRoot,
-                $"Block {block}: sparse root must match Patricia with contract accounts ({changesPerBlock}/{trieSize} changes)");
+            Assert.That(sparseRoot, Is.EqualTo(patriciaRoot), $"Block {block}: sparse root must match Patricia with contract accounts ({changesPerBlock}/{trieSize} changes)");
 
             stateTree.Commit();
             StateId newStateId = new(block, patriciaRoot.ValueHash256);

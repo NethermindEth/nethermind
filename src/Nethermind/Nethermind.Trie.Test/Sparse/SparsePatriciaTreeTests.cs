@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -74,7 +73,7 @@ public class SparsePatriciaTreeTests
         Hash256 patriciaRoot = PatriciaRootAfterOps(t => t.Set(key.Bytes, value));
         Hash256 sparseRoot = SparseRootFromDirectInserts(new() { [key] = LeafUpdate.Changed(value) });
 
-        sparseRoot.Should().Be(patriciaRoot);
+        Assert.That(sparseRoot, Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -95,7 +94,7 @@ public class SparsePatriciaTreeTests
             [TestItem.Keccaks[1]] = LeafUpdate.Changed(valB),
         });
 
-        sparseRoot.Should().Be(patriciaRoot);
+        Assert.That(sparseRoot, Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -118,7 +117,7 @@ public class SparsePatriciaTreeTests
             [hashB] = LeafUpdate.Changed(valB),
         });
 
-        sparseRoot.Should().Be(patriciaRoot);
+        Assert.That(sparseRoot, Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -138,7 +137,7 @@ public class SparsePatriciaTreeTests
         sparse.UpdateLeaves(new() { [key] = LeafUpdate.Changed(val1) }, null);
         sparse.UpdateLeaves(new() { [key] = LeafUpdate.Changed(val2) }, null);
 
-        sparse.ComputeRoot().Should().Be(patriciaRoot);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -156,8 +155,8 @@ public class SparsePatriciaTreeTests
         sparse.UpdateLeaves(new() { [key] = LeafUpdate.Changed(value) }, null);
         Hash256 root2 = sparse.ComputeRoot();
 
-        root1.Should().Be(patriciaRoot);
-        root2.Should().Be(patriciaRoot);
+        Assert.That(root1, Is.EqualTo(patriciaRoot));
+        Assert.That(root2, Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -168,10 +167,10 @@ public class SparsePatriciaTreeTests
 
         using SparsePatriciaTree sparse = new();
         sparse.UpdateLeaves(new() { [key] = LeafUpdate.Changed(value) }, null);
-        sparse.ComputeRoot().Should().NotBe(Keccak.EmptyTreeHash);
+        Assert.That(sparse.ComputeRoot(), Is.Not.EqualTo(Keccak.EmptyTreeHash));
 
         sparse.UpdateLeaves(new() { [key] = LeafUpdate.Deleted() }, null);
-        sparse.ComputeRoot().Should().Be(Keccak.EmptyTreeHash);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]
@@ -193,7 +192,7 @@ public class SparsePatriciaTreeTests
         sparse.UpdateLeaves(new() { [keyA] = LeafUpdate.Changed(valA), [keyB] = LeafUpdate.Changed(valB) }, null);
         sparse.UpdateLeaves(new() { [keyB] = LeafUpdate.Deleted() }, null);
 
-        sparse.ComputeRoot().Should().Be(patriciaRoot);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -218,7 +217,7 @@ public class SparsePatriciaTreeTests
         }, null);
         sparse.UpdateLeaves(new() { [TestItem.Keccaks[1]] = LeafUpdate.Deleted() }, null);
 
-        sparse.ComputeRoot().Should().Be(patriciaRoot);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -229,14 +228,14 @@ public class SparsePatriciaTreeTests
         Hash256 rootBefore = sparse.ComputeRoot();
 
         sparse.UpdateLeaves(new() { [TestItem.KeccakB] = LeafUpdate.Deleted() }, null);
-        sparse.ComputeRoot().Should().Be(rootBefore);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(rootBefore));
     }
 
     [Test]
     public void EmptyStorageRoot()
     {
         using SparsePatriciaTree sparse = new();
-        sparse.ComputeRoot().Should().Be(Keccak.EmptyTreeHash);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]
@@ -248,10 +247,10 @@ public class SparsePatriciaTreeTests
             [TestItem.KeccakA] = LeafUpdate.Changed(MakeValue(1)),
             [TestItem.KeccakB] = LeafUpdate.Changed(MakeValue(2)),
         }, null);
-        sparse.ComputeRoot().Should().NotBe(Keccak.EmptyTreeHash);
+        Assert.That(sparse.ComputeRoot(), Is.Not.EqualTo(Keccak.EmptyTreeHash));
 
         sparse.WipeStorage();
-        sparse.ComputeRoot().Should().Be(Keccak.EmptyTreeHash);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]
@@ -271,7 +270,7 @@ public class SparsePatriciaTreeTests
             [TestItem.KeccakC] = LeafUpdate.Deleted(),
         }, null);
 
-        sparse.ComputeRoot().Should().Be(Keccak.EmptyTreeHash);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]
@@ -293,7 +292,7 @@ public class SparsePatriciaTreeTests
         sparse.UpdateLeaves(new() { [key] = LeafUpdate.Deleted() }, null);
         sparse.UpdateLeaves(new() { [key] = LeafUpdate.Changed(val2) }, null);
 
-        sparse.ComputeRoot().Should().Be(patriciaRoot);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -311,7 +310,7 @@ public class SparsePatriciaTreeTests
         for (int i = 0; i < count; i++)
             updates[TestItem.Keccaks[i]] = LeafUpdate.Changed(TestItem.GenerateIndexedAccountRlp(i));
 
-        SparseRootFromDirectInserts(updates).Should().Be(patriciaRoot);
+        Assert.That(SparseRootFromDirectInserts(updates), Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -331,8 +330,8 @@ public class SparsePatriciaTreeTests
         sparse.UpdateLeaves(new() { [key] = LeafUpdate.Changed(value) }, null);
         sparse.UpdateLeaves(new() { [key] = LeafUpdate.Deleted() }, null);
 
-        sparse.ComputeRoot().Should().Be(patriciaRoot);
-        patriciaRoot.Should().Be(Keccak.EmptyTreeHash);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(patriciaRoot));
+        Assert.That(patriciaRoot, Is.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]
@@ -359,7 +358,7 @@ public class SparsePatriciaTreeTests
         }, null);
         sparse.UpdateLeaves(new() { [keyA] = LeafUpdate.Deleted() }, null);
 
-        sparse.ComputeRoot().Should().Be(patriciaRoot);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -377,7 +376,7 @@ public class SparsePatriciaTreeTests
         for (int i = 0; i < count; i++)
             updates[TestItem.Keccaks[i]] = LeafUpdate.Changed(TestItem.GenerateIndexedAccountRlp(i));
 
-        SparseRootFromDirectInserts(updates).Should().Be(patriciaRoot);
+        Assert.That(SparseRootFromDirectInserts(updates), Is.EqualTo(patriciaRoot));
     }
 
     #endregion
@@ -398,8 +397,8 @@ public class SparsePatriciaTreeTests
         using SparsePatriciaTree sparse = new();
         sparse.RevealNodes(proof.AccountNodes);
 
-        sparse.IsRevealed.Should().BeTrue();
-        proof.AccountNodes.Should().NotBeEmpty();
+        Assert.That(sparse.IsRevealed, Is.True);
+        Assert.That(proof.AccountNodes, Is.Not.Empty);
     }
 
     [Test]
@@ -431,7 +430,7 @@ public class SparsePatriciaTreeTests
         sparse.UpdateLeaves(new() { [TestItem.Keccaks[2]] = LeafUpdate.Changed(MakeValue(99)) }, null);
         Hash256 sparseRoot = sparse.ComputeRoot();
 
-        sparseRoot.Should().Be(patriciaRoot);
+        Assert.That(sparseRoot, Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -454,7 +453,7 @@ public class SparsePatriciaTreeTests
             new() { [TestItem.Keccaks[5]] = LeafUpdate.Changed(MakeValue(99)) },
             (key, _) => proofRequests.Add(key.ToCommitment()));
 
-        proofRequests.Should().NotBeEmpty("Updating a key not in the proof should request a proof");
+        Assert.That(proofRequests, Is.Not.Empty, "Updating a key not in the proof should request a proof");
     }
 
     [Test]
@@ -479,7 +478,7 @@ public class SparsePatriciaTreeTests
         sparse.UpdateLeaves(
             new() { [TestItem.Keccaks[5]] = LeafUpdate.Changed(MakeValue(99)) },
             (key, _) => proofRequests.Add(key.ToCommitment()));
-        proofRequests.Should().NotBeEmpty();
+        Assert.That(proofRequests, Is.Not.Empty);
 
         // Now reveal the path for key 5
         DecodedMultiProof proof2 = MultiProofReader.ReadAccountProofs(reader, tree.RootHash, [TestItem.Keccaks[5]]);
@@ -491,7 +490,7 @@ public class SparsePatriciaTreeTests
             new() { [TestItem.Keccaks[5]] = LeafUpdate.Changed(MakeValue(99)) },
             (key, _) => proofRequests.Add(key.ToCommitment()));
 
-        proofRequests.Should().BeEmpty("After revealing the path, the update should succeed without proof requests");
+        Assert.That(proofRequests, Is.Empty, "After revealing the path, the update should succeed without proof requests");
     }
 
     #endregion
@@ -509,7 +508,7 @@ public class SparsePatriciaTreeTests
         using SparsePatriciaTree sparse = new();
         sparse.UpdateLeaves(new() { [key] = LeafUpdate.Changed(value) }, null);
 
-        sparse.ComputeRoot().Should().Be(patriciaRoot);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(patriciaRoot));
     }
 
     [Test]
@@ -532,7 +531,7 @@ public class SparsePatriciaTreeTests
         sparse.ComputeRoot(); // first computation caches everything
 
         sparse.UpdateLeaves(new() { [keyB] = LeafUpdate.Changed(valB2) }, null);
-        sparse.ComputeRoot().Should().Be(patriciaRoot);
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(patriciaRoot));
     }
 
     #endregion
@@ -608,7 +607,7 @@ public class SparsePatriciaTreeTests
             patricia.Commit();
             Hash256 patriciaRoot = patricia.RootHash;
             Hash256 sparseRoot = sparse.ComputeRoot();
-            sparseRoot.Should().Be(patriciaRoot, $"Seed={seed}, block={block}");
+            Assert.That(sparseRoot, Is.EqualTo(patriciaRoot), $"Seed={seed}, block={block}");
         }
     }
 
@@ -649,7 +648,7 @@ public class SparsePatriciaTreeTests
 
         patricia.UpdateRootHash();
         patricia.Commit();
-        sparse.ComputeRoot().Should().Be(patricia.RootHash, $"Seed={seed}, ops={opCount}");
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(patricia.RootHash), $"Seed={seed}, ops={opCount}");
     }
 
     #endregion
@@ -667,7 +666,7 @@ public class SparsePatriciaTreeTests
         HalfPathTrieNodeReader reader = new(new NodeStorage(db));
         DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(reader, tree.RootHash, [TestItem.KeccakA]);
 
-        proof.AccountNodes.Should().NotBeEmpty();
+        Assert.That(proof.AccountNodes, Is.Not.Empty);
     }
 
     [Test]
@@ -683,7 +682,7 @@ public class SparsePatriciaTreeTests
         DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
             reader, tree.RootHash, [TestItem.Keccaks[0], TestItem.Keccaks[5], TestItem.Keccaks[9]]);
 
-        proof.AccountNodes.Should().NotBeEmpty();
+        Assert.That(proof.AccountNodes, Is.Not.Empty);
     }
 
     [Test]
@@ -697,7 +696,7 @@ public class SparsePatriciaTreeTests
         HalfPathTrieNodeReader reader = new(new NodeStorage(db));
         DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(reader, tree.RootHash, [TestItem.KeccakB]);
 
-        proof.AccountNodes.Should().NotBeEmpty();
+        Assert.That(proof.AccountNodes, Is.Not.Empty);
     }
 
     [Test]
@@ -706,7 +705,7 @@ public class SparsePatriciaTreeTests
         HalfPathTrieNodeReader reader = new(new NodeStorage(new MemDb()));
         DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(reader, Keccak.EmptyTreeHash, [TestItem.KeccakA]);
 
-        proof.IsEmpty.Should().BeTrue();
+        Assert.That(proof.IsEmpty, Is.True);
     }
 
     [Test]
@@ -722,7 +721,7 @@ public class SparsePatriciaTreeTests
         DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
             reader, tree.RootHash, [TestItem.Keccaks[0], TestItem.Keccaks[2]]);
 
-        proof.AccountNodes.Should().NotBeEmpty();
+        Assert.That(proof.AccountNodes, Is.Not.Empty);
     }
 
     [Test]
@@ -747,8 +746,8 @@ public class SparsePatriciaTreeTests
     public void LeafUpdate_DefaultIsInvalid()
     {
         LeafUpdate update = default;
-        update.IsValid.Should().BeFalse();
-        update.Kind.Should().Be(LeafUpdateKind.None);
+        Assert.That(update.IsValid, Is.False);
+        Assert.That(update.Kind, Is.EqualTo(LeafUpdateKind.None));
     }
 
     [Test]
@@ -763,18 +762,18 @@ public class SparsePatriciaTreeTests
     public void LeafUpdate_Deleted_IsValid()
     {
         LeafUpdate update = LeafUpdate.Deleted();
-        update.IsValid.Should().BeTrue();
-        update.IsDelete.Should().BeTrue();
-        update.Value.Should().BeNull();
+        Assert.That(update.IsValid, Is.True);
+        Assert.That(update.IsDelete, Is.True);
+        Assert.That(update.Value, Is.Null);
     }
 
     [Test]
     public void LeafUpdate_Touched_IsValid()
     {
         LeafUpdate update = LeafUpdate.Touched();
-        update.IsValid.Should().BeTrue();
-        update.IsDelete.Should().BeFalse();
-        update.Kind.Should().Be(LeafUpdateKind.Touched);
+        Assert.That(update.IsValid, Is.True);
+        Assert.That(update.IsDelete, Is.False);
+        Assert.That(update.Kind, Is.EqualTo(LeafUpdateKind.Touched));
     }
 
     #endregion

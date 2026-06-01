@@ -18,6 +18,11 @@ internal static class SnapMessageLimits
     public const int MaxResponseSlotsPerAccount = 131_072;
     public const long MaxResponseBytes = 3_145_728; // 3 MiB
 
+    // Real range-proof sets are bounded by 2 * trie depth (~128). The cap leaves headroom
+    // without admitting amplification (an unbounded Proofs list lets an attacker pack
+    // ~hundreds of thousands of minimum-size RLP entries inside one inbound frame).
+    public const int MaxProofs = 256;
+
     public static readonly RlpLimit GetByteCodesHashesRlpLimit = RlpLimit.For<GetByteCodesMessage>(MaxRequestHashes, nameof(GetByteCodesMessage.Hashes));
     public static readonly RlpLimit GetStorageRangeAccountsRlpLimit = RlpLimit.For<GetStorageRangeMessage>(MaxRequestAccounts, nameof(GetStorageRangeMessage.StorageRange));
     public static readonly RlpLimit GetTrieNodesPathGroupsRlpLimit = RlpLimit.For<GetTrieNodesMessage>(MaxRequestPathGroups, nameof(GetTrieNodesMessage.Paths));
@@ -26,6 +31,9 @@ internal static class SnapMessageLimits
     public static readonly RlpLimit AccountRangeEntriesRlpLimit = RlpLimit.For<AccountRangeMessage>(MaxResponseAccounts, nameof(AccountRangeMessage.PathsWithAccounts));
     public static readonly RlpLimit StorageRangeAccountsRlpLimit = RlpLimit.For<StorageRangeMessage>(MaxRequestAccounts, nameof(StorageRangeMessage.Slots));
     public static readonly RlpLimit StorageRangeSlotsPerAccountRlpLimit = RlpLimit.For<PathWithStorageSlot>(MaxResponseSlotsPerAccount, nameof(StorageRangeMessage.Slots));
+
+    public static readonly RlpLimit AccountRangeProofsRlpLimit = RlpLimit.For<AccountRangeMessage>(MaxProofs, nameof(AccountRangeMessage.Proofs));
+    public static readonly RlpLimit StorageRangeProofsRlpLimit = RlpLimit.For<StorageRangeMessage>(MaxProofs, nameof(StorageRangeMessage.Proofs));
 
     public static long ClampResponseBytes(long requestedBytes) => Math.Clamp(requestedBytes, 1L, MaxResponseBytes);
 }

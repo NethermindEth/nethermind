@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -27,6 +27,8 @@ public class HistoryPruner : IHistoryPruner
 {
     private const int LockWaitTimeoutMs = 100;
     private const int SlotsPerEpoch = 32;
+
+    public long GetRetentionBlocks(long retentionEpochs) => retentionEpochs * SlotsPerEpoch;
 
     private readonly object _pruneLock = new();
 
@@ -389,7 +391,7 @@ public class HistoryPruner : IHistoryPruner
                         // Only delete the BAL if the BAL-only pass hasn't already covered this block; otherwise the delete is a no-op and the counter would over-report.
                         if (number >= _balsDeletePointer)
                         {
-                            _blockAccessListStore.Delete(blockInfo.BlockHash);
+                            _blockAccessListStore.Delete(number, blockInfo.BlockHash);
                             Metrics.BlockAccessListsPruned++;
                         }
                         deletedBlocks++;
@@ -448,7 +450,7 @@ public class HistoryPruner : IHistoryPruner
                     foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Deleting old block access list at #{number} with hash {blockInfo.BlockHash}.");
-                        _blockAccessListStore.Delete(blockInfo.BlockHash);
+                        _blockAccessListStore.Delete(number, blockInfo.BlockHash);
                         deletedBals++;
                         Metrics.BlockAccessListsPruned++;
                     }

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Test.Builders;
@@ -25,7 +24,7 @@ public class SetCodeTxValidationTests
 
         ValidationResult result = SetCodeTxValidation.ValidateNoContractCreation(tx);
 
-        result.AsBool().Should().BeTrue();
+        Assert.That(result.AsBool(), Is.True);
     }
 
     [Test]
@@ -35,8 +34,8 @@ public class SetCodeTxValidationTests
 
         ValidationResult result = SetCodeTxValidation.ValidateNoContractCreation(tx);
 
-        result.AsBool().Should().BeFalse();
-        result.Error.Should().Be(TxErrorMessages.NotAllowedCreateTransaction);
+        Assert.That(result.AsBool(), Is.False);
+        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.NotAllowedCreateTransaction));
     }
 
     private static IEnumerable<TestCaseData> MissingAuthorizationListCases()
@@ -59,8 +58,8 @@ public class SetCodeTxValidationTests
 
         ValidationResult result = SetCodeTxValidation.ValidateAuthorizationList(tx);
 
-        result.AsBool().Should().BeFalse();
-        result.Error.Should().Be(TxErrorMessages.MissingAuthorizationList);
+        Assert.That(result.AsBool(), Is.False);
+        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.MissingAuthorizationList));
     }
 
     [Test]
@@ -73,6 +72,6 @@ public class SetCodeTxValidationTests
 
         ValidationResult result = SetCodeTxValidation.ValidateAuthorizationList(tx);
 
-        result.AsBool().Should().BeTrue();
+        Assert.That(result.AsBool(), Is.True);
     }
 }

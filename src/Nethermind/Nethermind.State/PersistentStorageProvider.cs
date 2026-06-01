@@ -17,6 +17,7 @@ using Nethermind.Core.Resettables;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
+using EvmMetrics = Nethermind.Evm.Metrics;
 using Nethermind.Logging;
 
 namespace Nethermind.State;
@@ -67,6 +68,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
+
+    public override void Set(in StorageCell storageCell, byte[] newValue)
+    {
+        EvmMetrics.IncrementStorageWrites();
+        base.Set(in storageCell, newValue);
+    }
 
     /// <summary>
     /// Get the current value at the specified location
@@ -284,7 +291,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             LoadFromTree(in storageCell);
     }
 
-    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) => GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
+    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
+        GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
     {

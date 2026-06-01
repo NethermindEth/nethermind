@@ -27,8 +27,6 @@ public class BlockAccessListDecoderTests
         Assert.That(bal, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(bal).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -226,6 +224,30 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
+    public void Decode_slot_changes_with_empty_list_storage_change_throws_RlpException()
+    {
+        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(1);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>());
+    }
+
+    [TestCase(0, TestName = "storage_changes")]
+    [TestCase(1, TestName = "storage_reads")]
+    [TestCase(2, TestName = "balance_changes")]
+    [TestCase(3, TestName = "nonce_changes")]
+    [TestCase(4, TestName = "code_changes")]
+    public void Decode_account_changes_with_empty_list_element_in_field_throws_RlpException(int malformedFieldIndex)
+    {
+        byte[] encoded = EncodeAccountChangesWithEmptyListElement(TestItem.AddressA, malformedFieldIndex);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
     public void Can_decode_then_encode_balance_change()
     {
         const string rlp = "0xc801861319718811c8";
@@ -235,8 +257,6 @@ public class BlockAccessListDecoderTests
         Assert.That(balanceChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(balanceChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -265,8 +285,6 @@ public class BlockAccessListDecoderTests
         Assert.That(nonceChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(nonceChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -283,8 +301,6 @@ public class BlockAccessListDecoderTests
         Assert.That(slotChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(slotChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(expectedRlp);
         Assert.That(encoded, Is.EqualTo(expectedRlp));
     }
 
@@ -300,8 +316,6 @@ public class BlockAccessListDecoderTests
         Assert.That(storageChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(storageChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(expectedRlp);
         Assert.That(encoded, Is.EqualTo(expectedRlp));
     }
 
@@ -316,8 +330,6 @@ public class BlockAccessListDecoderTests
         Assert.That(codeChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(codeChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -330,8 +342,6 @@ public class BlockAccessListDecoderTests
         Assert.That(accountChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(accountChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -629,6 +639,36 @@ public class BlockAccessListDecoderTests
         stream.Encode(Rlp.OfEmptyList);
         stream.Encode(Rlp.OfEmptyList);
         stream.Encode(Rlp.OfEmptyList);
+        return stream.Data.ToArray()!;
+    }
+
+    private static byte[] EncodeAccountChangesWithEmptyListElement(Address address, int malformedFieldIndex)
+    {
+        const int fieldCount = 5;
+        int malformedFieldLength = Rlp.LengthOfSequence(Rlp.OfEmptyList.Length);
+
+        int contentLength = Rlp.LengthOfAddressRlp;
+        for (int i = 0; i < fieldCount; i++)
+        {
+            contentLength += i == malformedFieldIndex ? malformedFieldLength : Rlp.OfEmptyList.Length;
+        }
+
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        stream.Encode(address);
+        for (int i = 0; i < fieldCount; i++)
+        {
+            if (i == malformedFieldIndex)
+            {
+                stream.StartSequence(Rlp.OfEmptyList.Length);
+                stream.Encode(Rlp.OfEmptyList);
+            }
+            else
+            {
+                stream.Encode(Rlp.OfEmptyList);
+            }
+        }
+
         return stream.Data.ToArray()!;
     }
 
