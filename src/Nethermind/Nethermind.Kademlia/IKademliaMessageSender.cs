@@ -13,10 +13,10 @@ public interface IKademliaMessageSender<TKey, TNode>
     /// <summary>
     /// Sends a liveness probe to <paramref name="receiver"/>.
     /// </summary>
-    Task Ping(TNode receiver, CancellationToken token);
+    Task<bool> Ping(TNode receiver, CancellationToken token);
 
     /// <summary>
     /// Requests neighbours closest to <paramref name="target"/> from <paramref name="receiver"/>.
     /// </summary>
-    Task<TNode[]> FindNeighbours(TNode receiver, TKey target, CancellationToken token);
+    Task<TNode[]?> FindNeighbours(TNode receiver, TKey target, CancellationToken token);
 }

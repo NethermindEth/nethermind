@@ -51,11 +51,7 @@ public class KademliaNodeSource(
                         // Tried ping before and did not receive a response
                         continue;
                     }
-                    try
-                    {
-                        await discv4Adapter.Ping(node, discoveryToken);
-                    }
-                    catch (OperationCanceledException)
+                    if (!await discv4Adapter.Ping(node, discoveryToken))
                     {
                         continue;
                     }

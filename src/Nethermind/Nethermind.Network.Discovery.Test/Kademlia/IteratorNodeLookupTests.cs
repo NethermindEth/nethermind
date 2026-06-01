@@ -62,7 +62,7 @@ namespace Nethermind.Network.Discovery.Test.Kademlia
 
         private void FindNeighboursThrows(Node from, Exception exception) =>
             _msgSender.FindNeighbours(from, _targetKey, Arg.Any<CancellationToken>())
-                .Returns(Task.FromException<Node[]>(exception));
+                .Returns(Task.FromException<Node[]?>(exception));
 
         private Task AssertFindNeighboursCalledOnce(Node node) =>
             _msgSender.Received(1).FindNeighbours(
@@ -163,7 +163,7 @@ namespace Nethermind.Network.Discovery.Test.Kademlia
                 .Returns(call =>
                 {
                     cts.Cancel();
-                    return Task.FromException<Node[]>(new OperationCanceledException((CancellationToken)call[2]));
+                    return Task.FromException<Node[]?>(new OperationCanceledException((CancellationToken)call[2]));
                 });
 
             Assert.ThrowsAsync<OperationCanceledException>(async () => await _lookup.Lookup(_targetKey, cts.Token).ToListAsync());

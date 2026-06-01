@@ -41,14 +41,14 @@ public class KademliaConfig<TNode>
     public TimeSpan LookupFindNeighbourHardTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// The timeout for a ping message during a refresh after which the node is considered to be offline.
-    /// </summary>
-    public TimeSpan RefreshPingTimeout { get; set; } = TimeSpan.FromSeconds(1);
-
-    /// <summary>
     /// How many time a request for a node failed before we remove it from the routing table.
     /// </summary>
     public int NodeRequestFailureThreshold { get; set; } = 5;
+
+    /// <summary>
+    /// Maximum time to wait for active refresh pings while disposing the node health tracker.
+    /// </summary>
+    public TimeSpan RefreshPingTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// Starting boot nodes.

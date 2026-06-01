@@ -93,26 +93,35 @@ public class KademliaAdapter(
     }
 
     /// <inheritdoc/>
-    public async Task Ping(Node receiver, CancellationToken token)
+    public async Task<bool> Ping(Node receiver, CancellationToken token)
     {
         RegisterKnownRecord(receiver);
         ReserveEndpointCheck(receiver);
         using PingMsg ping = new(CreateRequestId(), nodeRecordProvider.Current.EnrSequence);
         PongResponseHandler responseHandler = new(receiver);
 
-        await SendRequest(receiver, ping, responseHandler, _pingTimeout, token);
+        if (!await SendRequest(receiver, ping, responseHandler, _pingTimeout, token))
+        {
+            return false;
+        }
+
         kademlia.Value.AddOrRefresh(receiver);
+        return true;
     }
 
     /// <inheritdoc/>
-    public async Task<Node[]> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
+    public async Task<Node[]?> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
     {
         RegisterKnownRecord(receiver);
         Distances distances = GetLookupDistances(receiver, target);
         using FindNodeMsg findNode = new(CreateRequestId(), distances);
         NodesResponseHandler responseHandler = new(receiver, distances, _distance);
 
-        await SendRequest(receiver, findNode, responseHandler, _findNodeTimeout, token);
+        if (!await SendRequest(receiver, findNode, responseHandler, _findNodeTimeout, token))
+        {
+            return null;
+        }
+
         Node[] nodes = responseHandler.GetNodes();
         for (int i = 0; i < nodes.Length; i++)
         {
@@ -143,7 +152,7 @@ public class KademliaAdapter(
     /// <inheritdoc/>
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    private async Task SendRequest<TResponse>(
+    private async Task<bool> SendRequest<TResponse>(
         Node receiver,
         Discv5Message request,
         IResponseHandler<TResponse> responseHandler,
@@ -162,10 +171,11 @@ public class KademliaAdapter(
         {
             pendingNonceKey = await SendMessage(receiver, request);
             await responseHandler.Task.WaitAsync(timeoutCts.Token);
+            return true;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
-            throw;
+            return false;
         }
         finally
         {
@@ -668,7 +678,7 @@ public class KademliaAdapter(
     {
         try
         {
-            await Ping(remoteNode, token);
+            _ = await Ping(remoteNode, token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {

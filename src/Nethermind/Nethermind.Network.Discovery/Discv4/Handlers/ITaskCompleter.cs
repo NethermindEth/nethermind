@@ -5,5 +5,5 @@ namespace Nethermind.Network.Discovery.Discv4.Handlers;
 
 internal interface ITaskCompleter<T> : IMessageHandler
 {
-    TaskCompletionSource<T> TaskCompletionSource { get; }
+    TaskCompletionSource<DiscoveryResponse<T>> TaskCompletionSource { get; }
 }

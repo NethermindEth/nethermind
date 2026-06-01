@@ -58,21 +58,17 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
                 return;
             }
 
-            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            cts.CancelAfter(_refreshPingTimeout);
             try
             {
-                await kademliaMessageSender.Ping(toRefresh, cts.Token);
-                OnIncomingMessageFrom(toRefresh);
+                if (await kademliaMessageSender.Ping(toRefresh, token))
+                {
+                    OnIncomingMessageFrom(toRefresh);
+                }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 _isRefreshing.TryRemove(nodeHash, out _);
                 return;
-            }
-            catch (OperationCanceledException)
-            {
-                OnRequestFailed(toRefresh);
             }
             catch (Exception e)
             {

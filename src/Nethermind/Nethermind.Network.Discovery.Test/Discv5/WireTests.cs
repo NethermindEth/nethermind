@@ -182,15 +182,16 @@ public class WireTests
         Task runA = peerA.Adapter.RunAsync(cancellationSource.Token);
         Task runB = peerB.Adapter.RunAsync(cancellationSource.Token);
 
-        Task<Node[]> findTask = peerA.Adapter.FindNeighbours(nodeB, TestItem.PrivateKeyC.PublicKey, cancellationSource.Token);
+        Task<Node[]?> findTask = peerA.Adapter.FindNeighbours(nodeB, TestItem.PrivateKeyC.PublicKey, cancellationSource.Token);
         await PumpUntilComplete(findTask, peerA, peerB, cancellationSource.Token);
-        Node[] nodes = await findTask;
+        Node[]? nodes = await findTask;
 
         await cancellationSource.CancelAsync();
         await Task.WhenAll(runA, runB);
 
+        Assert.That(nodes, Is.Not.Null);
         Assert.That(nodes, Has.Length.EqualTo(1));
-        Assert.That(nodes[0].Id, Is.EqualTo(TestItem.PrivateKeyC.PublicKey));
+        Assert.That(nodes![0].Id, Is.EqualTo(TestItem.PrivateKeyC.PublicKey));
         peerA.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyC.PublicKey)));
     }
 

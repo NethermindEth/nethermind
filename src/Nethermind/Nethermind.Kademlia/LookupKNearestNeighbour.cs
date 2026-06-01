@@ -144,19 +144,20 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             {
                 // targetHash is implied in findNeighbourOp
                 TNode[]? ret = await findNeighbourOp(node, cts.Token);
+                if (ret is null) return (node, null);
+
                 nodeHealthTracker.OnIncomingMessageFrom(node);
 
                 return (node, ret);
             }
-            catch (OperationCanceledException)
-            when (token.IsCancellationRequested)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
+                nodeHealthTracker.OnRequestFailed(node);
                 return (node, null);
             }
             catch (OperationCanceledException)
             {
-                nodeHealthTracker.OnRequestFailed(node);
-                return (node, null);
+                throw;
             }
             catch (Exception e)
             {

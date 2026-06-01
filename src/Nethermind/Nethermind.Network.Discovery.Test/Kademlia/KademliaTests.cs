@@ -93,7 +93,7 @@ public class KademliaTests
     [Test]
     public async Task TestTooManyNode()
     {
-        TaskCompletionSource pingSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> pingSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _kademliaMessageSender
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
@@ -123,7 +123,7 @@ public class KademliaTests
     [Test]
     public void TestGetKNeighbours()
     {
-        TaskCompletionSource pingSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> pingSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _kademliaMessageSender
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
@@ -162,7 +162,7 @@ public class KademliaTests
     {
         _kademliaMessageSender
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
+            .Returns(true);
 
         Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = CreateKad(new KademliaConfig<ValueHash256>
         {

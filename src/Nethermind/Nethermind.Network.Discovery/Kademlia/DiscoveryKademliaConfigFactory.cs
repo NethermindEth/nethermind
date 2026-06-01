@@ -16,7 +16,7 @@ internal static class DiscoveryKademliaConfigFactory
             KSize = discoveryConfig.BucketSize,
             Alpha = discoveryConfig.Concurrency,
             Beta = discoveryConfig.BitsPerHop,
-            LookupFindNeighbourHardTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout),
+            LookupFindNeighbourHardTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout + discoveryConfig.BondWaitTime + (2L * discoveryConfig.SendNodeTimeout)),
             RefreshPingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout),
             RefreshInterval = TimeSpan.FromMilliseconds(discoveryConfig.DiscoveryInterval),
             BootNodes = bootNodes

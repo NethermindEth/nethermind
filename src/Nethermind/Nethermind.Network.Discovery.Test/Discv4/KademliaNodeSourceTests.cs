@@ -82,9 +82,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node1, node2));
             _discv4Adapter.Ping(node1, Arg.Any<CancellationToken>())
-                .Returns(Task.CompletedTask);
+                .Returns(true);
             _discv4Adapter.Ping(node2, Arg.Any<CancellationToken>())
-                .Returns(Task.CompletedTask);
+                .Returns(true);
 
             IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
@@ -100,6 +100,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         public async Task DiscoverNodes_should_ping_nodes_that_have_not_received_pong(CancellationToken token)
         {
             Node node = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
+            _discv4Adapter.Ping(node, Arg.Any<CancellationToken>())
+                .Returns(true);
             _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node));
 
@@ -153,9 +155,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
 
             _discv4Adapter.Ping(node1, Arg.Any<CancellationToken>())
-                .Returns(Task.FromException(new OperationCanceledException()));
+                .Returns(false);
             _discv4Adapter.Ping(node2, Arg.Any<CancellationToken>())
-                .Returns(Task.CompletedTask);
+                .Returns(true);
 
             _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node1, node2));
