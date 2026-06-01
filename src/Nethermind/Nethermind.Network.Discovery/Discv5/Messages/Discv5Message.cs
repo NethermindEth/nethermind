@@ -1,27 +1,37 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
+
 namespace Nethermind.Network.Discovery.Discv5.Messages;
 
 internal abstract record Discv5Message : IDisposable
 {
-    public abstract Discv5MessageType MessageType { get; }
+    public abstract MessageType MessageType { get; }
 
-    public Discv5RequestId RequestId { get; }
+    public RequestId RequestId { get; }
 
-    private IDisposable? _owner;
+    private ArrayPoolSpan<byte> _owner;
+    private bool _hasOwner;
 
-    protected Discv5Message(Discv5RequestId requestId, IDisposable? owner = null)
+    protected Discv5Message(RequestId requestId, ArrayPoolSpan<byte>? owner = null)
     {
         RequestId = requestId;
-        _owner = owner;
+        if (owner is { } ownerValue)
+        {
+            _owner = ownerValue;
+            _hasOwner = true;
+        }
     }
 
     public void Dispose()
     {
         DisposeCore();
-        _owner?.Dispose();
-        _owner = null;
+        if (_hasOwner)
+        {
+            _owner.Dispose();
+            _hasOwner = false;
+        }
     }
 
     protected virtual void DisposeCore()

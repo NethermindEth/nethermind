@@ -3,7 +3,7 @@
 
 namespace Nethermind.Network.Discovery.Discv5.Messages;
 
-internal enum Discv5MessageType : byte
+internal enum MessageType : byte
 {
     Ping = 0x01,
     Pong = 0x02,

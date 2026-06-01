@@ -6,13 +6,13 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5.Handlers;
 
-internal sealed class PongResponseHandler(Node receiver) : ResponseHandler<Discv5Pong>(Discv5MessageType.Pong)
+internal sealed class PongResponseHandler(Node receiver) : ResponseHandler<PongMsg>(MessageType.Pong)
 {
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public override Task Task => _completion.Task;
 
-    public override bool Handle(Discv5Pong message)
+    public override bool Handle(PongMsg message)
     {
         receiver.ValidatedProtocol = true;
         _completion.TrySetResult();

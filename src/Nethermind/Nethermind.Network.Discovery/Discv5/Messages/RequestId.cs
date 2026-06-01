@@ -3,11 +3,11 @@
 
 namespace Nethermind.Network.Discovery.Discv5.Messages;
 
-internal readonly record struct Discv5RequestId(ulong Value, byte Length)
+internal readonly record struct RequestId(ulong Value, byte Length)
 {
     public const int MaxLength = sizeof(ulong);
 
-    public static Discv5RequestId From(ReadOnlySpan<byte> requestId)
+    public static RequestId From(ReadOnlySpan<byte> requestId)
     {
         if (requestId.Length > MaxLength)
         {
@@ -20,7 +20,7 @@ internal readonly record struct Discv5RequestId(ulong Value, byte Length)
             value = (value << 8) | requestId[i];
         }
 
-        return new Discv5RequestId(value, checked((byte)requestId.Length));
+        return new RequestId(value, checked((byte)requestId.Length));
     }
 
     public void CopyTo(Span<byte> destination)

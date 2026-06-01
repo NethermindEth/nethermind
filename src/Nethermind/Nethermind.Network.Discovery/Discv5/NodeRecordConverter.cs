@@ -9,7 +9,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
-internal static class Discv5NodeRecordConverter
+internal static class NodeRecordConverter
 {
     public static bool TryGetNodeFromEnr(NodeRecord enr, bool allowNonRoutable, [NotNullWhen(true)] out Node? node)
     {

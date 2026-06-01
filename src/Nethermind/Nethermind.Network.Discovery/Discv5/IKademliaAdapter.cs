@@ -10,7 +10,7 @@ namespace Nethermind.Network.Discovery.Discv5;
 /// <summary>
 /// Adapts discv5 distance-based FINDNODE requests to the protocol-specific Kademlia routing table.
 /// </summary>
-public interface IDiscv5KademliaAdapter : IKademliaMessageSender<PublicKey, Node>, IAsyncDisposable
+public interface IKademliaAdapter : IKademliaMessageSender<PublicKey, Node>, IAsyncDisposable
 {
     /// <summary>
     /// Gets known nodes at the requested log distances from the local node.

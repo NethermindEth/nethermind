@@ -17,7 +17,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv5;
 
-public class Discv5KademliaAdapterTests
+public class KademliaAdapterTests
 {
     private IKademlia<PublicKey, Node> _kademlia = null!;
 
@@ -35,7 +35,7 @@ public class Discv5KademliaAdapterTests
         _kademlia.GetAllAtDistance(11).Returns([nodeB, nodeC]);
         _kademlia.ClearReceivedCalls();
 
-        Discv5KademliaAdapter adapter = CreateAdapter();
+        KademliaAdapter adapter = CreateAdapter();
 
         Node[] result = adapter.GetNodesAtDistances([10, 11]);
 
@@ -52,7 +52,7 @@ public class Discv5KademliaAdapterTests
 
         _kademlia.GetAllAtDistance(10).Returns([requester, returned]);
 
-        Discv5KademliaAdapter adapter = CreateAdapter();
+        KademliaAdapter adapter = CreateAdapter();
 
         Node[] result = adapter.GetNodesAtDistances([10], requester);
 
@@ -63,7 +63,7 @@ public class Discv5KademliaAdapterTests
     [TestCase(257)]
     public void GetNodesAtDistances_ShouldRejectInvalidDistance(int distance)
     {
-        Discv5KademliaAdapter adapter = CreateAdapter();
+        KademliaAdapter adapter = CreateAdapter();
 
         Assert.Throws<ArgumentOutOfRangeException>(() => adapter.GetNodesAtDistances([distance]));
     }
@@ -71,7 +71,7 @@ public class Discv5KademliaAdapterTests
     [Test]
     public void TryAcceptChallenge_ShouldLimitBurstPerIp()
     {
-        Discv5KademliaAdapter adapter = CreateAdapter();
+        KademliaAdapter adapter = CreateAdapter();
         IPEndPoint endpoint = IPEndPoint.Parse("192.0.2.1:30303");
 
         for (int i = 0; i < 16; i++)
@@ -88,7 +88,7 @@ public class Discv5KademliaAdapterTests
         NodeRecord documentationRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("192.0.2.1"));
 
         Assert.That(
-            Discv5KademliaAdapter.IsAcceptableNodeRecord(
+            KademliaAdapter.IsAcceptableNodeRecord(
                 documentationRecord,
                 TestItem.PrivateKeyB.PublicKey.Hash,
                 allowNonRoutable: true),
@@ -101,7 +101,7 @@ public class Discv5KademliaAdapterTests
         NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.8.8"));
 
         Assert.That(
-            Discv5KademliaAdapter.IsAcceptableNodeRecord(
+            KademliaAdapter.IsAcceptableNodeRecord(
                 record,
                 TestItem.PrivateKeyA.PublicKey.Hash,
                 allowNonRoutable: false),
@@ -114,14 +114,14 @@ public class Discv5KademliaAdapterTests
         NodeRecord loopbackRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
 
         Assert.That(
-            Discv5KademliaAdapter.IsAcceptableNodeRecord(
+            KademliaAdapter.IsAcceptableNodeRecord(
                 loopbackRecord,
                 TestItem.PrivateKeyB.PublicKey.Hash,
                 allowNonRoutable: true),
             Is.True);
     }
 
-    private Discv5KademliaAdapter CreateAdapter() => new(
+    private KademliaAdapter CreateAdapter() => new(
         new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
         null!,
         null!,

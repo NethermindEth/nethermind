@@ -9,9 +9,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Handlers;
-using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv5.Messages;
+using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Enr;
+using Nethermind.Logging;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5;
@@ -19,15 +20,15 @@ namespace Nethermind.Network.Discovery.Discv5;
 /// <summary>
 /// Maps discv5 FINDNODE distance requests onto the protocol-specific Kademlia table.
 /// </summary>
-public class Discv5KademliaAdapter(
+public class KademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia,
     NettyDiscoveryV5Handler discoveryHandler,
-    Discv5PacketCodec packetCodec,
+    PacketCodec packetCodec,
     INodeRecordProvider nodeRecordProvider,
     IDiscoveryConfig discoveryConfig,
     ICryptoRandom cryptoRandom,
     IKademliaDistance<Hash256> distance,
-    ILogManager logManager) : IDiscv5KademliaAdapter
+    ILogManager logManager) : IKademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;
     private const int MaxEnrsPerNodesMessage = 3;
@@ -46,8 +47,8 @@ public class Discv5KademliaAdapter(
     private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
     private readonly TimeSpan _findNodeTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
     private readonly IKademliaDistance<Hash256> _distance = distance;
-    private readonly ILogger _logger = logManager.GetClassLogger<Discv5KademliaAdapter>();
-    private readonly LruCache<SessionKey, Discv5Session> _sessions = new(MaxSessions, "discv5 sessions");
+    private readonly ILogger _logger = logManager.GetClassLogger<KademliaAdapter>();
+    private readonly LruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions");
     private readonly LruCache<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges, "discv5 sent challenges");
     private long _lastSentChallengeTrimMilliseconds;
     private readonly LruCache<PendingNonceKey, PendingRequest> _pendingByNonce = new(MaxPendingRequests, "discv5 pending requests");
@@ -96,7 +97,7 @@ public class Discv5KademliaAdapter(
     {
         RegisterKnownRecord(receiver);
         ReserveEndpointCheck(receiver);
-        using Discv5Ping ping = new(CreateRequestId(), nodeRecordProvider.Current.EnrSequence);
+        using PingMsg ping = new(CreateRequestId(), nodeRecordProvider.Current.EnrSequence);
         PongResponseHandler responseHandler = new(receiver);
 
         await SendRequest(receiver, ping, responseHandler, _pingTimeout, token);
@@ -107,8 +108,8 @@ public class Discv5KademliaAdapter(
     public async Task<Node[]> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
     {
         RegisterKnownRecord(receiver);
-        Discv5Distances distances = GetLookupDistances(receiver, target);
-        using Discv5FindNode findNode = new(CreateRequestId(), distances);
+        Distances distances = GetLookupDistances(receiver, target);
+        using FindNodeMsg findNode = new(CreateRequestId(), distances);
         NodesResponseHandler responseHandler = new(receiver, distances, _distance);
 
         await SendRequest(receiver, findNode, responseHandler, _findNodeTimeout, token);
@@ -179,9 +180,10 @@ public class Discv5KademliaAdapter(
     private async Task<PendingNonceKey?> SendMessage(Node receiver, Discv5Message message)
     {
         SessionKey sessionKey = new(receiver.Id.Hash, receiver.Address);
-        if (TryGetSession(sessionKey, out Discv5Session? session))
+        if (TryGetSession(sessionKey, out Session? session))
         {
-            byte[] sessionNonce = session.GetNextNonce(cryptoRandom);
+            Span<byte> sessionNonce = stackalloc byte[PacketCodec.NonceSize];
+            session.WriteNextNonce(cryptoRandom, sessionNonce);
             PendingNonceKey sessionPendingNonceKey = new(receiver.Address, NonceKey.From(sessionNonce));
             _pendingByNonce.Set(sessionPendingNonceKey, new PendingRequest(receiver, message));
             byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, session.WriteKey, message, sessionNonce);
@@ -197,8 +199,10 @@ public class Discv5KademliaAdapter(
             }
         }
 
-        byte[] nonce = cryptoRandom.GenerateRandomBytes(Discv5PacketCodec.NonceSize);
-        byte[] encryptionKey = cryptoRandom.GenerateRandomBytes(16);
+        Span<byte> nonce = stackalloc byte[PacketCodec.NonceSize];
+        cryptoRandom.GenerateRandomBytes(nonce);
+        Span<byte> encryptionKey = stackalloc byte[16];
+        cryptoRandom.GenerateRandomBytes(encryptionKey);
         PendingRequest pendingRequest = new(receiver, message);
         PendingNonceKey pendingNonceKey = new(receiver.Address, NonceKey.From(nonce));
         _pendingByNonce.Set(pendingNonceKey, pendingRequest);
@@ -219,73 +223,77 @@ public class Discv5KademliaAdapter(
     private async Task SendResponse(Node receiver, Discv5Message message, CancellationToken token)
     {
         SessionKey sessionKey = new(receiver.Id.Hash, receiver.Address);
-        if (!TryGetSession(sessionKey, out Discv5Session? session))
+        if (!TryGetSession(sessionKey, out Session? session))
         {
             return;
         }
 
-        byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, session.WriteKey, message, session.GetNextNonce(cryptoRandom));
+        Span<byte> nonce = stackalloc byte[PacketCodec.NonceSize];
+        session.WriteNextNonce(cryptoRandom, nonce);
+        byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, session.WriteKey, message, nonce);
         await discoveryHandler.SendAsync(packet, receiver.Address);
     }
 
     private async Task HandlePacket(UdpReceiveResult udpPacket, CancellationToken token)
     {
-        if (!packetCodec.TryDecode(udpPacket.Buffer, out Discv5Packet packet))
+        if (!packetCodec.TryDecode(udpPacket.Buffer, out Packet packet))
         {
             return;
         }
 
-        try
+        using (packet)
         {
-            switch (packet.Flag)
+            try
             {
-                case Discv5PacketFlag.WhoAreYou:
-                    await HandleWhoAreYou(udpPacket.RemoteEndPoint, packet, token);
-                    break;
-                case Discv5PacketFlag.Ordinary:
-                    await HandleOrdinary(udpPacket.RemoteEndPoint, packet, token);
-                    break;
-                case Discv5PacketFlag.Handshake:
-                    await HandleHandshake(udpPacket.RemoteEndPoint, packet, token);
-                    break;
+                switch (packet.Flag)
+                {
+                    case PacketFlag.WhoAreYou:
+                        await HandleWhoAreYou(udpPacket.RemoteEndPoint, packet, token);
+                        break;
+                    case PacketFlag.Ordinary:
+                        await HandleOrdinary(udpPacket.RemoteEndPoint, packet, token);
+                        break;
+                    case PacketFlag.Handshake:
+                        await HandleHandshake(udpPacket.RemoteEndPoint, packet, token);
+                        break;
+                }
             }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Error handling discv5 packet from {udpPacket.RemoteEndPoint}: {e}");
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Error handling discv5 packet from {udpPacket.RemoteEndPoint}: {e}");
+            }
         }
     }
 
-    private async Task HandleWhoAreYou(IPEndPoint endpoint, Discv5Packet packet, CancellationToken token)
+    private async Task HandleWhoAreYou(IPEndPoint endpoint, Packet packet, CancellationToken token)
     {
-        PendingNonceKey pendingNonceKey = new(endpoint, NonceKey.From(packet.Nonce));
+        PendingNonceKey pendingNonceKey = new(endpoint, NonceKey.From(packet.Nonce.Span));
         if (!_pendingByNonce.TryRemove(pendingNonceKey, out PendingRequest? pendingRequest))
         {
             return;
         }
 
-        Discv5Challenge challenge = packetCodec.DecodeWhoAreYou(packet);
-        byte[] handshakePacket = packetCodec.EncodeHandshake(pendingRequest.Receiver.Id, challenge, pendingRequest.Message, out Discv5Session session);
+        Challenge challenge = packetCodec.DecodeWhoAreYou(packet);
+        byte[] handshakePacket = packetCodec.EncodeHandshake(pendingRequest.Receiver.Id, challenge, pendingRequest.Message, out Session session);
         SetSession(new SessionKey(pendingRequest.Receiver.Id.Hash, endpoint), session);
         await discoveryHandler.SendAsync(handshakePacket, endpoint);
     }
 
-    private async Task HandleOrdinary(IPEndPoint endpoint, Discv5Packet packet, CancellationToken token)
+    private async Task HandleOrdinary(IPEndPoint endpoint, Packet packet, CancellationToken token)
     {
-        if (!Discv5PacketCodec.TryGetSourceNodeId(packet, out byte[] sourceNodeId))
+        if (!PacketCodec.TryGetSourceNodeId(packet, out Hash256 nodeId))
         {
             return;
         }
 
-        Hash256 nodeId = new(sourceNodeId);
         SessionKey sessionKey = new(nodeId, endpoint);
-        if (!TryGetSession(sessionKey, out Discv5Session? session) ||
+        if (!TryGetSession(sessionKey, out Session? session) ||
             !packetCodec.TryDecryptMessage(packet, session.ReadKey, out Discv5Message message))
         {
-            await SendWhoAreYou(endpoint, packet, sourceNodeId);
+            await SendWhoAreYou(endpoint, packet, nodeId);
             return;
         }
 
@@ -299,14 +307,13 @@ public class Discv5KademliaAdapter(
         }
     }
 
-    private async Task HandleHandshake(IPEndPoint endpoint, Discv5Packet packet, CancellationToken token)
+    private async Task HandleHandshake(IPEndPoint endpoint, Packet packet, CancellationToken token)
     {
-        if (!Discv5PacketCodec.TryGetSourceNodeId(packet, out byte[] sourceNodeId))
+        if (!PacketCodec.TryGetSourceNodeId(packet, out Hash256 nodeId))
         {
             return;
         }
 
-        Hash256 nodeId = new(sourceNodeId);
         ChallengeKey challengeKey = new(nodeId, endpoint);
         if (!_sentChallenges.TryRemove(challengeKey, out SentChallenge sentChallenge) ||
             IsExpired(sentChallenge, Environment.TickCount64))
@@ -315,7 +322,7 @@ public class Discv5KademliaAdapter(
         }
 
         TryGetKnownRecord(nodeId, out NodeRecord? knownRecord);
-        if (!packetCodec.TryDecryptHandshake(packet, sentChallenge.Challenge, knownRecord, out Discv5Session session, out Discv5Message message, out NodeRecord? nodeRecord))
+        if (!packetCodec.TryDecryptHandshake(packet, sentChallenge.Challenge, knownRecord, out Session session, out Discv5Message message, out NodeRecord? nodeRecord))
         {
             return;
         }
@@ -346,9 +353,8 @@ public class Discv5KademliaAdapter(
         }
     }
 
-    private async Task SendWhoAreYou(IPEndPoint endpoint, Discv5Packet requestPacket, byte[] destinationNodeId)
+    private async Task SendWhoAreYou(IPEndPoint endpoint, Packet requestPacket, Hash256 nodeId)
     {
-        Hash256 nodeId = new(destinationNodeId);
         ChallengeKey challengeKey = new(nodeId, endpoint);
         long now = Environment.TickCount64;
         if (_sentChallenges.TryGet(challengeKey, out SentChallenge existingChallenge) && !IsExpired(existingChallenge, now))
@@ -364,7 +370,7 @@ public class Discv5KademliaAdapter(
         }
 
         ulong enrSequence = TryGetKnownRecord(nodeId, out NodeRecord? record) ? record.EnrSequence : 0UL;
-        byte[] packet = packetCodec.EncodeWhoAreYou(destinationNodeId, requestPacket.Nonce, enrSequence, out Discv5Challenge challenge);
+        byte[] packet = packetCodec.EncodeWhoAreYou(nodeId.Bytes, requestPacket.Nonce.Span, enrSequence, out Challenge challenge);
         SetSentChallenge(challengeKey, challenge, packet);
         await discoveryHandler.SendAsync(packet, endpoint);
     }
@@ -383,8 +389,8 @@ public class Discv5KademliaAdapter(
 
         switch (message)
         {
-            case Discv5Ping ping:
-                using (Discv5Pong pong = new(ping.RequestId, nodeRecordProvider.Current.EnrSequence, endpoint.Address, endpoint.Port))
+            case PingMsg ping:
+                using (PongMsg pong = new(ping.RequestId, nodeRecordProvider.Current.EnrSequence, endpoint.Address, endpoint.Port))
                 {
                     await SendResponse(remoteNode, pong, token);
                 }
@@ -395,12 +401,12 @@ public class Discv5KademliaAdapter(
                     StartEndpointCheck(remoteNode, token);
                 }
                 break;
-            case Discv5FindNode findNode:
+            case FindNodeMsg findNode:
                 await HandleFindNode(remoteNode, findNode, token);
                 kademlia.Value.AddOrRefresh(remoteNode);
                 break;
-            case Discv5TalkReq talkReq:
-                using (Discv5TalkResp talkResp = new(talkReq.RequestId, ReadOnlyMemory<byte>.Empty))
+            case TalkReqMsg talkReq:
+                using (TalkRespMsg talkResp = new(talkReq.RequestId, ReadOnlyMemory<byte>.Empty))
                 {
                     await SendResponse(remoteNode, talkResp, token);
                 }
@@ -425,12 +431,12 @@ public class Discv5KademliaAdapter(
         return _responseHandlers.TryGet(responseKey, out IResponseHandler? handler) && handler.Handle(message);
     }
 
-    private async Task HandleFindNode(Node remoteNode, Discv5FindNode findNode, CancellationToken token)
+    private async Task HandleFindNode(Node remoteNode, FindNodeMsg findNode, CancellationToken token)
     {
         NodeRecord[] records = GetFindNodeRecords(findNode.Distances, remoteNode);
         if (records.Length == 0)
         {
-            using Discv5Nodes emptyResponse = new(findNode.RequestId, 1, []);
+            using NodesMsg emptyResponse = new(findNode.RequestId, 1, []);
             await SendResponse(remoteNode, emptyResponse, token);
             return;
         }
@@ -440,12 +446,12 @@ public class Discv5KademliaAdapter(
         {
             int count = Math.Min(MaxEnrsPerNodesMessage, records.Length - i);
             ArraySegment<NodeRecord> chunk = new(records, i, count);
-            using Discv5Nodes nodes = new(findNode.RequestId, total, chunk);
+            using NodesMsg nodes = new(findNode.RequestId, total, chunk);
             await SendResponse(remoteNode, nodes, token);
         }
     }
 
-    private NodeRecord[] GetFindNodeRecords(Discv5Distances distances, Node requester)
+    private NodeRecord[] GetFindNodeRecords(Distances distances, Node requester)
     {
         HashSet<Hash256> seen = new(MaxFindNodeRecords);
         List<NodeRecord> result = new(MaxFindNodeRecords);
@@ -541,7 +547,7 @@ public class Discv5KademliaAdapter(
         }
     }
 
-    private Discv5Distances GetLookupDistances(Node receiver, PublicKey target)
+    private Distances GetLookupDistances(Node receiver, PublicKey target)
     {
         int distance = _distance.CalculateLogDistance(receiver.Id.Hash, target.Hash);
 
@@ -558,10 +564,10 @@ public class Discv5KademliaAdapter(
             distances[count++] = distance + 1;
         }
 
-        return new Discv5Distances(distances[..count]);
+        return new Distances(distances[..count]);
     }
 
-    private Discv5RequestId CreateRequestId()
+    private RequestId CreateRequestId()
     {
         Span<byte> requestId = stackalloc byte[sizeof(ulong)];
         cryptoRandom.GenerateRandomBytes(requestId);
@@ -571,12 +577,12 @@ public class Discv5KademliaAdapter(
             start++;
         }
 
-        return Discv5RequestId.From(requestId[start..]);
+        return RequestId.From(requestId[start..]);
     }
 
-    private bool TryGetSession(SessionKey sessionKey, [NotNullWhen(true)] out Discv5Session? session) => _sessions.TryGet(sessionKey, out session);
+    private bool TryGetSession(SessionKey sessionKey, [NotNullWhen(true)] out Session? session) => _sessions.TryGet(sessionKey, out session);
 
-    private void SetSession(SessionKey sessionKey, Discv5Session session)
+    private void SetSession(SessionKey sessionKey, Session session)
         => _sessions.Set(sessionKey, session);
 
     private bool TryGetKnownRecord(Hash256 nodeId, [NotNullWhen(true)] out NodeRecord? record) => _knownRecords.TryGet(nodeId, out record);
@@ -585,13 +591,13 @@ public class Discv5KademliaAdapter(
         => _knownRecords.Set(nodeId, record);
 
     internal static bool IsAcceptableNodeRecord(NodeRecord record, Hash256 expectedNodeId, bool allowNonRoutable)
-        => Discv5NodeRecordConverter.TryGetNodeFromEnr(record, allowNonRoutable, out Node? node) &&
+        => NodeRecordConverter.TryGetNodeFromEnr(record, allowNonRoutable, out Node? node) &&
             node.Id.Hash.Equals(expectedNodeId);
 
     internal static bool HasExpectedNodeId(NodeRecord record, Hash256 expectedNodeId)
         => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash.Equals(expectedNodeId) == true;
 
-    private void SetSentChallenge(ChallengeKey challengeKey, Discv5Challenge challenge, byte[] packet)
+    private void SetSentChallenge(ChallengeKey challengeKey, Challenge challenge, byte[] packet)
     {
         long now = Environment.TickCount64;
         TryTrimExpiredChallenges(now);

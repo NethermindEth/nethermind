@@ -32,9 +32,9 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     private readonly IDb _discoveryDb;
     private readonly IDb _legacyDiscoveryDb;
     private readonly bool _allowNonRoutableEnrs;
-    private readonly IDiscv5KademliaAdapter _discv5Adapter;
+    private readonly IKademliaAdapter _adapter;
     private readonly Func<NettyDiscoveryV5Handler> _discoveryHandlerFactory;
-    private readonly ILifetimeScope _discv5Services;
+    private readonly ILifetimeScope _services;
 
     private NettyDiscoveryV5Handler? _discoveryHandler;
 
@@ -48,7 +48,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         [KeyFilter(DbNames.DiscoveryNodes)] IDb legacyDiscoveryDb,
         IProcessExitSource processExitSource,
         ILogManager logManager,
-        Action<ContainerBuilder>? configureDiscv5Services = null)
+        Action<ContainerBuilder>? configureServices = null)
         : base("discv5", networkConfig, processExitSource, logManager.GetClassLogger<DiscoveryV5App>())
     {
         _discoveryDb = discoveryDb;
@@ -58,26 +58,26 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         List<Node> bootNodes = CreateBootNodes(networkConfig, discoveryConfig);
         ITimestamper timestamper = rootScope.ResolveOptional<ITimestamper>() ?? Timestamper.Default;
 
-        _discv5Services = rootScope.BeginLifetimeScope(builder =>
+        _services = rootScope.BeginLifetimeScope(builder =>
         {
             builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
             builder.RegisterInstance(timestamper).As<ITimestamper>();
             builder
-                .AddModule(new DiscV5KademliaModule(nodeKey.PublicKey, bootNodes))
-                .AddSingleton<DiscV5Services>();
+                .AddModule(new KademliaModule(nodeKey.PublicKey, bootNodes))
+                .AddSingleton<Services>();
 
-            configureDiscv5Services?.Invoke(builder);
+            configureServices?.Invoke(builder);
         });
 
-        DiscV5Services services = _discv5Services.Resolve<DiscV5Services>();
-        _discv5Adapter = services.Discv5Adapter;
+        Services services = _services.Resolve<Services>();
+        _adapter = services.Adapter;
         _discoveryHandlerFactory = services.NettyDiscoveryHandlerFactory;
         UseKademliaServices(services.NodeSource, services.Kademlia);
     }
 
-    private record DiscV5Services(
+    private record Services(
         IKademliaNodeSource NodeSource,
-        IDiscv5KademliaAdapter Discv5Adapter,
+        IKademliaAdapter Adapter,
         IKademlia<PublicKey, Node> Kademlia,
         Func<NettyDiscoveryV5Handler> NettyDiscoveryHandlerFactory
     )
@@ -100,7 +100,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
         if (discoveryConfig.UseDefaultDiscv5Bootnodes)
         {
-            string[] defaultBootnodes = GetDefaultDiscv5Bootnodes();
+            string[] defaultBootnodes = GetDefaultBootnodes();
             for (int i = 0; i < defaultBootnodes.Length; i++)
             {
                 defaultStats.Record(AddBootNode(bootNodes, seen, NodeRecord.FromEnrString(defaultBootnodes[i])));
@@ -190,12 +190,12 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         return BootNodeAddResult.Added;
     }
 
-    private static string[] GetDefaultDiscv5Bootnodes() =>
+    private static string[] GetDefaultBootnodes() =>
         JsonSerializer.Deserialize<string[]>(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!) ?? [];
 
     internal bool TryGetNodeFromEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
     {
-        if (Discv5NodeRecordConverter.TryGetNodeFromEnr(enr, _allowNonRoutableEnrs, out node))
+        if (NodeRecordConverter.TryGetNodeFromEnr(enr, _allowNonRoutableEnrs, out node))
         {
             return true;
         }
@@ -342,13 +342,13 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     }
 
     protected override Task RunDiscoveryAsync(CancellationToken cancellationToken) =>
-        Task.WhenAll(_discv5Adapter.RunAsync(cancellationToken), Kademlia.Run(cancellationToken));
+        Task.WhenAll(_adapter.RunAsync(cancellationToken), Kademlia.Run(cancellationToken));
 
     protected override async Task StopAsyncCore()
     {
         PersistKnownEnrs();
 
-        await _discv5Adapter.DisposeAsync();
+        await _adapter.DisposeAsync();
         _discoveryHandler?.Close();
     }
 
@@ -387,7 +387,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         }
     }
 
-    protected override ValueTask DisposeAsyncCore() => _discv5Services.DisposeAsync();
+    protected override ValueTask DisposeAsyncCore() => _services.DisposeAsync();
 
     private enum BootNodeAddResult
     {

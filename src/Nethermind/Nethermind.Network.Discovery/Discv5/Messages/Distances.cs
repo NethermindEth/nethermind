@@ -6,7 +6,7 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Network.Discovery.Discv5.Messages;
 
-internal sealed class Discv5Distances : IReadOnlyList<int>, IDisposable
+internal sealed class Distances : IReadOnlyList<int>, IDisposable
 {
     private const int InlineCapacity = 3;
 
@@ -15,7 +15,7 @@ internal sealed class Discv5Distances : IReadOnlyList<int>, IDisposable
     private int _second;
     private int _third;
 
-    public Discv5Distances(ReadOnlySpan<int> distances)
+    public Distances(ReadOnlySpan<int> distances)
         : this(distances.Length)
     {
         for (int i = 0; i < distances.Length; i++)
@@ -24,7 +24,7 @@ internal sealed class Discv5Distances : IReadOnlyList<int>, IDisposable
         }
     }
 
-    internal Discv5Distances(int count)
+    internal Distances(int count)
     {
         Count = count;
         if (count > InlineCapacity)

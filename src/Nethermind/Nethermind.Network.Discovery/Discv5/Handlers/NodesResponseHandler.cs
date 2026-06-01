@@ -9,8 +9,8 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5.Handlers;
 
-internal sealed class NodesResponseHandler(Node receiver, Discv5Distances requestedDistances, IKademliaDistance<Hash256> distanceCalculator)
-    : ResponseHandler<Discv5Nodes>(Discv5MessageType.Nodes)
+internal sealed class NodesResponseHandler(Node receiver, Distances requestedDistances, IKademliaDistance<Hash256> distanceCalculator)
+    : ResponseHandler<NodesMsg>(MessageType.Nodes)
 {
     private const int MaxNodesResponseMessages = 16;
     private const int MaxNodesResponseRecords = 64;
@@ -24,7 +24,7 @@ internal sealed class NodesResponseHandler(Node receiver, Discv5Distances reques
 
     public override Task Task => _completion.Task;
 
-    public override bool Handle(Discv5Nodes nodes)
+    public override bool Handle(NodesMsg nodes)
     {
         if (_completion.Task.IsCompleted)
         {
@@ -49,7 +49,7 @@ internal sealed class NodesResponseHandler(Node receiver, Discv5Distances reques
         for (int i = 0; i < nodes.Records.Count && _nodes.Count < MaxNodesResponseRecords; i++)
         {
             NodeRecord record = nodes.Records[i];
-            if (!Discv5NodeRecordConverter.TryGetNodeFromEnr(record, _allowNonRoutableRelays, out Node? node) ||
+            if (!NodeRecordConverter.TryGetNodeFromEnr(record, _allowNonRoutableRelays, out Node? node) ||
                 !_seenNodeIds.Add(node.Id.Hash) ||
                 !MatchesRequestedDistance(node, requestedDistances))
             {
@@ -69,7 +69,7 @@ internal sealed class NodesResponseHandler(Node receiver, Discv5Distances reques
 
     public Node[] GetNodes() => [.. _nodes];
 
-    private bool MatchesRequestedDistance(Node node, Discv5Distances requestedDistances)
+    private bool MatchesRequestedDistance(Node node, Distances requestedDistances)
     {
         int distance = distanceCalculator.CalculateLogDistance(receiver.Id.Hash, node.Id.Hash);
         for (int i = 0; i < requestedDistances.Count; i++)

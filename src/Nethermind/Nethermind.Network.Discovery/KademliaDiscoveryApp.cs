@@ -116,10 +116,7 @@ public abstract class KademliaDiscoveryApp(
 
     protected virtual void Initialize()
     {
-        if (Logger.IsDebug)
-        {
-            Logger.Debug($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
-        }
+        if (Logger.IsDebug) Logger.Debug($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
 
         ThisNodeInfo.AddInfo("Discovery    :", $"udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
     }

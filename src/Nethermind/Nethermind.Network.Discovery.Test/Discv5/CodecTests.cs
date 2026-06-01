@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Messages;
+using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -16,7 +17,7 @@ using System.Net;
 
 namespace Nethermind.Network.Discovery.Test.Discv5;
 
-public class Discv5CodecTests
+public class CodecTests
 {
     private static readonly byte[] NodeAId = Bytes.FromHexString("0xaaaa8419e9f49d0083561b48287df592939a8d19947d8c0ef88f2a4856a69fbb");
     private static readonly byte[] NodeBId = Bytes.FromHexString("0xbbbb9d047f0488c0b5a93c1c3f2d8bafc7c8ff337024a55434a0d0555de64db9");
@@ -42,7 +43,7 @@ public class Discv5CodecTests
         byte[] secret = SecP256k1Agreement.AgreeCompressed(destinationPublicKey, ephemeralPrivateKey);
         byte[] challengeData = Bytes.FromHexString("0x000000000000000000000000000000006469736376350001010102030405060708090a0b0c00180102030405060708090a0b0c0d0e0f100000000000000000");
 
-        (byte[] initiatorKey, byte[] recipientKey) = Discv5PacketCodec.DeriveKeysForTest(secret, NodeAId, NodeBId, challengeData);
+        (byte[] initiatorKey, byte[] recipientKey) = PacketCodec.DeriveKeysForTest(secret, NodeAId, NodeBId, challengeData);
 
         Assert.That(initiatorKey.ToHexString(true), Is.EqualTo("0xdccc82d81bd610f4f76d3ebe97a40571"));
         Assert.That(recipientKey.ToHexString(true), Is.EqualTo("0xac74bb8773749920b0d3a8881c173ec5"));
@@ -54,7 +55,7 @@ public class Discv5CodecTests
         PrivateKey staticKey = new("0xfb757dc581730490a1d7a00deea65e9b1936924caaea8f44d476014856b68736");
         byte[] challengeData = Bytes.FromHexString("0x000000000000000000000000000000006469736376350001010102030405060708090a0b0c00180102030405060708090a0b0c0d0e0f100000000000000000");
         byte[] ephemeralPublicKey = Bytes.FromHexString("0x039961e4c2356d61bedb83052c115d311acb3a96f5777296dcf297351130266231");
-        byte[] signingHash = Discv5PacketCodec.CalculateIdSignatureHashForTest(challengeData, ephemeralPublicKey, NodeBId);
+        byte[] signingHash = PacketCodec.CalculateIdSignatureHashForTest(challengeData, ephemeralPublicKey, NodeBId);
 
         Signature signature = new Ecdsa().Sign(staticKey, new ValueHash256(signingHash));
 
@@ -69,18 +70,21 @@ public class Discv5CodecTests
             "ea96c005ad52be8c7560413a7008f16c9e6d2f43bbea8814a546b7409ce783d3" +
             "4c4f53245d08dab84102ed931f66d1492acb308fa1c6715b9d139b81acbdcc");
 
-        bool decoded = Discv5PacketCodec.TryDecode(packetBytes, NodeBId, out Discv5Packet packet);
-        bool decrypted = Discv5PacketCodec.TryDecryptMessageForTest(packet, new byte[16], out Discv5Message message);
+        bool decoded = PacketCodec.TryDecode(packetBytes, NodeBId, out Packet packet);
+        using (packet)
+        {
+            bool decrypted = PacketCodec.TryDecryptMessageForTest(packet, new byte[16], out Discv5Message message);
 
-        Assert.That(decoded, Is.True);
-        Assert.That(packet.Flag, Is.EqualTo(Discv5PacketFlag.Ordinary));
-        Assert.That(packet.AuthData, Is.EqualTo(NodeAId));
-        Assert.That(decrypted, Is.True);
-        Assert.That(message, Is.InstanceOf<Discv5Ping>());
-        Discv5Ping ping = (Discv5Ping)message;
-        Assert.That(ping.RequestId.ToArray(), Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
-        Assert.That(ping.EnrSequence, Is.EqualTo(2));
-        message.Dispose();
+            Assert.That(decoded, Is.True);
+            Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Ordinary));
+            Assert.That(packet.AuthData.ToArray(), Is.EqualTo(NodeAId));
+            Assert.That(decrypted, Is.True);
+            Assert.That(message, Is.InstanceOf<PingMsg>());
+            PingMsg ping = (PingMsg)message;
+            Assert.That(ping.RequestId.ToArray(), Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
+            Assert.That(ping.EnrSequence, Is.EqualTo(2));
+            message.Dispose();
+        }
     }
 
     [Test]
@@ -91,16 +95,19 @@ public class Discv5CodecTests
             "1d6035f15e528627dde75cd68292f9e6c27d6b66c8100a873fcbaed4e16b8d");
         byte[] challengeData = Bytes.FromHexString("0x000000000000000000000000000000006469736376350001010102030405060708090a0b0c00180102030405060708090a0b0c0d0e0f100000000000000000");
 
-        bool decoded = Discv5PacketCodec.TryDecode(packetBytes, NodeBId, out Discv5Packet packet);
-        Discv5PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
-        Discv5Challenge challenge = codec.DecodeWhoAreYou(packet);
+        bool decoded = PacketCodec.TryDecode(packetBytes, NodeBId, out Packet packet);
+        using (packet)
+        {
+            PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
+            Challenge challenge = codec.DecodeWhoAreYou(packet);
 
-        Assert.That(decoded, Is.True);
-        Assert.That(packet.Flag, Is.EqualTo(Discv5PacketFlag.WhoAreYou));
-        Assert.That(challenge.RequestNonce.ToHexString(true), Is.EqualTo("0x0102030405060708090a0b0c"));
-        Assert.That(challenge.IdNonce.ToHexString(true), Is.EqualTo("0x0102030405060708090a0b0c0d0e0f10"));
-        Assert.That(challenge.EnrSequence, Is.Zero);
-        Assert.That(challenge.ChallengeData, Is.EqualTo(challengeData));
+            Assert.That(decoded, Is.True);
+            Assert.That(packet.Flag, Is.EqualTo(PacketFlag.WhoAreYou));
+            Assert.That(challenge.RequestNonce.ToHexString(true), Is.EqualTo("0x0102030405060708090a0b0c"));
+            Assert.That(challenge.IdNonce.ToHexString(true), Is.EqualTo("0x0102030405060708090a0b0c0d0e0f10"));
+            Assert.That(challenge.EnrSequence, Is.Zero);
+            Assert.That(challenge.ChallengeData, Is.EqualTo(challengeData));
+        }
     }
 
     [TestCase(
@@ -139,39 +146,42 @@ public class Discv5CodecTests
         bool includesRecord)
     {
         byte[] packetBytes = Bytes.FromHexString(packetHex);
-        Discv5Challenge challenge = new(
+        Challenge challenge = new(
             Bytes.FromHexString("0x0102030405060708090a0b0c"),
             Bytes.FromHexString("0x0102030405060708090a0b0c0d0e0f10"),
             challengeEnrSequence,
             Bytes.FromHexString(challengeDataHex));
-        Discv5PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
+        PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
         NodeRecord? knownRecord = includesRecord ? null : CreateNodeRecord(new PrivateKey(GethNodeAPrivateKey));
 
-        bool decoded = Discv5PacketCodec.TryDecode(packetBytes, NodeBId, out Discv5Packet packet);
-        bool decrypted = codec.TryDecryptHandshake(packet, challenge, knownRecord, out Discv5Session session, out Discv5Message message, out NodeRecord? nodeRecord);
+        bool decoded = PacketCodec.TryDecode(packetBytes, NodeBId, out Packet packet);
+        using (packet)
+        {
+            bool decrypted = codec.TryDecryptHandshake(packet, challenge, knownRecord, out Session session, out Discv5Message message, out NodeRecord? nodeRecord);
 
-        Assert.That(decoded, Is.True);
-        Assert.That(packet.Flag, Is.EqualTo(Discv5PacketFlag.Handshake));
-        Assert.That(decrypted, Is.True);
-        Assert.That(session.ReadKey.ToHexString(true), Is.EqualTo(expectedReadKeyHex));
-        Assert.That(message, Is.InstanceOf<Discv5Ping>());
-        Discv5Ping ping = (Discv5Ping)message;
-        Assert.That(ping.RequestId.ToArray(), Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
-        Assert.That(ping.EnrSequence, Is.EqualTo(1));
-        Assert.That(nodeRecord is not null, Is.EqualTo(includesRecord));
-        message.Dispose();
+            Assert.That(decoded, Is.True);
+            Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Handshake));
+            Assert.That(decrypted, Is.True);
+            Assert.That(session.ReadKey.ToHexString(true), Is.EqualTo(expectedReadKeyHex));
+            Assert.That(message, Is.InstanceOf<PingMsg>());
+            PingMsg ping = (PingMsg)message;
+            Assert.That(ping.RequestId.ToArray(), Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
+            Assert.That(ping.EnrSequence, Is.EqualTo(1));
+            Assert.That(nodeRecord is not null, Is.EqualTo(includesRecord));
+            message.Dispose();
+        }
     }
 
     [Test]
     public void MessageCodec_Roundtrips_FindNode()
     {
-        using Discv5FindNode message = new([0, 0, 0, 1], [255, 254, 256]);
+        using FindNodeMsg message = new([0, 0, 0, 1], [255, 254, 256]);
 
-        using ArrayPoolSpan<byte> encoded = Discv5MessageCodec.Encode(message);
-        using Discv5Message decoded = Discv5MessageCodec.Decode(encoded);
+        using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
+        using Discv5Message decoded = MessageCodec.Decode(encoded);
 
-        Assert.That(decoded, Is.InstanceOf<Discv5FindNode>());
-        Discv5FindNode decodedFindNode = (Discv5FindNode)decoded;
+        Assert.That(decoded, Is.InstanceOf<FindNodeMsg>());
+        FindNodeMsg decodedFindNode = (FindNodeMsg)decoded;
         Assert.That(decodedFindNode.RequestId, Is.EqualTo(message.RequestId));
         Assert.That(decodedFindNode.Distances, Is.EqualTo(message.Distances));
     }
@@ -179,13 +189,13 @@ public class Discv5CodecTests
     [Test]
     public void MessageCodec_Roundtrips_Pong()
     {
-        using Discv5Pong message = new([0, 0, 0, 2], 3, IPAddress.Parse("192.0.2.1"), 30303);
+        using PongMsg message = new([0, 0, 0, 2], 3, IPAddress.Parse("192.0.2.1"), 30303);
 
-        using ArrayPoolSpan<byte> encoded = Discv5MessageCodec.Encode(message);
-        using Discv5Message decoded = Discv5MessageCodec.Decode(encoded);
+        using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
+        using Discv5Message decoded = MessageCodec.Decode(encoded);
 
-        Assert.That(decoded, Is.InstanceOf<Discv5Pong>());
-        Discv5Pong decodedPong = (Discv5Pong)decoded;
+        Assert.That(decoded, Is.InstanceOf<PongMsg>());
+        PongMsg decodedPong = (PongMsg)decoded;
         Assert.That(decodedPong.RequestId, Is.EqualTo(message.RequestId));
         Assert.That(decodedPong.EnrSequence, Is.EqualTo(message.EnrSequence));
         Assert.That(decodedPong.RecipientIp, Is.EqualTo(message.RecipientIp));
@@ -195,13 +205,13 @@ public class Discv5CodecTests
     [Test]
     public void MessageCodec_Roundtrips_TalkReq()
     {
-        using Discv5TalkReq message = new([0, 0, 0, 3], "eth"u8.ToArray(), new byte[] { 1, 2, 3, 4 });
+        using TalkReqMsg message = new([0, 0, 0, 3], "eth"u8.ToArray(), new byte[] { 1, 2, 3, 4 });
 
-        using ArrayPoolSpan<byte> encoded = Discv5MessageCodec.Encode(message);
-        using Discv5Message decoded = Discv5MessageCodec.Decode(encoded);
+        using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
+        using Discv5Message decoded = MessageCodec.Decode(encoded);
 
-        Assert.That(decoded, Is.InstanceOf<Discv5TalkReq>());
-        Discv5TalkReq decodedTalkReq = (Discv5TalkReq)decoded;
+        Assert.That(decoded, Is.InstanceOf<TalkReqMsg>());
+        TalkReqMsg decodedTalkReq = (TalkReqMsg)decoded;
         Assert.That(decodedTalkReq.RequestId, Is.EqualTo(message.RequestId));
         Assert.That(decodedTalkReq.Protocol.ToArray(), Is.EqualTo(message.Protocol.ToArray()));
         Assert.That(decodedTalkReq.Request.ToArray(), Is.EqualTo(message.Request.ToArray()));
@@ -210,13 +220,13 @@ public class Discv5CodecTests
     [Test]
     public void MessageCodec_Roundtrips_TalkResp()
     {
-        using Discv5TalkResp message = new([0, 0, 0, 4], new byte[] { 5, 6, 7, 8 });
+        using TalkRespMsg message = new([0, 0, 0, 4], new byte[] { 5, 6, 7, 8 });
 
-        using ArrayPoolSpan<byte> encoded = Discv5MessageCodec.Encode(message);
-        using Discv5Message decoded = Discv5MessageCodec.Decode(encoded);
+        using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
+        using Discv5Message decoded = MessageCodec.Decode(encoded);
 
-        Assert.That(decoded, Is.InstanceOf<Discv5TalkResp>());
-        Discv5TalkResp decodedTalkResp = (Discv5TalkResp)decoded;
+        Assert.That(decoded, Is.InstanceOf<TalkRespMsg>());
+        TalkRespMsg decodedTalkResp = (TalkRespMsg)decoded;
         Assert.That(decodedTalkResp.RequestId, Is.EqualTo(message.RequestId));
         Assert.That(decodedTalkResp.Response.ToArray(), Is.EqualTo(message.Response.ToArray()));
     }
@@ -227,13 +237,13 @@ public class Discv5CodecTests
         NodeRecord skippedRecord = CreateNodeRecord(new PrivateKey(GethNodeAPrivateKey));
         NodeRecord expectedRecord = CreateNodeRecord(new PrivateKey(GethNodeBPrivateKey));
         NodeRecord[] records = [skippedRecord, expectedRecord];
-        using Discv5Nodes message = new([0, 0, 0, 5], 1, new ArraySegment<NodeRecord>(records, 1, 1));
+        using NodesMsg message = new([0, 0, 0, 5], 1, new ArraySegment<NodeRecord>(records, 1, 1));
 
-        using ArrayPoolSpan<byte> encoded = Discv5MessageCodec.Encode(message);
-        using Discv5Message decoded = Discv5MessageCodec.Decode(encoded);
+        using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
+        using Discv5Message decoded = MessageCodec.Decode(encoded);
 
-        Assert.That(decoded, Is.InstanceOf<Discv5Nodes>());
-        Discv5Nodes decodedNodes = (Discv5Nodes)decoded;
+        Assert.That(decoded, Is.InstanceOf<NodesMsg>());
+        NodesMsg decodedNodes = (NodesMsg)decoded;
         Assert.That(decodedNodes.RequestId, Is.EqualTo(message.RequestId));
         Assert.That(decodedNodes.Total, Is.EqualTo(message.Total));
         Assert.That(decodedNodes.Records.Count, Is.EqualTo(1));
@@ -253,13 +263,13 @@ public class Discv5CodecTests
             Rlp.Encode(1),
             Rlp.Encode(new Rlp(invalidRecord)));
         byte[] message = new byte[data.Length + 1];
-        message[0] = (byte)Discv5MessageType.Nodes;
+        message[0] = (byte)MessageType.Nodes;
         data.Bytes.CopyTo(message.AsSpan(1));
 
-        Assert.That(() => Discv5MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
     }
 
-    private static Discv5PacketCodec CreateCodec(PrivateKey privateKey)
+    private static PacketCodec CreateCodec(PrivateKey privateKey)
         => new(
             new InsecureProtectedPrivateKey(privateKey),
             new TestNodeRecordProvider(privateKey),

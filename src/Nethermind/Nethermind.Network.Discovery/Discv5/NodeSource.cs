@@ -11,7 +11,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
-public class Discv5NodeSource(
+public class NodeSource(
     IKademlia<PublicKey, Node> kademlia,
     KademliaConfig<Node> kademliaConfig,
     ILogManager logManager)
@@ -19,7 +19,7 @@ public class Discv5NodeSource(
 {
     private const int ChannelCapacity = 64;
 
-    private readonly ILogger _logger = logManager.GetClassLogger<Discv5NodeSource>();
+    private readonly ILogger _logger = logManager.GetClassLogger<NodeSource>();
     private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.IdHash;
     private readonly int _recentNodeLimit = Math.Max(ChannelCapacity, kademliaConfig.KSize * Hash256KademliaDistance.Instance.MaxDistance);
 

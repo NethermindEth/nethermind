@@ -24,7 +24,7 @@ public class NodesResponseHandlerTests
         NodeRecord loopbackRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
         NodesResponseHandler handler = CreateNodesResponseHandler(receiver, loopbackRecord);
 
-        using Discv5Nodes nodes = new([1], 1, [loopbackRecord]);
+        using NodesMsg nodes = new([1], 1, [loopbackRecord]);
         handler.Handle(nodes);
 
         Assert.That(handler.GetNodes(), Is.Empty);
@@ -37,7 +37,7 @@ public class NodesResponseHandlerTests
         NodeRecord loopbackRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
         NodesResponseHandler handler = CreateNodesResponseHandler(receiver, loopbackRecord);
 
-        using Discv5Nodes nodes = new([1], 1, [loopbackRecord]);
+        using NodesMsg nodes = new([1], 1, [loopbackRecord]);
         handler.Handle(nodes);
 
         Assert.That(handler.GetNodes(), Has.Length.EqualTo(1));
@@ -50,7 +50,7 @@ public class NodesResponseHandlerTests
         NodeRecord documentationRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("192.0.2.1"));
         NodesResponseHandler handler = CreateNodesResponseHandler(receiver, documentationRecord);
 
-        using Discv5Nodes nodes = new([1], 1, [documentationRecord]);
+        using NodesMsg nodes = new([1], 1, [documentationRecord]);
         handler.Handle(nodes);
 
         Assert.That(handler.GetNodes(), Is.Empty);
@@ -72,6 +72,6 @@ public class NodesResponseHandlerTests
     {
         PublicKey nodeId = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)!.Decompress();
         int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(receiver.Id.Hash, nodeId.Hash);
-        return new NodesResponseHandler(receiver, new Discv5Distances([distance]), Hash256KademliaDistance.Instance);
+        return new NodesResponseHandler(receiver, new Distances([distance]), Hash256KademliaDistance.Instance);
     }
 }

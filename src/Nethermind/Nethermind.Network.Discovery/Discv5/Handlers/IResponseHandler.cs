@@ -9,7 +9,7 @@ internal interface IResponseHandler
 {
     Task Task { get; }
 
-    Discv5MessageType MessageType { get; }
+    MessageType MessageType { get; }
 
     bool Handle(Discv5Message message);
 }
@@ -19,12 +19,12 @@ internal interface IResponseHandler<in TMessage> : IResponseHandler where TMessa
     bool Handle(TMessage message);
 }
 
-internal abstract class ResponseHandler<TMessage>(Discv5MessageType messageType) : IResponseHandler<TMessage>
+internal abstract class ResponseHandler<TMessage>(MessageType messageType) : IResponseHandler<TMessage>
     where TMessage : Discv5Message
 {
     public abstract Task Task { get; }
 
-    public Discv5MessageType MessageType { get; } = messageType;
+    public MessageType MessageType { get; } = messageType;
 
     public bool Handle(Discv5Message message) => message is TMessage typedMessage && Handle(typedMessage);
 

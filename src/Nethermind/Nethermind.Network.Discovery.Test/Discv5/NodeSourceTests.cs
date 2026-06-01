@@ -16,7 +16,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv5;
 
-public class Discv5NodeSourceTests
+public class NodeSourceTests
 {
     [Test]
     [CancelAfter(10000)]
@@ -24,7 +24,7 @@ public class Discv5NodeSourceTests
     {
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
         kademlia.IterateNodes().Returns(Array.Empty<Node>());
-        Discv5NodeSource source = new(
+        NodeSource source = new(
             kademlia,
             new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
             LimboLogs.Instance);

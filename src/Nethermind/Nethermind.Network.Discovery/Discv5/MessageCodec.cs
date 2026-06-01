@@ -9,7 +9,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
-internal static class Discv5MessageCodec
+internal static class MessageCodec
 {
     public static ArrayPoolSpan<byte> Encode(Discv5Message message)
     {
@@ -35,37 +35,37 @@ internal static class Discv5MessageCodec
     public static Discv5Message Decode(ReadOnlySpan<byte> message)
         => Decode(message, default, null);
 
-    public static Discv5Message Decode(ReadOnlyMemory<byte> message, IDisposable owner)
+    public static Discv5Message Decode(ReadOnlyMemory<byte> message, ArrayPoolSpan<byte> owner)
         => Decode(message.Span, message, owner);
 
-    private static Discv5Message Decode(ReadOnlySpan<byte> message, ReadOnlyMemory<byte> ownedMessage, IDisposable? owner)
+    private static Discv5Message Decode(ReadOnlySpan<byte> message, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
         if (message.IsEmpty)
         {
-            owner?.Dispose();
+            DisposeOwner(owner);
             throw new RlpException("Empty discv5 message.");
         }
 
         Discv5Message? decoded = null;
         try
         {
-            Discv5MessageType messageType = (Discv5MessageType)message[0];
+            MessageType messageType = (MessageType)message[0];
             Rlp.ValueDecoderContext ctx = new(message[1..]);
             int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
 
-            Discv5RequestId requestId = DecodeRequestId(ref ctx);
+            RequestId requestId = DecodeRequestId(ref ctx);
             decoded = messageType switch
             {
-                Discv5MessageType.Ping => new Discv5Ping(requestId, ctx.DecodeULong(), owner),
-                Discv5MessageType.Pong => DecodePong(requestId, ref ctx, owner),
-                Discv5MessageType.FindNode => new Discv5FindNode(requestId, DecodeDistances(ref ctx), owner),
-                Discv5MessageType.Nodes => DecodeNodes(requestId, ref ctx, owner),
-                Discv5MessageType.TalkReq => new Discv5TalkReq(
+                MessageType.Ping => new PingMsg(requestId, ctx.DecodeULong(), owner),
+                MessageType.Pong => DecodePong(requestId, ref ctx, owner),
+                MessageType.FindNode => new FindNodeMsg(requestId, DecodeDistances(ref ctx), owner),
+                MessageType.Nodes => DecodeNodes(requestId, ref ctx, owner),
+                MessageType.TalkReq => new TalkReqMsg(
                     requestId,
                     DecodeByteMemory(ref ctx, ownedMessage),
                     DecodeByteMemory(ref ctx, ownedMessage),
                     owner),
-                Discv5MessageType.TalkResp => new Discv5TalkResp(requestId, DecodeByteMemory(ref ctx, ownedMessage), owner),
+                MessageType.TalkResp => new TalkRespMsg(requestId, DecodeByteMemory(ref ctx, ownedMessage), owner),
                 _ => throw new RlpException($"Unsupported discv5 message type {(byte)messageType}.")
             };
 
@@ -81,24 +81,32 @@ internal static class Discv5MessageCodec
             }
             else
             {
-                owner?.Dispose();
+                DisposeOwner(owner);
             }
 
             throw;
         }
     }
 
+    private static void DisposeOwner(ArrayPoolSpan<byte>? owner)
+    {
+        if (owner is { } ownerValue)
+        {
+            ownerValue.Dispose();
+        }
+    }
+
     private static int GetContentLength(Discv5Message message) => message switch
     {
-        Discv5Ping ping => GetRequestIdLength(ping.RequestId) + Rlp.LengthOf(ping.EnrSequence),
-        Discv5Pong pong => GetRequestIdLength(pong.RequestId) +
+        PingMsg ping => GetRequestIdLength(ping.RequestId) + Rlp.LengthOf(ping.EnrSequence),
+        PongMsg pong => GetRequestIdLength(pong.RequestId) +
             Rlp.LengthOf(pong.EnrSequence) +
             GetAddressRlpLength(pong.RecipientIp) +
             Rlp.LengthOf(pong.RecipientPort),
-        Discv5FindNode findNode => GetRequestIdLength(findNode.RequestId) + GetDistancesLength(findNode.Distances),
-        Discv5Nodes nodes => GetRequestIdLength(nodes.RequestId) + Rlp.LengthOf(nodes.Total) + GetNodeRecordsLength(nodes.Records),
-        Discv5TalkReq talkReq => GetRequestIdLength(talkReq.RequestId) + Rlp.LengthOf(talkReq.Protocol.Span) + Rlp.LengthOf(talkReq.Request.Span),
-        Discv5TalkResp talkResp => GetRequestIdLength(talkResp.RequestId) + Rlp.LengthOf(talkResp.Response.Span),
+        FindNodeMsg findNode => GetRequestIdLength(findNode.RequestId) + GetDistancesLength(findNode.Distances),
+        NodesMsg nodes => GetRequestIdLength(nodes.RequestId) + Rlp.LengthOf(nodes.Total) + GetNodeRecordsLength(nodes.Records),
+        TalkReqMsg talkReq => GetRequestIdLength(talkReq.RequestId) + Rlp.LengthOf(talkReq.Protocol) + Rlp.LengthOf(talkReq.Request),
+        TalkRespMsg talkResp => GetRequestIdLength(talkResp.RequestId) + Rlp.LengthOf(talkResp.Response),
         _ => throw new RlpException($"Unsupported discv5 message {message.GetType().Name}.")
     };
 
@@ -106,54 +114,54 @@ internal static class Discv5MessageCodec
     {
         switch (message)
         {
-            case Discv5Ping ping:
+            case PingMsg ping:
                 EncodeRequestId(buffer, ref position, ping.RequestId);
                 Encode(buffer, ref position, ping.EnrSequence);
                 break;
-            case Discv5Pong pong:
+            case PongMsg pong:
                 EncodeRequestId(buffer, ref position, pong.RequestId);
                 Encode(buffer, ref position, pong.EnrSequence);
                 EncodeAddress(buffer, ref position, pong.RecipientIp);
                 Encode(buffer, ref position, pong.RecipientPort);
                 break;
-            case Discv5FindNode findNode:
+            case FindNodeMsg findNode:
                 EncodeRequestId(buffer, ref position, findNode.RequestId);
                 EncodeDistances(buffer, ref position, findNode.Distances);
                 break;
-            case Discv5Nodes nodes:
+            case NodesMsg nodes:
                 EncodeRequestId(buffer, ref position, nodes.RequestId);
                 Encode(buffer, ref position, nodes.Total);
                 EncodeNodeRecords(buffer, ref position, nodes.Records);
                 break;
-            case Discv5TalkReq talkReq:
+            case TalkReqMsg talkReq:
                 EncodeRequestId(buffer, ref position, talkReq.RequestId);
-                position = Rlp.Encode(buffer, position, talkReq.Protocol.Span);
-                position = Rlp.Encode(buffer, position, talkReq.Request.Span);
+                position = Rlp.Encode(buffer, position, talkReq.Protocol);
+                position = Rlp.Encode(buffer, position, talkReq.Request);
                 break;
-            case Discv5TalkResp talkResp:
+            case TalkRespMsg talkResp:
                 EncodeRequestId(buffer, ref position, talkResp.RequestId);
-                position = Rlp.Encode(buffer, position, talkResp.Response.Span);
+                position = Rlp.Encode(buffer, position, talkResp.Response);
                 break;
             default:
                 throw new RlpException($"Unsupported discv5 message {message.GetType().Name}.");
         }
     }
 
-    private static int GetRequestIdLength(Discv5RequestId requestId)
+    private static int GetRequestIdLength(RequestId requestId)
     {
-        Span<byte> bytes = stackalloc byte[Discv5RequestId.MaxLength];
+        Span<byte> bytes = stackalloc byte[RequestId.MaxLength];
         requestId.CopyTo(bytes);
         return Rlp.LengthOf(bytes[..requestId.Length]);
     }
 
-    private static void EncodeRequestId(Span<byte> buffer, ref int position, Discv5RequestId requestId)
+    private static void EncodeRequestId(Span<byte> buffer, ref int position, RequestId requestId)
     {
-        Span<byte> bytes = stackalloc byte[Discv5RequestId.MaxLength];
+        Span<byte> bytes = stackalloc byte[RequestId.MaxLength];
         requestId.CopyTo(bytes);
         position = Rlp.Encode(buffer, position, bytes[..requestId.Length]);
     }
 
-    private static int GetDistancesLength(Discv5Distances distances)
+    private static int GetDistancesLength(Distances distances)
     {
         int contentLength = 0;
         for (int i = 0; i < distances.Count; i++)
@@ -164,7 +172,7 @@ internal static class Discv5MessageCodec
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static void EncodeDistances(Span<byte> buffer, ref int position, Discv5Distances distances)
+    private static void EncodeDistances(Span<byte> buffer, ref int position, Distances distances)
     {
         int contentLength = 0;
         for (int i = 0; i < distances.Count; i++)
@@ -238,15 +246,15 @@ internal static class Discv5MessageCodec
     private static void Encode(Span<byte> buffer, ref int position, int value)
         => position += Rlp.Encode((long)value, buffer[position..]).Length;
 
-    private static Discv5RequestId DecodeRequestId(ref Rlp.ValueDecoderContext ctx)
+    private static RequestId DecodeRequestId(ref Rlp.ValueDecoderContext ctx)
     {
         ReadOnlySpan<byte> requestId = ctx.DecodeByteArraySpan();
-        if (requestId.Length > Discv5RequestId.MaxLength)
+        if (requestId.Length > RequestId.MaxLength)
         {
-            throw new RlpException($"discv5 request-id length {requestId.Length} exceeds {Discv5RequestId.MaxLength}.");
+            throw new RlpException($"discv5 request-id length {requestId.Length} exceeds {RequestId.MaxLength}.");
         }
 
-        return Discv5RequestId.From(requestId);
+        return RequestId.From(requestId);
     }
 
     private static ReadOnlyMemory<byte> DecodeByteMemory(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage)
@@ -260,19 +268,19 @@ internal static class Discv5MessageCodec
         return ownedMessage.Slice(1 + ctx.Position - value.Length, value.Length);
     }
 
-    private static Discv5Pong DecodePong(Discv5RequestId requestId, ref Rlp.ValueDecoderContext ctx, IDisposable? owner)
+    private static PongMsg DecodePong(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ArrayPoolSpan<byte>? owner)
     {
         ulong enrSequence = ctx.DecodeULong();
         IPAddress recipientIp = new(ctx.DecodeByteArraySpan());
         int recipientPort = ctx.DecodePositiveInt();
-        return new Discv5Pong(requestId, enrSequence, recipientIp, recipientPort, owner);
+        return new PongMsg(requestId, enrSequence, recipientIp, recipientPort, owner);
     }
 
-    private static Discv5Distances DecodeDistances(ref Rlp.ValueDecoderContext ctx)
+    private static Distances DecodeDistances(ref Rlp.ValueDecoderContext ctx)
     {
         int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(checkPosition);
-        Discv5Distances distances = new(count);
+        Distances distances = new(count);
         try
         {
             for (int i = 0; i < count; i++)
@@ -290,7 +298,7 @@ internal static class Discv5MessageCodec
         }
     }
 
-    private static Discv5Nodes DecodeNodes(Discv5RequestId requestId, ref Rlp.ValueDecoderContext ctx, IDisposable? owner)
+    private static NodesMsg DecodeNodes(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ArrayPoolSpan<byte>? owner)
     {
         int total = ctx.DecodePositiveInt();
         int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
@@ -304,6 +312,6 @@ internal static class Discv5MessageCodec
         }
 
         ctx.Check(checkPosition);
-        return new Discv5Nodes(requestId, total, records, owner);
+        return new NodesMsg(requestId, total, records, owner);
     }
 }

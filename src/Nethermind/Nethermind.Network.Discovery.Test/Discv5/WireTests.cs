@@ -19,6 +19,7 @@ using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
@@ -27,7 +28,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv5;
 
-public class Discv5WireTests
+public class WireTests
 {
     [Test]
     public async Task Ping_Completes_After_WhoAreYou_Handshake()
@@ -201,10 +202,10 @@ public class Discv5WireTests
         handler.InitializeChannel(channel);
 
         TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord);
-        Discv5KademliaAdapter adapter = new(
+        KademliaAdapter adapter = new(
             new Lazy<IKademlia<PublicKey, Node>>(kademlia),
             handler,
-            new Discv5PacketCodec(
+            new PacketCodec(
                 new InsecureProtectedPrivateKey(privateKey),
                 nodeRecordProvider,
                 new CryptoRandom(),
@@ -273,7 +274,7 @@ public class Discv5WireTests
     }
 
     private sealed record TestPeer(
-        Discv5KademliaAdapter Adapter,
+        KademliaAdapter Adapter,
         NettyDiscoveryV5Handler Handler,
         EmbeddedChannel Channel,
         IKademlia<PublicKey, Node> Kademlia,
