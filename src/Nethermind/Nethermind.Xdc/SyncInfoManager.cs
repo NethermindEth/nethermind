@@ -7,7 +7,6 @@ using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Types;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 /// <summary>
@@ -72,7 +71,7 @@ internal class SyncInfoManager(
         }
 
         ulong lowerBoundRound = currentRound - XdcConstants.PoolHygieneRound;
-        foreach ((ulong Round, Hash256 Hash) key in _syncInfoCache.Keys.ToArray())
+        foreach ((ulong Round, Hash256 Hash) key in _syncInfoCache.Keys)
         {
             if (key.Round < lowerBoundRound)
             {
