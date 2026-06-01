@@ -8,6 +8,7 @@ using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.Shutter.Test;
 
@@ -206,5 +207,15 @@ class ShutterCryptoTests
     {
         IEnumerable<ReadOnlyMemory<byte>> identityPreimages = identityPreimagesHex.Select(Convert.FromHexString).Select(static b => (ReadOnlyMemory<byte>)b);
         Assert.That(ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(instanceId, eon, slot, txPointer, identityPreimages, Convert.FromHexString(sigHex), new(keyperAddress)));
+    }
+
+    [Test]
+    public void Identity_preimage_converter_merkleizes_empty_data_as_zero_root()
+    {
+        Span<UInt256> chunk = stackalloc UInt256[1];
+        Merkleizer merkleizer = new(chunk);
+        IdentityPreimageSszVectorTypeConverter.Feed(ref merkleizer, default);
+
+        Assert.That(chunk[0], Is.EqualTo(UInt256.Zero));
     }
 }

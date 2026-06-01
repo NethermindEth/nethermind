@@ -56,7 +56,6 @@ public class ProgressLoggerTests
     }
 
     [Test]
-    [Retry(3)]
     public void Update_twice_total_per_second()
     {
         (ProgressLogger measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
@@ -64,12 +63,10 @@ public class ProgressLoggerTests
         measuredProgress.SetMeasuringPoint();
         manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
         measuredProgress.Update(1L);
-        Assert.That(measuredProgress.TotalPerSecond, Is.GreaterThanOrEqualTo(4M));
-        Assert.That(measuredProgress.TotalPerSecond, Is.LessThanOrEqualTo(10M));
+        Assert.That(measuredProgress.TotalPerSecond, Is.EqualTo(10M));
     }
 
     [Test]
-    [Retry(3)]
     public void Update_twice_current_per_second()
     {
         (ProgressLogger measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
@@ -77,8 +74,7 @@ public class ProgressLoggerTests
         measuredProgress.SetMeasuringPoint();
         manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
         measuredProgress.Update(1L);
-        Assert.That(measuredProgress.CurrentPerSecond, Is.LessThanOrEqualTo(10M));
-        Assert.That(measuredProgress.CurrentPerSecond, Is.GreaterThanOrEqualTo(4M));
+        Assert.That(measuredProgress.CurrentPerSecond, Is.EqualTo(10M));
     }
 
     [Test]
