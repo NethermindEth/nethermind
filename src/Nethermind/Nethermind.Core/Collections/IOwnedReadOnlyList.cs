@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 
 namespace Nethermind.Core.Collections;
@@ -18,11 +19,41 @@ namespace Nethermind.Core.Collections;
 /// <typeparam name="T"></typeparam>
 public interface IOwnedReadOnlyList<T> : IReadOnlyList<T>, IDisposable
 {
+    static IOwnedReadOnlyList<T> Empty => EmptyOwnedReadOnlyList.Instance;
+
     ReadOnlySpan<T> AsSpan();
+
+
+    private sealed class EmptyOwnedReadOnlyList : IOwnedReadOnlyList<T>
+    {
+        public static EmptyOwnedReadOnlyList Instance { get; } = new();
+
+        public int Count => 0;
+
+        public T this[int index] => throw new ArgumentOutOfRangeException(nameof(index));
+
+        public ReadOnlySpan<T> AsSpan() => [];
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            yield break;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public void Dispose() { }
+    }
 }
+
 
 public static class OwnedReadOnlyListExtensions
 {
+    public static IOwnedReadOnlyList<T> Slice<T>(this IOwnedReadOnlyList<T> list, int start, int count) =>
+        new SlicedOwnedReadOnlyList<T>(list, start, count);
+
+    public static IOwnedReadOnlyList<T> Slice<T>(this IOwnedReadOnlyList<T> list, int start) =>
+        new SlicedOwnedReadOnlyList<T>(list, start, list.Count - start);
+
     public static void DisposeRecursive<T>(this IOwnedReadOnlyList<T> list) where T : IDisposable
     {
         for (int i = 0; i < list.Count; i++)
@@ -31,5 +62,16 @@ public static class OwnedReadOnlyListExtensions
         }
 
         list.Dispose();
+    }
+
+    private sealed class SlicedOwnedReadOnlyList<T>(IOwnedReadOnlyList<T> list, int start, int count)
+        : SlicedReadOnlyList<T>(list, start, count), IOwnedReadOnlyList<T>
+    {
+        public ReadOnlySpan<T> AsSpan() => ((IOwnedReadOnlyList<T>)_list).AsSpan().Slice(_start, Count);
+
+        public void Dispose()
+        {
+            // The slice does not own the backing list; the caller disposes the original list.
+        }
     }
 }

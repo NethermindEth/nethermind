@@ -125,7 +125,8 @@ namespace Nethermind.Synchronization.Test
                 syncConfig,
                 Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
                 Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
-                receiptFeed
+                receiptFeed,
+                Substitute.For<ISyncFeed<BlockAccessListsSyncBatch?>>()
             );
         }
     }

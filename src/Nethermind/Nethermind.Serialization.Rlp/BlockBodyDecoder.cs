@@ -95,6 +95,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder headerDecoder = null) : RlpV
             withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
         }
 
+        ctx.Check(lastPosition);
         return new BlockBody(transactions, uncles, withdrawals);
     }
 
