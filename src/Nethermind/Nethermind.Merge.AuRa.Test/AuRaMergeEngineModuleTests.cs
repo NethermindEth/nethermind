@@ -133,7 +133,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         base.Can_apply_withdrawals_correctly(input);
 
     [Test]
-    [Retry(3)]
+    [Category("Flaky"), Retry(3)]
     [NonParallelizable]
     [Platform(Exclude = "MacOsX", Reason = "Timing-sensitive 10ms delays too tight on macOS ARM runners")]
     public Task AuRa_getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()

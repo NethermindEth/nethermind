@@ -472,6 +472,53 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Code_deposit_halt_removes_merged_child_state_usage_without_refunding_reservoir_twice()
+    {
+        long parentRegularGas = 1_000;
+        long childRegularGas = 500;
+        long parentStateGasUsed = GasCostOf.CreateState;
+        long childStateGasUsed = GasCostOf.NewAccountState + GasCostOf.SSetState;
+        long childRemainingStateReservoir = 123;
+        EthereumGasPolicy parent = new()
+        {
+            Value = parentRegularGas,
+            StateReservoir = parentStateGasUsed + childStateGasUsed + childRemainingStateReservoir,
+            StateGasSpill = 77,
+            StateGasSpillRefunded = 33,
+            StateGasSpillBurned = 22,
+            StateGasSpillReclassified = 11,
+        };
+
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref parent, parentStateGasUsed), Is.True);
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, childRegularGas);
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref child, childStateGasUsed), Is.True);
+        EthereumGasPolicy.Refund(ref parent, in child);
+
+        EthereumGasPolicy.RevertRefundToHalt(ref parent, in child);
+
+        Assert.That(
+            (
+                parent.Value,
+                parent.StateReservoir,
+                parent.StateGasUsed,
+                parent.StateGasSpill,
+                parent.StateGasSpillRefunded,
+                parent.StateGasSpillBurned,
+                parent.StateGasSpillReclassified
+            ),
+            Is.EqualTo(
+                (
+                    parentRegularGas + childRegularGas,
+                    childRemainingStateReservoir + childStateGasUsed,
+                    parentStateGasUsed,
+                    77L,
+                    33L,
+                    22L,
+                    11L
+                )));
+    }
+
+    [Test]
     public void ResetForHalt_snaps_state_gas_to_tx_start_shape()
     {
         // Architectural invariant: ResetForHalt resets the policy struct to its tx-start
