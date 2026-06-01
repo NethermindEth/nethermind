@@ -25,7 +25,6 @@ internal readonly record struct TestContext(TestDefinition Definition, BlockInfo
     public static string Hex(long n) => $"0x{n:x}";
     public static string AsTopic(string address) => address.StartsWith("0x") ? address[2..].PadLeft(64, '0') : address.PadLeft(64, '0');
 
-    public static KnownAddresses Address { get; } = new();
     public static KnownTopics Topic { get; } = new();
 
     #endregion
@@ -73,13 +72,6 @@ internal record struct RequestContext(long Number) { }
 internal record TestFailure(TestContext Test, JsonNode Request, JsonNode ActualResponse, JsonNode ExpectedResponse)
 {
     public BlockInfo Head => Test.Head;
-}
-
-internal class KnownAddresses
-{
-    public string Zero => "0x0000000000000000000000000000000000000000";
-    public string WETH => "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
-    public string USDT => "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 }
 
 internal class KnownTopics
