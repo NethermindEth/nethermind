@@ -117,19 +117,9 @@ jobs:
           - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
     steps:
       - name: Check out repository
-        id: checkout-1
-        uses: actions/checkout@v6
-        continue-on-error: true
-
-      - name: Check out repository (retry 1)
-        id: checkout-2
-        if: steps.checkout-1.outcome == 'failure'
-        uses: actions/checkout@v6
-        continue-on-error: true
-
-      - name: Check out repository (retry 2)
-        if: steps.checkout-1.outcome == 'failure' && steps.checkout-2.outcome == 'failure'
-        uses: actions/checkout@v6
+        uses: ./.github/actions/checkout-submodules
+        with:
+          submodules: 'false'
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -207,23 +197,7 @@ jobs:
           - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 8of8 }
     steps:
       - name: Check out repository
-        id: checkout-1
-        uses: actions/checkout@v6
-        continue-on-error: true
-        with:
-          submodules: recursive
-
-      - name: Check out repository (retry 1)
-        id: checkout-2
-        if: steps.checkout-1.outcome == 'failure'
-        uses: actions/checkout@v6
-        continue-on-error: true
-        with:
-          submodules: recursive
-
-      - name: Check out repository (retry 2)
-        if: steps.checkout-1.outcome == 'failure' && steps.checkout-2.outcome == 'failure'
-        uses: actions/checkout@v6
+        uses: ./.github/actions/checkout-submodules
         with:
           submodules: recursive
 
@@ -314,23 +288,7 @@ jobs:
           swap-storage: false
 
       - name: Check out repository
-        id: checkout-1
-        uses: actions/checkout@v6
-        continue-on-error: true
-        with:
-          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
-
-      - name: Check out repository (retry 1)
-        id: checkout-2
-        if: steps.checkout-1.outcome == 'failure'
-        uses: actions/checkout@v6
-        continue-on-error: true
-        with:
-          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
-
-      - name: Check out repository (retry 2)
-        if: steps.checkout-1.outcome == 'failure' && steps.checkout-2.outcome == 'failure'
-        uses: actions/checkout@v6
+        uses: ./.github/actions/checkout-submodules
         with:
           submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
 
