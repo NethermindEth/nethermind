@@ -58,6 +58,33 @@ public sealed class SparseSubtrie : IDisposable
     public bool IsEmpty => Root == -1 || _arena[Root].IsEmpty();
 
 
+    /// <summary>
+    /// Grows the node and children backing arrays once to fit an incoming batch of known size,
+    /// instead of letting AllocNode/AllocChildren hit repeated doubling Array.Resize calls during
+    /// a reveal. Pure capacity hint â€” does not change counts, free lists, or any node. Reth
+    /// reserves before reveal batches for the same reason.
+    /// </summary>
+    public void ReserveForReveal(int additionalNodes)
+    {
+        if (additionalNodes <= 0) return;
+        int neededNodes = _arenaCount + additionalNodes;
+        if (neededNodes > _arena.Length)
+        {
+            int newLen = _arena.Length;
+            while (newLen < neededNodes) newLen *= 2;
+            Array.Resize(ref _arena, newLen);
+        }
+        // A proof node may be a branch with up to 16 children; reserve children proportionally so
+        // the dense child slices don't trigger their own resize cascade mid-reveal.
+        int neededChildren = _childrenCount + additionalNodes * MaxBranchChildren;
+        if (neededChildren > _children.Length)
+        {
+            int newLen = _children.Length;
+            while (newLen < neededChildren) newLen *= 2;
+            Array.Resize(ref _children, newLen);
+        }
+    }
+
     public int AllocNode(SparseTrieNode node)
     {
         int idx;

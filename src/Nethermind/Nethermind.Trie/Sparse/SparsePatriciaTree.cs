@@ -27,6 +27,10 @@ public sealed class SparsePatriciaTree : IDisposable
     /// </summary>
     public void RevealNodes(IReadOnlyList<ProofNode> proofNodes)
     {
+        // Reserve arena/children for the batch up front so per-node reveals don't hit repeated
+        // doubling resizes. Each proof node reveals at most one arena node; the children reserve
+        // inside covers branch fan-out.
+        _subtrie.ReserveForReveal(proofNodes.Count);
         foreach (ProofNode pn in proofNodes)
             RevealSingleNode(pn);
         IsRevealed = true;
