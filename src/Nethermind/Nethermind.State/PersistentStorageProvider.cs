@@ -21,6 +21,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.State;
 
+/// <summary>Sink for committed storage writes (M4 streaming). <c>in</c> avoids copying the cell.</summary>
+internal delegate void StorageCommitSink(in StorageCell cell, byte[] value);
+
 /// <summary>
 /// Manages persistent storage allowing for snapshotting and restoring
 /// Persists data to ITrieStore
@@ -46,7 +49,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// Null in every other mode â€” the capture is a single null-check per committed change, zero
     /// allocation/work when off. Does not affect the authoritative BlockChange path.
     /// </summary>
-    internal Action<StorageCell, byte[]>? CommittedStorageSink { get; set; }
+    internal StorageCommitSink? CommittedStorageSink { get; set; }
 
     /// <summary>
     /// Reset the storage state
