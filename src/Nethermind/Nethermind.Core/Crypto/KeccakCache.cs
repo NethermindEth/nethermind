@@ -40,7 +40,7 @@ public static unsafe class KeccakCache
     private const int InputLengthOfAddress = Address.Size;
     private const int CacheLineSizeBytes = 64;
 
-#if ZK_EVM
+#if ZKVM_ABSTRACTIONS
     // zkEVM: avoid NativeMemory.AlignedAlloc (can fault in some environments). Use managed pinned storage instead.
     private static readonly byte[] ManagedBuffer;
     private static readonly GCHandle ManagedHandle;
@@ -51,7 +51,7 @@ public static unsafe class KeccakCache
     {
         const nuint size = Count * Entry.Size;
 
-#if ZK_EVM
+#if ZKVM_ABSTRACTIONS
         ManagedBuffer = GC.AllocateArray<byte>((int)size, pinned: true);
         ManagedHandle = GCHandle.Alloc(ManagedBuffer, GCHandleType.Pinned);
         Memory = (Entry*)ManagedHandle.AddrOfPinnedObject();

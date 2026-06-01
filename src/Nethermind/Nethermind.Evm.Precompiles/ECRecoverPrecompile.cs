@@ -74,7 +74,7 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
         byte recoveryId = Signature.GetRecoveryId(v);
 
         int publicKeyLen =
-#if ZK_EVM
+#if ZKVM_ABSTRACTIONS
             64;
 #else
             65;
@@ -87,7 +87,7 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
         byte[] result = new byte[32];
         ref byte resultRef = ref MemoryMarshal.GetArrayDataReference(result);
 
-#if !ZK_EVM
+#if !ZKVM_ABSTRACTIONS
         publicKey = publicKey[1..];
 #endif
 

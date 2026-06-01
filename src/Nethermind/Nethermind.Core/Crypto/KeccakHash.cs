@@ -74,7 +74,7 @@ public sealed partial class KeccakHash
         if ((uint)(output.Length - 1) >= STATE_SIZE)
             ThrowInvalidOutputSize(output.Length);
 
-#if ZK_EVM
+#if ZKVM_ABSTRACTIONS
         if (output.Length == HASH_SIZE)
         {
             ComputeHash256(input, output);
@@ -264,7 +264,7 @@ public sealed partial class KeccakHash
         if (_hash is not null)
             ThrowHashingComplete();
 
-#if ZK_EVM
+#if ZKVM_ABSTRACTIONS
         if (_state.Length == 0 && _roundSize == HASH_DATA_AREA && output.Length == HASH_SIZE)
         {
             ComputeHash256(_remainderBuffer.AsSpan(0, _remainderLength), output);

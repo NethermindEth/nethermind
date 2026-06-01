@@ -1,9 +1,16 @@
 <Project>
 
   <PropertyGroup>
+    <_EnableZkEvmRuntime Condition="'$(EnableZkEvm)' == 'true' or '$(EnableZkEvmRuntime)' == 'true'">true</_EnableZkEvmRuntime>
+    <_EnableZkvmAbstractions Condition="'$(EnableZkEvm)' == 'true'">true</_EnableZkvmAbstractions>
+
+    <DefineConstants Condition="'$(_EnableZkEvmRuntime)' == 'true'">$(DefineConstants);ZK_EVM</DefineConstants>
+    <DefineConstants Condition="'$(_EnableZkvmAbstractions)' == 'true'">$(DefineConstants);ZKVM_ABSTRACTIONS</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <DefineConstants Condition="'$(EnableZkEvm)' == 'true'">$(DefineConstants);ZK_EVM</DefineConstants>
     <InvariantGlobalization>true</InvariantGlobalization>
     <LangVersion>14.0</LangVersion>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

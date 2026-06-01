@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Core.ExecutionRequest;
 
 using SHA256 =
-#if ZK_EVM
+#if ZKVM_ABSTRACTIONS
     ExecutionRequestExtensions.Sha256;
 #else
     System.Security.Cryptography.SHA256;
@@ -160,7 +160,7 @@ public static class ExecutionRequestExtensions
         }
     }
 
-#if ZK_EVM
+#if ZKVM_ABSTRACTIONS
     internal static class Sha256
     {
         internal static byte[] HashData(ReadOnlySpan<byte> data)

@@ -9,7 +9,7 @@ using Nethermind.Int256;
 namespace Nethermind.Serialization.Ssz.Merkleization;
 
 using SHA256 =
-#if ZK_EVM
+#if ZKVM_ABSTRACTIONS
     Merkle.Sha256;
 #else
     System.Security.Cryptography.SHA256;
@@ -173,7 +173,7 @@ public static partial class Merkle
         merkleizer.CalculateRoot(out root);
     }
 
-#if ZK_EVM
+#if ZKVM_ABSTRACTIONS
     internal static class Sha256
     {
         internal static byte[] HashData(ReadOnlySpan<byte> data)
