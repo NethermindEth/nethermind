@@ -16,23 +16,45 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Merge.Plugin.Data;
 
 /// <summary>Wraps payload body V1 results and writes JSON directly into a <see cref="PipeWriter"/>.</summary>
-public sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayloadBodyV1Result?> items)
-    : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV1Result?>
+public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV1Result?>
 {
-    private readonly IReadOnlyList<ExecutionPayloadBodyV1Result?> _items = items;
+    private readonly ExecutionPayloadBodyV1Result?[]? _items;
+    private readonly PayloadBody?[]? _payloadBodies;
 
-    public int Count => _items.Count;
+    public PayloadBodiesV1DirectResponse(ExecutionPayloadBodyV1Result?[] items) => _items = items;
 
-    public ExecutionPayloadBodyV1Result? this[int index] => _items[index];
+    internal PayloadBodiesV1DirectResponse(PayloadBody?[] payloadBodies) => _payloadBodies = payloadBodies;
 
-    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
-        StreamableResultWriter.WriteArrayAsync(writer, _items.Count, new ItemWriter(_items), cancellationToken);
+    public int Count => _payloadBodies?.Length ?? _items!.Length;
 
-    public IEnumerator<ExecutionPayloadBodyV1Result?> GetEnumerator() => _items.GetEnumerator();
+    public ExecutionPayloadBodyV1Result? this[int index] => _payloadBodies is { } payloadBodies
+        ? payloadBodies[index]?.ToResult()
+        : _items![index];
+
+    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+    {
+        if (_payloadBodies is { } payloadBodies)
+        {
+            return StreamableResultWriter.WriteArrayAsync(writer, payloadBodies.Length, new RawItemWriter(payloadBodies), cancellationToken);
+        }
+
+        ExecutionPayloadBodyV1Result?[] items = _items!;
+        return StreamableResultWriter.WriteArrayAsync(writer, items.Length, new ItemWriter(items), cancellationToken);
+    }
+
+    public IEnumerator<ExecutionPayloadBodyV1Result?> GetEnumerator()
+    {
+        for (int i = 0, count = Count; i < count; i++)
+        {
+            yield return this[i];
+        }
+    }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    private readonly struct ItemWriter(IReadOnlyList<ExecutionPayloadBodyV1Result?> items) : IJsonArrayItemWriter
+    internal static PayloadBody CreatePayloadBody(byte[] blockRlp) => new(blockRlp);
+
+    private readonly struct ItemWriter(ExecutionPayloadBodyV1Result?[] items) : IJsonArrayItemWriter
     {
         public void WriteItem(PipeWriter writer, int index)
         {
@@ -52,11 +74,42 @@ public sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayload
             PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, item.EncodedTransactions, item.Withdrawals);
         }
     }
+
+    private readonly struct RawItemWriter(PayloadBody?[] items) : IJsonArrayItemWriter
+    {
+        public void WriteItem(PipeWriter writer, int index)
+        {
+            PayloadBody? item = items[index];
+            if (item is null)
+            {
+                writer.Write("null"u8);
+                return;
+            }
+
+            item.GetValueOrDefault().WriteTo(writer);
+        }
+    }
+
+    internal readonly struct PayloadBody(byte[] blockRlp)
+    {
+        private readonly Withdrawal[]? _withdrawals = PayloadBodiesDirectResponseWriter.DecodeWithdrawals(blockRlp);
+
+        public void WriteTo(PipeWriter writer) =>
+            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _withdrawals);
+
+        public ExecutionPayloadBodyV1Result ToResult()
+        {
+            ExecutionPayloadBodyV1Result result = new([], _withdrawals);
+            result.Transactions = PayloadBodiesDirectResponseWriter.GetTransactionsFromBlockRlp(blockRlp);
+            return result;
+        }
+    }
 }
 
 internal static class PayloadBodiesDirectResponseWriter
 {
     internal const int HexChunkThreshold = 64 * 1024;
+    private static readonly WithdrawalDecoder WithdrawalDecoder = new();
 
     public static byte[][] EncodeTransactions(Transaction[] transactions)
     {
@@ -91,6 +144,16 @@ internal static class PayloadBodiesDirectResponseWriter
         writer.Write("{\"transactions\":"u8);
         WriteTransactions(writer, transactions);
         WritePayloadBodySuffix(writer, withdrawals, blockAccessList);
+    }
+
+    public static void WritePayloadBody(
+        IBufferWriter<byte> writer,
+        byte[] blockRlp,
+        Withdrawal[]? withdrawals)
+    {
+        writer.Write("{\"transactions\":"u8);
+        WriteTransactionsFromBlockRlp(writer, blockRlp);
+        WritePayloadBodySuffix(writer, withdrawals, null);
     }
 
     private static void WritePayloadBodySuffix(
@@ -145,6 +208,69 @@ internal static class PayloadBodiesDirectResponseWriter
         TxDecoder.Instance.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
         HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > HexChunkThreshold);
         ArrayPool<byte>.Shared.Return(buffer);
+    }
+
+    public static Withdrawal[]? DecodeWithdrawals(byte[] blockRlp)
+    {
+        Rlp.ValueDecoderContext ctx = new(blockRlp);
+        int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
+        ctx.SkipItem();
+        ctx.SkipItem();
+        ctx.SkipItem();
+        return ctx.Position == blockEnd
+            ? null
+            : WithdrawalDecoder.DecodeArray(ref ctx);
+    }
+
+    public static byte[][] GetTransactionsFromBlockRlp(byte[] blockRlp)
+    {
+        Rlp.ValueDecoderContext ctx = CreateTransactionContext(blockRlp, out int txsEnd);
+        int count = ctx.PeekNumberOfItemsRemaining(txsEnd);
+        byte[][] transactions = new byte[count][];
+        for (int i = 0; i < count; i++)
+        {
+            transactions[i] = ReadTransactionBytes(ref ctx).ToArray();
+        }
+
+        return transactions;
+    }
+
+    public static void WriteTransactionsFromBlockRlp(IBufferWriter<byte> writer, byte[] blockRlp)
+    {
+        Rlp.ValueDecoderContext ctx = CreateTransactionContext(blockRlp, out int txsEnd);
+        writer.Write("["u8);
+
+        for (int i = 0; ctx.Position < txsEnd; i++)
+        {
+            if (i > 0) writer.Write(","u8);
+            ReadOnlySpan<byte> transaction = ReadTransactionBytes(ref ctx);
+            HexWriter.WriteHexString(writer, transaction, chunked: transaction.Length > HexChunkThreshold);
+        }
+
+        writer.Write("]"u8);
+    }
+
+    private static Rlp.ValueDecoderContext CreateTransactionContext(byte[] blockRlp, out int txsEnd)
+    {
+        Rlp.ValueDecoderContext ctx = new(blockRlp);
+        ctx.ReadSequenceLength();
+        ctx.SkipItem();
+        txsEnd = ctx.ReadSequenceLength() + ctx.Position;
+        return ctx;
+    }
+
+    private static ReadOnlySpan<byte> ReadTransactionBytes(ref Rlp.ValueDecoderContext ctx)
+    {
+        ReadOnlySpan<byte> transaction = ctx.PeekNextItem();
+        ctx.SkipItem();
+        if (transaction[0] >= Rlp.OfEmptyList[0])
+        {
+            return transaction;
+        }
+
+        Rlp.ValueDecoderContext transactionContext = new(transaction);
+        (_, int contentLength) = transactionContext.PeekPrefixAndContentLength();
+        return transaction[^contentLength..];
     }
 
     public static void WriteWithdrawals(IBufferWriter<byte> writer, Withdrawal[]? withdrawals)

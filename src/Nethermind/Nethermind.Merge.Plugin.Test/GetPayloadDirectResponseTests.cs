@@ -155,6 +155,39 @@ public class GetPayloadDirectResponseTests
         await AssertStreamableJsonMatchesPlainAsync(expected, direct);
     }
 
+    [Test]
+    public async Task Payload_bodies_v1_raw_block_rlp_response_matches_dto_json_and_ssz()
+    {
+        Transaction[] transactions =
+        [
+            CreateTransaction(TxType.Legacy),
+            CreateTransaction(TxType.EIP1559),
+            CreateTransaction(TxType.SetCode)
+        ];
+        Withdrawal[] withdrawals = CreateWithdrawals(2);
+        Block block = CreateBlock(transactions, withdrawals, requests: null, BalKind.None, slotNumber: null);
+        ExecutionPayloadBodyV1Result?[] expected =
+        [
+            new(transactions, withdrawals),
+            null
+        ];
+        PayloadBodiesV1DirectResponse.PayloadBody?[] items =
+        [
+            PayloadBodiesV1DirectResponse.CreatePayloadBody(Rlp.Encode(block).Bytes),
+            null
+        ];
+        PayloadBodiesV1DirectResponse direct = new(items);
+
+        await AssertStreamableJsonMatchesPlainAsync(expected, direct);
+
+        ArrayBufferWriter<byte> expectedSsz = new();
+        ArrayBufferWriter<byte> actualSsz = new();
+        SszCodec.EncodePayloadBodiesV1Response(expected, expectedSsz);
+        SszCodec.EncodePayloadBodiesV1Response(direct, actualSsz);
+
+        Assert.That(actualSsz.WrittenSpan.ToArray(), Is.EqualTo(expectedSsz.WrittenSpan.ToArray()));
+    }
+
     [TestCase(5)]
     [TestCase(6)]
     public async Task Json_rpc_envelope_matches_plain_dto_semantically(int version)
