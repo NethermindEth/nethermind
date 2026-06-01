@@ -1000,9 +1000,8 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        [Retry(3)]
         [NonParallelizable]
-        public async Task Will_RemovePastKeys_OnSnapshot()
+        public void Will_RemovePastKeys_OnSnapshot()
         {
             MemDb memDb = new();
 
@@ -1026,8 +1025,8 @@ namespace Nethermind.Trie.Test.Pruning
                     committer.CommitNode(ref emptyPath, node);
                 }
 
-                // Pruning is done in background
-                await Task.Delay(TimeSpan.FromMilliseconds(10));
+                fullTrieStore.WaitForPruning();
+                fullTrieStore.SyncPruneQueue();
             }
 
             if (scheme == INodeStorage.KeyScheme.Hash)

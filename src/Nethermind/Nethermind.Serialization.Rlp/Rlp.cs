@@ -233,7 +233,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 throw;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OutOfMemoryException)
             {
                 throw new RlpException($"Error decoding {typeof(T).Name}.", e);
             }

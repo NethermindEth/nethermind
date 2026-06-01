@@ -32,6 +32,8 @@ jobs:
     timeout-minutes: 15
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
+    env:
+      DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       matrix:
