@@ -129,7 +129,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         {
             _transactions = null;
             _blockRlp = blockRlp;
-            _withdrawals = PayloadBodiesDirectResponseWriter.DecodeWithdrawals(blockRlp);
+            _withdrawals = null;
             _blockAccessList = blockAccessList;
         }
 
@@ -137,7 +137,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         {
             if (_blockRlp is { } blockRlp)
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _withdrawals, _blockAccessList);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _blockAccessList);
                 return;
             }
 
@@ -146,9 +146,12 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
         public ExecutionPayloadBodyV2Result ToResult()
         {
+            Withdrawal[]? withdrawals = _blockRlp is null
+                ? _withdrawals
+                : PayloadBodiesDirectResponseWriter.DecodeWithdrawals(_blockRlp);
             ExecutionPayloadBodyV2Result result = new(
                 _transactions ?? [],
-                _withdrawals,
+                withdrawals,
                 _blockAccessList?.Memory.ToArray());
 
             if (_blockRlp is { } blockRlp)
