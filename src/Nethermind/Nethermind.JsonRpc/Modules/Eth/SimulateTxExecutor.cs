@@ -95,10 +95,7 @@ public class SimulateTxExecutor<TTrace>(
         Dictionary<Address, AccountOverride>? stateOverride = null,
         SearchResult<BlockHeader>? searchResult = null)
     {
-        if (call.BlockStateCalls is null)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
-
-        if (call.BlockStateCalls.Count == 0)
+        if (call.BlockStateCalls is null || call.BlockStateCalls.Count == 0)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.EmptyBlockStateCalls, ErrorCodes.InvalidParams);
 
         if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
