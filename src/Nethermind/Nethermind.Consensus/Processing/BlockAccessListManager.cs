@@ -77,7 +77,7 @@ public partial class BlockAccessListManager(
     private int _suggestedChargeableStorageReads;
     private int _generatedChargeableStorageReads;
     private bool _hasGeneratedValidationIndexUpdates;
-    // Exposed read-only for tests: gates TryFastPath and is set only when slices are fed via RegisterGeneratedSlice.
+    // for tests
     internal bool HasGeneratedValidationIndexUpdates => _hasGeneratedValidationIndexUpdates;
     // Latched when a per-tx slice surfaces a generated-only account that the column index
     // can't see (no lane data on either side). Forces the validator's fallback walk so the
@@ -136,9 +136,7 @@ public partial class BlockAccessListManager(
             // Build the column-oriented validation index once per block; per-tx ChangesEqual
             // then collapses to row-aligned span compares. Tally suggested chargeable storage
             // reads here so the per-tx surplus-reads gas check avoids re-walking the BAL.
-            // Built on every validating path (parallel and sequential) — both feed the generated
-            // side via RegisterGeneratedSlice. Skipped only when building a block (no suggested
-            // BAL to compare against) or when the BAL body isn't decoded (RLP fixtures).
+            // Skipped when building a block or in RLP fixtures (no suggested)
             if (!_isBuilding && suggestedBlock.BlockAccessList is not null)
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
