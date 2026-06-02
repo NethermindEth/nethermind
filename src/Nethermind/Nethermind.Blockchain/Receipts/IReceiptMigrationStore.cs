@@ -5,7 +5,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public interface IReceiptMigrationStore
+    public interface IReceiptMigrationStore : IReceiptStorage
     {
         void InsertForMigration(Block block, TxReceipt[] receipts);
     }

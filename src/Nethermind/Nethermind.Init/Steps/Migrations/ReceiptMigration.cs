@@ -33,7 +33,7 @@ namespace Nethermind.Init.Steps.Migrations
 
         private readonly ProgressLogger _progressLogger;
         [NotNull]
-        private readonly IReceiptStorage? _receiptStorage;
+        private readonly IReceiptMigrationStore? _migrationStore;
         [NotNull]
         private readonly IBlockTree? _blockTree;
         [NotNull]
@@ -46,10 +46,9 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IDb _txIndexDb;
         private readonly IDb _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
-        private readonly IReceiptMigrationStore? _migrationStore;
 
         public ReceiptMigration(
-            IReceiptStorage receiptStorage,
+            IReceiptMigrationStore migrationStore,
             IBlockTree blockTree,
             ISyncModeSelector syncModeSelector,
             IChainLevelInfoRepository chainLevelInfoRepository,
@@ -59,8 +58,7 @@ namespace Nethermind.Init.Steps.Migrations
             ILogManager logManager
         )
         {
-            _receiptStorage = receiptStorage ?? throw new StepDependencyException(nameof(receiptStorage));
-            _migrationStore = receiptStorage as IReceiptMigrationStore;
+            _migrationStore = migrationStore ?? throw new StepDependencyException(nameof(migrationStore));
             _blockTree = blockTree ?? throw new StepDependencyException(nameof(blockTree));
             _syncModeSelector = syncModeSelector ?? throw new StepDependencyException(nameof(syncModeSelector));
             _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new StepDependencyException(nameof(chainLevelInfoRepository));
@@ -111,11 +109,11 @@ namespace Nethermind.Init.Steps.Migrations
         private void RunIfNeeded(CancellationToken cancellationToken)
         {
             // Note, it start in decreasing order from this high number.
-            long migrateToBlockNumber = _receiptStorage.MigratedBlockNumber == long.MaxValue
+            long migrateToBlockNumber = _migrationStore.MigratedBlockNumber == long.MaxValue
                 ? _syncModeSelector.Current.NotSyncing()
                     ? _blockTree.Head?.Number ?? 0
                     : _blockTree.BestKnownNumber
-                : _receiptStorage.MigratedBlockNumber - 1;
+                : _migrationStore.MigratedBlockNumber - 1;
 
             if (migrateToBlockNumber > 0)
             {
@@ -130,7 +128,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration not needed. {migrateToBlockNumber} {_receiptStorage.MigratedBlockNumber}");
+                if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration not needed. {migrateToBlockNumber} {_migrationStore.MigratedBlockNumber}");
             }
         }
 
@@ -159,7 +157,7 @@ namespace Nethermind.Init.Steps.Migrations
                 }
 
                 MigrationPointerTracker? pointerTracker = updateReceiptMigrationPointer
-                    ? new MigrationPointerTracker(_receiptStorage, to, parallelism)
+                    ? new MigrationPointerTracker(_migrationStore, to, parallelism)
                     : null;
 
                 GetBlockBodiesForMigration(from, to, pointerTracker, token)
@@ -265,19 +263,12 @@ namespace Nethermind.Init.Steps.Migrations
 
         private void MigrateBlock(Block block)
         {
-            TxReceipt?[] receipts = _receiptStorage.Get(block);
+            TxReceipt?[] receipts = _migrationStore.Get(block);
             TxReceipt[] notNullReceipts = FilterNotNullReceipts(receipts, out int missingCount);
 
             if (notNullReceipts.Length == 0) return;
 
-            if (_migrationStore is not null)
-            {
-                _migrationStore.InsertForMigration(block, notNullReceipts);
-            }
-            else
-            {
-                _receiptStorage.Insert(block, notNullReceipts);
-            }
+            _migrationStore.InsertForMigration(block, notNullReceipts);
 
             // It used to be that the tx index is stored in the default column so we are moving it into transactions column
             {
@@ -333,11 +324,11 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (_receiptConfig.ForceReceiptsMigration)
             {
-                _receiptStorage.MigratedBlockNumber = long.MaxValue;
+                _migrationStore.MigratedBlockNumber = long.MaxValue;
                 return;
             }
 
-            if (_receiptStorage.MigratedBlockNumber == long.MaxValue) return;
+            if (_migrationStore.MigratedBlockNumber == long.MaxValue) return;
             long blockNumber = _blockTree.Head?.Number ?? 0;
             while (blockNumber > 0)
             {
@@ -345,12 +336,12 @@ namespace Nethermind.Init.Steps.Migrations
                 BlockInfo? firstBlockInfo = level?.BlockInfos.FirstOrDefault();
                 if (firstBlockInfo is not null)
                 {
-                    TxReceipt[] receipts = _receiptStorage.Get(firstBlockInfo.BlockHash);
+                    TxReceipt[] receipts = _migrationStore.Get(firstBlockInfo.BlockHash);
                     if (receipts.Length > 0)
                     {
                         if (IsMigrationNeeded(blockNumber, firstBlockInfo.BlockHash, receipts))
                         {
-                            _receiptStorage.MigratedBlockNumber = long.MaxValue;
+                            _migrationStore.MigratedBlockNumber = long.MaxValue;
                         }
 
                         break;

@@ -142,7 +142,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 .SetName("UnfinishedHighestBlockHoldsPointerUntilItCompletes");
         }
 
-        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptStorage, IReceiptMigrationStore
+        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptMigrationStore
         {
             public Hash256 FindBlockHash(Hash256 txHash) => inStorage.FindBlockHash(txHash);
 
