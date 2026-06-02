@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -190,13 +192,13 @@ public partial class BlockAccessListManager
             ReadOnlyAccountChanges? sug = suggested.GetAccountChanges(gen.Address);
             if (sug is not null)
             {
-                if (!gen.ChangesAtIndexEqual(sug, index)) throw IncorrectChanges(block, gen.Address, index);
+                if (!gen.ChangesAtIndexEqual(sug, index)) ThrowIncorrectChanges(block, gen.Address, index);
                 continue;
             }
 
             if (IsToleratedGeneratedOnlyAccount(gen.Address, index, gen.HasNoChangesAtIndex(index), hasChargeableReads: genReads > 0)) continue;
 
-            throw MissingAccountChanges(block, gen.Address, index);
+            ThrowMissingAccountChanges(block, gen.Address, index);
         }
 
         // Pass 2: accounts only in suggested must carry no changes at this index (else surplus).
@@ -207,7 +209,7 @@ public partial class BlockAccessListManager
 
             if (generated.HasAccount(sug.Address)) continue;
 
-            if (!sug.HasNoChangesAtIndex(index)) throw SurplusChanges(block, sug.Address, index);
+            if (!sug.HasNoChangesAtIndex(index)) ThrowSurplusChanges(block, sug.Address, index);
         }
 
         ThrowIfStorageReadBudgetExceeded(block, suggestedReads - generatedReads, validateStorageReads);
@@ -227,7 +229,7 @@ public partial class BlockAccessListManager
         // a (row, lane) suggested doesn't declare — HasAt would otherwise hide the dropped entry.
         if (gen.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex) && overflowIndex <= index)
         {
-            throw IncorrectChanges(block, overflowAddress, overflowIndex);
+            ThrowIncorrectChanges(block, overflowAddress, overflowIndex);
         }
 
         // Pass 1: every account generated touched must match suggested at this row (lane compare)
@@ -238,21 +240,21 @@ public partial class BlockAccessListManager
 
             if (sug.HasAccount(ordinal))
             {
-                if (!gen.Lanes.ChangesAtRowEqualForOrdinal(sug.Lanes, row, ordinal)) throw IncorrectChanges(block, address, index);
+                if (!gen.Lanes.ChangesAtRowEqualForOrdinal(sug.Lanes, row, ordinal)) ThrowIncorrectChanges(block, address, index);
                 continue;
             }
 
             bool hasChargeableReads = !IsSystemContract(address) && gen.HasStorageReadsForOrdinal(ordinal);
             if (IsToleratedGeneratedOnlyAccount(address, index, hasNoChangesAtIndex: !gen.Lanes.HasAt(row, ordinal), hasChargeableReads)) continue;
 
-            throw MissingAccountChanges(block, address, index);
+            ThrowMissingAccountChanges(block, address, index);
         }
 
         // Pass 2: accounts only in suggested must carry no changes at this row (else surplus).
         foreach (int ordinal in sug.EnumerateMarkedOrdinals())
         {
             if (gen.HasAccount(ordinal)) continue; // already handled in Pass 1
-            if (sug.Lanes.HasAt(row, ordinal)) throw SurplusChanges(block, sug.AddressOf(ordinal), index);
+            if (sug.Lanes.HasAt(row, ordinal)) ThrowSurplusChanges(block, sug.AddressOf(ordinal), index);
         }
 
         // Storage-read gas budget — counts already tracked block-cumulative on both sides.
@@ -337,14 +339,17 @@ public partial class BlockAccessListManager
         }
     }
 
-    private static InvalidBlockLevelAccessListException IncorrectChanges(Block block, Address address, uint index)
-        => new(block.Header, $"Suggested block-level access list contained incorrect changes for {address} at index {index}.");
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowIncorrectChanges(Block block, Address address, uint index)
+        => throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained incorrect changes for {address} at index {index}.");
 
-    private static InvalidBlockLevelAccessListException MissingAccountChanges(Block block, Address address, uint index)
-        => new(block.Header, $"Suggested block-level access list missing account changes for {address} at index {index}.");
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowMissingAccountChanges(Block block, Address address, uint index)
+        => throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list missing account changes for {address} at index {index}.");
 
-    private static InvalidBlockLevelAccessListException SurplusChanges(Block block, Address address, uint index)
-        => new(block.Header, $"Suggested block-level access list contained surplus changes for {address} at index {index}.");
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowSurplusChanges(Block block, Address address, uint index)
+        => throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained surplus changes for {address} at index {index}.");
 
     /// <summary>
     /// Closes the gap between the column-index per-row validation and what the end-of-block
@@ -367,7 +372,7 @@ public partial class BlockAccessListManager
         // structural mismatch the per-account walk below can't see through HasAt.
         if (generatedIndex.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex))
         {
-            throw IncorrectChanges(block, overflowAddress, overflowIndex);
+            ThrowIncorrectChanges(block, overflowAddress, overflowIndex);
         }
 
         BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
