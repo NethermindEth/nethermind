@@ -52,11 +52,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
 
-    // EIP-7805 (FOCIL) — metadata kept alongside _payloadStorage so engine_updatePayloadWithInclusionListV1
-    // can force-rebuild the same payloadId after the CL injects an inclusion list. The IL transactions
-    // themselves live in InclusionListTxSource (registered into the tx-source pipeline via
-    // InclusionListBlockProducerTxSourceFactory); ForceRebuildPayload just re-triggers ImproveBlock so
-    // the next pass drains them.
+    // Per-payload improvement metadata: build count (exposed to tests via
+    // GetPayloadBuildCount) and the parent header / attributes / CTS retained across the
+    // improvement cycle.
     private readonly ConcurrentDictionary<string, RebuildSlot> _rebuildSlots = new();
 
     private sealed record RebuildSlot(
