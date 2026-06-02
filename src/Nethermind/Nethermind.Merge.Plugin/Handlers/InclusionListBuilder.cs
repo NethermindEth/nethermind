@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -22,11 +22,9 @@ public class InclusionListBuilder(ITxPool txPool)
         return DecodeTransactionsUpToLimit(orderedTxs);
     }
 
-    // EIP-7805 §"Generation": "MUST NOT include any blob transactions". Filter them out
-    // before sampling so a blob-heavy mempool can still produce a non-empty IL of
-    // executable txs, and the size-shuffle budget below isn't burned on entries that
-    // would be dropped anyway.
-    // todo: score txs and randomly sample weighted by score
+    // EIP-7805 §Generation forbids blob txs; filter before sampling so the shuffle budget
+    // isn't burned on entries that would be dropped anyway.
+    // TODO: score txs and randomly sample weighted by score
     private IEnumerable<Transaction> OrderTransactions(IEnumerable<Transaction> txs)
         => txs.Where(static tx => tx.Type != TxType.Blob)
               .Shuffle(_rnd, Eip7805Constants.MaxTransactionsPerInclusionList);

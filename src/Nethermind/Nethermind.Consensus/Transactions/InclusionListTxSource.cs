@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -12,17 +12,13 @@ using Nethermind.Crypto;
 namespace Nethermind.Consensus.Transactions;
 
 /// <summary>
-/// Holds the most recent EIP-7805 inclusion list set by the CL via <c>engine_forkchoiceUpdatedV5</c>
-/// and exposes it as an <see cref="ITxSource"/> for the block producer. The IL is overwritten
-/// (drained) on every FCUv5 — including with an empty list — so the previous slot's IL never
-/// leaks into the next production cycle.
+/// Holds the most recent EIP-7805 inclusion list (set by the CL via FCUv5) and exposes it
+/// to the block producer as an <see cref="ITxSource"/>. Overwritten on every FCUv5 — even
+/// with an empty list — so the previous slot's IL never leaks into the next cycle.
 /// </summary>
 /// <remarks>
-/// <see cref="Set"/> is invoked from the JSON-RPC handler thread; <see cref="GetTransactions"/>
-/// is invoked from the producer thread. <see cref="Volatile.Write"/>/<see cref="Volatile.Read"/>
-/// give the two threads happens-before semantics on the reference field without taking a lock.
-/// Reference assignment is already atomic on .NET, but a volatile barrier is needed to publish
-/// the updated value across CPU cores.
+/// <see cref="Set"/> runs on the JSON-RPC thread, <see cref="GetTransactions"/> on the
+/// producer thread; the Volatile pair publishes updates across cores without a lock.
 /// </remarks>
 public class InclusionListTxSource(
     IEthereumEcdsa? ecdsa,
@@ -31,9 +27,7 @@ public class InclusionListTxSource(
 {
     private IEnumerable<Transaction> _inclusionListTransactions = [];
 
-    // Lazy: decoder needs a non-null ecdsa, but unit-test fixtures that don't exercise IL
-    // injection construct this with all-nulls. Building it on first Set() lets those tests
-    // keep working without leaking dependencies they don't actually need.
+    // Lazy: unit-test fixtures construct with null ecdsa/specProvider; built on first Set().
     private InclusionListDecoder? _decoder;
     private InclusionListDecoder Decoder => _decoder ??= new InclusionListDecoder(ecdsa, specProvider, logManager);
 

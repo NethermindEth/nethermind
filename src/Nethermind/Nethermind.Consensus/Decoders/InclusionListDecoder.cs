@@ -16,16 +16,10 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Consensus.Decoders;
 
 /// <summary>
-/// EIP-7805 (FOCIL) IL transaction decoder. Decodes the byte-blob list supplied by the CL
-/// via PayloadAttributesV5 and recovers each tx's sender + EIP-7702 authority addresses.
+/// EIP-7805 (FOCIL) IL transaction decoder: RLP-decodes the CL's byte blobs and recovers
+/// each tx's sender + EIP-7702 authority addresses in a single parallel pass. Unparsable
+/// entries are dropped per the spec's "no-op on bad item" rule.
 /// </summary>
-/// <remarks>
-/// Decode and ECDSA recovery run in a single parallel pass (above a small threshold) so the
-/// FCUv5 hot path pays one Parallel scheduling cost instead of two — the previous pipeline
-/// invoked <see cref="TxsDecoder.DecodeTxs"/> and <see cref="RecoverSignatures.RecoverData"/>
-/// back-to-back as separate parallel loops. Bad entries (garbage RLP, empty arrays, bounds
-/// failures) are dropped silently per the spec's "unparsable IL items are a no-op" rule.
-/// </remarks>
 public class InclusionListDecoder(
     IEthereumEcdsa? ecdsa,
     ISpecProvider? specProvider,
@@ -90,9 +84,7 @@ public class InclusionListDecoder(
         }
         catch (Exception e) when (e is RlpException or ArgumentException or IndexOutOfRangeException)
         {
-            // Spec: unparsable IL items are a no-op rather than a protocol error. Bounds /
-            // RLP / argument failures all collapse to "drop the entry" so a single malformed
-            // byte string can't poison the whole IL.
+            // Spec: unparsable IL items are a no-op rather than a protocol error.
             return null;
         }
 
@@ -102,12 +94,8 @@ public class InclusionListDecoder(
         }
         catch (Exception e) when (e is InvalidDataException or ArgumentException or System.Security.Cryptography.CryptographicException)
         {
-            // Signature recovery failed for a malformed tx (null signature, bad recovery
-            // bytes, etc. that nonetheless passed RLP decode). SenderAddress stays null;
-            // the validator treats null-sender entries as not-appendable, so the IL check
-            // stays correct without us dropping the entry. Log at trace so anomalous IL
-            // traffic from a misbehaving CL is still observable. Narrow filter keeps
-            // unrelated regressions (NRE, OOM, …) from being silently swallowed.
+            // Recovery failed → keep the tx with null SenderAddress; the validator handles
+            // null-sender entries as not-appendable. Narrow catch keeps NRE/OOM observable.
             if (logger.IsTrace) logger.Trace($"IL signature recovery failed for tx {tx.Hash}: {e.GetType().Name}: {e.Message}");
         }
 
@@ -122,8 +110,7 @@ public class InclusionListDecoder(
             if (slots[i] is not null) count++;
         }
 
-        // Fast path: no failed decodes, so the slots array is already dense — skip the
-        // compaction pass and just cast each slot.
+        // Fast path: no failed decodes → slots is already dense, skip the compaction pass.
         if (count == slots.Length)
         {
             Transaction[] dense = new Transaction[slots.Length];

@@ -22,14 +22,6 @@ public static partial class Ssz
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Encode(Span<byte> span, Root value) => Encode(span, value.AsSpan());
 
-    //        public static void Encode(Span<byte> span, ReadOnlySpan<Hash32> value)
-    //        {
-    //            for (int i = 0; i < value.Length; i++)
-    //            {
-    //                Encode(span.Slice(i * Ssz.Hash32Length, Ssz.Hash32Length), value[i]);    
-    //            }
-    //        }
-
     public static void Encode(Span<byte> span, IReadOnlyList<Root> value)
     {
         for (int i = 0; i < value.Count; i++)

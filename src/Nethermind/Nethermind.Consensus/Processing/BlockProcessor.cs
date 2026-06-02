@@ -82,13 +82,10 @@ public partial class BlockProcessor(
         if (_balManager.BatchReadEnabled && suggestedBlock.BlockAccessList is not null)
             _ = _stateProvider.HintBal(suggestedBlock.BlockAccessList);
 
-        // EIP-7805 (FOCIL): the IL satisfaction check needs PARENT state for sender
-        // nonce/balance (per the EIP), not the post-execution state. Capture a snapshot of
-        // each IL tx sender BEFORE ProcessBlock advances the worldstate, then run the actual
-        // check after processing using the snapshot. Validating against post-execution state
-        // would let a censoring builder include a same-nonce replacement tx that bumps the
-        // sender's nonce, making the original IL tx look "not appendable" and the IL look
-        // satisfied — the exact attack EIP-7805 is designed to prevent.
+        // EIP-7805: snapshot each IL sender's parent-state nonce + balance BEFORE
+        // ProcessBlock mutates the worldstate, so the IL check below runs against parent
+        // state rather than post-execution state (where a same-nonce replacement tx could
+        // bump the sender's nonce and falsely make the IL look satisfied).
         bool runInclusionListValidation =
             spec.InclusionListsEnabled
             && !options.ContainsFlag(ProcessingOptions.NoValidation);
@@ -101,9 +98,8 @@ public partial class BlockProcessor(
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
 
-        // Run the IL validation inside this scope (worldstate is still bound) but using the
-        // parent-state snapshot captured above. BlockchainProcessor reads back the cached
-        // flag via ValidateInclusionList AFTER the scope has closed.
+        // Cache the IL verdict on suggestedBlock; BlockchainProcessor reads it later, after
+        // the worldstate scope has closed.
         if (runInclusionListValidation)
         {
             block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
@@ -137,9 +133,8 @@ public partial class BlockProcessor(
     }
 
     /// <summary>
-    /// Returns the cached IL-validity decision made by <see cref="ProcessOne"/>. The actual
-    /// check ran inside the worldstate scope (during processing); this is just a read of the
-    /// flag stamped on <paramref name="suggestedBlock"/>, safe to call after the scope closes.
+    /// Reads back the IL verdict cached in <see cref="ProcessOne"/>. Safe outside the
+    /// worldstate scope (the actual check ran inside it).
     /// </summary>
     public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
     {
@@ -154,11 +149,8 @@ public partial class BlockProcessor(
     private static readonly Dictionary<AddressAsKey, AccountSnapshot> EmptyParentSenderState = [];
 
     /// <summary>
-    /// Captures the parent-block nonce and balance of every distinct IL transaction sender,
-    /// reading directly from the live worldstate which — when this is called — is still
-    /// positioned at the parent block's state root (ProcessBlock hasn't run yet). The
-    /// snapshot is the EIP-7805 reference state for the IL satisfaction check, immune to
-    /// the censorship attack that arises when post-execution state is used instead.
+    /// Snapshots parent-state nonce + balance for each distinct IL sender. MUST be called
+    /// before ProcessBlock — afterwards the live worldstate is post-execution.
     /// </summary>
     private IReadOnlyDictionary<AddressAsKey, AccountSnapshot> CaptureParentSenderState(Transaction[]? inclusionListTransactions)
     {

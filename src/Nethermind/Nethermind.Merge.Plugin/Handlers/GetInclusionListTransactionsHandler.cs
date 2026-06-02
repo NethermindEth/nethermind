@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -12,20 +12,11 @@ using Nethermind.TxPool;
 namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <summary>
-/// EIP-7805 (FOCIL): builds an inclusion list of pending mempool transactions for the
-/// given <c>blockHash</c>. The CL aggregates ILs from committee members. The IL is
-/// bounded by <see cref="Eip7805Constants.MaxBytesPerInclusionList"/> RLP bytes and
-/// <see cref="Eip7805Constants.MaxTransactionsPerInclusionList"/> transactions.
+/// EIP-7805 (FOCIL): IL of pending mempool txs for <paramref name="blockHash"/>, bounded by
+/// <see cref="Eip7805Constants.MaxBytesPerInclusionList"/> bytes and
+/// <see cref="Eip7805Constants.MaxTransactionsPerInclusionList"/> entries. Returns
+/// <see cref="MergeErrorCodes.UnknownParent"/> (-38007) when the block hash is unknown.
 /// </summary>
-/// <remarks>
-/// Returns <see cref="MergeErrorCodes.UnknownParent"/> (-38007) if <c>blockHash</c> is
-/// not known to this node, matching the
-/// <see href="https://github.com/ethereum/execution-apis/pull/609">execution-apis#609</see>
-/// spec. Selection strategy itself is implementation-defined; the current
-/// <see cref="InclusionListBuilder"/> drains the local pool by a randomised sample of
-/// non-blob transactions and stops once the encoded list would exceed
-/// <see cref="Eip7805Constants.MaxBytesPerInclusionList"/>.
-/// </remarks>
 public class GetInclusionListTransactionsHandler(ITxPool? txPool, IBlockFinder? blockFinder)
     : IHandler<Hash256, ArrayPoolList<byte[]>>
 {

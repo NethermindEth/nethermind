@@ -11,11 +11,8 @@ using NUnit.Framework;
 namespace Nethermind.Consensus.Test;
 
 /// <summary>
-/// Regression tests for <see cref="PayloadAttributes.GetPayloadId"/>. EIP-7805 (FOCIL)
-/// requires that two FCUv5 calls with the same parent/timestamp but different
-/// <see cref="PayloadAttributes.InclusionListTransactions"/> produce DIFFERENT payload
-/// ids — otherwise the second caller hits the producer's cache and receives a block
-/// built for the first IL.
+/// FCUv5 calls with the same parent/timestamp but different IL must produce different
+/// payload ids — otherwise the second caller hits the producer cache and gets the wrong block.
 /// </summary>
 public class PayloadAttributesPayloadIdTests
 {
@@ -75,9 +72,7 @@ public class PayloadAttributesPayloadIdTests
     [Test]
     public void Null_vs_empty_inclusion_list_yields_different_payload_ids()
     {
-        // Null = V4 (Amsterdam) attributes — IL absent from the digest entirely.
-        // Empty array = V5 (Bogota) attributes — IL present, just with no entries.
-        // These are different fork-versioned messages so their payload ids must not collide.
+        // null = V4 (IL omitted from digest); [] = V5 with empty IL — different fork versions.
         BlockHeader parent = Parent();
         string idNull = BaseAttrs(null).GetPayloadId(parent);
         string idEmpty = BaseAttrs([]).GetPayloadId(parent);

@@ -88,11 +88,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         {
             if (_api.DbProvider is null) throw new ArgumentException(nameof(_api.DbProvider));
             if (_api.SpecProvider is null) throw new ArgumentException(nameof(_api.SpecProvider));
-            // if (_api.ChainSpec is null) throw new ArgumentException(nameof(_api.ChainSpec));
-            // if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
-            // if (_api.EthereumEcdsa is null) throw new ArgumentException(nameof(_api.EthereumEcdsa));
-            // if (_api.TxPool is null) throw new ArgumentException(nameof(_api.TxPool));
-            // if (_api.LogManager is null) throw new ArgumentException(nameof(_api.LogManager));
 
             EnsureJsonRpcUrl();
             EnsureReceiptAvailable();
@@ -100,7 +95,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
             _poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
             _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker.InvalidChainTracker>();
-            // _blockFinalizationManager = new ManualBlockFinalizationManager();
             _inclusionListTxSource = new InclusionListTxSource(_api.EthereumEcdsa, _api.SpecProvider, _api.LogManager);
 
             if (_txPoolConfig.BlobsSupport.SupportsReorgs())

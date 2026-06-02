@@ -223,18 +223,13 @@ public class InclusionListValidatorTests
     }
 
     /// <summary>
-    /// Censorship regression: a builder includes a non-IL transaction `N` from the IL
-    /// sender with the same nonce as the IL tx `T`. Under post-execution-state validation
-    /// the sender's nonce advances past T.nonce, making T look "not appendable" and the IL
-    /// "satisfied" — the exact attack EIP-7805 is designed to prevent. With parent-state
-    /// validation T is still appendable so the IL must be reported as unsatisfied.
+    /// Censorship regression: a same-nonce non-IL replacement tx must NOT make the IL look
+    /// satisfied (which would happen under post-execution-state validation).
     /// </summary>
     [Test]
     public void Same_nonce_replacement_tx_does_not_let_builder_skip_il_tx()
     {
-        // `_validTx` is from AddressA, nonce=0. The "replacement" is a different tx also from
-        // AddressA at nonce=0; only the replacement is in the block, while the IL contains
-        // `_validTx`. The validator must reject the block as INVALID_INCLUSION_LIST.
+        // Replacement: same sender + nonce as `_validTx` but different recipient.
         Transaction replacement = Build.A.Transaction
             .WithGasLimit(100_000)
             .WithGasPrice(10.GWei)
@@ -255,11 +250,8 @@ public class InclusionListValidatorTests
     }
 
     /// <summary>
-    /// EIP-1559 (type-2) regression: with `MaxFeePerGas >= baseFee` but
-    /// `maxPriorityFeePerGas (a.k.a. tx.GasPrice) &lt; baseFee`, the tx IS valid per
-    /// TransactionProcessor's fee check, so the IL validator MUST treat it as appendable.
-    /// The earlier code compared `tx.GasPrice` to baseFee and wrongly classified this tx as
-    /// "not appendable", letting a builder skip it without triggering INVALID_INCLUSION_LIST.
+    /// EIP-1559 fee check uses MaxFeePerGas (cap), not GasPrice (tip): a type-2 tx with
+    /// tip below baseFee but cap above must still be appendable.
     /// </summary>
     [Test]
     public void Eip1559_tx_with_low_tip_but_sufficient_fee_cap_is_appendable()

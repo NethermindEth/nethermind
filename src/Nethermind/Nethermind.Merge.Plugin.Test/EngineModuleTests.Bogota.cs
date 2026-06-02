@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
@@ -20,17 +20,9 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     /// <summary>
-    /// EIP-7805 (FOCIL) end-to-end round trip with an empty inclusion list: FCU V5 (which
-    /// carries the IL via PayloadAttributesV5) → getPayload V6 → newPayload V6 → FCU V5 to
-    /// promote. Empty ILs are trivially satisfied so we expect every step to return
-    /// <see cref="PayloadStatus.Valid"/>.
+    /// Bogota end-to-end with an empty IL: FCUv5 → getPayloadV6 → newPayloadV6 → promote FCU.
+    /// Empty ILs are trivially satisfied so every step must return <see cref="PayloadStatus.Valid"/>.
     /// </summary>
-    /// <remarks>
-    /// Block hashes vary with the state root (which itself depends on the genesis built by
-    /// <see cref="MergeTestBlockchain"/>), so we let the engine compute them and chain
-    /// responses by hash instead of hard-coding values that would drift the moment Amsterdam
-    /// (which Bogota descends from) gains another system contract.
-    /// </remarks>
     [Test]
     public async Task Should_process_block_as_expected_Bogota()
     {
@@ -39,8 +31,7 @@ public partial class EngineModuleTests
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
         PayloadAttributes payloadAttrs = BuildBogotaPayloadAttributes(inclusionList: []);
-        // ForkchoiceStateV1 ctor is (head, finalized, safe). Genesis sits in for safe/finalized
-        // because there's nothing canonicalised yet.
+        // ForkchoiceStateV1 ctor is (head, finalized, safe); genesis stands in for both here.
         ForkchoiceStateV1 fcuState = new(startingHead, Keccak.Zero, startingHead);
 
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV5(fcuState, payloadAttrs);
@@ -74,15 +65,9 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
-    /// EIP-7805 (FOCIL): when the CL passes an IL containing a transaction that is valid
-    /// against the post-execution state yet absent from the payload, newPayloadV6 must
-    /// return <see cref="PayloadStatus.InvalidInclusionList"/> (added by execution-apis#609).
+    /// FOCIL: an IL tx that's appendable against parent state but missing from the payload
+    /// must produce <see cref="PayloadStatus.InvalidInclusionList"/>.
     /// </summary>
-    /// <remarks>
-    /// We build a baseline empty payload through the engine, then call newPayloadV6 against
-    /// that same payload with a one-tx IL whose sender has the funds + nonce to be included.
-    /// The validator should reject because the payload trivially had room for the tx.
-    /// </remarks>
     [Test]
     public async Task NewPayloadV6_should_return_invalid_for_unsatisfied_inclusion_list_Bogota()
     {
@@ -90,18 +75,15 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
-        // Build a baseline empty payload — the engine handles BAL/state root computation,
-        // so we don't have to recompute hashes when other Amsterdam features change.
-        // FCU ctor is (head, finalized, safe).
+        // Baseline empty payload — engine computes hashes so the test stays stable across
+        // unrelated Amsterdam changes.
         ResultWrapper<ForkchoiceUpdatedV1Result> baselineFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> baselinePayload = await rpc.engine_getPayloadV6(Bytes.FromHexString(baselineFcu.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = baselinePayload.Data!.ExecutionPayload;
 
-        // Construct a censored tx — a normal Alice→Bob transfer from a funded test account.
-        // It would fit comfortably in the empty payload, so the IL constraint is not
-        // satisfied and the EL must surface InvalidInclusionList.
+        // Censored tx: a normal transfer that fits in the empty payload → IL unsatisfied.
         Transaction censoredTx = Build.A.Transaction
             .WithNonce(0)
             .WithMaxFeePerGas(10.GWei)
@@ -125,10 +107,8 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
-    /// EIP-7805 (FOCIL): supplying inclusion-list transactions through
-    /// PayloadAttributesV5 must cause the producer to include them in the next built
-    /// payload. <see cref="InclusionListBlockProducerTxSourceFactory"/> prepends the IL
-    /// source ahead of the mempool, so an IL tx wins the slot even when the pool is empty.
+    /// FOCIL: IL txs supplied via PayloadAttributesV5 must end up in the next built payload —
+    /// the IL source is prepended ahead of the mempool by the producer-tx-source factory.
     /// </summary>
     [Test]
     public async Task Should_build_block_with_inclusion_list_transactions_Bogota()
@@ -153,10 +133,8 @@ public partial class EngineModuleTests
         Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(fcu.Data.PayloadId, Is.Not.Null);
 
-        // With FOCIL, PayloadPreparationService.ProduceEmptyBlock drops the EmptyBlock fast
-        // path whenever the CL supplies a non-empty IL, so the very first build already
-        // contains the IL transactions. Fetch once via engine_getPayloadV6 — no polling /
-        // sleeping needed.
+        // With a non-empty IL the producer skips its EmptyBlock fast path, so the first
+        // getPayload already returns a populated payload — no polling needed.
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
         Assert.That(payloadResult.Data, Is.Not.Null);
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
@@ -175,10 +153,8 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
-    /// EIP-7805 (FOCIL): the IL builder drains the local txpool and returns the encoded
-    /// transaction bytes, bounded by <c>MAX_BYTES_PER_INCLUSION_LIST</c> and
-    /// <c>MAX_TRANSACTIONS_PER_INCLUSION_LIST</c>. The <c>blockHash</c> parameter is required
-    /// by the spec (execution-apis#609) but not consulted by the current selection strategy.
+    /// engine_getInclusionListV1 returns encoded mempool txs, bounded by the spec's MAX_BYTES
+    /// and MAX_TXS constants. blockHash is spec-required but not consulted today.
     /// </summary>
     [Test]
     public async Task Can_get_inclusion_list_Bogota()
@@ -219,11 +195,7 @@ public partial class EngineModuleTests
         });
     }
 
-    /// <summary>
-    /// Shared payload-attributes template for the Bogota tests above. PayloadAttributesV5
-    /// (the wire shape behind <c>engine_forkchoiceUpdatedV5</c>) requires <c>slotNumber</c>
-    /// and <c>inclusionListTransactions</c>; the rest mirrors Amsterdam.
-    /// </summary>
+    /// <summary>Shared PayloadAttributesV5 template — slotNumber + IL required, rest mirrors Amsterdam.</summary>
     private PayloadAttributes BuildBogotaPayloadAttributes(byte[][] inclusionList) => new()
     {
         Timestamp = Timestamper.UnixTime.Seconds,
