@@ -566,7 +566,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
 
-        private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
+        protected virtual void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
             if (ShouldUpdateBlockGasMetrics(opts) && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
             {
@@ -581,11 +581,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        private static bool ShouldUpdateBlockGasMetrics(ExecutionOptions opts) =>
-            opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp
-                || opts.HasFlag(ExecutionOptions.OriginalValidate)
-                && !opts.HasFlag(ExecutionOptions.Restore)
-                && !opts.HasFlag(ExecutionOptions.Warmup);
+        protected static bool ShouldUpdateBlockGasMetrics(ExecutionOptions opts) =>
+            opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp;
 
         /// <summary>
         /// Validates the transaction, in a static manner (i.e. without accessing state/storage).

@@ -76,6 +76,16 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         }
     }
 
+    protected override void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice) =>
+        base.UpdateMetrics(
+            ShouldUpdateCommittedSystemMetrics(opts) ? ExecutionOptions.Commit : opts,
+            effectiveGasPrice);
+
+    private static bool ShouldUpdateCommittedSystemMetrics(ExecutionOptions opts) =>
+        opts.HasFlag(ExecutionOptions.OriginalValidate)
+        && !opts.HasFlag(ExecutionOptions.Restore)
+        && !opts.HasFlag(ExecutionOptions.Warmup);
+
     protected override IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long blockGasLimit)
     {
         if (tx is not SystemCall)
