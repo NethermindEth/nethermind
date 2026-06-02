@@ -3,10 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -15,21 +13,51 @@ public class InclusionListBuilder(ITxPool txPool)
 {
     private readonly Random _rnd = new();
 
-    public IEnumerable<byte[]> GetInclusionList()
+    public IEnumerable<byte[]> GetInclusionList() =>
+        DecodeTransactionsUpToLimit(ReservoirSampleNonBlobTxs(txPool.GetPendingTransactions()));
+
+    // Reservoir sample (Algorithm R + final Fisher-Yates) keeps memory at O(N=MaxTxs) for any
+    // mempool size. The earlier .Where(...).Shuffle(...) path materialised the entire filtered
+    // mempool into an ArrayPoolList that grew through power-of-2 reallocations.
+    // TODO: score txs and randomly sample weighted by score.
+    private Transaction[] ReservoirSampleNonBlobTxs(Transaction[] mempool)
     {
-        Transaction[] txs = txPool.GetPendingTransactions();
-        IEnumerable<Transaction> orderedTxs = OrderTransactions(txs);
-        return DecodeTransactionsUpToLimit(orderedTxs);
+        const int capacity = Eip7805Constants.MaxTransactionsPerInclusionList;
+        Transaction[] reservoir = new Transaction[capacity];
+        int seen = 0;
+
+        for (int i = 0; i < mempool.Length; i++)
+        {
+            Transaction tx = mempool[i];
+            // EIP-7805 §Generation: blob txs MUST NOT appear in the IL.
+            if (tx.Type == TxType.Blob) continue;
+
+            if (seen < capacity)
+            {
+                reservoir[seen] = tx;
+            }
+            else
+            {
+                int j = _rnd.Next(seen + 1);
+                if (j < capacity) reservoir[j] = tx;
+            }
+            seen++;
+        }
+
+        int actual = Math.Min(seen, capacity);
+        // Fisher-Yates over the reservoir prefix — the byte-cap loop below treats position as
+        // priority, so the order needs to be random too, not just the membership.
+        for (int i = actual - 1; i > 0; i--)
+        {
+            int j = _rnd.Next(i + 1);
+            (reservoir[i], reservoir[j]) = (reservoir[j], reservoir[i]);
+        }
+
+        if (actual < capacity) Array.Resize(ref reservoir, actual);
+        return reservoir;
     }
 
-    // EIP-7805 §Generation forbids blob txs; filter before sampling so the shuffle budget
-    // isn't burned on entries that would be dropped anyway.
-    // TODO: score txs and randomly sample weighted by score
-    private IEnumerable<Transaction> OrderTransactions(IEnumerable<Transaction> txs)
-        => txs.Where(static tx => tx.Type != TxType.Blob)
-              .Shuffle(_rnd, Eip7805Constants.MaxTransactionsPerInclusionList);
-
-    private static IEnumerable<byte[]> DecodeTransactionsUpToLimit(IEnumerable<Transaction> txs)
+    private static IEnumerable<byte[]> DecodeTransactionsUpToLimit(Transaction[] txs)
     {
         int size = 0;
         foreach (Transaction tx in txs)

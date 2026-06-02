@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -143,16 +144,19 @@ public partial class BlockProcessor(
             return EmptyParentSenderState;
         }
 
-        Dictionary<AddressAsKey, AccountSnapshot> snapshot = [];
+        // Pre-size to IL length (distinct-sender count ≤ IL length). GetValueRefOrAddDefault
+        // probes the bucket once per sender; the first-seen branch does the worldstate read.
+        Dictionary<AddressAsKey, AccountSnapshot> snapshot = new(inclusionListTransactions.Length);
         for (int i = 0; i < inclusionListTransactions.Length; i++)
         {
             Address? sender = inclusionListTransactions[i].SenderAddress;
-            if (sender is null || snapshot.ContainsKey(sender))
-            {
-                continue;
-            }
+            if (sender is null) continue;
 
-            snapshot[sender] = new AccountSnapshot(_stateProvider.GetBalance(sender), _stateProvider.GetNonce(sender));
+            ref AccountSnapshot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(snapshot, sender, out bool existed);
+            if (!existed)
+            {
+                slot = new AccountSnapshot(_stateProvider.GetBalance(sender), _stateProvider.GetNonce(sender));
+            }
         }
 
         return snapshot;

@@ -146,37 +146,17 @@ public class PayloadAttributes
 
     private static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
     {
-        // Order-sensitive concatenation: the IL is an ordered list, and two different orderings
-        // are different inputs to the builder. Keccak over the concatenation is sufficient — we
-        // only need uniqueness as a cache key, not the Merkle structure of a state commitment.
-        int total = 0;
+        // Order-sensitive concatenation: two different IL orderings are different inputs. Stream
+        // each entry through the hasher so we never allocate a concat buffer (which would have
+        // been kBs for a full IL).
+        KeccakHash hash = KeccakHash.Create();
         for (int i = 0; i < inclusionListTransactions.Length; i++)
         {
-            total += inclusionListTransactions[i]?.Length ?? 0;
+            byte[]? entry = inclusionListTransactions[i];
+            if (entry is null || entry.Length == 0) continue;
+            hash.Update(entry);
         }
-
-        if (total == 0)
-        {
-            return ValueKeccak.Compute(ReadOnlySpan<byte>.Empty);
-        }
-
-        byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(total);
-        try
-        {
-            int offset = 0;
-            for (int i = 0; i < inclusionListTransactions.Length; i++)
-            {
-                byte[]? entry = inclusionListTransactions[i];
-                if (entry is null || entry.Length == 0) continue;
-                entry.CopyTo(buffer.AsSpan(offset));
-                offset += entry.Length;
-            }
-            return ValueKeccak.Compute(buffer.AsSpan(0, offset));
-        }
-        finally
-        {
-            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
-        }
+        return hash.GenerateValueHash();
     }
 
     /// <summary>
