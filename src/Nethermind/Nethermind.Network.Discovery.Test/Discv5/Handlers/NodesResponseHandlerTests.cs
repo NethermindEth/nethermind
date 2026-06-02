@@ -5,7 +5,6 @@ using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Kademlia;

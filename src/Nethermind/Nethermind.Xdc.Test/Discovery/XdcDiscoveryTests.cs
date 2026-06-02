@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network;
-using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Test;

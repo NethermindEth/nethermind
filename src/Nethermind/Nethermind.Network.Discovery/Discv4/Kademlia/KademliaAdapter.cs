@@ -7,7 +7,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
-using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Stats;

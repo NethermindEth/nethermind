@@ -5,7 +5,6 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
 

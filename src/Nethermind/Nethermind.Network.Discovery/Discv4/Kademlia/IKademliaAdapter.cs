@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
-using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Stats.Model;
 

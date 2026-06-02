@@ -100,6 +100,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [CancelAfter(10000)]
         public async Task DiscoverNodes_should_ping_nodes_that_have_not_received_pong(CancellationToken token)
         {
+            _discoveryConfig.ConcurrentDiscoveryJob = 1;
             Node node = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             _discv4Adapter.Ping(node, Arg.Any<CancellationToken>())
                 .Returns(true);
@@ -111,7 +112,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await enumerator.MoveNextAsync();
 
             // Assert - Verify that ping was called
-            await _discv4Adapter.Received(2).Ping(
+            await _discv4Adapter.Received(1).Ping(
                 Arg.Is<Node>(n => n == node),
                 Arg.Any<CancellationToken>());
         }
@@ -152,6 +153,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [CancelAfter(10000)]
         public async Task DiscoverNodes_should_handle_ping_timeout(CancellationToken token)
         {
+            _discoveryConfig.ConcurrentDiscoveryJob = 1;
             Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
 
@@ -169,8 +171,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await enumerator.MoveNextAsync();
             Assert.That(enumerator.Current, Is.EqualTo(node2));
 
-            await _discv4Adapter.Received(2).Ping(
+            await _discv4Adapter.Received(1).Ping(
                 Arg.Is<Node>(n => n == node1),
+                Arg.Any<CancellationToken>());
+            await _discv4Adapter.Received(1).Ping(
+                Arg.Is<Node>(n => n == node2),
                 Arg.Any<CancellationToken>());
         }
 
