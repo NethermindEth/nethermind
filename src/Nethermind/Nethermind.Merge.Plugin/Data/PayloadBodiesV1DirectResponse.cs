@@ -5,6 +5,8 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
@@ -152,6 +154,7 @@ internal static class PayloadBodiesDirectResponseWriter
         Rlp.ValueDecoderContext ctx = new(blockRlp);
         int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
 
+        // Keep this field order aligned with BlockBodyDecoder.DecodeUnwrapped; this path streams without materializing BlockBody.
         ctx.SkipItem(); // header
         writer.Write("{\"transactions\":"u8);
         WriteTransactionsFromBlockRlp(writer, ref ctx);
@@ -405,9 +408,13 @@ internal static class PayloadBodiesDirectResponseWriter
 
         if (prefix != Rlp.EmptyByteArrayByte + Address.Size)
         {
-            throw new RlpException($"Invalid withdrawal address prefix {prefix}");
+            ThrowInvalidWithdrawalAddressPrefix(prefix);
         }
 
         HexWriter.WriteHexString(writer, ctx.Read(Address.Size), chunked: false);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidWithdrawalAddressPrefix(int prefix) =>
+        throw new RlpException($"Invalid withdrawal address prefix {prefix}");
 }

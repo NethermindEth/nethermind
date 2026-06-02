@@ -86,6 +86,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder headerDecoder = null) : RlpD
 
     public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
     {
+        // PayloadBodiesDirectResponseWriter streams this same field order from raw block RLP.
         Transaction[] transactions = ctx.DecodeArray(_txDecoder);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
         Withdrawal[]? withdrawals = null;
