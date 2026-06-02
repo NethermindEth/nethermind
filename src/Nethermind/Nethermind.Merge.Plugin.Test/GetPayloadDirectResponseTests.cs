@@ -164,6 +164,7 @@ public class GetPayloadDirectResponseTests
         [
             CreateTransaction(TxType.Legacy),
             CreateTransaction(TxType.EIP1559),
+            CreateTransaction(TxType.Blob),
             CreateTransaction(TxType.SetCode)
         ];
         Withdrawal[] withdrawals = CreateWithdrawals(2);
@@ -216,6 +217,15 @@ public class GetPayloadDirectResponseTests
         SszCodec.EncodePayloadBodiesV2Response(directV2, actualV2Ssz);
 
         Assert.That(actualV2Ssz.WrittenSpan.ToArray(), Is.EqualTo(expectedV2Ssz.WrittenSpan.ToArray()));
+    }
+
+    [Test]
+    public void Payload_bodies_v1_indexer_throws_argument_out_of_range()
+    {
+        PayloadBodiesV1DirectResponse direct = new([new ExecutionPayloadBodyV1Result([], null)]);
+
+        Assert.That(() => { ExecutionPayloadBodyV1Result? _ = direct[-1]; }, Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(() => { ExecutionPayloadBodyV1Result? _ = direct[direct.Count]; }, Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
     [TestCase(5)]

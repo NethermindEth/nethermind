@@ -110,8 +110,6 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    // Exactly one source representation is active: either _transactions (+_withdrawals) or _blockRlp.
-    // _blockRlp takes priority when set; a default-constructed value (both null) is invalid.
     internal readonly struct PayloadBody : IDisposable
     {
         private readonly Transaction[]? _transactions;
@@ -140,28 +138,26 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
             if (_blockRlp is { } blockRlp)
             {
                 PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _blockAccessList);
-                return;
             }
-
-            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _transactions!, _withdrawals, _blockAccessList);
+            else
+            {
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _transactions!, _withdrawals, _blockAccessList);
+            }
         }
 
         public ExecutionPayloadBodyV2Result ToResult()
         {
-            Withdrawal[]? withdrawals = _blockRlp is null
-                ? _withdrawals
-                : PayloadBodiesDirectResponseWriter.DecodeWithdrawals(_blockRlp);
-            ExecutionPayloadBodyV2Result result = new(
-                _transactions ?? [],
-                withdrawals,
-                _blockAccessList?.Memory.ToArray());
-
             if (_blockRlp is { } blockRlp)
             {
-                result.Transactions = PayloadBodiesDirectResponseWriter.GetTransactionsFromBlockRlp(blockRlp);
+                (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
+                ExecutionPayloadBodyV2Result result = new([], withdrawals, _blockAccessList?.Memory.ToArray())
+                {
+                    Transactions = transactions
+                };
+                return result;
             }
 
-            return result;
+            return new ExecutionPayloadBodyV2Result(_transactions!, _withdrawals, _blockAccessList?.Memory.ToArray());
         }
 
         public void Dispose() => (_blockAccessList as IDisposable)?.Dispose();

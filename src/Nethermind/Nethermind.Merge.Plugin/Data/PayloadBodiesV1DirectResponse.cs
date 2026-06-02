@@ -27,20 +27,19 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
 
     public int Count => _payloadBodies?.Length ?? _items!.Length;
 
-    public ExecutionPayloadBodyV1Result? this[int index] => _payloadBodies is { } payloadBodies
-        ? payloadBodies[index]?.ToResult()
-        : _items![index];
-
-    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+    public ExecutionPayloadBodyV1Result? this[int index]
     {
-        if (_payloadBodies is { } payloadBodies)
+        get
         {
-            return StreamableResultWriter.WriteArrayAsync(writer, payloadBodies.Length, new RawItemWriter(payloadBodies), cancellationToken);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)Count, nameof(index));
+            return _payloadBodies is { } payloadBodies ? payloadBodies[index]?.ToResult() : _items![index];
         }
-
-        ExecutionPayloadBodyV1Result?[] items = _items!;
-        return StreamableResultWriter.WriteArrayAsync(writer, items.Length, new ItemWriter(items), cancellationToken);
     }
+
+    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
+        _payloadBodies is { } payloadBodies
+            ? StreamableResultWriter.WriteArrayAsync(writer, payloadBodies.Length, new RawItemWriter(payloadBodies), cancellationToken)
+            : StreamableResultWriter.WriteArrayAsync(writer, _items!.Length, new ItemWriter(_items!), cancellationToken);
 
     public IEnumerator<ExecutionPayloadBodyV1Result?> GetEnumerator()
     {
@@ -97,9 +96,9 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
 
         public ExecutionPayloadBodyV1Result ToResult()
         {
-            Withdrawal[]? withdrawals = PayloadBodiesDirectResponseWriter.DecodeWithdrawals(blockRlp);
+            (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
             ExecutionPayloadBodyV1Result result = new([], withdrawals);
-            result.Transactions = PayloadBodiesDirectResponseWriter.GetTransactionsFromBlockRlp(blockRlp);
+            result.Transactions = transactions;
             return result;
         }
     }
@@ -153,14 +152,12 @@ internal static class PayloadBodiesDirectResponseWriter
         Rlp.ValueDecoderContext ctx = new(blockRlp);
         int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
 
-        writer.Write("{\"transactions\":"u8);
-        // Payload body responses do not include the header. After streaming the
-        // transactions list, the same RLP cursor continues at the ommers item.
         ctx.SkipItem(); // header
+        writer.Write("{\"transactions\":"u8);
         WriteTransactionsFromBlockRlp(writer, ref ctx);
 
+        ctx.SkipItem(); // uncles
         writer.Write(",\"withdrawals\":"u8);
-        ctx.SkipItem(); // ommers
         WriteWithdrawals(writer, ctx.Position == blockEnd ? null : WithdrawalDecoder.DecodeArray(ref ctx));
 
         if (blockAccessList is not null)
@@ -226,24 +223,31 @@ internal static class PayloadBodiesDirectResponseWriter
         ArrayPool<byte>.Shared.Return(buffer);
     }
 
-    public static Withdrawal[]? DecodeWithdrawals(byte[] blockRlp)
+    public static (byte[][] Transactions, Withdrawal[]? Withdrawals) DecodePayloadBody(byte[] blockRlp)
     {
         Rlp.ValueDecoderContext ctx = new(blockRlp);
         int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
-        // Withdrawals are the fourth top-level block item. Skip earlier items
-        // without decoding them because payload body responses only need
-        // transactions and withdrawals, and transactions are streamed separately.
         ctx.SkipItem(); // header
-        ctx.SkipItem(); // transactions
-        ctx.SkipItem(); // ommers
-        return ctx.Position == blockEnd
-            ? null
-            : WithdrawalDecoder.DecodeArray(ref ctx);
+        byte[][] transactions = GetTransactionsFromBlockRlp(ref ctx);
+        ctx.SkipItem(); // uncles
+        Withdrawal[]? withdrawals = ctx.Position != blockEnd ? WithdrawalDecoder.DecodeArray(ref ctx) : null;
+        return (transactions, withdrawals);
     }
 
     public static byte[][] GetTransactionsFromBlockRlp(byte[] blockRlp)
     {
         Rlp.ValueDecoderContext ctx = CreateTransactionContext(blockRlp, out int txsEnd);
+        return GetTransactionsFromBlockRlp(ref ctx, txsEnd);
+    }
+
+    private static byte[][] GetTransactionsFromBlockRlp(ref Rlp.ValueDecoderContext ctx)
+    {
+        int txsEnd = ctx.ReadSequenceLength() + ctx.Position;
+        return GetTransactionsFromBlockRlp(ref ctx, txsEnd);
+    }
+
+    private static byte[][] GetTransactionsFromBlockRlp(ref Rlp.ValueDecoderContext ctx, int txsEnd)
+    {
         int count = ctx.PeekNumberOfItemsRemaining(txsEnd);
         byte[][] transactions = new byte[count][];
         for (int i = 0; i < count; i++)
@@ -284,11 +288,7 @@ internal static class PayloadBodiesDirectResponseWriter
     {
         Rlp.ValueDecoderContext ctx = new(blockRlp);
         ctx.ReadSequenceLength();
-        // Transactions are the second top-level block item; skip the header
-        // so the returned context is positioned on the transactions list.
         ctx.SkipItem(); // header
-        // ReadSequenceLength advances ctx.Position past the list prefix; txsEnd is read after that
-        // advance (left-to-right evaluation), so it points to the end of the transactions list.
         txsEnd = ctx.ReadSequenceLength() + ctx.Position;
         return ctx;
     }
@@ -296,12 +296,7 @@ internal static class PayloadBodiesDirectResponseWriter
     private static ReadOnlySpan<byte> ReadTransactionBytes(ref Rlp.ValueDecoderContext ctx)
     {
         ReadOnlySpan<byte> transaction = ctx.PeekNextItem();
-        // Keep a span over the current transaction, then advance the cursor
-        // so the caller can continue iterating without decoding the transaction.
         ctx.SkipItem(); // current transaction
-        // transaction[0] is in bounds: callers bound the loop by txsEnd / item count, so this only
-        // runs for a transaction present in the list (an empty block never reaches here), and
-        // PeekNextItem always returns at least the one-byte RLP prefix.
         if (transaction[0] >= Rlp.OfEmptyList[0])
         {
             return transaction;
@@ -311,7 +306,7 @@ internal static class PayloadBodiesDirectResponseWriter
         // Engine payload bodies expect the string content, not the RLP wrapper.
         Rlp.ValueDecoderContext transactionContext = new(transaction);
         (_, int contentLength) = transactionContext.PeekPrefixAndContentLength();
-        return transaction[^contentLength..];
+        return transaction.Slice(transaction.Length - contentLength, contentLength);
     }
 
     public static void WriteWithdrawals(IBufferWriter<byte> writer, Withdrawal[]? withdrawals)
