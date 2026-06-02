@@ -292,6 +292,7 @@ public class PersistenceManager(
                 batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
 
                 node.IsPersisted = true;
+                node.PrunePersistedRecursively(1);
             }
 
             _trieNodesSortBuffer.Clear();
@@ -319,6 +320,7 @@ public class PersistenceManager(
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 node.IsPersisted = true;
+                node.PrunePersistedRecursively(1);
             }
 
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));

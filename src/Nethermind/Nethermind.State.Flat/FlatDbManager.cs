@@ -333,6 +333,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (endBlock.BlockNumber <= persistedStateId.BlockNumber)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.BlockNumber}, bigcache number: {persistedStateId}");
+            _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+            snapshot.Dispose();
             return;
         }
 
@@ -352,8 +354,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         {
             if (!_populateTrieNodeCacheJobs.Writer.TryWrite(transientResource))
             {
-                // Ignore it, just dispose
-                transientResource.Dispose();
+                // Queue full, return to pool instead of leaking
+                _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
             }
 
             if (!_compactorJobs.Writer.TryWrite(endBlock))
