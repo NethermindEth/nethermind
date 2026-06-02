@@ -25,14 +25,4 @@ public class EthEntry(byte[] forkHash, long nextBlock) : EnrContentEntry<ForkId>
         rlpStream.Encode(Value.ForkHash);
         rlpStream.Encode(Value.NextBlock);
     }
-
-    protected override void EncodeValue(Span<byte> buffer, ref int position)
-    {
-        // I am just guessing this one
-        int contentLength = 5 + Rlp.LengthOf(Value.NextBlock);
-        position = Rlp.StartSequence(buffer, position, contentLength + 1);
-        position = Rlp.StartSequence(buffer, position, contentLength);
-        position = Rlp.Encode(buffer, position, Value.ForkHash);
-        EncodeInteger(buffer, ref position, Value.NextBlock);
-    }
 }

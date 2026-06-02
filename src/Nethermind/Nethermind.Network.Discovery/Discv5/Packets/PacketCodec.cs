@@ -45,14 +45,13 @@ public sealed class PacketCodec(
     private readonly INodeRecordProvider _nodeRecordProvider = nodeRecordProvider;
     private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
     private readonly IEcdsa _ecdsa = ecdsa;
+    private readonly Aes _decodeMaskingAes = CreateMaskingAes(nodeKey.PublicKey.Hash.Bytes[..AesKeySize]);
+    private readonly object _decodeMaskingAesLock = new();
 
-    public void Dispose() => _privateKey.Dispose();
-
-    internal byte[] EncodeOrdinary(PublicKey destination, ReadOnlySpan<byte> encryptionKey, Discv5Message message)
+    public void Dispose()
     {
-        Span<byte> generatedNonce = stackalloc byte[NonceSize];
-        _cryptoRandom.GenerateRandomBytes(generatedNonce);
-        return EncodePacket(destination.Hash.Bytes, PacketFlag.Ordinary, generatedNonce, _localNodeId, encryptionKey, message);
+        _decodeMaskingAes.Dispose();
+        _privateKey.Dispose();
     }
 
     internal byte[] EncodeOrdinary(PublicKey destination, ReadOnlySpan<byte> encryptionKey, Discv5Message message, ReadOnlySpan<byte> nonce)
@@ -117,15 +116,21 @@ public sealed class PacketCodec(
     }
 
     internal bool TryDecode(byte[] packet, out Packet decoded)
-        => TryDecode(packet.AsMemory(), _localNodeId, out decoded);
+        => TryDecode(packet.AsMemory(), _decodeMaskingAes, _decodeMaskingAesLock, out decoded);
 
     internal bool TryDecode(ReadOnlyMemory<byte> packet, out Packet decoded)
-        => TryDecode(packet, _localNodeId, out decoded);
+        => TryDecode(packet, _decodeMaskingAes, _decodeMaskingAesLock, out decoded);
 
     internal static bool TryDecode(byte[] packet, ReadOnlySpan<byte> localNodeId, out Packet decoded)
         => TryDecode(packet.AsMemory(), localNodeId, out decoded);
 
     internal static bool TryDecode(ReadOnlyMemory<byte> packetMemory, ReadOnlySpan<byte> localNodeId, out Packet decoded)
+    {
+        using Aes localNodeMaskingAes = CreateMaskingAes(localNodeId[..AesKeySize]);
+        return TryDecode(packetMemory, localNodeMaskingAes, null, out decoded);
+    }
+
+    private static bool TryDecode(ReadOnlyMemory<byte> packetMemory, Aes localNodeMaskingAes, object? aesLock, out Packet decoded)
     {
         decoded = default;
         ReadOnlySpan<byte> packet = packetMemory.Span;
@@ -136,7 +141,7 @@ public sealed class PacketCodec(
 
         ReadOnlySpan<byte> maskingIv = packet[..MaskingIvSize];
         Span<byte> staticHeader = stackalloc byte[StaticHeaderSize];
-        AesCtrTransform(localNodeId[..AesKeySize], maskingIv, packet.Slice(MaskingIvSize, StaticHeaderSize), staticHeader);
+        AesCtrTransform(localNodeMaskingAes, aesLock, maskingIv, packet.Slice(MaskingIvSize, StaticHeaderSize), staticHeader);
         ReadOnlySpan<byte> protocolId = ProtocolId;
         if (!staticHeader[..protocolId.Length].SequenceEqual(protocolId))
         {
@@ -158,7 +163,7 @@ public sealed class PacketCodec(
 
         try
         {
-            AesCtrTransform(localNodeId[..AesKeySize], maskingIv, packet.Slice(MaskingIvSize, headerSize), header);
+            AesCtrTransform(localNodeMaskingAes, aesLock, maskingIv, packet.Slice(MaskingIvSize, headerSize), header);
             if (!header[..protocolId.Length].SequenceEqual(protocolId))
             {
                 SafeArrayPool<byte>.Shared.Return(messageAdBuffer);
@@ -272,7 +277,7 @@ public sealed class PacketCodec(
         {
             try
             {
-                nodeRecord = NodeRecord.FromBytes(recordBytes.Span);
+                nodeRecord = NodeRecord.FromBytes(recordBytes.Span, _ecdsa);
             }
             catch (Exception)
             {
@@ -438,15 +443,30 @@ public sealed class PacketCodec(
 
     private static void AesCtrTransform(ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv, ReadOnlySpan<byte> input, Span<byte> output)
     {
+        using Aes aes = CreateMaskingAes(key);
+        AesCtrTransform(aes, null, iv, input, output);
+    }
+
+    private static void AesCtrTransform(Aes aes, object? aesLock, ReadOnlySpan<byte> iv, ReadOnlySpan<byte> input, Span<byte> output)
+    {
+        if (aesLock is null)
+        {
+            AesCtrTransform(aes, iv, input, output);
+            return;
+        }
+
+        lock (aesLock)
+        {
+            AesCtrTransform(aes, iv, input, output);
+        }
+    }
+
+    private static void AesCtrTransform(Aes aes, ReadOnlySpan<byte> iv, ReadOnlySpan<byte> input, Span<byte> output)
+    {
         if (output.Length < input.Length)
         {
             throw new ArgumentException("Output span must be at least as long as input.", nameof(output));
         }
-
-        using Aes aes = Aes.Create();
-        aes.Mode = CipherMode.ECB;
-        aes.Padding = PaddingMode.None;
-        aes.SetKey(key);
 
         Span<byte> counter = stackalloc byte[MaskingIvSize];
         iv.CopyTo(counter);
@@ -466,6 +486,15 @@ public sealed class PacketCodec(
             IncrementCounter(counter);
             offset += blockLength;
         }
+    }
+
+    private static Aes CreateMaskingAes(ReadOnlySpan<byte> key)
+    {
+        Aes aes = Aes.Create();
+        aes.Mode = CipherMode.ECB;
+        aes.Padding = PaddingMode.None;
+        aes.SetKey(key);
+        return aes;
     }
 
     private static void IncrementCounter(Span<byte> counter)

@@ -21,11 +21,4 @@ public class Ip6Entry(IPAddress ipAddress) : EnrContentEntry<IPAddress>(ipAddres
         Value.MapToIPv6().TryWriteBytes(bytes, out int _);
         rlpStream.Encode(bytes);
     }
-
-    protected override void EncodeValue(Span<byte> buffer, ref int position)
-    {
-        Span<byte> bytes = stackalloc byte[16];
-        Value.MapToIPv6().TryWriteBytes(bytes, out int _);
-        position = Rlp.Encode(buffer, position, bytes);
-    }
 }

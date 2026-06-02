@@ -584,7 +584,7 @@ public class KademliaAdapter(
         }
     }
 
-    private Distances GetLookupDistances(Node receiver, PublicKey target)
+    internal Distances GetLookupDistances(Node receiver, PublicKey target)
     {
         int distance = _distance.CalculateLogDistance(receiver.Id.Hash, target.Hash);
 

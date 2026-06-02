@@ -14,6 +14,8 @@ namespace Nethermind.Network.Enr;
 /// </summary>
 public class NodeRecord
 {
+    private static readonly IEcdsa DefaultEcdsa = new Ecdsa();
+
     private ulong _enrSequence;
 
     private string? _enrString;
@@ -129,14 +131,22 @@ public class NodeRecord
     }
 
     public static NodeRecord FromBytes(ReadOnlySpan<byte> bytes)
-        => FromBytes(bytes.ToArray());
+        => FromBytes(bytes, DefaultEcdsa);
 
     public static NodeRecord FromBytes(byte[] bytes)
+        => FromBytes(bytes.AsSpan(), DefaultEcdsa);
+
+    public static NodeRecord FromBytes(byte[] bytes, IEcdsa ecdsa)
+        => FromBytes(bytes.AsSpan(), ecdsa);
+
+    public static NodeRecord FromBytes(ReadOnlySpan<byte> bytes, IEcdsa ecdsa)
     {
-        NodeRecordSigner signer = new(new Ecdsa());
-        RlpStream stream = new(bytes);
-        NodeRecord nodeRecord = signer.Deserialize(stream);
-        if (stream.Position != stream.Length)
+        ArgumentNullException.ThrowIfNull(ecdsa);
+
+        NodeRecordSigner signer = new(ecdsa);
+        Rlp.ValueDecoderContext ctx = new(bytes);
+        NodeRecord nodeRecord = signer.Deserialize(ref ctx);
+        if (ctx.Position != bytes.Length)
         {
             throw new RlpException("Unexpected trailing bytes in ENR.");
         }
@@ -261,8 +271,8 @@ public class NodeRecord
 
         int rlpLength = GetRlpLengthWithSignature();
         byte[] bytes = GC.AllocateUninitializedArray<byte>(rlpLength);
-        int position = 0;
-        Encode(bytes, ref position);
+        RlpStream rlpStream = new(bytes);
+        Encode(rlpStream);
         return bytes;
     }
 
@@ -287,34 +297,6 @@ public class NodeRecord
         foreach ((_, EnrContentEntry contentEntry) in Entries)
         {
             contentEntry.Encode(rlpStream);
-        }
-    }
-
-    /// <summary>
-    /// Applies Rlp([signature, seq, k, v, ...]) into a span.
-    /// </summary>
-    /// <param name="buffer">The destination span.</param>
-    /// <param name="position">The current write position.</param>
-    public void Encode(Span<byte> buffer, ref int position)
-    {
-        if (OriginalRlp is not null)
-        {
-            OriginalRlp.CopyTo(buffer[position..]);
-            position += OriginalRlp.Length;
-            return;
-        }
-
-        RequireSignature();
-
-        int contentLength = GetContentLengthWithSignature();
-        position = Rlp.StartSequence(buffer, position, contentLength);
-        position = Rlp.Encode(buffer, position, Signature!.Bytes);
-        int sequenceLength = Rlp.LengthOf(EnrSequence);
-        Rlp.Encode(EnrSequence, buffer.Slice(position, sequenceLength)); // a different sequence here (not RLP sequence)
-        position += sequenceLength;
-        foreach ((_, EnrContentEntry contentEntry) in Entries)
-        {
-            contentEntry.Encode(buffer, ref position);
         }
     }
 

@@ -19,6 +19,4 @@ public class IdEntry : EnrContentEntry<string>
     protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
 
     protected override void EncodeValue(RlpStream rlpStream) => rlpStream.Encode("v4");
-
-    protected override void EncodeValue(Span<byte> buffer, ref int position) => position = Rlp.Encode(buffer, position, "v4"u8);
 }

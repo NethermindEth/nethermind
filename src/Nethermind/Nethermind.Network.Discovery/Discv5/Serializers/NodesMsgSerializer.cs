@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Collections;
+using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
@@ -10,6 +11,8 @@ namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
 internal sealed class NodesMsgSerializer : MsgSerializerBase
 {
+    private readonly IEcdsa _ecdsa = new Ecdsa();
+
     public int GetContentLength(NodesMsg msg)
         => GetRequestIdLength(msg.RequestId) + Rlp.LengthOf(msg.Total) + GetNodeRecordsLength(msg.Records);
 
@@ -52,7 +55,7 @@ internal sealed class NodesMsgSerializer : MsgSerializerBase
         }
     }
 
-    private static NodeRecord[] DecodeNodeRecords(ref Rlp.ValueDecoderContext ctx)
+    private NodeRecord[] DecodeNodeRecords(ref Rlp.ValueDecoderContext ctx)
     {
         int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(checkPosition);
@@ -60,7 +63,7 @@ internal sealed class NodesMsgSerializer : MsgSerializerBase
         for (int i = 0; i < count; i++)
         {
             ReadOnlySpan<byte> record = ctx.PeekNextItem();
-            records[i] = NodeRecord.FromBytes(record);
+            records[i] = NodeRecord.FromBytes(record, _ecdsa);
             ctx.SkipItem();
         }
 

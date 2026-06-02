@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Kademlia;
+using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Serialization.Rlp;
@@ -171,8 +171,8 @@ public class WireTests
         {
             Enr = peerC.NodeRecordProvider.Current.EnrString
         };
-        int[] requestedDistances = GetLookupDistances(nodeB, TestItem.PrivateKeyC.PublicKey);
-        for (int i = 0; i < requestedDistances.Length; i++)
+        using Distances requestedDistances = peerA.Adapter.GetLookupDistances(nodeB, TestItem.PrivateKeyC.PublicKey);
+        for (int i = 0; i < requestedDistances.Count; i++)
         {
             peerB.Kademlia.GetAllAtDistance(requestedDistances[i]).Returns([]);
         }
@@ -255,24 +255,6 @@ public class WireTests
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             to.Handler.ChannelRead(context, new DatagramPacket(Unpooled.WrappedBuffer(data), from.Endpoint, to.Endpoint));
         }
-    }
-
-    private static int[] GetLookupDistances(Node receiver, PublicKey target)
-    {
-        int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(receiver.Id.Hash, target.Hash);
-
-        List<int> distances = [distance];
-        if (distance > 0)
-        {
-            distances.Add(distance - 1);
-        }
-
-        if (distance < Hash256KademliaDistance.Instance.MaxDistance)
-        {
-            distances.Add(distance + 1);
-        }
-
-        return [.. distances];
     }
 
     private sealed record TestPeer(
