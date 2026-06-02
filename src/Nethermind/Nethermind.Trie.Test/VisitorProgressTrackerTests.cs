@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -15,7 +14,7 @@ public class VisitorProgressTrackerTests
     public void OnNodeVisited_TracksProgress_AtLevel0()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 1000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 1000);
 
         // Act - visit leaf paths with single nibble, each covers 16^3 = 4096 level-3 nodes
         // Visit half the keyspace (8 out of 16) = 8 * 4096 = 32768 out of 65536 = 50%
@@ -27,14 +26,14 @@ public class VisitorProgressTrackerTests
 
         // Assert - should be ~50% progress
         double progress = tracker.GetProgress();
-        progress.Should().BeApproximately(0.5, 0.01);
+        Assert.That(progress, Is.EqualTo(0.5).Within(0.01));
     }
 
     [Test]
     public void OnNodeVisited_UsesDeepestLevelWithCoverage()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
 
         // Act - visit leaf nodes at 2-nibble depth
         // Each leaf at depth 2 covers 16^(3-2+1) = 16^2 = 256 level-3 nodes
@@ -47,14 +46,14 @@ public class VisitorProgressTrackerTests
 
         // Assert - should be ~25% progress
         double progress = tracker.GetProgress();
-        progress.Should().BeApproximately(0.25, 0.01);
+        Assert.That(progress, Is.EqualTo(0.25).Within(0.01));
     }
 
     [Test]
     public void OnNodeVisited_IsThreadSafe()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
         const int threadCount = 8;
         const int nodesPerThread = 1000;
 
@@ -73,14 +72,14 @@ public class VisitorProgressTrackerTests
         });
 
         // Assert - node count should match
-        tracker.NodeCount.Should().Be(threadCount * nodesPerThread);
+        Assert.That(tracker.NodeCount, Is.EqualTo(threadCount * nodesPerThread));
     }
 
     [Test]
     public void OnNodeVisited_ProgressIncreases_WithinLevel()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
 
         // Act - visit leaf nodes with single nibble paths
         // Each covers 16^3 = 4096 level-3 nodes
@@ -91,19 +90,19 @@ public class VisitorProgressTrackerTests
             tracker.OnNodeVisited(path, isStorage: false, isLeaf: true);
 
             double progress = tracker.GetProgress();
-            progress.Should().BeGreaterThanOrEqualTo(lastProgress);
+            Assert.That(progress, Is.GreaterThanOrEqualTo(lastProgress));
             lastProgress = progress;
         }
 
         // Assert - after visiting all 16 single-nibble leaves, progress should be 100%
-        tracker.GetProgress().Should().Be(1.0);
+        Assert.That(tracker.GetProgress(), Is.EqualTo(1.0));
     }
 
     [Test]
     public void Finish_SetsProgressTo100()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
         TreePath path = TreePath.FromNibble(new byte[] { 0, 0, 0, 0 });
         tracker.OnNodeVisited(path);
 
@@ -112,14 +111,14 @@ public class VisitorProgressTrackerTests
 
         // Assert - GetProgress still returns actual progress, but logger shows 100%
         // (We can't easily test logger output, so just verify Finish doesn't throw)
-        tracker.NodeCount.Should().Be(1);
+        Assert.That(tracker.NodeCount, Is.EqualTo(1));
     }
 
     [Test]
     public void OnNodeVisited_HandlesShortPaths()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
 
         // Act - visit paths with fewer than 4 nibbles
         TreePath path1 = TreePath.FromNibble(new byte[] { 0 });
@@ -131,21 +130,21 @@ public class VisitorProgressTrackerTests
         tracker.OnNodeVisited(path3);
 
         // Assert - should not throw and should track nodes
-        tracker.NodeCount.Should().Be(3);
+        Assert.That(tracker.NodeCount, Is.EqualTo(3));
     }
 
     [Test]
     public void OnNodeVisited_HandlesEmptyPath()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
 
         // Act
         TreePath path = TreePath.Empty;
         tracker.OnNodeVisited(path);
 
         // Assert
-        tracker.NodeCount.Should().Be(1);
-        tracker.GetProgress().Should().Be(0); // Empty path doesn't contribute to progress
+        Assert.That(tracker.NodeCount, Is.EqualTo(1));
+        Assert.That(tracker.GetProgress(), Is.EqualTo(0)); // Empty path doesn't contribute to progress
     }
 }

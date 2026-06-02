@@ -13,22 +13,20 @@ using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
 
-public class XdcBlockHeader : BlockHeader, IHashResolver
+public class XdcBlockHeader(
+    Hash256 parentHash,
+    Hash256 unclesHash,
+    Address beneficiary,
+    in UInt256 difficulty,
+    long number,
+    long gasLimit,
+    ulong timestamp,
+    byte[] extraData,
+    bool isSelfMined = false
+) : BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData), IHashResolver
 {
     private static readonly XdcHeaderDecoder _headerDecoder = new();
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
-    public XdcBlockHeader(
-        Hash256 parentHash,
-        Hash256 unclesHash,
-        Address beneficiary,
-        in UInt256 difficulty,
-        long number,
-        long gasLimit,
-        ulong timestamp,
-        byte[] extraData)
-        : base(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
-    {
-    }
 
     public byte[]? Validators { get; set; }
 
@@ -79,7 +77,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             //Check V2 consensus version in ExtraData field.
             if (ExtraData.Length < 3 || ExtraData[0] != XdcConstants.ConsensusVersion)
                 return null;
-            Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(ExtraData.AsSpan(1));
+            Rlp.ValueDecoderContext valueDecoderContext = new(ExtraData.AsSpan(1));
             _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);
             return _extraFieldsV2;
         }
@@ -90,16 +88,38 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         }
     }
 
+    public bool IsSelfMined { get; } = isSelfMined;
+
     public virtual ValueHash256 CalculateHash()
     {
-        KeccakRlpStream rlpStream = new KeccakRlpStream();
+        KeccakRlpStream rlpStream = new();
         _headerDecoder.Encode(rlpStream, this);
         return rlpStream.GetHash();
     }
 
+    /// <inheritdoc />
+    public override BlockHeader CreateSimulatedChild(ulong timestamp)
+    {
+        Hash256? requestsHash = RequestsHash;
+        return new XdcBlockHeader(
+            Hash!,
+            Keccak.OfAnEmptySequenceRlp,
+            Beneficiary!,
+            UInt256.Zero,
+            Number + 1,
+            GasLimit,
+            timestamp,
+            [],
+            IsSelfMined)
+        {
+            MixHash = Hash256.Zero,
+            RequestsHash = requestsHash,
+        };
+    }
+
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)
     {
-        var x = new XdcBlockHeader(
+        XdcBlockHeader x = new(
             src.ParentHash,
             src.UnclesHash,
             src.Beneficiary,

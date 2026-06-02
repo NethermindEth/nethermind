@@ -132,7 +132,7 @@ public partial class BlockProducerBaseTests
                     IsServiceTransaction = serviceTransaction
                 };
 
-                var (_, result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
+                (Core.Crypto.Hash256 _, AcceptTxResult? result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
                 return this;
             }
@@ -221,10 +221,7 @@ public partial class BlockProducerBaseTests
                     await _antecedent;
             }
 
-            public async Task Finish()
-            {
-                await ExecuteAntecedentIfNeeded();
-            }
+            public async Task Finish() => await ExecuteAntecedentIfNeeded();
 
             private async Task<byte[]> GetContractBytecode(string contract)
             {
@@ -239,10 +236,7 @@ public partial class BlockProducerBaseTests
             }
         }
 
-        public static ScenarioBuilder GoesLikeThis()
-        {
-            return new();
-        }
+        public static ScenarioBuilder GoesLikeThis() => new();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

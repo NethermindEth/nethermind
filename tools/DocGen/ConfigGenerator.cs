@@ -14,27 +14,27 @@ internal static class ConfigGenerator
     {
         path = Path.Join(path, "docs", "fundamentals");
 
-        var startMark = "<!--[start autogen]-->";
-        var endMark = "<!--[end autogen]-->";
-        var excluded = Enumerable.Empty<string>();
-        var types = Directory
+        string startMark = "<!--[start autogen]-->";
+        string endMark = "<!--[end autogen]-->";
+        IEnumerable<string> excluded = Enumerable.Empty<string>();
+        IOrderedEnumerable<Type> types = Directory
             .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
             .SelectMany(a => Assembly.LoadFrom(a).GetExportedTypes())
             .Where(t => t.IsInterface && typeof(IConfig).IsAssignableFrom(t) &&
                 !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => t.Name);
-        var fileName = Path.Join(path, "configuration.md");
-        var tempFileName = Path.Join(path, "~configuration.md");
+        string fileName = Path.Join(path, "configuration.md");
+        string tempFileName = Path.Join(path, "~configuration.md");
 
         // Delete the temp file if it exists
         File.Delete(tempFileName);
 
-        using var readStream = new StreamReader(File.OpenRead(fileName));
-        using var writeStream = new StreamWriter(File.OpenWrite(tempFileName));
+        using StreamReader readStream = new(File.OpenRead(fileName));
+        using StreamWriter writeStream = new(File.OpenWrite(tempFileName));
 
         writeStream.NewLine = "\n";
 
-        var line = string.Empty;
+        string? line = string.Empty;
 
         do
         {
@@ -46,10 +46,10 @@ internal static class ConfigGenerator
 
         writeStream.WriteLine();
 
-        foreach (var type in types)
+        foreach (Type type in types)
             WriteMarkdown(writeStream, type);
 
-        var skip = true;
+        bool skip = true;
 
         for (line = readStream.ReadLine(); line is not null; line = readStream.ReadLine())
         {
@@ -74,12 +74,12 @@ internal static class ConfigGenerator
 
     private static void WriteMarkdown(StreamWriter file, Type configType)
     {
-        var categoryAttr = configType.GetCustomAttribute<ConfigCategoryAttribute>();
+        ConfigCategoryAttribute? categoryAttr = configType.GetCustomAttribute<ConfigCategoryAttribute>();
 
         if (categoryAttr?.HiddenFromDocs ?? false)
             return;
 
-        var props = configType.GetProperties(BindingFlags.Instance | BindingFlags.Public).OrderBy(p => p.Name);
+        IOrderedEnumerable<PropertyInfo> props = configType.GetProperties(BindingFlags.Instance | BindingFlags.Public).OrderBy(p => p.Name);
 
         if (!props.Any())
             return;
@@ -87,22 +87,22 @@ internal static class ConfigGenerator
         static (string, string) GetValue(PropertyInfo prop) =>
             prop.PropertyType == typeof(bool) ? ("true|false", "[true|false]") : ("<value>", "<value>");
 
-        var moduleName = configType.Name[1..].Replace("Config", null);
+        string moduleName = configType.Name[1..].Replace("Config", null);
 
         file.WriteLine($"""
             ### {moduleName}
 
             """);
 
-        foreach (var prop in props)
+        foreach (PropertyInfo prop in props)
         {
-            var configAttr = prop.GetCustomAttribute<ConfigItemAttribute>();
+            ConfigItemAttribute? configAttr = prop.GetCustomAttribute<ConfigItemAttribute>();
 
             if (configAttr?.HiddenFromDocs ?? true)
                 continue;
 
-            var description = configAttr.Description.Replace("\n", "\n  ").TrimEnd(' ');
-            var cliAlias = string.IsNullOrWhiteSpace(configAttr.CliOptionAlias)
+            string description = configAttr!.Description.Replace("\n", "\n  ").TrimEnd(' ');
+            string cliAlias = string.IsNullOrWhiteSpace(configAttr.CliOptionAlias)
                 ? $"{moduleName}-{prop.Name}"
                 : configAttr.CliOptionAlias;
             (string value, string cliValue) = GetValue(prop);
@@ -136,7 +136,7 @@ internal static class ConfigGenerator
                   {{description}}
                 """);
 
-            var startsFromNewLine = WriteAllowedValues(file, prop.PropertyType) || description.EndsWith('\n');
+            bool startsFromNewLine = WriteAllowedValues(file, prop.PropertyType) || description.EndsWith('\n');
 
             WriteDefaultValue(file, configAttr, startsFromNewLine);
 
@@ -165,12 +165,12 @@ internal static class ConfigGenerator
 
                 """);
 
-            var fields = type.GetFields(BindingFlags.Static | BindingFlags.Public);
+            FieldInfo[] fields = type.GetFields(BindingFlags.Static | BindingFlags.Public);
 
-            foreach (var field in fields)
+            foreach (FieldInfo field in fields)
             {
-                var attr = field.GetCustomAttribute<DescriptionAttribute>();
-                var description = string.IsNullOrEmpty(attr?.Description) ? null : $": {attr.Description}";
+                DescriptionAttribute? attr = field.GetCustomAttribute<DescriptionAttribute>();
+                string? description = string.IsNullOrEmpty(attr?.Description) ? null : $": {attr.Description}";
 
                 file.WriteLine($"    - `{field.Name}`{description}");
             }

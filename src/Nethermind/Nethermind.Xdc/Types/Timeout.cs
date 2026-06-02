@@ -11,14 +11,14 @@ namespace Nethermind.Xdc.Types;
 
 public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool isMyVote = false) : RlpHashEqualityBase, IXdcPoolItem
 {
-    private static readonly TimeoutDecoder _decoder = new();
+    private static readonly TimeoutDecoder _timeoutDecoder = new();
     public ulong Round { get; set; } = round;
     public Signature? Signature { get; set; } = signature;
     public ulong GapNumber { get; set; } = gapNumber;
     public Address? Signer { get; set; }
     public bool IsMyVote { get; } = isMyVote;
     public override string ToString() => $"{Round}:{GapNumber}";
-    public (ulong Round, Hash256 hash) PoolKey() => (Round, Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
+    public (ulong Round, Hash256 hash) PoolKey() => (Round, Keccak.Compute(_timeoutDecoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
     protected override void Encode(KeccakRlpStream stream) =>
-        _decoder.Encode(stream, this, RlpBehaviors.None);
+        _timeoutDecoder.Encode(stream, this, RlpBehaviors.None);
 }

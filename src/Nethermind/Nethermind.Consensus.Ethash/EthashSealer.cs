@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Ethash
 
         internal EthashSealer(IEthash? ethash, ISigner? signer, ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<EthashSealer>() ?? throw new ArgumentNullException(nameof(logManager));
             _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }
@@ -39,10 +39,7 @@ namespace Nethermind.Consensus.Ethash
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Hash256 parentHash)
-        {
-            return true;
-        }
+        public bool CanSeal(long blockNumber, Hash256 parentHash) => true;
 
         public Address Address => _signer.Address;
 

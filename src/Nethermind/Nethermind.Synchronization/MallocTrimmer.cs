@@ -33,7 +33,7 @@ public class MallocTrimmer
     )
     {
         _mallocHelper = mallocHelper ?? new MallocHelper();
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<MallocTrimmer>();
 
         if (interval == TimeSpan.Zero) return;
 

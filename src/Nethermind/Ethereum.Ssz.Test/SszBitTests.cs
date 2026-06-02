@@ -6,7 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
 using NUnit.Framework;
 using SszEncoder = Nethermind.Serialization.Ssz.Ssz;
 
@@ -28,7 +28,7 @@ public class SszBitTests
 
         int byteLength = (bitLength + 7) / 8;
         byte[] reEncoded = new byte[byteLength];
-        SszEncoder.EncodeVector(reEncoded, decoded);
+        SszEncoder.Encode(reEncoded, decoded);
         Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded bitvector does not match original SSZ bytes");
 
         Merkle.Merkleize(out UInt256 actualRoot, (ReadOnlySpan<byte>)ssz);
@@ -55,12 +55,10 @@ public class SszBitTests
 
         int encodedByteLength = (decoded.Length + 8) / 8;
         byte[] reEncoded = new byte[encodedByteLength];
-        SszEncoder.EncodeList(reEncoded, decoded);
+        SszEncoder.Encode(reEncoded, decoded, maxBitLength);
         Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded bitlist does not match original SSZ bytes");
 
-        uint chunkLimit = (uint)((maxBitLength + 255) / 256);
-        byte[] sszCopy = (byte[])ssz.Clone();
-        Merkle.MerkleizeBits(out UInt256 actualRoot, sszCopy, chunkLimit);
+        Merkle.Merkleize(out UInt256 actualRoot, decoded, (ulong)maxBitLength);
         Assert.That(actualRoot, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
     }
 
@@ -112,25 +110,13 @@ public class SszBitTests
     // Structure: handler/valid/{case_name}/ and handler/invalid/{case_name}/
     // Case names: "bitvec_{N}_{descriptor}" for bitvectors, "bitlist_{N}_{descriptor}" for bitlists
 
-    private static IEnumerable<TestCaseData> BitvectorValidCases()
-    {
-        return GetBitCases("bitvector", "valid", "bitvec_");
-    }
+    private static IEnumerable<TestCaseData> BitvectorValidCases() => GetBitCases("bitvector", "valid", "bitvec_");
 
-    private static IEnumerable<TestCaseData> BitvectorInvalidCases()
-    {
-        return GetBitCases("bitvector", "invalid", "bitvec_");
-    }
+    private static IEnumerable<TestCaseData> BitvectorInvalidCases() => GetBitCases("bitvector", "invalid", "bitvec_");
 
-    private static IEnumerable<TestCaseData> BitlistValidCases()
-    {
-        return GetBitCases("bitlist", "valid", "bitlist_");
-    }
+    private static IEnumerable<TestCaseData> BitlistValidCases() => GetBitCases("bitlist", "valid", "bitlist_");
 
-    private static IEnumerable<TestCaseData> BitlistInvalidCases()
-    {
-        return GetBitCases("bitlist", "invalid", "bitlist_");
-    }
+    private static IEnumerable<TestCaseData> BitlistInvalidCases() => GetBitCases("bitlist", "invalid", "bitlist_");
 
     private static IEnumerable<TestCaseData> GetBitCases(string handler, string validity, string casePrefix)
     {

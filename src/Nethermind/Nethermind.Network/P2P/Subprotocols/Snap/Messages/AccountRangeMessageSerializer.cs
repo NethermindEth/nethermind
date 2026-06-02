@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -31,10 +30,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
             else
             {
+                ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
                 stream.StartSequence(pwasLength);
-                for (int i = 0; i < message.PathsWithAccounts.Count; i++)
+                for (int i = 0; i < pathsWithAccounts.Length; i++)
                 {
-                    PathWithAccount pwa = message.PathsWithAccounts[i];
+                    PathWithAccount pwa = pathsWithAccounts[i];
 
                     int accountContentLength = _decoder.GetContentLength(pwa.Account);
                     int pwaLength = Rlp.LengthOf(pwa.Path) + Rlp.LengthOfSequence(accountContentLength);
@@ -50,31 +50,45 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startPos = ctx.Position;
-
-            ctx.ReadSequenceLength();
-
             AccountRangeMessage message = new();
-            message.RequestId = ctx.DecodeLong();
+            ArrayPoolList<PathWithAccount>? pathsWithAccounts = null;
 
-            int pwasCheck = ctx.ReadSequenceLength() + ctx.Position;
-            int count = ctx.PeekNumberOfItemsRemaining(pwasCheck);
-            ctx.GuardLimit(count, SnapMessageLimits.AccountRangeEntriesRlpLimit);
-            ArrayPoolList<PathWithAccount> pathsWithAccounts = new(count);
-            for (int i = 0; i < count; i++)
+            try
             {
                 ctx.ReadSequenceLength();
-                pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+                message.RequestId = ctx.DecodeLong();
+
+                int pwasCheck = ctx.ReadSequenceLength() + ctx.Position;
+                int count = ctx.PeekNumberOfItemsRemaining(pwasCheck);
+                ctx.GuardLimit(count, SnapMessageLimits.AccountRangeEntriesRlpLimit);
+                pathsWithAccounts = new ArrayPoolList<PathWithAccount>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    int length = ctx.ReadSequenceLength();
+                    int checkPosition = ctx.Position + length;
+                    pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+                    ctx.Check(checkPosition);
+                }
+
+                message.PathsWithAccounts = pathsWithAccounts;
+                pathsWithAccounts = null;
+                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.AccountRangeProofsRlpLimit);
+                memoryOwner = null;
+
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+
+                return message;
             }
-
-            message.PathsWithAccounts = pathsWithAccounts;
-            message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
-
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
-
-            return message;
+            catch
+            {
+                pathsWithAccounts?.Dispose();
+                message.Dispose();
+                memoryOwner?.Dispose();
+                throw;
+            }
         }
 
         private (int contentLength, int pwasLength) GetLength(AccountRangeMessage message)
@@ -84,9 +98,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int pwasLength = 0;
             if (message.PathsWithAccounts is not null && message.PathsWithAccounts.Count > 0)
             {
-                for (int i = 0; i < message.PathsWithAccounts.Count; i++)
+                ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
+                for (int i = 0; i < pathsWithAccounts.Length; i++)
                 {
-                    PathWithAccount pwa = message.PathsWithAccounts[i];
+                    PathWithAccount pwa = pathsWithAccounts[i];
                     int itemLength = Rlp.LengthOf(pwa.Path);
                     itemLength += _decoder.GetLength(pwa.Account);
 

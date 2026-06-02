@@ -222,20 +222,14 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="stackItem"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportStackPush(byte stackItem)
-    {
-        ReportStackPush(new[] { stackItem });
-    }
+    void ReportStackPush(byte stackItem) => ReportStackPush(new[] { stackItem });
 
     /// <summary>
     ///
     /// </summary>
     /// <param name="stackItem"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportStackPush(in ZeroPaddedSpan stackItem)
-    {
-        ReportStackPush(stackItem.ToArray().AsSpan());
-    }
+    void ReportStackPush(in ZeroPaddedSpan stackItem) => ReportStackPush(stackItem.ToArray().AsSpan());
 
     /// <summary>
     ///
@@ -279,10 +273,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="offset"></param>
     /// <param name="data"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportMemoryChange(UInt256 offset, byte data)
-    {
-        ReportMemoryChange(offset, new[] { data });
-    }
+    void ReportMemoryChange(UInt256 offset, byte data) => ReportMemoryChange(offset, new[] { data });
 
     /// <summary>
     ///
@@ -290,10 +281,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="offset"></param>
     /// <param name="data"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data)
-    {
-        ReportMemoryChange(offset, data.ToArray());
-    }
+    void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data) => ReportMemoryChange(offset, data.ToArray());
 
     /// <summary>
     ///

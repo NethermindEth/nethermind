@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RLP;
 
-internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
+internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
 {
     private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
     private readonly TimeoutCertificateDecoder _timeoutCertificateDecoder = new();
@@ -34,7 +33,7 @@ internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
         return new SyncInfo(highestQuorumCert, highestTimeoutCert);
     }
 
-    public Rlp Encode(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
@@ -58,10 +57,7 @@ internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
         _timeoutCertificateDecoder.Encode(stream, item.HighestTimeoutCert, rlpBehaviors);
     }
 
-    public override int GetLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public int GetContentLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

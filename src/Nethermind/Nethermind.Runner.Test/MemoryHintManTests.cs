@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
@@ -43,16 +42,13 @@ namespace Nethermind.Runner.Test
             _memoryHintMan = new MemoryHintMan(LimboLogs.Instance, _mallocHelper);
         }
 
-        private void SetMemoryAllowances(uint cpuCount)
-        {
-            _memoryHintMan.SetMemoryAllowances(
+        private void SetMemoryAllowances(uint cpuCount) => _memoryHintMan.SetMemoryAllowances(
                 _dbConfig,
                 _initConfig,
                 _networkConfig,
                 _syncConfig,
                 _txPoolConfig,
                 cpuCount);
-        }
 
         [TestCase(4 * GB, 2u, 4u, 11)]
         [TestCase(4 * GB, 4u, 8u, 11)]
@@ -71,7 +67,7 @@ namespace Nethermind.Runner.Test
             _initConfig.MemoryHint = (long)memoryHint;
             _networkConfig.MaxNettyArenaCount = maxArenaCount;
             SetMemoryAllowances(cpuCount);
-            _networkConfig.NettyArenaOrder.Should().Be(expectedArenaOrder);
+            Assert.That(_networkConfig.NettyArenaOrder, Is.EqualTo(expectedArenaOrder));
         }
 
         [Test]
@@ -91,11 +87,11 @@ namespace Nethermind.Runner.Test
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(cpuCount);
 
-            SyncConfig syncConfig = new SyncConfig();
+            SyncConfig syncConfig = new();
             syncConfig.FastSync = fastSync;
 
-            _memoryHintMan.DbMemory.Should().BeGreaterThan((long)((memoryHint - 100.MB) * 0.5));
-            _memoryHintMan.DbMemory.Should().BeLessThan((long)((memoryHint - 100.MB) * 0.9));
+            Assert.That(_memoryHintMan.DbMemory, Is.GreaterThan((long)((memoryHint - 100.MB) * 0.5)));
+            Assert.That(_memoryHintMan.DbMemory, Is.LessThan((long)((memoryHint - 100.MB) * 0.9)));
         }
 
         [TestCase(100 * GB, 16u, -1)]
@@ -108,7 +104,7 @@ namespace Nethermind.Runner.Test
             int manuallyConfiguredArenaOrder = INetworkConfig.DefaultNettyArenaOrder + differenceFromDefault;
             _networkConfig.NettyArenaOrder = manuallyConfiguredArenaOrder;
             SetMemoryAllowances(cpuCount);
-            _networkConfig.NettyArenaOrder.Should().Be(manuallyConfiguredArenaOrder);
+            Assert.That(_networkConfig.NettyArenaOrder, Is.EqualTo(manuallyConfiguredArenaOrder));
         }
 
         [TestCase(4 * GB, 0u)]
@@ -124,7 +120,7 @@ namespace Nethermind.Runner.Test
         {
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(1);
-            _dbConfig.StateDbRowCacheSize.Should().BeGreaterThan(0);
+            Assert.That(_dbConfig.StateDbRowCacheSize, Is.GreaterThan(0));
         }
 
         [TestCase(true)]

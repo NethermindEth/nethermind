@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -28,6 +29,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IWorldStateManager worldStateManager,
         CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
         IBlockTree blockTree,
+        IProcessExitSource processExitSource,
         ILogManager logManager)
     {
 
@@ -36,6 +38,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         {
             worldState = new WorldStateScopeOperationLogger(worldStateManager.GlobalWorldState, logManager);
         }
+
+        worldState = new WorldStateMetricsScopeProvider(worldState, static time => Blockchain.Metrics.StateMerkleizationTime = time);
 
         ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
@@ -71,13 +75,20 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
 
         _components = innerScope.Resolve<Components>();
 
+        if (initConfig.ExitOnInvalidBlock)
+        {
+            ILogger exitLogger = logManager.GetClassLogger<MainProcessingContext>();
+            _components.BlockchainProcessor.InvalidBlock += (_, _) =>
+            {
+                if (exitLogger.IsInfo) exitLogger.Info("Exiting on invalid block");
+                processExitSource.Exit(ExitCodes.InvalidBlock);
+            };
+        }
+
         LifetimeScope = innerScope;
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        await LifetimeScope.DisposeAsync();
-    }
+    public async ValueTask DisposeAsync() => await LifetimeScope.DisposeAsync();
 
     private readonly Components _components;
     public ILifetimeScope LifetimeScope { get; init; }
@@ -89,10 +100,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     public ITransactionProcessor TransactionProcessor => _components.TransactionProcessor;
     public IGenesisLoader GenesisLoader => _components.GenesisLoader;
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
-    public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs)
-    {
-        TransactionProcessed?.Invoke(this, txProcessedEventArgs);
-    }
+    public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs) => TransactionProcessed?.Invoke(this, txProcessedEventArgs);
 
     private record Components(
         ITransactionProcessor TransactionProcessor,

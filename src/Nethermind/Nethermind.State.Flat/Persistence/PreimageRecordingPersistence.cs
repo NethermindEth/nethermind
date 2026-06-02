@@ -14,18 +14,12 @@ namespace Nethermind.State.Flat.Persistence;
 /// This is useful for external tooling that needs to look up the original address/slot from a hash.
 /// When a preimage database is available, raw operations are translated to non-raw operations.
 /// </summary>
-public class PreimageRecordingPersistence : IPersistence
+public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : IPersistence
 {
     private const int PreimageLookupSize = 12;
 
-    private readonly IPersistence _inner;
-    private readonly IDb _preimageDb;
-
-    public PreimageRecordingPersistence(IPersistence inner, IDb preimageDb)
-    {
-        _inner = inner;
-        _preimageDb = preimageDb;
-    }
+    private readonly IPersistence _inner = inner;
+    private readonly IDb _preimageDb = preimageDb;
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => _inner.CreateReader(flags);
 
@@ -67,9 +61,9 @@ public class PreimageRecordingPersistence : IPersistence
             inner.SetStorage(addr, slot, value);
         }
 
-        public void SetStateTrieNode(in TreePath path, TrieNode tnValue) => inner.SetStateTrieNode(path, tnValue);
+        public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
 
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) => inner.SetStorageTrieNode(address, path, tnValue);
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
 
         public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value)
         {

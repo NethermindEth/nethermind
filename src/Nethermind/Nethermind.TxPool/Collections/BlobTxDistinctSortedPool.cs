@@ -132,12 +132,12 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     {
         if (blobTx.BlobVersionedHashes?.Length > 0)
         {
-            foreach (var blobVersionedHash in blobTx.BlobVersionedHashes)
+            foreach (byte[]? blobVersionedHash in blobTx.BlobVersionedHashes)
             {
                 if (blobVersionedHash?.Length == Eip4844Constants.BytesPerBlobVersionedHash)
                 {
                     ref List<Hash256>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(BlobIndex, blobVersionedHash, out _);
-                    list ??= new List<Hash256>();
+                    list ??= [];
                     list.Add(blobTx.Hash!);
                 }
             }
@@ -162,7 +162,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     {
         if (blobTx.BlobVersionedHashes?.Length > 0)
         {
-            foreach (var blobVersionedHash in blobTx.BlobVersionedHashes)
+            foreach (byte[]? blobVersionedHash in blobTx.BlobVersionedHashes)
             {
                 if (blobVersionedHash is not null && BlobIndex.TryGetValue(blobVersionedHash, out List<Hash256>? txHashes))
                 {

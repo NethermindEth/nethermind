@@ -26,7 +26,7 @@ public class SnappyTests
 
         public byte[] TestDecode(byte[] input)
         {
-            List<object> result = new();
+            List<object> result = [];
             Decode(null, new Packet(input), result);
             return ((Packet)result[0]).Data;
         }
@@ -46,10 +46,7 @@ public class SnappyTests
             return result.ReadAllBytesAsArray();
         }
 
-        public void TestEncode(IByteBuffer input, IByteBuffer output)
-        {
-            Encode(null, input, output);
-        }
+        public void TestEncode(IByteBuffer input, IByteBuffer output) => Encode(null, input, output);
     }
 
     [TestCase("block.go.snappy")]

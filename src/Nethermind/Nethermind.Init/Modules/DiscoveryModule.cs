@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -12,9 +12,7 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv5;
-using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
@@ -47,13 +45,13 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             // This load from file.
             .AddSingleton<NodesLoader>()
 
-            .AddSingleton<ITrustedNodesManager, ILogManager>(logManager =>
+            .AddSingleton<ITrustedNodesManager, ILogManager>((logManager) =>
                 new TrustedNodesManager(initConfig.TrustedNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
 
             .Bind<INodeSource, IStaticNodesManager>()
 
             // Used by NodesLoader, and ProtocolsManager which add entry on sync peer connected
-            .AddNetworkStorage(DbNames.PeersDb, "peers")
+            .AddNetworkStorage(DbNames.PeersDb, DbNames.PeersDb)
             .Bind<INodeSource, NodesLoader>()
             .AddComposite<INodeSource, CompositeNodeSource>()
 
@@ -104,16 +102,8 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
                 .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
 
-                .AddNetworkStorage(DbNames.DiscoveryNodes, "discoveryNodes")
-                .AddNetworkStorage(DbNames.DiscoveryV5Nodes, "discoveryV5Nodes")
-
-                .AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>()
-                .AddSingleton<INodeTable, NodeTable>()
-                .AddSingleton<IEvictionManager, EvictionManager>()
-                .AddSingleton<INodeLifecycleManagerFactory, NodeLifecycleManagerFactory>()
-                .AddSingleton<IDiscoveryManager, DiscoveryManager>()
-                .AddSingleton<INodesLocator, NodesLocator>()
-                .AddSingleton<DiscoveryPersistenceManager>()
+                .AddNetworkStorage(DbNames.DiscoveryNodes, DbNames.DiscoveryNodes)
+                .AddNetworkStorage(DbNames.DiscoveryV5Nodes, DbNames.DiscoveryV5Nodes)
 
                 ;
 

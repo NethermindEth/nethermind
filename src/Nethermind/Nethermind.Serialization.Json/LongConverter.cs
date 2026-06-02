@@ -75,17 +75,11 @@ public class LongConverter : JsonConverter<long>
     public override long Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        return ReadCore(ref reader);
-    }
+        JsonSerializerOptions options) => ReadCore(ref reader);
 
     [SkipLocalsInit]
     public override void Write(
         Utf8JsonWriter writer,
         long value,
-        JsonSerializerOptions options)
-    {
-        NumericConverterHelper.Write(writer, value);
-    }
+        JsonSerializerOptions options) => NumericConverterHelper.Write(writer, value);
 }

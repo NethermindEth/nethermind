@@ -14,8 +14,5 @@ namespace Nethermind.Init.Steps;
 )]
 public class EraStep(EraCliRunner eraCliRunner) : IStep
 {
-    public async Task Execute(CancellationToken cancellationToken)
-    {
-        await eraCliRunner.Run(cancellationToken);
-    }
+    public async Task Execute(CancellationToken cancellationToken) => await eraCliRunner.Run(cancellationToken);
 }

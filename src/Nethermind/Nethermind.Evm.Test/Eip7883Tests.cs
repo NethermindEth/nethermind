@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
@@ -22,7 +21,7 @@ public class Eip7883Tests
 
         IReleaseSpec? spec = test.FusakaEnabled ? Osaka.Instance : Prague.Instance;
         long gas = ModExpPrecompile.Instance.DataGasCost(inputData, spec);
-        gas.Should().Be(test.Result);
+        Assert.That(gas, Is.EqualTo(test.Result));
     }
 
     public class Eip7883TestCase
@@ -33,15 +32,12 @@ public class Eip7883Tests
         public UInt256 ExpLength { get; set; }
         public UInt256 ModulusLength { get; set; }
         public long Result { get; set; }
-        public override string ToString()
-        {
-            return $"Lp: {Lp}, " +
+        public override string ToString() => $"Lp: {Lp}, " +
                    $"FusakaEnabled: {FusakaEnabled}, " +
                    $"BaseLength: {BaseLength}, " +
                    $"ExpLength: {ExpLength}, " +
                    $"ModulusLength: {ModulusLength}, " +
                    $"Result: {Result}";
-        }
     }
 
     private static IEnumerable<Eip7883TestCase> Eip7883TestCases()
@@ -113,7 +109,7 @@ public class Eip7883Tests
 
     private static ReadOnlyMemory<byte> PrepareInput(UInt256 baseLength, UInt256 expLength, UInt256 modulusLength)
     {
-        var inputBytes = new byte[(int)(96 + baseLength + expLength + modulusLength)];
+        byte[] inputBytes = new byte[(int)(96 + baseLength + expLength + modulusLength)];
 
         Array.Copy(baseLength.ToBigEndian(), 0, inputBytes, 0, 32);
         Array.Copy(expLength.ToBigEndian(), 0, inputBytes, 32, 32);

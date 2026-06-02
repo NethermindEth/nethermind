@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Ethereum.Test.Base;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
@@ -29,9 +28,48 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             }
         }
 
-        IEnumerable<string> testDirs = !string.IsNullOrEmpty(testsDir)
-            ? Directory.EnumerateDirectories(Path.Combine(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
+        IEnumerable<string> directories = !string.IsNullOrEmpty(testsDir)
+            ? Directory.EnumerateDirectories(ResolveTestsDirectory(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
             : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
-        return testDirs.SelectMany(td => TestLoadStrategy.LoadTestsFromDirectory(td, wildcard, testType));
+        List<string> testDirs = [];
+        foreach (string testDir in directories)
+        {
+            testDirs.Add(testDir);
+        }
+
+        return TestLoadStrategy.LoadTestsFromDirectories(testDirs, wildcard, testType);
+    }
+
+    private static string ResolveTestsDirectory(string testsDirectoryName, string testsDir)
+    {
+        string requestedDirectory = Path.Combine(testsDirectoryName, testsDir);
+        if (Directory.Exists(requestedDirectory))
+        {
+            return requestedDirectory;
+        }
+
+        string[] parts = testsDir.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+        bool hadForkPrefix = false;
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (!parts[i].StartsWith("for_", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            parts[i] = parts[i]["for_".Length..];
+            hadForkPrefix = true;
+        }
+
+        if (hadForkPrefix)
+        {
+            string legacyDirectory = Path.Combine(testsDirectoryName, Path.Combine(parts));
+            if (Directory.Exists(legacyDirectory))
+            {
+                return legacyDirectory;
+            }
+        }
+
+        return requestedDirectory;
     }
 }

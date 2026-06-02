@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -58,35 +57,36 @@ public class PosForwardHeaderProvider(
         return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers.ToPooledList(headers.Length));
     }
 
-    private void TryUpdateTerminalBlock(BlockHeader currentHeader)
-    {
+    private void TryUpdateTerminalBlock(BlockHeader currentHeader) =>
         // Needed to know what is the terminal block so in fast sync, for each
         // header, it calls this.
         poSSwitcher.TryUpdateTerminalBlock(currentHeader);
-    }
 
     // Used only in get block header in pre merge forward header provider, this hook stops pre merge forward header provider.
-    protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
-    {
-        return
-            (bestPeer!.TotalDifficulty is null || bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero)) &&
+    protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty is null || bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero)) &&
             !poSSwitcher.HasEverReachedTerminalBlock();
-    }
 
     protected override IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> response)
     {
         // Override PoW's RequestHeaders so that it won't request beyond PoW.
         // This fixes `Incremental Sync` hive test.
-        if (response.Count > 0)
+        ReadOnlySpan<BlockHeader> responseSpan = response.AsSpan();
+        if (responseSpan.Length > 0)
         {
-            BlockHeader lastBlockHeader = response[^1];
-            bool lastBlockIsPostMerge = poSSwitcher.GetBlockConsensusInfo(response[^1]).IsPostMerge;
+            BlockHeader lastBlockHeader = responseSpan[^1];
+            bool lastBlockIsPostMerge = poSSwitcher.GetBlockConsensusInfo(responseSpan[^1]).IsPostMerge;
             if (lastBlockIsPostMerge) // Initial check to prevent creating new array every time
             {
+                int preMergeHeadersCount = 0;
+                while (preMergeHeadersCount < responseSpan.Length && !poSSwitcher.GetBlockConsensusInfo(responseSpan[preMergeHeadersCount]).IsPostMerge)
+                {
+                    preMergeHeadersCount++;
+                }
+
                 using IOwnedReadOnlyList<BlockHeader> oldResponse = response;
-                response = response
-                    .TakeWhile(header => !poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge)
-                    .ToPooledList(response.Count);
+                ArrayPoolList<BlockHeader> trimmedResponse = new(preMergeHeadersCount);
+                trimmedResponse.AddRange(responseSpan[..preMergeHeadersCount]);
+                response = trimmedResponse;
                 if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Count} sized batch.");
             }
         }

@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -31,10 +30,8 @@ public class TestBlockchainUtil(
 
     private Task _previousAddBlock = Task.CompletedTask;
 
-    public Task<Block> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
-    {
-        return AddBlock(blockTree.GetProducedBlockParent(null)!, flags, cancellationToken, transactions);
-    }
+    public Task<Block> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions) =>
+        AddBlock(blockTree.GetProducedBlockParent(null)!, flags, cancellationToken, transactions);
     public async Task<Block> AddBlock(BlockHeader parentToBuildOn, AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         Task waitforHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
@@ -49,18 +46,15 @@ public class TestBlockchainUtil(
                 b => true);
 
         Block? invalidBlock = null;
-        void OnInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs e)
-        {
-            invalidBlock = e.InvalidBlock;
-        }
+        void OnInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs e) => invalidBlock = e.InvalidBlock;
 
         invalidBlockDetector.OnInvalidBlock += OnInvalidBlock;
 
         bool mayMissTx = (flags & AddBlockFlags.MayMissTx) != 0;
         bool mayHaveExtraTx = (flags & AddBlockFlags.MayHaveExtraTx) != 0;
 
-        _previousAddBlock.IsCompleted.Should().BeTrue("Multiple block produced at once. Please make sure this does not happen for test consistency.");
-        TaskCompletionSource tcs = new();
+        Assert.That(_previousAddBlock.IsCompleted, Is.True, "Multiple block produced at once. Please make sure this does not happen for test consistency.");
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _previousAddBlock = tcs.Task;
 
         AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
@@ -105,7 +99,7 @@ public class TestBlockchainUtil(
             }
             iteration++;
         }
-        blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
+        Assert.That(blockTree.SuggestBlock(block!), Is.EqualTo(AddBlockResult.Added));
 
         tcs.TrySetResult();
 
@@ -117,10 +111,7 @@ public class TestBlockchainUtil(
         return block;
     }
 
-    public Task<Block> AddBlock(CancellationToken cancellationToken)
-    {
-        return AddBlock(AddBlockFlags.None, cancellationToken);
-    }
+    public Task<Block> AddBlock(CancellationToken cancellationToken) => AddBlock(AddBlockFlags.None, cancellationToken);
 
     public async Task<Block> AddBlockDoNotWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
     {

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -10,6 +10,9 @@ namespace Nethermind.Blockchain.Synchronization;
 
 public interface ISyncConfig : IConfig
 {
+    /// <summary>Sentinel for <see cref="MaxAttemptsToUpdatePivot"/> meaning "retry forever, never fall back to the static pivot".</summary>
+    public const int InfiniteAttempts = -1;
+
     [ConfigItem(Description = "Whether to connect to peers and sync.", DefaultValue = "true")]
     bool NetworkingEnabled { get; set; }
 
@@ -21,8 +24,8 @@ public interface ISyncConfig : IConfig
         DefaultValue = "false")]
     bool FastSync { get; set; }
 
-    // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
-    [ConfigItem(Description = "In Fast sync mode, the min height threshold limit up to which the Full sync, if already on, stays on when the chain is behind the network head. If the limit is exceeded, it switches back to Fast sync. For regular usage scenarios, setting this value lower than 32 is not recommended as this can cause issues with chain reorgs. Note that the last 2 blocks are always processed in Full sync, so setting it lower than 2 has no effect.", DefaultValue = "8192")]
+    [Obsolete]
+    [ConfigItem(Description = "Deprecated. Long range catch-up sync has been removed.", DefaultValue = "8192", HiddenFromDocs = true)]
     long? FastSyncCatchUpHeightDelta { get; set; }
 
     [Obsolete]
@@ -41,6 +44,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to download receipts in the Fast sync mode. This slows down the process by a few hours but allows to interact with dApps that perform extensive historical logs searches.", DefaultValue = "true")]
     bool DownloadReceiptsInFastSync { get; set; }
 
+    [ConfigItem(Description = "Whether to download block access lists in the Fast sync mode.", DefaultValue = "true")]
+    bool DownloadBlockAccessListsInFastSync { get; set; }
+
     [ConfigItem(Description = "The total difficulty of the pivot block for the Fast sync mode.", DefaultValue = "null")]
     string PivotTotalDifficulty { get; }
 
@@ -53,7 +59,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
     UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
-    [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client.", DefaultValue = "2147483647")]
+    [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client. Set to `-1` to retry forever (recommended for nodes that may start before the consensus client is available).", DefaultValue = "-1")]
     int MaxAttemptsToUpdatePivot { get; set; }
 
     [ConfigItem(Description = $$"""
@@ -83,6 +89,21 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
     public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+
+    [ConfigItem(Description = $$"""
+        The earliest block access list downloaded with fast sync when `{{nameof(DownloadBlockAccessListsInFastSync)}}` is set to `true`.
+        The actual value is determined as follows:
+
+        ```
+        max{ 1, min{ PivotNumber, AncientBlockAccessListsBarrier } }
+        ```
+
+        """,
+        DefaultValue = "0")]
+    public long AncientBlockAccessListsBarrier { get; set; }
+
+    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
+    public long AncientBlockAccessListsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBlockAccessListsBarrier));
 
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }
@@ -135,8 +156,14 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]
     int SnapServingMaxDepth { get; set; }
 
+    [ConfigItem(Description = "_Technical._ Max trie paths per group accepted in snap GetTrieNodes messages. Raise if peers send slightly larger groups (e.g. Geth trienodeHealThrottle sends 1025).", DefaultValue = "1024", HiddenFromDocs = true)]
+    int SnapServingMaxPathsPerGroup { get; set; }
+
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
     int MultiSyncModeSelectorLoopTimerMs { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Concurrent request slots per peer per allocation context (range 1-255). Higher values amortise round-trip latency at the cost of peer load.", DefaultValue = "2", HiddenFromDocs = true)]
+    int AllocationSlots { get; set; }
 
     [ConfigItem(Description = "_Technical._ SyncDispatcher delay on empty request. Used for testing.", DefaultValue = "10", HiddenFromDocs = true)]
     int SyncDispatcherEmptyRequestDelayMs { get; set; }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,7 +31,8 @@ internal static class FlatEntryWriter
             try
             {
                 path.AppendMut(node.Key);
-                Account account = AccountDecoder.Instance.Decode(node.Value)!;
+                Rlp.ValueDecoderContext context = ((ReadOnlySpan<byte>)node.Value).AsRlpValueContext();
+                Account account = AccountDecoder.Instance.Decode(ref context)!;
                 writeBatch.SetAccountRaw(path.Path, account);
             }
             finally
@@ -47,7 +47,8 @@ internal static class FlatEntryWriter
             BranchInlineChildLeafEnumerator enumerator = new(ref path, node);
             while (enumerator.MoveNext())
             {
-                Account account = AccountDecoder.Instance.Decode(enumerator.CurrentValue)!;
+                Rlp.ValueDecoderContext context = enumerator.CurrentValue.AsRlpValueContext();
+                Account account = AccountDecoder.Instance.Decode(ref context)!;
                 writeBatch.SetAccountRaw(enumerator.CurrentPath, account);
             }
         }

@@ -213,7 +213,7 @@ namespace Nethermind.Consensus.Producers
                 if (countOfRemainingBlobs <= leftoverCapacity)
                 {
                     // We can take all, no optimal picking needed.
-                    foreach (var tx in candidates.AsSpan())
+                    foreach ((Transaction tx, long blobChain) tx in candidates.AsSpan())
                     {
                         selectedBlobTxs.Add(tx.tx);
                     }

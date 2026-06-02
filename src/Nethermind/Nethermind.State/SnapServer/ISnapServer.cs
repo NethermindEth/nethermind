@@ -25,6 +25,7 @@ namespace Nethermind.State.SnapServer;
 
 public interface ISnapServer
 {
+    bool CanServe { get; }
     IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken);
     IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken);
 

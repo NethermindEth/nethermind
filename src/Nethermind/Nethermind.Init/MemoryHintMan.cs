@@ -20,17 +20,11 @@ namespace Nethermind.Init
     /// <summary>
     /// Applies changes to the NetworkConfig and the DbConfig so to adhere to the max memory limit hint.
     /// </summary>
-    public class MemoryHintMan
+    public class MemoryHintMan(ILogManager logManager, MallocHelper? mallocHelper = null)
     {
-        private readonly ILogger _logger;
-        private readonly MallocHelper _mallocHelper;
-
-        public MemoryHintMan(ILogManager logManager, MallocHelper? mallocHelper = null)
-        {
-            _mallocHelper = mallocHelper ?? MallocHelper.Instance;
-            _logger = logManager?.GetClassLogger<MemoryHintMan>()
+        private readonly ILogger _logger = logManager?.GetClassLogger<MemoryHintMan>()
                       ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly MallocHelper _mallocHelper = mallocHelper ?? MallocHelper.Instance;
 
         public void SetMemoryAllowances(
             IDbConfig dbConfig,
@@ -173,30 +167,20 @@ namespace Nethermind.Init
             dbConfig.SharedBlockCacheSize = (ulong)DbMemory;
         }
 
-        private struct DbNeeds
+        private struct DbNeeds(
+            uint preferredBuffers,
+            long preferredMinBufferMemory,
+            long preferredMaxBufferMemory,
+            long preferredMinMemory,
+            long preferredMaxMemory,
+            decimal preferredMemoryPercentage)
         {
-            public DbNeeds(
-                uint preferredBuffers,
-                long preferredMinBufferMemory,
-                long preferredMaxBufferMemory,
-                long preferredMinMemory,
-                long preferredMaxMemory,
-                decimal preferredMemoryPercentage)
-            {
-                PreferredBuffers = preferredBuffers;
-                PreferredMinBufferMemory = preferredMinBufferMemory;
-                PreferredMaxBufferMemory = preferredMaxBufferMemory;
-                PreferredMinMemory = preferredMinMemory;
-                PreferredMaxMemory = preferredMaxMemory;
-                PreferredMemoryPercentage = preferredMemoryPercentage;
-            }
-
-            public uint PreferredBuffers { get; set; }
-            public long PreferredMinBufferMemory { get; set; }
-            public long PreferredMaxBufferMemory { get; set; }
-            public long PreferredMinMemory { get; set; }
-            public long PreferredMaxMemory { get; set; }
-            public decimal PreferredMemoryPercentage { get; set; }
+            public uint PreferredBuffers { get; set; } = preferredBuffers;
+            public long PreferredMinBufferMemory { get; set; } = preferredMinBufferMemory;
+            public long PreferredMaxBufferMemory { get; set; } = preferredMaxBufferMemory;
+            public long PreferredMinMemory { get; set; } = preferredMinMemory;
+            public long PreferredMaxMemory { get; set; } = preferredMaxMemory;
+            public decimal PreferredMemoryPercentage { get; set; } = preferredMemoryPercentage;
         }
 
         private void AssignNettyMemory(INetworkConfig networkConfig, uint cpuCount)

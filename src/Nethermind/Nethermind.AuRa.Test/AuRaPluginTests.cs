@@ -3,7 +3,6 @@
 
 using System;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
@@ -11,7 +10,6 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -32,7 +30,7 @@ namespace Nethermind.AuRa.Test
             AuRaPlugin auRaPlugin = new(chainSpec);
             chainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters());
             using IContainer testNethermindContainer = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-            NethermindApi.Dependencies apiDependencies = new NethermindApi.Dependencies(
+            NethermindApi.Dependencies apiDependencies = new(
                 new ConfigProvider(),
                 new EthereumJsonSerializer(),
                 new TestLogManager(),
@@ -41,9 +39,9 @@ namespace Nethermind.AuRa.Test
                 [],
                 Substitute.For<IProcessExitSource>(),
                 testNethermindContainer);
-            AuRaNethermindApi api = new AuRaNethermindApi(apiDependencies);
+            AuRaNethermindApi api = new(apiDependencies);
             Action init = () => auRaPlugin.Init(api);
-            init.Should().NotThrow();
+            Assert.That(init, Throws.Nothing);
         }
 
         [Test]
@@ -54,7 +52,7 @@ namespace Nethermind.AuRa.Test
 
             parameters.ApplyToReleaseSpec(spec, 0, null);
 
-            spec.Eip158IgnoredAccount.Should().Be(Address.SystemUser);
+            Assert.That(spec.Eip158IgnoredAccount, Is.EqualTo(Address.SystemUser));
         }
 
     }

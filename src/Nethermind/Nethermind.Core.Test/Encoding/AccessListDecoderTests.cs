@@ -1,8 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -94,11 +94,11 @@ namespace Nethermind.Core.Test.Encoding
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
-                decoded.Should().BeNull();
+                Assert.That(decoded, Is.Null);
             }
             else
             {
-                decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
+                Assert.That(decoded, Is.EqualTo(testCase.AccessList), testCase.TestName);
             }
         }
 
@@ -112,18 +112,38 @@ namespace Nethermind.Core.Test.Encoding
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
-                decoded.Should().BeNull();
+                Assert.That(decoded, Is.Null);
             }
             else
             {
-                decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
+                Assert.That(decoded, Is.EqualTo(testCase.AccessList), testCase.TestName);
             }
         }
 
         [Test]
-        public void Get_length_returns_1_for_null()
+        public void Get_length_returns_1_for_null() => Assert.That(_decoder.GetLength((AccessList?)null, RlpBehaviors.None), Is.EqualTo(1));
+
+        [Test]
+        public void Rejects_entry_missing_storage_keys_array()
         {
-            _decoder.GetLength(null, RlpBehaviors.None).Should().Be(1);
+            const string error = "storage keys";
+            byte[] invalid = Convert.FromHexString("d6d5940000000000000000000000000000000000000000");
+
+            void DecodeStream()
+            {
+                Rlp.ValueDecoderContext ctx = new RlpStream(invalid).Data.AsSpan().AsRlpValueContext();
+                _decoder.Decode(ref ctx);
+            }
+
+            Assert.That(DecodeStream, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
+
+            void DecodeContext()
+            {
+                Rlp.ValueDecoderContext ctx = invalid.AsSpan().AsRlpValueContext();
+                _decoder.Decode(ref ctx);
+            }
+
+            Assert.That(DecodeContext, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
         }
     }
 }

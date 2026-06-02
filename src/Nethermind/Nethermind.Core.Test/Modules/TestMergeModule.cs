@@ -69,7 +69,7 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
                 ? baseBlockProducerFactory.InitBlockProducer()
                 : null;
 
-            IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+            IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.CreatePersistent();
 
             PostMergeBlockProducer postMergeBlockProducer = postMergeBlockProducerFactory.Create(blockProducerEnv);
             return new MergeBlockProducer(blockProducer, postMergeBlockProducer, poSSwitcher);

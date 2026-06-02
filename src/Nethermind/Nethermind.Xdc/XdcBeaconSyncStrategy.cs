@@ -8,14 +8,9 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Xdc;
 
-public class XdcBeaconSyncStrategy : IBeaconSyncStrategy
+public class XdcBeaconSyncStrategy(ISyncConfig syncConfig) : IBeaconSyncStrategy
 {
-    private readonly ISyncConfig _syncConfig;
-
-    public XdcBeaconSyncStrategy(ISyncConfig syncConfig)
-    {
-        _syncConfig = syncConfig;
-    }
+    private readonly ISyncConfig _syncConfig = syncConfig;
 
     public void AllowBeaconHeaderSync() { }
 

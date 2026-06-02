@@ -29,7 +29,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     public const string FourByteTracer = "4byteTracer";
 
     private readonly Transaction _transaction;
-    private readonly Dictionary<string, int> _4ByteIds = new();
+    private readonly Dictionary<string, int> _4ByteIds = [];
     private Instruction _op;
 
     public Native4ByteTracer(Transaction transaction, GethTraceOptions options) : base(options)
@@ -64,10 +64,8 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
-    {
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
         _op = opcode;
-    }
 
     private void CaptureStart(ReadOnlyMemory<byte> input)
     {

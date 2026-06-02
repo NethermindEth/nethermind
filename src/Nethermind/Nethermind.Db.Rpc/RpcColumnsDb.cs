@@ -9,28 +9,19 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Db.Rpc
 {
-    public class RpcColumnsDb<T> : IColumnsDb<T> where T : struct, Enum
+    public class RpcColumnsDb<T>(
+        string dbName,
+        IJsonSerializer jsonSerializer,
+        IJsonRpcClient rpcClient,
+        ILogManager logManager,
+        IColumnsDb<T> recordDb
+        ) : IColumnsDb<T> where T : struct, Enum
     {
-        private readonly string _dbName;
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly IJsonRpcClient _rpcClient;
-        private readonly ILogManager _logManager;
-        private readonly IColumnsDb<T> _recordDb;
-
-        public RpcColumnsDb(
-            string dbName,
-            IJsonSerializer jsonSerializer,
-            IJsonRpcClient rpcClient,
-            ILogManager logManager,
-            IColumnsDb<T> recordDb
-        )
-        {
-            _dbName = dbName;
-            _jsonSerializer = jsonSerializer;
-            _rpcClient = rpcClient;
-            _logManager = logManager;
-            _recordDb = recordDb;
-        }
+        private readonly string _dbName = dbName;
+        private readonly IJsonSerializer _jsonSerializer = jsonSerializer;
+        private readonly IJsonRpcClient _rpcClient = rpcClient;
+        private readonly ILogManager _logManager = logManager;
+        private readonly IColumnsDb<T> _recordDb = recordDb;
 
         public IDb GetColumnDb(T key)
         {
@@ -41,15 +32,9 @@ namespace Nethermind.Db.Rpc
 
         public IEnumerable<T> ColumnKeys => Enum.GetValues<T>();
 
-        public IColumnsWriteBatch<T> StartWriteBatch()
-        {
-            return new InMemoryColumnWriteBatch<T>(this);
-        }
+        public IColumnsWriteBatch<T> StartWriteBatch() => new InMemoryColumnWriteBatch<T>(this);
 
-        public IColumnDbSnapshot<T> CreateSnapshot()
-        {
-            throw new NotSupportedException("Snapshot not implemented");
-        }
+        public IColumnDbSnapshot<T> CreateSnapshot() => throw new NotSupportedException("Snapshot not implemented");
 
         public void Dispose() { }
         public void Flush(bool onlyWal = false) { }

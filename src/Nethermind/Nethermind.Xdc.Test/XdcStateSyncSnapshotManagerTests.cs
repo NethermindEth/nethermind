@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -42,14 +40,14 @@ internal class XdcStateSyncSnapshotManagerTests
 
         XdcBlockHeader pivotHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(pivotNumber)!;
 
-        pivotHeader.Number.Should().Be(pivotNumber);
+        Assert.That(pivotHeader.Number, Is.EqualTo(pivotNumber));
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(number => epochSwitchNumbers.Contains((int)number.Arg<XdcBlockHeader>().Number));
 
-        XdcStateSyncSnapshotManager manager = new XdcStateSyncSnapshotManager(
+        XdcStateSyncSnapshotManager manager = new(
             xdcTestBlockchain.SpecProvider,
             epochSwitchManager,
             xdcTestBlockchain.BlockTree,
@@ -61,7 +59,7 @@ internal class XdcStateSyncSnapshotManagerTests
 
         int[] resultNumbers = result.Select(r => (int)r.Number).ToArray();
 
-        resultNumbers.Should().BeEquivalentTo(expectedGapBlockNumbers);
+        Assert.That(resultNumbers, Is.EqualTo(expectedGapBlockNumbers));
     }
 
     // gapBlockNum = Max(switchBlock - switchBlock%epochLength, epochLength) - gap
@@ -90,14 +88,14 @@ internal class XdcStateSyncSnapshotManagerTests
         switchHeader.ExtraData = XdcTestHelper.BuildV1ExtraData(masternodeAddresses);
 
         XdcBlockHeader pivotHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(pivotNumber)!;
-        pivotHeader.Number.Should().Be(pivotNumber);
+        Assert.That(pivotHeader.Number, Is.EqualTo(pivotNumber));
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(ci => epochSwitchNumbers.Contains((int)ci.Arg<XdcBlockHeader>().Number));
 
-        XdcStateSyncSnapshotManager manager = new XdcStateSyncSnapshotManager(
+        XdcStateSyncSnapshotManager manager = new(
             xdcTestBlockchain.SpecProvider,
             epochSwitchManager,
             xdcTestBlockchain.BlockTree,
@@ -108,7 +106,7 @@ internal class XdcStateSyncSnapshotManagerTests
         XdcBlockHeader[] result = manager.GetGapBlocks(pivotHeader);
         int[] resultNumbers = result.Select(r => (int)r.Number).ToArray();
 
-        resultNumbers.Should().BeEquivalentTo(expectedGapBlockNumbers);
+        Assert.That(resultNumbers, Is.EqualTo(expectedGapBlockNumbers));
         snapshotManager.Received(1).StoreSnapshot(Arg.Is<Snapshot>(s =>
             s.BlockNumber == switchBlock - gap &&
             s.NextEpochCandidates.SequenceEqual(masternodeAddresses)));

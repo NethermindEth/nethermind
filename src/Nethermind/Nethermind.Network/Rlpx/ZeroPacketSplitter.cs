@@ -13,10 +13,7 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroPacketSplitter() : MessageToByteEncoder<IByteBuffer>, IFramingAware
     {
-        public void DisableFraming()
-        {
-            MaxFrameSize = int.MaxValue;
-        }
+        public void DisableFraming() => MaxFrameSize = int.MaxValue;
 
         public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
 

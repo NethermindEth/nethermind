@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -12,9 +12,35 @@ namespace Nethermind.State.Flat.Test;
 public class MpmcRingBufferTests
 {
     [Test]
+    public void HasReadyItem_TracksPublishedItems()
+    {
+        MpmcRingBuffer<int> jobQueue = new(4);
+
+        Assert.That(jobQueue.HasReadyItem, Is.False);
+
+        Assert.That(jobQueue.TryEnqueue(1), Is.True);
+        Assert.That(jobQueue.HasReadyItem, Is.True);
+
+        Assert.That(jobQueue.TryDequeue(out int item), Is.True);
+        Assert.That(item, Is.EqualTo(1));
+        Assert.That(jobQueue.HasReadyItem, Is.False);
+
+        for (int i = 0; i < 4; i++)
+        {
+            Assert.That(jobQueue.TryEnqueue(i), Is.True);
+            Assert.That(jobQueue.TryDequeue(out item), Is.True);
+            Assert.That(item, Is.EqualTo(i));
+            Assert.That(jobQueue.HasReadyItem, Is.False);
+        }
+
+        Assert.That(jobQueue.TryEnqueue(42), Is.True);
+        Assert.That(jobQueue.HasReadyItem, Is.True);
+    }
+
+    [Test]
     public void SmokeTest()
     {
-        MpmcRingBuffer<int> jobQueue = new MpmcRingBuffer<int>(16);
+        MpmcRingBuffer<int> jobQueue = new(16);
 
         jobQueue.TryEnqueue(1);
         jobQueue.TryEnqueue(2);
@@ -22,22 +48,22 @@ public class MpmcRingBufferTests
         jobQueue.TryEnqueue(4);
         jobQueue.TryEnqueue(5);
 
-        jobQueue.TryDequeue(out int j).Should().BeTrue();
-        j.Should().Be(1);
-        jobQueue.TryDequeue(out j).Should().BeTrue();
-        j.Should().Be(2);
-        jobQueue.TryDequeue(out j).Should().BeTrue();
-        j.Should().Be(3);
-        jobQueue.TryDequeue(out j).Should().BeTrue();
-        j.Should().Be(4);
-        jobQueue.TryDequeue(out j).Should().BeTrue();
-        j.Should().Be(5);
+        Assert.That(jobQueue.TryDequeue(out int j), Is.True);
+        Assert.That(j, Is.EqualTo(1));
+        Assert.That(jobQueue.TryDequeue(out j), Is.True);
+        Assert.That(j, Is.EqualTo(2));
+        Assert.That(jobQueue.TryDequeue(out j), Is.True);
+        Assert.That(j, Is.EqualTo(3));
+        Assert.That(jobQueue.TryDequeue(out j), Is.True);
+        Assert.That(j, Is.EqualTo(4));
+        Assert.That(jobQueue.TryDequeue(out j), Is.True);
+        Assert.That(j, Is.EqualTo(5));
     }
 
     [Test]
     public void RollingSmokeTest()
     {
-        MpmcRingBuffer<int> jobQueue = new MpmcRingBuffer<int>(16);
+        MpmcRingBuffer<int> jobQueue = new(16);
 
         jobQueue.TryEnqueue(1);
         jobQueue.TryEnqueue(2);
@@ -48,16 +74,16 @@ public class MpmcRingBufferTests
         int j = 0;
         for (int i = 0; i < 100; i++)
         {
-            jobQueue.TryDequeue(out j).Should().BeTrue();
-            j.Should().Be(i + 1);
-            jobQueue.TryEnqueue(i + 5 + 1).Should().BeTrue();
+            Assert.That(jobQueue.TryDequeue(out j), Is.True);
+            Assert.That(j, Is.EqualTo(i + 1));
+            Assert.That(jobQueue.TryEnqueue(i + 5 + 1), Is.True);
         }
     }
 
     [Test]
     public void SmokeTestFullAndRolling()
     {
-        MpmcRingBuffer<int> jobQueue = new MpmcRingBuffer<int>(16);
+        MpmcRingBuffer<int> jobQueue = new(16);
 
         for (int i = 0; i < 16; i++)
         {
@@ -82,6 +108,20 @@ public class MpmcRingBufferTests
             Assert.That(jobQueue.TryDequeue(out _), Is.True);
         }
         Assert.That(jobQueue.TryDequeue(out _), Is.False);
+    }
+
+    [Test]
+    public void TryDequeue_ClearsReferenceContainingEntry()
+    {
+        MpmcRingBuffer<ReferenceJob> jobQueue = new(4);
+        ReferenceJob job = new(new object());
+
+        Assert.That(jobQueue.TryEnqueue(job), Is.True);
+        Assert.That(jobQueue.TryDequeue(out ReferenceJob dequeued), Is.True);
+        Assert.That(dequeued, Is.EqualTo(job));
+
+        ReferenceJob[] entries = GetEntries(jobQueue);
+        Assert.That(entries[0].Value, Is.Null);
     }
 
     [Test]
@@ -92,7 +132,7 @@ public class MpmcRingBufferTests
         int ProducerCount = 4;
         int ConsumerCount = 4;
 
-        MpmcRingBuffer<int> buffer = new MpmcRingBuffer<int>(Capacity);
+        MpmcRingBuffer<int> buffer = new(Capacity);
         int[] consumedCounts = new int[ItemsToProduce];
         long totalConsumed = 0;
 
@@ -144,4 +184,13 @@ public class MpmcRingBufferTests
             Assert.That(consumedCounts[i] == 1, $"Item {i} was consumed {consumedCounts[i]} times!");
         }
     }
+
+    private static T[] GetEntries<T>(MpmcRingBuffer<T> buffer)
+    {
+        FieldInfo? entriesField = typeof(MpmcRingBuffer<T>).GetField("_entries", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(entriesField, Is.Not.Null);
+        return (T[])entriesField!.GetValue(buffer)!;
+    }
+
+    private readonly record struct ReferenceJob(object? Value);
 }

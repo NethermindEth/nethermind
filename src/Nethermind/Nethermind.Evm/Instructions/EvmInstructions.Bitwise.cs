@@ -9,9 +9,7 @@ using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
 
-using Word = Vector256<byte>;
-
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Represents a bitwise operation on 256-bit vectors.
@@ -29,7 +27,7 @@ internal static partial class EvmInstructions
         /// <param name="a">The first operand vector.</param>
         /// <param name="b">The second operand vector.</param>
         /// <returns>The result of the bitwise operation.</returns>
-        static abstract Word Operation(in Word a, in Word b);
+        static abstract EvmWord Operation(in EvmWord a, in EvmWord b);
     }
 
     /// <summary>
@@ -55,12 +53,12 @@ internal static partial class EvmInstructions
         ref byte bytesRef = ref stack.PopBytesByRef();
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
         // Read the 256-bit vector from unaligned memory.
-        Word aVec = ReadUnaligned<Word>(ref bytesRef);
+        EvmWord aVec = ReadUnaligned<EvmWord>(ref bytesRef);
 
         // Peek at the top of the stack for the second operand without removing it.
         bytesRef = ref stack.PeekBytesByRef();
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-        Word bVec = ReadUnaligned<Word>(ref bytesRef);
+        EvmWord bVec = ReadUnaligned<EvmWord>(ref bytesRef);
 
         // Write the result directly into the memory of the top stack element.
         WriteUnaligned(ref bytesRef, TOpBitwise.Operation(aVec, bVec));
@@ -76,7 +74,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseAnd : IOpBitwise
     {
-        public static Word Operation(in Word a, in Word b) => Vector256.BitwiseAnd(a, b);
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.BitwiseAnd(a, b);
     }
 
     /// <summary>
@@ -84,7 +82,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseOr : IOpBitwise
     {
-        public static Word Operation(in Word a, in Word b) => Vector256.BitwiseOr(a, b);
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.BitwiseOr(a, b);
     }
 
     /// <summary>
@@ -92,7 +90,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseXor : IOpBitwise
     {
-        public static Word Operation(in Word a, in Word b) => Vector256.Xor(a, b);
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.Xor(a, b);
     }
 
     /// <summary>
@@ -103,7 +101,7 @@ internal static partial class EvmInstructions
     public struct OpBitwiseEq : IOpBitwise
     {
         // Precomputed vector used as a marker for equality (only the last byte is set to 1).
-        public static Word One = Vector256.Create(
+        public static EvmWord One = Vector256.Create(
             (byte)
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -112,6 +110,6 @@ internal static partial class EvmInstructions
         );
 
         // Returns a non-zero marker vector if the operands are equal.
-        public static Word Operation(in Word a, in Word b) => a == b ? One : default;
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) => a == b ? One : default;
     }
 }

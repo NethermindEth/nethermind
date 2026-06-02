@@ -14,10 +14,10 @@ namespace Nethermind.Consensus.Processing
             public event EventHandler<AddingTxEventArgs> AddingTransaction;
         }
 
-        public class AddingTxEventArgs : TxEventArgs
+        public class AddingTxEventArgs(int index, Transaction transaction, Block block, IReadOnlyCollection<Transaction> transactionsInBlock) : TxEventArgs(index, transaction)
         {
-            public Block Block { get; }
-            public IReadOnlyCollection<Transaction> TransactionsInBlock { get; }
+            public Block Block { get; } = block;
+            public IReadOnlyCollection<Transaction> TransactionsInBlock { get; } = transactionsInBlock;
             public TxAction Action { get; private set; } = TxAction.Add;
             public string Reason { get; private set; } = string.Empty;
 
@@ -26,13 +26,6 @@ namespace Nethermind.Consensus.Processing
                 Action = action;
                 Reason = reason;
                 return this;
-            }
-
-            public AddingTxEventArgs(int index, Transaction transaction, Block block, IReadOnlyCollection<Transaction> transactionsInBlock)
-                : base(index, transaction)
-            {
-                Block = block;
-                TransactionsInBlock = transactionsInBlock;
             }
         }
     }

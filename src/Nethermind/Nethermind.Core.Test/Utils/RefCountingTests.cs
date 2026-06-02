@@ -1,5 +1,4 @@
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Core.Utils;
 using NUnit.Framework;
 
@@ -25,10 +24,10 @@ public class RefCountingTests
 
         protected override void CleanUp()
         {
-            var existing = Interlocked.Exchange(ref _cleaned, Cleaned);
+            int existing = Interlocked.Exchange(ref _cleaned, Cleaned);
 
             // should be called only once and set it to used
-            existing.Should().Be(Used);
+            Assert.That(existing, Is.EqualTo(Used));
         }
     }
 
@@ -37,10 +36,10 @@ public class RefCountingTests
     {
         const int sleepInMs = 100;
 
-        var counter = new TestRefCounting();
+        TestRefCounting counter = new();
 
-        var thread1 = new Thread(LeaseRelease);
-        var thread2 = new Thread(LeaseRelease);
+        Thread thread1 = new(LeaseRelease);
+        Thread thread2 = new(LeaseRelease);
 
         thread1.Start();
         thread2.Start();
@@ -57,8 +56,7 @@ public class RefCountingTests
         const int msInSec = 1000;
         const int minLeaseCount = minLeasesPerSecond * sleepInMs / msInSec;
 
-        counter.TryCount.Should().BeGreaterThan(minLeaseCount,
-            $"On modern CPUs the speed of lease should be bigger than {minLeasesPerSecond} / s");
+        Assert.That(counter.TryCount, Is.GreaterThan(minLeaseCount), $"On modern CPUs the speed of lease should be bigger than {minLeasesPerSecond} / s");
 
         void LeaseRelease()
         {

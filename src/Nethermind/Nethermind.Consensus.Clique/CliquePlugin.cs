@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Clique
         {
             _nethermindApi = nethermindApi;
 
-            (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
+            (IApiWithStores _, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
 
             _snapshotManager = nethermindApi.Context.Resolve<ISnapshotManager>();
             _cliqueConfig = nethermindApi.Context.Resolve<ICliqueConfig>();
@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.Clique
                 throw new InvalidOperationException("Request to start block producer while mining disabled.");
             }
 
-            IBlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
+            IBlockProducerEnv env = getFromApi.BlockProducerEnvFactory.CreatePersistent();
 
             IBlockchainProcessor chainProcessor = env.ChainProcessor;
 

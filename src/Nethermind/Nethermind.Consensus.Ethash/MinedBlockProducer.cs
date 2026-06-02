@@ -13,31 +13,27 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class MinedBlockProducer : BlockProducerBase
+    public class MinedBlockProducer(ITxSource txSource,
+        IBlockchainProcessor processor,
+        ISealer sealer,
+        IBlockTree blockTree,
+        IWorldState stateProvider,
+        IGasLimitCalculator gasLimitCalculator,
+        ITimestamper timestamper,
+        ISpecProvider specProvider,
+        ILogManager logManager,
+        IBlocksConfig blocksConfig) : BlockProducerBase(
+            txSource,
+            processor,
+            sealer,
+            blockTree,
+            stateProvider,
+            gasLimitCalculator,
+            timestamper,
+            specProvider,
+            logManager,
+            new EthashDifficultyCalculator(specProvider),
+            blocksConfig)
     {
-        public MinedBlockProducer(ITxSource txSource,
-            IBlockchainProcessor processor,
-            ISealer sealer,
-            IBlockTree blockTree,
-            IWorldState stateProvider,
-            IGasLimitCalculator gasLimitCalculator,
-            ITimestamper timestamper,
-            ISpecProvider specProvider,
-            ILogManager logManager,
-            IBlocksConfig blocksConfig)
-            : base(
-                txSource,
-                processor,
-                sealer,
-                blockTree,
-                stateProvider,
-                gasLimitCalculator,
-                timestamper,
-                specProvider,
-                logManager,
-                new EthashDifficultyCalculator(specProvider),
-                blocksConfig)
-        {
-        }
     }
 }

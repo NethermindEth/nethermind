@@ -32,8 +32,5 @@ public class TestNodeSource : INodeSource
 
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
-    public void RemoveNode(Node node)
-    {
-        NodeRemoved?.Invoke(this, new NodeEventArgs(node));
-    }
+    public void RemoveNode(Node node) => NodeRemoved?.Invoke(this, new NodeEventArgs(node));
 }

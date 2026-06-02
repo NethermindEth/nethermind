@@ -3,11 +3,12 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    internal sealed class PendingValidatorsDecoder : RlpValueDecoder<PendingValidators>, IRlpObjectDecoder<PendingValidators>
+    internal sealed class PendingValidatorsDecoder : RlpDecoder<PendingValidators>
     {
         protected override PendingValidators DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -21,18 +22,18 @@ namespace Nethermind.Consensus.AuRa.Validators
             int pendingValidatorsCheck = decoderContext.Position + sequenceLength;
 
             long blockNumber = decoderContext.DecodeLong();
-            var blockHash = decoderContext.DecodeKeccak();
+            Hash256 blockHash = decoderContext.DecodeKeccak();
 
             int addressSequenceLength = decoderContext.ReadSequenceLength();
             int addressCheck = decoderContext.Position + addressSequenceLength;
-            List<Address> addresses = new List<Address>();
+            List<Address> addresses = [];
             while (decoderContext.Position < addressCheck)
             {
                 addresses.Add(decoderContext.DecodeAddress());
             }
             decoderContext.Check(addressCheck);
 
-            PendingValidators result = new PendingValidators(blockNumber, blockHash, addresses.ToArray())
+            PendingValidators result = new(blockNumber, blockHash, addresses.ToArray())
             {
                 AreFinalized = decoderContext.DecodeBool()
             };
@@ -42,20 +43,14 @@ namespace Nethermind.Consensus.AuRa.Validators
             return result;
         }
 
-        public Rlp Encode(PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList;
+                rlpStream.EncodeNullObject();
+                return;
             }
 
-            RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
-            Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data.ToArray());
-        }
-
-        public override void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
             (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(item.BlockNumber);

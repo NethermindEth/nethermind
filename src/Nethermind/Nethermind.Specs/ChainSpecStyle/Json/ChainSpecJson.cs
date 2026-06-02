@@ -19,7 +19,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ChainSpecParamsJson Params { get; set; }
         public ChainSpecGenesisJson Genesis { get; set; }
         public string[]? Nodes { get; set; }
-        public Dictionary<string, AllocationJson> Accounts { get; set; }
+        public Dictionary<string, AllocationJson>? Accounts { get; set; }
         public Dictionary<string, byte[]>? CodeHashes { get; set; }
 
         public class EngineJson

@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -24,15 +25,9 @@ public interface ICensorshipDetector
 
 public class NoopCensorshipDetector : ICensorshipDetector
 {
-    public IEnumerable<BlockNumberHash> GetCensoredBlocks()
-    {
-        return [];
-    }
+    public IEnumerable<BlockNumberHash> GetCensoredBlocks() => [];
 
-    public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash)
-    {
-        return false;
-    }
+    public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash) => false;
 }
 
 public class CensorshipDetector : IDisposable, ICensorshipDetector
@@ -44,6 +39,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
     private readonly ILogger _logger;
     private readonly Dictionary<AddressAsKey, Transaction?>? _bestTxPerObservedAddresses;
     private readonly LruCache<BlockNumberHash, BlockCensorshipInfo> _potentiallyCensoredBlocks;
+    private readonly LruCache<BlockNumberHash, Task> _processingTasks;
     private readonly WrapAroundArray<BlockNumberHash> _censoredBlocks;
     private readonly uint _blockCensorshipThreshold;
     private readonly int _cacheSize;
@@ -62,7 +58,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         _blockProcessor = blockProcessor;
         _blockCensorshipThreshold = censorshipDetectorConfig.BlockCensorshipThreshold;
         _cacheSize = (int)(4 * _blockCensorshipThreshold);
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<CensorshipDetector>() ?? throw new ArgumentNullException(nameof(logManager));
 
         if (censorshipDetectorConfig.AddressesForCensorshipDetection is not null)
         {
@@ -70,7 +66,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
             {
                 if (Address.TryParse(hexString, out Address address))
                 {
-                    _bestTxPerObservedAddresses ??= new Dictionary<AddressAsKey, Transaction>();
+                    _bestTxPerObservedAddresses ??= [];
                     _bestTxPerObservedAddresses[address!] = null;
                 }
                 else
@@ -81,6 +77,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         }
 
         _potentiallyCensoredBlocks = new(_cacheSize, _cacheSize, "potentiallyCensoredBlocks");
+        _processingTasks = new(_cacheSize, _cacheSize, "censorshipProcessingTasks");
         _censoredBlocks = new(_cacheSize);
         _blockProcessor.BlockProcessing += OnBlockProcessing;
     }
@@ -114,8 +111,21 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
             }
         }
 
-        Task.Run(() => Cache(e.Block));
+        BlockNumberHash key = new(e.Block);
+        Task task = Task.Run(() => Cache(e.Block));
+        _processingTasks.Set(key, task);
+        _ = task.ContinueWith(static (completed, state) =>
+        {
+            (LruCache<BlockNumberHash, Task> cache, BlockNumberHash k) = ((LruCache<BlockNumberHash, Task>, BlockNumberHash))state!;
+            if (cache.TryGet(k, out Task? current) && ReferenceEquals(current, completed))
+                cache.Delete(k);
+        }, (_processingTasks, key), CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
     }
+
+    public Task ProcessingTaskFor(long blockNumber, ValueHash256 blockHash) =>
+        _processingTasks.TryGet(new BlockNumberHash(blockNumber, blockHash), out Task task)
+            ? task
+            : Task.CompletedTask;
 
     private void Cache(Block block)
     {
@@ -126,7 +136,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
             if (block.Transactions.Length == 0)
             {
                 BlockCensorshipInfo blockCensorshipInfo = new(false, block.ParentHash);
-                BlockNumberHash blockNumberHash = new BlockNumberHash(block);
+                BlockNumberHash blockNumberHash = new(block);
                 _potentiallyCensoredBlocks.Set(blockNumberHash, blockCensorshipInfo);
             }
             else
@@ -189,7 +199,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
                                   || blockTxsOfTrackedAddresses * 2 < poolTxsThatAreBetterThanWorstInBlock;
 
                 BlockCensorshipInfo blockCensorshipInfo = new(isCensored, block.ParentHash);
-                BlockNumberHash blockNumberHash = new BlockNumberHash(block);
+                BlockNumberHash blockNumberHash = new(block);
                 _potentiallyCensoredBlocks.Set(blockNumberHash, blockCensorshipInfo);
 
                 if (isCensored)
@@ -253,10 +263,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
 
     public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash) => _potentiallyCensoredBlocks.Contains(new BlockNumberHash(blockNumber, blockHash));
 
-    public void Dispose()
-    {
-        _blockProcessor.BlockProcessing -= OnBlockProcessing;
-    }
+    public void Dispose() => _blockProcessor.BlockProcessing -= OnBlockProcessing;
 }
 
 public readonly record struct BlockCensorshipInfo(bool IsCensored, ValueHash256? ParentHash);

@@ -3,7 +3,6 @@
 
 using System;
 using Autofac;
-using Microsoft.AspNetCore.Http;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -18,15 +17,11 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
-using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
-using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Init.Modules;
 
@@ -37,17 +32,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         builder
 
             // Implementation of nethermind interfaces
-            .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
-            .OnActivate<IWorldStateManager>((worldStateManager, ctx) =>
-            {
-                new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
-            })
-            .AddSingleton<IStateReader, FlatStateReader>()
+            .AddSingleton<FlatStateReader>()
+            .AddSingleton<FlatWorldStateManager>()
 
-            // Disable some pruning trie store specific  components
-            .AddSingleton<IPruningTrieStateAdminRpcModule, PruningTrieStateAdminRpcModuleStub>()
-            .AddSingleton<MainPruningTrieStoreFactory>(_ => throw new NotSupportedException($"{nameof(MainPruningTrieStoreFactory)} disabled."))
-            .AddSingleton<PruningTrieStateFactory>(_ => throw new NotSupportedException($"{nameof(PruningTrieStateFactory)} disabled."))
+            // Stub out the pruning trie store admin RPC with a disabled response.
+            .AddSingleton<PruningTrieStateAdminRpcModuleStub>()
 
             // The actual flatDb components
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
@@ -58,10 +47,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
                 ctx.Resolve<IFlatDbConfig>(),
+                ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
+            .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
@@ -72,16 +63,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .Add<FlatOverridableWorldScope>()
 
             // Sync components
-            .AddSingleton<ISnapTrieFactory, FlatSnapTrieFactory>()
+            .AddSingleton<FlatSnapTrieFactory>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
-            .AddSingleton<ITreeSyncStore, FlatTreeSyncStore>()
-            .Intercept<ISyncConfig>((syncConfig) =>
-            {
-                syncConfig.SnapServingEnabled = true;
-            })
-            .AddSingleton<IFullStateFinder, FlatFullStateFinder>()
+            .AddSingleton<FlatTreeSyncStore>()
+            .AddSingleton<FlatFullStateFinder>()
 
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
@@ -120,13 +107,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         }
     }
 
-    /// <summary>
-    /// Need to stub out, or it will register trie store specific module
-    /// </summary>
-    private class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
+    internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {
         public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
 
-        public ResultWrapper<string> admin_verifyTrie(BlockParameter block) => ResultWrapper<string>.Success("disable");
+        public ResultWrapper<string> admin_verifyTrie(BlockParameter block) => ResultWrapper<string>.Success("disabled");
     }
 }

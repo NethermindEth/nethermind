@@ -3,14 +3,12 @@
 
 using System;
 using Autofac.Features.AttributeFilters;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -34,15 +32,15 @@ public class LocalDbContext(
 
     public void SetAccountsAndCommit(params (Hash256 Address, Account? Account)[] accounts)
     {
-        foreach (var (address, account) in accounts)
+        foreach ((Hash256? address, Account? account) in accounts)
             StateTree.Set(address, account);
         StateTree.Commit();
     }
 
     public void AssertFlushed()
     {
-        Db.WasFlushed.Should().BeTrue();
-        CodeDb.WasFlushed.Should().BeTrue();
+        Assert.That(Db.WasFlushed, Is.True);
+        Assert.That(CodeDb.WasFlushed, Is.True);
     }
 
     public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)
@@ -51,7 +49,7 @@ public class LocalDbContext(
         StateTree.RootHash = remote.StateTree.RootHash;
 
         if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
-        TreeDumper dumper = new TreeDumper();
+        TreeDumper dumper = new();
         remote.StateTree.Accept(dumper, remote.StateTree.RootHash);
         string remoteStr = dumper.ToString();
         if (!skipLogs) logger.Info(remoteStr);
@@ -71,8 +69,6 @@ public class LocalDbContext(
         }
     }
 
-    public void DeleteStateRoot()
-    {
+    public void DeleteStateRoot() =>
         NodeStorage.Set(null, TreePath.Empty, RootHash, null);
-    }
 }

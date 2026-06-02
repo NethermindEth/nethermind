@@ -13,24 +13,19 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Debugger;
 
-public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
+public class DebugTracer<TGasPolicy>(ITxTracer tracer) : ITxTracer, ITxTracerWrapper, IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     public enum DebugPhase { Starting, Blocked, Running, Aborted }
 
     private readonly AutoResetEvent _autoResetEvent = new(false);
-    private readonly Dictionary<(int depth, int pc), Func<VmState<TGasPolicy>, bool>> _breakPoints = new();
+    private readonly Dictionary<(int depth, int pc), Func<VmState<TGasPolicy>, bool>> _breakPoints = [];
     private Func<VmState<TGasPolicy>, bool>? _globalBreakCondition;
     private readonly object _lock = new();
 
-    public DebugTracer(ITxTracer tracer)
-    {
-        InnerTracer = tracer;
-    }
-
     public event Action? BreakPointReached;
     public event Action? ExecutionThreadSet;
-    public ITxTracer InnerTracer { get; private set; }
+    public ITxTracer InnerTracer { get; private set; } = tracer;
     public DebugPhase CurrentPhase { get; private set; } = DebugPhase.Starting;
     public bool CanReadState => CurrentPhase is DebugPhase.Blocked;
     public bool IsStepByStepModeOn { get; set; }
@@ -295,17 +290,13 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportStorageRead(in StorageCell storageCell)
         => InnerTracer.ReportStorageRead(storageCell);
 
-    public void Dispose()
-    {
-        _autoResetEvent.Dispose();
-    }
+    public void Dispose() => _autoResetEvent.Dispose();
 }
 
 /// <summary>
 /// Non-generic DebugTracer for backward compatibility with EthereumGasPolicy.
 /// </summary>
-public class DebugTracer : DebugTracer<EthereumGasPolicy>
+public class DebugTracer(ITxTracer tracer) : DebugTracer<EthereumGasPolicy>(tracer)
 {
-    public DebugTracer(ITxTracer tracer) : base(tracer) { }
 }
 #endif

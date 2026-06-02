@@ -19,6 +19,7 @@ public class ReleaseSpec : IReleaseSpec
     public long MaxCodeSize { get; set; }
     public long MinGasLimit { get; set; }
     public long MinHistoryRetentionEpochs { get; set; }
+    public long MinBalRetentionEpochs { get; set; }
     public long GasLimitBoundDivisor { get; set; }
     public UInt256 BlockReward { get; set; }
     public long DifficultyBombDelay { get; set; }
@@ -87,6 +88,8 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsOpIsthmusEnabled { get; set; }
     public bool IsOpJovianEnabled { get; set; }
     public bool IsEip7623Enabled { get; set; }
+    public bool IsEip7976Enabled { get; set; }
+    public bool IsEip7981Enabled { get; set; }
     public bool IsEip7883Enabled { get; set; }
     public bool IsEip5656Enabled { get; set; }
     public bool IsEip6780Enabled { get; set; }
@@ -100,7 +103,6 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7918Enabled { get; set; }
     public bool IsEip7934Enabled { get; set; }
     public int Eip7934MaxRlpBlockSize { get; set; }
-    public bool IsEip7907Enabled { get; set; }
     public ulong TargetBlobCount { get; set; }
     public ulong MaxBlobCount { get; set; }
     public ulong MaxBlobsPerTx => IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;
@@ -123,7 +125,6 @@ public class ReleaseSpec : IReleaseSpec
     Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
     Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
     public bool IsEip7939Enabled { get; set; }
-    public bool IsRip7728Enabled { get; set; }
     private FrozenSet<AddressAsKey>? _precompiles;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
     private SpecGasCosts? _gasCosts;
@@ -131,12 +132,13 @@ public class ReleaseSpec : IReleaseSpec
     public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
     {
-        HashSet<AddressAsKey> cache = new();
-
-        cache.Add(PrecompiledAddresses.ECRecover);
-        cache.Add(PrecompiledAddresses.Sha256);
-        cache.Add(PrecompiledAddresses.Ripemd160);
-        cache.Add(PrecompiledAddresses.Identity);
+        HashSet<AddressAsKey> cache =
+        [
+            PrecompiledAddresses.ECRecover,
+            PrecompiledAddresses.Sha256,
+            PrecompiledAddresses.Ripemd160,
+            PrecompiledAddresses.Identity,
+        ];
 
         if (IsEip198Enabled) cache.Add(PrecompiledAddresses.ModExp);
         if (IsEip196Enabled && IsEip197Enabled)
@@ -160,7 +162,6 @@ public class ReleaseSpec : IReleaseSpec
         }
 
         if (IsRip7212Enabled || IsEip7951Enabled) cache.Add(PrecompiledAddresses.P256Verify);
-        if (IsRip7728Enabled) cache.Add(PrecompiledAddresses.L1Sload);
 
         return cache.ToFrozenSet();
     }

@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using Nethermind.Network.StaticNodes;
@@ -20,14 +20,16 @@ namespace Nethermind.Network.Test
     {
         private IStaticNodesManager _staticNodesManager;
 
-        private const string Enode =
+        private const string EnodeString =
             "enode://94c15d1b9e2fe7ce56e458b9a3b672ef11894ddedd0c6f247e0f1d3487f52b66208fb4aeb8179fce6e3a749ea93ed147c37976d67af557508d199d9594c35f09@192.81.208.223:30303";
+
+        private static readonly NetworkNode Enode = new(EnodeString);
 
         [SetUp]
         public void Setup()
         {
-            var path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "test-static-nodes.json");
-            var logManager = LimboLogs.Instance;
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "test-static-nodes.json");
+            LimboLogs logManager = LimboLogs.Instance;
             _staticNodesManager = new StaticNodesManager(path, logManager);
         }
 
@@ -35,7 +37,7 @@ namespace Nethermind.Network.Test
         public async Task init_should_load_static_nodes_from_the_file()
         {
             await _staticNodesManager.InitAsync();
-            _staticNodesManager.Nodes.Count().Should().Be(2);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(2));
         }
 
         [Test]
@@ -43,18 +45,18 @@ namespace Nethermind.Network.Test
         {
             ValueTask<List<Node>> listTask = _staticNodesManager.DiscoverNodes(default).Take(1).ToListAsync();
 
-            _staticNodesManager.Nodes.Count().Should().Be(0);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
             await _staticNodesManager.AddAsync(Enode, false);
-            _staticNodesManager.Nodes.Count().Should().Be(1);
-            (await listTask).Count.Should().Be(1);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(1));
+            Assert.That(await listTask, Has.Count.EqualTo(1));
         }
 
         [Test]
         public async Task is_static_should_report_correctly()
         {
-            _staticNodesManager.IsStatic(Enode).Should().BeFalse();
+            Assert.That(_staticNodesManager.IsStatic(Enode), Is.False);
             await _staticNodesManager.AddAsync(Enode, false);
-            _staticNodesManager.IsStatic(Enode).Should().BeTrue();
+            Assert.That(_staticNodesManager.IsStatic(Enode), Is.True);
         }
 
         [Test]
@@ -65,29 +67,29 @@ namespace Nethermind.Network.Test
             await _staticNodesManager.AddAsync(Enode, false);
             List<Node> nodes = await listTask;
 
-            nodes[0].IsStatic.Should().BeTrue();
+            Assert.That(nodes[0].IsStatic, Is.True);
         }
 
         [Test]
         public async Task remove_should_delete_an_existing_static_node_and_trigger_an_event()
         {
-            var eventRaised = false;
+            bool eventRaised = false;
             _staticNodesManager.NodeRemoved += (s, e) => { eventRaised = true; };
             await _staticNodesManager.AddAsync(Enode, false);
-            _staticNodesManager.Nodes.Count().Should().Be(1);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(1));
             await _staticNodesManager.RemoveAsync(Enode, false);
-            _staticNodesManager.Nodes.Count().Should().Be(0);
-            eventRaised.Should().BeTrue();
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
+            Assert.That(eventRaised, Is.True);
         }
 
         [Test]
         public async Task init_should_load_static_nodes_from_empty_file()
         {
-            using var tempFile = TempPath.GetTempFile();
+            using TempPath tempFile = TempPath.GetTempFile();
             await File.WriteAllTextAsync(tempFile.Path, string.Empty);
             _staticNodesManager = new StaticNodesManager(tempFile.Path, LimboLogs.Instance);
             await _staticNodesManager.InitAsync();
-            _staticNodesManager.Nodes.Count().Should().Be(0);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
         }
     }
 }

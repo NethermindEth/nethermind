@@ -17,10 +17,7 @@ public class BigIntegerConverterTests : ConverterTestBase<BigInteger>
     static readonly JsonSerializerOptions options = new() { Converters = { converter } };
 
     [TestCaseSource(nameof(RoundtripTestCases))]
-    public void Test_roundtrip(BigInteger value)
-    {
-        TestConverter(value, static (a, b) => a.Equals(b), converter);
-    }
+    public void Test_roundtrip(BigInteger value) => TestConverter(value, static (a, b) => a.Equals(b), converter);
 
     static IEnumerable<TestCaseData> RoundtripTestCases =
     [

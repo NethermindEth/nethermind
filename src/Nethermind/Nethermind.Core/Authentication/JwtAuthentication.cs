@@ -33,6 +33,11 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
     private static readonly Task<bool> True = Task.FromResult(true);
     private static readonly Task<bool> False = Task.FromResult(false);
 
+    // JwtAuthentication is created once from JsonRpc.JwtSecretFile during startup and registered as a singleton.
+    // The JWT secret is immutable for the process lifetime, so this thread-local HMAC is keyed by that process constant.
+    [ThreadStatic]
+    private static HMACSHA256? _hmac;
+
     // Known HS256 JWT header Base64Url encodings used by consensus clients
     // {"alg":"HS256","typ":"JWT"}
     private const string HeaderAlgTyp = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
@@ -233,7 +238,8 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return false;
 
         Span<byte> computedHash = stackalloc byte[SHA256HashBytes];
-        HMACSHA256.HashData(_secretBytes, signedBytes, computedHash);
+        if (!(_hmac ??= new HMACSHA256(_secretBytes)).TryComputeHash(signedBytes, computedHash, out _))
+            return false;
 
         Span<byte> sigBytes = stackalloc byte[SHA256HashBytes];
         if (Base64Url.DecodeFromChars(signature, sigBytes, out _, out int sigBytesWritten) != OperationStatus.Done
@@ -407,16 +413,13 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         return true;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WarnInvalidResult(Exception? ex)
+        void WarnInvalidResult(Exception? ex) => _logger.Warn(ex switch
         {
-            _logger.Warn(ex switch
-            {
-                SecurityTokenDecryptionFailedException => "Message authentication error: The token cannot be decrypted.",
-                SecurityTokenReplayDetectedException => "Message authentication error: The token has been used multiple times.",
-                SecurityTokenInvalidSignatureException => "Message authentication error: Invalid token signature.",
-                _ => $"Message authentication error: {ex?.Message}"
-            });
-        }
+            SecurityTokenDecryptionFailedException => "Message authentication error: The token cannot be decrypted.",
+            SecurityTokenReplayDetectedException => "Message authentication error: The token has been used multiple times.",
+            SecurityTokenInvalidSignatureException => "Message authentication error: Invalid token signature.",
+            _ => $"Message authentication error: {ex?.Message}"
+        });
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void WarnTokenExpired(long iat, long now)

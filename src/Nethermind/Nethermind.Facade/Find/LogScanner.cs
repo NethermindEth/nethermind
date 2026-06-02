@@ -3,11 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 
 namespace Nethermind.Facade.Find
@@ -16,7 +15,7 @@ namespace Nethermind.Facade.Find
     {
         private const long LogScanChunkSize = 16;
         private const int LogScanCutoffChunks = 128;
-        private readonly ILogger _logger = logManager.GetClassLogger();
+        private readonly ILogger _logger = logManager.GetClassLogger(typeof(LogScanner<>));
 
         public IEnumerable<T> ScanLogs(long headBlockNumber, Predicate<T> shouldStopScanning)
         {

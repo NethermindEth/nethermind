@@ -67,11 +67,9 @@ namespace Nethermind.Blockchain
 
         public void Insert(IEnumerable<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
-        public void UpdateHeadBlock(Hash256 blockHash)
-        {
+        public void UpdateHeadBlock(Hash256 blockHash) =>
             // hacky while there is not special tree for RPC
             _wrapped.UpdateHeadBlock(blockHash);
-        }
 
         public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
 
@@ -154,7 +152,7 @@ namespace Nethermind.Blockchain
 
         public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
-            var bestKnownNumber = BestKnownNumber;
+            long bestKnownNumber = BestKnownNumber;
             if (endNumber is null || endNumber == bestKnownNumber)
             {
                 if (Head?.Number > 0)
@@ -191,14 +189,12 @@ namespace Nethermind.Blockchain
         }
 
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
-        public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateBeaconMainChain)} calls");
+        public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateBeaconMainChain)} calls");
         public void RecalculateTreeLevels() => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(RecalculateTreeLevels)} calls");
         public (long BlockNumber, Hash256 BlockHash) SyncPivot
         {
             get => _wrapped.SyncPivot;
-            set
-            {
-            }
+            set { }
         }
 
         public bool IsProcessingBlock { get => _wrapped.IsProcessingBlock; set { } }

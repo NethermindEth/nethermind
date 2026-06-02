@@ -1,5 +1,4 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
@@ -29,6 +28,13 @@ public ref struct ArrayPoolListRef<T>
 
         _capacity = _array.Length;
         _count = startingCount;
+    }
+
+    internal ArrayPoolListRef(T[] array, int capacity, int count)
+    {
+        _array = array;
+        _capacity = capacity;
+        _count = count;
     }
 
     public readonly int Count => _count;

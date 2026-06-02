@@ -40,7 +40,7 @@ public class OptimismHeaderValidator(
     {
         if (specHelper.IsHolocene(header))
         {
-            if (!header.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out var decodeError))
+            if (!header.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out string? decodeError))
             {
                 error = decodeError;
                 return false;

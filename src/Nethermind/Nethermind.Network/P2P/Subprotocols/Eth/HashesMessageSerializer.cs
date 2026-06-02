@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -19,10 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null) =>
             byteBuffer.DeserializeRlp((ref Rlp.ValueDecoderContext ctx) => DeserializeHashesArrayPool(ref ctx, limit));
 
-        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null)
-        {
-            return ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
-        }
+        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null) => ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
 
         public void Serialize(IByteBuffer byteBuffer, T message)
         {
@@ -31,9 +29,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(contentLength);
-            foreach (Hash256 hash in message.Hashes.AsSpan())
+            ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
+            for (int i = 0; i < hashes.Length; i++)
             {
-                rlpStream.Encode(hash);
+                rlpStream.Encode(hashes[i]);
             }
         }
 
@@ -41,9 +40,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public int GetLength(T message, out int contentLength)
         {
             contentLength = 0;
-            for (int i = 0; i < message.Hashes.Count; i++)
+            ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
+            for (int i = 0; i < hashes.Length; i++)
             {
-                contentLength += Rlp.LengthOf(message.Hashes[i]);
+                contentLength += Rlp.LengthOf(hashes[i]);
             }
 
             return Rlp.LengthOfSequence(contentLength);

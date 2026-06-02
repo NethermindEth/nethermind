@@ -6,14 +6,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool.Filters;
 
-public class FutureNonceFilter : IIncomingTxFilter
+public class FutureNonceFilter(ITxPoolConfig txPoolConfig) : IIncomingTxFilter
 {
-    private readonly ITxPoolConfig _txPoolConfig;
-
-    public FutureNonceFilter(ITxPoolConfig txPoolConfig)
-    {
-        _txPoolConfig = txPoolConfig;
-    }
+    private readonly ITxPoolConfig _txPoolConfig = txPoolConfig;
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {

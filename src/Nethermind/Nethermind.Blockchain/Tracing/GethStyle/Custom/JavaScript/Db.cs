@@ -9,11 +9,9 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
-public class Db
+public class Db(IWorldState worldState)
 {
-    public IWorldState WorldState { get; }
-
-    public Db(IWorldState worldState) => WorldState = worldState;
+    public IWorldState WorldState { get; } = worldState;
 
     public IJavaScriptObject getBalance(object address) => WorldState.GetBalance(address.ToAddress()).ToBigInteger();
 
@@ -23,7 +21,7 @@ public class Db
 
     public ITypedArray<byte> getState(object address, object hash)
     {
-        using var handle = ArrayPoolDisposableReturn.Rent(32, out byte[] array);
+        using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(32, out byte[] array);
 
         ReadOnlySpan<byte> bytes = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
         if (bytes.Length < array.Length)

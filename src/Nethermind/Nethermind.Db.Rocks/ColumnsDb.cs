@@ -89,15 +89,9 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
     public IEnumerable<T> ColumnKeys => _columnDbs.Keys;
 
-    public IReadOnlyColumnDb<T> CreateReadOnly(bool createInMemWriteStore)
-    {
-        return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
-    }
+    public IReadOnlyColumnDb<T> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
 
-    public new IColumnsWriteBatch<T> StartWriteBatch()
-    {
-        return new RocksColumnsWriteBatch(this);
-    }
+    public new IColumnsWriteBatch<T> StartWriteBatch() => new RocksColumnsWriteBatch(this);
 
     protected override void ApplyOptions(IDictionary<string, string> options)
     {
@@ -110,16 +104,10 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         base.ApplyOptions(options);
     }
 
-    private class RocksColumnsWriteBatch : IColumnsWriteBatch<T>
+    private class RocksColumnsWriteBatch(ColumnsDb<T> columnsDb) : IColumnsWriteBatch<T>
     {
-        internal readonly RocksDbWriteBatch WriteBatch;
-        private readonly ColumnsDb<T> _columnsDb;
-
-        public RocksColumnsWriteBatch(ColumnsDb<T> columnsDb)
-        {
-            WriteBatch = new RocksDbWriteBatch(columnsDb);
-            _columnsDb = columnsDb;
-        }
+        internal readonly RocksDbWriteBatch WriteBatch = new(columnsDb);
+        private readonly ColumnsDb<T> _columnsDb = columnsDb;
 
         public IWriteBatch GetColumnBatch(T key) => new RocksColumnWriteBatch(_columnsDb._columnDbs[key], this);
 
@@ -127,36 +115,18 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public void Dispose() => WriteBatch.Dispose();
     }
 
-    private class RocksColumnWriteBatch : IWriteBatch
+    private class RocksColumnWriteBatch(ColumnDb column, ColumnsDb<T>.RocksColumnsWriteBatch writeBatch) : IWriteBatch
     {
-        private readonly ColumnDb _column;
-        private readonly RocksColumnsWriteBatch _writeBatch;
+        private readonly ColumnDb _column = column;
+        private readonly RocksColumnsWriteBatch _writeBatch = writeBatch;
 
-        public RocksColumnWriteBatch(ColumnDb column, RocksColumnsWriteBatch writeBatch)
-        {
-            _column = column;
-            _writeBatch = writeBatch;
-        }
+        public void Dispose() => _writeBatch.Dispose();
 
-        public void Dispose()
-        {
-            _writeBatch.Dispose();
-        }
+        public void Clear() => _writeBatch.WriteBatch.Clear();
 
-        public void Clear()
-        {
-            _writeBatch.WriteBatch.Clear();
-        }
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Set(key, value, _column._columnFamily, flags);
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-        {
-            _writeBatch.WriteBatch.Set(key, value, _column._columnFamily, flags);
-        }
-
-        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-        {
-            _writeBatch.WriteBatch.Merge(key, value, _column._columnFamily, flags);
-        }
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Merge(key, value, _column._columnFamily, flags);
     }
 
     IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot()
@@ -170,7 +140,6 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         private readonly Snapshot _snapshot;
         private readonly ReadOptions _sharedReadOptions;
         private readonly ReadOptions _sharedCacheMissReadOptions;
-        private readonly RocksDbSharp.Native _rocksDbNative;
         private int _disposed;
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
@@ -180,7 +149,6 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public ColumnDbSnapshot(ColumnsDb<T> columnsDb, Snapshot snapshot)
         {
             _snapshot = snapshot;
-            _rocksDbNative = columnsDb._rocksDbNative;
 
             // Create two shared ReadOptions for all column readers instead of 2 per reader.
             // ReadOptions in RocksDbSharp has a finalizer but no IDisposable — creating many
@@ -199,7 +167,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
             static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
             {
-                ReadOptions options = new ReadOptions();
+                ReadOptions options = new();
                 options.SetVerifyChecksums(columnsDb.VerifyChecksum);
                 options.SetSnapshot(snapshot);
                 return options;
@@ -277,16 +245,10 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
             // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
-            DestroyReadOptions(_sharedReadOptions);
-            DestroyReadOptions(_sharedCacheMissReadOptions);
+            RocksDbReader.DestroyReadOptions(_sharedReadOptions);
+            RocksDbReader.DestroyReadOptions(_sharedCacheMissReadOptions);
 
             _snapshot.Dispose();
-        }
-
-        private void DestroyReadOptions(ReadOptions options)
-        {
-            _rocksDbNative.rocksdb_readoptions_destroy(options.Handle);
-            GC.SuppressFinalize(options);
         }
 
         // Non-boxing enum-to-int conversion. JIT eliminates dead branches at

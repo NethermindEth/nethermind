@@ -4,7 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
-using System.Text;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Types;
 

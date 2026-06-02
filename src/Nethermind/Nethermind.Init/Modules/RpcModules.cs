@@ -5,8 +5,7 @@ using System;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Receipts;
+using Nethermind.Facade.Filters;
 using Nethermind.Config;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Tracing;
@@ -14,9 +13,8 @@ using Nethermind.Core;
 using Nethermind.Core.Timers;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
-using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
-using Nethermind.Init.Steps.Migrations;
+using Nethermind.State.OverridableEnv;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -81,9 +79,13 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             // Eth and its dependencies
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
-                .AddSingleton<IBlockchainBridgeFactory, BlockchainBridgeFactory>()
+                .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
+                    (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
+                        new BlockchainBridgeFactory(simEnvFactory, overridableEnvFactory, lifetimeScope,
+                            jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount))
                 .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
                     .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
+                    .AddSingleton<IEthCapabilitiesProvider, EthCapabilitiesProvider>()
                     .AddSingleton<FilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
                     .AddSingleton<FilterManager>()
                     .AddSingleton<IWitnessGeneratingBlockProcessingEnvFactory, WitnessGeneratingBlockProcessingEnvFactory>()
@@ -98,19 +100,16 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
-            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(Environment.ProcessorCount, jsonRpcConfig.Timeout)
+            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.DebugModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
                 .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IDebugBridge, DebugBridge>()
                 .AddScoped<IDebugRpcModule, DebugRpcModule>()
                 .AddScoped<IGethStyleTracer, GethStyleTracer>()
-                .AddScoped<IReceiptsMigration, ReceiptMigration>()
 
             ;
     }
 
-    private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx)
-    {
-        return new AdminRpcModule(
+    private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx) => new AdminRpcModule(
             ctx.Resolve<IBlockTree>(),
             ctx.Resolve<INetworkConfig>(),
             ctx.Resolve<IPeerPool>(),
@@ -120,6 +119,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ctx.Resolve<IInitConfig>().BaseDbPath, // IInitConfig not accessible from IAdminRpcModule, so we construct it manually here
             ctx.Resolve<ChainSpec>().Parameters,
             ctx.Resolve<ITrustedNodesManager>(),
-            ctx.Resolve<ISubscriptionManager>());
-    }
+            ctx.Resolve<ISubscriptionManager>(),
+            ctx.Resolve<IJsonRpcConfig>());
 }

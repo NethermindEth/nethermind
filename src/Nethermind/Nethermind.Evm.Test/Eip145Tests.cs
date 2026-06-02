@@ -19,10 +19,7 @@ namespace Nethermind.Evm.Test
         protected override ISpecProvider SpecProvider => new CustomSpecProvider(
             ((ForkActivation)0, Byzantium.Instance), ((ForkActivation)1, Constantinople.Instance));
 
-        private void AssertEip145(TestAllTracerWithOutput receipt, string result)
-        {
-            AssertEip145(receipt, Bytes.FromHexString(result));
-        }
+        private void AssertEip145(TestAllTracerWithOutput receipt, string result) => AssertEip145(receipt, Bytes.FromHexString(result));
 
         private void AssertEip145(TestAllTracerWithOutput receipt, ReadOnlySpan<byte> result)
         {

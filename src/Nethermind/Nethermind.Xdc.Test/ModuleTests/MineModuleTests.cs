@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
+using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System;
 using System.Linq;
@@ -19,34 +19,34 @@ internal class MineModuleTests
     [Test]
     public async Task TestUpdateMultipleMasterNodes()
     {
-        using var blockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
-        var tree = (XdcBlockTree)blockchain.BlockTree;
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
 
         // this test is basically an emulation because our block producer test setup does not support saving snapshots yet
         // add blocks until the next gap block
-        var spec = blockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!);
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!);
 
-        var oldHead = (XdcBlockHeader)tree.Head!.Header!;
-        var snapshotBefore = blockchain.SnapshotManager.GetSnapshotByBlockNumber(oldHead.Number, blockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!));
+        XdcBlockHeader oldHead = (XdcBlockHeader)tree.Head!.Header!;
+        Snapshot? snapshotBefore = blockchain.SnapshotManager.GetSnapshotByBlockNumber(oldHead.Number, blockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!));
 
         Assert.That(snapshotBefore, Is.Not.Null);
         Assert.That(snapshotBefore.NextEpochCandidates.Length, Is.EqualTo(30));
 
         // simulate adding a new validator
-        var newValidator = new PrivateKeyGenerator().Generate();
+        PrivateKey newValidator = new PrivateKeyGenerator().Generate();
         blockchain.MasterNodeCandidates.Add(newValidator);
 
         // mine the gap block that should trigger master node update
-        var gapBlock = await blockchain.AddBlock();
+        Block gapBlock = await blockchain.AddBlock();
         while (!ISnapshotManager.IsTimeForSnapshot(tree.Head!.Header!.Number, spec))
         {
             gapBlock = await blockchain.AddBlock();
         }
 
-        var newHead = (XdcBlockHeader)tree.Head!.Header!;
+        XdcBlockHeader newHead = (XdcBlockHeader)tree.Head!.Header!;
         Assert.That(newHead.Number, Is.EqualTo(gapBlock.Number));
 
-        var snapshotAfter = blockchain.SnapshotManager.GetSnapshotByGapNumber(newHead.Number);
+        Snapshot? snapshotAfter = blockchain.SnapshotManager.GetSnapshotByGapNumber(newHead.Number);
 
         Assert.That(snapshotAfter, Is.Not.Null);
         Assert.That(snapshotAfter.BlockNumber, Is.EqualTo(gapBlock.Number));
@@ -57,18 +57,18 @@ internal class MineModuleTests
     [Test]
     public async Task TestShouldMineOncePerRound()
     {
-        using var xdcBlockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
-        var tree = (XdcBlockTree)xdcBlockchain.BlockTree;
+        using XdcTestBlockchain xdcBlockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
+        XdcBlockTree tree = (XdcBlockTree)xdcBlockchain.BlockTree;
 
-        var _hotstuff = (XdcHotStuff)xdcBlockchain.BlockProducerRunner;
+        XdcHotStuff _hotstuff = (XdcHotStuff)xdcBlockchain.BlockProducerRunner;
 
-        var blocksProposed = 0;
+        int blocksProposed = 0;
         xdcBlockchain.ConsensusModule.BlockProduced += (sender, args) =>
         {
             blocksProposed++;
         };
 
-        var newRoundWaitHandle = new TaskCompletionSource();
+        TaskCompletionSource newRoundWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         xdcBlockchain.XdcContext.NewRoundSetEvent += (sender, args) =>
         {
             newRoundWaitHandle.TrySetResult();
@@ -76,10 +76,10 @@ internal class MineModuleTests
 
         xdcBlockchain.StartHotStuffModule();
 
-        var parentBlock = tree.Head!.Header!;
-        var masterNodesAddresses = xdcBlockchain.MasterNodeCandidates.Select(pv => pv.Address).ToArray();
+        BlockHeader parentBlock = tree.Head!.Header!;
+        Address[] masterNodesAddresses = xdcBlockchain.MasterNodeCandidates.Select(pv => pv.Address).ToArray();
 
-        var spec = xdcBlockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!);
+        IXdcReleaseSpec spec = xdcBlockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!);
 
         await xdcBlockchain.TriggerAndSimulateBlockProposalAndVoting();
 
@@ -88,14 +88,14 @@ internal class MineModuleTests
         {
             Assert.Fail("Timeout waiting for new round event");
         }
-        blocksProposed.Should().Be(1);
+        Assert.That(blocksProposed, Is.EqualTo(1));
     }
 
     [Test]
     public async Task TestUpdateMasterNodes()
     {
-        using var blockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
-        var tree = (XdcBlockTree)blockchain.BlockTree;
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
 
         blockchain.ChangeReleaseSpec((spec) =>
         {
@@ -105,15 +105,15 @@ internal class MineModuleTests
 
         IXdcReleaseSpec? spec = blockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header);
 
-        var header = (XdcBlockHeader)blockchain.BlockTree.Head!.Header!;
+        XdcBlockHeader header = (XdcBlockHeader)blockchain.BlockTree.Head!.Header!;
         spec = blockchain.SpecProvider.GetXdcSpec(header);
-        var snapshot = blockchain.SnapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        Snapshot? snapshot = blockchain.SnapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
 
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot.BlockNumber, Is.EqualTo(0));
         Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(30));
 
-        var gapBlock = await blockchain.AddBlock();
+        Block gapBlock = await blockchain.AddBlock();
         while (!ISnapshotManager.IsTimeForSnapshot(tree.Head!.Header!.Number, spec))
         {
             gapBlock = await blockchain.AddBlock();
@@ -129,7 +129,7 @@ internal class MineModuleTests
         Assert.That(snapshot.BlockNumber, Is.EqualTo(gapBlock.Number));
         Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(blockchain.MasterNodeCandidates.Count));
 
-        var epochSwitchBlock = await blockchain.AddBlock();
+        Block epochSwitchBlock = await blockchain.AddBlock();
         while (!blockchain.EpochSwitchManager.IsEpochSwitchAtBlock((XdcBlockHeader)tree.Head!.Header!))
         {
             epochSwitchBlock = await blockchain.AddBlock();

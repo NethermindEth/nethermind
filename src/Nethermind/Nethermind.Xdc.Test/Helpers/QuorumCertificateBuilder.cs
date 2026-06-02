@@ -9,10 +9,8 @@ namespace Nethermind.Xdc.Test.Helpers;
 
 public class QuorumCertificateBuilder : BuilderBase<QuorumCertificate>
 {
-    public QuorumCertificateBuilder()
-    {
+    public QuorumCertificateBuilder() =>
         TestObjectInternal = new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 1);
-    }
 
     public QuorumCertificateBuilder WithBlockInfo(BlockRoundInfo blockInfo)
     {

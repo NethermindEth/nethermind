@@ -30,7 +30,7 @@ public class MessageSerializationService : IMessageSerializationService
                 ThrowInvalidSerializer(Serializer, expectedInterface);
             }
 
-            _zeroSerializers.TryAdd(MessageType.TypeHandle, Serializer);
+            _zeroSerializers[MessageType.TypeHandle] = Serializer;
         }
 
         [DoesNotReturn, StackTraceHidden]
@@ -131,5 +131,5 @@ public class MessageSerializationService : IMessageSerializationService
 
 public record SerializerInfo(Type MessageType, object Serializer)
 {
-    public static SerializerInfo Create<T>(IZeroMessageSerializer<T> messageSerializer) where T : MessageBase => new SerializerInfo(typeof(T), messageSerializer);
+    public static SerializerInfo Create<T>(IZeroMessageSerializer<T> messageSerializer) where T : MessageBase => new(typeof(T), messageSerializer);
 }

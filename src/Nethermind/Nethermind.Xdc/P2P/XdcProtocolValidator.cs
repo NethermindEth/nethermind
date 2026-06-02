@@ -9,17 +9,13 @@ using Nethermind.Stats;
 
 namespace Nethermind.Xdc.P2P;
 
-internal class XdcProtocolValidator : ProtocolValidator
+internal class XdcProtocolValidator(
+    INodeStatsManager nodeStatsManager,
+    IBlockTree blockTree,
+    IForkInfo forkInfo,
+    IPeerManager peerManager,
+    INetworkConfig networkConfig,
+    ILogManager logManager) : ProtocolValidator(nodeStatsManager, blockTree, forkInfo, peerManager, networkConfig, logManager)
 {
-    public XdcProtocolValidator(
-        INodeStatsManager nodeStatsManager,
-        IBlockTree blockTree,
-        IForkInfo forkInfo,
-        IPeerManager peerManager,
-        INetworkConfig networkConfig,
-        ILogManager logManager) : base(nodeStatsManager, blockTree, forkInfo, peerManager, networkConfig, logManager)
-    {
-    }
-
     protected override bool MustValidateForkId { get; set; } = false;
 }

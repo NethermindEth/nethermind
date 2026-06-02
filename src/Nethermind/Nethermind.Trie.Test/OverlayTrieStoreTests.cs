@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -22,11 +21,11 @@ public class OverlayTrieStoreTests
     public void TrieStore_OverlayExistingStore()
     {
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        TestRawTrieStore existingStore = new TestRawTrieStore(dbProvider.StateDb);
+        TestRawTrieStore existingStore = new(dbProvider.StateDb);
 
-        PatriciaTree patriciaTree = new PatriciaTree(existingStore, LimboLogs.Instance);
+        PatriciaTree patriciaTree = new(existingStore, LimboLogs.Instance);
         {
-            using var _ = existingStore.BeginBlockCommit(0);
+            using IBlockCommitter _ = existingStore.BeginBlockCommit(0);
             patriciaTree.Set(TestItem.Keccaks[0].Bytes, TestItem.Keccaks[0].BytesToArray());
             patriciaTree.Set(TestItem.Keccaks[1].Bytes, TestItem.Keccaks[1].BytesToArray());
             patriciaTree.Commit();
@@ -38,41 +37,40 @@ public class OverlayTrieStoreTests
         ITrieStore overlayStore = new OverlayTrieStore(readOnlyDbProvider.GetDb<IDb>(DbNames.State), existingStore.AsReadOnly());
 
         // Modify the overlay tree
-        PatriciaTree overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
+        PatriciaTree overlaidTree = new(overlayStore, LimboLogs.Instance);
         overlaidTree.RootHash = originalRoot;
-        overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
-        overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[1].BytesToArray());
+        Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[0].BytesToArray()));
+        Assert.That(overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[1].BytesToArray()));
         overlaidTree.Set(TestItem.Keccaks[2].Bytes, TestItem.Keccaks[2].BytesToArray());
         overlaidTree.Set(TestItem.Keccaks[3].Bytes, TestItem.Keccaks[3].BytesToArray());
         overlaidTree.Commit();
         Hash256 newRoot = overlaidTree.RootHash;
 
         // Verify that the db is modified
-        readOnlyDbProvider.GetDb<IDb>(DbNames.State).GetAllKeys().Count().Should().NotBe(originalKeyCount);
+        Assert.That(readOnlyDbProvider.GetDb<IDb>(DbNames.State).GetAllKeys().Count(), Is.Not.EqualTo(originalKeyCount));
 
         // It can read the modified db
         overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
         overlaidTree.RootHash = newRoot;
-        overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
-        overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[1].BytesToArray());
-        overlaidTree.Get(TestItem.Keccaks[2].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[2].BytesToArray());
-        overlaidTree.Get(TestItem.Keccaks[3].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[3].BytesToArray());
+        Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[0].BytesToArray()));
+        Assert.That(overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[1].BytesToArray()));
+        Assert.That(overlaidTree.Get(TestItem.Keccaks[2].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[2].BytesToArray()));
+        Assert.That(overlaidTree.Get(TestItem.Keccaks[3].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[3].BytesToArray()));
 
         // Now we clear it
         readOnlyDbProvider.ClearTempChanges();
 
         // It should throw because the overlaid keys are now missing.
-        readOnlyDbProvider.GetDb<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(originalKeyCount);
+        Assert.That(readOnlyDbProvider.GetDb<IDb>(DbNames.State).GetAllKeys().Count(), Is.EqualTo(originalKeyCount));
         overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
         Action act = () =>
         {
             overlaidTree.RootHash = newRoot;
-            overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should()
-                .BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
+            Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[0].BytesToArray()));
         };
-        act.Should().Throw<MissingTrieNodeException>(); // The root is now missing.
+        Assert.That(act, Throws.TypeOf<MissingTrieNodeException>()); // The root is now missing.
 
         // After all this, the original should not change.
-        dbProvider.StateDb.GetAllKeys().Count().Should().Be(originalKeyCount);
+        Assert.That(dbProvider.StateDb.GetAllKeys().Count(), Is.EqualTo(originalKeyCount));
     }
 }

@@ -86,20 +86,11 @@ namespace Nethermind.Core
                 db.PutSpan(blockNumberPrefixedKey, value, writeFlags);
             }
 
-            public void Set(in ValueHash256 key, Span<byte> value)
-            {
-                db.PutSpan(key.Bytes, value);
-            }
+            public void Set(in ValueHash256 key, Span<byte> value) => db.PutSpan(key.Bytes, value);
 
-            public void Delete(Hash256 key)
-            {
-                db.Remove(key.Bytes);
-            }
+            public void Delete(Hash256 key) => db.Remove(key.Bytes);
 
-            public void Delete(long key)
-            {
-                db.Remove(key.ToBigEndianSpanWithoutLeadingZeros(out _));
-            }
+            public void Delete(long key) => db.Remove(key.ToBigEndianSpanWithoutLeadingZeros(out _));
 
             [SkipLocalsInit]
             public void Delete(long blockNumber, Hash256 hash)
@@ -109,10 +100,7 @@ namespace Nethermind.Core
                 db.Remove(key);
             }
 
-            public void Set(long key, byte[] value)
-            {
-                db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
-            }
+            public void Set(long key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
         }
 
         public static void GetBlockNumPrefixedKey(long blockNumber, ValueHash256 blockHash, Span<byte> output)

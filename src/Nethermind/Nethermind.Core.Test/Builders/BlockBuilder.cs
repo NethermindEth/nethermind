@@ -16,6 +16,8 @@ namespace Nethermind.Core.Test.Builders
 {
     public class BlockBuilder : BuilderBase<Block>
     {
+        private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
+
         public BlockBuilder()
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
@@ -98,7 +100,7 @@ namespace Nethermind.Core.Test.Builders
             }
 
             BlockBuilder result = WithTransactions(txs);
-            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, Rlp.GetStreamEncoder<TxReceipt>()!);
+            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, ReceiptDecoder);
             TestObjectInternal.Header.ReceiptsRoot = receiptHash;
             return result;
         }
@@ -168,10 +170,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithParent(Block block)
-        {
-            return WithParent(block.Header);
-        }
+        public BlockBuilder WithParent(Block block) => WithParent(block.Header);
 
         public BlockBuilder WithPostMergeRules()
         {
@@ -270,9 +269,9 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithWithdrawals(int count)
         {
-            var withdrawals = new Withdrawal[count];
+            Withdrawal[] withdrawals = new Withdrawal[count];
 
-            for (var i = 0; i < count; i++)
+            for (int i = 0; i < count; i++)
                 withdrawals[i] = new();
 
             return WithWithdrawals(withdrawals);
@@ -314,7 +313,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithBlockAccessList(BlockAccessList? bal)
+        public BlockBuilder WithBlockAccessList(ReadOnlyBlockAccessList? bal)
         {
             TestObjectInternal.BlockAccessList = bal;
             return this;

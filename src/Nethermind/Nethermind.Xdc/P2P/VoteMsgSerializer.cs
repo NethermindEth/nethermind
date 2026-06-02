@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Core;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using System;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.P2P;
 
 internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
 {
-    private static readonly VoteDecoder _voteDecoder = new VoteDecoder();
+    private static readonly VoteDecoder _voteDecoder = new();
 
     public void Serialize(IByteBuffer byteBuffer, VoteMsg message)
     {

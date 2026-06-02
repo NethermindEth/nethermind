@@ -14,32 +14,18 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
-public class SnapshotCompactor : ISnapshotCompactor
+public class SnapshotCompactor(
+    IFlatDbConfig config,
+    ICompactionSchedule schedule,
+    IResourcePool resourcePool,
+    ISnapshotRepository snapshotRepository,
+    ILogManager logManager) : ISnapshotCompactor
 {
-    private readonly int _compactSize;
-    private readonly int _minCompactSize;
-    private readonly ILogger _logger;
-    private readonly IResourcePool _resourcePool;
-    private readonly ISnapshotRepository _snapshotRepository;
-
-    public SnapshotCompactor(IFlatDbConfig config,
-        IResourcePool resourcePool,
-        ISnapshotRepository snapshotRepository,
-        ILogManager logManager)
-    {
-        if (config.CompactSize > 1 && (config.CompactSize & (config.CompactSize - 1)) != 0)
-            throw new ArgumentException("Compact size must be a power of 2");
-        if (config.MinCompactSize > 1 && (config.MinCompactSize & (config.MinCompactSize - 1)) != 0)
-            throw new ArgumentException("Min compact size must be a power of 2");
-        if (config.MinCompactSize > config.CompactSize)
-            throw new ArgumentException("Min compact size must be <= compact size");
-
-        _resourcePool = resourcePool;
-        _snapshotRepository = snapshotRepository;
-        _compactSize = config.CompactSize;
-        _minCompactSize = Math.Max(config.MinCompactSize, 2);
-        _logger = logManager.GetClassLogger<SnapshotCompactor>();
-    }
+    private readonly int _compactSize = config.CompactSize;
+    private readonly ICompactionSchedule _schedule = schedule;
+    private readonly ILogger _logger = logManager.GetClassLogger<SnapshotCompactor>();
+    private readonly IResourcePool _resourcePool = resourcePool;
+    private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
 
     public bool DoCompactSnapshot(in StateId stateId)
     {
@@ -66,6 +52,7 @@ public class SnapshotCompactor : ISnapshotCompactor
                     return false;
                 }
             }
+
         }
 
         return false;
@@ -73,12 +60,9 @@ public class SnapshotCompactor : ISnapshotCompactor
 
     public SnapshotPooledList GetSnapshotsToCompact(Snapshot snapshot)
     {
-        if (_compactSize <= 1) return SnapshotPooledList.Empty(); // Disabled
         long blockNumber = snapshot.To.BlockNumber;
-        if (blockNumber == 0) return SnapshotPooledList.Empty();
-
-        int compactSize = (int)Math.Min(blockNumber & -blockNumber, _compactSize);
-        if (compactSize < _minCompactSize) return SnapshotPooledList.Empty();
+        int compactSize = _schedule.GetCompactSize(blockNumber);
+        if (compactSize <= 1) return SnapshotPooledList.Empty();
         bool isFullCompaction = compactSize == _compactSize;
 
         if (!isFullCompaction)
@@ -92,24 +76,32 @@ public class SnapshotCompactor : ISnapshotCompactor
             }
         }
 
-        long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
+        long startingBlockNumber = blockNumber - compactSize;
         SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, compactSize);
 
         bool snapshotsOk = false;
         try
         {
-            if (snapshots.Count == 0) return SnapshotPooledList.Empty();
+            if (snapshots.Count == 0)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipping snapshot compaction at block {blockNumber}: assembled 0 of expected {compactSize} snapshots from start {startingBlockNumber}.");
+                return SnapshotPooledList.Empty();
+            }
 
             if (snapshots[0].From.BlockNumber != startingBlockNumber)
             {
                 // Could happen especially at start where the block may not be aligned, but not a big problem.
-                if (_logger.IsDebug) _logger.Debug($"Unable to compile snapshots to compact. {snapshots[0].From.BlockNumber} -> {snapshots[^1].To.BlockNumber}. Starting block number should be {startingBlockNumber}");
+                if (_logger.IsDebug) _logger.Debug($"Skipping snapshot compaction at block {blockNumber}: got {snapshots.Count} snapshots ({snapshots[0].From.BlockNumber} -> {snapshots[^1].To.BlockNumber}), expected start at {startingBlockNumber}.");
 
                 return SnapshotPooledList.Empty();
             }
 
             // Nothing to combine if it's just one
-            if (snapshots.Count == 1) return SnapshotPooledList.Empty();
+            if (snapshots.Count == 1)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipping snapshot compaction at block {blockNumber}: got only 1 of expected {compactSize} snapshots from start {startingBlockNumber}.");
+                return SnapshotPooledList.Empty();
+            }
 
             snapshotsOk = true;
             return snapshots;
@@ -125,17 +117,17 @@ public class SnapshotCompactor : ISnapshotCompactor
         StateId to = snapshots[^1].To;
         StateId from = snapshots[0].From;
 
-        int compactSize = (int)Math.Min(to.BlockNumber & -to.BlockNumber, _compactSize);
+        int compactSize = _schedule.GetCompactSize(to.BlockNumber);
         ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
-        ConcurrentDictionary<AddressAsKey, Account?> accounts = snapshot.Content.Accounts;
-        ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> storages = snapshot.Content.Storages;
-        ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
-        ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = snapshot.Content.StorageNodes;
-        ConcurrentDictionary<TreePath, TrieNode> stateNodes = snapshot.Content.StateNodes;
+        ConcurrentDictionary<HashedKey<Address>, Account?> accounts = snapshot.Content.Accounts;
+        ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> storages = snapshot.Content.Storages;
+        ConcurrentDictionary<HashedKey<Address>, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
+        ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> storageNodes = snapshot.Content.StorageNodes;
+        ConcurrentDictionary<HashedKey<TreePath>, TrieNode> stateNodes = snapshot.Content.StateNodes;
 
-        using ArrayPoolListRef<Task> compactTask = new ArrayPoolListRef<Task>(4);
+        using ArrayPoolListRef<Task> compactTask = new(2);
 
         // Accounts
         compactTask.Add(Task.Run(() =>
@@ -157,7 +149,7 @@ public class SnapshotCompactor : ISnapshotCompactor
                 Snapshot knownState = snapshots[i];
                 addressToClear.Clear();
 
-                foreach ((AddressAsKey address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
+                foreach ((HashedKey<Address> address, bool isNewAccount) in knownState.SelfDestructedStorageAddresses)
                 {
                     if (isNewAccount)
                     {
@@ -167,18 +159,18 @@ public class SnapshotCompactor : ISnapshotCompactor
                     else
                     {
                         selfDestructedStorageAddresses[address] = false;
-                        addressToClear.Add(address);
+                        addressToClear.Add(address.Key);
                     }
                 }
 
                 if (addressToClear.Count > 0)
                 {
                     // Clear
-                    foreach (((AddressAsKey Address, UInt256) key, SlotValue? _) in storages)
+                    foreach ((HashedKey<(Address, UInt256)> key, SlotValue? _) in storages)
                     {
-                        if (addressToClear.Contains(key.Address))
+                        if (addressToClear.Contains(key.Key.Item1))
                         {
-                            storages.Remove(key, out _);
+                            storages.TryRemove(key, out _);
                         }
                     }
                 }
@@ -188,46 +180,31 @@ public class SnapshotCompactor : ISnapshotCompactor
         }));
 
         // State tries
-        compactTask.Add(Task.Run(() =>
-        {
-            for (int i = 0; i < snapshots.Count; i++)
-            {
-                Snapshot knownState = snapshots[i];
-                stateNodes.AddOrUpdateRange(knownState.StateNodes);
-            }
-        }));
+        for (int i = 0; i < snapshots.Count; i++)
+            stateNodes.AddOrUpdateRange(snapshots[i].StateNodes);
 
         // Storage tries
-        compactTask.Add(Task.Run(() =>
+        for (int i = 0; i < snapshots.Count; i++)
         {
-            using PooledSet<Hash256AsKey> addressHashToClear = new();
-
-            for (int i = 0; i < snapshots.Count; i++)
+            // Clear storage nodes for self-destructed accounts
+            using PooledSet<Hash256> addressHashToClear = new();
+            foreach ((HashedKey<Address> address, bool isNewAccount) in snapshots[i].SelfDestructedStorageAddresses)
             {
-                Snapshot knownState = snapshots[i];
-
-                addressHashToClear.Clear();
-                foreach ((AddressAsKey address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
-                {
-                    if (!isNewAccount) addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
-                }
-
-                if (addressHashToClear.Count > 0)
-                {
-                    // Clear
-                    foreach (((Hash256AsKey Address, TreePath) key, TrieNode? _) in storageNodes)
-                    {
-                        if (addressHashToClear.Contains(key.Address))
-                        {
-                            storageNodes.Remove(key, out _);
-                        }
-                    }
-
-                }
-
-                storageNodes.AddOrUpdateRange(knownState.StorageNodes);
+                if (!isNewAccount)
+                    addressHashToClear.Add(address.Key.ToAccountPath.ToCommitment());
             }
-        }));
+
+            if (addressHashToClear.Count > 0)
+            {
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in storageNodes)
+                {
+                    if (addressHashToClear.Contains(kvp.Key.Key.Item1))
+                        storageNodes.TryRemove(kvp.Key, out _);
+                }
+            }
+
+            storageNodes.AddOrUpdateRange(snapshots[i].StorageNodes);
+        }
 
         Task.WaitAll(compactTask.AsSpan());
 

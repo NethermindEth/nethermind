@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,7 +25,6 @@ using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
-using Nethermind.Network.Discovery;
 using Nethermind.Runner;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
@@ -38,6 +38,7 @@ using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
 using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
 using Testably.Abstractions;
+using Nethermind.Network.Discovery.Discv5;
 #if !DEBUG
 using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 #endif
@@ -51,7 +52,7 @@ BlocksConfig.SetDefaultExtraDataWithVersion();
 ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
-var unhandledError = "A critical error has occurred";
+string unhandledError = "A critical error has occurred";
 Option<string>[] deprecatedOptions =
 [
     BasicOptions.ConfigurationDirectory,
@@ -168,7 +169,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     DotNettyLeakDetector.Level = DotNettyLeakDetector.DetectionLevel.Disabled;
 #endif
 
-    logger = logManager.GetClassLogger();
+    logger = logManager.GetClassLogger<Program>();
 
     ConfigureSeqLogger(configProvider);
     ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
@@ -185,6 +186,34 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     logger.Info("Configuration complete");
 
     EthereumJsonSerializer serializer = new();
+
+    if (logger.IsInfo)
+    {
+        StringBuilder nonDefaults = new();
+        int count = 0;
+        Action<Type, Exception> onConfigError = (configType, error) =>
+        {
+            if (logger.IsWarn) logger.Warn($"Skipped {configType.Name} in non-default config diff: {error.Message}");
+        };
+
+        foreach (NonDefaultConfigValue entry in configProvider.GetNonDefaultValues(onConfigError))
+        {
+            nonDefaults.Append("\n  ");
+            if (entry.Category is not null) nonDefaults.Append(entry.Category).Append('.');
+            nonDefaults.Append(entry.Name).Append(" = ").Append(serializer.Serialize(entry.CurrentValue));
+            count++;
+        }
+
+        if (count == 0)
+        {
+            logger.Info("Configuration: all values at defaults.");
+        }
+        else
+        {
+            nonDefaults.Insert(0, $"Configuration: {count} non-default value(s):");
+            logger.Info(nonDefaults.ToString());
+        }
+    }
 
     if (logger.IsDebug)
     {
@@ -233,7 +262,7 @@ void AddConfigurationOptions(Command command)
 {
     static Option CreateOption<T>(Type configType, string name, string? alias)
     {
-        var category = ConfigExtensions.GetCategoryName(configType);
+        string category = ConfigExtensions.GetCategoryName(configType);
         alias = string.IsNullOrWhiteSpace(alias) ? name : alias;
 
         return new Option<T>($"--{category}.{name}", $"--{category}-{alias}".ToLowerInvariant());
@@ -318,13 +347,24 @@ void ConfigureLogger(ParseResult parseResult)
 
     using NLogManager logManager = new();
 
-    logger = logManager.GetClassLogger();
+    logger = logManager.GetClassLogger<Program>();
 
     string? logLevel = parseResult.GetValue(BasicOptions.LogLevel);
 
     // TODO: dynamically switch log levels from CLI
     if (logLevel is not null)
         NLogConfigurator.ConfigureLogLevels(logLevel);
+
+    string loggingFormat = parseResult.GetValue(BasicOptions.LoggingFormat)!;
+
+    try
+    {
+        NLogConfigurator.ConfigureConsoleFormat(loggingFormat);
+    }
+    catch (ArgumentException ex)
+    {
+        logger.Error(ex.Message);
+    }
 }
 
 void ConfigureSeqLogger(IConfigProvider configProvider)
@@ -354,8 +394,8 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     {
         if (child is OptionResult result && !result.Implicit)
         {
-            var isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
-            var value = isBoolean
+            bool isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
+            string value = isBoolean
                 ? result.GetValueOrDefault<bool>().ToString().ToLowerInvariant()
                 : result.GetValueOrDefault<string>();
 
@@ -385,7 +425,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         {
             string? fallback;
 
-            foreach (var ext in new[] { ".json", ".cfg" })
+            foreach (string ext in new[] { ".json", ".cfg" })
             {
                 fallback = $"{configFile}{ext}";
 
@@ -399,7 +439,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         // For backward compatibility. To be removed in the future.
         else if (Path.GetExtension(configFile).Equals(".cfg", StringComparison.Ordinal))
         {
-            var name = Path.GetFileNameWithoutExtension(configFile)!;
+            string name = Path.GetFileNameWithoutExtension(configFile)!;
 
             configFile = $"{configFile[..^4]}.json";
 
@@ -418,7 +458,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(new JsonConfigSource(configFile));
     configProvider.Initialize();
 
-    var (ErrorMsg, Errors) = configProvider.FindIncorrectSettings();
+    (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
@@ -437,13 +477,14 @@ RootCommand CreateRootCommand()
         BasicOptions.ForceResync,
         BasicOptions.LoggerConfigurationSource,
         BasicOptions.LogLevel,
+        BasicOptions.LoggingFormat,
         BasicOptions.PluginsDirectory,
         BasicOptions.PurgeDb
     ];
 
     rootCommand.Description = "Nethermind Ethereum execution client";
 
-    var versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
+    VersionOption versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
 
     if (versionOption is not null)
     {
@@ -468,7 +509,7 @@ ILogger GetCriticalLogger()
 {
     try
     {
-        return new NLogManager("nethermind.log").GetClassLogger();
+        return new NLogManager("nethermind.log").GetClassLogger<Program>();
     }
     catch
     {
@@ -558,19 +599,6 @@ static class BasicOptions
         HelpName = "path"
     };
 
-    public static Option<string> LoggerConfigurationSource { get; } =
-        new("--logger-config", "--loggerConfigSource", "-lcs")
-        {
-            Description = "The path to the logging configuration file.",
-            HelpName = "path"
-        };
-
-    public static Option<string> LogLevel { get; } = new("--log", "-l")
-    {
-        Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
-        HelpName = "level"
-    };
-
     public static Option<bool> ForceResync { get; } = CreateForceResyncOption();
 
     private static Option<bool> CreateForceResyncOption()
@@ -589,6 +617,26 @@ static class BasicOptions
 
         return option;
     }
+
+    public static Option<string> LoggerConfigurationSource { get; } =
+        new("--logger-config", "--loggerConfigSource", "-lcs")
+        {
+            Description = "The path to the logging configuration file.",
+            HelpName = "path"
+        };
+
+    public static Option<string> LoggingFormat { get; } = new("--logging-format")
+    {
+        Description = "Console log output format. Allowed values: plain, ecs, gcp, logstash, gelf.",
+        HelpName = "format",
+        DefaultValueFactory = _ => "plain"
+    };
+
+    public static Option<string> LogLevel { get; } = new("--log", "-l")
+    {
+        Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
+        HelpName = "level"
+    };
 
     public static Option<string> PluginsDirectory { get; } =
         new("--plugins-dir", "--pluginsDirectory", "-pd")

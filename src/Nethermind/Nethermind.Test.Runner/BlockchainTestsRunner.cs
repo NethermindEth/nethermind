@@ -43,8 +43,6 @@ public class BlockchainTestsRunner(
 
             if (filter is not null && test.Name is not null && !Regex.Match(test.Name, $"^({filter})").Success)
                 continue;
-            Setup();
-
             Console.Write($"{test,-120} ");
             if (test.LoadFailure is not null)
             {

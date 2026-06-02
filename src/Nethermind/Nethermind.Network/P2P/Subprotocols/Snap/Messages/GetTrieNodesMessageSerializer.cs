@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -62,12 +61,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.Encode(message.Bytes);
         }
 
-        private static int GetPathsRlpLength(IReadOnlyList<PathGroup> paths)
+        private static int GetPathsRlpLength(IOwnedReadOnlyList<PathGroup> paths)
         {
             int contentLength = 0;
-            for (int i = 0; i < paths.Count; i++)
+            ReadOnlySpan<PathGroup> pathsSpan = paths.AsSpan();
+            for (int i = 0; i < pathsSpan.Length; i++)
             {
-                byte[][] group = paths[i].Group;
+                byte[][] group = pathsSpan[i].Group;
                 int groupContentLength = 0;
                 for (int j = 0; j < group.Length; j++)
                 {
@@ -78,12 +78,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private static void EncodePaths(RlpStream stream, IReadOnlyList<PathGroup> paths)
+        private static void EncodePaths(RlpStream stream, IOwnedReadOnlyList<PathGroup> paths)
         {
             int contentLength = 0;
-            for (int i = 0; i < paths.Count; i++)
+            ReadOnlySpan<PathGroup> pathsSpan = paths.AsSpan();
+            for (int i = 0; i < pathsSpan.Length; i++)
             {
-                byte[][] group = paths[i].Group;
+                byte[][] group = pathsSpan[i].Group;
                 int groupContentLength = 0;
                 for (int j = 0; j < group.Length; j++)
                 {
@@ -93,9 +94,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
 
             stream.StartSequence(contentLength);
-            for (int i = 0; i < paths.Count; i++)
+            for (int i = 0; i < pathsSpan.Length; i++)
             {
-                byte[][] group = paths[i].Group;
+                byte[][] group = pathsSpan[i].Group;
                 int groupContentLength = 0;
                 for (int j = 0; j < group.Length; j++)
                 {
@@ -111,22 +112,37 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startingPosition = ctx.Position;
+            GetTrieNodesMessage message = new();
+            IRlpItemList? rawPaths = null;
 
-            ctx.ReadSequenceLength();
-            long requestId = ctx.DecodeLong();
-            Hash256? rootHash = ctx.DecodeKeccak();
+            try
+            {
+                ctx.ReadSequenceLength();
+                message.RequestId = ctx.DecodeLong();
+                Hash256? rootHash = ctx.DecodeKeccak();
+                message.RootHash = rootHash;
 
-            IRlpItemList rawPaths = RlpItemList.DecodeList(ref ctx, memoryOwner);
-            ValidatePathGroups(rawPaths);
-            RlpPathGroupList paths = new(rawPaths);
+                rawPaths = RlpItemList.DecodeList(ref ctx, memoryOwner);
+                memoryOwner = null;
+                ValidatePathGroups(rawPaths);
+                message.Paths = new RlpPathGroupList(rawPaths);
+                rawPaths = null;
 
-            long bytes = ctx.DecodeLong();
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
+                message.Bytes = ctx.DecodeLong();
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
 
-            return new GetTrieNodesMessage { RequestId = requestId, RootHash = rootHash, Paths = paths, Bytes = bytes };
+                return message;
+            }
+            catch
+            {
+                rawPaths?.Dispose();
+                message.Dispose();
+                memoryOwner?.Dispose();
+                throw;
+            }
         }
 
         private static void ValidatePathGroups(IRlpItemList paths)

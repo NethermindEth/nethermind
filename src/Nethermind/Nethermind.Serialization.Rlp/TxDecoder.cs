@@ -48,7 +48,7 @@ public sealed class TxDecoder : TxDecoder<Transaction>
 public sealed class SystemTxDecoder : TxDecoder<SystemTransaction>;
 public sealed class GeneratedTxDecoder : TxDecoder<GeneratedTransaction>;
 
-public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
+public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
 {
     private readonly ITxDecoder?[] _decoders = new ITxDecoder?[Transaction.MaxTxType + 1];
 
@@ -65,6 +65,14 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
     public void RegisterDecoder(ITxDecoder decoder) => RegisterDecoder(decoder.Type, decoder);
 
     public void RegisterDecoder(TxType type, ITxDecoder decoder) => _decoders[(int)type] = decoder;
+
+    private static void ThrowIfLegacy(TxType txType)
+    {
+        if (txType is TxType.Legacy)
+        {
+            throw new RlpException("Legacy transactions are not allowed in EIP-2718 Typed Transaction Envelope");
+        }
+    }
 
     private ITxDecoder GetDecoder(TxType txType) =>
         _decoders.TryGetByTxType(txType, out ITxDecoder decoder)
@@ -98,6 +106,7 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(decoderContext.Length);
                 txType = (TxType)decoderContext.ReadByte();
+                ThrowIfLegacy(txType);
             }
         }
         else
@@ -108,18 +117,16 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(contentLength);
                 txType = (TxType)decoderContext.ReadByte();
+                ThrowIfLegacy(txType);
             }
         }
 
         GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
-    public override void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        EncodeTx(stream, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
-    }
+    public override void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => EncodeTx(stream, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
-    public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);

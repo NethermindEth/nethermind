@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -29,15 +28,13 @@ public class ProcessedTransactionsDbCleanerTests
     [Test]
     public async Task should_remove_processed_txs_from_db_after_finalization([Values(0, 1, 42, 358)] long blockOfTxs, [Values(1, 42, 358)] long finalizedBlock)
     {
-        Transaction GetTx(PrivateKey sender)
-        {
-            return Build.A.Transaction
+        Transaction GetTx(PrivateKey sender) =>
+            Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(UInt256.One)
                 .WithMaxPriorityFeePerGas(UInt256.One)
                 .WithNonce(UInt256.Zero)
                 .SignedAndResolved(new EthereumEcdsa(_specProvider.ChainId), sender).TestObject;
-        }
 
         IColumnsDb<BlobTxsColumns> columnsDb = new MemColumnsDb<BlobTxsColumns>(BlobTxsColumns.ProcessedTxs);
         BlobTxStorage blobTxStorage = new(columnsDb);
@@ -46,8 +43,8 @@ public class ProcessedTransactionsDbCleanerTests
             blobTxStorage.AddBlobTransactionsFromBlock(blockOfTxs, txs);
         }
 
-        blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out Transaction[]? returnedTxs).Should().BeTrue();
-        returnedTxs!.Length.Should().Be(2);
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out Transaction[]? returnedTxs), Is.True);
+        Assert.That(returnedTxs!.Length, Is.EqualTo(2));
 
         IBlockFinalizationManager finalizationManager = Substitute.For<IBlockFinalizationManager>();
         ProcessedTransactionsDbCleaner dbCleaner = new(finalizationManager, columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _logManager);
@@ -58,6 +55,6 @@ public class ProcessedTransactionsDbCleanerTests
 
         await dbCleaner.CleaningTask;
 
-        blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out _).Should().Be(blockOfTxs > finalizedBlock);
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out _), Is.EqualTo(blockOfTxs > finalizedBlock));
     }
 }

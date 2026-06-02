@@ -56,10 +56,7 @@ namespace Nethermind.Network.Rlpx
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowCorruptedFrameException(int frameSize, int totalPacketSize)
-            {
-                throw new CorruptedFrameException($"Invalid Rlpx header lengths, packet size {totalPacketSize}, frame size {frameSize}");
-            }
+            static void ThrowCorruptedFrameException(int frameSize, int totalPacketSize) => throw new CorruptedFrameException($"Invalid Rlpx header lengths, packet size {totalPacketSize}, frame size {frameSize}");
         }
 
         internal readonly struct FrameInfo(bool isChunked, bool isFirst, int size, int totalPacketSize)

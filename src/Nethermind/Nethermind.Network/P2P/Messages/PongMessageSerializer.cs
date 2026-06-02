@@ -8,14 +8,8 @@ namespace Nethermind.Network.P2P.Messages
 {
     public class PongMessageSerializer : IZeroMessageSerializer<PongMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, PongMessage message)
-        {
-            byteBuffer.WriteBytes(Rlp.OfEmptyList.Bytes);
-        }
+        public void Serialize(IByteBuffer byteBuffer, PongMessage message) => byteBuffer.WriteBytes(Rlp.OfEmptyList.Bytes);
 
-        public PongMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            return PongMessage.Instance;
-        }
+        public PongMessage Deserialize(IByteBuffer byteBuffer) => PongMessage.Instance;
     }
 }

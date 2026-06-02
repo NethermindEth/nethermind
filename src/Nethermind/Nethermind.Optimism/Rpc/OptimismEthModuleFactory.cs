@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
@@ -41,18 +43,23 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly IEthereumEcdsa _ecdsa;
     private readonly ITxSealer _sealer;
     private readonly IBlockFinder _blockFinder;
+    private readonly IBlockTree _blockTree;
     private readonly IReceiptFinder _receiptFinder;
+    private readonly IEthCapabilitiesProvider _capabilitiesProvider;
     private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly IProtocolsManager _protocolsManager;
     private readonly IForkInfo _forkInfo;
     private readonly ILogIndexConfig _logIndexConfig;
     private readonly ulong? _secondsPerSlot;
     private readonly IJsonRpcClient? _sequencerRpcClient;
+    private readonly HeadBlockSignal _headBlockSignal;
 
     public OptimismEthModuleFactory(IJsonRpcConfig rpcConfig,
         IBlockchainBridgeFactory blockchainBridgeFactory,
         IBlockFinder blockFinder,
+        IBlockTree blockTree,
         IReceiptFinder receiptFinder,
+        IEthCapabilitiesProvider capabilitiesProvider,
         IStateReader stateReader,
         ITxPool txPool,
         ITxSender txSender,
@@ -87,7 +94,9 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _feeHistoryOracle = feeHistoryOracle;
         _ecdsa = ecdsa;
         _blockFinder = blockFinder;
+        _blockTree = blockTree;
         _receiptFinder = receiptFinder;
+        _capabilitiesProvider = capabilitiesProvider;
         _opSpecHelper = opSpecHelper;
         _protocolsManager = protocolsManager;
         _forkInfo = forkInfo;
@@ -106,14 +115,14 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         ITxSigner txSigner = new WalletTxSigner(wallet, specProvider.ChainId);
         TxSealer sealer = new(txSigner, timestamper);
         _sealer = sealer;
+        _headBlockSignal = new HeadBlockSignal(blockTree);
     }
 
-    public override IOptimismEthRpcModule Create()
-    {
-        return new OptimismEthRpcModule(
+    public override IOptimismEthRpcModule Create() => new OptimismEthRpcModule(
             _rpcConfig,
             _blockchainBridgeFactory.CreateBlockchainBridge(),
             _blockFinder,
+            _blockTree,
             _receiptFinder,
             _stateReader,
             _txPool,
@@ -131,7 +140,8 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _ecdsa,
             _sealer,
             _logIndexConfig,
-            _opSpecHelper
+            _opSpecHelper,
+            _headBlockSignal,
+            _capabilitiesProvider
         );
-    }
 }

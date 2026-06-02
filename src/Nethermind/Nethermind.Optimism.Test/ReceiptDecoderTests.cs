@@ -40,7 +40,7 @@ public class ReceiptDecoderTests
             decoder.Encode(encodedRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             Rlp.ValueDecoderContext valueDecoderCtx = new(encodedRlp.Data);
-            OptimismTxReceipt decodedStorageReceipt = decoder.Decode(ref valueDecoderCtx, RlpBehaviors.SkipTypedWrapping);
+            OptimismTxReceipt decodedStorageReceipt = (OptimismTxReceipt)decoder.Decode(ref valueDecoderCtx, RlpBehaviors.SkipTypedWrapping);
 
             Assert.Multiple(() =>
             {

@@ -7,20 +7,15 @@ using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Nethermind.Runner.Logging
 {
-    public class CustomMicrosoftLoggerProvider : ILoggerProvider
+    public class CustomMicrosoftLoggerProvider(ILogManager logManager) : ILoggerProvider
     {
-        private readonly ILogManager _logManager;
+        private readonly ILogManager _logManager = logManager;
         private const string WebApiLogNamePrefix = "JsonWebAPI";
-
-        public CustomMicrosoftLoggerProvider(ILogManager logManager)
-        {
-            _logManager = logManager;
-        }
 
         public ILogger CreateLogger(string categoryName)
         {
-            var coreLogger = _logManager.GetLogger($"{WebApiLogNamePrefix}.{categoryName}");
-            var customLogger = new CustomMicrosoftLogger(coreLogger);
+            Nethermind.Logging.ILogger coreLogger = _logManager.GetLogger($"{WebApiLogNamePrefix}.{categoryName}");
+            CustomMicrosoftLogger customLogger = new(coreLogger);
             return customLogger;
         }
 

@@ -5,8 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Collections.Pooled;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -17,14 +19,16 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
 public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder) : IWorldState
 {
-    private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
+    private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = [];
 
-    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new();
+    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new(GenericEqualityComparer.GetOptimized<ValueHash256>());
 
     public Witness GetWitness(BlockHeader parentHeader)
     {
@@ -46,6 +50,19 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         // as anyway all keys recorded in this file should either be read or written to. In both cases, we want
         // trie traversal with trie nodes capture along the path to be compatible with other clients.
         //
+
+        if (!trieStore.TouchedNodesRlp.Any())
+        {
+            // When there are no storage-slot or account reads, lazy TrieNode handling can leave the root node
+            // unrecorded, especially when recording is skipped for nodes with an unknown type.
+            // To ensure the witness still includes the root node in this case, we explicitly resolve it here.
+            // This usually works because trie nodes, and especially the root node, tend to be cached.
+            ITrieNodeResolver stateResolver = trieStore.GetTrieStore(null);
+            TreePath path = TreePath.Empty;
+            TrieNode node = stateResolver.FindCachedOrUnknown(path, parentHeader.StateRoot!);
+            node.ResolveNode(stateResolver, path);
+        }
+
         using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);
         foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
         {
@@ -77,7 +94,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         // Keys should be ordered like: <address1><address2><slot1-address2><slot2-address2><address3><slot1-address3>
         foreach (KeyValuePair<Address, HashSet<UInt256>> kvp in _storageSlots)
         {
-            keys.Add(kvp.Key.Bytes);
+            keys.Add(kvp.Key.Bytes.ToArray());
             foreach (UInt256 slot in kvp.Value)
                 keys.Add(slot.ToBigEndian());
         }
@@ -152,7 +169,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         return ref inner.GetCodeHash(address);
     }
 
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         RecordSlot(storageCell);
         return inner.GetOriginal(in storageCell);
@@ -273,6 +290,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     public void ResetTransient() => inner.ResetTransient();
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => inner.BeginScope(baseBlock);
+    public Task HintBal(ReadOnlyBlockAccessList bal) => inner.HintBal(bal);
 
     public void CreateEmptyAccountIfDeleted(Address address)
     {
@@ -285,7 +303,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     private HashSet<UInt256> RecordEmptySlots(Address address)
     {
         ref HashSet<UInt256>? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, address, out _);
-        slot ??= new HashSet<UInt256>();
+        slot ??= [];
         return slot;
     }
 

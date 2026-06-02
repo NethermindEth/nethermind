@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
@@ -13,30 +14,21 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapProvider : ISnapProvider
+    public class SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, ISnapTrieFactory trieFactory, ILogManager logManager) : ISnapProvider
     {
-        private readonly IDb _codeDb;
-        private readonly ILogger _logger;
+        private readonly IDb _codeDb = codeDb;
+        private readonly ILogger _logger = logManager.GetClassLogger<SnapProvider>();
 
-        private readonly ProgressTracker _progressTracker;
-        private readonly ISnapTrieFactory _trieFactory;
+        private readonly ProgressTracker _progressTracker = progressTracker;
+        private readonly ISnapTrieFactory _trieFactory = trieFactory;
 
         // This is actually close to 97% effective.
-        private readonly ClockKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
-
-        public SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, ISnapTrieFactory trieFactory, ILogManager logManager)
-        {
-            _codeDb = codeDb;
-            _progressTracker = progressTracker;
-            _trieFactory = trieFactory;
-            _logger = logManager.GetClassLogger<SnapProvider>();
-        }
+        private readonly AssociativeKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
 
         public bool CanSync() => _progressTracker.CanSync();
 
@@ -97,16 +89,24 @@ namespace Nethermind.Synchronization.SnapSync
                     _progressTracker.EnqueueAccountStorage(item);
                 }
 
-                using ArrayPoolListRef<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
+                try
                 {
-                    if (_codeExistKeyCache.Get(code)) return false;
+                    using ArrayPoolListRef<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
+                    {
+                        if (_codeExistKeyCache.Get(code)) return false;
 
-                    bool exist = _codeDb.KeyExists(code.Bytes);
-                    if (exist) _codeExistKeyCache.Set(code);
-                    return !exist;
-                }).ToPooledListRef(codeHashes.Count);
+                        bool exist = _codeDb.KeyExists(code.Bytes);
+                        if (exist) _codeExistKeyCache.Set(code);
+                        return !exist;
+                    }).ToPooledListRef(codeHashes.Count);
 
-                _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
+                    _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
+                }
+                catch (AggregateException ae) when (ae.Flatten().InnerExceptions is { Count: > 0 } inners
+                    && inners.All(e => e is ObjectDisposedException))
+                {
+                    ExceptionDispatchInfo.Capture(inners[0]).Throw();
+                }
 
                 ValueHash256 nextPath = accounts[^1].Path.IncrementPath();
                 _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, nextPath, moreChildrenToRight);
@@ -135,8 +135,8 @@ namespace Nethermind.Synchronization.SnapSync
         {
             AddRangeResult result = AddRangeResult.OK;
 
-            IReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> responses = response.PathsAndSlots;
-            if (responses.Count == 0 && response.Proofs.Count == 0)
+            ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> responses = response.PathsAndSlots.AsSpan();
+            if (responses.Length == 0 && response.Proofs.Count == 0)
             {
                 _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count}), {request.StartingHash}");
 
@@ -151,11 +151,11 @@ namespace Nethermind.Synchronization.SnapSync
 
                 int requestLength = request.Accounts.Count;
 
-                for (int i = 0; i < responses.Count; i++)
+                for (int i = 0; i < responses.Length; i++)
                 {
                     // only the last can have proofs
                     IByteArrayList proofs = null;
-                    if (i == responses.Count - 1)
+                    if (i == responses.Length - 1)
                     {
                         proofs = response.Proofs;
                     }
@@ -166,9 +166,9 @@ namespace Nethermind.Synchronization.SnapSync
                     slotCount += responses[i].Count;
                 }
 
-                if (requestLength > responses.Count)
+                if (requestLength > responses.Length)
                 {
-                    _progressTracker.ReportFullStorageRequestFinished(requestLength, request.Accounts.Skip(responses.Count));
+                    _progressTracker.ReportFullStorageRequestFinished(requestLength, request.Accounts.AsSpan()[responses.Length..]);
                 }
                 else
                 {
@@ -187,7 +187,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddStorageRangeForAccount(StorageRange request, int accountIndex, IReadOnlyList<PathWithStorageSlot> slots, IByteArrayList? proofs = null)
         {
-            PathWithAccount pathWithAccount = request.Accounts[accountIndex];
+            ReadOnlySpan<PathWithAccount> accounts = request.Accounts.AsSpan();
+            PathWithAccount pathWithAccount = accounts[accountIndex];
 
             try
             {
@@ -208,7 +209,7 @@ namespace Nethermind.Synchronization.SnapSync
                         // Sometimes the stitching does not work. Likely because part of the storage is using different
                         // pivot, sometimes the proof is in a form that we cannot cleanly verify if it should persist or not,
                         // but also because of stitching bug. So we just force trigger healing and continue on with our lives.
-                        _progressTracker.TrackAccountToHeal(request.Accounts[accountIndex].Path);
+                        _progressTracker.TrackAccountToHeal(accounts[accountIndex].Path);
                     }
 
                     return result;
@@ -245,9 +246,10 @@ namespace Nethermind.Synchronization.SnapSync
         public void RefreshAccounts(AccountsToRefreshRequest request, IByteArrayList response)
         {
             int respLength = response.Count;
-            for (int reqIndex = 0; reqIndex < request.Paths.Count; reqIndex++)
+            ReadOnlySpan<AccountWithStorageStartingHash> paths = request.Paths.AsSpan();
+            for (int reqIndex = 0; reqIndex < paths.Length; reqIndex++)
             {
-                var requestedPath = request.Paths[reqIndex];
+                AccountWithStorageStartingHash requestedPath = paths[reqIndex];
 
                 if (reqIndex < respLength)
                 {
@@ -287,10 +289,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.ReportAccountRefreshFinished();
         }
 
-        private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath)
-        {
-            _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash, requestedPath.StorageHashLimit);
-        }
+        private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath) => _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash, requestedPath.StorageHashLimit);
 
         public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IByteArrayList codes)
         {
@@ -339,15 +338,9 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
 
-        public void UpdatePivot()
-        {
-            _progressTracker.UpdatePivot();
-        }
+        public void UpdatePivot() => _progressTracker.UpdatePivot();
 
-        public void Dispose()
-        {
-            _codeExistKeyCache.Clear();
-        }
+        public void Dispose() => _codeExistKeyCache.Clear();
 
     }
 }
