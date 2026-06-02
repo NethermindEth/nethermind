@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -25,14 +24,14 @@ public class BlockCacheServiceTest
         Hash256 block2Hash = block2.GetOrCalculateHash();
         Hash256 block3Hash = block3.GetOrCalculateHash();
 
-        blockCacheService.TryAddBlock(block1).Should().BeTrue();
-        blockCacheService.TryAddBlock(block2).Should().BeTrue();
-        blockCacheService.TryAddBlock(block3).Should().BeFalse();
+        Assert.That(blockCacheService.TryAddBlock(block1), Is.True);
+        Assert.That(blockCacheService.TryAddBlock(block2), Is.True);
+        Assert.That(blockCacheService.TryAddBlock(block3), Is.False);
 
-        blockCacheService.BlockCache.Should().HaveCount(2);
-        blockCacheService.BlockCache.ContainsKey(block1Hash).Should().BeTrue();
-        blockCacheService.BlockCache.ContainsKey(block2Hash).Should().BeTrue();
-        blockCacheService.BlockCache.ContainsKey(block3Hash).Should().BeFalse();
+        Assert.That(blockCacheService.BlockCache, Has.Count.EqualTo(2));
+        Assert.That(blockCacheService.BlockCache.ContainsKey(block1Hash), Is.True);
+        Assert.That(blockCacheService.BlockCache.ContainsKey(block2Hash), Is.True);
+        Assert.That(blockCacheService.BlockCache.ContainsKey(block3Hash), Is.False);
     }
 
     [Test]
@@ -48,14 +47,14 @@ public class BlockCacheServiceTest
         blockCacheService.FinalizedHash = finalizedHash;
         blockCacheService.HeadBlockHash = headHash;
 
-        blockCacheService.TryAddBlock(finalizedBlock).Should().BeTrue();
-        blockCacheService.TryAddBlock(block2).Should().BeTrue();
-        blockCacheService.TryAddBlock(headBlock).Should().BeTrue();
+        Assert.That(blockCacheService.TryAddBlock(finalizedBlock), Is.True);
+        Assert.That(blockCacheService.TryAddBlock(block2), Is.True);
+        Assert.That(blockCacheService.TryAddBlock(headBlock), Is.True);
 
-        blockCacheService.BlockCache.Should().HaveCount(2);
-        blockCacheService.BlockCache.ContainsKey(finalizedHash).Should().BeTrue();
-        blockCacheService.BlockCache.ContainsKey(block2Hash).Should().BeFalse();
-        blockCacheService.BlockCache.ContainsKey(headHash).Should().BeTrue();
+        Assert.That(blockCacheService.BlockCache, Has.Count.EqualTo(2));
+        Assert.That(blockCacheService.BlockCache.ContainsKey(finalizedHash), Is.True);
+        Assert.That(blockCacheService.BlockCache.ContainsKey(block2Hash), Is.False);
+        Assert.That(blockCacheService.BlockCache.ContainsKey(headHash), Is.True);
     }
 
     [Test]
@@ -69,11 +68,11 @@ public class BlockCacheServiceTest
         blockCacheService.FinalizedHash = finalizedHash;
         blockCacheService.HeadBlockHash = headHash;
 
-        blockCacheService.TryAddBlock(finalizedBlock).Should().BeTrue();
-        blockCacheService.TryAddBlock(headBlock).Should().BeTrue();
+        Assert.That(blockCacheService.TryAddBlock(finalizedBlock), Is.True);
+        Assert.That(blockCacheService.TryAddBlock(headBlock), Is.True);
 
-        blockCacheService.BlockCache.Should().HaveCount(2);
-        blockCacheService.BlockCache.ContainsKey(finalizedHash).Should().BeTrue();
-        blockCacheService.BlockCache.ContainsKey(headHash).Should().BeTrue();
+        Assert.That(blockCacheService.BlockCache, Has.Count.EqualTo(2));
+        Assert.That(blockCacheService.BlockCache.ContainsKey(finalizedHash), Is.True);
+        Assert.That(blockCacheService.BlockCache.ContainsKey(headHash), Is.True);
     }
 }
