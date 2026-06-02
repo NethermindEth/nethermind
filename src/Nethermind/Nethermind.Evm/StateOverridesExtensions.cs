@@ -54,11 +54,8 @@ public static class StateOverridesExtensions
         IReleaseSpec spec,
         long blockNumber)
     {
-        // Disable EIP-158 when overrides are present so accounts that carry storage but no
-        // code/balance/nonce are not deleted during commit, preserving EIP-7610 collision detection.
-        IReleaseSpec effectiveSpec = overrides?.Count > 0 ? new NoEip158Spec(spec) : spec;
-        state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, effectiveSpec);
-        state.Commit(effectiveSpec, commitRoots: true);
+        state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec.WithoutEip158());
+        state.Commit(spec.WithoutEip158(), commitRoots: true);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
     }

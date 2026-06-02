@@ -38,8 +38,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         long blockNumber,
         IReleaseSpec releaseSpec)
     {
-        IReleaseSpec effectiveSpec = blockStateCall.StateOverrides?.Count > 0 ? new NoEip158Spec(releaseSpec) : releaseSpec;
-        stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, effectiveSpec);
+        stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec.WithoutEip158());
 
         IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
         IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
@@ -48,7 +47,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
 
-        stateProvider.Commit(effectiveSpec, commitRoots: true);
+        stateProvider.Commit(releaseSpec.WithoutEip158(), commitRoots: true);
         stateProvider.CommitTree(blockNumber);
     }
 
