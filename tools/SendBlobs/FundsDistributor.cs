@@ -20,7 +20,7 @@ public class FundsDistributor(IJsonRpcClient rpcClient, ulong chainId, string? k
     private readonly IJsonRpcClient _rpcClient = rpcClient ?? throw new ArgumentNullException(nameof(rpcClient));
     private readonly ulong _chainId = chainId;
     private readonly string? _keyFilePath = keyFilePath;
-    private readonly ILogManager _logManager = logManager;
+    private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
     public async Task<IEnumerable<string>> DistributeFunds(Signer distributeFrom, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
     {
