@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
@@ -1258,10 +1259,11 @@ public class BlockTreeTests
 
         blockTree.ReportBadBlock(bad);
 
-        builder.BadBlockStore.GetAll().Should().ContainSingle()
-            .Which.Hash.Should().Be(bad.Hash!);
-        blockTree.FindBlock(bad.Hash!, BlockTreeLookupOptions.AllowInvalid).Should().NotBeNull();
-        blockTree.BestSuggestedHeader.Should().Be(originalSuggested,
+        Block[] stored = builder.BadBlockStore.GetAll().ToArray();
+        Assert.That(stored, Has.Length.EqualTo(1));
+        Assert.That(stored[0].Hash, Is.EqualTo(bad.Hash!));
+        Assert.That(blockTree.FindBlock(bad.Hash!, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
+        Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(originalSuggested),
             "ReportBadBlock must not roll back BestSuggested the way DeleteInvalidBlock does");
     }
 
@@ -1274,7 +1276,7 @@ public class BlockTreeTests
 
         blockTree.ReportBadBlock(badNoHash);
 
-        builder.BadBlockStore.GetAll().Should().BeEmpty();
+        Assert.That(builder.BadBlockStore.GetAll(), Is.Empty);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
