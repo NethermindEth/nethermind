@@ -39,6 +39,11 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // Singleton so that all child env share the same caches. Note: this module is applied per-processing
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
+
+                // Cross-block caches survive across blocks (unlike PreBlockCaches which are cleared each
+                // block) so SLOAD-heavy slots read in one block are served from cache in the next,
+                // avoiding the flat-state/RocksDB read. Only the authoritative main-thread scope uses it.
+                .AddSingleton<CrossBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
 
                 // This class create the block processing env with worldstate that populate the cache
@@ -52,7 +57,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                         worldStateScopeProvider,
                         ctx.Resolve<PreBlockCaches>(),
                         ctx.Resolve<ILogManager>(),
-                        populatePreBlockCache: false
+                        populatePreBlockCache: false,
+                        ctx.Resolve<CrossBlockCaches>()
                     );
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
