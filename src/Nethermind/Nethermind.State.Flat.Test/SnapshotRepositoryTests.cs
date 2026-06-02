@@ -65,6 +65,11 @@ public class SnapshotRepositoryTests
         return snapshot;
     }
 
+    private bool TryLease(StateId state, bool compacted, out Snapshot? snapshot)
+        => compacted
+            ? _repository.TryLeaseCompactedState(state, out snapshot)
+            : _repository.TryLeaseState(state, out snapshot);
+
     private List<Snapshot> BuildSnapshotChain(long startBlock, long endBlock)
     {
         List<Snapshot> snapshots = [];
@@ -89,32 +94,15 @@ public class SnapshotRepositoryTests
     #region Snapshot Addition and Removal
 
     [Test]
-    public void TryAddSnapshot_NewAndDuplicate_BehavesCorrectly()
+    public void TryAddSnapshot_NewAndDuplicate_BehavesCorrectly([Values] bool compacted)
     {
         StateId from = CreateStateId(0);
         StateId to = CreateStateId(1);
         Snapshot snapshot1 = CreateSnapshot(from, to);
         Snapshot snapshot2 = CreateSnapshot(from, to);
 
-        bool added1 = _repository.TryAddSnapshot(snapshot1);
-        bool added2 = _repository.TryAddSnapshot(snapshot2);
-
-        Assert.That(added1, Is.True);
-        Assert.That(added2, Is.False);
-
-        snapshot2.Dispose();
-    }
-
-    [Test]
-    public void TryAddCompactedSnapshot_NewAndDuplicate_BehavesCorrectly()
-    {
-        StateId from = CreateStateId(0);
-        StateId to = CreateStateId(1);
-        Snapshot snapshot1 = CreateSnapshot(from, to);
-        Snapshot snapshot2 = CreateSnapshot(from, to);
-
-        bool added1 = _repository.TryAddCompactedSnapshot(snapshot1);
-        bool added2 = _repository.TryAddCompactedSnapshot(snapshot2);
+        bool added1 = compacted ? _repository.TryAddCompactedSnapshot(snapshot1) : _repository.TryAddSnapshot(snapshot1);
+        bool added2 = compacted ? _repository.TryAddCompactedSnapshot(snapshot2) : _repository.TryAddSnapshot(snapshot2);
 
         Assert.That(added1, Is.True);
         Assert.That(added2, Is.False);
@@ -167,18 +155,16 @@ public class SnapshotRepositoryTests
     #region Lease Operations
 
     [Test]
-    public void TryLeaseState_ExistingAndNonExistent()
+    public void TryLeaseState_ExistingAndNonExistent([Values] bool compacted)
     {
-        AddSnapshotToRepository(0, 1);
+        AddSnapshotToRepository(0, 1, compacted: compacted);
 
-        StateId existing = CreateStateId(1);
-        bool leasedExisting = _repository.TryLeaseState(existing, out Snapshot? snapshot);
+        bool leasedExisting = TryLease(CreateStateId(1), compacted, out Snapshot? snapshot);
         Assert.That(leasedExisting, Is.True);
         Assert.That(snapshot, Is.Not.Null);
         snapshot!.Dispose();
 
-        StateId nonExistent = CreateStateId(999);
-        bool leasedNonExistent = _repository.TryLeaseState(nonExistent, out Snapshot? nonExistentSnapshot);
+        bool leasedNonExistent = TryLease(CreateStateId(999), compacted, out Snapshot? nonExistentSnapshot);
         Assert.That(leasedNonExistent, Is.False);
         Assert.That(nonExistentSnapshot, Is.Null);
     }
@@ -203,23 +189,6 @@ public class SnapshotRepositoryTests
         snapshot1!.Dispose();
         snapshot2!.Dispose();
         snapshot3!.Dispose();
-    }
-
-    [Test]
-    public void TryLeaseCompactedState_ExistingAndNonExistent()
-    {
-        AddSnapshotToRepository(0, 1, compacted: true);
-
-        StateId existing = CreateStateId(1);
-        bool leasedExisting = _repository.TryLeaseCompactedState(existing, out Snapshot? snapshot);
-        Assert.That(leasedExisting, Is.True);
-        Assert.That(snapshot, Is.Not.Null);
-        snapshot!.Dispose();
-
-        StateId nonExistent = CreateStateId(999);
-        bool leasedNonExistent = _repository.TryLeaseCompactedState(nonExistent, out Snapshot? nonExistentSnapshot);
-        Assert.That(leasedNonExistent, Is.False);
-        Assert.That(nonExistentSnapshot, Is.Null);
     }
 
     [Test]
