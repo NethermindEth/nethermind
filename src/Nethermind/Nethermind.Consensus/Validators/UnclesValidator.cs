@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Validators
 
             const int relationshipLevel = 6;
             const int maxAncestorLevelsToCheckForDuplicates = 5;
-            int maxAncestorsDepth = Math.Max(relationshipLevel, maxAncestorLevelsToCheckForDuplicates);
+            const int maxAncestorsDepth = relationshipLevel;
 
             BlockHeader[] ancestors = new BlockHeader[maxAncestorsDepth];
             int ancestorsCount = 0;
@@ -88,24 +88,14 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool IsKin(BlockHeader header, BlockHeader uncle, int relationshipLevel, BlockHeader[] ancestors, int ancestorsCount)
+        private static bool IsKin(BlockHeader header, BlockHeader uncle, int relationshipLevel, BlockHeader[] ancestors, int ancestorsCount)
         {
-            if (relationshipLevel == 0)
+            int maxDepth = Math.Min(Math.Min(ancestorsCount, relationshipLevel), (int)header.Number);
+
+            if (uncle.Number < header.Number - maxDepth)
             {
                 return false;
             }
-
-            if (relationshipLevel > header.Number)
-            {
-                relationshipLevel = (int)header.Number;
-            }
-
-            if (uncle.Number < header.Number - relationshipLevel)
-            {
-                return false;
-            }
-
-            int maxDepth = Math.Min(relationshipLevel, ancestorsCount);
 
             for (int depth = 0; depth < maxDepth; depth++)
             {
