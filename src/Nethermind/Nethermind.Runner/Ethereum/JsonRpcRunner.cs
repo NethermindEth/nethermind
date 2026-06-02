@@ -44,7 +44,7 @@ namespace Nethermind.Runner.Ethereum
         IReceiptFinder receiptFinder,
         IBlockTree blockTree,
         ISyncPeerPool syncPeerPool,
-        IMainProcessingContext mainProcessingContext)
+        IMainProcessingContext mainProcessingContext) : IAsyncDisposable
     {
         private readonly Nethermind.Logging.ILogger _logger = logManager.GetClassLogger<JsonRpcRunner>();
         private readonly IConfigProvider _configurationProvider = configurationProvider;
@@ -131,7 +131,7 @@ namespace Nethermind.Runner.Ethereum
             }
         }
 
-        public async Task StopAsync()
+        public async ValueTask DisposeAsync()
         {
             try
             {

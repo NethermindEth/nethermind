@@ -112,8 +112,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         // pushing this after the stores were registered guarantees Kestrel's graceful shutdown completes before
         // those stores are closed - otherwise a long-running request (e.g. trace_replayBlockTransactions) can read
         // an already-disposed database and throw ObjectDisposedException.
-        api.DisposeStack.Push(
-            new Reactive.AnonymousAsyncDisposable(() => new ValueTask(jsonRpcRunner.StopAsync())));
+        api.DisposeStack.Push(jsonRpcRunner);
         api.DisposeStack.Push(jsonIpcRunner);
     }
     private static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
