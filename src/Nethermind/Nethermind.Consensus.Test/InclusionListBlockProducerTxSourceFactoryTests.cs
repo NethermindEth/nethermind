@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -24,9 +25,6 @@ public class InclusionListBlockProducerTxSourceFactoryTests
     [Test]
     public void IL_transactions_precede_mempool_transactions_in_pipeline()
     {
-        // FOCIL (EIP-7805): if a block fills from the mempool alone it would trivially
-        // satisfy the IL via gas exhaustion — defeating censorship-resistance.
-        // The factory must prepend IL so the IL drains first.
         Transaction mempoolTx = Build.A.Transaction
             .WithNonce(7)
             .SignedAndResolved(TestItem.PrivateKeyB)
@@ -47,17 +45,20 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
             LimboLogs.Instance);
-        il.Set([Serialization.Rlp.TxDecoder.Instance.Encode(ilTx, Serialization.Rlp.RlpBehaviors.SkipTypedWrapping).Bytes], Bogota.Instance);
+        il.Set([TxDecoder.Instance.Encode(ilTx, RlpBehaviors.SkipTypedWrapping).Bytes], Bogota.Instance);
 
-        InclusionListBlockProducerTxSourceFactory subject = new(baseFactory, il);
-        ITxSource composed = subject.Create();
+        ITxSource txSource = new InclusionListBlockProducerTxSourceFactory(baseFactory, il).Create();
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        List<Transaction> drained = composed.GetTransactions(parent, 30_000_000).ToList();
+        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, 30_000_000)];
 
-        Assert.That(drained, Has.Count.GreaterThanOrEqualTo(2));
-        Assert.That(drained[0].Nonce, Is.EqualTo((UInt256)3), "the IL transaction must be drained before the mempool source");
-        Assert.That(drained.Any(t => t.Nonce == (UInt256)7), Is.True, "the mempool transaction must still appear after the IL");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(selectedTxs, Has.Count.GreaterThanOrEqualTo(2));
+            Assert.That(selectedTxs[0].Nonce, Is.EqualTo((UInt256)3), "the IL transaction must be selected before the mempool source");
+            Assert.That(selectedTxs.Any(t => t.Nonce == (UInt256)7), Is.True, "the mempool transaction must still appear after the IL");
+        }
+
     }
 
     [Test]
@@ -79,15 +80,17 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
             LimboLogs.Instance);
-        // No .Set() call — IL is empty.
+        // IL is empty
 
-        InclusionListBlockProducerTxSourceFactory subject = new(baseFactory, il);
-        ITxSource composed = subject.Create();
+        ITxSource txSource = new InclusionListBlockProducerTxSourceFactory(baseFactory, il).Create();
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        List<Transaction> drained = composed.GetTransactions(parent, 30_000_000).ToList();
+        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, 30_000_000)];
 
-        Assert.That(drained, Has.Count.EqualTo(1));
-        Assert.That(drained[0].Nonce, Is.EqualTo((UInt256)7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(selectedTxs, Has.Count.EqualTo(1));
+            Assert.That(selectedTxs[0].Nonce, Is.EqualTo((UInt256)7));
+        }
     }
 }

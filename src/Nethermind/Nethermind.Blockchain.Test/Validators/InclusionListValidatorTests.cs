@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -16,20 +16,11 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class InclusionListValidatorTests
 {
-    private const ulong TenEther = 10_000_000_000_000_000_000ul;
+    private readonly Dictionary<AddressAsKey, AccountSnapshot> ParentSenderState = new() { [TestItem.AddressA] = new AccountSnapshot(10.Ether, 0) };
 
     private ISpecProvider _specProvider = null!;
     private InclusionListValidator _inclusionListValidator = null!;
     private Transaction _validTx = null!;
-
-    /// <summary>
-    /// Parent-state snapshot fixture: AddressA at nonce 0 with 10 ETH. The IL validator no
-    /// longer reads from a live worldstate (that would let a censoring builder defeat the IL
-    /// by including a same-nonce replacement tx); the BlockProcessor captures this snapshot
-    /// before block processing and hands it in, so the tests do the same.
-    /// </summary>
-    private static Dictionary<AddressAsKey, AccountSnapshot> SnapshotFor(Address sender, ulong balanceWei, UInt256 nonce = default) =>
-        new() { [sender] = new AccountSnapshot((UInt256)balanceWei, nonce) };
 
     [SetUp]
     public void Setup()
@@ -56,7 +47,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, SnapshotFor(TestItem.AddressA, TenEther)), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
     }
 
     [Test]
@@ -69,7 +60,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, SnapshotFor(TestItem.AddressA, TenEther)), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
     }
 
     [Test]
@@ -81,7 +72,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, SnapshotFor(TestItem.AddressA, TenEther)), Is.False);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.False);
     }
 
     [Test]
@@ -107,7 +98,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(preBogotaValidator.ValidateInclusionList(block, SnapshotFor(TestItem.AddressA, TenEther)), Is.True);
+        Assert.That(preBogotaValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
     }
 
     [Test]
@@ -128,7 +119,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([expensiveTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, SnapshotFor(TestItem.AddressA, TenEther)), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
     }
 
     [Test]
@@ -149,7 +140,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([futureNonceTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, SnapshotFor(TestItem.AddressA, TenEther)), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
     }
 
     [Test]
@@ -171,7 +162,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([lowGasPriceTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, SnapshotFor(TestItem.AddressA, TenEther)), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
     }
 
     [Test]
@@ -192,7 +183,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([wideTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, SnapshotFor(TestItem.AddressA, TenEther)), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
     }
 
     [Test]
@@ -216,7 +207,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx, invalidTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, SnapshotFor(TestItem.AddressA, TenEther)), Is.True);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
     }
 
     [Test]
@@ -260,7 +251,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, SnapshotFor(TestItem.AddressA, TenEther)), Is.False);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.False);
     }
 
     /// <summary>
@@ -291,6 +282,6 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([eip1559Tx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, SnapshotFor(TestItem.AddressA, TenEther)), Is.False);
+        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.False);
     }
 }

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -34,10 +34,6 @@ public class InclusionListDecoder(
     private readonly RecoverSignatures _recoverSignatures = new(ecdsa, specProvider, logManager);
     private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<InclusionListDecoder>();
 
-    // ILs are bounded by Eip7805Constants.MaxTransactionsPerInclusionList (16), so the
-    // parallel threshold is set low. Above 3 the Parallel.For dispatch cost is comfortably
-    // amortised by RLP decode + ECDSA recovery work per tx; below it the serial path avoids
-    // touching the thread pool entirely.
     private const int ParallelThreshold = 4;
 
     public Transaction[] DecodeAndRecover(byte[][] txBytes, IReleaseSpec spec)

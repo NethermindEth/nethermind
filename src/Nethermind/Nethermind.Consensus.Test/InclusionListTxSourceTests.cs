@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
@@ -42,12 +42,12 @@ public class InclusionListTxSourceTests
         source.Set([Encode(tx1)], Bogota.Instance);
         Assert.That(
             source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000).Select(t => t.Nonce.u0),
-            Is.EqualTo(new[] { 1ul }));
+            Is.EqualTo([1ul]));
 
         source.Set([Encode(tx2)], Bogota.Instance);
         Assert.That(
             source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000).Select(t => t.Nonce.u0),
-            Is.EqualTo(new[] { 2ul }));
+            Is.EqualTo([2ul]));
     }
 
     [Test]

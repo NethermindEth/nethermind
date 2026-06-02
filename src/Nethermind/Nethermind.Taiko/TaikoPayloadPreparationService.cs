@@ -198,5 +198,6 @@ public class TaikoPayloadPreparationService(
 
     public void CancelBlockProduction(string payloadId) => _ = GetPayload(payloadId);
 
+
     public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }
 }
