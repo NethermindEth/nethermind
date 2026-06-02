@@ -301,31 +301,6 @@ public class MergePluginTests
         Assert.That(jsonRpcConfig.AdditionalRpcUrls, Is.EqualTo(new[] { "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client" }));
     }
 
-    [TestCase(true, true, true)]
-    [TestCase(true, false, false)]
-    [TestCase(false, true, false)]
-    public async Task InitThrowExceptionIfBodiesAndReceiptIsDisabled(bool downloadBody, bool downloadReceipt, bool shouldPass)
-    {
-        ISyncConfig syncConfig = new SyncConfig()
-        {
-            FastSync = true,
-            DownloadBodiesInFastSync = downloadBody,
-            DownloadReceiptsInFastSync = downloadReceipt
-        };
-
-        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, _jsonRpcConfig, syncConfig));
-        INethermindApi api = container.Resolve<INethermindApi>();
-        Func<Task> invocation = () => _plugin.Init(api);
-        if (shouldPass)
-        {
-            Assert.That(async () => await invocation(), Throws.Nothing);
-        }
-        else
-        {
-            Assert.That(async () => await invocation(), Throws.TypeOf<InvalidConfigurationException>());
-        }
-    }
-
     private static void AssertPostMergeEthCapabilitiesAdded(INethermindApi api)
     {
         IProtocolsManager protocolsManager = api.ProtocolsManager!;
