@@ -47,6 +47,7 @@ namespace Nethermind.Serialization.Json
 
         private static readonly List<JsonConverter> _additionalConverters = [];
         private static readonly List<JsonTypeInfoResolverRegistration> _additionalResolvers = [];
+        private static bool _strictHexFormat;
         private static int _optionsVersion;
 
         private readonly int _maxDepth;
@@ -120,7 +121,8 @@ namespace Nethermind.Serialization.Json
                     new DoubleConverter(),
                     new DoubleArrayConverter(),
                     new BooleanConverter(),
-                    new AddressAsKeyConverter(),
+                    new AddressConverter(strictHexFormat),
+                    new AddressAsKeyConverter(strictHexFormat),
                     new MemoryByteConverter(),
                     new BigIntegerConverter(),
                     new NullableBigIntegerConverter(),
@@ -192,15 +194,15 @@ namespace Nethermind.Serialization.Json
 
         public static bool StrictHexFormat
         {
-            get => Nethermind.Core.Extensions.Bytes.StrictHexFormat;
+            get => _strictHexFormat;
             set
             {
                 lock (_globalOptionsLock)
                 {
-                    if (Nethermind.Core.Extensions.Bytes.StrictHexFormat == value)
+                    if (_strictHexFormat == value)
                         return;
 
-                    Nethermind.Core.Extensions.Bytes.StrictHexFormat = value;
+                    _strictHexFormat = value;
                     RefreshGlobalOptionsNoLock();
                 }
             }
@@ -303,7 +305,7 @@ namespace Nethermind.Serialization.Json
         {
             lock (_globalOptionsLock)
             {
-                strictHexFormat = Nethermind.Core.Extensions.Bytes.StrictHexFormat;
+                strictHexFormat = _strictHexFormat;
                 additionalConverters = new JsonConverter[_additionalConverters.Count];
                 for (int i = 0; i < _additionalConverters.Count; i++)
                 {

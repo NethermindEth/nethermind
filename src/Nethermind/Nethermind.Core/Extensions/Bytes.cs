@@ -27,13 +27,6 @@ namespace Nethermind.Core.Extensions
         internal const string ErrOddLength = "hex string of odd length";
         internal const string ErrSyntax = "invalid hex string";
 
-        /// <summary>
-        /// When true, hex converters reject EIP-1474-invalid inputs (missing <c>0x</c> prefix,
-        /// quantity values with leading zero digits, empty <c>"0x"</c> quantities). Set by
-        /// <see cref="Nethermind.Serialization.Json.EthereumJsonSerializer.StrictHexFormat"/>.
-        /// </summary>
-        public static bool StrictHexFormat { get; set; }
-
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
