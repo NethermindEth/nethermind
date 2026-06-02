@@ -217,7 +217,7 @@ public partial class EthRpcModule(
 
     public ResultWrapper<StorageValuesResult> eth_getStorageValues(
         StorageValuesRequest requests,
-        BlockParameter blockParameter)
+        BlockParameter? blockParameter = null)
     {
         if (requests.TooManySlots)
             return TooManySlotsError();
