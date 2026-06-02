@@ -725,7 +725,7 @@
           "Microsoft.IdentityModel.JsonWebTokens": "[8.17.0, )",
           "Nethermind.Crypto.SecP256k1": "[1.6.0, )",
           "Nethermind.Logging": "[1.39.0-unstable, )",
-          "Nethermind.Numerics.Int256": "[1.5.0, )",
+          "Nethermind.Numerics.Int256": "[1.5.0-preview.1, )",
           "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
           "Testably.Abstractions": "[10.2.0, )"
@@ -779,7 +779,6 @@
           "Nethermind.Consensus": "[1.39.0-unstable, )",
           "Nethermind.Core": "[1.39.0-unstable, )",
           "Nethermind.JsonRpc": "[1.39.0-unstable, )",
-          "Nethermind.Merkleization": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )",
           "Nethermind.State": "[1.39.0-unstable, )",
@@ -797,7 +796,6 @@
           "Nethermind.Era1": "[1.39.0-unstable, )",
           "Nethermind.History": "[1.39.0-unstable, )",
           "Nethermind.JsonRpc": "[1.39.0-unstable, )",
-          "Nethermind.Merkleization": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )",
           "Nethermind.State": "[1.39.0-unstable, )",
@@ -987,14 +985,7 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Api": "[1.39.0-unstable, )",
-          "Nethermind.Merkleization": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )"
-        }
-      },
-      "nethermind.merkleization": {
-        "type": "Project",
-        "dependencies": {
-          "Nethermind.Numerics.Int256": "[1.5.0, )"
         }
       },
       "nethermind.monitoring": {
@@ -1113,7 +1104,7 @@
       "nethermind.serialization.ssz": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Numerics.Int256": "[1.5.0, )"
+          "Nethermind.Numerics.Int256": "[1.5.0-preview.1, )"
         }
       },
       "nethermind.shutter": {
@@ -1128,7 +1119,6 @@
           "Nethermind.Libp2p": "[1.0.0-preview.45, )",
           "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.0.0-preview.45, )",
           "Nethermind.Merge.Plugin": "[1.39.0-unstable, )",
-          "Nethermind.Merkleization": "[1.39.0-unstable, )",
           "Nethermind.Network.Discovery": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )",
           "Nethermind.Specs": "[1.39.0-unstable, )"
@@ -1573,9 +1563,9 @@
       },
       "Nethermind.Numerics.Int256": {
         "type": "CentralTransitive",
-        "requested": "[1.5.0, )",
-        "resolved": "1.5.0",
-        "contentHash": "MWNOdamJdcWMmytUNNGn0xmwa+GGY97j8TRtqp4UiqOWjn4Ygxs9m+7t2OoTh1Wd+DtouGsjzPuUdS8tyI3Ygw=="
+        "requested": "[1.5.0-preview.1, )",
+        "resolved": "1.5.0-preview.1",
+        "contentHash": "miVhYpCmQdfLul58W0qXK9CtWalWYW8Jg2fGO3qrvKsAsXQf9VBVUDwx7t7ZrFRTRMB27vcS+PhJsxMCKege+w=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
