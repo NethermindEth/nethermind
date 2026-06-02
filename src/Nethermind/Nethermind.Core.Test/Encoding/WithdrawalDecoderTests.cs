@@ -40,7 +40,7 @@ public class WithdrawalDecoderTests
         byte[] rlp = Rlp.Encode(withdrawal).Bytes;
         Withdrawal decoded = Rlp.Decode<Withdrawal>(rlp);
 
-        Assert.That(decoded, Is.EqualTo(withdrawal).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());
     }
 
     [Test]
@@ -61,7 +61,7 @@ public class WithdrawalDecoderTests
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         Withdrawal? decoded = codec.Decode(ref decoderContext);
 
-        Assert.That(decoded, Is.EqualTo(withdrawal).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());
     }
 
     [Test]
