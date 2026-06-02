@@ -41,11 +41,24 @@ public sealed class SeqlockCache<TKey, TValue>
     where TValue : class?
 {
     /// <summary>
-    /// Number of sets. Must be a power of 2 for mask operations.
-    /// 16384 sets × 2 ways = 32768 total entries.
+    /// Default number of set-index bits: 16384 sets × 2 ways = 32768 total entries.
     /// </summary>
-    private const int Sets = 1 << 14; // 16384
-    private const int SetMask = Sets - 1;
+    private const int DefaultSetsLog2 = 14;
+
+    /// <summary>
+    /// Largest supported set-index bit width. The header bit layout (HashShift/HashMask at bits
+    /// 22-41, Way1Shift at bit 42) keeps the way-0 set index (low bits) and the hash signature
+    /// independent only while the set index stays below those fields, so the count is capped here.
+    /// </summary>
+    private const int MaxSetsLog2 = 16;
+
+    /// <summary>
+    /// Number of sets (a power of 2). Configurable via the constructor; defaults to 16384.
+    /// A readonly field rather than a const so a larger cache (e.g. cross-block) can be sized up;
+    /// SetMask is an AND against this field, negligible vs the CAS that dominates each operation.
+    /// </summary>
+    private readonly int Sets;
+    private readonly int SetMask;
 
     // Header bit layout:
     // [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
@@ -92,8 +105,21 @@ public sealed class SeqlockCache<TKey, TValue>
     /// </summary>
     private long _shiftedEpoch;
 
-    public SeqlockCache()
+    public SeqlockCache() : this(DefaultSetsLog2)
     {
+    }
+
+    /// <param name="setsLog2">
+    /// Base-2 log of the number of sets. Clamped to [<see cref="DefaultSetsLog2"/>,
+    /// <see cref="MaxSetsLog2"/>]. Larger values give a bigger cache (fewer evictions) at the cost
+    /// of memory — used for cross-block caches whose working set exceeds the default 32K entries.
+    /// </param>
+    public SeqlockCache(int setsLog2)
+    {
+        if (setsLog2 < DefaultSetsLog2) setsLog2 = DefaultSetsLog2;
+        if (setsLog2 > MaxSetsLog2) setsLog2 = MaxSetsLog2;
+        Sets = 1 << setsLog2;
+        SetMask = Sets - 1;
         _entries = new Entry[Sets << 1]; // Sets * 2
         _epoch = 0;
         _shiftedEpoch = 0;

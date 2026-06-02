@@ -27,8 +27,13 @@ namespace Nethermind.Evm.State;
 /// </remarks>
 public sealed class CrossBlockCaches
 {
-    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
-    private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
+    // Sized larger than the per-block PreBlockCaches: a block's storage working set (read-only
+    // SLOAD slots especially) is large, and cross-block reuse only pays off if hot slots survive
+    // to the next block instead of being evicted. 16 -> 65536 sets x 2 ways = 131072 entries.
+    private const int CrossBlockSetsLog2 = 16;
+
+    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new(CrossBlockSetsLog2);
+    private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new(CrossBlockSetsLog2);
     private long _lastCommittedBlockNumber = -1;
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
