@@ -70,14 +70,11 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.RPC_MONITOR_SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.RPC_MONITOR_SLACK_CHANNEL_ID }}
-          TARGET_URL: ${{ inputs.target_url }}
-          REFERENCE_URL: ${{ inputs.reference_url }}
-          CHAIN: ${{ inputs.chain }}
         with:
           host: ${{ secrets.RPC_MONITOR_SSH_HOST }}
           username: ${{ secrets.RPC_MONITOR_SSH_USER }}
           key: ${{ secrets.RPC_MONITOR_SSH_KEY }}
-          envs: SLACK_BOT_TOKEN,SLACK_CHANNEL_ID,REFERENCE_URL,TARGET_URL,CHAIN
+          envs: SLACK_BOT_TOKEN,SLACK_CHANNEL_ID
           script: |
             docker pull nethermindeth/rpc-monitor:latest
             docker stop rpc-monitor 2>/dev/null || true
@@ -89,6 +86,6 @@ jobs:
               -e RPC_MONITOR_BOT_TOKEN="$SLACK_BOT_TOKEN" \
               -e RPC_MONITOR_CHANNEL_ID="$SLACK_CHANNEL_ID" \
               nethermindeth/rpc-monitor:latest \
-              --target "$TARGET_URL" \
-              --reference "$REFERENCE_URL" \
-              --tests "$CHAIN/**/*"
+              --target "${{ inputs.target_url }}" \
+              --reference "${{ inputs.reference_url }}" \
+              --tests "${{ inputs.chain }}/**/*"
