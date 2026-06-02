@@ -47,9 +47,10 @@ public class BlockAccessListSequentialValidationTests
         BlockAccessListManager balManager = null!;
         Assert.DoesNotThrow(() => balManager = RunSequentialValidation(generated));
 
-        // The matching BAL must be accepted by the column-index fast path, not merely by the
-        // slow-path fallback (which would also accept and hide a regression of the wiring).
-        Assert.That(balManager.FastPathHits, Is.GreaterThan(0));
+        // The generated column index received per-tx slices on the sequential path. This gates
+        // TryFastPath, so with a matching BAL the fast path is what accepted it (the slow-path
+        // fallback would also accept and hide a regression of the sequential wiring).
+        Assert.That(balManager.HasGeneratedValidationIndexUpdates, Is.True);
     }
 
     [Test]

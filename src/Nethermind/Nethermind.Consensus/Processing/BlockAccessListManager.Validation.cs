@@ -168,7 +168,6 @@ public partial class BlockAccessListManager
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
-        FastPathHits++;
         return true;
     }
 
