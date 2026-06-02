@@ -123,8 +123,14 @@ internal class TransactionProcessorEip4844Tests
         }
     }
 
-    [Test]
-    public void Rejects_blob_tx_with_combined_upfront_cost_in_error_detail()
+    [TestCaseSource(nameof(BlobTxUpfrontRejectionCases))]
+    public void Rejects_blob_tx_when_upfront_cost_check_fails(
+        long gasLimit,
+        UInt256 maxFeePerGas,
+        UInt256 maxPriorityFeePerGas,
+        UInt256 maxFeePerBlobGas,
+        ulong baseFeePerGas,
+        params string[] errorFragments)
     {
         _stateProvider.CreateAccount(TestItem.AddressA, UInt256.Zero);
         _stateProvider.Commit(_specProvider.GenesisSpec);
@@ -132,11 +138,11 @@ internal class TransactionProcessorEip4844Tests
 
         Transaction blobTx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
-            .WithGasLimit(0x100000)
+            .WithGasLimit(gasLimit)
             .WithValue(UInt256.Zero)
-            .WithMaxFeePerGas((UInt256)10_000_000_000)
-            .WithMaxPriorityFeePerGas((UInt256)1_000_000_000)
-            .WithMaxFeePerBlobGas((UInt256)10_000_000_000)
+            .WithMaxFeePerGas(maxFeePerGas)
+            .WithMaxPriorityFeePerGas(maxPriorityFeePerGas)
+            .WithMaxFeePerBlobGas(maxFeePerBlobGas)
             .WithShardBlobTxTypeAndFields(1)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
@@ -144,9 +150,9 @@ internal class TransactionProcessorEip4844Tests
         Block block = Build.A.Block
             .WithNumber(1)
             .WithTransactions(blobTx)
-            .WithGasLimit(0x100000)
+            .WithGasLimit(gasLimit)
             .WithExcessBlobGas(0ul)
-            .WithBaseFeePerGas(1)
+            .WithBaseFeePerGas(baseFeePerGas)
             .TestObject;
 
         BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
@@ -155,44 +161,10 @@ internal class TransactionProcessorEip4844Tests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.ErrorDescription, Does.Contain("want 11796480000000000"));
-        }
-    }
-
-    [Test]
-    public void Rejects_blob_tx_when_gas_upfront_cost_overflows_even_if_blob_fee_multiplication_does_not()
-    {
-        _stateProvider.CreateAccount(TestItem.AddressA, UInt256.Zero);
-        _stateProvider.Commit(_specProvider.GenesisSpec);
-        _stateProvider.CommitTree(0);
-
-        Transaction blobTx = Build.A.Transaction
-            .WithTo(TestItem.AddressB)
-            .WithGasLimit(long.MaxValue)
-            .WithValue(UInt256.Zero)
-            .WithMaxFeePerGas(UInt256.MaxValue)
-            .WithMaxPriorityFeePerGas(UInt256.Zero)
-            .WithMaxFeePerBlobGas(UInt256.One)
-            .WithShardBlobTxTypeAndFields(1)
-            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
-            .TestObject;
-
-        Block block = Build.A.Block
-            .WithNumber(1)
-            .WithTransactions(blobTx)
-            .WithGasLimit(long.MaxValue)
-            .WithExcessBlobGas(0ul)
-            .WithBaseFeePerGas(0)
-            .TestObject;
-
-        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
-        TransactionResult result = _transactionProcessor.Execute(blobTx, blkCtx, NullTxTracer.Instance);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.ErrorDescription, Does.Contain("insufficient sender balance for gas * price + value"));
-            Assert.That(result.ErrorDescription, Does.Contain("want"));
+            foreach (string errorFragment in errorFragments)
+            {
+                Assert.That(result.ErrorDescription, Does.Contain(errorFragment));
+            }
         }
     }
 
@@ -261,6 +233,31 @@ internal class TransactionProcessorEip4844Tests
         {
             TestName = $"Rejected if balance does not cover {nameof(Transaction.MaxFeePerBlobGas)} + {nameof(Transaction.Value)}, all funds are returned",
             ExpectedResult = UInt256.Zero,
+        };
+    }
+
+    public static IEnumerable<TestCaseData> BlobTxUpfrontRejectionCases()
+    {
+        yield return new TestCaseData(
+            0x100000L,
+            (UInt256)10_000_000_000,
+            (UInt256)1_000_000_000,
+            (UInt256)10_000_000_000,
+            1ul,
+            new[] { "want 11796480000000000" })
+        {
+            TestName = "Rejected blob tx reports combined upfront cost in error detail",
+        };
+
+        yield return new TestCaseData(
+            long.MaxValue,
+            UInt256.MaxValue,
+            UInt256.Zero,
+            UInt256.One,
+            0ul,
+            new[] { "insufficient sender balance for gas * price + value", "want" })
+        {
+            TestName = "Rejected blob tx preserves gas upfront overflow even when blob fee multiplication does not overflow",
         };
     }
 }
