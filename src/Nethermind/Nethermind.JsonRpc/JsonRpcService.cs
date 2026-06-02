@@ -213,7 +213,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             : PrepareNonEmptyParameters(
                 request,
                 methodName,
-                method,
                 expectedParameters,
                 useUtf8Parameters,
                 providedParametersUtf8,
@@ -243,7 +242,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private JsonRpcErrorResponse? PrepareNonEmptyParameters(
         JsonRpcRequest request,
         string methodName,
-        ResolvedMethodInfo method,
         ExpectedParameter[] expectedParameters,
         bool useUtf8Parameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
