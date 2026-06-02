@@ -8,18 +8,11 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Json;
 
-public class AddressAsKeyConverter(bool strictHexFormat = false) : JsonConverter<AddressAsKey>
+public class AddressAsKeyConverter : JsonConverter<AddressAsKey>
 {
-    // Required parameterless ctor: AddressAsKey carries [JsonConverter(typeof(AddressAsKeyConverter))],
-    // which the source generator instantiates via the default ctor. EthereumJsonSerializer
-    // overrides this with new AddressAsKeyConverter(strictHexFormat) in its options chain.
-    public AddressAsKeyConverter() : this(false) { }
-
-    private readonly bool _strictHexFormat = strictHexFormat;
-
     public override AddressAsKey Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        Address? address = AddressConverter.ReadAddress(ref reader, _strictHexFormat);
+        Address? address = AddressConverter.ReadAddress(ref reader);
         return address is null ? throw new JsonException("Invalid address key") : new AddressAsKey(address);
     }
 
@@ -27,7 +20,7 @@ public class AddressAsKeyConverter(bool strictHexFormat = false) : JsonConverter
         ByteArrayConverter.Convert(writer, value.Value.Bytes, skipLeadingZeros: false);
 
     public override AddressAsKey ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        new(AddressConverter.ReadAddressPropertyName(ref reader, _strictHexFormat));
+        new(AddressConverter.ReadAddressPropertyName(ref reader));
 
     public override void WriteAsPropertyName(Utf8JsonWriter writer, AddressAsKey value, JsonSerializerOptions options) =>
         AddressConverter.WriteAddressPropertyName(writer, value.Value);

@@ -122,7 +122,7 @@ namespace Nethermind.Serialization.Json
                     new DoubleArrayConverter(),
                     new BooleanConverter(),
                     new AddressConverter(strictHexFormat),
-                    new AddressAsKeyConverter(strictHexFormat),
+                    new AddressAsKeyConverter(),
                     new MemoryByteConverter(),
                     new BigIntegerConverter(),
                     new NullableBigIntegerConverter(),

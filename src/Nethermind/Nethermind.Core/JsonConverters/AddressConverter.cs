@@ -12,9 +12,6 @@ namespace Nethermind.Serialization.Json;
 
 public class AddressConverter(bool strictHexFormat = false) : JsonConverter<Address>
 {
-    // Required parameterless ctor: Address carries [JsonConverter(typeof(AddressConverter))],
-    // which the source generator instantiates via the default ctor. EthereumJsonSerializer
-    // overrides this with new AddressConverter(strictHexFormat) in its options chain.
     public AddressConverter() : this(false) { }
 
     private readonly bool _strictHexFormat = strictHexFormat;
