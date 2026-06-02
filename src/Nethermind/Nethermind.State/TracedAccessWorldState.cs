@@ -230,9 +230,6 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         _systemAccountReadSuppressionDepth = 0;
     }
 
-    public void MergeGeneratingBal(GeneratedBlockAccessList target)
-        => target.Merge(_generatingBlockAccessList);
-
     BlockAccessListAtIndex? IBlockAccessListSource.GeneratedBlockAccessList => _generatingBlockAccessList;
 
     public void Restore(Snapshot snapshot)
