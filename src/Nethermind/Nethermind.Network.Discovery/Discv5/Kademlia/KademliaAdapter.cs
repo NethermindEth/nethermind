@@ -102,11 +102,14 @@ public class KademliaAdapter(
         using PingMsg ping = new(CreateRequestId(), nodeRecordProvider.Current.EnrSequence);
         PongResponseHandler responseHandler = new(receiver);
 
+        if (_logger.IsTrace) _logger.Trace($"Sending discv5 PING {ping.RequestId} to {receiver:s}.");
         if (!await SendRequest(receiver, ping, responseHandler, _pingTimeout, token))
         {
+            if (_logger.IsTrace) _logger.Trace($"Discv5 PING {ping.RequestId} to {receiver:s} timed out.");
             return false;
         }
 
+        if (_logger.IsTrace) _logger.Trace($"Discv5 PING {ping.RequestId} to {receiver:s} succeeded.");
         kademlia.Value.AddOrRefresh(receiver);
         return true;
     }
@@ -119,12 +122,15 @@ public class KademliaAdapter(
         using FindNodeMsg findNode = new(CreateRequestId(), distances);
         NodesResponseHandler responseHandler = new(receiver, distances, _distance);
 
+        if (_logger.IsTrace) _logger.Trace($"Sending discv5 FINDNODE {findNode.RequestId} to {receiver:s}, distances: {FormatDistances(distances)}.");
         if (!await SendRequest(receiver, findNode, responseHandler, _findNodeTimeout, token))
         {
+            if (_logger.IsTrace) _logger.Trace($"Discv5 FINDNODE {findNode.RequestId} to {receiver:s} timed out.");
             return null;
         }
 
         Node[] nodes = responseHandler.GetNodes();
+        if (_logger.IsTrace) _logger.Trace($"Discv5 FINDNODE {findNode.RequestId} to {receiver:s} returned {nodes.Length} nodes.");
         for (int i = 0; i < nodes.Length; i++)
         {
             kademlia.Value.AddOrRefresh(nodes[i]);
@@ -177,6 +183,7 @@ public class KademliaAdapter(
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
+            if (_logger.IsTrace) _logger.Trace($"Discv5 request {request.MessageType} {request.RequestId} to {receiver:s} timed out after {timeout}.");
             return false;
         }
         finally
@@ -201,6 +208,7 @@ public class KademliaAdapter(
             byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, session.WriteKey, message, sessionNonce);
             try
             {
+                if (_logger.IsTrace) _logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} with existing session, bytes: {packet.Length}.");
                 await discoveryHandler.SendAsync(packet, receiver.Address);
                 return sessionPendingNonceKey;
             }
@@ -222,6 +230,7 @@ public class KademliaAdapter(
         byte[] initialPacket = packetCodec.EncodeOrdinary(receiver.Id, encryptionKey, message, nonce);
         try
         {
+            if (_logger.IsTrace) _logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} without session, bytes: {initialPacket.Length}.");
             await discoveryHandler.SendAsync(initialPacket, receiver.Address);
             return pendingNonceKey;
         }
@@ -243,6 +252,7 @@ public class KademliaAdapter(
         Span<byte> nonce = stackalloc byte[PacketCodec.NonceSize];
         session.WriteNextNonce(cryptoRandom, nonce);
         byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, session.WriteKey, message, nonce);
+        if (_logger.IsTrace) _logger.Trace($"Sending discv5 response {message.MessageType} {message.RequestId} to {receiver:s}, bytes: {packet.Length}.");
         await discoveryHandler.SendAsync(packet, receiver.Address);
     }
 
@@ -250,11 +260,13 @@ public class KademliaAdapter(
     {
         if (!packetCodec.TryDecode(udpPacket.Buffer, out Packet packet))
         {
+            if (_logger.IsTrace) _logger.Trace($"Dropping undecodable discv5 packet from {udpPacket.RemoteEndPoint}, bytes: {udpPacket.Buffer.Length}.");
             return;
         }
 
         using (packet)
         {
+            if (_logger.IsTrace) _logger.Trace($"Received discv5 {packet.Flag} packet from {udpPacket.RemoteEndPoint}, bytes: {udpPacket.Buffer.Length}.");
             try
             {
                 switch (packet.Flag)
@@ -285,12 +297,14 @@ public class KademliaAdapter(
         PendingNonceKey pendingNonceKey = new(endpoint, NonceKey.From(packet.Nonce.Span));
         if (!_pendingByNonce.TryRemove(pendingNonceKey, out PendingRequest? pendingRequest))
         {
+            if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 WHOAREYOU from {endpoint}; no pending request for nonce.");
             return;
         }
 
         Challenge challenge = packetCodec.DecodeWhoAreYou(packet);
         byte[] handshakePacket = packetCodec.EncodeHandshake(pendingRequest.Receiver.Id, challenge, pendingRequest.Message, out Session session);
         SetSession(new SessionKey(pendingRequest.Receiver.Id.Hash, endpoint), session);
+        if (_logger.IsTrace) _logger.Trace($"Sending discv5 HANDSHAKE for {pendingRequest.Message.MessageType} {pendingRequest.Message.RequestId} to {endpoint}, bytes: {handshakePacket.Length}, requested ENR seq: {challenge.EnrSequence}.");
         await discoveryHandler.SendAsync(handshakePacket, endpoint);
     }
 
@@ -298,6 +312,7 @@ public class KademliaAdapter(
     {
         if (!PacketCodec.TryGetSourceNodeId(packet, out Hash256? nodeId))
         {
+            if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 ordinary packet from {endpoint}; source node id missing.");
             return;
         }
 
@@ -305,12 +320,14 @@ public class KademliaAdapter(
         if (!TryGetSession(sessionKey, out Session? session) ||
             !packetCodec.TryDecryptMessage(packet, session.ReadKey, out Discv5Message message))
         {
+            if (_logger.IsTrace) _logger.Trace($"Discv5 ordinary packet from {endpoint} could not be decrypted with an existing session; sending WHOAREYOU.");
             await SendWhoAreYou(endpoint, packet, nodeId);
             return;
         }
 
         try
         {
+            if (_logger.IsTrace) _logger.Trace($"Received discv5 message {message.MessageType} {message.RequestId} from {endpoint}.");
             await HandleMessage(session.RemotePublicKey, endpoint, message, token);
         }
         finally
@@ -323,6 +340,7 @@ public class KademliaAdapter(
     {
         if (!PacketCodec.TryGetSourceNodeId(packet, out Hash256? nodeId))
         {
+            if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake packet from {endpoint}; source node id missing.");
             return;
         }
 
@@ -330,12 +348,14 @@ public class KademliaAdapter(
         if (!_sentChallenges.TryRemove(challengeKey, out SentChallenge sentChallenge) ||
             IsExpired(sentChallenge, Environment.TickCount64))
         {
+            if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake packet from {endpoint}; matching challenge missing or expired.");
             return;
         }
 
         TryGetKnownRecord(nodeId, out NodeRecord? knownRecord);
         if (!packetCodec.TryDecryptHandshake(packet, sentChallenge.Challenge, knownRecord, out Session session, out Discv5Message message, out NodeRecord? nodeRecord))
         {
+            if (_logger.IsTrace) _logger.Trace($"Unable to decrypt discv5 handshake packet from {endpoint}.");
             return;
         }
 
@@ -346,6 +366,7 @@ public class KademliaAdapter(
             {
                 if (!HasExpectedNodeId(nodeRecord, nodeId))
                 {
+                    if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake ENR from {endpoint}; ENR node id does not match packet source.");
                     return;
                 }
 
@@ -357,6 +378,7 @@ public class KademliaAdapter(
             }
 
             SetSession(new SessionKey(nodeId, endpoint), session);
+            if (_logger.IsTrace) _logger.Trace($"Received discv5 handshake message {message.MessageType} {message.RequestId} from {endpoint}, ENR included: {nodeRecord is not null}.");
             await HandleMessage(session.RemotePublicKey, endpoint, message, token, messageRecord);
         }
         finally
@@ -371,6 +393,7 @@ public class KademliaAdapter(
         long now = Environment.TickCount64;
         if (_sentChallenges.TryGet(challengeKey, out SentChallenge existingChallenge) && !IsExpired(existingChallenge, now))
         {
+            if (_logger.IsTrace) _logger.Trace($"Resending discv5 WHOAREYOU challenge to {endpoint}.");
             await discoveryHandler.SendAsync(existingChallenge.Packet, endpoint);
             return;
         }
@@ -384,6 +407,7 @@ public class KademliaAdapter(
         ulong enrSequence = TryGetKnownRecord(nodeId, out NodeRecord? record) ? record.EnrSequence : 0UL;
         byte[] packet = packetCodec.EncodeWhoAreYou(nodeId.Bytes, requestPacket.Nonce.Span, enrSequence, out Challenge challenge);
         SetSentChallenge(challengeKey, challenge, packet);
+        if (_logger.IsTrace) _logger.Trace($"Sending discv5 WHOAREYOU challenge to {endpoint}, known ENR seq: {enrSequence}, bytes: {packet.Length}.");
         await discoveryHandler.SendAsync(packet, endpoint);
     }
 
@@ -395,10 +419,12 @@ public class KademliaAdapter(
         };
         if (HandleResponse(remotePublicKey.Hash, message))
         {
+            if (_logger.IsTrace) _logger.Trace($"Handled discv5 response {message.MessageType} {message.RequestId} from {endpoint}.");
             kademlia.Value.AddOrRefresh(remoteNode);
             return;
         }
 
+        if (_logger.IsTrace) _logger.Trace($"Handling discv5 request {message.MessageType} {message.RequestId} from {endpoint}.");
         switch (message)
         {
             case PingMsg ping:
@@ -577,6 +603,28 @@ public class KademliaAdapter(
         }
 
         return new Distances(distances[..count]);
+    }
+
+    private static string FormatDistances(Distances distances)
+    {
+        Span<char> chars = stackalloc char[16];
+        int position = 0;
+        for (int i = 0; i < distances.Count; i++)
+        {
+            if (i > 0)
+            {
+                chars[position++] = ',';
+            }
+
+            if (!distances[i].TryFormat(chars[position..], out int written))
+            {
+                return string.Join(",", distances);
+            }
+
+            position += written;
+        }
+
+        return chars[..position].ToString();
     }
 
     private RequestId CreateRequestId()

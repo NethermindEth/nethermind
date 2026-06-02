@@ -35,6 +35,7 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel? channe
 
         if (_inboundQueue.Writer.TryWrite(queuedPacket))
         {
+            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {NormalizeEndpoint((IPEndPoint)msg.Sender)}, bytes: {msg.Content.ReadableBytes}.");
             return;
         }
 
@@ -51,6 +52,7 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel? channe
 
         try
         {
+            if (_logger.IsTrace) _logger.Trace($"Sending discv5 UDP packet to {destination}, bytes: {data.Length}.");
             await Channel.WriteAndFlushAsync(packet);
         }
         catch (SocketException exception)
@@ -104,7 +106,7 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel? channe
                 bytes[i] = packet.Content.ReadByte();
             }
 
-            return new PooledUdpReceiveResult((IPEndPoint)packet.Sender, buffer);
+            return new PooledUdpReceiveResult(NormalizeEndpoint((IPEndPoint)packet.Sender), buffer);
         }
         catch
         {
@@ -112,6 +114,11 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel? channe
             throw;
         }
     }
+
+    private static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
+        => endpoint.Address.IsIPv4MappedToIPv6
+            ? new IPEndPoint(endpoint.Address.MapToIPv4(), endpoint.Port)
+            : endpoint;
 
     public void Close()
     {

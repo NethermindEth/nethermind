@@ -75,6 +75,31 @@ namespace Nethermind.Network.Discovery.Test
             Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(from));
         }
 
+        [Test]
+        public async Task MapsIpv4MappedIpv6SenderToIpv4()
+        {
+            byte[] data = [1, 2, 3];
+            IPEndPoint from = new(IPAddress.Parse("::ffff:127.0.0.1"), 10000);
+            IPEndPoint expectedFrom = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
+
+            using CancellationTokenSource cancellationSource = new(10_000);
+            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _handler
+                .ReadMessagesAsync(cancellationSource.Token)
+                .GetAsyncEnumerator(cancellationSource.Token);
+            ValueTask<bool> readTask = enumerator.MoveNextAsync();
+
+            IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
+
+            _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
+
+            Assert.That(await readTask, Is.True);
+            PooledUdpReceiveResult forwardedPacket = enumerator.Current;
+
+            Assert.That(forwardedPacket.Buffer.ToArray(), Is.EqualTo(data));
+            Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(expectedFrom));
+        }
+
         [TestCase(0)]
         [TestCase(1280 + 1)]
         public async Task SkipsMessagesOfInvalidSize(int size)
