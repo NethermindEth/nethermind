@@ -368,14 +368,34 @@ public struct EvmPooledMemory
         return new(size, _memory);
     }
 
+    // Per-thread one-deep cache of a previously-rented EVM memory buffer. EVM call frames execute
+    // sequentially on a single block-processing (or prewarm) thread, so a frame's buffer can be
+    // handed directly to the next frame on the same thread instead of cycling through the contended
+    // shared ArrayPool. dotTrace showed SharedArrayPool.Rent/Return + Array.Clear dominating MSTORE;
+    // retaining the largest seen buffer per thread removes most of that Rent/Return traffic and lets
+    // the already-zeroed tail be reused (see RentSlow). Cleared on thread exit by the GC.
+    [ThreadStatic]
+    private static byte[]? _threadCachedBuffer;
+
     public void Dispose()
     {
-        byte[] memory = _memory;
+        byte[]? memory = _memory;
 
         if (memory is not null)
         {
             _memory = null;
-            SafeArrayPool<byte>.Shared.Return(memory);
+            // Keep the larger of this buffer and any already-cached one for reuse by the next frame
+            // on this thread; return the smaller to the shared pool so we don't leak large arrays.
+            byte[]? cached = _threadCachedBuffer;
+            if (cached is null || memory.Length > cached.Length)
+            {
+                _threadCachedBuffer = memory;
+                if (cached is not null) SafeArrayPool<byte>.Shared.Return(cached);
+            }
+            else
+            {
+                SafeArrayPool<byte>.Shared.Return(memory);
+            }
         }
     }
 
@@ -425,8 +445,20 @@ public struct EvmPooledMemory
         const int MinRentSize = 1_024;
         if (_memory is null)
         {
-            // First rent: take at least MinRentSize so the common small-memory case never has to grow.
-            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
+            int wanted = (int)Math.Max((uint)Size, MinRentSize);
+            // Prefer reusing this thread's cached buffer (set by a prior frame's Dispose) over a
+            // shared-pool rent; it is already allocated and avoids the contended pool round-trip.
+            byte[]? cached = _threadCachedBuffer;
+            if (cached is not null && cached.Length >= wanted)
+            {
+                _threadCachedBuffer = null;
+                _memory = cached;
+            }
+            else
+            {
+                _memory = SafeArrayPool<byte>.Shared.Rent(wanted);
+            }
+            // The reused/rented buffer's contents are undefined, so zero the live [0, Size) region.
             Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
         else
@@ -434,15 +466,8 @@ public struct EvmPooledMemory
             int lastZeroedSize = (int)_lastZeroedSize;
             if (Size > (ulong)_memory.LongLength)
             {
-                // Geometric capacity growth: grow the backing buffer to at least 2x its current
-                // length (capped at MaxMemorySize) rather than exact-fitting Size. EVM memory grows
-                // monotonically within a frame, so exact-fit caused an O(n) rent/copy/return churn
-                // on the shared pool; doubling makes it O(log n). Capacity (buffer length) and logical
-                // Size are decoupled — only [0, Size) is ever zeroed/readable, so consensus semantics
-                // are unchanged.
                 byte[] beforeResize = _memory;
-                ulong targetCapacity = Math.Min(Math.Max(Size, (ulong)_memory.LongLength * 2UL), MaxMemorySize);
-                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(targetCapacity));
+                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
                 Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
                 Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
                 SafeArrayPool<byte>.Shared.Return(beforeResize);
