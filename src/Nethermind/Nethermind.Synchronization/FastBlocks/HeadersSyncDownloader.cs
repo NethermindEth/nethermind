@@ -11,14 +11,9 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class HeadersSyncDownloader : ISyncDownloader<HeadersSyncBatch>
+    public class HeadersSyncDownloader(ILogManager logManager) : ISyncDownloader<HeadersSyncBatch>
     {
-        private readonly ILogger Logger;
-
-        public HeadersSyncDownloader(ILogManager logManager)
-        {
-            Logger = logManager.GetClassLogger<HeadersSyncDownloader>();
-        }
+        private readonly ILogger Logger = logManager.GetClassLogger<HeadersSyncDownloader>();
 
         async Task ISyncDownloader<HeadersSyncBatch>.Dispatch(
             PeerInfo peerInfo,

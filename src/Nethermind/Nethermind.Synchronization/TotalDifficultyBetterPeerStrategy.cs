@@ -6,14 +6,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Synchronization;
 
-public class TotalDifficultyBetterPeerStrategy : IBetterPeerStrategy
+public class TotalDifficultyBetterPeerStrategy(ILogManager logManager) : IBetterPeerStrategy
 {
-    private readonly ILogger _logger;
-
-    public TotalDifficultyBetterPeerStrategy(ILogManager logManager)
-    {
-        _logger = logManager.GetClassLogger<TotalDifficultyBetterPeerStrategy>();
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger<TotalDifficultyBetterPeerStrategy>();
 
     public int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY) =>
         valueX.TotalDifficulty is { } xTotalDifficulty && valueY.TotalDifficulty is { } yTotalDifficulty

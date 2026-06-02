@@ -46,7 +46,7 @@ internal sealed partial class PersistentStorageProvider
             (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
             static (i, state) =>
             {
-                ref var kvp = ref state.storages.GetRef(i);
+                ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) kvp = ref state.storages.GetRef(i);
                 (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
 
                 if (writes == 0)

@@ -83,7 +83,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     public void Test_PrestateTrace_SStore(string? config, string expectedTrace)
     {
         TestState.CreateAccount(Address.Zero, 100.Ether);
-        StorageCell storageCell = new StorageCell(TestItem.AddressB, 32);
+        StorageCell storageCell = new(TestItem.AddressB, 32);
         byte[] storageData = Bytes.FromHexString("123456789abcdef");
         TestState.Set(storageCell, storageData);
 

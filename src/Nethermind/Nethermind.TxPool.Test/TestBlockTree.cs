@@ -31,10 +31,7 @@ internal class TestBlockTree : IBlockTree
     public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain { add { } remove { } }
     public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>? OnForkChoiceUpdated { add { } remove { } }
 
-    public void RaiseBlockAddedToMain(BlockReplacementEventArgs args)
-    {
-        BlockAddedToMain?.Invoke(this, args);
-    }
+    public void RaiseBlockAddedToMain(BlockReplacementEventArgs args) => BlockAddedToMain?.Invoke(this, args);
 
     public BlockHeader FindBestSuggestedHeader() => BestSuggestedHeader!;
 
@@ -102,7 +99,7 @@ internal class TestBlockTree : IBlockTree
     public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) { }
     public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) => 0;
     public bool IsBetterThanHead(BlockHeader? header) => false;
-    public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) { }
+    public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint) { }
     public void RecalculateTreeLevels() { }
     public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth) { }
 }

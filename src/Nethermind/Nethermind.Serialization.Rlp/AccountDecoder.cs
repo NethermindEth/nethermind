@@ -8,7 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class AccountDecoder : RlpValueDecoder<Account?>, IRlpObjectDecoder<Account?>
+    public sealed class AccountDecoder : RlpDecoder<Account?>
     {
         private readonly bool _slimFormat;
 
@@ -19,10 +19,7 @@ namespace Nethermind.Serialization.Rlp
         public AccountDecoder() { }
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
-        public AccountDecoder(bool slimFormat = false)
-        {
-            _slimFormat = slimFormat;
-        }
+        public AccountDecoder(bool slimFormat = false) => _slimFormat = slimFormat;
 
         public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref Rlp.ValueDecoderContext context)
         {
@@ -54,21 +51,6 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Encode(item, stream);
-        }
-
-        public Rlp Encode(Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return Rlp.OfEmptyList;
-            }
-
-            int contentLength = GetContentLength(item);
-            RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
-
-            Encode(item, rlpStream, contentLength);
-
-            return new Rlp(rlpStream.Data.ToArray());
         }
 
         public void Encode(Account account, RlpStream rlpStream, int? contentLength = null)
@@ -132,7 +114,7 @@ namespace Nethermind.Serialization.Rlp
                 return 0;
             }
 
-            var contentLength = Rlp.LengthOf(item.Nonce);
+            int contentLength = Rlp.LengthOf(item.Nonce);
             contentLength += Rlp.LengthOf(item.Balance);
 
             if (_slimFormat && !item.HasStorage)

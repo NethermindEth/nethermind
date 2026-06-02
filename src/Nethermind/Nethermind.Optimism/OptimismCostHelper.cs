@@ -107,7 +107,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         if (!opSpecHelper.IsIsthmus(header))
             return UInt256.Zero;
 
-        var span = worldState.Get(_operatorFeeParamsSlot);
+        ReadOnlySpan<byte> span = worldState.Get(_operatorFeeParamsSlot);
         if (span.IsEmpty)
             return UInt256.Zero;
 
@@ -140,8 +140,8 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         {
             const int feeStart = 4;
 
-            var operatorFeeScalar = ReadUInt32BigEndian(span[..feeStart]);
-            var operatorFeeConstant = ReadUInt64BigEndian(span[feeStart..]);
+            uint operatorFeeScalar = ReadUInt32BigEndian(span[..feeStart]);
+            ulong operatorFeeConstant = ReadUInt64BigEndian(span[feeStart..]);
             return (operatorFeeScalar, operatorFeeConstant);
         }
     }
@@ -210,16 +210,10 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     }
 
     // Ecotone formula: (dataGas) * (16 * l1BaseFee * l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar) / 16e6
-    public static UInt256 ComputeL1CostEcotone(UInt256 dataGas, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar)
-    {
-        return PrecisionDivisor.IsZero ? default : dataGas * (PrecisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) / PrecisionDivisor;
-    }
+    public static UInt256 ComputeL1CostEcotone(UInt256 dataGas, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar) => PrecisionDivisor.IsZero ? default : dataGas * (PrecisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) / PrecisionDivisor;
 
     // Pre-Ecotone formula: (dataGas + overhead) * l1BaseFee * scalar / 1e6
-    public static UInt256 ComputeL1CostPreEcotone(UInt256 dataGasWithOverhead, UInt256 l1BaseFee, UInt256 feeScalar)
-    {
-        return BasicDivisor.IsZero ? default : dataGasWithOverhead * l1BaseFee * feeScalar / BasicDivisor;
-    }
+    public static UInt256 ComputeL1CostPreEcotone(UInt256 dataGasWithOverhead, UInt256 l1BaseFee, UInt256 feeScalar) => BasicDivisor.IsZero ? default : dataGasWithOverhead * l1BaseFee * feeScalar / BasicDivisor;
 
     // Based on:
     // https://github.com/ethereum-optimism/op-geth/blob/7c2819836018bfe0ca07c4e4955754834ffad4e0/core/types/rollup_cost.go
@@ -328,14 +322,14 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     // https://specs.optimism.io/protocol/jovian/l1-attributes.html
     private static UInt256 GetDaFootprintScalar(Block block)
     {
-        var firstTx = block.Transactions.FirstOrDefault();
+        Transaction? firstTx = block.Transactions.FirstOrDefault();
         if (firstTx?.Type is not TxType.DepositTx)
             return DaFootprintScalarDefault;
 
         if (firstTx.Data.Length < 178)
             return DaFootprintScalarDefault;
 
-        var scalar = ReadUInt16BigEndian(firstTx.Data.Span[176..178]);
+        ushort scalar = ReadUInt16BigEndian(firstTx.Data.Span[176..178]);
         return scalar == 0 ? DaFootprintScalarDefault : scalar;
     }
 }

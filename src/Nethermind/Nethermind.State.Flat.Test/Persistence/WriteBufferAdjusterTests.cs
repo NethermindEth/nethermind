@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
@@ -43,17 +42,14 @@ public class WriteBufferAdjusterTests
     }
 
     [Test]
-    public void ColumnCount_MatchesEnumValueCount()
-    {
-        WriteBufferAdjuster.ColumnCount.Should().Be(Enum.GetValues<FlatDbColumns>().Length);
-    }
+    public void ColumnCount_MatchesEnumValueCount() => Assert.That(Enum.GetValues<FlatDbColumns>().Length, Is.EqualTo(WriteBufferAdjuster.ColumnCount));
 
     [Test]
     public void Wrap_WithDisableWAL_ReturnsRawBatch()
     {
         IWriteOnlyKeyValueStore result = _sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.DisableWAL);
 
-        result.Should().BeSameAs(_batch.Inner);
+        Assert.That(result, Is.SameAs(_batch.Inner));
     }
 
     [Test]
@@ -69,13 +65,13 @@ public class WriteBufferAdjusterTests
     [TestCase(20 * 1024 * 1024, 21 * 1024 * 1024, 1)]
     public void OnBatchDisposed_AdjustsWriteBuffer(long firstWriteBytes, long secondWriteBytes, int expectedSetWriteBufferCallCount)
     {
-        var store = (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+        WriteBufferAdjuster.CountingWriteBatch store = (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
         store.Set(new byte[firstWriteBytes], null);
         _sut.OnBatchDisposed();
 
         if (secondWriteBytes > 0)
         {
-            var store2 = (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+            WriteBufferAdjuster.CountingWriteBatch store2 = (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
             store2.Set(new byte[secondWriteBytes], null);
             _sut.OnBatchDisposed();
         }

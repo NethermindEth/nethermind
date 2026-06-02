@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -28,8 +29,8 @@ public class Eip7778Tests : VirtualMachineTestsBase
     private static TestSpecProvider CreateSpecProvider()
     {
         // Use OverridableReleaseSpec to extend London with EIP-7778 enabled
-        var eip7778Spec = new OverridableReleaseSpec(London.Instance) { IsEip7778Enabled = true };
-        var provider = new TestSpecProvider(London.Instance)
+        OverridableReleaseSpec eip7778Spec = new(London.Instance) { IsEip7778Enabled = true };
+        TestSpecProvider provider = new(London.Instance)
         {
             NextForkSpec = eip7778Spec,
             ForkOnBlockNumber = 1
@@ -213,13 +214,13 @@ public class Eip7778Tests : VirtualMachineTestsBase
     public void Block_gas_uses_calldata_floor_when_execution_gas_is_lower()
     {
         // Use a spec with both EIP-7778 and EIP-7623 enabled
-        var eip7778And7623Spec = new OverridableReleaseSpec(London.Instance)
+        OverridableReleaseSpec eip7778And7623Spec = new(London.Instance)
         {
             IsEip7778Enabled = true,
             IsEip7623Enabled = true,
             IsEip2028Enabled = true
         };
-        var provider = new TestSpecProvider(London.Instance)
+        TestSpecProvider provider = new(London.Instance)
         {
             NextForkSpec = eip7778And7623Spec,
             ForkOnBlockNumber = 1
@@ -247,7 +248,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressA, 1.Ether);
         TestState.Commit(provider.GetSpec((1, 0)));
 
-        var processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
 
         Transaction tx = Build.A.Transaction
             .WithData(calldata)
@@ -286,14 +287,14 @@ public class Eip7778Tests : VirtualMachineTestsBase
     public void Block_gas_uses_execution_gas_when_it_exceeds_calldata_floor()
     {
         // Use a spec with both EIP-7778 and EIP-7623 enabled
-        var eip7778And7623Spec = new OverridableReleaseSpec(London.Instance)
+        OverridableReleaseSpec eip7778And7623Spec = new(London.Instance)
         {
             IsEip7778Enabled = true,
             IsEip7623Enabled = true,
             IsEip2028Enabled = true,
             IsEip2200Enabled = true
         };
-        var provider = new TestSpecProvider(London.Instance)
+        TestSpecProvider provider = new(London.Instance)
         {
             NextForkSpec = eip7778And7623Spec,
             ForkOnBlockNumber = 1
@@ -316,7 +317,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(provider.GetSpec((1, 0)));
 
-        var processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
 
         // Code that does an SSTORE operation (expensive - uses way more than floor gas)
         byte[] code = Prepare.EvmCode
@@ -366,7 +367,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // Test the scenario where there's a refund but floor gas still applies
         // Formula: blockGas = max(preRefundGas, floorGas)
         //          receiptGas = max(postRefundGas, floorGas)
-        var eip7778And7623Spec = new OverridableReleaseSpec(London.Instance)
+        OverridableReleaseSpec eip7778And7623Spec = new(London.Instance)
         {
             IsEip7778Enabled = true,
             IsEip7623Enabled = true,
@@ -374,7 +375,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
             IsEip2200Enabled = true,
             IsEip3529Enabled = true // London refund rules
         };
-        var provider = new TestSpecProvider(London.Instance)
+        TestSpecProvider provider = new(London.Instance)
         {
             NextForkSpec = eip7778And7623Spec,
             ForkOnBlockNumber = 1
@@ -386,7 +387,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(provider.GetSpec((1, 0)));
 
-        var processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
 
         // Code that clears storage (triggers refund)
         byte[] code = Prepare.EvmCode
@@ -432,6 +433,70 @@ public class Eip7778Tests : VirtualMachineTestsBase
         Assert.That(receipt.GasUsed, Is.LessThan(block.Header.GasUsed), "Receipt shows post-refund gas, which is less than block gas");
         Assert.That(receipt.GasUsed, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "User payment should be at least floor gas");
         Assert.That(block.Header.GasUsed, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "Block gas should be at least floor gas");
+    }
+
+    [Test]
+    public void Transaction_admission_uses_pre_refund_block_gas_when_eip7778_enabled()
+    {
+        TestState.CreateAccount(TestItem.AddressA, 1.Ether);
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Commit(SpecProvider.GetSpec((1, 0)));
+
+        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+
+        byte[] refundCode = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+        TestState.InsertCode(Recipient, refundCode, SpecProvider.GenesisSpec);
+        TestState.Commit(SpecProvider.GetSpec((1, 0)));
+
+        Transaction tx1 = Build.A.Transaction
+            .WithGasLimit(100000)
+            .WithGasPrice(1)
+            .WithNonce(TestState.GetNonce(TestItem.PrivateKeyA.Address))
+            .To(Recipient)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTimestamp(0)
+            .WithTransactions(tx1)
+            .WithGasLimit(1_000_000)
+            .TestObject;
+        block.Header.GasUsed = 0;
+
+        BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+        tracer.StartNewTxTrace(tx1);
+        TransactionResult result1 = _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+
+        Assert.That(result1, Is.EqualTo(TransactionResult.Ok), "precondition: first transaction must succeed");
+
+        long blockGasAfterTx1 = block.Header.GasUsed;
+        long receiptGasAfterTx1 = tracer.TxReceipts[0].GasUsedTotal;
+        Assert.That(blockGasAfterTx1, Is.GreaterThan(receiptGasAfterTx1), "precondition: tx1 must create a refund gap between pre-refund block gas and post-refund receipt gas");
+
+        block.Header.GasLimit = blockGasAfterTx1 + GasCostOf.Transaction - 1;
+
+        Transaction tx2 = Build.A.Transaction
+            .WithGasLimit(GasCostOf.Transaction)
+            .WithGasPrice(1)
+            .WithNonce(TestState.GetNonce(TestItem.PrivateKeyA.Address))
+            .To(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        TransactionResult result2 = _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        Assert.That(result2, Is.EqualTo(TransactionResult.BlockGasLimitExceeded), "second transaction must be rejected: admission uses pre-refund block gas, leaving no room");
+        Assert.That(block.Header.GasUsed, Is.EqualTo(blockGasAfterTx1), "a rejected transaction must not change block gas");
+        Assert.That(block.Header.GasUsed, Is.LessThanOrEqualTo(block.Header.GasLimit), "block gas must never exceed the gas limit");
     }
 
     [Test]

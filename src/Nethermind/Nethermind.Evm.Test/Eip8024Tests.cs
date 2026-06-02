@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -64,8 +63,22 @@ public class Eip8024Tests : VirtualMachineTestsBase
     public void ValidOperation_Succeeds(byte[] code, int expectedReturn)
     {
         TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-        new UInt256(result.ReturnValue, true).Should().Be((UInt256)expectedReturn);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)expectedReturn));
+    }
+
+    private static IEnumerable<TestCaseData> MissingImmediateSuccessTestCases()
+    {
+        yield return new TestCaseData(PushNValues(145).Op(Instruction.DUPN).Done).SetName("DupN_MissingImmediate_DecodesAsZero");
+        yield return new TestCaseData(PushNValues(146).Op(Instruction.SWAPN).Done).SetName("SwapN_MissingImmediate_DecodesAsZero");
+        yield return new TestCaseData(PushNValues(17).Op(Instruction.EXCHANGE).Done).SetName("Exchange_MissingImmediate_DecodesAsZero");
+    }
+
+    [TestCaseSource(nameof(MissingImmediateSuccessTestCases))]
+    public void MissingImmediate_AtEndOfCode_DecodesAsZero(byte[] code)
+    {
+        TestAllTracerWithOutput result = Execute(code);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
     private static IEnumerable<TestCaseData> FailureTestCases()
@@ -80,8 +93,13 @@ public class Eip8024Tests : VirtualMachineTestsBase
         yield return new TestCaseData(PushNValues(10).Op(Instruction.SWAPN).Data(0x80).Done).SetName("SwapN_StackUnderflow");
         yield return new TestCaseData(PushNValues(2).Op(Instruction.EXCHANGE).Data(0x9d).Done).SetName("Exchange_StackUnderflow");
 
-        // Missing immediate at end of code is now a graceful STOP (EIP-8024 spec)
-        // Moved to EndOfCode_ActsAsStop test below
+        // Missing immediate at end of code decodes as 0, then fails if the stack is too shallow.
+        yield return new TestCaseData(new byte[] { 0xe6 }).SetName("DupN_MissingImmediate");
+        yield return new TestCaseData(new byte[] { 0xe7 }).SetName("SwapN_MissingImmediate");
+        yield return new TestCaseData(new byte[] { 0xe8 }).SetName("Exchange_MissingImmediate");
+
+        // Regression: PUSH1 0x42, DUPN with no immediate must underflow, not gracefully STOP.
+        yield return new TestCaseData(new byte[] { 0x60, 0x42, 0xe6 }).SetName("DupN_TruncatedAfterPush");
 
         // Max depth: immediate 0x5a -> depth=235, only 234 items
         yield return new TestCaseData(PushZeros(234).Op(Instruction.DUPN).Data(0x5a).Done).SetName("DupN_MaxDepth_235");
@@ -101,12 +119,12 @@ public class Eip8024Tests : VirtualMachineTestsBase
     public void InvalidOperation_Fails(byte[] code)
     {
         TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
     }
 
     private static IEnumerable<TestCaseData> GasCostTestCases()
     {
-        long Gas(int pushCount) => GasCostOf.Transaction + GasCostOf.VeryLow * pushCount + GasCostOf.VeryLow;
+        static long Gas(int pushCount) => GasCostOf.Transaction + GasCostOf.VeryLow * pushCount + GasCostOf.VeryLow;
 
         yield return new TestCaseData(PushNValues(20).Op(Instruction.DUPN).Data(0x80).Op(Instruction.STOP).Done, Gas(20)).SetName("DupN_GasCost");
         yield return new TestCaseData(PushNValues(20).Op(Instruction.SWAPN).Data(0x80).Op(Instruction.STOP).Done, Gas(20)).SetName("SwapN_GasCost");
@@ -117,19 +135,8 @@ public class Eip8024Tests : VirtualMachineTestsBase
     public void Opcode_CostsVeryLowGas(byte[] code, long expectedGas)
     {
         TestAllTracerWithOutput result = Execute(Activation, 100000, code);
-        result.StatusCode.Should().Be(StatusCode.Success);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result, expectedGas);
-    }
-
-    [TestCase(new byte[] { 0xe6 }, TestName = "DupN_MissingImmediate")]
-    [TestCase(new byte[] { 0xe7 }, TestName = "SwapN_MissingImmediate")]
-    [TestCase(new byte[] { 0xe8 }, TestName = "Exchange_MissingImmediate")]
-    public void EndOfCode_ActsAsStop(byte[] code)
-    {
-        // When DUPN/SWAPN/EXCHANGE appears at end of code with no immediate byte,
-        // it acts as a graceful STOP per EIP-8024 spec.
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
     }
 
     [Test]
@@ -139,7 +146,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         {
             byte[] code = PushNValues(32).Op(Instruction.EXCHANGE).Data(imm).Done;
             TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(StatusCode.Failure, $"Immediate 0x{imm:X2} should fail");
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure), $"Immediate 0x{imm:X2} should fail");
         }
     }
 
@@ -150,7 +157,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         // JUMP skips over the invalid DUPN to land on JUMPDEST
         byte[] code = [0x60, 0x04, 0x56, 0xe6, 0x5b, 0x00];
         TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
     public class Eip8024DisabledTests : VirtualMachineTestsBase
@@ -170,7 +177,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         public void Opcode_WhenDisabled_Fails(byte[] code)
         {
             TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(StatusCode.Failure);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
         }
     }
 }

@@ -102,7 +102,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
                 UdpPort = networkConfig.DiscoveryPort
             })
             .WithSessionOptions(_sessionOptions)
-            .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
+            .WithTableOptions(new TableOptions([.. bootstrapEnrs.Select(enr => enr.ToString())]))
             .WithEnrBuilder(enrBuilder)
             .WithTalkResponder(new TalkReqAndRespHandler())
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true, Microsoft.Extensions.Logging.LogLevel.Debug))
@@ -283,7 +283,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
 
     public void InitializeChannel(IChannel channel)
     {
-        var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
+        NettyDiscoveryV5Handler handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
         handler.InitializeChannel(channel);
         channel.Pipeline.AddLast(handler);
     }

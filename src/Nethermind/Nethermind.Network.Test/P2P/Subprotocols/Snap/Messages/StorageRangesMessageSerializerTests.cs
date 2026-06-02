@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
@@ -22,13 +24,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         {
             using StorageRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
+                RequestId = 2,
                 Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
                 Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
             };
             StorageRangesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.TestZero(serializer, msg, "c302c0c0");
         }
 
         [Test]
@@ -43,8 +45,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             StorageRangesMessageSerializer serializer = new();
 
-            var serialized = serializer.Serialize(msg);
-            using var deserialized = serializer.Deserialize(serialized);
+            byte[] serialized = serializer.Serialize(msg);
+            using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
 
             SerializerTester.TestZero(serializer, msg);
         }
@@ -59,7 +61,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 {
                     new ArrayPoolList<PathWithStorageSlot> (1)
                     {
-                        new PathWithStorageSlot(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), TestItem.RandomDataA)
+                        new(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), TestItem.RandomDataA)
                     }
                 },
                 Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
@@ -78,12 +80,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(2) {
                     new ArrayPoolList<PathWithStorageSlot>(2) {
-                        new PathWithStorageSlot(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataA).Bytes) ,
-                        new PathWithStorageSlot(new Hash256("0x12d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataB).Bytes)
+                        new(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataA).Bytes) ,
+                        new(new Hash256("0x12d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataB).Bytes)
                     },
                     new ArrayPoolList<PathWithStorageSlot>(2) {
-                        new PathWithStorageSlot(new Hash256("0x21d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataB).Bytes) ,
-                        new PathWithStorageSlot(new Hash256("0x22d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataC).Bytes)
+                        new(new Hash256("0x21d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataB).Bytes) ,
+                        new(new Hash256("0x22d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataC).Bytes)
                     }
                 },
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
@@ -117,21 +119,44 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }
 
-        private static StorageRangeMessage CreateMessageWithSingleSlotValue(byte[] slotRlpValue)
+        [TestCase(SnapMessageLimits.MaxProofs, false)]
+        [TestCase(SnapMessageLimits.MaxProofs + 1, true)]
+        public void Deserialize_EnforcesProofsCountLimit(int proofCount, bool shouldThrow)
         {
-            return new StorageRangeMessage
+            ArrayPoolList<byte[]> proofs = new(proofCount, Enumerable.Repeat(new byte[] { 0x42 }, proofCount));
+            using StorageRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
-                Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
+                RequestId = 1,
+                Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
+                Proofs = new ByteArrayListAdapter(proofs)
+            };
+
+            StorageRangesMessageSerializer serializer = new();
+            byte[] serialized = serializer.Serialize(msg);
+
+            if (shouldThrow)
+            {
+                Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
+            }
+            else
+            {
+                using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
+                Assert.That(deserialized.Proofs.Count, Is.EqualTo(proofCount));
+            }
+        }
+
+        private static StorageRangeMessage CreateMessageWithSingleSlotValue(byte[] slotRlpValue) => new()
+        {
+            RequestId = MessageConstants.Random.NextLong(),
+            Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
                 {
                     new ArrayPoolList<PathWithStorageSlot>(1)
                     {
-                        new PathWithStorageSlot(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), slotRlpValue)
+                        new(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), slotRlpValue)
                     }
                 },
-                Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
-            };
-        }
+            Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
+        };
 
         private static byte[] CreateStorageSlotValue(int length)
         {

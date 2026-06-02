@@ -13,8 +13,5 @@ public class FixedIpResolver(INetworkConfig networkConfig) : IIPResolver
 {
     public IPAddress LocalIp => IPAddress.Parse(networkConfig.LocalIp!);
     public IPAddress ExternalIp => IPAddress.Parse(networkConfig.ExternalIp!);
-    public Task Initialize(CancellationToken cancellationToken = default)
-    {
-        return Task.CompletedTask;
-    }
+    public Task Initialize(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

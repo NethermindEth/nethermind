@@ -26,5 +26,4 @@ public static class PrecompiledAddresses
     public static readonly AddressAsKey Bls12381FpToG1 = Address.FromNumber(0x10);
     public static readonly AddressAsKey Bls12381Fp2ToG2 = Address.FromNumber(0x11);
     public static readonly AddressAsKey P256Verify = Address.FromNumber(0x0100);
-    public static readonly AddressAsKey L1Sload = Address.FromNumber(0x10001);
 }

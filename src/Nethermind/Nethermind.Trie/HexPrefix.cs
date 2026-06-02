@@ -274,7 +274,7 @@ public static class HexPrefix
 
     private static byte[][] CreateSingleNibblePaths()
     {
-        var paths = new byte[16][];
+        byte[][] paths = new byte[16][];
         for (int i = 0; i < 16; i++)
         {
             paths[i] = [(byte)i];
@@ -284,7 +284,7 @@ public static class HexPrefix
 
     private static byte[][] CreateDoubleNibblePaths()
     {
-        var paths = new byte[256][];
+        byte[][] paths = new byte[256][];
         for (int i = 0; i < 256; i++)
         {
             paths[i] = [(byte)(i >> 4), (byte)(i & 0xF)];
@@ -294,7 +294,7 @@ public static class HexPrefix
 
     private static byte[][] CreateTripleNibblePaths()
     {
-        var paths = new byte[4096][];
+        byte[][] paths = new byte[4096][];
         for (int i = 0; i < 4096; i++)
         {
             paths[i] = [(byte)(i >> 8), (byte)((i >> 4) & 0xF), (byte)(i & 0xF)];

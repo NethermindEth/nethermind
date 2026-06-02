@@ -81,7 +81,7 @@ class ShutterTestsCommon
     public static Timestamper InitTimestamper(ulong slotTimestamp, ulong offsetMs)
     {
         ulong timestampMs = slotTimestamp * 1000 + offsetMs;
-        var blockTime = DateTimeOffset.FromUnixTimeMilliseconds((long)timestampMs);
+        DateTimeOffset blockTime = DateTimeOffset.FromUnixTimeMilliseconds((long)timestampMs);
         return new(blockTime.UtcDateTime);
     }
 }

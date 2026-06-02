@@ -88,7 +88,7 @@ public class OptimismHeaderValidatorTests(Fork fork)
     {
         (BlockHeader genesis, BlockHeader header) = BuildHeaders(b => b.WithExtraDataHex(testCase.hexString));
 
-        var validator = new OptimismHeaderValidator(
+        OptimismHeaderValidator validator = new(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid, Spec.Instance, Spec.BuildFor(header),
@@ -107,9 +107,9 @@ public class OptimismHeaderValidatorTests(Fork fork)
     [TestCaseSource(nameof(WithdrawalsRequestHashTestCases))]
     public void ValidateRequestHash((Hash256? requestHash, Valid isValid) testCase)
     {
-        var (genesis, header) = BuildHeaders(b => b.WithRequestsHash(testCase.requestHash));
+        (BlockHeader? genesis, BlockHeader? header) = BuildHeaders(b => b.WithRequestsHash(testCase.requestHash));
 
-        var validator = new OptimismHeaderValidator(
+        OptimismHeaderValidator validator = new(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid, Spec.Instance, Spec.BuildFor(header),
@@ -145,7 +145,7 @@ public class OptimismHeaderValidatorTests(Fork fork)
             .WithGasUsed(gasUsed)
         );
 
-        var validator = new OptimismHeaderValidator(
+        OptimismHeaderValidator validator = new(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid, Spec.Instance, Spec.BuildFor(header),

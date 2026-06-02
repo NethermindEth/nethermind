@@ -5,12 +5,9 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization.StateSync;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.P2P;
 
 internal class XdcStateSyncDownloader(ILogManager logManager) : StateSyncDownloader(logManager)
 {
-    protected override bool ProtocolSupportsNodeData(ISyncPeer peer)
-    {
-        return peer.ProtocolVersion < 101;
-    }
+    protected override bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < 101;
 }

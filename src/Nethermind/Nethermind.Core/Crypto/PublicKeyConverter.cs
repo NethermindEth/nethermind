@@ -24,7 +24,7 @@ public class PublicKeyConverter : JsonConverter<PublicKey>
 
         if (bytes.Length < 64)
         {
-            var newArray = new byte[64];
+            byte[] newArray = new byte[64];
             bytes.AsSpan().CopyTo(newArray.AsSpan(64 - bytes.Length));
             bytes = newArray;
         }
@@ -35,8 +35,5 @@ public class PublicKeyConverter : JsonConverter<PublicKey>
     public override void Write(
         Utf8JsonWriter writer,
         PublicKey publicKey,
-        JsonSerializerOptions options)
-    {
-        ByteArrayConverter.Convert(writer, publicKey.Bytes);
-    }
+        JsonSerializerOptions options) => ByteArrayConverter.Convert(writer, publicKey.Bytes);
 }

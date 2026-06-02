@@ -9,14 +9,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class AuthEip8MessageSerializer : IZeroMessageSerializer<AuthEip8Message>
+    public class AuthEip8MessageSerializer(IMessagePad messagePad) : IZeroMessageSerializer<AuthEip8Message>
     {
-        private readonly IMessagePad _messagePad;
-
-        public AuthEip8MessageSerializer(IMessagePad messagePad)
-        {
-            _messagePad = messagePad;
-        }
+        private readonly IMessagePad _messagePad = messagePad;
 
         public void Serialize(IByteBuffer byteBuffer, AuthEip8Message msg)
         {

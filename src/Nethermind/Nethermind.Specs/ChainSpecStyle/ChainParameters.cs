@@ -19,6 +19,7 @@ public class ChainParameters
     public long MaximumExtraDataSize { get; set; }
     public long MinGasLimit { get; set; }
     public long MinHistoryRetentionEpochs { get; set; }
+    public long MinBalRetentionEpochs { get; set; }
     public Hash256 ForkCanonHash { get; set; }
     public long? ForkBlock { get; set; }
     public long? Eip7Transition { get; set; }
@@ -119,6 +120,7 @@ public class ChainParameters
     public ulong? Eip3860TransitionTimestamp { get; set; }
     public ulong? Eip4895TransitionTimestamp { get; set; }
     public ulong? Eip4844TransitionTimestamp { get; set; }
+    public long? Eip4844Transition { get; set; }
     public long? Eip1153Transition { get; set; }
     public ulong? Eip1153TransitionTimestamp { get; set; }
     public long? Eip5656Transition { get; set; }
@@ -143,14 +145,15 @@ public class ChainParameters
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
     public ulong? OpIsthmusTransitionTimestamp { get; set; }
 
-    public ulong? Eip7623TransitionTimestamp { get; set; }
     public ulong? Eip7594TransitionTimestamp { get; set; }
+    public ulong? Eip7623TransitionTimestamp { get; set; }
     public ulong? Eip7778TransitionTimestamp { get; set; }
     public ulong? Eip7823TransitionTimestamp { get; set; }
-    public ulong? Eip7883TransitionTimestamp { get; set; }
     public ulong? Eip7825TransitionTimestamp { get; set; }
+    public ulong? Eip7883TransitionTimestamp { get; set; }
     public ulong? Eip7918TransitionTimestamp { get; set; }
-    public ulong? Eip7907TransitionTimestamp { get; set; }
+    public ulong? Eip7976TransitionTimestamp { get; set; }
+    public ulong? Eip7981TransitionTimestamp { get; set; }
 
     public ulong? Eip7934TransitionTimestamp { get; set; }
     public int Eip7934MaxRlpBlockSize { get; set; }
@@ -179,7 +182,6 @@ public class ChainParameters
 
     #endregion
 
-    public ulong? Rip7728TransitionTimestamp { get; set; }
     public ulong? Eip8037TransitionTimestamp { get; set; }
     public ulong? Eip7928TransitionTimestamp { get; set; }
 

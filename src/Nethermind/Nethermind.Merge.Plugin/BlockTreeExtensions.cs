@@ -8,9 +8,10 @@ namespace Nethermind.Merge.Plugin;
 
 public static class BlockTreeExtensions
 {
-    public static bool IsOnMainChainBehindOrEqualHead(this IBlockTree blockTree, Block block) =>
-        block.Number <= (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(block.Header);
+    public static bool IsOnMainChainBehindOrEqualHead(this IBlockTree blockTree, BlockHeader header) =>
+        header.Number <= (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(header);
 
-    public static bool IsOnMainChainBehindHead(this IBlockTree blockTree, Block block) =>
-        block.Number < (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(block.Header);
+    public static bool IsOnMainChainBehindFinalized(this IBlockTree blockTree, BlockHeader header) =>
+        header.Number < (blockTree.FindFinalizedHeader()?.Number ?? 0) && blockTree.IsMainChain(header);
+
 }

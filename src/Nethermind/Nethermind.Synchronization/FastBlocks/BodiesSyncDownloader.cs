@@ -14,14 +14,9 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncDownloader : ISyncDownloader<BodiesSyncBatch>
+    public class BodiesSyncDownloader(ILogManager logManager) : ISyncDownloader<BodiesSyncBatch>
     {
-        private readonly ILogger Logger;
-
-        public BodiesSyncDownloader(ILogManager logManager)
-        {
-            Logger = logManager.GetClassLogger<BodiesSyncDownloader>();
-        }
+        private readonly ILogger Logger = logManager.GetClassLogger<BodiesSyncDownloader>();
 
         public async Task Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
         {

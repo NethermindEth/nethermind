@@ -113,15 +113,9 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e)
-        {
-            TryUpdateTerminalBlock(e.Block.Header);
-        }
+        private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e) => TryUpdateTerminalBlock(e.Block.Header);
 
-        private void LoadFinalizedBlockHash()
-        {
-            _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
-        }
+        private void LoadFinalizedBlockHash() => _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
 
         public bool TryUpdateTerminalBlock(BlockHeader header)
         {

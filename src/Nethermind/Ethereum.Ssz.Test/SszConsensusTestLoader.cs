@@ -26,10 +26,8 @@ public static class SszConsensusTestLoader
     /// Returns the path to the ssz_generic test directory for a given type handler.
     /// e.g. GetHandlerPath("uints") returns .../tests/general/phase0/ssz_generic/uints
     /// </summary>
-    public static string GetHandlerPath(string handler)
-    {
-        return Path.Combine(GetTestsRoot(), "tests", "general", "phase0", "ssz_generic", handler);
-    }
+    public static string GetHandlerPath(string handler) =>
+        Path.Combine(GetTestsRoot(), "tests", "general", "phase0", "ssz_generic", handler);
 
     /// <summary>
     /// Reads and decompresses a .ssz_snappy file.
@@ -46,7 +44,7 @@ public static class SszConsensusTestLoader
     public static UInt256 ParseRoot(string metaFilePath)
     {
         using StreamReader reader = new(metaFilePath);
-        YamlStream yaml = new();
+        YamlStream yaml = [];
         yaml.Load(reader);
         YamlMappingNode mapping = (YamlMappingNode)yaml.Documents[0].RootNode;
         string hexRoot = ((YamlScalarNode)mapping[new YamlScalarNode("root")]).Value!;

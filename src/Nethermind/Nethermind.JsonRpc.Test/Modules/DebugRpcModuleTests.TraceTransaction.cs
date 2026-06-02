@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -13,8 +12,9 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Rlp;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
+using Nethermind.Core.Crypto;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -26,12 +26,12 @@ public partial class DebugRpcModuleTests
     {
         using Context context = await Context.Create();
 
-        var transaction = factory(context.Blockchain);
+        Transaction transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
 
-        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -40,13 +40,13 @@ public partial class DebugRpcModuleTests
     {
         using Context context = await Context.Create();
 
-        var transaction = factory(context.Blockchain);
+        Transaction transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        var blockNumber = context.Blockchain.BlockTree.Head!.Number;
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, 0, options);
+        long blockNumber = context.Blockchain.BlockTree.Head!.Number;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, 0, options);
 
-        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -55,13 +55,13 @@ public partial class DebugRpcModuleTests
     {
         using Context context = await Context.Create();
 
-        var transaction = factory(context.Blockchain);
+        Transaction transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        var blockHash = context.Blockchain.BlockTree.Head!.Hash;
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, 0, options);
+        Hash256? blockHash = context.Blockchain.BlockTree.Head!.Hash;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, 0, options);
 
-        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -70,13 +70,13 @@ public partial class DebugRpcModuleTests
     {
         using Context context = await Context.Create();
 
-        var transaction = factory(context.Blockchain);
+        Transaction transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        var blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash", blockRlp, transaction.Hash, options);
+        string blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash", blockRlp, transaction.Hash, options);
 
-        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -85,18 +85,18 @@ public partial class DebugRpcModuleTests
     {
         using Context context = await Context.Create();
 
-        var transaction = factory(context.Blockchain);
+        Transaction transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        var blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, 0, options);
+        string blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, 0, options);
 
-        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     private static IEnumerable<TestCaseData> TraceTransactionTransferSource()
     {
-        var transferTransaction = (TestRpcBlockchain b) => Build.A.Transaction
+        Func<TestRpcBlockchain, Transaction> transferTransaction = (TestRpcBlockchain b) => Build.A.Transaction
             .WithNonce(b.ReadOnlyState.GetNonce(TestItem.AddressA))
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
@@ -171,14 +171,14 @@ public partial class DebugRpcModuleTests
 
     private static IEnumerable<TestCaseData> TraceTransactionContractSource()
     {
-        var code = Prepare.EvmCode
+        byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(32)
             .Op(Instruction.SSTORE)
             .Op(Instruction.STOP)
             .Done;
 
-        var contractTransaction = (TestRpcBlockchain b) => Build.A.Transaction
+        Func<TestRpcBlockchain, Transaction> contractTransaction = (TestRpcBlockchain b) => Build.A.Transaction
             .WithNonce(b.ReadOnlyState.GetNonce(TestItem.AddressA))
             .WithCode(code)
             .WithGasLimit(100000)

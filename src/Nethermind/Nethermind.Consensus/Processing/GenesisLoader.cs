@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -38,7 +39,7 @@ namespace Nethermind.Consensus.Processing
 
         private void DoLoad()
         {
-            using var _ = worldState.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
 
             Block genesis = genesisBuilder.Build();
 

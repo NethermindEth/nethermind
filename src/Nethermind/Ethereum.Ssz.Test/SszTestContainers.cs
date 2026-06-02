@@ -1,34 +1,78 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
+using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 
 namespace Ethereum.Ssz.Test;
 
-[SszSerializable]
-public struct SingleFieldTestStruct
+[SszContainer]
+public partial struct SingleFieldTestStruct
 {
     public byte A { get; set; }
 }
 
-[SszSerializable]
-public struct SmallTestStruct
+[SszContainer]
+public partial struct BasicBoolTypeContainer
+{
+    public bool Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicByteTypeContainer
+{
+    public byte Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicUInt16TypeContainer
+{
+    public ushort Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicUInt32TypeContainer
+{
+    public uint Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicUInt64TypeContainer
+{
+    public ulong Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicUInt128TypeContainer
+{
+    public UInt128 Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicUInt256TypeContainer
+{
+    public UInt256 Value { get; set; }
+}
+
+[SszContainer]
+public partial struct SmallTestStruct
 {
     public ushort A { get; set; }
     public ushort B { get; set; }
 }
 
-[SszSerializable]
-public struct FixedTestStruct
+[SszContainer]
+public partial struct FixedTestStruct
 {
     public byte A { get; set; }
     public ulong B { get; set; }
     public uint C { get; set; }
 }
 
-[SszSerializable]
-public struct VarTestStruct
+[SszContainer]
+public partial struct VarTestStruct
 {
     public ushort A { get; set; }
 
@@ -38,8 +82,8 @@ public struct VarTestStruct
     public byte C { get; set; }
 }
 
-[SszSerializable]
-public struct ComplexTestStruct
+[SszContainer]
+public partial struct ComplexTestStruct
 {
     public ushort A { get; set; }
 
@@ -60,8 +104,31 @@ public struct ComplexTestStruct
     public VarTestStruct[]? G { get; set; }
 }
 
-[SszSerializable]
-public struct BitsStruct
+[SszContainer]
+public partial struct ProgressiveTestStruct
+{
+    [SszProgressiveList]
+    public byte[]? A { get; set; }
+
+    [SszProgressiveList]
+    public ulong[]? B { get; set; }
+
+    [SszProgressiveList]
+    public SmallTestStruct[]? C { get; set; }
+
+    [SszProgressiveList]
+    public ProgressiveVarTestStructList[]? D { get; set; }
+}
+
+[SszContainer(true)]
+public partial struct ProgressiveVarTestStructList
+{
+    [SszProgressiveList]
+    public VarTestStruct[]? Items { get; set; }
+}
+
+[SszContainer]
+public partial struct BitsStruct
 {
     [SszList(5)]
     public BitArray? A { get; set; }
@@ -77,4 +144,44 @@ public struct BitsStruct
 
     [SszVector(8)]
     public BitArray? E { get; set; }
+}
+
+[SszContainer]
+public partial struct ProgressiveBitsStruct
+{
+    [SszVector(256)]
+    public BitArray? A { get; set; }
+
+    [SszList(256)]
+    public BitArray? B { get; set; }
+
+    [SszProgressiveBitlist]
+    public BitArray? C { get; set; }
+
+    [SszVector(257)]
+    public BitArray? D { get; set; }
+
+    [SszList(257)]
+    public BitArray? E { get; set; }
+
+    [SszProgressiveBitlist]
+    public BitArray? F { get; set; }
+
+    [SszVector(1280)]
+    public BitArray? G { get; set; }
+
+    [SszList(1280)]
+    public BitArray? H { get; set; }
+
+    [SszProgressiveBitlist]
+    public BitArray? I { get; set; }
+
+    [SszVector(1281)]
+    public BitArray? J { get; set; }
+
+    [SszList(1281)]
+    public BitArray? K { get; set; }
+
+    [SszProgressiveBitlist]
+    public BitArray? L { get; set; }
 }

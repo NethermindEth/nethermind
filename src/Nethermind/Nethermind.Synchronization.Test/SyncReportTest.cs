@@ -46,10 +46,8 @@ namespace Nethermind.Synchronization.Test
 
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, timerFactory);
 
-            void UpdateMode()
-            {
+            void UpdateMode() =>
                 syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, syncModes.Count > 0 ? syncModes.Dequeue() : SyncMode.Full));
-            }
 
             timer.Elapsed += Raise.Event();
             UpdateMode();

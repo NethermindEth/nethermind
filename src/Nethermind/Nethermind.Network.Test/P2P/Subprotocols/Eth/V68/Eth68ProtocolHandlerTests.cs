@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -55,7 +54,7 @@ public class Eth68ProtocolHandlerTests
 
         NetworkDiagTracer.IsEnabled = true;
 
-        _disposables = new();
+        _disposables = [];
         _session = Substitute.For<ISession>();
         Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
         _session.Node.Returns(node);
@@ -99,14 +98,14 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        _handler.ProtocolCode.Should().Be("eth");
-        _handler.Name.Should().Be("eth68");
-        _handler.ProtocolVersion.Should().Be(68);
-        _handler.MessageIdSpaceSize.Should().Be(17);
-        _handler.IncludeInTxPool.Should().BeTrue();
-        _handler.ClientId.Should().Be(_session.Node?.ClientId);
-        _handler.HeadHash.Should().BeNull();
-        _handler.HeadNumber.Should().Be(0);
+        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+        Assert.That(_handler.Name, Is.EqualTo("eth68"));
+        Assert.That(_handler.ProtocolVersion, Is.EqualTo(68));
+        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+        Assert.That(_handler.IncludeInTxPool, Is.True);
+        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+        Assert.That(_handler.HeadHash, Is.Null);
+        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
     }
 
     [Test]
@@ -116,7 +115,7 @@ public class Eth68ProtocolHandlerTests
 
         GenerateLists(txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes);
 
-        using var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+        using NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -139,11 +138,11 @@ public class Eth68ProtocolHandlerTests
             types.RemoveAt(sizes.Count - 1);
         }
 
-        using var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+        using NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
 
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
-        action.Should().Throw<SubprotocolException>();
+        Assert.That(action, Throws.TypeOf<SubprotocolException>());
     }
 
 
@@ -184,7 +183,7 @@ public class Eth68ProtocolHandlerTests
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * 1024 * 1024])
             .WithHash(TestItem.KeccakA).TestObject;
 
-        using var msg = new NewPooledTransactionHashesMessage68(new ArrayPoolList<byte>(1) { (byte)tx.Type },
+        using NewPooledTransactionHashesMessage68 msg = new(new ArrayPoolList<byte>(1) { (byte)tx.Type },
             new ArrayPoolList<int>(1) { tx.GetLength() }, new ArrayPoolList<Hash256>(1) { tx.Hash });
 
         HandleIncomingStatusMessage();
@@ -288,7 +287,7 @@ public class Eth68ProtocolHandlerTests
 
     private void HandleIncomingStatusMessage()
     {
-        var statusMsg = new StatusMessage();
+        StatusMessage statusMsg = new();
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 

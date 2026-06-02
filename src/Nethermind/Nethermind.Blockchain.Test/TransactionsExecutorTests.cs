@@ -238,7 +238,7 @@ namespace Nethermind.Blockchain.Test
                     ReleaseSpec = Shanghai.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (30000000.Ether, 1) } },
-                    Transactions = new List<Transaction>() { txAboveTheLimit, txAboveTheLimitNoContract, txBelowTheLimit },
+                    Transactions = [txAboveTheLimit, txAboveTheLimitNoContract, txBelowTheLimit],
                     GasLimit = 10000000
                 };
                 shanghai3860Scenarios.ExpectedSelectedTransactions.AddRange(
@@ -250,7 +250,7 @@ namespace Nethermind.Blockchain.Test
                     ReleaseSpec = London.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (30000000.Ether, 1) } },
-                    Transactions = new List<Transaction>() { txAboveTheLimit },
+                    Transactions = [txAboveTheLimit],
                     GasLimit = 10000000
                 };
                 london3860Scenarios.ExpectedSelectedTransactions.AddRange(
@@ -264,7 +264,7 @@ namespace Nethermind.Blockchain.Test
         public void Proper_transactions_selected(TransactionSelectorTests.ProperTransactionsSelectedTestCase testCase)
         {
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-            using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             IReleaseSpec spec = testCase.ReleaseSpec;
@@ -322,7 +322,9 @@ namespace Nethermind.Blockchain.Test
                 specProvider,
                 blockToProduce,
                 spec);
-            Assert.That(selectedTransactions, Is.EquivalentTo(testCase.ExpectedSelectedTransactions));
+            Assert.That(
+                selectedTransactions.Select(static transaction => transaction.Hash),
+                Is.EquivalentTo(testCase.ExpectedSelectedTransactions.Select(static transaction => transaction.Hash)));
         }
 
         [Test]
@@ -347,13 +349,13 @@ namespace Nethermind.Blockchain.Test
             ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
 
             IWorldState stateProvider = new WorldStateStab();
-            using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
             IReleaseSpec spec = Osaka.Instance;
             ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
 
             BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, mempoolLength / 1.KiB - 1);
-            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance, NullBlockAccessListManager.Instance);
 
             txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new());
@@ -362,51 +364,9 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void BlockProductionTransactionsExecutor_does_not_trace_tx_picker_world_state_reads_into_bal()
-        {
-            IWorldState innerStateProvider = TestWorldStateFactory.CreateForTest();
-            ParallelWorldState stateProvider = new(innerStateProvider);
-
-            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
-            stateProvider.GeneratedBlockAccessList.Clear();
-            stateProvider.TracingEnabled = true;
-
-            Transaction includedTx = Build.A.Transaction
-                .WithSenderAddress(TestItem.AddressA)
-                .WithNonce(0)
-                .WithGasPrice(1)
-                .WithGasLimit(GasCostOf.Transaction)
-                .SignedAndResolved(TestItem.PrivateKeyA)
-                .TestObject;
-
-            Transaction skippedTx = Build.A.Transaction
-                .WithSenderAddress(TestItem.AddressB)
-                .WithNonce(0)
-                .WithGasPrice(1)
-                .WithGasLimit(GasCostOf.Transaction)
-                .SignedAndResolved(TestItem.PrivateKeyB)
-                .TestObject;
-
-            Block block = Build.A.Block
-                .WithGasLimit(GasCostOf.Transaction * 2)
-                .WithTransactions([includedTx, skippedTx])
-                .TestObject;
-
-            ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
-            transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(TransactionResult.Ok);
-
-            IReleaseSpec spec = Homestead.Instance;
-            Transaction[] selectedTransactions = RunBlockProduction(transactionProcessor, stateProvider, block, spec);
-            Assert.That(selectedTransactions, Has.Length.EqualTo(1));
-            Assert.That(selectedTransactions[0], Is.SameAs(includedTx));
-            Assert.That(stateProvider.GeneratedBlockAccessList.AccountChanges, Is.Empty);
-        }
-
-        [Test]
         public void BlockProductionTransactionsExecutor_tx_picker_uses_state_changes_from_previous_transactions()
         {
-            ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest(parallel: false));
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
 
             using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
             stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
@@ -463,7 +423,8 @@ namespace Nethermind.Blockchain.Test
                 transactionProcessor,
                 stateProvider,
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                NullBlockAccessListManager.Instance);
 
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.StartNewBlockTrace(blockToProduce);
@@ -487,12 +448,11 @@ namespace Nethermind.Blockchain.Test
     public class WorldStateStab()
         : WorldState(Substitute.For<IWorldStateScopeProvider>(), LimboLogs.Instance), IWorldState
     {
-        // we cannot mock ref methods
-        ref readonly UInt256 IWorldState.GetBalance(Address address) => ref UInt256.MaxValue;
+        public new UInt256 GetBalance(Address address) => UInt256.MaxValue;
 
-        public IReadOnlyStateProvider GetUntrackedReader() => TestReadOnlyStateProvider.Instance;
+        public static IReadOnlyStateProvider GetUntrackedReader() => TestReadOnlyStateProvider.Instance;
 
-        public bool TryGetAccount(Address address, out AccountStruct account)
+        public new bool TryGetAccount(Address address, out AccountStruct account)
         {
             account = new(UInt256.Zero, UInt256.MaxValue);
             return true;

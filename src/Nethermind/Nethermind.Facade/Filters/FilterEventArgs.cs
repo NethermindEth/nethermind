@@ -3,15 +3,10 @@
 
 using System;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Facade.Filters
 {
-    public class FilterEventArgs : EventArgs
+    public class FilterEventArgs(int filterId) : EventArgs
     {
-        public int FilterId { get; }
-
-        public FilterEventArgs(int filterId)
-        {
-            FilterId = filterId;
-        }
+        public int FilterId { get; } = filterId;
     }
 }

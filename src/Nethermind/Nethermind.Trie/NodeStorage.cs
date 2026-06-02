@@ -192,10 +192,7 @@ public class NodeStorage(
 
     private class WriteBatch(IWriteBatch writeBatch, NodeStorage nodeStorage) : INodeStorage.IWriteBatch
     {
-        public void Dispose()
-        {
-            writeBatch.Dispose();
-        }
+        public void Dispose() => writeBatch.Dispose();
 
         public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
         {

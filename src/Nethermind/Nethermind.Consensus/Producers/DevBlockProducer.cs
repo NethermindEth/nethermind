@@ -54,22 +54,13 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        public void Dispose()
-        {
-            BlockTree.NewHeadBlock -= OnNewHeadBlock;
-        }
+        public void Dispose() => BlockTree.NewHeadBlock -= OnNewHeadBlock;
 
-        private class RandomizedDifficultyCalculator : IDifficultyCalculator
+        private class RandomizedDifficultyCalculator(IBlocksConfig blocksConfig, IDifficultyCalculator fallbackDifficultyCalculator) : IDifficultyCalculator
         {
-            private readonly IBlocksConfig _blocksConfig;
-            private readonly IDifficultyCalculator _fallbackDifficultyCalculator;
+            private readonly IBlocksConfig _blocksConfig = blocksConfig;
+            private readonly IDifficultyCalculator _fallbackDifficultyCalculator = fallbackDifficultyCalculator;
             private readonly Random _random = new();
-
-            public RandomizedDifficultyCalculator(IBlocksConfig blocksConfig, IDifficultyCalculator fallbackDifficultyCalculator)
-            {
-                _blocksConfig = blocksConfig;
-                _fallbackDifficultyCalculator = fallbackDifficultyCalculator;
-            }
 
             public UInt256 Calculate(BlockHeader header, BlockHeader parent)
             {

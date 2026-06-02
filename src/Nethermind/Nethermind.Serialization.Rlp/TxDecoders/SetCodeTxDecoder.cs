@@ -9,13 +9,13 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseEIP1559TxDecoder<T>(TxType.SetCode, transactionFactory) where T : Transaction, new()
 {
-    private readonly AuthorizationTupleDecoder _authTupleDecoder = new();
+    private static readonly AuthorizationTupleDecoder AuthTupleDecoder = AuthorizationTupleDecoder.Instance;
 
     protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
-        transaction.AuthorizationList = decoderContext.DecodeArray(_authTupleDecoder);
+        transaction.AuthorizationList = decoderContext.DecodeArray(AuthTupleDecoder);
     }
 
     protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -24,9 +24,6 @@ public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
         stream.EncodeArray(transaction.AuthorizationList, rlpBehaviors);
     }
 
-    protected override int GetPayloadLength(Transaction transaction)
-    {
-        return base.GetPayloadLength(transaction)
-               + (transaction.AuthorizationList is null ? 1 : Rlp.LengthOfSequence(_authTupleDecoder.GetContentLength(transaction.AuthorizationList, RlpBehaviors.None)));
-    }
+    protected override int GetPayloadLength(Transaction transaction) => base.GetPayloadLength(transaction)
+               + (transaction.AuthorizationList is null ? 1 : Rlp.LengthOfSequence(AuthTupleDecoder.GetContentLength(transaction.AuthorizationList, RlpBehaviors.None)));
 }

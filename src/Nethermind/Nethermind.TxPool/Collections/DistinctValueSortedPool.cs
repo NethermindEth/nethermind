@@ -84,7 +84,7 @@ namespace Nethermind.TxPool.Collections
             // if it would go after old value in order, we ignore it and wont add it
             if (AllowSameKeyReplacement || base.CanInsert(key, value))
             {
-                bool isDuplicate = _distinctDictionary.TryGetValue(value, out var oldKvp);
+                bool isDuplicate = _distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp);
                 if (isDuplicate)
                 {
                     bool isHigher = _comparer.Compare(value, oldKvp.Value) <= 0;

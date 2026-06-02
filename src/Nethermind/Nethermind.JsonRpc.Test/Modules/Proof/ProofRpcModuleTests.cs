@@ -23,7 +23,6 @@ using Nethermind.State.Proofs;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -61,7 +60,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
 
         Hash256 stateRoot;
         IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
-        using (var _ = worldState.BeginScope(IWorldState.PreGenesis))
+        using (IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100000);
             worldState.Commit(London.Instance);
@@ -90,10 +89,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _container.Dispose();
-    }
+    public void TearDown() => _container.Dispose();
 
     [TestCase(true)]
     [TestCase(false)]
@@ -172,7 +168,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         Assert.That(receiptWithProof.BlockHeader, withHeader ? Is.Not.Null : Is.Null);
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
-        response.Should().Be(expectedResult);
+        Assert.That(response, Is.EqualTo(expectedResult));
     }
 
     [TestCase(true, "{\"jsonrpc\":\"2.0\",\"result\":{\"receipt\":{\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x3\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},\"txProof\":[\"0xf851a0eb9c9ef295ba68ff22c85763176dabc05773d58ef77ce34e4a23bf9516c706bc80808080808080a0850e08970f6beee9bd3687c74e591429cf6f65d5faf9db298ddc627ac4a26a1b8080808080808080\",\"0xf86431b861f85f010182a410940000000000000000000000000000000000000000020126a0872929cb57ab6d88d0004a60f00df3dd9e0755860549aea25e559bce3d4a66dba01c06266ee2085ae815c258dd9dbb601bfc08c35c13b7cc9cd4ed88a16c3eb3f0\"],\"receiptProof\":[\"0xf851a0970464c5f98c507970da7d4e5fc0600a9927d9563cf08ed113dc42772e3ff11080808080808080a07e2d58ec5d664555812c48866e548a5e2e5d51dd5b0540d0c59b6c08932e80818080808080808080\",\"0xf9010f31b9010bf901080182a430b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0\"],\"blockHeader\":\"0xf901f9a0a3e31eb259593976b3717142a5a9e90637f614d33e2ad13f01134ea00c24ca5aa01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a009e11c477e0a0dfdfe036492b9bce7131991eb23bcf9575f9bff1e4016f90447a0e1b1585a222beceb3887dc6701802facccf186c2d0f6aa69e26ae0c431fc2b5db9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000830f424001833d090080830f424183010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e28800000000000003e8\"},\"id\":67}")]
@@ -182,7 +178,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
         LogEntry[] logEntries = new[] { Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject };
 
-        TxReceipt receipt1 = new TxReceipt()
+        TxReceipt receipt1 = new()
         {
             Bloom = new Bloom(logEntries),
             Index = 0,
@@ -198,7 +194,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
             Logs = logEntries
         };
 
-        TxReceipt receipt2 = new TxReceipt()
+        TxReceipt receipt2 = new()
         {
             Bloom = new Bloom(logEntries),
             Index = 1,
@@ -243,7 +239,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         }
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
-        response.Should().Be(expectedResult);
+        Assert.That(response, Is.EqualTo(expectedResult));
     }
 
     [TestCase]
@@ -810,7 +806,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         (IWorldState stateProvider, Hash256 root) = CreateInitialState(code);
 
         BlockHeader baseBlock;
-        using (var _ = stateProvider.BeginScope(_blockTree.Head?.Header))
+        using (IDisposable _ = stateProvider.BeginScope(_blockTree.Head?.Header))
         {
             for (int i = 0; i < 10000; i++)
             {
@@ -820,7 +816,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
             stateProvider.CommitTree(0);
             baseBlock = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject;
-            _blockTree.SuggestBlock(Build.A.Block.WithHeader(baseBlock).TestObject).Should().Be(AddBlockResult.Added);
+            Assert.That(_blockTree.SuggestBlock(Build.A.Block.WithHeader(baseBlock).TestObject), Is.EqualTo(AddBlockResult.Added));
         }
 
         Block block = Build.A.Block.WithParent(baseBlock).WithStateRoot(root).TestObject;
@@ -850,7 +846,8 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
             try
             {
                 CappedArray<byte> verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
-                new AccountDecoder().Decode(verifyOneProof.AsSpan());
+                Rlp.ValueDecoderContext context = verifyOneProof.AsSpan().AsRlpValueContext();
+                new AccountDecoder().Decode(ref context);
             }
             catch (Exception)
             {
@@ -871,7 +868,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
     private (IWorldState, Hash256) CreateInitialState(byte[]? code)
     {
         IWorldState stateProvider = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether);
         AddAccount(stateProvider, TestItem.AddressB, 1.Ether);

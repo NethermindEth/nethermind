@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -15,8 +14,10 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using System;
 using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -30,7 +31,7 @@ public class WorldStateManagerTests
         IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager manager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateManager manager = new(worldState, trieStore, dbProvider, LimboLogs.Instance, new PruningConfig());
         return (worldState, trieStore, manager);
     }
 
@@ -38,7 +39,7 @@ public class WorldStateManagerTests
     public void ShouldProxyGlobalWorldState()
     {
         (IWorldStateScopeProvider worldState, _, WorldStateManager manager) = CreateWorldStateManager();
-        manager.GlobalWorldState.Should().Be(worldState);
+        Assert.That(manager.GlobalWorldState, Is.EqualTo(worldState));
     }
 
     [Test]
@@ -50,7 +51,7 @@ public class WorldStateManagerTests
         manager.ReorgBoundaryReached += (sender, reached) => gotEvent = true;
         trieStore.ReorgBoundaryReached += Raise.EventWith<ReorgBoundaryReached>(new ReorgBoundaryReached(1));
 
-        gotEvent.Should().BeTrue();
+        Assert.That(gotEvent, Is.True);
     }
 
     [TestCase(INodeStorage.KeyScheme.Hash, true)]
@@ -64,11 +65,11 @@ public class WorldStateManagerTests
 
         if (hashSupported)
         {
-            manager.HashServer.Should().NotBeNull();
+            Assert.That(manager.HashServer, Is.Not.Null);
         }
         else
         {
-            manager.HashServer.Should().BeNull();
+            Assert.That(manager.HashServer, Is.Null);
         }
     }
 
@@ -122,5 +123,54 @@ public class WorldStateManagerTests
         }
 
         blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
+    }
+
+    [Test]
+    [TestCase(false)]
+    [TestCase(true)]
+    public void CreateReadOnlyTrieStore_can_resolve_state_root(bool useFlat)
+    {
+        IConfigProvider configProvider = new ConfigProvider();
+        if (useFlat)
+        {
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
+        }
+
+        using IContainer ctx = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .Build();
+
+        IWorldState worldState = ctx.Resolve<IMainProcessingContext>().WorldState;
+
+        Hash256 stateRoot;
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 1, 2);
+            worldState.Commit(Cancun.Instance);
+            worldState.CommitTree(0);
+            stateRoot = worldState.StateRoot;
+        }
+
+        BlockHeader parentHeader = Build.A.BlockHeader
+            .WithStateRoot(stateRoot)
+            .WithNumber(0)
+            .TestObject;
+
+        IWorldStateManager wsm = ctx.Resolve<IWorldStateManager>();
+        using ITrieStore readOnlyTrieStore = wsm.CreateReadOnlyTrieStore();
+        using IDisposable scope = readOnlyTrieStore.BeginScope(parentHeader);
+
+        IScopedTrieStore scopedStore = readOnlyTrieStore.GetTrieStore(null);
+        TrieNode rootNode = scopedStore.FindCachedOrUnknown(TreePath.Empty, stateRoot);
+
+        if (rootNode.NodeType == NodeType.Unknown)
+        {
+            byte[] rlp = scopedStore.TryLoadRlp(TreePath.Empty, stateRoot);
+            Assert.That(rlp, Is.Not.Null, "state root trie node should be resolvable from read-only trie store");
+        }
+        else
+        {
+            Assert.That(rootNode.NodeType, Is.Not.EqualTo(NodeType.Unknown), "state root should be resolvable");
+        }
     }
 }

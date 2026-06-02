@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
@@ -53,7 +53,7 @@ namespace Nethermind.TxPool.Test.Collections
         {
             for (int i = 0; i < _transactions.Length; i++)
             {
-                var tx = _transactions[^(i + 1)];
+                Transaction tx = _transactions[^(i + 1)];
                 tx.Hash = tx.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
                 Assert.That(_sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null, Is.EqualTo(i > 15 ? null : tx));
@@ -76,7 +76,7 @@ namespace Nethermind.TxPool.Test.Collections
         {
             for (int i = 0; i < _transactions.Length; i++)
             {
-                var tx = _transactions[i];
+                Transaction tx = _transactions[i];
                 tx.Hash = tx.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
                 Assert.That(_sortedPool.Count, Is.EqualTo(Math.Min(16, i + 1)));
@@ -99,10 +99,57 @@ namespace Nethermind.TxPool.Test.Collections
                 .WithHash(TestItem.KeccakA).TestObject;
 
             _sortedPool.TryInsert(tx.Hash, tx);
-            _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeTrue();
+            Assert.That(_sortedPool.TryGetBucket(tx.SenderAddress, out _), Is.True);
 
             _sortedPool.TryRemove(tx.Hash);
-            _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeFalse();
+            Assert.That(_sortedPool.TryGetBucket(tx.SenderAddress, out _), Is.False);
+        }
+
+        private static IEnumerable<TestCaseData> VisitBucketCases()
+        {
+            yield return new TestCaseData(Array.Empty<int>(), int.MaxValue, Array.Empty<int>())
+                .SetName("VisitBucket_missing_group_visits_nothing");
+            yield return new TestCaseData(new[] { 0, 1, 2, 3 }, int.MaxValue, new[] { 0, 1, 2, 3 })
+                .SetName("VisitBucket_iterates_all_items_in_ascending_nonce_order");
+            yield return new TestCaseData(new[] { 0, 1, 2, 3 }, 2, new[] { 0, 1, 2 })
+                .SetName("VisitBucket_stops_after_visitor_returns_false");
+        }
+
+        [TestCaseSource(nameof(VisitBucketCases))]
+        public void VisitBucket_visits_expected_nonces(int[] insertNonces, int stopAfterNonce, int[] expectedVisited)
+        {
+            InsertNonces(TestItem.AddressA, insertNonces);
+
+            (List<int> Visited, int StopAfter) state = (new List<int>(), stopAfterNonce);
+            _sortedPool.VisitBucket(TestItem.AddressA, ref state, static (Transaction tx, ref (List<int> Visited, int StopAfter) s) =>
+            {
+                s.Visited.Add((int)tx.Nonce);
+                return (int)tx.Nonce < s.StopAfter;
+            });
+
+            Assert.That(state.Visited, Is.EqualTo(expectedVisited));
+        }
+
+        [Test]
+        public void VisitBucket_throws_on_null_visitor()
+        {
+            int unused = 0;
+            Action act = () => _sortedPool.VisitBucket(TestItem.AddressA, ref unused, null!);
+
+            Assert.That(act, Throws.TypeOf<ArgumentNullException>());
+        }
+
+        private void InsertNonces(Address sender, ReadOnlySpan<int> nonces)
+        {
+            foreach (int nonce in nonces)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithSenderAddress(sender)
+                    .TestObject;
+                tx.Hash = tx.CalculateHash();
+                _sortedPool.TryInsert(tx.Hash, tx);
+            }
         }
     }
 }

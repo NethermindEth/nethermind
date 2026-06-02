@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -50,9 +49,9 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
 
         ctx.Commit();
 
-        clonedDb.Count.Should().Be(132);
-        clonedDb.Keys.Should().BeEquivalentTo(keys);
-        clonedDb.Values.Should().BeEquivalentTo(values);
+        Assert.That(clonedDb.Count, Is.EqualTo(132));
+        Assert.That(clonedDb.Keys, Is.EquivalentTo(keys));
+        Assert.That(clonedDb.Values, Is.EquivalentTo(values));
 
         clonedDb.KeyWasWrittenWithFlags(keys[0], WriteFlags.LowPriority);
         trieDb.KeyWasReadWithFlags(keys[0], ReadFlags.SkipDuplicateRead | ReadFlags.HintReadAhead);
@@ -65,12 +64,12 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         MemDb clonedDb = new();
         IPruningContext pruningContext = StartPruning(trieDb, clonedDb);
 
-        CancellationTokenSource cts = new CancellationTokenSource();
+        CancellationTokenSource cts = new();
         cts.Cancel();
 
         CopyDb(pruningContext, cts.Token, trieDb);
 
-        clonedDb.Count.Should().BeLessThan(trieDb.Count);
+        Assert.That(clonedDb.Count, Is.LessThan(trieDb.Count));
     }
 
     private IPruningContext CopyDb(IPruningContext pruningContext, CancellationToken cancellationToken, MemDb trieDb, VisitingOptions? visitingOptions = null, WriteFlags writeFlags = WriteFlags.None)
@@ -89,14 +88,14 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         BlockHeader? baseBlock = Build.A.BlockHeader.WithStateRoot(trie.RootHash).TestObject;
         if (scheme == INodeStorage.KeyScheme.Hash)
         {
-            NodeStorage nodeStorage = new NodeStorage(pruningContext, scheme);
+            NodeStorage nodeStorage = new(pruningContext, scheme);
             using CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
             stateReader.RunTreeVisitor(copyTreeVisitor, baseBlock, visitingOptions);
             copyTreeVisitor.Finish();
         }
         else
         {
-            NodeStorage nodeStorage = new NodeStorage(pruningContext, scheme);
+            NodeStorage nodeStorage = new(pruningContext, scheme);
             using CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
             stateReader.RunTreeVisitor(copyTreeVisitor, baseBlock, visitingOptions);
             copyTreeVisitor.Finish();

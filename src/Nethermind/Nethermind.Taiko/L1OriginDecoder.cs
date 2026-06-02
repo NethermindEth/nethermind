@@ -8,7 +8,7 @@ using System;
 
 namespace Nethermind.Taiko;
 
-public sealed class L1OriginDecoder : RlpValueDecoder<L1Origin>
+public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
 {
     const int BuildPayloadArgsIdLength = 8;
     internal const int SignatureLength = 65;
@@ -37,7 +37,7 @@ public sealed class L1OriginDecoder : RlpValueDecoder<L1Origin>
         return new(blockId, l2BlockHash, l1BlockHeight, l1BlockHash, buildPayloadArgsId, isForcedInclusion, signature);
     }
 
-    public Rlp Encode(L1Origin? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(L1Origin? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
@@ -91,10 +91,7 @@ public sealed class L1OriginDecoder : RlpValueDecoder<L1Origin>
         }
     }
 
-    public override int GetLength(L1Origin item, RlpBehaviors rlpBehaviors)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(L1Origin item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     private int GetContentLength(L1Origin item, RlpBehaviors rlpBehaviors)
     {

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
@@ -56,7 +56,7 @@ public class Eth68ProtocolHandler(ISession session,
     public new static byte Version => EthVersions.Eth68;
     public override byte ProtocolVersion => Version;
 
-    public override void HandleMessage(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -75,10 +75,9 @@ public class Eth68ProtocolHandler(ISession session,
                     ReportIn(ignored, size);
                 }
 
-                break;
+                return true;
             default:
-                base.HandleMessage(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 
@@ -99,7 +98,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
 
-        AddNotifiedTransactions(message.Hashes);
+        AddNotifiedTransactions(message.Hashes.AsSpan());
 
         long startTime = Logger.IsTrace ? Stopwatch.GetTimestamp() : 0;
 
@@ -110,7 +109,11 @@ public class Eth68ProtocolHandler(ISession session,
 
     protected void RequestPooledTransactions(IOwnedReadOnlyList<Hash256> hashes, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<byte> types)
     {
-        using ArrayPoolListRef<int> newTxHashesIndexes = AddMarkUnknownHashes(hashes.AsSpan());
+        ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
+        ReadOnlySpan<int> sizesSpan = sizes.AsSpan();
+        ReadOnlySpan<byte> typesSpan = types.AsSpan();
+
+        using ArrayPoolListRef<int> newTxHashesIndexes = AddMarkUnknownHashes(hashesSpan);
 
         if (newTxHashesIndexes.Count == 0)
         {
@@ -129,9 +132,9 @@ public class Eth68ProtocolHandler(ISession session,
 
         foreach (int index in newTxHashesIndexes.AsSpan())
         {
-            Hash256 hash = hashes[index];
-            int txSize = sizes[index];
-            TxType txType = (TxType)types[index];
+            Hash256 hash = hashesSpan[index];
+            int txSize = sizesSpan[index];
+            TxType txType = (TxType)typesSpan[index];
             TxShapeAnnouncements.Set(hash, (txSize, txType));
 
             long maxTxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
@@ -248,14 +251,16 @@ public class Eth68ProtocolHandler(ISession session,
         Send(message);
     }
 
-    protected override ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+    protected override ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
     {
-        int startIdx = request.startIndex;
-        for (int i = startIdx; i < request.txs.Count; i++)
+        IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
+        ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
+        int startIdx = request.StartIndex;
+        for (int i = startIdx; i < transactionsSpan.Length; i++)
         {
-            if (!ValidateSizeAndType(request.txs[i]))
+            if (!ValidateSizeAndType(transactionsSpan[i]))
             {
-                request.txs.Dispose();
+                transactions.Dispose();
                 throw new SubprotocolException("invalid pooled tx type or size");
             }
         }
@@ -263,6 +268,6 @@ public class Eth68ProtocolHandler(ISession session,
         return base.HandleSlow(request, cancellationToken);
     }
 
-    private bool ValidateSizeAndType(Transaction tx)
-        => !TxShapeAnnouncements.Delete(tx.Hash!, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type);
+    private bool ValidateSizeAndType(Transaction? tx)
+        => tx is not null && (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type));
 }

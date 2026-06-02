@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Eip2930;
@@ -60,10 +59,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
     }
 
     [TearDown]
-    public void Teardown()
-    {
-        _stateCloser.Dispose();
-    }
+    public void Teardown() => _stateCloser.Dispose();
 
     [Test]
     public void Can_process_simple_transaction()
@@ -210,7 +206,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether);
+        Assert.That(_stateProvider.GetBalance(TestItem.PrivateKeyA.Address), Is.EqualTo(1.Ether));
     }
 
     [Test]
@@ -225,9 +221,9 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-        _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
+        Assert.That(_stateProvider.AccountExists(TestItem.PrivateKeyD.Address), Is.False);
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
-        _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
+        Assert.That(_stateProvider.AccountExists(TestItem.PrivateKeyD.Address), Is.False);
     }
 
     [Test]
@@ -238,7 +234,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
-        _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(0);
+        Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(UInt256.Zero));
     }
 
     [TestCase(true)]
@@ -255,11 +251,11 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         if (!systemUser)
         {
-            result.Should().Be(TransactionResult.InsufficientSenderBalance);
+            Assert.That(result, Is.EqualTo(TransactionResult.InsufficientSenderBalance));
         }
         else
         {
-            tracer.GasSpent.Should().Be(21000);
+            Assert.That(tracer.GasSpent, Is.EqualTo(21000));
         }
     }
 
@@ -270,6 +266,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         Transaction tx = Build.A.Transaction
             .WithValue(txValue)
+            .WithGasPrice(0)
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .TestObject;
@@ -281,10 +278,16 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
 
-        if (txValue + (UInt256)gasLimit > AccountBalance)
+        if (txValue == AccountBalance)
+        {
+            // Gas price is zero so no gas payment is needed; sending the full balance as value is valid.
+            Assert.That(err, Is.Null);
+            Assert.That(estimate, Is.EqualTo(GasCostOf.Transaction));
+        }
+        else if (txValue + (UInt256)gasLimit > AccountBalance)
         {
             Assert.That(err, Is.Not.Null); // Should have error
-            Assert.That(err, Is.EqualTo("Transaction execution fails"));
+            Assert.That(err, Is.EqualTo("insufficient sender balance for transfer"));
         }
         else
         {
@@ -308,7 +311,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
             yield return new TestCaseData(AccountBalance - GasCostOf.Transaction - gasLimit + 1)
             { TestName = "More than (account balance - tx cost)", ExpectedResult = GasCostOf.Transaction };
             yield return new TestCaseData(AccountBalance)
-            { TestName = "Exactly account balance", ExpectedResult = 0L };
+            { TestName = "Exactly account balance", ExpectedResult = (long)GasCostOf.Transaction };
 
             yield return new TestCaseData(AccountBalance + 1)
             { TestName = "More than account balance", ExpectedResult = 0L };
@@ -346,8 +349,8 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
-        tracer.GasSpent.Should().Be(21000);
-        estimator.Estimate(tx, block.Header, tracer, out string? err, 0).Should().Be(21000);
+        Assert.That(tracer.GasSpent, Is.EqualTo(21000));
+        Assert.That(estimator.Estimate(tx, block.Header, tracer, out string? err, 0), Is.EqualTo(21000));
         Assert.That(err, Is.Null);
     }
 
@@ -371,7 +374,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
 
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
@@ -380,12 +383,12 @@ public class TransactionProcessorTests(bool eip155Enabled)
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsicGas.Standard);
+        Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
         IReleaseSpec releaseSpec = Berlin.Instance;
-        tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
-        tracer.GasSpent.Should().Be(54764L);
+        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1));
+        Assert.That(tracer.GasSpent, Is.EqualTo(54764L));
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        estimate.Should().Be(75465L);
+        Assert.That(estimate, Is.EqualTo(75465L));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -410,7 +413,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
-        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
         _transactionProcessor.Execute(initTx, blkCtx, NullTxTracer.Instance);
 
         EstimateGasTracer tracer = new();
@@ -420,11 +423,11 @@ public class TransactionProcessorTests(bool eip155Enabled)
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsicGas.Standard);
-        tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(24080);
-        tracer.GasSpent.Should().Be(35228L);
+        Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
+        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(24080));
+        Assert.That(tracer.GasSpent, Is.EqualTo(35228L));
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        estimate.Should().Be(54225);
+        Assert.That(estimate, Is.EqualTo(54225));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -432,19 +435,17 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
     private void ConfirmEnoughEstimate(Transaction tx, Block block, long estimate)
     {
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
 
         CallOutputTracer outputTracer = new();
         tx.GasLimit = estimate;
         _transactionProcessor.CallAndRestore(tx, blkCtx, outputTracer);
-        outputTracer.StatusCode.Should().Be(StatusCode.Success,
-            $"transaction should succeed at the estimate ({estimate})");
+        Assert.That(outputTracer.StatusCode, Is.EqualTo(StatusCode.Success), $"transaction should succeed at the estimate ({estimate})");
 
         outputTracer = new CallOutputTracer();
         tx.GasLimit = Math.Min(estimate - 1, estimate * 63 / 64);
         _transactionProcessor.CallAndRestore(tx, blkCtx, outputTracer);
-        outputTracer.StatusCode.Should().Be(StatusCode.Failure,
-            $"transaction should fail below the estimate ({tx.GasLimit})");
+        Assert.That(outputTracer.StatusCode, Is.EqualTo(StatusCode.Failure), $"transaction should fail below the estimate ({tx.GasLimit})");
     }
 
     [TestCase]
@@ -463,7 +464,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
-        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
@@ -472,11 +473,11 @@ public class TransactionProcessorTests(bool eip155Enabled)
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsicGas.Standard);
-        tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(2300);
-        tracer.GasSpent.Should().Be(85669L);
+        Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
+        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(2300));
+        Assert.That(tracer.GasSpent, Is.EqualTo(85669L));
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        estimate.Should().Be(87969L);
+        Assert.That(estimate, Is.EqualTo(87969L));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -504,7 +505,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
-        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
@@ -513,11 +514,11 @@ public class TransactionProcessorTests(bool eip155Enabled)
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsicGas.Standard);
-        tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend);
-        tracer.GasSpent.Should().Be(87429L);
+        Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
+        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend));
+        Assert.That(tracer.GasSpent, Is.EqualTo(87429L));
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        estimate.Should().Be(108130L);
+        Assert.That(estimate, Is.EqualTo(108130L));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -543,7 +544,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
-        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
         _transactionProcessor.Execute(initTx, blkCtx, NullTxTracer.Instance);
 
         EstimateGasTracer tracer = new();
@@ -553,11 +554,11 @@ public class TransactionProcessorTests(bool eip155Enabled)
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsicGas.Standard);
-        tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(1);
-        tracer.GasSpent.Should().Be(54224L);
+        Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
+        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(1));
+        Assert.That(tracer.GasSpent, Is.EqualTo(54224L));
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        estimate.Should().Be(54224L);
+        Assert.That(estimate, Is.EqualTo(54224L));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -580,7 +581,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         BlockReceiptsTracer tracer = BuildTracer(tx, false, false);
         Execute(tx, block, tracer);
-        _stateProvider.AccountExists(tx.SenderAddress!).Should().BeTrue();
+        Assert.That(_stateProvider.AccountExists(tx.SenderAddress!), Is.True);
     }
 
     [TestCase]
@@ -592,10 +593,10 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         Snapshot state = _stateProvider.TakeSnapshot();
         _transactionProcessor.BuildUp(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance - GasCostOf.Transaction);
+        Assert.That(_stateProvider.GetBalance(TestItem.PrivateKeyA.Address), Is.EqualTo(AccountBalance - GasCostOf.Transaction));
 
         _stateProvider.Restore(state);
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance);
+        Assert.That(_stateProvider.GetBalance(TestItem.PrivateKeyA.Address), Is.EqualTo(AccountBalance));
     }
 
     [TestCase]
@@ -610,12 +611,12 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-        _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
+        Assert.That(_stateProvider.AccountExists(TestItem.PrivateKeyD.Address), Is.False);
         Snapshot state = _stateProvider.TakeSnapshot();
         _transactionProcessor.BuildUp(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
-        _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeTrue();
+        Assert.That(_stateProvider.AccountExists(TestItem.PrivateKeyD.Address), Is.True);
         _stateProvider.Restore(state);
-        _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
+        Assert.That(_stateProvider.AccountExists(TestItem.PrivateKeyD.Address), Is.False);
     }
 
     [TestCase]
@@ -632,9 +633,9 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         Snapshot state = _stateProvider.TakeSnapshot();
         _transactionProcessor.BuildUp(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
-        _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(1);
+        Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo((UInt256)1));
         _stateProvider.Restore(state);
-        _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(0);
+        Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(UInt256.Zero));
     }
 
     [TestCase]
@@ -652,15 +653,15 @@ public class TransactionProcessorTests(bool eip155Enabled)
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx1, tx2).WithGasLimit(gasLimit).TestObject;
 
         Snapshot state = _stateProvider.TakeSnapshot();
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.BuildUp(tx1, blkCtx, NullTxTracer.Instance);
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance - GasCostOf.Transaction);
+        Assert.That(_stateProvider.GetBalance(TestItem.PrivateKeyA.Address), Is.EqualTo(AccountBalance - GasCostOf.Transaction));
 
         _transactionProcessor.BuildUp(tx2, blkCtx, NullTxTracer.Instance);
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance - GasCostOf.Transaction * 2);
+        Assert.That(_stateProvider.GetBalance(TestItem.PrivateKeyA.Address), Is.EqualTo(AccountBalance - GasCostOf.Transaction * 2));
 
         _stateProvider.Restore(state);
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance);
+        Assert.That(_stateProvider.GetBalance(TestItem.PrivateKeyA.Address), Is.EqualTo(AccountBalance));
     }
 
     private BlockReceiptsTracer BuildTracer(Transaction tx, bool stateDiff, bool trace)
@@ -709,7 +710,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        tx.SpentGas.Should().Be(sentinel, "Warmup must not modify tx.SpentGas");
+        Assert.That(tx.SpentGas, Is.EqualTo(sentinel), "Warmup must not modify tx.SpentGas");
     }
 
     [Test]
@@ -723,7 +724,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(nonceBefore, "Warmup must not increment sender nonce");
+        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(nonceBefore), "Warmup must not increment sender nonce");
     }
 
     [Test]
@@ -737,6 +738,6 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        _stateProvider.GetBalance(TestItem.AddressA).Should().Be(balanceBefore, "Warmup must not deduct sender balance (should use SystemTransactionProcessor path)");
+        Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(balanceBefore), "Warmup must not deduct sender balance (should use SystemTransactionProcessor path)");
     }
 }

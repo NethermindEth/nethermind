@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -163,7 +162,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 2, MainnetSpecProvider.CancunBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 3, MainnetSpecProvider.PragueBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 4, MainnetSpecProvider.OsakaBlockTimestamp)]
-        [TestCase(MainnetSpecProvider.ParisBlockNumber + 10, MainnetSpecProvider.AmsterdamBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 7, MainnetSpecProvider.AmsterdamBlockTimestamp)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
             ILogger logger = _logManager.GetClassLogger<InvalidOpcodeTests>();
@@ -171,21 +170,25 @@ namespace Nethermind.Evm.Test
             for (int i = 0; i <= byte.MaxValue; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
-                byte[] code = Prepare.EvmCode
-                    .Op((byte)i)
-                    .Done;
+                Instruction opcode = (Instruction)i;
+
+                // Provide an in-range EIP-8024 immediate so the test checks opcode validity rather
+                // than end-of-code immediate decoding or stack behavior.
+                byte[] code = opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE
+                    ? Prepare.EvmCode.Op((byte)i).Data(0x80).Done
+                    : Prepare.EvmCode.Op((byte)i).Done;
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
                 TestAllTracerWithOutput result = Execute((blockNumber, timestamp ?? 0), 1_000_000, code);
 
                 if (isValidOpcode)
                 {
-                    result.Error.Should().NotBe(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
+                    Assert.That(result.Error, Is.Not.EqualTo(InvalidOpCodeErrorMessage), ((Instruction)i).ToString());
                 }
                 else
                 {
-                    result.Error.Should().Be(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
-                    result.StatusCode.Should().Be(0, ((Instruction)i).ToString());
+                    Assert.That(result.Error, Is.EqualTo(InvalidOpCodeErrorMessage), ((Instruction)i).ToString());
+                    Assert.That(result.StatusCode, Is.EqualTo(0), ((Instruction)i).ToString());
                 }
             }
         }

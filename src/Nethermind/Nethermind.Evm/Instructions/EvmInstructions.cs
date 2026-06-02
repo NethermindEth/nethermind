@@ -10,7 +10,7 @@ using Nethermind.Evm.GasPolicy;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Benchmark")]
 namespace Nethermind.Evm;
 
-internal static unsafe partial class EvmInstructions
+public static unsafe partial class EvmInstructions
 {
     /// <summary>
     /// Generates the opcode lookup table for the Ethereum Virtual Machine.
@@ -26,7 +26,7 @@ internal static unsafe partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Allocate lookup table for all possible opcodes.
-        var lookup = new delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[byte.MaxValue + 1];
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] lookup = new delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[byte.MaxValue + 1];
 
         for (int i = 0; i < lookup.Length; i++)
         {
@@ -84,10 +84,9 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.CALLVALUE] = &InstructionEnvUInt256<TGasPolicy, OpCallValue<TGasPolicy>, TTracingInst>;
         lookup[(int)Instruction.CALLDATALOAD] = &InstructionCallDataLoad<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.CALLDATASIZE] = &InstructionEnvUInt32<TGasPolicy, OpCallDataSize<TGasPolicy>, TTracingInst>;
-        lookup[(int)Instruction.CALLDATACOPY] =
-            &InstructionCodeCopy<TGasPolicy, OpCallDataCopy<TGasPolicy>, TTracingInst>;
-        lookup[(int)Instruction.CODESIZE] = &InstructionEnvUInt32<TGasPolicy, OpCodeSize<TGasPolicy>, TTracingInst>;
-        lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<TGasPolicy, OpCodeCopy<TGasPolicy>, TTracingInst>;
+        lookup[(int)Instruction.CALLDATACOPY] = &InstructionCallDataCopy<TGasPolicy, TTracingInst>;
+        lookup[(int)Instruction.CODESIZE] = &InstructionCodeSize<TGasPolicy, TTracingInst>;
+        lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.GASPRICE] = &InstructionBlkUInt256<TGasPolicy, OpGasPrice<TGasPolicy>, TTracingInst>;
 
         lookup[(int)Instruction.EXTCODESIZE] = &InstructionExtCodeSize<TGasPolicy, TTracingInst>;

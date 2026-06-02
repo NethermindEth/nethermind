@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.Peers
 
                 if (_logger.IsDebug)
                 {
-                    var header = $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}";
+                    string header = $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}";
                     _logger.Debug(MakeReportForPeers(OrderedPeers.Where(static p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), header));
                 }
             }
@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.Peers
                 _stringBuilder.Append(header);
                 _stringBuilder.Append(" |");
                 bool isFirst = true;
-                foreach (var peerGroup in peers.GroupBy(static peerInfo => peerInfo.SyncPeer.Name).OrderBy(static p => p.Key))
+                foreach (IGrouping<string, PeerInfo> peerGroup in peers.GroupBy(static peerInfo => peerInfo.SyncPeer.Name).OrderBy(static p => p.Key))
                 {
                     if (isFirst)
                     {
@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.Peers
                 _stringBuilder.Append(header);
 
                 bool isFirst = true;
-                foreach (var peerGroup in peerGroups.OrderByDescending(static x => x.Count()))
+                foreach (IGrouping<NodeClientType, PeerInfo> peerGroup in peerGroups.OrderByDescending(static x => x.Count()))
                 {
                     if (isFirst)
                     {

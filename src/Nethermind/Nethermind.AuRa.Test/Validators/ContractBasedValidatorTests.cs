@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -106,28 +105,28 @@ public class ContractBasedValidatorTests
     public void throws_ArgumentNullException_on_empty_validatorStore()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, null, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
-        act.Should().Throw<ArgumentNullException>();
+        Assert.That(act, Throws.TypeOf<ArgumentNullException>());
     }
 
     [Test]
     public void throws_ArgumentNullException_on_empty_validSealerStrategy()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, null, _blockFinalizationManager, default, _logManager, 1);
-        act.Should().Throw<ArgumentNullException>();
+        Assert.That(act, Throws.TypeOf<ArgumentNullException>());
     }
 
     [Test]
     public void throws_ArgumentNullException_on_empty_blockTree()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, null, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
-        act.Should().Throw<ArgumentNullException>();
+        Assert.That(act, Throws.TypeOf<ArgumentNullException>());
     }
 
     [Test]
     public void throws_ArgumentNullException_on_empty_logManager()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, default, null, 1);
-        act.Should().Throw<ArgumentNullException>();
+        Assert.That(act, Throws.TypeOf<ArgumentNullException>());
     }
 
     [Test]
@@ -162,7 +161,7 @@ public class ContractBasedValidatorTests
             Raise.EventWith(new FinalizeEventArgs(_block.Header,
                 Build.A.BlockHeader.WithNumber(blockNumber).WithHash(blockHash).TestObject));
 
-        validator.Validators.Should().BeEquivalentTo(validators, static o => o.WithStrictOrdering());
+        Assert.That(validator.Validators, Is.EqualTo(validators));
     }
 
     [TestCase(1)]
@@ -197,8 +196,8 @@ public class ContractBasedValidatorTests
 
         // initial validator should be true
         Address[] expectedValidators = { initialValidator };
-        validator.Validators.Should().BeEquivalentTo(expectedValidators, o => o.WithStrictOrdering());
-        _validatorStore.GetValidators().Should().BeEquivalentTo(expectedValidators.AsEnumerable());
+        Assert.That(validator.Validators, Is.EqualTo(expectedValidators));
+        Assert.That(_validatorStore.GetValidators(), Is.EqualTo(expectedValidators.AsEnumerable()));
     }
 
     public static IEnumerable<TestCaseData> ConsecutiveInitiateChangeData
@@ -216,8 +215,8 @@ public class ContractBasedValidatorTests
                             BlockNumber = 1,
                             ExpectedFinalizationCount = 6,
                             NumberOfSteps = 30,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(1),
@@ -254,7 +253,7 @@ public class ContractBasedValidatorTests
                                     InitializeBlock = 20,
                                     FinalizeBlock = 25
                                 },
-                            }
+                            ]
                         }
                     }
                 },
@@ -275,8 +274,8 @@ public class ContractBasedValidatorTests
                             BlockNumber = 1,
                             ExpectedFinalizationCount = 4,
                             NumberOfSteps = 11,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(1),
@@ -307,7 +306,7 @@ public class ContractBasedValidatorTests
                                     InitializeBlock = 9,
                                     FinalizeBlock = 10
                                 },
-                            }
+                            ]
                         }
                     }
                 },
@@ -328,8 +327,8 @@ public class ContractBasedValidatorTests
                             BlockNumber = 1,
                             ExpectedFinalizationCount = 2,
                             NumberOfSteps = 11,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(1),
@@ -349,7 +348,7 @@ public class ContractBasedValidatorTests
                                     InitializeBlock = 5,
                                     FinalizeBlock = 7
                                 },
-                            }
+                            ]
                         }
                     },
                     {
@@ -378,8 +377,8 @@ public class ContractBasedValidatorTests
                             BlockNumber = 1,
                             ExpectedFinalizationCount = 2,
                             NumberOfSteps = 11,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(1),
@@ -392,7 +391,7 @@ public class ContractBasedValidatorTests
                                     InitializeBlock = 3,
                                     FinalizeBlock = 3
                                 },
-                            }
+                            ]
                         }
                     },
                     {
@@ -401,15 +400,15 @@ public class ContractBasedValidatorTests
                             BlockNumber = 6,
                             ExpectedFinalizationCount = 1,
                             NumberOfSteps = 10,
-                            Validators = new  List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(7),
                                     InitializeBlock = 8,
                                     FinalizeBlock = 10
                                 }
-                            },
+                            ],
                         }
                     }
                 },
@@ -430,8 +429,8 @@ public class ContractBasedValidatorTests
                             BlockNumber = 1,
                             ExpectedFinalizationCount = 2,
                             NumberOfSteps = 11,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(1),
@@ -450,7 +449,7 @@ public class ContractBasedValidatorTests
                                     InitializeBlock = 5,
                                     FinalizeBlock = 7
                                 },
-                            }
+                            ]
                         }
                     },
                     {
@@ -459,15 +458,15 @@ public class ContractBasedValidatorTests
                             BlockNumber = 6, //reorganisation to block 6 in order to keep last initiate change
                             ExpectedFinalizationCount = 2,
                             NumberOfSteps = 10,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(7),
                                     InitializeBlock = 10,
                                     FinalizeBlock = 11
                                 }
-                            },
+                            ],
                         }
                     }
                 },
@@ -482,7 +481,7 @@ public class ContractBasedValidatorTests
     [TestCaseSource(nameof(ConsecutiveInitiateChangeData))]
     public void consecutive_initiate_change_gets_finalized_and_switch_validators(ConsecutiveInitiateChangeTestParameters test)
     {
-        Dictionary<int, int> hashSeeds = new();
+        Dictionary<int, int> hashSeeds = [];
 
         Address[] currentValidators = GenerateValidators(1);
         SetupInitialValidators(currentValidators);
@@ -522,7 +521,7 @@ public class ContractBasedValidatorTests
             _blockTree.FindBlock(_block.Header.Hash, Arg.Any<BlockTreeLookupOptions>()).Returns(new Block(_block.Header.Clone()));
 
             Action preProcess = () => validator.OnBlockProcessingStart(_block);
-            preProcess.Should().NotThrow<InvalidOperationException>(test.TestName);
+            Assert.That(preProcess, Throws.Nothing, test.TestName);
             validator.OnBlockProcessingEnd(_block, txReceipts);
             int finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
             _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
@@ -531,7 +530,7 @@ public class ContractBasedValidatorTests
                         .WithHash(Keccak.Compute((finalizedNumber + hashSeeds[finalizedNumber]).ToString())).TestObject));
 
             currentValidators = test.GetCurrentValidators(blockNumber);
-            validator.Validators.Should().BeEquivalentTo(currentValidators, o => o.WithStrictOrdering(), $"Validator address should be recognized in block {blockNumber}");
+            Assert.That(validator.Validators, Is.EqualTo(currentValidators), $"Validator address should be recognized in block {blockNumber}");
         }
 
         ValidateFinalizationForChain(test.Current);
@@ -596,9 +595,8 @@ public class ContractBasedValidatorTests
             pendingValidators = new PendingValidators(block.Number, block.Hash, new[] { TestItem.Addresses[block.Number * 10] });
         }
 
-        _validatorStore.PendingValidators.Should().BeEquivalentTo(pendingValidators);
+        Assert.That(_validatorStore.PendingValidators, Is.EqualTo(pendingValidators).UsingPropertiesComparer());
     }
-
 
     private void ValidateFinalizationForChain(ConsecutiveInitiateChangeTestParameters.ChainInfo chain)
     {
@@ -613,15 +611,11 @@ public class ContractBasedValidatorTests
     private static Address[] GenerateValidators(int number) =>
         Enumerable.Range(1, number).Select(static i => Address.FromNumber((UInt256)i)).ToArray();
 
-    private void SetupInitialValidators(params Address[] initialValidators)
-    {
+    private void SetupInitialValidators(params Address[] initialValidators) =>
         SetupInitialValidators(_block.Header, initialValidators);
-    }
 
-    private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators)
-    {
+    private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators) =>
         SetupInitialValidators(header, null, initialValidators);
-    }
 
     private void SetupInitialValidators(BlockHeader header, BlockHeader parentHeader, params Address[] initialValidators)
     {
@@ -646,7 +640,7 @@ public class ContractBasedValidatorTests
 
     private byte[] SetupAbiAddresses(Address[] addresses)
     {
-        byte[] data = addresses.SelectMany(static a => a.Bytes).ToArray();
+        byte[] data = addresses.SelectMany(static a => a.Bytes.ToArray()).ToArray();
 
         _abiEncoder.Decode(
             AbiEncodingStyle.None,
@@ -656,10 +650,8 @@ public class ContractBasedValidatorTests
         return data;
     }
 
-    private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo)
-    {
-        return t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
-    }
+    private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo) =>
+        t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
 
     public class ConsecutiveInitiateChangeTestParameters
     {

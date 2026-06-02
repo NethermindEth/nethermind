@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
 
@@ -34,9 +35,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 
     public class PrewarmerMainProcessingModule : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder)
-        {
-            builder
+        protected override void Load(ContainerBuilder builder) => builder
                 // Singleton so that all child env share the same caches. Note: this module is applied per-processing
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
@@ -52,6 +51,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     return new PrewarmerScopeProvider(
                         worldStateScopeProvider,
                         ctx.Resolve<PreBlockCaches>(),
+                        ctx.Resolve<ILogManager>(),
                         populatePreBlockCache: false
                     );
                 })
@@ -60,10 +60,10 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
                     PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
                     IPrecompileProvider precompileProvider = ctx.Resolve<IPrecompileProvider>();
+                    IWorldState worldState = ctx.Resolve<IWorldState>();
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
-                    return new PrecompileCachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository,
+                    return new PrecompileCachedCodeInfoRepository(worldState, precompileProvider, originalCodeInfoRepository,
                         blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
                 });
-        }
     }
 }

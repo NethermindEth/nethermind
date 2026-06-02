@@ -18,30 +18,23 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPayloadPreparationService : PayloadPreparationService
+public class OptimismPayloadPreparationService(
+    ISpecProvider specProvider,
+    IBlockProducer blockProducer,
+    ITxPool txPool,
+    IBlockImprovementContextFactory blockImprovementContextFactory,
+    ITimerFactory timerFactory,
+    ILogManager logManager,
+    IBlocksConfig blocksConfig) : PayloadPreparationService(
+        blockProducer,
+        txPool,
+        blockImprovementContextFactory,
+        timerFactory,
+        logManager,
+        blocksConfig)
 {
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogger _logger;
-
-    public OptimismPayloadPreparationService(
-        ISpecProvider specProvider,
-        IBlockProducer blockProducer,
-        ITxPool txPool,
-        IBlockImprovementContextFactory blockImprovementContextFactory,
-        ITimerFactory timerFactory,
-        ILogManager logManager,
-        IBlocksConfig blocksConfig)
-        : base(
-            blockProducer,
-            txPool,
-            blockImprovementContextFactory,
-            timerFactory,
-            logManager,
-            blocksConfig)
-    {
-        _specProvider = specProvider;
-        _logger = logManager.GetClassLogger<OptimismPayloadPreparationService>();
-    }
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly ILogger _logger = logManager.GetClassLogger<OptimismPayloadPreparationService>();
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
         PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
@@ -52,7 +45,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             if (spec.IsOpHoloceneEnabled)
             {
                 // NOTE: This operation should never fail since headers should be valid at this point.
-                if (!optimismPayload.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Parameters, out var error))
+                if (!optimismPayload.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Parameters, out string? error))
                 {
                     throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: {error}");
                 }

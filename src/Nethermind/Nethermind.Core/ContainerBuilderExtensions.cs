@@ -302,10 +302,7 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddScoped<T>(this ContainerBuilder builder, Func<IComponentContext, T> factoryMethod) where T : class
-    {
-        return builder.AddScoped<T, IComponentContext>(factoryMethod);
-    }
+    public static ContainerBuilder AddScoped<T>(this ContainerBuilder builder, Func<IComponentContext, T> factoryMethod) where T : class => builder.AddScoped<T, IComponentContext>(factoryMethod);
 
     public static ContainerBuilder Add<T>(this ContainerBuilder builder, bool externallyOwned = false) where T : class
     {
@@ -369,23 +366,17 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder Intercept<T>(this ContainerBuilder builder, Action<T> interceptor) where T : class
+    public static ContainerBuilder Intercept<T>(this ContainerBuilder builder, Action<T> interceptor) where T : class => builder.AddDecorator<T>((ctx, service) =>
     {
-        return builder.AddDecorator<T>((ctx, service) =>
-        {
-            interceptor(service);
-            return service;
-        });
-    }
+        interceptor(service);
+        return service;
+    });
 
-    public static ContainerBuilder Intercept<T>(this ContainerBuilder builder, Action<T, IComponentContext> interceptor) where T : class
+    public static ContainerBuilder Intercept<T>(this ContainerBuilder builder, Action<T, IComponentContext> interceptor) where T : class => builder.AddDecorator<T>((ctx, service) =>
     {
-        return builder.AddDecorator<T>((ctx, service) =>
-        {
-            interceptor(service, ctx);
-            return service;
-        });
-    }
+        interceptor(service, ctx);
+        return service;
+    });
 
     /// <summary>
     /// A convenient way of creating a service whose members can be configured independent of other instances of the same
@@ -498,11 +489,8 @@ public static class ContainerBuilderExtensions
 
     private static IRegistrationBuilder<TLimit, TReflectionActivatorData, TRegistrationStyle> CommonNethermindConfig<TLimit, TReflectionActivatorData, TRegistrationStyle>(
         this IRegistrationBuilder<TLimit, TReflectionActivatorData, TRegistrationStyle> builder
-    ) where TReflectionActivatorData : ReflectionActivatorData
-    {
-        return builder
+    ) where TReflectionActivatorData : ReflectionActivatorData => builder
             .WithAttributeFiltering();
-    }
 
     private static Func<IComponentContext, T> CreateArgResolver<T>(MethodInfo methodInfo, int paramIndex) where T : notnull
     {
@@ -520,20 +508,11 @@ public static class ContainerBuilderExtensions
         return reg;
     }
 
-    public static ContainerBuilder AddKeyedAdapter<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull
-    {
-        return builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, false));
-    }
+    public static ContainerBuilder AddKeyedAdapter<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull => builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, false));
 
-    public static ContainerBuilder AddKeyedAdapter<TTo, TFrom>(this ContainerBuilder builder, Func<object, TFrom, TTo> mapper) where TFrom : notnull
-    {
-        return builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, false));
-    }
+    public static ContainerBuilder AddKeyedAdapter<TTo, TFrom>(this ContainerBuilder builder, Func<object, TFrom, TTo> mapper) where TFrom : notnull => builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, false));
 
-    public static ContainerBuilder AddKeyedAdapterWithNewService<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull
-    {
-        return builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, true));
-    }
+    public static ContainerBuilder AddKeyedAdapterWithNewService<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull => builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, true));
 }
 
 /// <summary>

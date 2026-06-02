@@ -176,7 +176,7 @@ public class PooledTransactionsRequestingTests
 
     private void HandleIncomingStatusMessage(Eth66ProtocolHandler handler)
     {
-        using var statusMsg = new StatusMessage();
+        using StatusMessage statusMsg = new();
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 

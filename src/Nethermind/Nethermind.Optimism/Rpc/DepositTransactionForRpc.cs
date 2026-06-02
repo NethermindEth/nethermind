@@ -7,6 +7,7 @@ using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Eth;
+using Nethermind.Core.Specs;
 using System;
 
 namespace Nethermind.Optimism.Rpc;
@@ -64,9 +65,9 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
     {
-        Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (baseResult.IsError) return baseResult;
 
         Transaction tx = baseResult.Data;
@@ -75,21 +76,17 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         tx.To = To;
         tx.Mint = Mint ?? 0;
         tx.Value = Value ?? throw new ArgumentNullException(nameof(Value));
-        tx.GasLimit = Gas ?? throw new ArgumentNullException(nameof(Gas));
         tx.IsOPSystemTransaction = IsSystemTx ?? false;
         tx.Data = Input ?? throw new ArgumentNullException(nameof(Input));
 
+        // Deposit txs require an explicit Gas; the original EnsureDefaults granted a graceful fallback to
+        // gasCap when the request omitted it, which we preserve. gasCap is null/0 mean "no cap" (matching
+        // LegacyTransactionForRpc), so neither substitutes for a missing Gas — that case still throws.
+        long effectiveCap = gasCap is null or 0 ? long.MaxValue : gasCap.Value;
+        long? gasOrDefault = Gas ?? (effectiveCap == long.MaxValue ? null : effectiveCap);
+        tx.GasLimit = long.Min(gasOrDefault ?? throw new ArgumentNullException(nameof(Gas)), effectiveCap);
+
         return tx;
-    }
-
-    public override void EnsureDefaults(long? gasCap)
-    {
-        if (Gas is not null && gasCap is not null)
-        {
-            Gas = Math.Min(Gas.Value, gasCap.Value);
-        }
-
-        Gas ??= gasCap;
     }
 
     public override bool ShouldSetBaseFee() => false;

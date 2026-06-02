@@ -8,10 +8,7 @@ namespace Nethermind.Core.Test;
 public class ProductInfoTest
 {
     [TearDown]
-    public void TearDown()
-    {
-        ProductInfo.InitializePublicClientId(ProductInfo.DefaultPublicClientIdFormat);
-    }
+    public void TearDown() => ProductInfo.InitializePublicClientId(ProductInfo.DefaultPublicClientIdFormat);
 
     [Test]
     public void Public_client_id_template_properly_initialized()
@@ -40,8 +37,5 @@ public class ProductInfoTest
     }
 
     [Test]
-    public void Public_client_id_not_initialized_returns_the_default_client_id()
-    {
-        Assert.That(ProductInfo.PublicClientId, Is.EqualTo(ProductInfo.ClientId));
-    }
+    public void Public_client_id_not_initialized_returns_the_default_client_id() => Assert.That(ProductInfo.PublicClientId, Is.EqualTo(ProductInfo.ClientId));
 }

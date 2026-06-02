@@ -28,16 +28,11 @@ public static class NettyMemoryEstimator
 {
     private const uint PageSize = 8192;
 
-    public static void SetPageSize()
-    {
+    public static void SetPageSize() =>
         // For some reason needs to be half page size to get page size
         Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
-    }
 
-    public static long Estimate(uint arenaCount, int arenaOrder)
-    {
-        return arenaCount * (1L << arenaOrder) * PageSize;
-    }
+    public static long Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1L << arenaOrder) * PageSize;
 }
 
 [RunnerStepDependencies(
@@ -46,6 +41,7 @@ public static class NettyMemoryEstimator
     typeof(ResolveIps),
     typeof(InitializePlugins),
     typeof(InitializeBlockchain))]
+#pragma warning disable IDE0290 // Primary constructor would shadow discard `_` used in fire-and-forget patterns
 public class InitializeNetwork : IStep
 {
     protected readonly IApiWithNetwork _api;
@@ -97,10 +93,7 @@ public class InitializeNetwork : IStep
         _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
 
-    public virtual Task Execute(CancellationToken cancellationToken)
-    {
-        return Initialize(cancellationToken);
-    }
+    public virtual Task Execute(CancellationToken cancellationToken) => Initialize(cancellationToken);
 
     private async Task Initialize(CancellationToken cancellationToken)
     {
@@ -257,24 +250,12 @@ public class InitializeNetwork : IStep
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
 
-        await _api.RlpxPeer.Init();
-
-        await _api.StaticNodesManager.InitAsync();
-
-        await _api.TrustedNodesManager.InitAsync();
-
         _api.ProtocolsManager = CreateProtocolManager();
 
         if (_syncConfig.SnapServingEnabled == true)
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
         }
-        if (_api.WorldStateManager!.HashServer is null)
-        {
-            _api.ProtocolsManager!.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
-        }
-
-
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
@@ -285,11 +266,17 @@ public class InitializeNetwork : IStep
         {
             await plugin.InitNetworkProtocol();
         }
+
+        // Capabilities must be finalized before the RLPx listener accepts peers. Otherwise
+        // early sessions can negotiate only the default ETH version and never upgrade.
+        await _api.RlpxPeer.Init();
+
+        await _api.StaticNodesManager.InitAsync();
+
+        await _api.TrustedNodesManager.InitAsync();
     }
 
-    protected virtual IProtocolsManager CreateProtocolManager()
-    {
-        return new ProtocolsManager(
+    protected virtual IProtocolsManager CreateProtocolManager() => new ProtocolsManager(
             _api.SyncPeerPool!,
             _api.TxPool!,
             _discoveryApp,
@@ -299,5 +286,4 @@ public class InitializeNetwork : IStep
             _peerStorage,
             _protocolHandlerFactories,
             _api.LogManager);
-    }
 }

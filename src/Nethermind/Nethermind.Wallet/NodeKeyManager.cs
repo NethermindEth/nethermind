@@ -14,32 +14,22 @@ using Nethermind.Logging;
 
 namespace Nethermind.Wallet
 {
-    public class NodeKeyManager : INodeKeyManager
+    public class NodeKeyManager(
+        ICryptoRandom cryptoRandom,
+        IKeyStore keyStore,
+        IKeyStoreConfig config,
+        ILogManager logManager,
+        IPasswordProvider passwordProvider,
+        IFileSystem fileSystem) : INodeKeyManager
     {
         public const string UnsecuredNodeKeyFilePath = "node.key.plain";
 
-        private readonly ICryptoRandom _cryptoRandom;
-        private readonly IKeyStore _keyStore;
-        private readonly IKeyStoreConfig _config;
-        private readonly ILogger _logger;
-        private readonly IPasswordProvider _passwordProvider;
-        private readonly IFileSystem _fileSystem;
-
-        public NodeKeyManager(
-            ICryptoRandom cryptoRandom,
-            IKeyStore keyStore,
-            IKeyStoreConfig config,
-            ILogManager logManager,
-            IPasswordProvider passwordProvider,
-            IFileSystem fileSystem)
-        {
-            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
-            _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-            _logger = logManager?.GetClassLogger<NodeKeyManager>() ?? throw new ArgumentNullException(nameof(logManager));
-            _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
-            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-        }
+        private readonly ICryptoRandom _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+        private readonly IKeyStore _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
+        private readonly IKeyStoreConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+        private readonly ILogger _logger = logManager?.GetClassLogger<NodeKeyManager>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IPasswordProvider _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
+        private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
 
         /// <summary>
         /// https://stackoverflow.com/questions/1344221/how-can-i-generate-random-alphanumeric-strings
@@ -52,7 +42,7 @@ namespace Nethermind.Wallet
         {
             char[] chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890".ToCharArray();
             byte[] data = _cryptoRandom.GenerateRandomBytes(size);
-            SecureString secureString = new SecureString();
+            SecureString secureString = new();
             for (int i = 0; i < data.Length; i++)
             {
                 secureString.AppendChar(chars[data[i] % chars.Length]);
@@ -70,7 +60,7 @@ namespace Nethermind.Wallet
                 string oldPath = UnsecuredNodeKeyFilePath.GetApplicationResourcePath();
                 string newPath = (_config.EnodeKeyFile ?? UnsecuredNodeKeyFilePath).GetApplicationResourcePath(_config.KeyStoreDirectory);
                 GenerateKeyIfNeeded(newPath, oldPath);
-                using var privateKey = new PrivateKey(_fileSystem.File.ReadAllBytes(newPath));
+                using PrivateKey privateKey = new(_fileSystem.File.ReadAllBytes(newPath));
                 return new ProtectedPrivateKey(privateKey, _config.KeyStoreDirectory, _cryptoRandom);
             }
 
@@ -79,9 +69,9 @@ namespace Nethermind.Wallet
                 if (!_fileSystem.File.Exists(newFile))
                 {
                     if (_logger.IsInfo) _logger.Info("Generating private key for the node (no node key in configuration) - stored in plain + key store for JSON RPC unlocking");
-                    using var privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);
+                    using PrivateKeyGenerator privateKeyGenerator = new(_cryptoRandom);
                     PrivateKey nodeKey = _fileSystem.File.Exists(oldFile) ? new PrivateKey(_fileSystem.File.ReadAllBytes(oldFile)) : privateKeyGenerator.Generate();
-                    var keyStoreDirectory = _config.KeyStoreDirectory.GetApplicationResourcePath();
+                    string keyStoreDirectory = _config.KeyStoreDirectory.GetApplicationResourcePath();
                     _fileSystem.Directory.CreateDirectory(keyStoreDirectory);
                     _fileSystem.File.WriteAllBytes(newFile, nodeKey.KeyBytes);
                     SecureString nodeKeyPassword = CreateNodeKeyPassword(8);
@@ -93,7 +83,7 @@ namespace Nethermind.Wallet
             if (_config.TestNodeKey is not null)
                 return new ProtectedPrivateKey(new PrivateKey(_config.TestNodeKey), _config.KeyStoreDirectory, _cryptoRandom);
 
-            var key = LoadKeyForAccount(_config.EnodeAccount);
+            ProtectedPrivateKey key = LoadKeyForAccount(_config.EnodeAccount);
             return key ?? LoadKeyFromFile();
         }
 
@@ -103,7 +93,7 @@ namespace Nethermind.Wallet
         {
             if (!string.IsNullOrEmpty(account))
             {
-                Address blockAuthor = new Address(Bytes.FromHexString(account));
+                Address blockAuthor = new(Bytes.FromHexString(account));
                 SecureString password = _passwordProvider.GetPassword(blockAuthor);
 
                 try

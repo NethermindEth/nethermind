@@ -13,7 +13,7 @@ namespace Nethermind.Db
     /// </summary>
     public class SnapshotableMemColumnsDb<TKey> : IColumnsDb<TKey> where TKey : struct, Enum
     {
-        private readonly Dictionary<TKey, SnapshotableMemDb> _columnDbs = new();
+        private readonly Dictionary<TKey, SnapshotableMemDb> _columnDbs = [];
         private readonly bool _neverPrune;
 
         private SnapshotableMemColumnsDb(TKey[] keys, bool neverPrune)
@@ -53,19 +53,13 @@ namespace Nethermind.Db
 
         public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
-        public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore)
-        {
-            return new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
-        }
+        public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
 
-        public IColumnsWriteBatch<TKey> StartWriteBatch()
-        {
-            return new InMemoryColumnWriteBatch<TKey>(this);
-        }
+        public IColumnsWriteBatch<TKey> StartWriteBatch() => new InMemoryColumnWriteBatch<TKey>(this);
 
         public IColumnDbSnapshot<TKey> CreateSnapshot()
         {
-            Dictionary<TKey, IKeyValueStoreSnapshot> snapshots = new();
+            Dictionary<TKey, IKeyValueStoreSnapshot> snapshots = [];
             foreach (KeyValuePair<TKey, SnapshotableMemDb> kvp in _columnDbs)
             {
                 snapshots[kvp.Key] = kvp.Value.CreateSnapshot();
@@ -96,10 +90,7 @@ namespace Nethermind.Db
         {
             private readonly Dictionary<TKey, IKeyValueStoreSnapshot> _snapshots = snapshots;
 
-            public IReadOnlyKeyValueStore GetColumn(TKey key)
-            {
-                return _snapshots[key];
-            }
+            public IReadOnlyKeyValueStore GetColumn(TKey key) => _snapshots[key];
 
             public void Dispose()
             {

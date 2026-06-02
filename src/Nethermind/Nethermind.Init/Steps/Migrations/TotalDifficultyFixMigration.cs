@@ -14,20 +14,12 @@ using Nethermind.State.Repositories;
 
 namespace Nethermind.Init.Steps.Migrations;
 
-public class TotalDifficultyFixMigration : IDatabaseMigration
+public class TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelInfoRepository, IBlockTree? blockTree, ISyncConfig syncConfig, ILogManager logManager) : IDatabaseMigration
 {
-    private readonly ILogger _logger;
-    private readonly ISyncConfig _syncConfig;
-    private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-    private readonly IBlockTree _blockTree;
-
-    public TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelInfoRepository, IBlockTree? blockTree, ISyncConfig syncConfig, ILogManager logManager)
-    {
-        _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _logger = logManager.GetClassLogger<TotalDifficultyFixMigration>();
-        _syncConfig = syncConfig;
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger<TotalDifficultyFixMigration>();
+    private readonly ISyncConfig _syncConfig = syncConfig;
+    private readonly IChainLevelInfoRepository _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+    private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
     public Task Run(CancellationToken cancellationToken)
     {

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -14,20 +13,20 @@ public class TinyTreePathTests
     [Test]
     public void Should_ConvertFromAndToTreePath()
     {
-        TreePath path = new TreePath(new ValueHash256("0123456789abcd00000000000000000000000000000000000000000000000000"), 14);
+        TreePath path = new(new ValueHash256("0123456789abcd00000000000000000000000000000000000000000000000000"), 14);
 
-        TinyTreePath tinyPath = new TinyTreePath(path);
+        TinyTreePath tinyPath = new(path);
 
-        tinyPath.ToTreePath().Should().Be(path);
+        Assert.That(tinyPath.ToTreePath(), Is.EqualTo(path));
     }
 
     [Test]
     public void When_PathIsTooLong_Should_Throw()
     {
-        TreePath path = new TreePath(new ValueHash256("0123456789000000000000000000000000000000000000000000000000000000"), 15);
+        TreePath path = new(new ValueHash256("0123456789000000000000000000000000000000000000000000000000000000"), 15);
 
         Action act = () => new TinyTreePath(path);
-        act.Should().Throw<InvalidOperationException>();
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>());
     }
 }
 

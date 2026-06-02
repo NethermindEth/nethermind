@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Serialization.Json;
@@ -18,7 +17,7 @@ public class GethLikeTxTraceConverterTests
     [Test]
     public void Write_null()
     {
-        var result = _serializer.Serialize((GethLikeTxTrace?)null);
+        string result = _serializer.Serialize((GethLikeTxTrace?)null);
 
         Assert.That(result, Is.EqualTo("null"));
     }
@@ -26,7 +25,7 @@ public class GethLikeTxTraceConverterTests
     [TestCaseSource(nameof(TraceAndJsonSource))]
     public void Write_traces(GethLikeTxTrace trace, string json)
     {
-        var result = _serializer.Serialize(trace);
+        string result = _serializer.Serialize(trace);
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(result).RootElement,
@@ -37,12 +36,12 @@ public class GethLikeTxTraceConverterTests
     [TestCaseSource(nameof(CustomValueTracerResults))]
     public void Write_custom_tracer_result(object value, string expected)
     {
-        var trace = new GethLikeTxTrace
+        GethLikeTxTrace trace = new()
         {
             CustomTracerResult = new GethLikeCustomTrace { Value = value }
         };
 
-        var result = _serializer.Serialize(trace);
+        string result = _serializer.Serialize(trace);
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(result).RootElement,
@@ -53,7 +52,7 @@ public class GethLikeTxTraceConverterTests
     [Test]
     public void Read_null()
     {
-        var result = _serializer.Deserialize<GethLikeTxTrace>("null");
+        GethLikeTxTrace result = _serializer.Deserialize<GethLikeTxTrace>("null");
 
         Assert.That(result, Is.Null);
     }
@@ -61,16 +60,23 @@ public class GethLikeTxTraceConverterTests
     [TestCaseSource(nameof(TraceAndJsonSource))]
     public void Read_traces(GethLikeTxTrace expectedTrace, string json)
     {
-        var result = _serializer.Deserialize<GethLikeTxTrace>(json);
+        GethLikeTxTrace result = _serializer.Deserialize<GethLikeTxTrace>(json);
 
-        result.Should().BeEquivalentTo(expectedTrace);
+        AssertTraceEquivalent(result, expectedTrace);
     }
 
 
     [TestCaseSource(nameof(CustomValueTracerResults))]
-    public void Read_custom_tracer_result_throws(object expectedValue, string json)
+    public void Read_custom_tracer_result_throws(object expectedValue, string json) => Assert.Throws<JsonException>(() => _serializer.Deserialize<GethLikeTxTrace>(json));
+
+    private void AssertTraceEquivalent(GethLikeTxTrace actual, GethLikeTxTrace expected)
     {
-        Assert.Throws<JsonException>(() => _serializer.Deserialize<GethLikeTxTrace>(json));
+        string actualJson = _serializer.Serialize(actual);
+        string expectedJson = _serializer.Serialize(expected);
+        using JsonDocument actualDocument = JsonDocument.Parse(actualJson);
+        using JsonDocument expectedDocument = JsonDocument.Parse(expectedJson);
+
+        Assert.That(JsonElement.DeepEquals(actualDocument.RootElement, expectedDocument.RootElement), actualJson);
     }
 
     private static IEnumerable<TestCaseData> TraceAndJsonSource()

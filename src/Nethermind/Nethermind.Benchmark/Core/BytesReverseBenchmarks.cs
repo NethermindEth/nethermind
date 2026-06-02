@@ -22,7 +22,7 @@ namespace Nethermind.Benchmarks.Core
         {
             Keccak.Zero.BytesToArray(),
             Keccak.EmptyTreeHash.BytesToArray(),
-            TestItem.AddressA.Bytes
+            TestItem.AddressA.Bytes.ToArray()
         };
 
         [Params(0, 1, 2)]
@@ -48,16 +48,10 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Current()
-        {
-            return Bytes.Reverse(_a);
-        }
+        public byte[] Current() => Bytes.Reverse(_a);
 
         [Benchmark]
-        public void Improved()
-        {
-            _a.AsSpan().Reverse();
-        }
+        public void Improved() => _a.AsSpan().Reverse();
 
         [Benchmark]
         public void SwapVersion()

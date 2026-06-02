@@ -7,20 +7,15 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class AckEip8MessageSerializer : IZeroMessageSerializer<AckEip8Message>
+    public class AckEip8MessageSerializer(IMessagePad messagePad) : IZeroMessageSerializer<AckEip8Message>
     {
-        private readonly IMessagePad _messagePad;
+        private readonly IMessagePad _messagePad = messagePad;
         public const int EphemeralPublicKeyLength = 64;
         public const int EphemeralPublicKeyOffset = 0;
         public const int NonceLength = 32;
         public const int NonceOffset = EphemeralPublicKeyOffset + EphemeralPublicKeyLength;
         public const int VersionOffset = NonceOffset + NonceLength;
         public const int TotalLength = EphemeralPublicKeyLength + NonceLength;
-
-        public AckEip8MessageSerializer(IMessagePad messagePad)
-        {
-            _messagePad = messagePad;
-        }
 
         public void Serialize(IByteBuffer byteBuffer, AckEip8Message msg)
         {

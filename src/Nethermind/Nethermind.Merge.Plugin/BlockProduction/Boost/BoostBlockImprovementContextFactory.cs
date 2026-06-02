@@ -11,20 +11,12 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
 
-public class BoostBlockImprovementContextFactory : IBlockImprovementContextFactory
+public class BoostBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, IBoostRelay boostRelay, IStateReader stateReader) : IBlockImprovementContextFactory
 {
-    private readonly IBlockProducer _blockProducer;
-    private readonly TimeSpan _timeout;
-    private readonly IBoostRelay _boostRelay;
-    private readonly IStateReader _stateReader;
-
-    public BoostBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, IBoostRelay boostRelay, IStateReader stateReader)
-    {
-        _blockProducer = blockProducer;
-        _timeout = timeout;
-        _boostRelay = boostRelay;
-        _stateReader = stateReader;
-    }
+    private readonly IBlockProducer _blockProducer = blockProducer;
+    private readonly TimeSpan _timeout = timeout;
+    private readonly IBoostRelay _boostRelay = boostRelay;
+    private readonly IStateReader _stateReader = stateReader;
 
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,

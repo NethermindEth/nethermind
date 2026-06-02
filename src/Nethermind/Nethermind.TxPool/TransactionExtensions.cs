@@ -16,10 +16,7 @@ namespace Nethermind.TxPool
         private static readonly long MaxSizeOfTxForBroadcast = 4.KiB; //4KB, as in Geth https://github.com/ethereum/go-ethereum/pull/27618
         private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new NetworkTransactionSizeCalculator(TxDecoder.Instance);
 
-        public static int GetLength(this Transaction tx, bool shouldCountBlobs = true)
-        {
-            return tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
-        }
+        public static int GetLength(this Transaction tx, bool shouldCountBlobs = true) => tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
 
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => tx.MaxFeePerGas >= currentBaseFee;
 

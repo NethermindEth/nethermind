@@ -45,7 +45,7 @@ public class ProtocolValidatorTests
     [TestCase("^((?!besu).)*$", "besu/v23.4.0/linux-x86_64/openjdk-java-17", true)]
     public void On_hello_with_not_matching_client_id(string pattern, string clientId, bool shouldDisconnect)
     {
-        ProtocolValidator protocolValidator = new ProtocolValidator(
+        ProtocolValidator protocolValidator = new(
             Substitute.For<INodeStatsManager>(),
             Substitute.For<IBlockTree>(),
             Substitute.For<IForkInfo>(),
@@ -76,7 +76,7 @@ public class ProtocolValidatorTests
         peerManager.MaxActivePeers.Returns(maxActivePeer);
         peerManager.ActivePeersCount.Returns(activePeerCount);
 
-        ProtocolValidator protocolValidator = new ProtocolValidator(
+        ProtocolValidator protocolValidator = new(
             Substitute.For<INodeStatsManager>(),
             Substitute.For<IBlockTree>(),
             Substitute.For<IForkInfo>(),

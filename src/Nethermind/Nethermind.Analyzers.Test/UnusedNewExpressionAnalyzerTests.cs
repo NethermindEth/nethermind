@@ -151,7 +151,7 @@ public class UnusedNewExpressionAnalyzerTests
 
     private static async Task Verify(string source, params DiagnosticResult[] expected)
     {
-        var test = new CSharpAnalyzerTest<UnusedNewExpressionAnalyzer, DefaultVerifier>
+        CSharpAnalyzerTest<UnusedNewExpressionAnalyzer, DefaultVerifier> test = new()
         {
             TestCode = source,
             ReferenceAssemblies = ReferenceAssemblies.Net.Net80,

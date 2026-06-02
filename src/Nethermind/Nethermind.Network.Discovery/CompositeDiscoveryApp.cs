@@ -26,6 +26,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private readonly IChannelFactory? _channelFactory;
     private readonly IDiscoveryApp[] _discoveryApps;
     private readonly CompositeNodeSource _compositeNodeSource;
+    private readonly ILogger _logger;
 
     public CompositeDiscoveryApp(
         INetworkConfig networkConfig,
@@ -39,6 +40,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _networkConfig = networkConfig;
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, discoveryConfig);
         _channelFactory = channelFactory;
+        _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
 
         List<IDiscoveryApp> discoveryApps = new(2);
 
@@ -52,7 +54,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             discoveryApps.Add(discoveryV5Factory());
         }
 
-        _discoveryApps = discoveryApps.ToArray();
+        _discoveryApps = [.. discoveryApps];
         _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
     }
 
@@ -92,15 +94,13 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         finally
         {
             _compositeNodeSource.Dispose();
+            await DisposeDiscoveryApps();
         }
     }
 
     string IStoppableService.Description => "discovery connection";
 
-    public void AddNodeToDiscovery(Node node)
-    {
-        ForEachDiscoveryApp(static (discoveryApp, discoveredNode) => discoveryApp.AddNodeToDiscovery(discoveredNode), node);
-    }
+    public void AddNodeToDiscovery(Node node) => ForEachDiscoveryApp(static (discoveryApp, discoveredNode) => discoveryApp.AddNodeToDiscovery(discoveredNode), node);
 
     private void ForEachDiscoveryApp<TState>(Action<IDiscoveryApp, TState> action, TState state)
     {
@@ -130,10 +130,26 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         return result;
     }
 
-    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
+    private async Task DisposeDiscoveryApps()
     {
-        return _compositeNodeSource.DiscoverNodes(cancellationToken);
+        IDiscoveryApp[] discoveryApps = _discoveryApps;
+        for (int i = 0; i < discoveryApps.Length; i++)
+        {
+            if (discoveryApps[i] is IAsyncDisposable asyncDisposable)
+            {
+                try
+                {
+                    await asyncDisposable.DisposeAsync();
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Error disposing discovery app {discoveryApps[i]}: {e}");
+                }
+            }
+        }
     }
+
+    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken) => _compositeNodeSource.DiscoverNodes(cancellationToken);
 
     public event EventHandler<NodeEventArgs>? NodeRemoved
     {

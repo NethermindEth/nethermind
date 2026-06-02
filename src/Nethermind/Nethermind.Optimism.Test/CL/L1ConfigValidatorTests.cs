@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -44,14 +43,14 @@ public class L1ConfigValidatorTests
         Hash256 actualGenesisHash,
         bool isValid)
     {
-        var ethApi = Substitute.For<IEthApi>();
-        var logManager = NullLogManager.Instance;
-        var validator = new L1ConfigValidator(ethApi, logManager);
+        IEthApi ethApi = Substitute.For<IEthApi>();
+        ILogManager logManager = NullLogManager.Instance;
+        L1ConfigValidator validator = new(ethApi, logManager);
 
         ethApi.GetChainId().Returns(Task.FromResult(actualChainId));
         ethApi.GetBlockByNumber(genesisNumber, true).Returns(Task.FromResult<L1Block?>(new L1Block { Hash = actualGenesisHash }));
 
         bool result = await validator.Validate(expectedChainId, genesisNumber, expectedGenesisHash);
-        result.Should().Be(isValid);
+        Assert.That(result, Is.EqualTo(isValid));
     }
 }

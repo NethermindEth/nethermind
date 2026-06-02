@@ -6,8 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db.LogIndex;
@@ -138,7 +137,7 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
     {
         IEnumerator<int> result = null;
 
-        var topicIndex = 0;
+        int topicIndex = 0;
         foreach (TopicExpression expression in topicsFilter.Expressions)
         {
             if (Visit(topicIndex++, expression) is not { } next)

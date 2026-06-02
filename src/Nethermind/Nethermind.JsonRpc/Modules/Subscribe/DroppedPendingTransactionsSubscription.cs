@@ -24,17 +24,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} will track DroppedPendingTransactions");
         }
 
-        private void OnEvicted(object? sender, TxEventArgs e)
+        private void OnEvicted(object? sender, TxEventArgs e) => ScheduleAction(async () =>
         {
-            ScheduleAction(async () =>
-            {
-                using JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
-                await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"DroppedPendingTransactions subscription {Id} printed hash of DroppedPendingTransaction.");
-            });
-        }
+            using JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
+            await JsonRpcDuplexClient.SendJsonRpcResult(result);
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"DroppedPendingTransactions subscription {Id} printed hash of DroppedPendingTransaction.");
+        });
 
         public override string Type => SubscriptionType.EthSubscription.DroppedPendingTransactions;
 

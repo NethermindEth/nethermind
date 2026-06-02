@@ -37,23 +37,14 @@ public class SerializationTestBase
         string result = serializer.Serialize(dictionary);
         Dictionary<TKey, TValue> deserialized = serializer.Deserialize<Dictionary<TKey, TValue>>(result);
 
-        Assert.That(deserialized, Is.EquivalentTo(dictionary));
+        Assert.That(deserialized, Is.EqualTo(dictionary));
     }
 
-    protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null)
-    {
-        TestRoundtrip(item, static (a, b) => a!.Equals(b), converter, description);
-    }
+    protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null) => TestRoundtrip(item, static (a, b) => a!.Equals(b), converter, description);
 
-    protected void TestRoundtrip<T>(T item, string description)
-    {
-        TestRoundtrip(item, null, null, description);
-    }
+    protected void TestRoundtrip<T>(T item, string description) => TestRoundtrip(item, null, null, description);
 
-    protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, string? description = null)
-    {
-        TestRoundtrip(item, equalityComparer, null, description);
-    }
+    protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, string? description = null) => TestRoundtrip(item, equalityComparer, null, description);
 
     protected void TestRoundtrip<T>(string json, params JsonConverter[] converters)
     {

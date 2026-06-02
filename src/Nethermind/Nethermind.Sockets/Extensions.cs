@@ -17,7 +17,7 @@ public static class Extensions
     {
         IWebSocketsManager? webSocketsManager;
         ILogger logger;
-        using (var scope = app.ApplicationServices.CreateScope())
+        using (IServiceScope scope = app.ApplicationServices.CreateScope())
         {
             webSocketsManager = scope.ServiceProvider.GetService<IWebSocketsManager>();
             logger = scope.ServiceProvider.GetService<ILogManager>()?.GetClassLogger(typeof(Extensions)) ?? default;
@@ -33,7 +33,7 @@ public static class Extensions
                 string moduleName = string.Empty;
                 if (context.Request.Path.HasValue)
                 {
-                    var path = context.Request.Path.Value;
+                    string path = context.Request.Path.Value;
                     moduleName = path.Split("/", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? string.Empty;
                 }
 

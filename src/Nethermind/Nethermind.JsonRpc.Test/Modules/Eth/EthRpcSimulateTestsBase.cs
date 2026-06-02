@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts.Json;
@@ -36,9 +35,7 @@ public class EthRpcSimulateTestsBase
         return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
     }
 
-    private static string GetECRecoverContractJsonAbi(string name = "recover")
-    {
-        return $@"
+    private static string GetECRecoverContractJsonAbi(string name = "recover") => $@"
 [
   {{
     ""payable"": false,
@@ -77,7 +74,6 @@ public class EthRpcSimulateTestsBase
 	""type"": ""function""
   }}
 ]";
-    }
 
     public static byte[] GetTxData(TestRpcBlockchain chain, PrivateKey account, string name = "recover")
     {
@@ -110,13 +106,13 @@ public class EthRpcSimulateTestsBase
             chain.EthereumEcdsa);
 
         (Hash256 hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
-        code?.Should().Be(AcceptTxResult.Accepted);
+        Assert.That(code, Is.EqualTo(AcceptTxResult.Accepted));
 
         Transaction[] txs = chain.TxPool.GetPendingTransactions();
         HashSet<Hash256> expectedHashes = txs.Select((tx) => tx.Hash!).ToHashSet();
 
-        var blockProducer = chain.BlockProducer;
-        var blockTree = chain.BlockTree;
+        IBlockProducer blockProducer = chain.BlockProducer;
+        IBlockTree blockTree = chain.BlockTree;
 
         Block? block;
         int iteration = 0;
@@ -141,7 +137,7 @@ public class EthRpcSimulateTestsBase
             }
             iteration++;
         }
-        blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
+        Assert.That(blockTree.SuggestBlock(block!), Is.EqualTo(AddBlockResult.Added));
 
         TxReceipt? createContractTxReceipt = null;
         while (createContractTxReceipt is null)
@@ -150,7 +146,7 @@ public class EthRpcSimulateTestsBase
             createContractTxReceipt = chain.Bridge.GetReceipt(hash);
         }
 
-        createContractTxReceipt.ContractAddress.Should().NotBeNull($"Contract transaction {tx.Hash!} was not deployed.");
+        Assert.That(createContractTxReceipt.ContractAddress, Is.Not.Null, $"Contract transaction {tx.Hash!} was not deployed.");
         return createContractTxReceipt.ContractAddress!;
     }
 
@@ -174,7 +170,7 @@ public class EthRpcSimulateTestsBase
         transaction.Hash = transaction.CalculateHash();
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
         transactionForRpc.Gas = null;
-        ResultWrapper<string> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
-        return ParseECRecoverAddress(Bytes.FromHexString(mainChainResult.Data));
+        ResultWrapper<HexBytes> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
+        return ParseECRecoverAddress(mainChainResult.Data.Bytes.ToArray());
     }
 }

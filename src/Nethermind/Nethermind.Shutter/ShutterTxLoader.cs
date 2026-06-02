@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -32,6 +32,8 @@ public class ShutterTxLoader(
     IAbiEncoder abiEncoder,
     ILogManager logManager)
 {
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
+
     private readonly ShutterLogScanner _logScanner = new(
                 new(new Address(cfg.SequencerContractAddress!)),
                 logFinder,
@@ -115,7 +117,7 @@ public class ShutterTxLoader(
         }
 
         using ArrayPoolList<SequencedTransaction> sortedIndexes = sequencedTransactions.ToPooledList();
-        sortedIndexes.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
+        sortedIndexes.Sort<SequencedTransactionByIdentityPreimageComparer>(default);
 
         using ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
         int keyIndex = 0;
@@ -124,7 +126,7 @@ public class ShutterTxLoader(
             sortedKeyIndexes[index.Index] = keyIndex++;
         }
 
-        using var decryptionKeysList = new ArrayPoolList<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)>(keyCount, decryptionKeys);
+        using ArrayPoolList<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)> decryptionKeysList = new(keyCount, decryptionKeys);
 
         return sequencedTransactions
             .AsParallel()
@@ -166,23 +168,23 @@ public class ShutterTxLoader(
         }
         catch (ShutterCrypto.ShutterCryptoException e)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Could not decode encrypted Shutter transaction", e);
+            _logger.DebugError("Could not decode encrypted Shutter transaction", e);
         }
         catch (Bls.BlsException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Could not decrypt Shutter transaction with invalid key", e);
+            _logger.DebugError("Could not decrypt Shutter transaction with invalid key", e);
         }
         catch (RlpException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Could not decode decrypted Shutter transaction", e);
+            _logger.DebugError("Could not decode decrypted Shutter transaction", e);
         }
         catch (ArgumentException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Could not recover Shutter transaction sender address", e);
+            _logger.DebugError("Could not recover Shutter transaction sender address", e);
         }
         catch (InvalidDataException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Decrypted Shutter transaction had no signature", e);
+            _logger.DebugError("Decrypted Shutter transaction had no signature", e);
         }
 
         return null;
@@ -190,7 +192,7 @@ public class ShutterTxLoader(
 
     private Transaction DecodeTransaction(ReadOnlySpan<byte> encoded)
     {
-        Transaction tx = TxDecoder.Instance.Decode(encoded, RlpBehaviors.SkipTypedWrapping);
+        Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(encoded, RlpBehaviors.SkipTypedWrapping);
         tx.SenderAddress = ecdsa.RecoverAddress(tx, true);
         return tx;
     }
@@ -265,6 +267,13 @@ public class ShutterTxLoader(
         public UInt256 GasLimit;
         public byte[] Identity;
         public byte[] IdentityPreimage;
+    }
+
+    private readonly struct SequencedTransactionByIdentityPreimageComparer : IComparer<SequencedTransaction>
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(SequencedTransaction a, SequencedTransaction b) =>
+            Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage);
     }
 
     private readonly struct DecryptedTransactions : IDisposable

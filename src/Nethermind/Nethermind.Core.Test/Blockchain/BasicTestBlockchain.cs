@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -26,7 +27,7 @@ public class BasicTestBlockchain : TestBlockchain
 
     public async Task BuildSomeBlocks(int numOfBlocks)
     {
-        var nonce = WorldStateManager.GlobalStateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address);
+        UInt256 nonce = WorldStateManager.GlobalStateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address);
         for (int i = 0; i < numOfBlocks; i++)
         {
             IReleaseSpec spec = SpecProvider.GetSpec(BlockTree.Head!.Header);

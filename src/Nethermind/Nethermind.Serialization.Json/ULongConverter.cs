@@ -19,10 +19,7 @@ public class ULongConverter : JsonConverter<ulong>
     public override void Write(
         Utf8JsonWriter writer,
         ulong value,
-        JsonSerializerOptions options)
-    {
-        NumericConverterHelper.Write(writer, value);
-    }
+        JsonSerializerOptions options) => NumericConverterHelper.Write(writer, value);
 
     internal static ulong ReadCore(ref Utf8JsonReader reader)
     {
@@ -48,8 +45,5 @@ public class ULongConverter : JsonConverter<ulong>
     public override ulong Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        return ReadCore(ref reader);
-    }
+        JsonSerializerOptions options) => ReadCore(ref reader);
 }

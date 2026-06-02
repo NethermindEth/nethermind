@@ -1,8 +1,8 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Utils;
 
@@ -15,12 +15,9 @@ public abstract class RefCountingDisposable : IDisposable
     private const int NoAccessors = 0;
     private const int Disposing = -1;
 
-    protected PaddedValue _leases;
+    protected CacheLinePaddedLong _leases;
 
-    protected RefCountingDisposable(int initialCount = Single)
-    {
-        _leases.Value = initialCount;
-    }
+    protected RefCountingDisposable(int initialCount = Single) => _leases.Value = initialCount;
 
     public void AcquireLease()
     {
@@ -31,10 +28,7 @@ public abstract class RefCountingDisposable : IDisposable
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowCouldNotAcquire()
-        {
-            throw new InvalidOperationException("The lease cannot be acquired");
-        }
+        static void ThrowCouldNotAcquire() => throw new InvalidOperationException("The lease cannot be acquired");
     }
 
     protected bool TryAcquireLease()
@@ -116,24 +110,14 @@ public abstract class RefCountingDisposable : IDisposable
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowOverDisposed()
-        {
-            throw new ObjectDisposedException("The lease has already been disposed");
-        }
+        static void ThrowOverDisposed() => throw new ObjectDisposedException("The lease has already been disposed");
     }
 
     protected abstract void CleanUp();
 
     public override string ToString()
     {
-        var leases = Volatile.Read(ref _leases.Value);
+        long leases = Volatile.Read(ref _leases.Value);
         return leases == Disposing ? "Disposed" : $"Leases: {leases}";
-    }
-
-    [StructLayout(LayoutKind.Explicit, Size = 128)]
-    protected struct PaddedValue
-    {
-        [FieldOffset(64)]
-        public long Value;
     }
 }

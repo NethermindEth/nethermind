@@ -108,8 +108,5 @@ public class MultipleUnsignedOperations
     }
 
     [Benchmark(Baseline = true)]
-    public void No_machine_running()
-    {
-        _stateProvider.Reset();
-    }
+    public void No_machine_running() => _stateProvider.Reset();
 }

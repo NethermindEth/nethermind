@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IsSharable = false,
             ExampleResponse = """{"jsonrpc":"2.0","result":[{"output":"0x","stateDiff":null,"trace":[{"action":{"callType":"call","from":"0x78c0d804cc8bd42c758619a054c69ff3db91b625","gas":"0x5f58ef8","input":"0x","to":"0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b","value":"0x1234"},"result":{"gasUsed":"0x0","output":"0x"},"subtraces":0,"traceAddress":[],"type":"call"}],"vmTrace":null},{"output":"0x","stateDiff":null,"trace":[{"action":{"callType":"call","from":"0x78c0d804cc8bd42c758619a054c69ff3db91b625","gas":"0x5f58ef8","input":"0x","to":"0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b","value":"0x5678"},"result":{"gasUsed":"0x0","output":"0x"},"subtraces":0,"traceAddress":[],"type":"call"}],"vmTrace":null}],"id":1}""")]
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(
-            [JsonRpcParameter(ExampleValue = """[[{"from":"0x78c0d804cc8bd42c758619a054c69ff3db91b625","to":"0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b","value":"0x1234"},["trace"]],[{"from":"0x78c0d804cc8bd42c758619a054c69ff3db91b625","to":"0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b","value":"0x5678"},["trace"]]]""")] TransactionForRpcWithTraceTypes[] calls,
+            [JsonRpcParameter(ExampleValue = """[[{"from":"0x78c0d804cc8bd42c758619a054c69ff3db91b625","to":"0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b","value":"0x1234"},["trace"]],[{"from":"0x78c0d804cc8bd42c758619a054c69ff3db91b625","to":"0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b","value":"0x5678"},["trace"]]]""")] TraceCallManyRequest calls,
             [JsonRpcParameter(ExampleValue = "\"latest\"")] BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(Description = "Traces a call to eth_sendRawTransaction without making the call, returning the traces",
@@ -51,7 +51,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IsImplemented = true,
             IsSharable = false,
             ExampleResponse = "{\"action\":{\"callType\":\"call\",\"from\":\"0x31b98d14007bdee637298086988a0bbd31184523\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0e8cda5d7ebda67606a9b296a9dd4351bca1d263\",\"value\":\"0x1043561a882930000\"},\"blockHash\":\"0x6537c92f1fae55d9ea9b0fb25744262114b09e50ac320d7d839830f8c4d723a0\",\"blockNumber\":8969312,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xf4860fc1dc22404b85db7d666dfae65dec7cdcb196837a67ffa992d709f78b9e\",\"transactionPosition\":11,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x71c95151c960aa3976b462ff41adb328790f110d\",\"gas\":\"0x7205\",\"input\":\"0x095ea7b3000000000000000000000000c5992c0e0a3267c7f75493d0f717201e26be35f7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"to\":\"0x5592ec0cfb4dbc12d3ab100b257153436a1f0fea\",\"value\":\"0x0\"},\"blockHash\":\"0x6537c92f1fae55d9ea9b0fb25744262114b09e50ac320d7d839830f8c4d723a0\",\"blockNumber\":8969312,\"result\":{\"gasUsed\":\"0x5fdd\",\"output\":\"0x0000000000000000000000000000000000000000000000000000000000000001\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xec216ca7e754ea289dd59fc7f9f2c9a5b90668afb5a52d49ee15c3c5fd559b3b\",\"transactionPosition\":12,\"type\":\"call\"}")]
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block([JsonRpcParameter(ExampleValue = "\"latest\"")] BlockParameter numberOrTag);
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(
+            [JsonRpcParameter(ExampleValue = "\"latest\"")] BlockParameter numberOrTag,
+            [JsonRpcParameter(Description = "Optional fork name (e.g. \"Berlin\", \"Cancun\") to re-execute the block under. Must be one of the chain's named forks (see ISpecProvider AvailableForks). Default: the block's natural fork.")] string? fork = null);
 
         [JsonRpcMethod(Description = "Returns trace at given position.",
             IsImplemented = true,

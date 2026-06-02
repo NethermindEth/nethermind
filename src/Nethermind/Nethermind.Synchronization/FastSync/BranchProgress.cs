@@ -81,15 +81,12 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public void ReportSynced(StateSyncItem syncItem, NodeProgressState nodeProgressState)
-        {
-            ReportSynced(
+        public void ReportSynced(StateSyncItem syncItem, NodeProgressState nodeProgressState) => ReportSynced(
                 syncItem.Level,
                 syncItem.ParentBranchChildIndex,
                 syncItem.BranchChildIndex,
                 syncItem.NodeDataType,
                 NodeProgressState.Requested);
-        }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void ReportSynced(int level, int parentIndex, int childIndex, NodeDataType nodeDataType, NodeProgressState nodeProgressState)
@@ -174,7 +171,7 @@ namespace Nethermind.Synchronization.FastSync
                             builder.Append('□');
                             break;
                         default:
-                            throw new ArgumentOutOfRangeException();
+                            throw new ArgumentOutOfRangeException(nameof(_syncProgress), _syncProgress[i], "Unknown progress state.");
                     }
                 }
 

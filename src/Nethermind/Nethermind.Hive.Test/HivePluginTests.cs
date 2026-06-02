@@ -20,15 +20,13 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.Hive.Tests
+namespace Nethermind.Hive.Test
 {
     public class HivePluginTests
     {
         [Test]
-        public void Can_create()
-        {
+        public void Can_create() =>
             _ = new HivePlugin(new HiveConfig() { Enabled = true });
-        }
 
         [Test]
         public void Can_initialize()

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
+using System.Collections.Generic;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -11,6 +11,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
@@ -45,14 +46,11 @@ namespace Nethermind.Network.Test.P2P
         private readonly Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
         private INodeStatsManager _nodeStatsManager;
 
-        private Packet CreatePacket<T>(T message) where T : P2PMessage
+        private Packet CreatePacket<T>(T message) where T : P2PMessage => new(new ZeroPacket(_serializer.ZeroSerialize(message))
         {
-            return new(new ZeroPacket(_serializer.ZeroSerialize(message))
-            {
-                Protocol = message.Protocol,
-                PacketType = (byte)message.PacketType,
-            });
-        }
+            Protocol = message.Protocol,
+            PacketType = (byte)message.PacketType,
+        });
 
         private const int ListenPort = 8003;
 
@@ -115,7 +113,7 @@ namespace Nethermind.Network.Test.P2P
             // to account for adaptive packet type
             data.ReadByte();
 
-            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadAllBytesAsArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -123,7 +121,7 @@ namespace Nethermind.Network.Test.P2P
 
             p2PProtocolHandler.HandleMessage(packet);
 
-            _nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation.Should().NotBeNull();
+            Assert.That(_nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation, Is.Not.Null);
             _session.Received(1).InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>());
         }
 
@@ -179,7 +177,7 @@ namespace Nethermind.Network.Test.P2P
             using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             data.ReadByte(); // adaptive packet type
 
-            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadAllBytesAsArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -226,7 +224,7 @@ namespace Nethermind.Network.Test.P2P
             using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             data.ReadByte(); // adaptive packet type
 
-            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadAllBytesAsArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -250,8 +248,40 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
 
-            requestedCount.Should().Be(1);
-            p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)).Should().Be(1);
+            Assert.That(requestedCount, Is.EqualTo(1));
+            Assert.That(p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Hello_starts_highest_agreed_eth_version_only()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            List<ProtocolEventArgs> requestedProtocols = [];
+
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 69));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 70));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 71));
+
+            p2PProtocolHandler.SubprotocolRequested += (_, args) => requestedProtocols.Add(args);
+
+            using HelloMessage message = new()
+            {
+                Capabilities = new ArrayPoolList<Capability>(4)
+                {
+                    new(Protocol.Eth, 68),
+                    new(Protocol.Eth, 69),
+                    new(Protocol.Eth, 70),
+                    new(Protocol.Eth, 71),
+                },
+                NodeId = TestItem.PublicKeyA,
+            };
+
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
+
+            Assert.That(requestedProtocols, Has.Exactly(1).Items);
+            Assert.That(requestedProtocols[0].ProtocolCode, Is.EqualTo(Protocol.Eth));
+            Assert.That(requestedProtocols[0].Version, Is.EqualTo(71));
         }
 
         [Test]

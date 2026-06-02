@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -29,10 +28,8 @@ internal class XdcBlockProcessorTests
     private TestableXdcBlockProcessor _processor = null!;
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() =>
         _processor = new TestableXdcBlockProcessor();
-    }
 
     [
         TestCase(0L, "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
@@ -50,7 +47,7 @@ internal class XdcBlockProcessorTests
 
         BlockExecutionContext ctx = _processor.CreateBlockExecutionContext(header, spec);
 
-        ctx.PrevRandao.Should().Be(new ValueHash256(expectedPrevRandaoHex));
+        Assert.That(ctx.PrevRandao, Is.EqualTo(new ValueHash256(expectedPrevRandaoHex)));
     }
 
     private class TestableXdcBlockProcessor : XdcBlockProcessor
@@ -66,7 +63,8 @@ internal class XdcBlockProcessorTests
             Substitute.For<IBlockhashStore>(),
             NullLogManager.Instance,
             Substitute.For<IWithdrawalProcessor>(),
-            Substitute.For<IExecutionRequestsProcessor>())
+            Substitute.For<IExecutionRequestsProcessor>(),
+            Substitute.For<IBlockAccessListManager>())
         { }
 
         public new BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec)

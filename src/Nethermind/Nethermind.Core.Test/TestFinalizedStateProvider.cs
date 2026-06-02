@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
 
@@ -35,13 +36,10 @@ public class TestFinalizedStateProvider(long depth) : IFinalizedStateProvider
         {
             return _manualFinalizedPoint.StateRoot;
         }
-        using var commitSets = TrieStore.CommitSetQueue.GetCommitSetsAtBlockNumber(blockNumber);
+        using ArrayPoolListRef<BlockCommitSet> commitSets = TrieStore.CommitSetQueue.GetCommitSetsAtBlockNumber(blockNumber);
         if (commitSets.Count != 1) return null;
         return commitSets[0].StateRoot;
     }
 
-    public void SetFinalizedPoint(BlockHeader baseBlock)
-    {
-        _manualFinalizedPoint = baseBlock;
-    }
+    public void SetFinalizedPoint(BlockHeader baseBlock) => _manualFinalizedPoint = baseBlock;
 }

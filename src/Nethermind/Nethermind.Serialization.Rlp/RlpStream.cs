@@ -43,20 +43,11 @@ namespace Nethermind.Serialization.Rlp
                                   + MemorySizes.Align(MemorySizes.ArrayOverhead + Length)
                                   + MemorySizes.Align(sizeof(int));
 
-        public RlpStream(int length)
-        {
-            _data = new byte[length];
-        }
+        public RlpStream(int length) => _data = new byte[length];
 
-        public RlpStream(byte[] data)
-        {
-            _data = data;
-        }
+        public RlpStream(byte[] data) => _data = data;
 
-        public RlpStream(in CappedArray<byte> data)
-        {
-            _data = data;
-        }
+        public RlpStream(in CappedArray<byte> data) => _data = data;
 
         public void EncodeArray<T>(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -65,14 +56,21 @@ namespace Nethermind.Serialization.Rlp
                 WriteByte(Rlp.EmptyListByte);
                 return;
             }
-            IRlpStreamEncoder<T> decoder = Rlp.GetStreamEncoder<T>();
+            IRlpDecoder<T> decoder = Rlp.GetDecoder<T>();
             int contentLength = decoder.GetContentLength(items);
 
             StartSequence(contentLength);
 
             foreach (T? item in items)
             {
-                decoder.Encode(this, item, rlpBehaviors);
+                if (item is null)
+                {
+                    WriteByte(Rlp.EmptyListByte);
+                }
+                else
+                {
+                    decoder.Encode(this, item, rlpBehaviors);
+                }
             }
         }
         public void Encode(Block value) => _blockDecoder.Encode(this, value);
@@ -88,7 +86,9 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(BlockInfo value) => _blockInfoDecoder.Encode(this, value);
 
-        public void Encode(BlockAccessList value) => _blockAccessListDecoder.Encode(this, value);
+        public void Encode(ReadOnlyBlockAccessList value) => _blockAccessListDecoder.Encode(this, value);
+
+        public void Encode(GeneratedBlockAccessList value) => _blockAccessListDecoder.Encode(this, value);
 
         public void StartByteArray(int contentLength, bool firstByteLessThan128)
         {
@@ -257,7 +257,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
                 for (int i = 0; i < keccaks.Length; i++)
                 {
@@ -274,7 +274,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
                 for (int i = 0; i < keccaks.Length; i++)
                 {
@@ -291,9 +291,9 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
-                var count = keccaks.Count;
+                int count = keccaks.Count;
                 for (int i = 0; i < count; i++)
                 {
                     Encode(keccaks[i]);
@@ -310,9 +310,9 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
-                var count = keccaks.Count;
+                int count = keccaks.Count;
                 for (int i = 0; i < count; i++)
                 {
                     Encode(keccaks[i]);
@@ -394,6 +394,8 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(int value) => Encode((ulong)(long)value);
 
+        public void Encode(uint value) => Encode((ulong)value);
+
         public void Encode(long value) => Encode((ulong)value);
 
         [SkipLocalsInit]
@@ -445,6 +447,21 @@ namespace Nethermind.Serialization.Rlp
                 Span<byte> bytes = stackalloc byte[32];
                 value.ToBigEndian(bytes);
                 Encode(length != -1 ? bytes.Slice(bytes.Length - length, length) : bytes.WithoutLeadingZeros());
+            }
+        }
+
+        public void Encode(in EvmWord value)
+        {
+            ReadOnlySpan<byte> bytes = MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in value)), 32);
+            int nonZero = bytes.IndexOfAnyExcept((byte)0);
+            if (nonZero < 0)
+            {
+                WriteByte(EmptyArrayByte);
+            }
+            else
+            {
+                Encode(bytes.Slice(nonZero));
             }
         }
 

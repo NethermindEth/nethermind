@@ -32,20 +32,11 @@ namespace Nethermind.Merge.Plugin
             _manualBlockFinalizationManager.BlocksFinalized += OnBlockFinalized;
         }
 
-        private void OnSwitchHappened(object? sender, EventArgs e)
-        {
-            IsPostMerge = true;
-        }
+        private void OnSwitchHappened(object? sender, EventArgs e) => IsPostMerge = true;
 
-        protected void OnBlockFinalized(object? sender, FinalizeEventArgs e)
-        {
-            BlocksFinalized?.Invoke(this, e);
-        }
+        protected void OnBlockFinalized(object? sender, FinalizeEventArgs e) => BlocksFinalized?.Invoke(this, e);
 
-        public void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock)
-        {
-            _manualBlockFinalizationManager.MarkFinalized(finalizingBlock, finalizedBlock);
-        }
+        public void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock) => _manualBlockFinalizationManager.MarkFinalized(finalizingBlock, finalizedBlock);
 
         public Hash256 LastFinalizedHash { get => _manualBlockFinalizationManager.LastFinalizedHash; }
 

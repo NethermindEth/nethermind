@@ -12,7 +12,7 @@ namespace Nethermind.Xdc.P2P;
 
 internal class TimeoutMsgSerializer : IZeroInnerMessageSerializer<TimeoutMsg>
 {
-    private static readonly TimeoutDecoder _timeDecoder = new TimeoutDecoder();
+    private static readonly TimeoutDecoder _timeDecoder = new();
 
     public void Serialize(IByteBuffer byteBuffer, TimeoutMsg message)
     {

@@ -11,11 +11,9 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 {
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
 
-    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
-    {
-        // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
+    // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
+    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
         _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
-    }
 
     protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
         EvmInstructions.GenerateOpCodes<TGasPolicy, OffFlag>(spec);

@@ -61,10 +61,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public abstract class TransactionPermissionContract : Contract, ITransactionPermissionContract
     {
-        public virtual UInt256 ContractVersion(BlockHeader blockHeader)
-        {
-            return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
-        }
+        public virtual UInt256 ContractVersion(BlockHeader blockHeader) => Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
 
         /// <summary>
         /// Returns the contract version number needed for node's engine.
@@ -98,17 +95,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress)
-        {
-            Constant = new PermissionConstantContract(this, readOnlyTxProcessorSource);
-        }
+            : base(abiEncoder, contractAddress) => Constant = new PermissionConstantContract(this, readOnlyTxProcessorSource);
 
-        protected class PermissionConstantContract : ConstantContract
+        protected class PermissionConstantContract(Contract contract, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : ConstantContract(contract, readOnlyTxProcessorSource)
         {
-            public PermissionConstantContract(Contract contract, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : base(contract, readOnlyTxProcessorSource)
-            {
-            }
-
             protected override object[] CallRaw(CallInfo callInfo, IReadOnlyTxProcessingScope scope)
             {
                 if (callInfo is PermissionCallInfo transactionPermissionCallInfo)
@@ -119,21 +109,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 return base.CallRaw(callInfo, scope);
             }
 
-            public class PermissionCallInfo : CallInfo
+            public class PermissionCallInfo(
+                BlockHeader parentHeader,
+                string functionName,
+                Address sender,
+                object[] arguments,
+                Address to) : CallInfo(parentHeader, functionName, sender, arguments)
             {
-                public Address To { get; }
+                public Address To { get; } = to;
                 public bool ToIsContract { get; set; }
-
-                public PermissionCallInfo(
-                    BlockHeader parentHeader,
-                    string functionName,
-                    Address sender,
-                    object[] arguments,
-                    Address to)
-                    : base(parentHeader, functionName, sender, arguments)
-                {
-                    To = to;
-                }
             }
         }
     }

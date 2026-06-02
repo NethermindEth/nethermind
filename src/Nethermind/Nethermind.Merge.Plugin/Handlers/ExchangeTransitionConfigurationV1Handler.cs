@@ -10,22 +10,16 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfigurationV1, TransitionConfigurationV1>
+public class ExchangeTransitionConfigurationV1Handler(
+    IPoSSwitcher poSSwitcher,
+    ILogManager logManager) : IHandler<TransitionConfigurationV1, TransitionConfigurationV1>
 {
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly ILogger _logger;
+    private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
+    private readonly ILogger _logger = logManager.GetClassLogger<ExchangeTransitionConfigurationV1Handler>();
 
     // https://github.com/ethereum/consensus-specs/blob/981b05afb01d5b19be3a5a60ccb12c3582e4c0cf/configs/mainnet.yaml#L16
     // 115792089237316195423570985008687907853269984665640564039457584007913129638912
     private static readonly UInt256 _ttdPlaceholderForCl = new(18446744073709550592ul, 18446744073709551615ul, 18446744073709551615ul, 18446744073709551615ul);
-
-    public ExchangeTransitionConfigurationV1Handler(
-        IPoSSwitcher poSSwitcher,
-        ILogManager logManager)
-    {
-        _poSSwitcher = poSSwitcher;
-        _logger = logManager.GetClassLogger<ExchangeTransitionConfigurationV1Handler>();
-    }
 
     public ResultWrapper<TransitionConfigurationV1> Handle(TransitionConfigurationV1 beaconTransitionConfiguration)
     {

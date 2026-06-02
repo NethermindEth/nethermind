@@ -90,7 +90,7 @@ namespace Nethermind.Grpc.Clients
                     return string.Empty;
                 }
 
-                var result = await _client.QueryAsync(new QueryRequest
+                QueryResponse result = await _client.QueryAsync(new QueryRequest
                 {
                     Args = { args ?? [] }
                 });
@@ -108,7 +108,7 @@ namespace Nethermind.Grpc.Clients
         public async Task SubscribeAsync(Action<string> callback, Func<bool> enabled, IEnumerable<string> args,
             CancellationToken? token = null)
         {
-            var cancellationToken = token ?? CancellationToken.None;
+            CancellationToken cancellationToken = token ?? CancellationToken.None;
             try
             {
                 if (!_connected)
@@ -116,7 +116,7 @@ namespace Nethermind.Grpc.Clients
                     return;
                 }
 
-                using var stream = _client.Subscribe(new SubscriptionRequest
+                using AsyncServerStreamingCall<SubscriptionResponse> stream = _client.Subscribe(new SubscriptionRequest
                 {
                     Args = { args ?? [] }
                 });

@@ -70,12 +70,12 @@ public class ShutterApiSimulator(
 
     public void InsertShutterReceipts(Block block, in LogEntry[] logs)
     {
-        var receipts = new TxReceipt[logs.Length];
+        TxReceipt[] receipts = new TxReceipt[logs.Length];
         block.Header.Bloom = new(logs);
         // one log per receipt
         for (int i = 0; i < logs.Length; i++)
         {
-            var h = new byte[32];
+            byte[] h = new byte[32];
             _rnd.NextBytes(h);
             receipts[i] = Build.A.Receipt
                 .WithLogs([logs[i]])
@@ -114,10 +114,8 @@ public class ShutterApiSimulator(
 
 
     // fake out P2P module
-    protected override void InitP2P(IPAddress _)
-    {
+    protected override void InitP2P(IPAddress _) =>
         P2P = Substitute.For<IShutterP2P>();
-    }
 
     protected override IShutterEon InitEon()
     {
@@ -128,8 +126,6 @@ public class ShutterApiSimulator(
     }
 
     // set genesis unix timestamp to 1
-    protected override SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
-    {
-        return new(1000, timestamper, _slotLength, _blockUpToDateCutoff);
-    }
+    protected override SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper) =>
+        new(1000, timestamper, _slotLength, _blockUpToDateCutoff);
 }

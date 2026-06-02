@@ -33,6 +33,13 @@ public readonly struct BlockExecutionContext
         in ValueHash256 prevRandao)
         => new(blockHeader, spec, GetBlobBaseFee(blockHeader, spec), prevRandao);
 
+    public static BlockExecutionContext WithPrevRandaoAndBlobBaseFee(
+        BlockHeader blockHeader,
+        IReleaseSpec spec,
+        in ValueHash256 prevRandao,
+        in UInt256 blobBaseFee)
+        => new(blockHeader, spec, blobBaseFee, prevRandao);
+
     private BlockExecutionContext(
         BlockHeader blockHeader,
         IReleaseSpec spec,

@@ -11,22 +11,14 @@ using Nethermind.Logging;
 
 namespace Nethermind.Runner.JsonRpc;
 
-internal sealed class HostingApplication : IHttpApplication<HostingApplication.Context>
+internal sealed class HostingApplication(
+    RequestDelegate application,
+    ILogManager logManager,
+    HttpContextFactory httpContextFactory) : IHttpApplication<HostingApplication.Context>
 {
-    private readonly ILogger _logger;
-    private readonly RequestDelegate _application;
-    private readonly HttpContextFactory? _httpContextFactory;
-
-    public HostingApplication(
-        RequestDelegate application,
-        ILogManager logManager,
-        HttpContextFactory httpContextFactory)
-    {
-        _logger = logManager.GetClassLogger<HostingApplication>();
-        //_logManager = logManager;
-        _application = application;
-        _httpContextFactory = httpContextFactory;
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger<HostingApplication>();
+    private readonly RequestDelegate _application = application;
+    private readonly HttpContextFactory? _httpContextFactory = httpContextFactory;
 
     // Set up the request
     public Context CreateContext(IFeatureCollection contextFeatures)
@@ -48,7 +40,7 @@ internal sealed class HostingApplication : IHttpApplication<HostingApplication.C
         }
 
         HttpContext httpContext;
-        var defaultHttpContext = (DefaultHttpContext?)hostContext.HttpContext;
+        DefaultHttpContext defaultHttpContext = (DefaultHttpContext?)hostContext.HttpContext;
         if (defaultHttpContext is null)
         {
             httpContext = _httpContextFactory.Create(contextFeatures);
@@ -64,15 +56,12 @@ internal sealed class HostingApplication : IHttpApplication<HostingApplication.C
     }
 
     // Execute the request
-    public Task ProcessRequestAsync(Context context)
-    {
-        return _application(context.HttpContext!);
-    }
+    public Task ProcessRequestAsync(Context context) => _application(context.HttpContext!);
 
     // Clean up the request
     public void DisposeContext(Context context, Exception? exception)
     {
-        var httpContext = context.HttpContext!;
+        HttpContext httpContext = context.HttpContext!;
 
         _httpContextFactory.Dispose((DefaultHttpContext)httpContext);
 
@@ -91,9 +80,6 @@ internal sealed class HostingApplication : IHttpApplication<HostingApplication.C
         public HttpContext? HttpContext { get; set; }
         public IDisposable? Scope { get; set; }
 
-        public void Reset()
-        {
-            Scope = null;
-        }
+        public void Reset() => Scope = null;
     }
 }

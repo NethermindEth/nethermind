@@ -18,7 +18,7 @@ using System.Collections.Generic;
 namespace Nethermind.Xdc.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class Tests
+public class XdcHeaderValidatorTests
 {
     [Test]
     public void Validate_NotAnXdcHeader_ThrowsArgumentException()

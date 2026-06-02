@@ -20,7 +20,7 @@ namespace Nethermind.State.Proofs
         private readonly HashSet<Hash256AsKey> _visitingFilter = new(Hash256AsKeyComparer.Instance);
         private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _visitingFilterLookup;
 
-        private readonly List<byte[]> _proofBits = new();
+        private readonly List<byte[]> _proofBits = [];
         private readonly byte[] _key;
 
         /// <summary>
@@ -67,10 +67,7 @@ namespace Nethermind.State.Proofs
             _pathIndex += node.Key.Length;
         }
 
-        protected virtual void AddProofBits(TrieNode node)
-        {
-            _proofBits.Add(node.FullRlp.ToArray());
-        }
+        protected virtual void AddProofBits(TrieNode node) => _proofBits.Add(node.FullRlp.ToArray());
 
         public void VisitLeaf(in EmptyContext _, TrieNode node)
         {

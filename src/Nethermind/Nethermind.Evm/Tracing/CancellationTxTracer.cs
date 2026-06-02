@@ -469,8 +469,5 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void Dispose()
-    {
-        innerTracer.Dispose();
-    }
+    public void Dispose() => innerTracer.Dispose();
 }

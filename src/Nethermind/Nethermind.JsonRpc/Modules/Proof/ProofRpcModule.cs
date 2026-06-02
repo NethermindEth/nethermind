@@ -11,15 +11,19 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.Proofs;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -30,11 +34,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IOverridableEnv<ITracer> tracerEnv,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
-        ISpecProvider specProvider)
+        ISpecProvider specProvider,
+        IJsonRpcConfig jsonRpcConfig,
+        IBlockchainBridge blockchainBridge)
         : IProofRpcModule
     {
         private readonly HeaderDecoder _headerDecoder = new();
-        private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>();
+        private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
@@ -65,17 +71,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
             callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             callHeader.Hash = callHeader.CalculateHash();
 
-            Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true);
+            Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap);
             if (!txResult.Success(out Transaction? transaction, out string? error))
             {
                 return ResultWrapper<CallResultWithProof>.Fail(error, ErrorCodes.InvalidInput);
-            }
-
-            transaction.SenderAddress ??= Address.Zero;
-
-            if (transaction.GasLimit == 0)
-            {
-                transaction.GasLimit = callHeader.GasLimit;
             }
 
             Block block = new(callHeader, new[] { transaction }, []);
@@ -181,9 +180,49 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
+        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter? blockParameter)
+        {
+            if (storageKeys.Count > EthRpcModule.GetProofStorageKeyLimit)
+            {
+                return ResultWrapper<AccountProofWithMeta>.Fail(
+                    $"storageKeys: {storageKeys.Count} is over the query limit {EthRpcModule.GetProofStorageKeyLimit}.",
+                    ErrorCodes.InvalidParams);
+            }
+
+            SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
+            if (searchResult.IsError)
+            {
+                return ResultWrapper<AccountProofWithMeta>.Fail(searchResult);
+            }
+
+            BlockHeader header = searchResult.Object;
+
+            if (!blockchainBridge.HasStateForBlock(header!))
+            {
+                return ResultWrapper<AccountProofWithMeta>.Fail(
+                    $"No state available for block {header!.ToString(BlockHeader.Format.Short)}",
+                    ErrorCodes.ResourceUnavailable);
+            }
+
+            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
+            VisitingStats diagnostics = new();
+            blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
+
+            return ResultWrapper<AccountProofWithMeta>.Success(new AccountProofWithMeta
+            {
+                Proof = accountProofCollector.BuildResult(),
+                Meta = new ProofMeta
+                {
+                    NodeLookups = diagnostics.NodeLookups,
+                    CacheHits = diagnostics.CacheHits,
+                    MaxDepth = diagnostics.MaxDepth,
+                },
+            });
+        }
+
         private AccountProof[] CollectAccountProofs(ITracer tracer, BlockHeader? baseBlock, ProofTxTracer proofTxTracer)
         {
-            List<AccountProof> accountProofs = new();
+            List<AccountProof> accountProofs = [];
             foreach (Address address in proofTxTracer.Accounts)
             {
                 AccountProofCollector collector = new(address, proofTxTracer.Storages
@@ -199,7 +238,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer, BlockHeader tracedBlockHeader)
         {
-            List<BlockHeader> relevantHeaders = new() { tracedBlockHeader };
+            List<BlockHeader> relevantHeaders = [tracedBlockHeader];
             foreach (Hash256 blockHash in proofTxTracer.BlockHashes)
             {
                 relevantHeaders.Add(blockFinder.FindHeader(blockHash));
@@ -209,14 +248,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
         }
 
-        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
-        {
-            return TxTrie.CalculateProof(txs, index);
-        }
+        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index) => TxTrie.CalculateProof(txs, index);
 
-        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index)
-        {
-            return ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptEncoder);
-        }
+        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index) => ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptEncoder);
     }
 }

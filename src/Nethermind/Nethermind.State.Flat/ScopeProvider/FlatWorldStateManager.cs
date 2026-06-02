@@ -16,6 +16,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public class FlatWorldStateManager(
     IFlatDbManager flatDbManager,
     IPersistence persistence,
+    IPersistenceManager persistenceManager,
     IFlatDbConfig configuration,
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
@@ -40,12 +41,23 @@ public class FlatWorldStateManager(
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
     public IStateReader GlobalStateReader => flatStateReader;
-    public ISnapServer? SnapServer => _snapServer ??= new FlatSnapServer(
+    public ISnapServer SnapServer => _snapServer ??= new FlatSnapServer(
         flatDbManager,
         codeDb,
         flatStateRootIndex,
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
+
+    public long? RetentionWindowBlocks => null;
+
+    public long? OldestStateBlock
+    {
+        get
+        {
+            long blockNumber = persistenceManager.GetCurrentPersistedStateId().BlockNumber;
+            return blockNumber >= 0 ? blockNumber : null;
+        }
+    }
 
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(
@@ -62,6 +74,8 @@ public class FlatWorldStateManager(
         add => flatDbManager.ReorgBoundaryReached += value;
         remove => flatDbManager.ReorgBoundaryReached -= value;
     }
+
+    public IReadOnlyTrieStore CreateReadOnlyTrieStore() => new FlatReadOnlyTrieStore(flatDbManager);
 
     public IOverridableWorldScope CreateOverridableWorldScope() =>
         overridableWorldScopeFactory();

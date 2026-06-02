@@ -29,10 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             Bodies = new OwnedBlockBodies(bodies);
         }
 
-        public BlockBodiesMessage(BlockBody?[] bodies)
-        {
-            Bodies = new OwnedBlockBodies(bodies);
-        }
+        public BlockBodiesMessage(BlockBody?[] bodies) => Bodies = new OwnedBlockBodies(bodies);
 
         public override void Dispose()
         {

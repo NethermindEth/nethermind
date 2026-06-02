@@ -48,13 +48,13 @@ namespace Nethermind.Network.Test.Rlpx
                 egressUpdate[i] = (byte)i;
             }
 
-            var secretsA = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
+            EncryptionSecrets secretsA = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
             secretsA.EgressMac.Update(egressUpdate.Slice(0, 16));
             secretsA.EgressMac.Update(egressUpdate.Slice(16, 16));
             FrameMacProcessor macProcessorA = new(TestItem.PublicKeyA, secretsA);
             macProcessorA.AddMac(a1, 0, 16, false);
 
-            var secretsB = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
+            EncryptionSecrets secretsB = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
             secretsB.EgressMac.Update(egressUpdate);
             FrameMacProcessor macProcessorB = new(TestItem.PublicKeyA, secretsB);
             macProcessorB.AddMac(b1, 0, 16, false);

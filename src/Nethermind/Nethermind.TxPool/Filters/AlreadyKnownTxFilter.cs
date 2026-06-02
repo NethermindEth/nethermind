@@ -12,18 +12,12 @@ namespace Nethermind.TxPool.Filters
     /// It uses a limited capacity hash cache underneath so there is no strict promise on filtering
     /// transactions.
     /// </summary>
-    internal sealed class AlreadyKnownTxFilter : IIncomingTxFilter
+    internal sealed class AlreadyKnownTxFilter(
+        HashCache hashCache,
+        ILogger logger) : IIncomingTxFilter
     {
-        private readonly HashCache _hashCache;
-        private readonly ILogger _logger;
-
-        public AlreadyKnownTxFilter(
-            HashCache hashCache,
-            ILogger logger)
-        {
-            _hashCache = hashCache;
-            _logger = logger;
-        }
+        private readonly HashCache _hashCache = hashCache;
+        private readonly ILogger _logger = logger;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {

@@ -64,9 +64,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
 
 public class ShutterPluginModule : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder
+    protected override void Load(ContainerBuilder builder) => builder
             .AddStep(typeof(RunShutterP2P)) // Where it start the p2p
 
             .AddSingleton(CreateShutterApi)
@@ -74,7 +72,6 @@ public class ShutterPluginModule : Module
             .AddDecorator<IBlockProducerTxSourceFactory, ShutterAdditionalBlockProductionTxSource>()
             .AddSingleton<IBlockImprovementContextFactory, ShutterApi, IBlockProducer>((api, blockProducer) => api.GetBlockImprovementContextFactory(blockProducer))
             ;
-    }
 
     private ShutterApi CreateShutterApi(IComponentContext ctx)
     {

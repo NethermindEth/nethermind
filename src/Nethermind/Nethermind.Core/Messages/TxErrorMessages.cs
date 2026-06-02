@@ -9,6 +9,8 @@ public static class TxErrorMessages
         $"InvalidTxType: Transaction type in {name} is not supported.";
     public const string IntrinsicGasTooLow =
         "intrinsic gas too low";
+    public const string GasBelowFloorDataCost =
+        "gas below floor data cost";
     public const string TxMissingTo =
         "blob transaction of type create";
 
@@ -33,7 +35,7 @@ public static class TxErrorMessages
         $"InvalidTransaction: Cannot be {nameof(ShardBlobNetworkWrapper)}.";
 
     public const string NotAllowedCreateTransaction =
-        "NotAllowedCreateTransaction: To must be set.";
+        "EIP-7702 transaction cannot be used to create contract";
 
     public const string BlobTxMissingMaxFeePerBlobGas =
         "BlobTxMissingMaxFeePerBlobGas: Must be set.";
@@ -72,7 +74,7 @@ public static class TxErrorMessages
 
     public const string NotAllowedAuthorizationList = $"NotAllowedAuthorizationList: Only transactions with type {nameof(TxType.SetCode)} can have authorization_list.";
 
-    public const string MissingAuthorizationList = "MissingAuthorizationList: Must be set.";
+    public const string MissingAuthorizationList = "EIP-7702 transaction with empty auth list";
 
     public const string InvalidAuthoritySignature = "InvalidAuthoritySignature: Invalid signature in authorization list.";
 
@@ -81,6 +83,9 @@ public static class TxErrorMessages
 
     public static string TxGasLimitCapExceeded(long gasLimit, long gasLimitCap)
         => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeded cap of {gasLimitCap}.";
+
+    public static string TxIntrinsicGasExceedsCap(long intrinsicRegularGas, long intrinsicFloorGas, long gasLimitCap)
+        => $"{IntrinsicGasTooLow}: Intrinsic gas (regular {intrinsicRegularGas}, floor {intrinsicFloorGas}) exceeded cap of {gasLimitCap}.";
 
     public const string NonceTooHigh = "NonceTooHigh: Nonce exceeds max nonce";
 

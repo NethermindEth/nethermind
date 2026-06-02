@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core;
 using RocksDbSharp;
 
@@ -15,15 +16,27 @@ namespace Nethermind.Db.Rocks;
 /// implementing `ISortedKeyValueStore` implementation themselves.
 /// This tends to call `DbOnTheRocks` back though.
 /// </summary>
-public class RocksDbReader : ISortedKeyValueStore
+/// <remarks>
+/// Constructor that accepts pre-created <see cref="ReadOptions"/> instead of a factory.
+/// Used by <see cref="ColumnsDb{T}.ColumnDbSnapshot"/> to share a single pair of ReadOptions
+/// across all column readers, avoiding per-reader native handle allocation and finalizer pressure.
+/// </remarks>
+public class RocksDbReader(DbOnTheRocks mainDb,
+    ReadOptions options,
+    ReadOptions hintCacheMissOptions,
+    Func<ReadOptions> readOptionsFactory,
+    DbOnTheRocks.IteratorManager? iteratorManager = null,
+    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
 {
-    private readonly DbOnTheRocks _mainDb;
-    private readonly Func<ReadOptions> _readOptionsFactory;
-    private readonly DbOnTheRocks.IteratorManager? _iteratorManager;
-    private readonly ColumnFamilyHandle? _columnFamily;
+    private readonly DbOnTheRocks _mainDb = mainDb;
+    private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
+    private readonly DbOnTheRocks.IteratorManager? _iteratorManager = iteratorManager;
+    private readonly ColumnFamilyHandle? _columnFamily = columnFamily;
 
-    private readonly ReadOptions _options;
-    private readonly ReadOptions _hintCacheMissOptions;
+    private readonly ReadOptions _options = options;
+    private readonly ReadOptions _hintCacheMissOptions = hintCacheMissOptions;
+    private readonly bool _ownsReadOptions;
+    private int _disposed;
 
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
@@ -31,27 +44,29 @@ public class RocksDbReader : ISortedKeyValueStore
         ColumnFamilyHandle? columnFamily = null)
         : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily)
     {
+        _ownsReadOptions = true;
         _hintCacheMissOptions.SetFillCache(false);
     }
 
-    /// <summary>
-    /// Constructor that accepts pre-created <see cref="ReadOptions"/> instead of a factory.
-    /// Used by <see cref="ColumnsDb{T}.ColumnDbSnapshot"/> to share a single pair of ReadOptions
-    /// across all column readers, avoiding per-reader native handle allocation and finalizer pressure.
-    /// </summary>
-    public RocksDbReader(DbOnTheRocks mainDb,
-        ReadOptions options,
-        ReadOptions hintCacheMissOptions,
-        Func<ReadOptions> readOptionsFactory,
-        DbOnTheRocks.IteratorManager? iteratorManager = null,
-        ColumnFamilyHandle? columnFamily = null)
+    public virtual void Dispose()
     {
-        _mainDb = mainDb;
-        _readOptionsFactory = readOptionsFactory;
-        _iteratorManager = iteratorManager;
-        _columnFamily = columnFamily;
-        _options = options;
-        _hintCacheMissOptions = hintCacheMissOptions;
+        if (!_ownsReadOptions || Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        DestroyReadOptions(_options);
+        DestroyReadOptions(_hintCacheMissOptions);
+    }
+
+    /// <summary>
+    /// Destroys a native ReadOptions handle and suppresses its finalizer to prevent
+    /// finalizer queue buildup from short-lived ReadOptions instances.
+    /// </summary>
+    internal static void DestroyReadOptions(ReadOptions options)
+    {
+        RocksDbSharp.Native.Instance.rocksdb_readoptions_destroy(options.Handle);
+        GC.SuppressFinalize(options);
     }
 
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
@@ -81,15 +96,9 @@ public class RocksDbReader : ISortedKeyValueStore
         return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
     }
 
-    public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
-    {
-        _mainDb.DangerousReleaseMemory(span);
-    }
+    public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
 
-    public bool KeyExists(ReadOnlySpan<byte> key)
-    {
-        return _mainDb.KeyExistsWithColumn(key, _columnFamily);
-    }
+    public bool KeyExists(ReadOnlySpan<byte> key) => _mainDb.KeyExistsWithColumn(key, _columnFamily);
 
 
     public byte[]? FirstKey
@@ -131,6 +140,6 @@ public class RocksDbReader : ISortedKeyValueStore
         }
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        return new RocksdbSortedView(iterator, iterateLowerBound, iterateUpperBound);
+        return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);
     }
 }

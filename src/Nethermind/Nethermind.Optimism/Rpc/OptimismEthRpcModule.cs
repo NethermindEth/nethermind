@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -37,6 +38,7 @@ public class OptimismEthRpcModule(
     IJsonRpcConfig rpcConfig,
     IBlockchainBridge blockchainBridge,
     IBlockFinder blockFinder,
+    IBlockTree blockTree,
     IReceiptFinder receiptFinder,
     IStateReader stateReader,
     ITxPool txPool,
@@ -54,10 +56,13 @@ public class OptimismEthRpcModule(
     IEthereumEcdsa ecdsa,
     ITxSealer sealer,
     ILogIndexConfig? logIndexConfig,
-    IOptimismSpecHelper opSpecHelper)
+    IOptimismSpecHelper opSpecHelper,
+    HeadBlockSignal headBlockSignal,
+    IEthCapabilitiesProvider capabilitiesProvider)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
         blockFinder,
+        blockTree,
         receiptFinder,
         stateReader,
         txPool,
@@ -71,7 +76,9 @@ public class OptimismEthRpcModule(
         protocolsManager,
         forkInfo,
         logIndexConfig,
-        secondsPerSlot), IOptimismEthRpcModule
+        secondsPerSlot,
+        headBlockSignal,
+        capabilitiesProvider), IOptimismEthRpcModule
 {
     public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
@@ -122,7 +129,8 @@ public class OptimismEthRpcModule(
             return ResultWrapper<Hash256>.Fail("Failed to recover sender");
         }
 
-        await sealer.Seal(tx, TxHandlingOptions.None);
+        if (!sealer.TrySeal(tx, TxHandlingOptions.None))
+            return ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
 
         return await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
     }
@@ -153,7 +161,7 @@ public class OptimismEthRpcModule(
         }
 
         Block block = foundBlock.Object;
-        L1BlockGasInfo l1GasInfo = new L1BlockGasInfo(block, opSpecHelper);
+        L1BlockGasInfo l1GasInfo = new(block, opSpecHelper);
         OptimismReceiptForRpc result =
             receipt is OptimismTxReceipt optimismTxReceipt
                 ? new OptimismReceiptForRpc(
@@ -204,7 +212,7 @@ public class OptimismEthRpcModule(
         }
 
         Block block = searchResult.Object;
-        if (positionIndex < 0 || positionIndex > block!.Transactions.Length - 1)
+        if (positionIndex >= block!.Transactions.Length)
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
@@ -212,9 +220,7 @@ public class OptimismEthRpcModule(
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        var receipt = _receiptFinder
-            .Get(block)
-            .FirstOrDefault(r => r.TxHash == transaction.Hash);
+        TxReceipt? receipt = TryGetMatchingReceipt(_receiptFinder.Get(block), transaction, (int)positionIndex);
 
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction,
@@ -249,7 +255,7 @@ public class OptimismEthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc result = new BlockForRpc(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
+        BlockForRpc result = new(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
 
         if (returnFullTransactionObjects)
         {
@@ -266,6 +272,7 @@ public class OptimismEthRpcModule(
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = transactions[i];
+                    TxReceipt? receipt = TryGetMatchingReceipt(receipts, tx, i);
                     TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(
                         tx,
                         new(
@@ -275,12 +282,11 @@ public class OptimismEthRpcModule(
                             txIndex: i,
                             blockTimestamp: block.Timestamp,
                             baseFee: block.BaseFeePerGas,
-                            receipt: receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false)));
+                            receipt: receipt));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)
                     {
-                        OptimismTxReceipt? receipt = receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false) as OptimismTxReceipt;
-                        depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
+                        depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
                     }
 
                     txs[i] = rpcTx;
@@ -291,5 +297,30 @@ public class OptimismEthRpcModule(
         }
 
         return ResultWrapper<BlockForRpc?>.Success(result);
+    }
+
+    private static TxReceipt? TryGetMatchingReceipt(TxReceipt[] receipts, Transaction tx, int txIndex)
+    {
+        TxReceipt? indexedReceipt = txIndex < receipts.Length ? receipts[txIndex] : null;
+        if (indexedReceipt?.TxHash == tx.Hash)
+        {
+            return indexedReceipt;
+        }
+
+        if (tx.Hash is not Hash256 txHash)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            TxReceipt receipt = receipts[i];
+            if (receipt.TxHash == txHash)
+            {
+                return receipt;
+            }
+        }
+
+        return null;
     }
 }

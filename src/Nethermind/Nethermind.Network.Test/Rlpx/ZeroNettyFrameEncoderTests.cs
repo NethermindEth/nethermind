@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.Rlpx
         [SetUp]
         public void Setup()
         {
-            var (A, _) = NetTestVectors.GetSecretsPair();
+            (EncryptionSecrets A, EncryptionSecrets _) = NetTestVectors.GetSecretsPair();
 
             _frameCipher = new FrameCipher(A.AesSecret);
             _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, A);

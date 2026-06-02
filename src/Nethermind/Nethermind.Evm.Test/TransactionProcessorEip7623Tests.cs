@@ -41,10 +41,7 @@ public class TransactionProcessorEip7623Tests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _worldStateCloser?.Dispose();
-    }
+    public void TearDown() => _worldStateCloser?.Dispose();
 
     [TestCase(21006, false, TestName = "GasLimit=IntrinsicGas")]
     [TestCase(21010, true, TestName = "GasLimit=FloorGas")]

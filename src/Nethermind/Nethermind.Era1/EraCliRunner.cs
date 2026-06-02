@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Logging;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 

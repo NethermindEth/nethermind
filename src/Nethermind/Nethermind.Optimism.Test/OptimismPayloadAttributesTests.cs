@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -36,8 +37,8 @@ public class OptimismPayloadAttributesTests
     [TestCaseSource(nameof(PayloadIdTestCases))]
     public void Compute_PayloadID_with_EIP1559Params((string HexStringEIP1559Params, string PayloadId) testCase)
     {
-        var blockHeader = Build.A.BlockHeader.TestObject;
-        var payloadAttributes = new OptimismPayloadAttributes
+        BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
+        OptimismPayloadAttributes payloadAttributes = new()
         {
             GasLimit = 1,
             Transactions = [],
@@ -66,7 +67,7 @@ public class OptimismPayloadAttributesTests
         [ValueSource(typeof(Fork), nameof(Fork.AllAndNextToGenesis))] Fork fork
     )
     {
-        var payloadAttributes = new OptimismPayloadAttributes
+        OptimismPayloadAttributes payloadAttributes = new()
         {
             GasLimit = 1,
             Transactions = [],
@@ -81,7 +82,7 @@ public class OptimismPayloadAttributesTests
         ISpecProvider spec = Spec.BuildFor(fork.Timestamp);
 
         Assert.That(
-            payloadAttributes.Validate(spec, EngineApiVersions.Fcu.V3, out var error),
+            payloadAttributes.Validate(spec, EngineApiVersions.Fcu.V3, out string? error),
             testCase.isValid.On(fork.Timestamp)
                 ? Is.EqualTo(PayloadAttributesValidationResult.Success)
                 : Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes),

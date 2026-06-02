@@ -20,7 +20,7 @@ public static class EncodingExtensions
     {
         try
         {
-            var charsUsed = encoding.GetChars(sequence, chars);
+            int charsUsed = encoding.GetChars(sequence, chars);
             completed = true;
             return new(chars[..charsUsed]);
         }

@@ -13,28 +13,19 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public abstract class VersionedContract<T> : IActivatedAtBlock where T : IVersionedContract
+    public abstract class VersionedContract<T>(IDictionary<UInt256, T> versions, LruCache<ValueHash256, UInt256> cache, long activation, ILogManager logManager) : IActivatedAtBlock where T : IVersionedContract
     {
-        private readonly IDictionary<UInt256, T> _versions;
+        private readonly IDictionary<UInt256, T> _versions = versions ?? throw new ArgumentNullException(nameof(versions));
 
-        private readonly IVersionedContract _versionSelectorContract;
-        private readonly LruCache<ValueHash256, UInt256> _versionsCache;
-        private readonly ILogger _logger;
-
-        protected VersionedContract(IDictionary<UInt256, T> versions, LruCache<ValueHash256, UInt256> cache, long activation, ILogManager logManager)
-        {
-            _versions = versions ?? throw new ArgumentNullException(nameof(versions));
-            _versionSelectorContract = versions.Values.Last();
-            Activation = activation;
-            _versionsCache = cache ?? throw new ArgumentNullException(nameof(cache));
-            _logger = logManager.GetClassLogger(typeof(VersionedContract<>));
-        }
+        private readonly IVersionedContract _versionSelectorContract = versions.Values.Last();
+        private readonly LruCache<ValueHash256, UInt256> _versionsCache = cache ?? throw new ArgumentNullException(nameof(cache));
+        private readonly ILogger _logger = logManager.GetClassLogger(typeof(VersionedContract<>));
 
         public T? ResolveVersion(BlockHeader blockHeader)
         {
             this.BlockActivationCheck(blockHeader);
 
-            if (!_versionsCache.TryGet(blockHeader.Hash, out var versionNumber))
+            if (!_versionsCache.TryGet(blockHeader.Hash, out UInt256 versionNumber))
             {
                 try
                 {
@@ -52,8 +43,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return ResolveVersion(versionNumber);
         }
 
-        private T? ResolveVersion(in UInt256 versionNumber) => _versions.TryGetValue(versionNumber, out var contract) ? contract : default;
+        private T? ResolveVersion(in UInt256 versionNumber) => _versions.TryGetValue(versionNumber, out T contract) ? contract : default;
 
-        public long Activation { get; }
+        public long Activation { get; } = activation;
     }
 }

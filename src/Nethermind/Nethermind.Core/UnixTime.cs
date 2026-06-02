@@ -11,22 +11,14 @@ namespace Nethermind.Core
     ///
     /// This struct achieves the same with a slightly neater code.
     /// </summary>
-    public readonly struct UnixTime
+    public readonly struct UnixTime(DateTimeOffset dateTime)
     {
-        private readonly DateTimeOffset _offset;
+        private readonly DateTimeOffset _offset = dateTime;
 
-        public static UnixTime FromSeconds(double seconds)
-        {
-            return new(DateTime.UnixEpoch.Add(TimeSpan.FromSeconds(seconds)));
-        }
+        public static UnixTime FromSeconds(double seconds) => new(DateTime.UnixEpoch.Add(TimeSpan.FromSeconds(seconds)));
 
         public UnixTime(DateTime dateTime) : this(new DateTimeOffset(dateTime))
         {
-        }
-
-        public UnixTime(DateTimeOffset dateTime)
-        {
-            _offset = dateTime;
         }
 
         public ulong Seconds => (ulong)SecondsLong;

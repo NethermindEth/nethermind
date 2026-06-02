@@ -7,45 +7,35 @@ using System.Collections.Generic;
 
 namespace Nethermind.Config
 {
-    public class ArgsConfigSource : IConfigSource
+    public class ArgsConfigSource(Dictionary<string, string> args) : IConfigSource
     {
-        private readonly Dictionary<string, string> _args;
+        private readonly Dictionary<string, string> _args = new(args, StringComparer.OrdinalIgnoreCase);
 
-        public ArgsConfigSource(Dictionary<string, string> args)
+        public (bool IsSet, object? Value) GetValue(Type type, string category, string name)
         {
-            _args = new Dictionary<string, string>(args, StringComparer.OrdinalIgnoreCase);
+            (bool isSet, string? value) = GetRawValue(category?.Replace("Config", string.Empty)!, name);
+            return (isSet, isSet ? ConfigSourceHelper.ParseValue(type, value!, category, name) : ConfigSourceHelper.GetDefault(type));
         }
 
-        public (bool IsSet, object Value) GetValue(Type type, string category, string name)
+        public (bool IsSet, string? Value) GetRawValue(string category, string name)
         {
-            (bool isSet, string value) = GetRawValue(category?.Replace("Config", string.Empty), name);
-            return (isSet, isSet ? ConfigSourceHelper.ParseValue(type, value, category, name) : ConfigSourceHelper.GetDefault(type));
-        }
-
-        public (bool IsSet, string Value) GetRawValue(string category, string name)
-        {
-            var variableName = string.IsNullOrEmpty(category) ? name : $"{category}.{name}";
+            string variableName = string.IsNullOrEmpty(category) ? name : $"{category}.{name}";
             bool isSet = _args.ContainsKey(variableName);
             return (isSet, isSet ? _args[variableName] : null);
         }
 
-        public IEnumerable<(string Category, string Name)> GetConfigKeys()
-        {
-            var argsPairs = _args.Keys.Select(static k => k.Split('.')).Select(static a =>
-            {
-                if (a.Length == 0)
+        public IEnumerable<(string? Category, string Name)> GetConfigKeys() =>
+            _args.Keys
+                .Select(static k => k.Split('.'))
+                .Where(static a => a.Length > 0)
+                .Select(static a =>
                 {
-                    return (null, null);
-                }
-                if (a.Length == 1)
-                {
-                    return (null, a[0]);
-                }
+                    if (a.Length == 1)
+                    {
+                        return ((string?)null, a[0]);
+                    }
 
-                return (a[0], a[1]);
-            });
-
-            return argsPairs;
-        }
+                    return (a[0], a[1]);
+                });
     }
 }

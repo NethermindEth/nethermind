@@ -39,7 +39,7 @@ public class SimulateBlockValidationTransactionsExecutor(
             processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation;
         }
 
-        var result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+        TxReceipt[] result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
 
         // Many gas calculation not done with skip validation, but needed for response
         long currentGasUsedTotal = 0;

@@ -20,11 +20,9 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
-using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Threading.Tasks;
 using Module = Autofac.Module;
 
 namespace Nethermind.Xdc.Test.Helpers;
@@ -52,7 +50,6 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
 
             // add missing components
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
-            .AddSingleton<IForensicsProcessor, TrustyForensics>()
 
             // Environments
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
@@ -77,7 +74,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
         // Yep... this global thing need to work.
         builder.RegisterBuildCallback((_) =>
         {
-            var assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
+            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
             if (assembly is not null)
                 Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
         });
@@ -85,10 +82,10 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
 
     internal class RandomPenaltyHandler(ISpecProvider specProvider) : IPenaltyHandler
     {
-        readonly Dictionary<Hash256, Address[]> _penaltiesCache = new();
+        readonly Dictionary<Hash256, Address[]> _penaltiesCache = [];
         public Address[] Penalize(long number, Hash256 currentHash, Address[] candidates, int count = 2)
         {
-            var spec = specProvider.GetFinalSpec() as IXdcReleaseSpec ?? throw new ArgumentException("Must have XDC spec configured.");
+            IXdcReleaseSpec spec = specProvider.GetFinalSpec() as IXdcReleaseSpec ?? throw new ArgumentException("Must have XDC spec configured.");
             if (number == spec.SwitchBlock)
             {
                 return Array.Empty<Address>();
@@ -97,8 +94,8 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             {
                 return _penaltiesCache[currentHash];
             }
-            var nodesCount = candidates.Length;
-            List<Address> penalized = new();
+            int nodesCount = candidates.Length;
+            List<Address> penalized = [];
 
             Random rand = new();
             while (penalized.Count < count && penalized.Count < nodesCount)
@@ -114,46 +111,4 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             => Penalize(number, currentHash, candidates, 7);
     }
 
-    internal class TrustyForensics : IForensicsProcessor
-    {
-        public Task DetectEquivocationInVotePool(Vote vote, IEnumerable<Vote> votePool)
-        {
-            return Task.CompletedTask;
-        }
-
-        public (Hash256 AncestorHash, IList<string> FirstPath, IList<string> SecondPath) FindAncestorBlockHash(BlockRoundInfo firstBlockInfo, BlockRoundInfo secondBlockInfo)
-        {
-            return (Hash256.Zero, new List<string>(), new List<string>());
-        }
-
-        public Task ForensicsMonitoring(IEnumerable<XdcBlockHeader> headerQcToBeCommitted, QuorumCertificate incomingQC)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task ProcessForensics(QuorumCertificate incomingQC)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task ProcessVoteEquivocation(Vote incomingVote)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task SendForensicProof(QuorumCertificate firstQc, QuorumCertificate secondQc)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task SendVoteEquivocationProof(Vote vote1, Vote vote2, Address signer)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task SetCommittedQCs(IEnumerable<XdcBlockHeader> headers, QuorumCertificate incomingQC)
-        {
-            return Task.CompletedTask;
-        }
-    }
 }

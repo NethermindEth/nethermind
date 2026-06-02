@@ -11,9 +11,6 @@ namespace Nethermind.JsonRpc.Test.Data
     public class KeccakConverterTests : SerializationTestBase
     {
         [Test]
-        public void Can_do_roundtrip()
-        {
-            TestRoundtrip(TestItem.KeccakA);
-        }
+        public void Can_do_roundtrip() => TestRoundtrip(TestItem.KeccakA);
     }
 }

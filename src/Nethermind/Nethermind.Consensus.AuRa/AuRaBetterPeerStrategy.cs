@@ -7,16 +7,10 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Consensus.AuRa;
 
-public class AuRaBetterPeerStrategy : IBetterPeerStrategy
+public class AuRaBetterPeerStrategy(IBetterPeerStrategy betterPeerStrategy, ILogManager logManager) : IBetterPeerStrategy
 {
-    private readonly IBetterPeerStrategy _betterPeerStrategy;
-    private readonly ILogger _logger;
-
-    public AuRaBetterPeerStrategy(IBetterPeerStrategy betterPeerStrategy, ILogManager logManager)
-    {
-        _betterPeerStrategy = betterPeerStrategy;
-        _logger = logManager.GetClassLogger<AuRaBetterPeerStrategy>();
-    }
+    private readonly IBetterPeerStrategy _betterPeerStrategy = betterPeerStrategy;
+    private readonly ILogger _logger = logManager.GetClassLogger<AuRaBetterPeerStrategy>();
 
     public int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY)
         => _betterPeerStrategy.Compare(valueX, valueY);

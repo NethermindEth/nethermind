@@ -30,10 +30,7 @@ namespace Nethermind.Db
 #endif
 
         public MemDb(string name)
-            : this(0, 0)
-        {
-            Name = name;
-        }
+            : this(0, 0) => Name = name;
 
         public static MemDb CopyFrom(IDb anotherDb)
         {
@@ -95,8 +92,8 @@ namespace Nethermind.Db
 
         public virtual IWriteBatch StartWriteBatch() => this.LikeABatch();
 
-        public ICollection<byte[]> Keys => _db.Keys;
-        public ICollection<byte[]> Values => _db.Values;
+        public ICollection<byte[]> Keys => _db.Select(static kvp => kvp.Key).ToArray();
+        public ICollection<byte[]> Values => _db.Select(static kvp => kvp.Value).ToArray()!;
 
         public int Count => _db.Count;
 

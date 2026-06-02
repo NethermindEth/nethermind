@@ -77,8 +77,8 @@ namespace Nethermind.TxPool
         private ulong _txIndex;
 
         private readonly ITimer? _timer;
-        private Transaction[]? _transactionSnapshot;
-        private Transaction[]? _blobTransactionSnapshot;
+        private volatile Transaction[]? _transactionSnapshot;
+        private volatile Transaction[]? _blobTransactionSnapshot;
         private long _lastBlockNumber = -1;
         private Hash256? _lastBlockHash;
 
@@ -208,6 +208,9 @@ namespace Nethermind.TxPool
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
             _transactions.GetBucketSnapshot(address);
 
+        public Transaction[] GetPendingLightBlobTransactionsBySender(Address address) =>
+            _blobTransactions.GetBucketSnapshot(address);
+
         // only for testing reasons
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
 
@@ -229,10 +232,7 @@ namespace Nethermind.TxPool
             byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs)
             => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
 
-        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
-        {
-            RemovePendingDelegations(args.Value);
-        }
+        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args) => RemovePendingDelegations(args.Value);
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing)
@@ -272,10 +272,6 @@ namespace Nethermind.TxPool
             {
                 while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                 {
-                    // Clear snapshot
-                    _transactionSnapshot = null;
-                    _blobTransactionSnapshot = null;
-
                     _newHeadLock.EnterWriteLock();
                     try
                     {
@@ -315,15 +311,18 @@ namespace Nethermind.TxPool
                     }
                     finally
                     {
+                        // Snapshot must be cleared inside the write lock so readers cannot
+                        // regenerate it from a partially-updated _transactions collection.
+                        // Placed in finally to guarantee clearing even if an exception occurs
+                        // mid-update (otherwise readers could see a stale snapshot).
+                        _transactionSnapshot = null;
+                        _blobTransactionSnapshot = null;
                         _newHeadLock.ExitWriteLock();
                     }
                 }
             }
 
-            bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
-            {
-                return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
-            }
+            bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges) => accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
         }
 
         private void ReAddReorganisedTransactions(Block? previousBlock)
@@ -460,9 +459,11 @@ namespace Nethermind.TxPool
                 // Also skip announcing if peer's head number is shown as 0 as then we don't know peer's head block yet
                 if (peer.HeadNumber != 0 && peer.HeadNumber < _headInfo.HeadNumber + 16)
                 {
-                    _broadcaster.AnnounceOnce(peer, _transactionSnapshot ??= _transactions.GetSnapshot());
-                    _broadcaster.AnnounceOnce(peer, _blobTransactionSnapshot ??= _blobTransactions.GetSnapshot());
-                    if (_logger.IsTrace) _logger.Trace($"Announced {_transactionSnapshot.Length} txs and {_blobTransactionSnapshot.Length} blob txs to peer {peer}");
+                    Transaction[] txSnapshot = _transactionSnapshot ??= _transactions.GetSnapshot();
+                    Transaction[] blobTxSnapshot = _blobTransactionSnapshot ??= _blobTransactions.GetSnapshot();
+                    _broadcaster.AnnounceOnce(peer, txSnapshot);
+                    _broadcaster.AnnounceOnce(peer, blobTxSnapshot);
+                    if (_logger.IsTrace) _logger.Trace($"Announced {txSnapshot.Length} txs and {blobTxSnapshot.Length} blob txs to peer {peer}");
                 }
                 else
                 {
@@ -553,7 +554,7 @@ namespace Nethermind.TxPool
             TryConvertProofVersion(tx);
 
             TxFilteringState state = new(tx, _accounts);
-            AcceptTxResult accepted;
+            AcceptTxResult accepted = AcceptTxResult.Invalid;
 
             _newHeadLock.EnterReadLock();
             try
@@ -570,21 +571,22 @@ namespace Nethermind.TxPool
             }
             finally
             {
+                // Snapshot must be cleared inside the read lock so a concurrent reader
+                // cannot cache a snapshot taken between AddCore completing and the
+                // null-assignment (which would be missing the just-added tx).
+                if (accepted)
+                {
+                    if (tx.SupportsBlobs)
+                        _blobTransactionSnapshot = null;
+                    else
+                        _transactionSnapshot = null;
+                }
                 _newHeadLock.ExitReadLock();
             }
 
             if (accepted != AcceptTxResult.Invalid)
             {
                 _retryCache.Received(tx.Hash!);
-            }
-
-            if (accepted)
-            {
-                // Clear proper snapshot
-                if (tx.SupportsBlobs)
-                    _blobTransactionSnapshot = null;
-                else
-                    _transactionSnapshot = null;
             }
 
             return accepted;
@@ -728,7 +730,7 @@ namespace Nethermind.TxPool
         {
             if (transaction.HasAuthorizationList)
             {
-                foreach (var auth in transaction.AuthorizationList)
+                foreach (AuthorizationTuple auth in transaction.AuthorizationList)
                 {
                     if (auth.Authority is not null)
                         _pendingDelegations.DecrementDelegationCount(auth.Authority!);
@@ -1042,7 +1044,7 @@ namespace Nethermind.TxPool
 
             public bool TryGetAccount(Address address, out AccountStruct account)
             {
-                var cache = _caches[GetCacheIndex(address)];
+                ClockCache<AddressAsKey, AccountStruct> cache = _caches[GetCacheIndex(address)];
                 if (!cache.TryGet(new AddressAsKey(address), out account))
                 {
                     if (!_provider.TryGetAccount(address, out account))
@@ -1060,9 +1062,7 @@ namespace Nethermind.TxPool
                 return true;
             }
 
-            public void RemoveAccounts(ArrayPoolList<AddressAsKey> address)
-            {
-                Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
+            public void RemoveAccounts(ArrayPoolList<AddressAsKey> address) => Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
                     n =>
                     {
                         ClockCache<AddressAsKey, AccountStruct> cache = _caches[n.Key];
@@ -1072,7 +1072,6 @@ namespace Nethermind.TxPool
                         }
                     }
                 );
-            }
 
             private static int GetCacheIndex(Address address) => address.Bytes[^1] & 0xf;
 
@@ -1164,10 +1163,7 @@ Db usage:
         }
 
         // Cleanup ArrayPoolList AccountChanges as they are not used anywhere else
-        private static void DisposeBlockAccountChanges(Block block)
-        {
-            block.DisposeAccountChanges();
-        }
+        private static void DisposeBlockAccountChanges(Block block) => block.DisposeAccountChanges();
     }
 }
 
