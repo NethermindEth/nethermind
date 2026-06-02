@@ -1464,12 +1464,16 @@ namespace Nethermind.Serialization.Rlp
                 {
                     if (PeekByte() == OfEmptyList[0])
                     {
+                        if (!allowNulls)
+                            RlpHelpers.ThrowNullArrayElement(i);
+
                         result[i] = defaultElement;
                         Position++;
                     }
                     else
                     {
                         result[i] = decoder.Decode(ref this);
+
                         if (!allowNulls && result[i] is null)
                             RlpHelpers.ThrowNullArrayElement(i);
                     }
