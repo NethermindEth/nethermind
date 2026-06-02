@@ -301,17 +301,6 @@ public partial class BlockAccessListManager
     /// column-index fast path (no lane rows land for it on either side) but must still be
     /// rejected — <see cref="ValidateBlockAccessList"/>'s fallback walk catches it.
     /// </summary>
-    /// <remarks>
-    /// This is the read-only-account analogue of <see cref="IsToleratedGeneratedOnlyAccount"/>:
-    /// both decide whether a generated-only account (present in generated, absent from suggested)
-    /// is benign, but they tolerate slightly different sets. This predicate tolerates <em>any</em>
-    /// storage-read row, whereas <see cref="IsToleratedGeneratedOnlyAccount"/> keys off
-    /// <c>hasChargeableReads</c>; neither tolerates system contracts. The asymmetry is safe because
-    /// account-set presence is independently backstopped on both validation paths — the parallel
-    /// path by <see cref="ValidateStructuralEquivalence"/> (called from the verify-only branch of
-    /// <c>SetBlockAccessList</c>) and the sequential path by the <c>BlockAccessListHash</c>
-    /// recompute — so a missed account here cannot make an invalid block validate.
-    /// </remarks>
     private static bool HasRequiredReadAccountMissing(BlockAccessListAtIndex slice, BlockAccessListValidationIndex suggestedValidationIndex)
     {
         foreach (AccountChangesAtIndex ac in slice.AccountChanges)
@@ -336,22 +325,10 @@ public partial class BlockAccessListManager
         => address == Eip7002Constants.WithdrawalRequestPredeployAddress
         || address == Eip7251Constants.ConsolidationRequestPredeployAddress;
 
-    /// <summary>
-    /// Whether an account present in generated but absent from suggested is tolerated at this tx
-    /// index rather than reported as a missing-account mismatch. Allowed only when it has no state
-    /// changes at this index and is either the system-user read at index 0 or carries chargeable
-    /// storage reads — read-only entries the suggested BAL may legitimately omit.
-    /// </summary>
     private static bool IsToleratedGeneratedOnlyAccount(Address address, uint index, bool hasNoChangesAtIndex, bool hasChargeableReads)
         => hasNoChangesAtIndex
         && ((index == 0 && address == Address.SystemUser && !hasChargeableReads) || hasChargeableReads);
 
-    /// <summary>
-    /// Shared by all three validation paths: charging the surplus of suggested-over-generated
-    /// chargeable storage reads at <see cref="Eip7928Constants.ItemCost"/> must not exceed the gas
-    /// the block had left. <paramref name="validateStorageReads"/> is false on non-final txs of a
-    /// gas-validation chunk, where the running surplus isn't yet meaningful.
-    /// </summary>
     private void ThrowIfStorageReadBudgetExceeded(Block block, int surplusReads, bool validateStorageReads)
     {
         if (validateStorageReads && surplusReads > 0 && _gasRemaining < surplusReads * Eip7928Constants.ItemCost)
