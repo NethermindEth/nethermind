@@ -9,20 +9,16 @@ using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroFrameMerger : ByteToMessageDecoder
+    public class ZeroFrameMerger(ILogManager logManager) : ByteToMessageDecoder
     {
-        private readonly ILogger _logger;
+        private readonly ILogger _logger = logManager?.GetClassLogger<ZeroFrameMerger>() ?? throw new ArgumentNullException(nameof(logManager));
 
         private ZeroPacket? _zeroPacket;
         private readonly FrameHeaderReader _headerReader = new();
-
-        public ZeroFrameMerger(ILogManager logManager)
-        {
-            _logger = logManager?.GetClassLogger<ZeroFrameMerger>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
 
         public override void HandlerRemoved(IChannelHandlerContext context)
         {
@@ -48,10 +44,24 @@ namespace Nethermind.Network.Rlpx
             FrameHeaderReader.FrameInfo frame = _headerReader.ReadFrameHeader(input);
             if (frame.IsFirst)
             {
+                if (_zeroPacket is not null)
+                {
+                    // Offending frame is intentionally not processed: the CorruptedFrameException
+                    // propagates up the pipeline and closes the peer connection.
+                    _zeroPacket.Release();
+                    _zeroPacket = null;
+                    throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a new first chunk before the in-progress packet completed");
+                }
+
                 ReadFirstChunk(context, input, frame);
             }
             else
             {
+                if (_zeroPacket is null)
+                {
+                    throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a continuation chunk with no in-progress packet");
+                }
+
                 ReadChunk(input, frame);
             }
 
@@ -69,41 +79,37 @@ namespace Nethermind.Network.Rlpx
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
-        {
-            input.ReadBytes(_zeroPacket.Content, frame.Size);
-        }
+        private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame) => input.ReadBytes(_zeroPacket.Content, frame.Size);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
-            byte packetTypeRlp = input.ReadByte();
+            Rlp.ValueDecoderContext rlpContext = new(input.AsSpan());
+            ulong rlpPacketType = rlpContext.DecodeULong();
+            int read = rlpContext.Position;
+            input.SkipBytes(read);
             IByteBuffer content;
             if (frame.IsChunked)
             {
-                content = context.Allocator.Buffer(frame.TotalPacketSize - 1);
+                content = context.Allocator.Buffer(frame.TotalPacketSize - read);
             }
             else
             {
-                content = input.ReadRetainedSlice(frame.Size - 1);
+                content = input.ReadRetainedSlice(frame.Size - read);
             }
 
-            _zeroPacket = new ZeroPacket(content);
-            _zeroPacket.PacketType = GetPacketType(packetTypeRlp);
+            _zeroPacket = new ZeroPacket(content)
+            {
+                PacketType = (byte)rlpPacketType
+            };
 
-            // If not chunked then we already used a slice of the input,
+            // If not chunked, then we already used a slice of the input,
             // otherwise we need to read into the freshly allocated buffer.
             if (frame.IsChunked)
             {
-                input.ReadBytes(_zeroPacket.Content, frame.Size - 1);
+                input.ReadBytes(_zeroPacket.Content, frame.Size - read);
                 // do not call Release since the input buffer is managed by
             }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte GetPacketType(byte packetTypeRlp)
-        {
-            return packetTypeRlp == 128 ? (byte)0 : packetTypeRlp;
         }
     }
 }

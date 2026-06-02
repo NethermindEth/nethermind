@@ -8,18 +8,13 @@ namespace Nethermind.Network.Enr;
 /// <summary>
 /// https://github.com/ethereum/devp2p/blob/master/enr-entries/eth.md
 /// </summary>
-public class EthEntry : EnrContentEntry<ForkId>
+public class EthEntry(byte[] forkHash, long nextBlock) : EnrContentEntry<ForkId>(new ForkId(forkHash, nextBlock))
 {
-    public EthEntry(byte[] forkHash, long nextBlock) : base(new ForkId(forkHash, nextBlock)) { }
-
     public override string Key => EnrContentKey.Eth;
 
-    protected override int GetRlpLengthOfValue()
-    {
-        return Rlp.LengthOfSequence(
+    protected override int GetRlpLengthOfValue() => Rlp.LengthOfSequence(
                 Rlp.LengthOfSequence(
                     5 + Rlp.LengthOf(Value.NextBlock)));
-    }
 
     protected override void EncodeValue(RlpStream rlpStream)
     {

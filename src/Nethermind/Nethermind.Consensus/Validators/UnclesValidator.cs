@@ -12,18 +12,11 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.Validators
 {
     [Todo(Improve.Performance, "We execute the search up the tree twice - once for IsKin and once for HasAlreadyBeenIncluded")]
-    public class UnclesValidator : IUnclesValidator
+    public class UnclesValidator(IBlockTree? blockTree, IHeaderValidator? headerValidator, ILogManager? logManager) : IUnclesValidator
     {
-        private readonly IBlockTree _blockTree;
-        private readonly IHeaderValidator _headerValidator;
-        private readonly ILogger _logger;
-
-        public UnclesValidator(IBlockTree? blockTree, IHeaderValidator? headerValidator, ILogManager? logManager)
-        {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
-        }
+        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        private readonly IHeaderValidator _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
+        private readonly ILogger _logger = logManager?.GetClassLogger<UnclesValidator>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public bool Validate(BlockHeader header, BlockHeader[] uncles)
         {
@@ -42,9 +35,10 @@ namespace Nethermind.Consensus.Validators
             for (int i = 0; i < uncles.Length; i++)
             {
                 BlockHeader uncle = uncles[i];
-                if (!_headerValidator.Validate(uncle, true, out _))
+                BlockHeader? uncleParent = _blockTree.FindParentHeader(uncle, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (!_headerValidator.Validate(uncle, uncleParent, true, out string? err))
                 {
-                    _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle's header invalid");
+                    _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle's header invalid. Error: {err}");
                     return false;
                 }
 

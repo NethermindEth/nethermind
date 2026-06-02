@@ -5,10 +5,7 @@ using System;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -18,11 +15,11 @@ namespace Nethermind.State;
 public class BlockingVerifyTrie
 {
     private readonly ILogger _logger;
+
     private readonly ITrieStore _trieStore;
     private readonly IStateReader _stateReader;
     private readonly IDb _codeDb;
     private readonly ILogManager _logManager;
-    private readonly ProgressLogger _progressLogger;
 
     public BlockingVerifyTrie(
         ITrieStore trieStore,
@@ -40,7 +37,6 @@ public class BlockingVerifyTrie
         _codeDb = codeDb;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<BlockingVerifyTrie>();
-        _progressLogger = new ProgressLogger("Trie Verification", logManager);
     }
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
@@ -48,20 +44,7 @@ public class BlockingVerifyTrie
         // This is to block processing as with halfpath old nodes will be removed
         using IDisposable _ = _trieStore.BeginScope(stateAtBlock);
 
-        Hash256 rootNode = stateAtBlock.StateRoot;
-
-        if (_logger.IsInfo) _logger.Info($"Starting trie verification for block {stateAtBlock.Number} with state root {rootNode}");
-
-        // Initialize progress logger
-        _progressLogger.Reset(0, 0); // We'll update as we go since we don't know total nodes upfront
-
-        TrieStats stats = _stateReader.CollectStats(rootNode, _codeDb, _logManager, _progressLogger, cancellationToken);
-
-        // Update progress logger with final stats
-        _progressLogger.Update(stats.NodesCount);
-        _progressLogger.MarkEnd();
-        _progressLogger.LogProgress();
-
+        TrieStats stats = _stateReader.CollectStats(stateAtBlock, _codeDb, _logManager, cancellationToken);
         if (stats.MissingNodes > 0)
         {
             if (_logger.IsError) _logger.Error($"Missing node found!");

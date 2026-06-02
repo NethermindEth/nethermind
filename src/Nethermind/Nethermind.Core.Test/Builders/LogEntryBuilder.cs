@@ -11,10 +11,7 @@ namespace Nethermind.Core.Test.Builders
         private byte[] _data = [];
         private Hash256[] _topics = new[] { Keccak.Zero };
 
-        public LogEntryBuilder()
-        {
-            Build();
-        }
+        public LogEntryBuilder() => Build();
 
         public LogEntryBuilder WithAddress(Address address)
         {

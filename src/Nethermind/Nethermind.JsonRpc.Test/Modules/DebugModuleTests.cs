@@ -4,17 +4,19 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -28,6 +30,7 @@ using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -35,102 +38,117 @@ namespace Nethermind.JsonRpc.Test.Modules;
 [Parallelizable(ParallelScope.Self)]
 public class DebugModuleTests
 {
-    private readonly IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
-    private readonly ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-    private readonly IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
-    private readonly IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-    private readonly IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+    private readonly IJsonRpcConfig _jsonRpcConfig = new JsonRpcConfig();
+    private readonly ISpecProvider _specProvider = SpecProviderSubstitute.Create();
+    private readonly IDebugBridge _debugBridge = Substitute.For<IDebugBridge>();
+    private readonly IBlockFinder _blockFinder = Substitute.For<IBlockFinder>();
+    private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
 
-    private DebugRpcModule CreateDebugRpcModule(IDebugBridge customDebugBridge)
-    {
-        return new(
+    private DebugRpcModule CreateDebugRpcModule(IDebugBridge customDebugBridge) => new(
             LimboLogs.Instance,
             customDebugBridge,
-            jsonRpcConfig,
-            specProvider,
-            blockchainBridge,
+            _jsonRpcConfig,
+            _specProvider,
+            _blockchainBridge,
             new BlocksConfig(),
-            blockFinder
+            _blockFinder
         );
+
+    [Test]
+    public void Debug_traceCallMany_streams_under_live_cancellation_token()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        _debugBridge
+            .GetBundleTraces(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(), Arg.Any<long?>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(static c => StreamBundles(c.ArgAt<CancellationToken>(3)));
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        TransactionBundle bundle = new() { Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressC }] };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            rpcModule.debug_traceCallMany([bundle, bundle], BlockParameter.Latest, new GethTraceOptions { Tracer = "callTracer" });
+
+        // The first inner sequence touches WaitHandle (throws ObjectDisposedException if the
+        // timeout CTS has been disposed). The second bundle throws unconditionally, so the
+        // call only succeeds if the result is a deferred sequence and we stop after the first.
+        using IEnumerator<IEnumerable<GethLikeTxTrace>> outer = result.Data.GetEnumerator();
+        Assert.That(outer.MoveNext(), Is.True);
+        Assert.That(outer.Current.Count(), Is.EqualTo(1));
+    }
+
+    private static IEnumerable<IEnumerable<GethLikeTxTrace>> StreamBundles(CancellationToken token)
+    {
+        yield return YieldTrace(token);
+        throw new InvalidOperationException("second bundle should not be enumerated — streaming was lost");
+    }
+
+    private static IEnumerable<GethLikeTxTrace> YieldTrace(CancellationToken token)
+    {
+        _ = token.WaitHandle;
+        yield return new GethLikeTxTrace();
     }
 
     [Test]
     public async Task Get_from_db()
     {
-        byte[] key = new byte[] { 1, 2, 3 };
-        byte[] value = new byte[] { 4, 5, 6 };
-        debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
+        byte[] key = [1, 2, 3];
+        byte[] value = [4, 5, 6];
+        _debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
         _ = Substitute.For<IConfigProvider>();
-        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        using var response =
-            await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key) as JsonRpcSuccessResponse;
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key);
 
-        byte[]? result = response?.Result as byte[];
+        RpcTest.AssertSuccess<byte[]>(response);
     }
 
     [Test]
     public async Task Get_from_db_null_value()
     {
-        debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[])null!);
+        _debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[])null!);
         _ = Substitute.For<IConfigProvider>();
-        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        byte[] key = new byte[] { 1, 2, 3 };
-        using var response =
-            await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key) as
-                JsonRpcSuccessResponse;
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        byte[] key = [1, 2, 3];
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key);
 
-        Assert.That(response, Is.Not.Null);
+        RpcTest.AssertSuccess<byte[]>(response);
     }
 
     [TestCase(1)]
     [TestCase(0x1)]
     public async Task Get_chain_level(object parameter)
     {
-        debugBridge.GetLevelInfo(1).Returns(
-            new ChainLevelInfo(
-                true,
-                new[]
-                {
-                    new BlockInfo(TestItem.KeccakA, 1000),
-                    new BlockInfo(TestItem.KeccakB, 1001),
-                }));
+        _debugBridge.GetLevelInfo(1).Returns(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1000), new BlockInfo(TestItem.KeccakB, 1001)));
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
-        var chainLevel = response?.Result as ChainLevelForRpc;
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter);
+        ChainLevelForRpc? chainLevel = RpcTest.AssertSuccess<ChainLevelForRpc>(response);
         Assert.That(chainLevel, Is.Not.Null);
-        Assert.That(chainLevel?.HasBlockOnMainChain, Is.EqualTo(true));
-        Assert.That(chainLevel?.BlockInfos.Length, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainLevel?.HasBlockOnMainChain, Is.True);
+            Assert.That(chainLevel?.BlockInfos.Length, Is.EqualTo(2));
+        }
     }
 
     [Test]
-    public async Task Get_block_rlp_by_hash()
-    {
-        BlockDecoder decoder = new();
-        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns(rlp.Bytes);
-
-        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", Keccak.Zero) as JsonRpcSuccessResponse;
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
-    }
-
-    [Test]
-    public async Task Get_raw_Header()
+    public async Task Get_raw_header()
     {
         HeaderDecoder decoder = new();
         Block blk = Build.A.Block.WithNumber(0).TestObject;
         Rlp rlp = decoder.Encode(blk.Header);
-        debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
+        _debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", 0) as JsonRpcSuccessResponse;
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", "0x");
+        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
     }
 
     [Test]
-    public async Task Get_block_rlp()
+    public async Task Get_raw_block_by_number()
     {
         BlockDecoder decoder = new();
         IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
@@ -138,27 +156,25 @@ public class DebugModuleTests
         localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", 1) as JsonRpcSuccessResponse;
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "0x1");
 
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
     }
 
     [Test]
-    public async Task Get_rawblock()
+    public async Task Get_raw_block_by_hash()
     {
         BlockDecoder decoder = new();
-        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
+        _debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns(rlp.Bytes);
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", 1) as JsonRpcSuccessResponse;
-
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero);
+        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
     }
 
     [Test]
-    public async Task Get_rawblock_named()
+    public async Task Get_raw_block_by_name()
     {
         BlockDecoder decoder = new();
         IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
@@ -166,44 +182,80 @@ public class DebugModuleTests
         localDebugBridge.GetBlockRlp(BlockParameter.Latest).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "latest") as JsonRpcSuccessResponse;
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "latest");
 
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
+    }
+
+    [TestCase("debug_getRawBlock", "0x1")]
+    public async Task Get_block_rlp_when_missing(string method, object parameter)
+    {
+        _debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, method, parameter);
+
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }
 
     [Test]
-    public async Task Get_block_rlp_when_missing()
+    public async Task Get_raw_block_by_hash_when_missing()
     {
-        debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
+        _debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).ReturnsNull();
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", 1) as JsonRpcErrorResponse;
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero);
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }
 
     [Test]
-    public async Task Get_rawblock_when_missing()
+    public async Task Get_raw_block_access_list()
     {
-        debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
+        Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
+        byte[] rawBal = [0xc0];
+        _debugBridge.GetBlock(BlockParameter.Latest).Returns(block);
+        _blockchainBridge.GetBlockAccessListRlp(block.Number, block.Hash!).Returns(ArrayMemoryManager.From(rawBal));
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", 1) as JsonRpcErrorResponse;
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        string serialized = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest");
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0xc0\",\"id\":67}"));
     }
 
-    [Test]
-    public async Task Get_block_rlp_by_hash_when_missing()
+    private static IEnumerable<TestCaseData> GetRawBlockAccessListErrorCases()
     {
-        BlockDecoder decoder = new();
-        _ = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).ReturnsNull();
+        yield return new TestCaseData(
+            (Action<IDebugBridge, IBlockchainBridge>)((debug, _) => debug.GetBlock(BlockParameter.Latest).ReturnsNull()),
+            ErrorCodes.BlockAccessListResourceNotFound)
+        { TestName = "Get_raw_block_access_list_when_missing_block" };
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", Keccak.Zero) as JsonRpcErrorResponse;
+        yield return new TestCaseData(
+            (Action<IDebugBridge, IBlockchainBridge>)((debug, _) =>
+                debug.GetBlock(BlockParameter.Latest).Returns(Build.A.Block.WithNumber(1).TestObject)),
+            ErrorCodes.BlockAccessListResourceNotFound)
+        { TestName = "Get_raw_block_access_list_when_unavailable_before_fork" };
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
+        yield return new TestCaseData(
+            (Action<IDebugBridge, IBlockchainBridge>)((debug, chain) =>
+            {
+                Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
+                debug.GetBlock(BlockParameter.Latest).Returns(block);
+                chain.GetBlockAccessListRlp(block.Number, block.Hash!).ReturnsNull();
+            }),
+            ErrorCodes.PrunedHistoryUnavailable)
+        { TestName = "Get_raw_block_access_list_when_pruned" };
+    }
+
+    [TestCaseSource(nameof(GetRawBlockAccessListErrorCases))]
+    public async Task Get_raw_block_access_list_error_cases(Action<IDebugBridge, IBlockchainBridge> setup, int expectedErrorCode)
+    {
+        setup(_debugBridge, _blockchainBridge);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest");
+
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(expectedErrorCode));
     }
 
     private BlockTree BuildBlockTree(Func<BlockTreeBuilder, BlockTreeBuilder>? builderOptions = null)
@@ -216,7 +268,7 @@ public class DebugModuleTests
     [Test]
     public void Debug_getBadBlocks_test()
     {
-        IBadBlockStore badBlocksStore = null!;
+        BadBlockStore badBlocksStore = null!;
         BlockTree blockTree = BuildBlockTree(b => b.WithBadBlockStore(badBlocksStore = new BadBlockStore(b.BadBlocksDb, 100)));
 
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -234,78 +286,82 @@ public class DebugModuleTests
         BlockDecoder decoder = new();
         _blocksDb.Set(block1.Hash ?? new Hash256("0x0"), decoder.Encode(block1).Bytes);
 
-        debugBridge.GetBadBlocks().Returns(badBlocksStore.GetAll());
+        _debugBridge.GetBadBlocks().Returns(badBlocksStore.GetAll());
 
         AddBlockResult result = blockTree.SuggestBlock(block1);
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         ResultWrapper<IEnumerable<BadBlock>> blocks = rpcModule.debug_getBadBlocks();
-        Assert.That(blocks.Data.Count, Is.EqualTo(1));
-        Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
-        Assert.That(blocks.Data.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
+        Assert.That(blocks.Data.Count(), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
+            Assert.That(blocks.Data.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
+        }
     }
 
     [Test]
     public void Debug_traceCall_test()
     {
-        GethTxTraceEntry entry = new();
-
-        entry.Storage = new Dictionary<string, string>
+        GethTxTraceEntry entry = new()
         {
-            {"1".PadLeft(64, '0'), "2".PadLeft(64, '0')},
-            {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
+            Storage = new Dictionary<string, string>
+            {
+                {"1".PadLeft(64, '0'), "2".PadLeft(64, '0')},
+                {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
+            },
+            Memory =
+            [
+                "5".PadLeft(64, '0'),
+                "6".PadLeft(64, '0')
+            ],
+            Stack = [],
+            Opcode = "STOP",
+            Gas = 22000,
+            GasCost = 1,
+            Depth = 1
         };
 
-        entry.Memory = new string[]
+        GethLikeTxTrace trace = new()
         {
-            "5".PadLeft(64, '0'),
-            "6".PadLeft(64, '0')
+            ReturnValue = Bytes.FromHexString("a2")
         };
-
-        entry.Stack = [];
-        entry.Opcode = "STOP";
-        entry.Gas = 22000;
-        entry.GasCost = 1;
-        entry.Depth = 1;
-
-        var trace = new GethLikeTxTrace();
-        trace.ReturnValue = Bytes.FromHexString("a2");
         trace.Entries.Add(entry);
 
-        GethTraceOptions gtOptions = new();
+        // Non-empty Tracer keeps debug_traceCall on the buffered path; struct-log default streams.
+        GethTraceOptions gtOptions = new() { Tracer = "callTracer" };
 
         Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressA).WithHash(TestItem.KeccakA).TestObject;
-        TransactionForRpc txForRpc = TransactionForRpc.FromTransaction(transaction);
 
-        debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
-        blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
-        blockFinder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
-        blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
-        blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        _debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
+        _blockFinder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);
-        var expected = ResultWrapper<GethLikeTxTrace>.Success(
-            new GethLikeTxTrace()
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(TransactionForRpc.FromTransaction(transaction), null, gtOptions);
+        ResultWrapper<GethLikeTxTrace> expected = ResultWrapper<GethLikeTxTrace>.Success(
+            new GethLikeTxTrace
             {
                 Failed = false,
-                Entries = new List<GethTxTraceEntry>()
-                {
-                    new GethTxTraceEntry()
+                Entries =
+                [
+                    new GethTxTraceEntry
                     {
                         Gas = 22000,
                         GasCost = 1,
                         Depth = 1,
-                        Memory = new string[]
-                        {
+                        Memory =
+                        [
                             "0000000000000000000000000000000000000000000000000000000000000005",
                             "0000000000000000000000000000000000000000000000000000000000000006"
-                        },
+                        ],
                         Opcode = "STOP",
                         ProgramCounter = 0,
                         Stack = [],
-                        Storage = new Dictionary<string, string>()
+                        Storage = new Dictionary<string, string>
                         {
                             {
                                 "0000000000000000000000000000000000000000000000000000000000000001",
@@ -317,20 +373,22 @@ public class DebugModuleTests
                             },
                         }
                     }
-                },
+                ],
                 Gas = 0,
-                ReturnValue = new byte[] { 162 }
+                ReturnValue = [162]
             }
         );
 
-        debugTraceCall.Should().BeEquivalentTo(expected);
+        Assert.That(debugTraceCall.Result, Is.EqualTo(expected.Result));
+        Assert.That(debugTraceCall.ErrorCode, Is.EqualTo(expected.ErrorCode));
+        Assert.That(JToken.Parse(JsonSerializer.Serialize(debugTraceCall.Data)), Is.EqualTo(JToken.Parse(JsonSerializer.Serialize(expected.Data))).Using(JToken.EqualityComparer));
     }
 
     [Test]
     public async Task Migrate_receipts()
     {
-        debugBridge.MigrateReceipts(Arg.Any<long>(), Arg.Any<long>()).Returns(true);
-        IDebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        _debugBridge.MigrateReceipts(Arg.Any<long>(), Arg.Any<long>()).Returns(true);
+        IDebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         string response = await RpcTest.TestSerializedRequest(rpcModule, "debug_migrateReceipts", 100);
         Assert.That(response, Is.Not.Null);
     }
@@ -338,47 +396,144 @@ public class DebugModuleTests
     [Test]
     public async Task Update_head_block()
     {
-        debugBridge.UpdateHeadBlock(Arg.Any<Hash256>());
-        IDebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        _debugBridge.UpdateHeadBlock(Arg.Any<Hash256>());
+        IDebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         await RpcTest.TestSerializedRequest(rpcModule, "debug_resetHead", TestItem.KeccakA);
-        debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
+        _debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
     }
 
-    [Test]
-    public void StandardTraceBlockToFile()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void StandardTraceBlockToFile(bool isBadBlock)
     {
-        var blockHash = Keccak.EmptyTreeHash;
+        Hash256 blockHash = Keccak.EmptyTreeHash;
 
         static IEnumerable<string> GetFileNames(Hash256 hash) =>
             new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
 
-        debugBridge
-            .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
-            .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
+        BlockHeader header = Build.A.BlockHeader.WithHash(blockHash).TestObject;
+        _blockFinder.FindHeader(blockHash).Returns(header);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
-        var rpcModule = CreateDebugRpcModule(debugBridge);
-        var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);
-        var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
+        if (isBadBlock)
+        {
+            _debugBridge
+                .TraceBadBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+                .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
+        }
+        else
+        {
+            _debugBridge
+                .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+                .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
+        }
 
-        actual.Should().BeEquivalentTo(expected);
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        ResultWrapper<IEnumerable<string>> actual = isBadBlock
+            ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
+            : rpcModule.debug_standardTraceBlockToFile(blockHash);
+
+        Assert.That(actual.Result, Is.EqualTo(Result.Success));
+        Assert.That(actual.ErrorCode, Is.Zero);
+        Assert.That(actual.Data, Is.EqualTo(GetFileNames(blockHash)));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void StandardTraceBlockToFile_returns_error_when_missing_block(bool isBadBlock)
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+
+        _blockFinder.FindHeader(blockHash).ReturnsNull();
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        ResultWrapper<IEnumerable<string>> actual = isBadBlock
+            ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
+            : rpcModule.debug_standardTraceBlockToFile(blockHash);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+        Assert.That(actual.Result.Error, Does.Contain("Cannot find header"));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void StandardTraceBlockToFile_returns_error_when_state_unavailable(bool isBadBlock)
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        BlockHeader header = Build.A.BlockHeader.WithHash(blockHash).WithNumber(100).TestObject;
+
+        _blockFinder.FindHeader(blockHash).Returns(header);
+        _blockchainBridge.HasStateForBlock(Arg.Is(header)).Returns(false);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        ResultWrapper<IEnumerable<string>> actual = isBadBlock
+            ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
+            : rpcModule.debug_standardTraceBlockToFile(blockHash);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        Assert.That(actual.Result.Error, Does.Contain("No state available"));
     }
 
     [Test]
-    public void StandardTraceBadBlockToFile()
+    public void Debug_intermediateRoots_returns_post_tx_roots_from_bridge()
     {
-        var blockHash = Keccak.EmptyTreeHash;
+        Hash256 blockHash = TestItem.KeccakA;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.FindHeader(blockHash).Returns(header);
+        _blockchainBridge.HasStateForBlock(Arg.Is(header)).Returns(true);
 
-        static IEnumerable<string> GetFileNames(Hash256 hash) =>
-            new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
+        Hash256[] expected = [TestItem.KeccakB, TestItem.KeccakC];
+        _debugBridge
+            .GetBlockIntermediateRoots(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions?>())
+            .Returns(expected);
 
-        debugBridge
-            .TraceBadBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
-            .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        ResultWrapper<IReadOnlyCollection<Hash256>> actual = rpcModule.debug_intermediateRoots(blockHash);
 
-        var rpcModule = CreateDebugRpcModule(debugBridge);
-        var actual = rpcModule.debug_standardTraceBadBlockToFile(blockHash);
-        var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(actual.Data, Is.EqualTo(expected));
+    }
 
-        actual.Should().BeEquivalentTo(expected);
+    private static IEnumerable<TestCaseData> IntermediateRootsErrorCases()
+    {
+        yield return new TestCaseData(
+            (Action<Hash256, IBlockFinder, IBlockchainBridge>)((blockHash, finder, _) =>
+                finder.FindHeader(blockHash).ReturnsNull()),
+            ErrorCodes.ResourceNotFound,
+            "Cannot find header")
+        { TestName = "block_not_found" };
+
+        yield return new TestCaseData(
+            (Action<Hash256, IBlockFinder, IBlockchainBridge>)((blockHash, finder, bridge) =>
+            {
+                BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+                finder.FindHeader(blockHash).Returns(header);
+                bridge.HasStateForBlock(Arg.Is(header)).Returns(false);
+            }),
+            ErrorCodes.ResourceUnavailable,
+            null)
+        { TestName = "state_unavailable" };
+    }
+
+    [TestCaseSource(nameof(IntermediateRootsErrorCases))]
+    public void Debug_intermediateRoots_fails(
+        Action<Hash256, IBlockFinder, IBlockchainBridge> setup,
+        int expectedErrorCode,
+        string? expectedErrorSubstring)
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        setup(blockHash, _blockFinder, _blockchainBridge);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        ResultWrapper<IReadOnlyCollection<Hash256>> actual = rpcModule.debug_intermediateRoots(blockHash);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(actual.ErrorCode, Is.EqualTo(expectedErrorCode));
+        if (expectedErrorSubstring is not null)
+        {
+            Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+        }
     }
 }

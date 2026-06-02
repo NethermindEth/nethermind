@@ -34,10 +34,7 @@ public abstract class DiscoveryMsg : MessageBase
     /// </summary>
     public long ExpirationTime { get; init; }
 
-    public override string ToString()
-    {
-        return $"Type: {MsgType}, FarAddress: {FarAddress?.ToString() ?? "empty"}, FarPublicKey: {FarPublicKey?.ToString() ?? "empty"}, ExpirationTime: {ExpirationTime}";
-    }
+    public override string ToString() => $"Type: {MsgType}, FarAddress: {FarAddress?.ToString() ?? "empty"}, FarPublicKey: {FarPublicKey?.ToString() ?? "empty"}, ExpirationTime: {ExpirationTime}";
 
     public abstract MsgType MsgType { get; }
 }

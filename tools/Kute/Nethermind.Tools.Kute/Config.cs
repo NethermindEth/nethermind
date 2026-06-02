@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.CommandLine;
+using System.CommandLine.Parsing;
 using Nethermind.Tools.Kute.Metrics;
 
 namespace Nethermind.Tools.Kute;
@@ -15,39 +16,37 @@ public static class Config
         Required = true,
     };
 
-    public static Option<string> HostAddress { get; } = new("--address", "-a")
-    {
-        DefaultValueFactory = r => "http://localhost:8551",
-        Description = "Address where to send JSON RPC requests",
-        HelpName = "url",
-        Required = true,
-    };
-
     public static Option<string> JwtSecretFilePath { get; } = new("--secret", "-s")
     {
         Description = "Path to file with hex-encoded secret for JWT authentication",
         HelpName = "path",
-        Required = true
+        Required = true,
+    };
+
+    public static Option<string> HostAddress { get; } = new("--address", "-a")
+    {
+        Description = "Address where to send JSON RPC requests",
+        HelpName = "url",
+        DefaultValueFactory = _ => "http://localhost:8551",
     };
 
     public static Option<int> AuthTtl { get; } = new("--ttl", "-t")
     {
-        DefaultValueFactory = r => 60,
         Description = "Authentication time to live (TTL), in seconds",
-        HelpName = "number"
+        HelpName = "number",
+        DefaultValueFactory = _ => 60,
     };
 
     public static Option<bool> ShowProgress { get; } = new("--progress", "-p")
     {
         Description = "Show progress",
-        DefaultValueFactory = r => false,
+        DefaultValueFactory = _ => false,
     };
 
     public static Option<MetricsReportFormat> MetricsReportFormatter { get; } = new("--output", "-o")
     {
-        DefaultValueFactory = r => MetricsReportFormat.Pretty,
         Description = "Strategy to report metrics",
-        HelpName = "path",
+        DefaultValueFactory = _ => MetricsReportFormat.Pretty,
     };
 
     public static Option<IEnumerable<string>> MethodFilters { get; } = new("--filters", "-f")
@@ -55,20 +54,20 @@ public static class Config
         Description = "A comma separated List of regexes of methods to be executed with optional limits",
         HelpName = "regexes",
         CustomParser = r => r.Tokens.Count == 1 ? r.Tokens[0].Value.Split(',') : null,
-        DefaultValueFactory = r => [],
+        DefaultValueFactory = _ => [],
     };
 
     public static Option<string> ResponsesTraceFile { get; } = new("--responses", "-r")
     {
         Description = "Path to file to store JSON-RPC responses",
-        HelpName = "path"
+        HelpName = "path",
     };
 
     public static Option<int> ConcurrentRequests { get; } = new("--concurrency", "-c")
     {
         Description = "Process at most <number> request concurrently",
         HelpName = "number",
-        DefaultValueFactory = r => 1
+        DefaultValueFactory = _ => 1,
     };
 
     public static Option<string?> PrometheusPushGateway { get; } = new("--gateway", "-g")
@@ -77,8 +76,43 @@ public static class Config
         HelpName = "url",
     };
 
+    public static Option<string?> PrometheusPushGatewayUser { get; } = new("--gateway-user")
+    {
+        Description = "Prometheus Push Gateway username",
+        HelpName = "username",
+    };
+
+    public static Option<string?> PrometheusPushGatewayPassword { get; } = new("--gateway-pass")
+    {
+        Description = "Prometheus Push Gateway password",
+        HelpName = "password",
+    };
+
     public static Option<bool> UnwrapBatch { get; } = new("--unwrapBatch", "-u")
     {
-        Description = "Batch requests will be unwraped to single requests"
+        Description = "Batch requests will be unwrapped to single requests",
+    };
+
+    public static Option<Dictionary<string, string>> Labels { get; } = new("--labels", "-l")
+    {
+        DefaultValueFactory = _ => [],
+        CustomParser = r =>
+        {
+            Dictionary<string, string> labels = [];
+            foreach (Token token in r.Tokens)
+            {
+                foreach (string pair in token.Value.Split(','))
+                {
+                    string[] parts = pair.Split('=', 2);
+                    if (parts.Length == 2)
+                    {
+                        labels.Add(parts[0], parts[1]);
+                    }
+                }
+            }
+            return labels;
+        },
+        Description = "A comma separated list of tags to be added to the metrics in the format key=value",
+        HelpName = "labels",
     };
 }

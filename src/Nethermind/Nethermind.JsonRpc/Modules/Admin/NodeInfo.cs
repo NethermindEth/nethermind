@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Text.Json.Serialization;
+using Nethermind.JsonRpc.Modules.Admin.Models;
+using Nethermind.Network.Contract.P2P;
+
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
@@ -33,29 +35,22 @@ public class NodeInfo
     {
         Protocols = new Dictionary<string, EthProtocolInfo>
         {
-            { "eth", new EthProtocolInfo() }
+            { Protocol.Eth, new EthProtocolInfo() }
         };
         Ports = new PortsInfo();
     }
 
-    [JsonPropertyName("enode")]
     public string Enode { get; set; }
 
-    [JsonPropertyName("id")]
     public string Id { get; set; }
 
-    [JsonPropertyName("ip")]
     public string? Ip { get; set; }
 
-    [JsonPropertyName("listenAddr")]
     public string ListenAddress { get; set; }
 
-    [JsonPropertyName("name")]
     public string Name { get; set; }
 
-    [JsonPropertyName("ports")]
     public PortsInfo Ports { get; set; }
 
-    [JsonPropertyName("protocols")]
     public Dictionary<string, EthProtocolInfo> Protocols { get; set; }
 }

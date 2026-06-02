@@ -9,7 +9,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -18,7 +17,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Config;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
@@ -26,8 +24,10 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
-public class JsonRpcProcessor : IJsonRpcProcessor
+public sealed class JsonRpcProcessor : IJsonRpcProcessor
 {
+    private static readonly SearchValues<byte> JsonWhitespace = SearchValues.Create(" \t\r\n"u8);
+
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ILogger _logger;
     private readonly IJsonRpcService _jsonRpcService;
@@ -36,7 +36,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
     public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager, IProcessExitSource? processExitSource = null)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<JsonRpcProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
         ArgumentNullException.ThrowIfNull(fileSystem);
 
         _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
@@ -52,248 +52,829 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
-    public CancellationToken ProcessExit
-        => _processExitSource?.Token ?? default;
+    public CancellationToken ProcessExit => _processExitSource?.Token ?? default;
 
-    private (JsonRpcRequest? Model, ArrayPoolList<JsonRpcRequest>? Collection) DeserializeObjectOrArray(JsonDocument doc)
+    private static readonly JsonReaderOptions _socketJsonReaderOptions = new() { AllowMultipleValues = true };
+
+    public ValueTask ProcessAsync(
+        PipeReader reader,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        CancellationToken cancellationToken = default)
     {
-        return doc.RootElement.ValueKind switch
-        {
-            JsonValueKind.Array => (null, DeserializeArray(doc.RootElement)),
-            JsonValueKind.Object => (DeserializeObject(doc.RootElement), null),
-            _ => ThrowInvalid()
-        };
+        CancellationTokenSource? timeoutSource = context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
+        CancellationToken timeoutToken = timeoutSource?.Token ?? CancellationToken.None;
 
-        [DoesNotReturn, StackTraceHidden]
-        static (JsonRpcRequest? Model, ArrayPoolList<JsonRpcRequest>? Collection) ThrowInvalid()
-            => throw new JsonException("Invalid");
+        return ProcessCoreAsync(reader, context, sink, options, timeoutSource, timeoutToken, cancellationToken);
     }
 
-    private JsonRpcRequest DeserializeObject(JsonElement element)
+    public ValueTask ProcessAsync(
+        ReadOnlyMemory<byte> requestBody,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        CancellationToken cancellationToken = default)
     {
-        string? jsonRpc = null;
-        if (element.TryGetProperty("jsonrpc"u8, out JsonElement versionElement))
-        {
-            if (versionElement.ValueEquals("2.0"u8))
-            {
-                jsonRpc = "2.0";
-            }
-        }
+        CancellationTokenSource? timeoutSource = context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
+        CancellationToken timeoutToken = timeoutSource?.Token ?? CancellationToken.None;
 
-        object? id = null;
-        if (element.TryGetProperty("id"u8, out JsonElement idElement))
-        {
-            if (idElement.ValueKind == JsonValueKind.Number)
-            {
-                if (idElement.TryGetInt64(out long idNumber))
-                {
-                    id = idNumber;
-                }
-                else if (decimal.TryParse(idElement.GetRawText(), out var value))
-                {
-                    id = value;
-                }
-            }
-            else
-            {
-                id = idElement.GetString();
-            }
-        }
-
-        string? method = null;
-        if (element.TryGetProperty("method"u8, out JsonElement methodElement))
-        {
-            method = methodElement.GetString();
-        }
-
-        if (!element.TryGetProperty("params"u8, out JsonElement paramsElement))
-        {
-            paramsElement = default;
-        }
-
-        return new JsonRpcRequest
-        {
-            JsonRpc = jsonRpc!,
-            Id = id!,
-            Method = method!,
-            Params = paramsElement
-        };
+        return ProcessMemoryCoreAsync(requestBody, context, sink, options, timeoutSource, timeoutToken, cancellationToken);
     }
 
-    private ArrayPoolList<JsonRpcRequest> DeserializeArray(JsonElement element) =>
-        new(element.GetArrayLength(), element.EnumerateArray().Select(DeserializeObject));
-
-    public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
+    private async ValueTask ProcessMemoryCoreAsync(
+        ReadOnlyMemory<byte> requestBody,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        CancellationTokenSource? timeoutSource,
+        CancellationToken timeoutToken,
+        CancellationToken cancellationToken)
     {
-        if (ProcessExit.IsCancellationRequested)
-        {
-            JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
-            yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
-        }
-
-        if (IsRecordingRequest)
-        {
-            reader = await RecordRequest(reader);
-        }
-
-        long startTime = Stopwatch.GetTimestamp();
-        using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
-
-        // Initializes a buffer to store the data read from the reader.
-        ReadOnlySequence<byte> buffer = default;
         try
         {
-            // Asynchronously reads data from the PipeReader.
-            ReadResult readResult = await reader.ReadToEndAsync(timeoutSource.Token);
-
-            buffer = readResult.Buffer;
-            // Placeholder for a result in case of deserialization failure.
-            JsonRpcResult? deserializationFailureResult = null;
-
-            // Processes the buffer while it's not empty; before going out to outer loop to get more data.
-            while (!buffer.IsEmpty)
+            if (ProcessExit.IsCancellationRequested)
             {
-                JsonDocument? jsonDocument = null;
-                JsonRpcRequest? model = null;
-                ArrayPoolList<JsonRpcRequest>? collection = null;
+                await WriteShutdownResponseAsync(sink, cancellationToken);
+                return;
+            }
+
+            if (options.InputMode != JsonRpcInputMode.SingleDocument)
+            {
+                PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
+                CancellationTokenSource? coreTimeoutSource = timeoutSource;
+                timeoutSource = null;
+                await ProcessCoreAsync(reader, context, sink, options, coreTimeoutSource, timeoutToken, cancellationToken);
+                return;
+            }
+
+            if (IsRecordingRequest)
+            {
+                RecordRequest(requestBody);
+            }
+
+            await ProcessSingleDocumentMemoryToSink(requestBody, context, sink, options, cancellationToken);
+        }
+        finally
+        {
+            if (timeoutSource is not null)
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeoutSource);
+        }
+    }
+
+    private async ValueTask ProcessCoreAsync(
+        PipeReader reader,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        CancellationTokenSource? timeoutSource,
+        CancellationToken timeoutToken,
+        CancellationToken cancellationToken,
+        bool recordRequest = true)
+    {
+        PipeJsonProcessingState processingState = new(CreateJsonReaderState(options));
+        try
+        {
+            if (ProcessExit.IsCancellationRequested)
+            {
+                await WriteShutdownResponseAsync(sink, cancellationToken);
+                return;
+            }
+
+            if (recordRequest && IsRecordingRequest)
+            {
+                reader = await RecordRequest(reader);
+            }
+
+            while (!processingState.ShouldExit)
+            {
+                long startTime = Stopwatch.GetTimestamp();
+                ReadResult readResult;
                 try
                 {
-                    // Tries to parse the JSON from the buffer.
-                    if (!TryParseJson(ref buffer, out jsonDocument))
-                    {
-                        deserializationFailureResult = GetParsingError(startTime, in buffer, "Error during parsing/validation.");
-                    }
-                    else
-                    {
-                        // Deserializes the JSON document into a request object or a collection of requests.
-                        (model, collection) = DeserializeObjectOrArray(jsonDocument);
-                    }
+                    readResult = await reader.ReadAsync(timeoutToken);
                 }
                 catch (BadHttpRequestException e)
                 {
-                    // Increments failure metric and logs the exception, then stops processing.
-                    Metrics.JsonRpcRequestDeserializationFailures++;
-                    if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
-                    yield break;
+                    Handle(e);
+                    break;
                 }
                 catch (ConnectionResetException e)
                 {
-                    // Logs exception, then stop processing.
-                    if (_logger.IsTrace) _logger.Trace($"Connection reset.{Environment.NewLine}{e}");
-                    yield break;
-                }
-                catch (Exception ex)
-                {
-                    deserializationFailureResult = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
-                }
-
-                // Checks for deserialization failure and yields the result.
-                if (deserializationFailureResult.HasValue)
-                {
-                    yield return deserializationFailureResult.Value;
+                    Handle(e);
                     break;
                 }
 
-                // Handles a single JSON RPC request.
-                if (model is not null)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"JSON RPC request {model.Method}");
-
-                    // Processes the individual request.
-                    JsonRpcResult.Entry result = await HandleSingleRequest(model, context);
-                    result.Response.AddDisposable(() => jsonDocument.Dispose());
-
-                    // Returns the result of the processed request.
-                    yield return JsonRpcResult.Single(RecordResponse(result));
-                }
-
-                // Processes a collection of JSON RPC requests.
-                if (collection is not null)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"{collection.Count} JSON RPC requests");
-
-                    // Checks for authentication and batch size limit.
-                    if (!context.IsAuthenticated && collection.Count > _jsonRpcConfig.MaxBatchSize)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {collection.Count}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
-                        JsonRpcErrorResponse? response = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
-                        response.AddDisposable(() => jsonDocument.Dispose());
-
-                        deserializationFailureResult = JsonRpcResult.Single(RecordResponse(response, RpcReport.Error));
-                        collection.Dispose();
-                        yield return deserializationFailureResult.Value;
-                        break;
-                    }
-                    JsonRpcBatchResult jsonRpcBatchResult = new((e, c) => IterateRequest(collection, context, e).GetAsyncEnumerator(c));
-                    jsonRpcBatchResult.AddDisposable(() => collection.Dispose());
-                    yield return JsonRpcResult.Collection(jsonRpcBatchResult);
-                }
-
-                // Handles invalid requests.
-                if (model is null && collection is null)
-                {
-                    Metrics.JsonRpcInvalidRequests++;
-                    JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
-                    errorResponse.AddDisposable(() => jsonDocument.Dispose());
-
-                    if (_logger.IsTrace)
-                    {
-                        TraceResult(errorResponse);
-                        TraceFailure(startTime);
-                    }
-                    deserializationFailureResult = JsonRpcResult.Single(RecordResponse(errorResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds, false)));
-                    yield return deserializationFailureResult.Value;
-                    break;
-                }
-
-                buffer = buffer.TrimStart();
-            }
-
-            // Checks if the deserialization failed
-            if (deserializationFailureResult.HasValue)
-            {
-                yield break;
-            }
-
-            // Checks if the read operation is completed.
-            if (readResult.IsCompleted)
-            {
-                if (buffer.Length > 0 && HasNonWhitespace(buffer))
-                {
-                    yield return GetParsingError(startTime, in buffer, "Error during parsing/validation: incomplete request.");
-                }
+                await ProcessReadResultToSink(reader, readResult, processingState, context, sink, options, startTime, cancellationToken);
             }
         }
         finally
         {
-            // Advances the reader to the end of the buffer if not null.
-            if (!buffer.FirstSpan.IsNull())
-            {
-                reader.AdvanceTo(buffer.End);
-            }
+            processingState.PendingSingleDocument?.Dispose();
+            await reader.CompleteAsync();
+            if (timeoutSource is not null)
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeoutSource);
         }
-
-        // Completes the PipeReader's asynchronous reading operation.
-        await reader.CompleteAsync();
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceFailure(long startTime) => _logger.Trace($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
     }
 
-    // Handles general exceptions during parsing and validation.
-    // Sends an error response and stops the stopwatch.
-    private JsonRpcResult GetParsingError(long startTime, ref readonly ReadOnlySequence<byte> buffer, string error, Exception? exception = null)
+    private async ValueTask ProcessReadResultToSink(
+        PipeReader reader,
+        ReadResult readResult,
+        PipeJsonProcessingState processingState,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        long startTime,
+        CancellationToken cancellationToken)
+    {
+        ReadOnlySequence<byte> buffer = readResult.Buffer;
+        bool advanced = false;
+
+        try
+        {
+            bool isCompleted = readResult.IsCompleted || readResult.IsCanceled;
+            JsonRpcResult.Entry? result = null;
+
+            if (processingState.PendingSingleDocument is not null)
+            {
+                result = await ProcessPendingSingleDocumentToSink(
+                    processingState,
+                    buffer,
+                    isCompleted,
+                    context,
+                    sink,
+                    options,
+                    cancellationToken);
+                reader.AdvanceTo(buffer.End);
+                advanced = true;
+            }
+            else
+            {
+                if (processingState.FreshState)
+                {
+                    buffer = buffer.TrimStart();
+                }
+
+                if (buffer.IsEmpty && readResult.IsCompleted && options.InputMode == JsonRpcInputMode.SingleDocument)
+                {
+                    result = GetParsingError(startTime, in buffer, "Error during parsing/validation: empty request.");
+                    processingState.ShouldExit = true;
+                }
+                else if (!buffer.IsEmpty)
+                {
+                    try
+                    {
+                        if (options.InputMode == JsonRpcInputMode.SingleDocument &&
+                            isCompleted &&
+                            buffer.IsSingleSegment)
+                        {
+                            if (TryReadSingleObjectRequest(buffer.First, out JsonRpcRequest? directRequest))
+                            {
+                                processingState.ShouldExit = true;
+
+                                try
+                                {
+                                    await ProcessSingleRequestToSink(directRequest, context, sink, cancellationToken);
+                                }
+                                finally
+                                {
+                                    reader.AdvanceTo(buffer.End);
+                                    advanced = true;
+                                }
+                                return;
+                            }
+
+                            if (await TryProcessBatchRequestDirectly(buffer.First, context, sink, cancellationToken))
+                            {
+                                processingState.ShouldExit = true;
+                                reader.AdvanceTo(buffer.End);
+                                advanced = true;
+                                return;
+                            }
+                        }
+
+                        processingState.FreshState = TryParseJson(ref buffer, isCompleted, ref processingState.ReaderState, out JsonDocument? jsonDocument, options);
+                        if (processingState.FreshState)
+                        {
+                            if (options.InputMode == JsonRpcInputMode.SingleDocument)
+                            {
+                                result = await ProcessParsedSingleDocumentToSink(
+                                    processingState,
+                                    jsonDocument,
+                                    buffer,
+                                    isCompleted,
+                                    context,
+                                    sink,
+                                    options,
+                                    startTime,
+                                    cancellationToken);
+
+                                reader.AdvanceTo(buffer.End);
+                                advanced = true;
+                            }
+                            else
+                            {
+                                await ProcessJsonDocumentToSink(jsonDocument, context, sink, options, startTime, cancellationToken);
+                            }
+                        }
+                        else if (isCompleted && !buffer.IsEmpty)
+                        {
+                            result = GetParsingError(startTime, in buffer, "Error during parsing/validation: incomplete request.");
+                            processingState.ShouldExit = true;
+                        }
+
+                        if (!advanced)
+                        {
+                            reader.AdvanceTo(buffer.Start, buffer.End);
+                            advanced = true;
+                        }
+                    }
+                    catch (BadHttpRequestException e)
+                    {
+                        Handle(e);
+                        processingState.ShouldExit = true;
+                    }
+                    catch (ConnectionResetException e)
+                    {
+                        Handle(e);
+                        processingState.ShouldExit = true;
+                    }
+                    catch (JsonException ex)
+                    {
+                        result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
+                        processingState.ShouldExit = true;
+                    }
+                }
+            }
+
+            if (result.HasValue)
+            {
+                await WriteSingleEntryAsync(result.Value, sink, cancellationToken);
+            }
+
+            processingState.ShouldExit |= isCompleted && buffer.IsEmpty;
+        }
+        finally
+        {
+            if (!advanced)
+            {
+                reader.AdvanceTo(buffer.Start, buffer.End);
+            }
+        }
+    }
+
+    private async ValueTask<JsonRpcResult.Entry?> ProcessPendingSingleDocumentToSink(
+        PipeJsonProcessingState processingState,
+        ReadOnlySequence<byte> buffer,
+        bool isCompleted,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        CancellationToken cancellationToken)
+    {
+        JsonDocument pendingSingleDocument = processingState.PendingSingleDocument!;
+        processingState.PendingSingleDocument = null;
+
+        ReadOnlySequence<byte> trailingBuffer = buffer.TrimStart();
+        if (!trailingBuffer.IsEmpty)
+        {
+            pendingSingleDocument.Dispose();
+            processingState.ShouldExit = true;
+            return GetParsingError(processingState.PendingSingleDocumentStartTime, in trailingBuffer, "Error during parsing/validation: trailing data after JSON-RPC request.");
+        }
+
+        if (isCompleted)
+        {
+            await ProcessJsonDocumentToSink(pendingSingleDocument, context, sink, options, processingState.PendingSingleDocumentStartTime, cancellationToken);
+            processingState.ShouldExit = true;
+        }
+        else
+        {
+            processingState.PendingSingleDocument = pendingSingleDocument;
+        }
+
+        return null;
+    }
+
+    private async ValueTask<JsonRpcResult.Entry?> ProcessParsedSingleDocumentToSink(
+        PipeJsonProcessingState processingState,
+        JsonDocument jsonDocument,
+        ReadOnlySequence<byte> remainingBuffer,
+        bool isCompleted,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        long startTime,
+        CancellationToken cancellationToken)
+    {
+        ReadOnlySequence<byte> trailingBuffer = remainingBuffer.TrimStart();
+        if (!trailingBuffer.IsEmpty)
+        {
+            jsonDocument.Dispose();
+            processingState.ShouldExit = true;
+            return GetParsingError(startTime, in trailingBuffer, "Error during parsing/validation: trailing data after JSON-RPC request.");
+        }
+
+        if (isCompleted)
+        {
+            await ProcessJsonDocumentToSink(jsonDocument, context, sink, options, startTime, cancellationToken);
+            processingState.ShouldExit = true;
+        }
+        else
+        {
+            processingState.PendingSingleDocument = jsonDocument;
+            processingState.PendingSingleDocumentStartTime = startTime;
+        }
+
+        return null;
+    }
+
+    private async ValueTask ProcessSingleDocumentMemoryToSink(
+        ReadOnlyMemory<byte> requestBody,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        CancellationToken cancellationToken)
+    {
+        long startTime = Stopwatch.GetTimestamp();
+        try
+        {
+            if (TryReadSingleObjectRequest(requestBody, out JsonRpcRequest? directRequest))
+            {
+                await ProcessSingleRequestToSink(directRequest, context, sink, cancellationToken);
+                return;
+            }
+
+            if (await TryProcessBatchRequestDirectly(requestBody, context, sink, cancellationToken))
+            {
+                return;
+            }
+
+            PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
+            await ProcessCoreAsync(reader, context, sink, options, timeoutSource: null, timeoutToken: CancellationToken.None, cancellationToken, recordRequest: false);
+        }
+        catch (JsonException ex)
+        {
+            await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
+        }
+    }
+
+    private static bool TryReadSingleObjectRequest(
+        ReadOnlyMemory<byte> memory,
+        [NotNullWhen(true)] out JsonRpcRequest? request)
+    {
+        request = null;
+
+        return TryGetSingleDocumentBody(memory, JsonTokenType.StartObject, out ReadOnlyMemory<byte> objectBody)
+            && TryReadObjectRequest(objectBody, out request);
+    }
+
+    private static bool TryGetSingleDocumentBody(
+        ReadOnlyMemory<byte> memory,
+        JsonTokenType expectedRootToken,
+        out ReadOnlyMemory<byte> documentBody)
+    {
+        documentBody = default;
+
+        ReadOnlyMemory<byte> body = memory[CountLeadingJsonWhitespace(memory.Span)..];
+        if (body.IsEmpty)
+        {
+            return false;
+        }
+
+        Utf8JsonReader reader = new(body.Span, isFinalBlock: true, state: default);
+        if (!reader.Read() || reader.TokenType != expectedRootToken)
+        {
+            return false;
+        }
+
+        reader.Skip();
+        int documentLength = checked((int)reader.BytesConsumed);
+        if (HasNonWhitespace(body.Span[documentLength..]))
+        {
+            return false;
+        }
+
+        documentBody = body[..documentLength];
+        return true;
+    }
+
+    private static bool TryReadObjectRequest(
+        ReadOnlyMemory<byte> objectBody,
+        [NotNullWhen(true)] out JsonRpcRequest? request)
+    {
+        request = null;
+
+        JsonRpcEnvelopeReader envelopeReader = new(objectBody.Span);
+        if (!envelopeReader.TryRead(out JsonRpcEnvelope envelope))
+        {
+            return false;
+        }
+
+        ReadOnlyMemory<byte> paramsUtf8 = envelope.HasParams
+            ? objectBody.Slice(envelope.ParamsStart, envelope.ParamsLength)
+            : default;
+
+        request = CreateRequest(envelope, paramsElement: default, paramsUtf8);
+        return true;
+    }
+
+    private static JsonRpcRequest CreateRequest(JsonRpcEnvelope envelope, JsonElement paramsElement, ReadOnlyMemory<byte> paramsUtf8) =>
+        new()
+        {
+            JsonRpc = envelope.JsonRpc!,
+            Id = envelope.Id,
+            Method = envelope.Method!,
+            Params = paramsElement,
+            ParamsUtf8 = paramsUtf8,
+            ParamsKind = envelope.HasParams ? envelope.ParamsKind : JsonValueKind.Undefined
+        };
+
+    private static JsonRpcRequest CreateRequest(JsonElement element)
+    {
+        JsonRpcEnvelope envelope = JsonRpcEnvelopeReader.Read(element, out JsonElement paramsElement);
+        return CreateRequest(envelope, paramsElement, paramsUtf8: default);
+    }
+
+    private static int CountLeadingJsonWhitespace(ReadOnlySpan<byte> span)
+    {
+        if (span.IsEmpty || !IsJsonWhitespace(span[0]))
+        {
+            return 0;
+        }
+
+        if (span.Length == 1)
+        {
+            return 1;
+        }
+
+        int index = span.IndexOfAnyExcept(JsonWhitespace);
+        return index >= 0 ? index : span.Length;
+    }
+
+    private static bool HasNonWhitespace(ReadOnlySpan<byte> span)
+    {
+        if (span.IsEmpty)
+        {
+            return false;
+        }
+
+        if (!IsJsonWhitespace(span[0]))
+        {
+            return true;
+        }
+
+        if (span.Length == 1)
+        {
+            return false;
+        }
+
+        return span.IndexOfAnyExcept(JsonWhitespace) >= 0;
+    }
+
+    private static bool IsJsonWhitespace(byte value) =>
+        value is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n';
+
+    private void Handle(ConnectionResetException e)
+    {
+        if (_logger.IsTrace) _logger.Trace($"Connection reset.{Environment.NewLine}{e}");
+    }
+
+    private void Handle(BadHttpRequestException e)
     {
         Metrics.JsonRpcRequestDeserializationFailures++;
+        if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+    }
 
-        if (_logger.IsError)
+    private static bool TryParseJson(
+        ref ReadOnlySequence<byte> buffer,
+        bool isFinalBlock,
+        ref JsonReaderState readerState,
+        [NotNullWhen(true)] out JsonDocument? jsonDocument,
+        JsonRpcProcessingOptions options)
+    {
+        Utf8JsonReader jsonReader = new(buffer, isFinalBlock, readerState);
+        bool parsed = JsonDocument.TryParseValue(ref jsonReader, out jsonDocument);
+        buffer = buffer.Slice(jsonReader.BytesConsumed);
+        readerState = parsed
+            ? CreateJsonReaderState(options) // Reset state for the next document
+            : jsonReader.CurrentState; // Preserve state for resumption when more data arrives
+
+        return parsed;
+    }
+
+    private static JsonReaderState CreateJsonReaderState(JsonRpcProcessingOptions options) =>
+        new(options.InputMode == JsonRpcInputMode.MultipleDocuments ? _socketJsonReaderOptions : default);
+
+    private async ValueTask ProcessJsonDocumentToSink(
+        JsonDocument jsonDocument,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        long startTime,
+        CancellationToken cancellationToken)
+    {
+        try
         {
-            _logger.Error(error, exception);
+            JsonElement rootElement = jsonDocument.RootElement;
+            switch (rootElement.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    JsonRpcRequest request = CreateRequest(rootElement);
+                    if (_logger.IsDebug) _logger.Debug($"JSON RPC request {request.Method}");
+
+                    JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);
+                    await WriteSingleEntryAsync(singleResponse, sink, cancellationToken);
+                    break;
+
+                case JsonValueKind.Array:
+                    await ProcessBatchDocumentToSink(rootElement, context, sink, cancellationToken);
+                    break;
+
+                default:
+                    await WriteInvalidRequestAsync(sink, startTime, cancellationToken);
+                    break;
+            }
+        }
+        finally
+        {
+            jsonDocument.Dispose();
+        }
+    }
+
+    private async ValueTask ProcessSingleRequestToSink(
+        JsonRpcRequest request,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_logger.IsDebug) _logger.Debug($"JSON RPC request {request.Method}");
+
+            JsonRpcResult.Entry response = await HandleSingleRequest(request, context);
+            await WriteSingleEntryAsync(response, sink, cancellationToken);
+        }
+        finally
+        {
+            request.DisposeParsedParamsDocument();
+        }
+    }
+
+    private async ValueTask ProcessBatchDocumentToSink(
+        JsonElement rootElement,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        int requestCount = rootElement.GetArrayLength();
+        if (_logger.IsDebug) _logger.Debug($"{requestCount} JSON RPC requests");
+
+        if (!context.IsAuthenticated && requestCount > _jsonRpcConfig.MaxBatchSize)
+        {
+            await WriteBatchSizeLimitErrorAsync(requestCount, sink, cancellationToken);
+            return;
+        }
+
+        await sink.BeginBatchAsync(cancellationToken);
+        long startTime = Stopwatch.GetTimestamp();
+        int requestIndex = 0;
+        bool isStopped = false;
+        try
+        {
+            foreach (JsonElement item in rootElement.EnumerateArray())
+            {
+                JsonRpcRequest jsonRpcRequest = CreateRequest(item);
+                JsonRpcResult.Entry response = isStopped
+                    ? CreateBatchResponseLimitEntry(jsonRpcRequest)
+                    : await HandleSingleRequest(jsonRpcRequest, context);
+
+                if (_logger.IsTrace) _logger.Trace($"  {++requestIndex}/{requestCount} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
+                if (_logger.IsTrace) TraceResult(response);
+
+                await WriteBatchEntryAsync(response, sink, cancellationToken);
+                isStopped |= sink.StopRequested;
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"  {requestCount} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+        }
+        finally
+        {
+            await sink.EndBatchAsync(cancellationToken);
+        }
+    }
+
+    private async ValueTask<bool> TryProcessBatchRequestDirectly(
+        ReadOnlyMemory<byte> memory,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetSingleDocumentBody(memory, JsonTokenType.StartArray, out ReadOnlyMemory<byte> batchBody))
+        {
+            return false;
+        }
+
+        await ProcessBatchMemoryToSink(batchBody, context, sink, cancellationToken);
+        return true;
+    }
+
+    private async ValueTask ProcessBatchMemoryToSink(
+        ReadOnlyMemory<byte> batchBody,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        int? requestCount = null;
+        if (!context.IsAuthenticated)
+        {
+            requestCount = JsonRpcArrayReader.CountItems(batchBody);
+            if (requestCount > _jsonRpcConfig.MaxBatchSize)
+            {
+                await WriteBatchSizeLimitErrorAsync(requestCount.Value, sink, cancellationToken);
+                return;
+            }
         }
 
         if (_logger.IsDebug)
         {
-            // Attempt to get and log the request body from the bytes buffer if Debug logging is enabled
+            _logger.Debug(requestCount is null ? "JSON RPC batch request" : $"{requestCount} JSON RPC requests");
+        }
+
+        await sink.BeginBatchAsync(cancellationToken);
+        long startTime = Stopwatch.GetTimestamp();
+        int requestIndex = 0;
+        bool isStopped = false;
+        JsonReaderState readerState = default;
+        int offset = 0;
+        bool started = false;
+        BatchRequestJsonLifetime batchRequestJsonLifetime = new();
+
+        try
+        {
+            while (JsonRpcArrayReader.TryReadNextItem(batchBody, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> itemBody))
+            {
+                requestIndex++;
+                JsonRpcRequest jsonRpcRequest = DeserializeBatchItem(itemBody, out JsonDocument? ownedRequestDocument);
+                batchRequestJsonLifetime.TrackUntilBatchEnd(jsonRpcRequest, ownedRequestDocument);
+
+                JsonRpcResult.Entry response = isStopped
+                    ? CreateBatchResponseLimitEntry(jsonRpcRequest)
+                    : await HandleSingleRequest(jsonRpcRequest, context);
+
+                if (_logger.IsTrace)
+                {
+                    string progress = requestCount is null ? requestIndex.ToString() : $"{requestIndex}/{requestCount}";
+                    _logger.Trace($"  {progress} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
+                    TraceResult(response);
+                }
+
+                await WriteBatchEntryAsync(response, sink, cancellationToken);
+                isStopped |= sink.StopRequested;
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"  {requestIndex} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+        }
+        finally
+        {
+            try
+            {
+                await sink.EndBatchAsync(cancellationToken);
+            }
+            finally
+            {
+                batchRequestJsonLifetime.Dispose();
+            }
+        }
+    }
+
+    private JsonRpcRequest DeserializeBatchItem(ReadOnlyMemory<byte> itemBody, out JsonDocument? requestDocument)
+    {
+        if (TryReadObjectRequest(itemBody, out JsonRpcRequest? directRequest))
+        {
+            requestDocument = null;
+            return directRequest;
+        }
+
+        requestDocument = JsonDocument.Parse(itemBody);
+        try
+        {
+            return CreateRequest(requestDocument.RootElement);
+        }
+        catch
+        {
+            requestDocument.Dispose();
+            requestDocument = null;
+            throw;
+        }
+    }
+
+    private async ValueTask WriteInvalidRequestAsync(
+        IJsonRpcResponseSink sink,
+        long startTime,
+        CancellationToken cancellationToken)
+    {
+        Metrics.JsonRpcInvalidRequests++;
+        JsonRpcErrorResponse invalidResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
+
+        if (_logger.IsTrace)
+        {
+            TraceResult(invalidResponse);
+            _logger.Trace($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+        }
+
+        JsonRpcResult.Entry result = new(invalidResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
+        await WriteSingleEntryAsync(result, sink, cancellationToken);
+    }
+
+    private async ValueTask WriteShutdownResponseAsync(IJsonRpcResponseSink sink, CancellationToken cancellationToken)
+    {
+        JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
+        using JsonRpcResult.Entry entry = RecordResponse(response, new RpcReport("Shutdown", 0, false));
+        await sink.WriteSingleAsync(entry.Response, entry.Report, cancellationToken);
+    }
+
+    private async ValueTask WriteBatchSizeLimitErrorAsync(int requestCount, IJsonRpcResponseSink sink, CancellationToken cancellationToken)
+    {
+        if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {requestCount}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
+        JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
+        await WriteSingleEntryAsync(new JsonRpcResult.Entry(errorResponse, RpcReport.Error), sink, cancellationToken);
+    }
+
+    private JsonRpcResult.Entry CreateBatchResponseLimitEntry(JsonRpcRequest jsonRpcRequest) =>
+        new(
+            _jsonRpcService.GetErrorResponse(
+                ErrorCodes.LimitExceeded,
+                jsonRpcRequest.Method,
+                in jsonRpcRequest.IdRef,
+                $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded"),
+            RpcReport.Error);
+
+    private async ValueTask WriteParsingErrorAsync(
+        ReadOnlySequence<byte> buffer,
+        IJsonRpcResponseSink sink,
+        long startTime,
+        string error,
+        CancellationToken cancellationToken,
+        Exception? exception = null)
+    {
+        JsonRpcResult.Entry result = GetParsingError(startTime, in buffer, error, exception);
+        await WriteSingleEntryAsync(result, sink, cancellationToken);
+    }
+
+    private ValueTask WriteSingleEntryAsync(JsonRpcResult.Entry entry, IJsonRpcResponseSink sink, CancellationToken cancellationToken) =>
+        WriteEntryAsync(entry, sink, isBatch: false, cancellationToken);
+
+    private ValueTask WriteBatchEntryAsync(JsonRpcResult.Entry entry, IJsonRpcResponseSink sink, CancellationToken cancellationToken) =>
+        WriteEntryAsync(entry, sink, isBatch: true, cancellationToken);
+
+    private ValueTask WriteEntryAsync(
+        JsonRpcResult.Entry entry,
+        IJsonRpcResponseSink sink,
+        bool isBatch,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            JsonRpcResult.Entry recorded = RecordResponse(entry);
+            ValueTask writeTask = isBatch
+                ? sink.WriteBatchItemAsync(recorded.Response, recorded.Report, cancellationToken)
+                : sink.WriteSingleAsync(recorded.Response, recorded.Report, cancellationToken);
+            if (writeTask.IsCompletedSuccessfully)
+            {
+                writeTask.GetAwaiter().GetResult();
+                entry.Dispose();
+                return ValueTask.CompletedTask;
+            }
+
+            return AwaitAndDisposeAsync(writeTask, entry);
+        }
+        catch
+        {
+            entry.Dispose();
+            throw;
+        }
+    }
+
+    private static async ValueTask AwaitAndDisposeAsync(ValueTask writeTask, JsonRpcResult.Entry entry)
+    {
+        try
+        {
+            await writeTask;
+        }
+        finally
+        {
+            entry.Dispose();
+        }
+    }
+
+    private JsonRpcResult.Entry GetParsingError(long startTime, ref readonly ReadOnlySequence<byte> buffer, string error, Exception? exception = null)
+    {
+        Metrics.JsonRpcRequestDeserializationFailures++;
+        if (_logger.IsError) _logger.Error(error, exception);
+
+        if (_logger.IsDebug)
+        {
             const int sliceSize = 1000;
             if (Encoding.UTF8.TryGetStringSlice(in buffer, sliceSize, out bool isFullString, out string data))
             {
@@ -305,85 +886,41 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             }
         }
 
-        JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
+        JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "parse error");
         if (_logger.IsTrace) TraceResult(response);
-        return JsonRpcResult.Single(RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false)));
+        return RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
     }
 
-    private static bool HasNonWhitespace(ReadOnlySequence<byte> buffer)
-    {
-        static bool HasNonWhitespace(ReadOnlySpan<byte> span)
-        {
-            static ReadOnlySpan<byte> WhiteSpace() => " \n\r\t"u8;
-            return span.IndexOfAnyExcept(WhiteSpace()) >= 0;
-        }
-
-        if (buffer.IsSingleSegment)
-        {
-            return HasNonWhitespace(buffer.FirstSpan);
-        }
-
-        foreach (ReadOnlyMemory<byte> memory in buffer)
-        {
-            if (HasNonWhitespace(memory.Span))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private async IAsyncEnumerable<JsonRpcResult.Entry> IterateRequest(
-        ArrayPoolList<JsonRpcRequest> requests,
-        JsonRpcContext context,
-        JsonRpcBatchResultAsyncEnumerator enumerator)
-    {
-        try
-        {
-            long startTime = Stopwatch.GetTimestamp();
-            int requestIndex = 0;
-            for (int index = 0; index < requests.Count; index++)
-            {
-                JsonRpcRequest jsonRpcRequest = requests[index];
-
-                JsonRpcResult.Entry response = enumerator.IsStopped
-                    ? new JsonRpcResult.Entry(
-                        _jsonRpcService.GetErrorResponse(
-                            ErrorCodes.LimitExceeded,
-                            jsonRpcRequest.Method,
-                            jsonRpcRequest.Id,
-                            $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB()}KB exceeded"),
-                        RpcReport.Error)
-                    : await HandleSingleRequest(jsonRpcRequest, context);
-
-                if (_logger.IsTrace) _logger.Trace($"  {++requestIndex}/{requests.Count} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
-                if (_logger.IsTrace) TraceResult(response);
-                yield return !IsRecordingResponse ? response : RecordResponse(response);
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"  {requests.Count} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
-        }
-        finally
-        {
-            requests.Dispose();
-        }
-    }
-
-    private async Task<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
+    private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
     {
         Metrics.JsonRpcRequests++;
         long startTime = Stopwatch.GetTimestamp();
 
-        JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(request, context);
-        JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
-        bool isSuccess = localErrorResponse is null;
+        ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context);
+        return responseTask.IsCompletedSuccessfully
+            ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, startTime))
+            : AwaitAndCreateEntryAsync(responseTask, request, startTime);
+
+        async ValueTask<JsonRpcResult.Entry> AwaitAndCreateEntryAsync(
+            ValueTask<JsonRpcResponse> responseTask,
+            JsonRpcRequest request,
+            long startTime)
+        {
+            JsonRpcResponse response = await responseTask;
+            return CreateSingleRequestEntry(request, response, startTime);
+        }
+    }
+
+    private JsonRpcResult.Entry CreateSingleRequestEntry(JsonRpcRequest request, JsonRpcResponse response, long startTime)
+    {
+        bool isError = response.TryGetError(out Error? responseError);
+        bool isSuccess = !isError;
         if (!isSuccess)
         {
-            if (localErrorResponse?.Error?.SuppressWarning == false)
+            if (responseError?.SuppressWarning == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {localErrorResponse.Error.Code} Message: {localErrorResponse.Error.Message}");
-                if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
+                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}");
+                if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {SerializeResponseForDiagnostics(response)}");
             }
             Metrics.JsonRpcErrors++;
         }
@@ -393,51 +930,42 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             Metrics.JsonRpcSuccesses++;
         }
 
-        JsonRpcResult.Entry result = new(response, new RpcReport(request.Method, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess));
+        string reportMethod = responseError?.Code == ErrorCodes.MethodNotFound
+            ? RpcReport.UnknownMethod
+            : request.Method;
+        JsonRpcResult.Entry result = new(
+            response,
+            new RpcReport(reportMethod, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess));
 
         if (_logger.IsTrace) TraceResult(result);
         return result;
     }
 
-    private static bool TryParseJson(ref ReadOnlySequence<byte> buffer, [NotNullWhen(true)] out JsonDocument? jsonDocument)
-    {
-        Utf8JsonReader reader = new(buffer);
-        if (!JsonDocument.TryParseValue(ref reader, out jsonDocument)) return false;
-        buffer = buffer.Slice(reader.BytesConsumed);
-        return true;
-
-    }
-
     private bool IsRecordingRequest => (_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Request) != 0;
     private bool IsRecordingResponse => (_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Response) != 0;
 
-    private JsonRpcResult.Entry RecordResponse(JsonRpcResponse response, in RpcReport report)
-    {
-        JsonRpcResult.Entry result = new(response, report);
-        return !IsRecordingResponse ? result : RecordResponse(result);
-    }
+    private JsonRpcResult.Entry RecordResponse(JsonRpcResponse response, in RpcReport report) =>
+        RecordResponse(new JsonRpcResult.Entry(response, report));
+
+    private JsonRpcResult.Entry RecordResponse(in JsonRpcResult.Entry result) =>
+        !IsRecordingResponse ? result : RecordResponseSlow(result);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private JsonRpcResult.Entry RecordResponse(in JsonRpcResult.Entry result)
+    private JsonRpcResult.Entry RecordResponseSlow(in JsonRpcResult.Entry result)
     {
-        if (IsRecordingResponse)
-        {
-            _recorder.RecordResponse(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptionsIndented));
-        }
-
+        _recorder.RecordResponse(SerializeForDiagnostics(result));
         return result;
     }
 
-    private static readonly StreamPipeReaderOptions _pipeReaderOptions = new StreamPipeReaderOptions(leaveOpen: false);
+    private static readonly StreamPipeReaderOptions _pipeReaderOptions = new(leaveOpen: false);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void RecordRequest(ReadOnlyMemory<byte> requestBody) =>
+        _recorder.RecordRequest(Encoding.UTF8.GetString(requestBody.Span));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private async ValueTask<PipeReader> RecordRequest(PipeReader reader)
     {
-        if (!IsRecordingRequest)
-        {
-            return reader;
-        }
-
         Stream memoryStream = RecyclableStream.GetStream("recorder");
         await reader.CopyToAsync(memoryStream);
         memoryStream.Seek(0, SeekOrigin.Begin);
@@ -454,22 +982,109 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceResult(in JsonRpcResult.Entry response)
     {
-        if (_logger.IsTrace)
-        {
-            string json = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptionsIndented);
+        string json = SerializeForDiagnostics(response);
+        _logger.Trace($"Sending JSON RPC response: {json}");
+    }
 
-            _logger.Trace($"Sending JSON RPC response: {json}");
+    private static string SerializeForDiagnostics(in JsonRpcResult.Entry response)
+    {
+        JsonRpcResponse responseToSerialize = TryGetDiagnosticResponse(response.Response, out JsonRpcResponse? diagnosticResponse)
+            ? diagnosticResponse
+            : response.Response;
+
+        ArrayBufferWriter<byte> writer = new();
+        JsonRpcResponseWriter.Write(writer, responseToSerialize, EthereumJsonSerializer.JsonOptionsIndented);
+        using JsonDocument document = JsonDocument.Parse(writer.WrittenMemory);
+        return JsonSerializer.Serialize(new DiagnosticJsonRpcResult(document.RootElement, response.Report), EthereumJsonSerializer.JsonOptionsIndented);
+    }
+
+    private static string SerializeResponseForDiagnostics(JsonRpcResponse response)
+    {
+        ArrayBufferWriter<byte> writer = new();
+        JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptionsIndented);
+        return Encoding.UTF8.GetString(writer.WrittenSpan);
+    }
+
+    private sealed class PipeJsonProcessingState(JsonReaderState readerState)
+    {
+        public JsonReaderState ReaderState = readerState;
+        public bool FreshState = true;
+        public bool ShouldExit;
+        public JsonDocument? PendingSingleDocument;
+        public long PendingSingleDocumentStartTime;
+    }
+
+    private sealed class BatchRequestJsonLifetime : IDisposable
+    {
+        private List<JsonDocument>? _ownedRequestDocuments;
+        private List<JsonRpcRequest>? _requestsWithRawParams;
+
+        public void TrackUntilBatchEnd(JsonRpcRequest request, JsonDocument? ownedRequestDocument)
+        {
+            if (ownedRequestDocument is not null)
+            {
+                _ownedRequestDocuments ??= [];
+                _ownedRequestDocuments.Add(ownedRequestDocument);
+            }
+            else if (!request.ParamsUtf8.IsEmpty)
+            {
+                _requestsWithRawParams ??= [];
+                _requestsWithRawParams.Add(request);
+            }
         }
+
+        public void Dispose()
+        {
+            if (_ownedRequestDocuments is not null)
+            {
+                foreach (JsonDocument requestDocument in _ownedRequestDocuments)
+                {
+                    requestDocument.Dispose();
+                }
+            }
+
+            if (_requestsWithRawParams is not null)
+            {
+                foreach (JsonRpcRequest request in _requestsWithRawParams)
+                {
+                    request.DisposeParsedParamsDocument();
+                }
+            }
+        }
+    }
+
+    private readonly record struct DiagnosticJsonRpcResult(JsonElement Response, RpcReport Report);
+
+    private static bool TryGetDiagnosticResponse(JsonRpcResponse response, [NotNullWhen(true)] out JsonRpcResponse? diagnosticResponse)
+    {
+        diagnosticResponse = response switch
+        {
+            _ when response.TryGetStreamableResult(out _) => new JsonRpcSuccessResponse
+            {
+                Id = response.Id,
+                Result = "# streamable response omitted #"
+            },
+            JsonRpcErrorResponse { Error.Data: IStreamableResult } errorResponse => new JsonRpcErrorResponse
+            {
+                Id = errorResponse.Id,
+                Error = new Error
+                {
+                    Code = errorResponse.Error.Code,
+                    Message = errorResponse.Error.Message,
+                    Data = "# streamable error data omitted #",
+                    SuppressWarning = errorResponse.Error.SuppressWarning
+                }
+            },
+            _ => null
+        };
+
+        return diagnosticResponse is not null;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceResult(JsonRpcErrorResponse response)
     {
-        if (_logger.IsTrace)
-        {
-            string json = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptionsIndented);
-
-            _logger.Trace($"Sending JSON RPC response: {json}");
-        }
+        string json = SerializeResponseForDiagnostics(response);
+        _logger.Trace($"Sending JSON RPC response: {json}");
     }
 }

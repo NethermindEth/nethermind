@@ -28,7 +28,6 @@ internal static class DBSizeGenerator
         [
             "mainnet",
             "sepolia",
-            "holesky",
             "gnosis",
             "chiado",
             "energyweb",
@@ -37,12 +36,12 @@ internal static class DBSizeGenerator
 
         dbSizeSourcePath ??= AppDomain.CurrentDomain.BaseDirectory;
 
-        var chains = Directory
+        List<string?> chains = Directory
             .GetFiles(dbSizeSourcePath)
             .Select(Path.GetFileNameWithoutExtension)
             .OrderBy(c =>
             {
-                var i = chainOrder.IndexOf(c!);
+                int i = chainOrder.IndexOf(c!);
 
                 return i == -1 ? int.MaxValue : i;
             })
@@ -54,18 +53,18 @@ internal static class DBSizeGenerator
 
     private static void GenerateFile(string docsPath, string dbSizeSourcePath, IList<string> chains)
     {
-        var fileName = Path.Join(docsPath, "database.md");
-        var tempFileName = Path.Join(docsPath, "~database.md");
+        string fileName = Path.Join(docsPath, "database.md");
+        string tempFileName = Path.Join(docsPath, "~database.md");
 
         // Delete the temp file if it exists
         File.Delete(tempFileName);
 
-        using var readStream = new StreamReader(File.OpenRead(fileName));
-        using var writeStream = new StreamWriter(File.OpenWrite(tempFileName));
+        using StreamReader readStream = new(File.OpenRead(fileName));
+        using StreamWriter writeStream = new(File.OpenWrite(tempFileName));
 
         writeStream.NewLine = "\n";
 
-        var line = string.Empty;
+        string? line = string.Empty;
 
         do
         {
@@ -79,7 +78,7 @@ internal static class DBSizeGenerator
 
         WriteMarkdown(writeStream, dbSizeSourcePath, chains!);
 
-        var skip = true;
+        bool skip = true;
 
         for (line = readStream.ReadLine(); line is not null; line = readStream.ReadLine())
         {
@@ -98,7 +97,6 @@ internal static class DBSizeGenerator
         writeStream.Close();
 
         File.Move(tempFileName, fileName, true);
-        File.Delete(tempFileName);
 
         AnsiConsole.MarkupLine($"[green]Updated[/] {fileName}");
     }
@@ -107,7 +105,7 @@ internal static class DBSizeGenerator
     {
         file.WriteLine("<Tabs>");
 
-        foreach (var chain in chains)
+        foreach (string chain in chains)
             WriteChainSize(file, dbSizeSourcePath, chain);
 
         file.WriteLine("""
@@ -118,31 +116,31 @@ internal static class DBSizeGenerator
 
     private static void WriteChainSize(StreamWriter file, string dbSizeSourcePath, string chain)
     {
-        var path = Path.Join(dbSizeSourcePath, $"{chain}.json");
-        using var json = JsonDocument.Parse(File.ReadAllText(path));
+        string path = Path.Join(dbSizeSourcePath, $"{chain}.json");
+        using JsonDocument json = JsonDocument.Parse(File.ReadAllText(path));
 
         if (json.RootElement.ValueKind != JsonValueKind.Object)
             return;
 
-        var chainCapitalized = $"{char.ToUpper(chain[0])}{chain[1..]}";
+        string chainCapitalized = $"{char.ToUpper(chain[0])}{chain[1..]}";
 
         file.WriteLine($"""
             <TabItem value="{chain}" label="{chainCapitalized}">
 
             """);
 
-        var items = json.RootElement.EnumerateObject();
+        JsonElement.ObjectEnumerator items = json.RootElement.EnumerateObject();
 
-        foreach (var db in _dbList)
+        foreach (string db in _dbList)
         {
-            var size = items
+            string size = items
                 .FirstOrDefault(e => e.Name.Contains(db, StringComparison.Ordinal))
                 .Value.ToString();
 
             file.WriteLine($"- `{db}`: {FormatSize(size)}");
         }
 
-        var totalSize = items
+        string totalSize = items
             .FirstOrDefault(e => e.Name.EndsWith("nethermind_db", StringComparison.Ordinal))
             .Value.ToString();
 
@@ -161,8 +159,8 @@ internal static class DBSizeGenerator
 
     private static string GetLatestVersion(string path)
     {
-        using var versionsJson = File.OpenRead(Path.Join(path, "versions.json"));
-        var versions = JsonSerializer.Deserialize<string[]>(versionsJson)!;
+        using FileStream versionsJson = File.OpenRead(Path.Join(path, "versions.json"));
+        string[] versions = JsonSerializer.Deserialize<string[]>(versionsJson)!;
 
         return versions[0];
     }

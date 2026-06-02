@@ -3,15 +3,9 @@
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
-public class ParityStateChange<T>
+public class ParityStateChange<T>(T before, T after)
 {
-    public ParityStateChange(T before, T after)
-    {
-        Before = before;
-        After = after;
-    }
-
-    public T Before { get; set; }
-    public T After { get; set; }
+    public T Before { get; set; } = before;
+    public T After { get; set; } = after;
 }
 

@@ -15,15 +15,9 @@ namespace Nethermind.Synchronization.Blocks
         private static DownloaderOptions BuildOptions() => DownloaderOptions.Process;
 
         // ReSharper disable once RedundantTypeArgumentsOfMethod
-        public override Task<BlocksRequest?> PrepareRequest(CancellationToken token = default)
-        {
-            return forwardSyncController.PrepareRequest(BuildOptions(), 0, token);
-        }
+        public override Task<BlocksRequest?> PrepareRequest(CancellationToken token = default) => forwardSyncController.PrepareRequest(BuildOptions(), 0, token);
 
-        public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response, PeerInfo peer = null)
-        {
-            return forwardSyncController.HandleResponse(response, peer);
-        }
+        public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response, PeerInfo peer = null) => forwardSyncController.HandleResponse(response, peer);
 
         public override bool IsMultiFeed => true;
 

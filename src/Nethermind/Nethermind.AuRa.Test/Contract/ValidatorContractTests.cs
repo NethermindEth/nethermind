@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
@@ -17,7 +16,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -31,6 +29,9 @@ namespace Nethermind.AuRa.Test.Contract
         private ITransactionProcessor _transactionProcessor;
         private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
         private IWorldState _stateProvider;
+
+        [TearDown]
+        public void TearDown() => _readOnlyTxProcessorSource?.Dispose();
 
         [SetUp]
         public void SetUp()
@@ -56,7 +57,7 @@ namespace Nethermind.AuRa.Test.Contract
                     _stateProvider,
                     _readOnlyTxProcessorSource,
                     new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
-            action.Should().Throw<ArgumentNullException>();
+            Assert.That(action, Throws.TypeOf<ArgumentNullException>());
         }
 
         [Test]
@@ -85,15 +86,16 @@ namespace Nethermind.AuRa.Test.Contract
 
             contract.FinalizeChange(_block.Header);
 
+            _transactionProcessor.Received().SetBlockExecutionContext(Arg.Is<BlockHeader>(header => header.Equals(_block.Header)));
             _transactionProcessor.Received().Execute(
-                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), Arg.Is<BlockHeader>(header => header.Equals(_block.Header)), Arg.Any<ITxTracer>());
+                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), Arg.Any<ITxTracer>());
         }
 
         private static bool IsEquivalentTo(Transaction expected, Transaction item)
         {
             try
             {
-                item.EqualToTransaction(expected);
+                Assert.That(item, Is.EqualTo(expected).UsingTransactionComparer());
                 return true;
             }
             catch

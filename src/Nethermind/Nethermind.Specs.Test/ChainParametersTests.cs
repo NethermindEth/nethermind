@@ -16,12 +16,8 @@ public class ChainParametersTests
     [Test]
     public void ChainParameters_should_have_same_properties_as_chainSpecParamsJson()
     {
-        string[] chainParametersExceptions = {
-            "Registrar"
-        };
-        string[] chainSpecParamsJsonExceptions = {
-            "ChainId", "EnsRegistrar", "NetworkId"
-        };
+        string[] chainParametersExceptions = [];
+        string[] chainSpecParamsJsonExceptions = ["ChainId", "NetworkId", "NamedForks"];
         IEnumerable<string> chainParametersProperties = typeof(ChainParameters).GetProperties()
             .Where(x => !chainParametersExceptions.Contains(x.Name))
             .Select(x => x.Name);
@@ -40,7 +36,8 @@ public class ChainParametersTests
             "MaxCodeSizeTransitionTimestamp",
             "Eip4844FeeCollectorTransitionTimestamp",
             "Eip6110TransitionTimestamp",
-            "Eip7692TransitionTimestamp"
+            "Eip7928TransitionTimestamp", // todo: remove when added to chainspec
+            "Eip7843TransitionTimestamp"
         ];
 
         const ulong testValue = 1ul;

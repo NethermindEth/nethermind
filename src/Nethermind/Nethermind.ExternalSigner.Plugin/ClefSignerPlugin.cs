@@ -9,7 +9,6 @@ using Nethermind.Network;
 using Nethermind.Consensus;
 using Nethermind.KeyStore.Config;
 using System.Configuration;
-using Nethermind.Wallet;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.ExternalSigner.Plugin;
@@ -26,8 +25,6 @@ public class ClefSignerPlugin(IMiningConfig miningConfig) : INethermindPlugin
 
     public bool MustInitialize => true;
     public bool Enabled => !string.IsNullOrEmpty(miningConfig.Signer);
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public Task Init(INethermindApi nethermindApi)
     {

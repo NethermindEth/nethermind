@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Contracts.Json
         /// </remarks>
         internal static readonly Regex TypeExpression = TypeExpressionRegex();
 
-        internal static readonly Dictionary<string, Func<int?, int?, AbiType>> SimpleTypeFactories = new Dictionary<string, Func<int?, int?, AbiType>>(StringComparer.InvariantCultureIgnoreCase)
+        internal static readonly Dictionary<string, Func<int?, int?, AbiType>> SimpleTypeFactories = new(StringComparer.InvariantCultureIgnoreCase)
         {
             {"int", static (m, n) => new AbiInt(m ?? 256)},
             {"uint", static (m, n) => new AbiUInt(m ?? 256)},

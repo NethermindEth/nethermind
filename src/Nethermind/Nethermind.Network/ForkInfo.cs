@@ -36,7 +36,7 @@ namespace Nethermind.Network
 
             _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
             ForkActivation[] transitionActivations = specProvider.TransitionActivations;
-            DictForks = new();
+            DictForks = [];
             Forks = new Fork[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
             uint crc = Crc32Algorithm.Append(0, genesisHash.ThreadStaticBytes());
@@ -141,6 +141,8 @@ namespace Nethermind.Network
 
         public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head)
         {
+            EnsureInitialized();
+
             ForkActivation headActivation = new(head?.Number ?? 0, head?.Number == 0 ? 0 : head?.Timestamp ?? 0);
 
             int indexOfActive = Forks.Length - 1;

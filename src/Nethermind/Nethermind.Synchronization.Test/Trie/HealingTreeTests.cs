@@ -3,10 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -29,6 +27,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.History;
+using Nethermind.Init.Modules;
 
 namespace Nethermind.Synchronization.Test.Trie;
 
@@ -41,14 +40,14 @@ public class HealingTreeTests
     [Test]
     public void get_state_tree_works()
     {
-        HealingStateTree stateTree = new(Substitute.For<ITrieStore>(), Substitute.For<INodeStorage>(), LimboLogs.Instance);
+        HealingStateTree stateTree = new(Substitute.For<ITrieStore>(), Substitute.For<INodeStorage>(), new Lazy<IPathRecovery>(), LimboLogs.Instance);
         stateTree.Get(stackalloc byte[] { 1, 2, 3 });
     }
 
     [Test]
     public void get_storage_tree_works()
     {
-        HealingStorageTree stateTree = new(Substitute.For<IScopedTrieStore>(), Substitute.For<INodeStorage>(), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem.KeccakA, null);
+        HealingStorageTree stateTree = new(Substitute.For<IScopedTrieStore>(), Substitute.For<INodeStorage>(), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem.KeccakA, new Lazy<IPathRecovery>());
         stateTree.Get(stackalloc byte[] { 1, 2, 3 });
     }
 
@@ -57,13 +56,12 @@ public class HealingTreeTests
     {
         static HealingStateTree CreateHealingStateTree(ITrieStore trieStore, INodeStorage nodeStorage, IPathRecovery recovery)
         {
-            HealingStateTree stateTree = new(trieStore, nodeStorage, LimboLogs.Instance);
-            stateTree.InitializeNetwork(recovery);
+            HealingStateTree stateTree = new(trieStore, nodeStorage, new Lazy<IPathRecovery>(recovery), LimboLogs.Instance);
             return stateTree;
         }
 
         TreePath path = TreePath.FromNibble([1, 2]);
-        Hash256 fullPath = new Hash256("1200000000000000000000000000000000000000000000000000000000000000");
+        Hash256 fullPath = new("1200000000000000000000000000000000000000000000000000000000000000");
         recovery_works(successfullyRecovered, null, path, fullPath, CreateHealingStateTree);
     }
 
@@ -73,10 +71,10 @@ public class HealingTreeTests
         Hash256 addressPath = Keccak.Compute(TestItem.AddressA.Bytes);
         HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, INodeStorage nodeStorage, IPathRecovery recovery) =>
             new(trieStore.GetTrieStore(addressPath), nodeStorage, Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA,
-                _key, recovery);
+                _key, new Lazy<IPathRecovery>(recovery));
 
         TreePath path = TreePath.FromNibble([1, 2]);
-        Hash256 fullPath = new Hash256("1200000000000000000000000000000000000000000000000000000000000000");
+        Hash256 fullPath = new("1200000000000000000000000000000000000000000000000000000000000000");
 
         recovery_works(successfullyRecovered, addressPath, path, fullPath, CreateHealingStorageTree);
     }
@@ -112,12 +110,12 @@ public class HealingTreeTests
         Action action = () => trie.Get(fullPath.Bytes, _key);
         if (successfullyRecovered)
         {
-            action.Should().NotThrow();
+            Assert.That(action, Throws.Nothing);
             db.KeyWasWritten(NodeStorage.GetHalfPathNodeStoragePath(address, path, ValueKeccak.Compute(_rlp)));
         }
         else
         {
-            action.Should().Throw<MissingTrieNodeException>();
+            Assert.That(action, Throws.TypeOf<MissingTrieNodeException>());
         }
     }
 
@@ -142,7 +140,7 @@ public class HealingTreeTests
 
         IContainer CreateNode()
         {
-            ConfigProvider configProvider = new ConfigProvider();
+            ConfigProvider configProvider = new();
             configProvider.GetConfig<IPruningConfig>().Mode = PruningMode.Full;
             configProvider.GetConfig<IInitConfig>().StateDbKeyScheme = keyScheme;
             return new ContainerBuilder()
@@ -154,18 +152,18 @@ public class HealingTreeTests
 
         BlockHeader FillStorage(IContainer server)
         {
-            IWorldState mainWorldState = server.Resolve<AutoMainProcessingContext>().WorldState;
+            IWorldState mainWorldState = server.Resolve<MainProcessingContext>().WorldState;
             IBlockTree blockTree = server.Resolve<IBlockTree>();
 
-            using var _ = mainWorldState.BeginScope(blockTree.Head?.Header);
+            using IDisposable _ = mainWorldState.BeginScope(blockTree.Head?.Header);
 
             for (int i = 0; i < 100; i++)
             {
-                Address address = new Address(Keccak.Compute(i.ToString()));
+                Address address = new(Keccak.Compute(i.ToString()));
                 mainWorldState.CreateAccount(address, (UInt256)i, (UInt256)i);
             }
 
-            Address storageAddress = new Address(Keccak.Compute("storage"));
+            Address storageAddress = new(Keccak.Compute("storage"));
             mainWorldState.CreateAccount(storageAddress, 100, 100);
             for (int i = 1; i < 100; i++)
             {
@@ -180,7 +178,7 @@ public class HealingTreeTests
 
             Block block = Build.A.Block.WithStateRoot(mainWorldState.StateRoot).WithParent(blockTree.Head!).TestObject;
 
-            blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            Assert.That(blockTree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
             blockTree.UpdateMainChain([block], true);
 
             return block.Header;
@@ -191,13 +189,13 @@ public class HealingTreeTests
             IDb clientStateDb = client.ResolveNamed<IDb>(DbNames.State);
             IDb serverStateDb = server.ResolveNamed<IDb>(DbNames.State);
 
-            Random random = new Random(0);
+            Random random = new(0);
             using ArrayPoolList<KeyValuePair<byte[], byte[]?>> allValues = serverStateDb.GetAll().ToPooledList(10);
-            // Sort for reproducability
+            // Sort for reproducibility
             allValues.AsSpan().Sort(((k1, k2) => ((IComparer<byte[]>)Bytes.Comparer).Compare(k1.Key, k2.Key)));
 
             // Copy from server to client, but randomly remove some of them.
-            foreach (var kv in allValues.AsSpan())
+            foreach (KeyValuePair<byte[], byte[]?> kv in allValues.AsSpan())
             {
                 if (random.NextDouble() < 0.9)
                 {
@@ -208,22 +206,22 @@ public class HealingTreeTests
 
         void AssertStorage(IContainer client)
         {
-            IWorldState mainWorldState = client.Resolve<AutoMainProcessingContext>().WorldState;
-            using var _ = mainWorldState.BeginScope(baseBlock);
+            IWorldState mainWorldState = client.Resolve<MainProcessingContext>().WorldState;
+            using IDisposable _ = mainWorldState.BeginScope(baseBlock);
 
             for (int i = 0; i < 100; i++)
             {
-                Address address = new Address(Keccak.Compute(i.ToString()));
-                mainWorldState.GetBalance(address).Should().Be((UInt256)i);
-                mainWorldState.GetNonce(address).Should().Be((UInt256)i);
+                Address address = new(Keccak.Compute(i.ToString()));
+                Assert.That(mainWorldState.GetBalance(address), Is.EqualTo((UInt256)i));
+                Assert.That(mainWorldState.GetNonce(address), Is.EqualTo((UInt256)i));
             }
 
-            Address storageAddress = new Address(Keccak.Compute("storage"));
-            mainWorldState.GetBalance(storageAddress).Should().Be((UInt256)100);
-            mainWorldState.GetNonce(storageAddress).Should().Be((UInt256)100);
+            Address storageAddress = new(Keccak.Compute("storage"));
+            Assert.That(mainWorldState.GetBalance(storageAddress), Is.EqualTo((UInt256)100));
+            Assert.That(mainWorldState.GetNonce(storageAddress), Is.EqualTo((UInt256)100));
             for (int i = 1; i < 100; i++)
             {
-                mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray().Should().BeEquivalentTo(i.ToBigEndianByteArray());
+                Assert.That(mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray(), Is.EqualTo(i.ToBigEndianByteArray()));
             }
         }
     }

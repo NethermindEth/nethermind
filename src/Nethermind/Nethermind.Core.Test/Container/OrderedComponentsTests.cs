@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core.Container;
 using NUnit.Framework;
 
@@ -21,9 +20,9 @@ public class OrderedComponentsTests
             .AddLast(_ => new Item("4"))
             .Build();
 
-        ctx.Resolve<Item[]>().Select(item => item.Name).Should().BeEquivalentTo(["1", "2", "3", "4"]);
-        ctx.Resolve<IEnumerable<Item>>().Select(item => item.Name).Should().BeEquivalentTo(["1", "2", "3", "4"]);
-        ctx.Resolve<IReadOnlyList<Item>>().Select(item => item.Name).Should().BeEquivalentTo(["1", "2", "3", "4"]);
+        Assert.That(ctx.Resolve<Item[]>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
+        Assert.That(ctx.Resolve<IEnumerable<Item>>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
+        Assert.That(ctx.Resolve<IReadOnlyList<Item>>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
     }
 
     [Test]
@@ -35,7 +34,7 @@ public class OrderedComponentsTests
             .AddFirst(_ => new Item("1"))
             .Build();
 
-        ctx.Resolve<Item[]>().Select(item => item.Name).Should().BeEquivalentTo(["1", "2", "3"]);
+        Assert.That(ctx.Resolve<Item[]>().Select(item => item.Name), Is.EqualTo(["1", "2", "3"]));
     }
 
     [Test]
@@ -46,7 +45,37 @@ public class OrderedComponentsTests
             .AddSingleton<Item>(_ => new Item("2"))
             .Build();
 
-        act.Should().Throw<InvalidOperationException>();
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void TestCompositeResolved_EvenWhenNotLastRegistration()
+    {
+        // AddComposite is called before the last AddLast — composite should still be resolved as IItem
+        using IContainer ctx = new ContainerBuilder()
+            .AddLast<IItem>(_ => new Item("1"))
+            .AddCompositeOrderedComponents<IItem, CompositeItem>()
+            .AddLast<IItem>(_ => new Item("2"))
+            .Build();
+
+        IItem resolved = ctx.Resolve<IItem>();
+        Assert.That(resolved, Is.TypeOf<CompositeItem>());
+        Assert.That(((CompositeItem)resolved).Items.Select(i => i.Name), Is.EqualTo(["1", "2"]));
+    }
+
+    [Test]
+    public void TestCompositeResolved_WhenCalledBeforeAnyAddLast()
+    {
+        // AddComposite is called before any AddLast — should still work
+        using IContainer ctx = new ContainerBuilder()
+            .AddCompositeOrderedComponents<IItem, CompositeItem>()
+            .AddLast<IItem>(_ => new Item("1"))
+            .AddLast<IItem>(_ => new Item("2"))
+            .Build();
+
+        IItem resolved = ctx.Resolve<IItem>();
+        Assert.That(resolved, Is.TypeOf<CompositeItem>());
+        Assert.That(((CompositeItem)resolved).Items.Select(i => i.Name), Is.EqualTo(["1", "2"]));
     }
 
     private class ModuleA : Module
@@ -72,5 +101,11 @@ public class OrderedComponentsTests
             builder
                 .AddLast(_ => new Item("1"));
     }
-    private record Item(string Name);
+    private interface IItem { string Name { get; } }
+    private record Item(string Name) : IItem;
+    private class CompositeItem(IItem[] items) : IItem
+    {
+        public IItem[] Items { get; } = items;
+        public string Name => string.Join(",", Items.Select(i => i.Name));
+    }
 }

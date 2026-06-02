@@ -28,7 +28,8 @@ public class BlockHeader
         ulong? blobGasUsed = null,
         ulong? excessBlobGas = null,
         Hash256? parentBeaconBlockRoot = null,
-        Hash256? requestsHash = null)
+        Hash256? requestsHash = null,
+        ulong? slotNumber = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -42,10 +43,11 @@ public class BlockHeader
         RequestsHash = requestsHash;
         BlobGasUsed = blobGasUsed;
         ExcessBlobGas = excessBlobGas;
+        SlotNumber = slotNumber;
     }
 
-    public WeakReference<BlockHeader>? MaybeParent { get; set; }
-    public bool IsGenesis => Number == 0L;
+    public virtual long GenesisBlockNumber => 0;
+    public bool IsGenesis => Number == GenesisBlockNumber;
     public Hash256? ParentHash { get; set; }
     public Hash256? UnclesHash { get; set; }
     public Address? Author { get; set; }
@@ -73,15 +75,17 @@ public class BlockHeader
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
     public Hash256? RequestsHash { get; set; }
+    public Hash256? BlockAccessListHash { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
+    public ulong? SlotNumber { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
-                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
+                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
+                           || (BlockAccessListHash is not null && BlockAccessListHash != Keccak.OfAnEmptySequenceRlp);
 
-    public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
+    public bool HasTransactions => TxRoot is not null && TxRoot != Keccak.EmptyTreeHash;
 
-    public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
     public bool IsPostMerge { get; set; }
 
     public string ToString(string indent)
@@ -122,6 +126,14 @@ public class BlockHeader
         {
             builder.AppendLine($"{indent}RequestsHash: {RequestsHash}");
         }
+        if (BlockAccessListHash is not null)
+        {
+            builder.AppendLine($"{indent}BlockAccessListHash: {BlockAccessListHash}");
+        }
+        if (SlotNumber is not null)
+        {
+            builder.AppendLine($"{indent}SlotNumber: {SlotNumber}");
+        }
 
         return builder.ToString();
     }
@@ -134,6 +146,29 @@ public class BlockHeader
         Format.FullHashAndNumber => Hash is null ? $"{Number} null" : $"{Number} ({Hash})",
         _ => Hash is null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})",
     };
+
+    /// <summary>
+    /// Creates the child header used for simulated execution.
+    /// </summary>
+    /// <param name="timestamp">Timestamp assigned to the simulated child header.</param>
+    /// <returns>A simulated child header with explicit default execution fields.</returns>
+    public virtual BlockHeader CreateSimulatedChild(ulong timestamp)
+    {
+        Hash256? requestsHash = RequestsHash;
+        return new BlockHeader(
+            Hash!,
+            Keccak.OfAnEmptySequenceRlp,
+            Beneficiary!,
+            UInt256.Zero,
+            Number + 1,
+            GasLimit,
+            timestamp,
+            [],
+            requestsHash: requestsHash)
+        {
+            MixHash = Hash256.Zero,
+        };
+    }
 
     [Todo(Improve.Refactor, "Use IFormattable here")]
     public enum Format

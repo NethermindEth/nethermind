@@ -8,12 +8,13 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class NullReceiptStorage : IReceiptStorage
+    public class NullReceiptStorage : IReceiptMigrationStore
     {
         public static NullReceiptStorage Instance { get; } = new();
 
 #pragma warning disable CS0067
-        public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+        public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
+        public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 #pragma warning restore CS0067
 
         public Hash256? FindBlockHash(Hash256 hash) => null;
@@ -24,6 +25,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null) { }
         public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber = null) { }
+        public void InsertForMigration(Block block, TxReceipt[] receipts) { }
 
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = false) => [];
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => [];
@@ -37,10 +39,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public long MigratedBlockNumber { get; set; } = 0;
 
-        public bool HasBlock(long blockNumber, Hash256 hash)
-        {
-            return false;
-        }
+        public bool HasBlock(long blockNumber, Hash256 hash) => false;
 
         public void EnsureCanonical(Block block)
         {

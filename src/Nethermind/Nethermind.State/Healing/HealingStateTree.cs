@@ -11,22 +11,11 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public sealed class HealingStateTree : StateTree
+[method: DebuggerStepThrough]
+public sealed class HealingStateTree(ITrieStore? store, INodeStorage nodeStorage, Lazy<IPathRecovery> recovery, ILogManager? logManager) : StateTree(store.GetTrieStore(null), logManager)
 {
-    private IPathRecovery? _recovery;
-    private readonly INodeStorage _nodeStorage;
-
-    [DebuggerStepThrough]
-    public HealingStateTree(ITrieStore? store, INodeStorage nodeStorage, ILogManager? logManager)
-        : base(store.GetTrieStore(null), logManager)
-    {
-        _nodeStorage = nodeStorage;
-    }
-
-    public void InitializeNetwork(IPathRecovery recovery)
-    {
-        _recovery = recovery;
-    }
+    private Lazy<IPathRecovery> _recovery = recovery;
+    private readonly INodeStorage _nodeStorage = nodeStorage;
 
     public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
     {
@@ -36,7 +25,7 @@ public sealed class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            Hash256 fullPath = new Hash256(rawKey);
+            Hash256 fullPath = new(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
                 return base.Get(rawKey, rootHash);
@@ -54,7 +43,7 @@ public sealed class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            Hash256 fullPath = new Hash256(rawKey);
+            Hash256 fullPath = new(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
                 base.Set(rawKey, value);
@@ -70,7 +59,7 @@ public sealed class HealingStateTree : StateTree
     {
         if (_recovery is not null)
         {
-            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Recover(RootHash, null, missingNodePath, hash, fullPath).GetAwaiter().GetResult();
+            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Value.Recover(RootHash, null, missingNodePath, hash, fullPath).GetAwaiter().GetResult();
             if (rlps is not null)
             {
                 foreach ((TreePath, byte[]) kv in rlps)

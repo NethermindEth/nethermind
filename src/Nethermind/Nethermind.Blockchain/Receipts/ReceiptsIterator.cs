@@ -113,15 +113,13 @@ namespace Nethermind.Blockchain.Receipts
             _recoveryContext?.Dispose();
         }
 
-        public readonly LogEntriesIterator IterateLogs(TxReceiptStructRef receipt)
-        {
-            return receipt.Logs is null ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder) : new LogEntriesIterator(receipt.Logs);
-        }
+        public readonly LogEntriesIterator IterateLogs(TxReceiptStructRef receipt) =>
+            receipt.Logs is null
+                ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder)
+                : new LogEntriesIterator(receipt.Logs);
 
-        public readonly Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
-        {
-            return _receiptRefDecoder.DecodeTopics(valueDecoderContext);
-        }
+        public readonly Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) =>
+            _receiptRefDecoder.DecodeTopics(valueDecoderContext);
 
         public readonly bool CanDecodeBloom => _receiptRefDecoder is null || _receiptRefDecoder.CanDecodeBloom;
     }

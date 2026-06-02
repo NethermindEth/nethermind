@@ -1,9 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -15,8 +13,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
@@ -39,7 +35,6 @@ public class Eth67ProtocolHandlerTests
     private IMessageSerializationService _svc = null!;
     private ISyncServer _syncManager = null!;
     private ITxPool _transactionPool = null!;
-    private IPooledTxsRequestor _pooledTxsRequestor = null!;
     private IGossipPolicy _gossipPolicy = null!;
     private ISpecProvider _specProvider = null!;
     private Block _genesisBlock = null!;
@@ -57,7 +52,6 @@ public class Eth67ProtocolHandlerTests
         _session.Node.Returns(node);
         _syncManager = Substitute.For<ISyncServer>();
         _transactionPool = Substitute.For<ITxPool>();
-        _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
         _specProvider = Substitute.For<ISpecProvider>();
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -71,7 +65,6 @@ public class Eth67ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
-            _pooledTxsRequestor,
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance);
@@ -89,43 +82,46 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        _handler.ProtocolCode.Should().Be("eth");
-        _handler.Name.Should().Be("eth67");
-        _handler.ProtocolVersion.Should().Be(67);
-        _handler.MessageIdSpaceSize.Should().Be(17);
-        _handler.IncludeInTxPool.Should().BeTrue();
-        _handler.ClientId.Should().Be(_session.Node?.ClientId);
-        _handler.HeadHash.Should().BeNull();
-        _handler.HeadNumber.Should().Be(0);
+        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+        Assert.That(_handler.Name, Is.EqualTo("eth67"));
+        Assert.That(_handler.ProtocolVersion, Is.EqualTo(67));
+        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+        Assert.That(_handler.IncludeInTxPool, Is.True);
+        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+        Assert.That(_handler.HeadHash, Is.Null);
+        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
     }
 
     [Test]
-    public void Can_ignore_get_node_data()
+    public void Should_disconnect_on_get_node_data()
     {
-        using var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
-        using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
+        using GetNodeDataMessage msg63 = new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
+        using Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage msg66 = new(1111, msg63);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth66MessageCode.GetNodeData);
+
         _session.DidNotReceive().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>());
+        _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 
     [Test]
-    public void Can_ignore_node_data_and_not_throw_when_receiving_unrequested_node_data()
+    public void Should_disconnect_on_node_data()
     {
-        using var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
-        using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
+        using NodeDataMessage msg63 = new(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
+        using Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage msg66 = new(1111, msg63);
 
         HandleIncomingStatusMessage();
-        System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-        act.Should().NotThrow<SubprotocolException>();
+        HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 
     [Test]
     public void Can_handle_eth66_messages_other_than_GetNodeData_and_NodeData() // e.g. GetBlockHeadersMessage
     {
-        using var msg62 = new GetBlockHeadersMessage();
-        using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage(1111, msg62);
+        using GetBlockHeadersMessage msg62 = new();
+        using Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage msg66 = new(1111, msg62);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth66MessageCode.GetBlockHeaders);
@@ -134,18 +130,18 @@ public class Eth67ProtocolHandlerTests
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
-        IByteBuffer getZeroPacket = _svc.ZeroSerialize(msg);
+        using DisposableByteBuffer getZeroPacket = _svc.ZeroSerialize(msg).AsDisposable();
         getZeroPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getZeroPacket) { PacketType = (byte)messageCode });
     }
 
     private void HandleIncomingStatusMessage()
     {
-        var statusMsg = new StatusMessage();
+        StatusMessage statusMsg = new();
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }

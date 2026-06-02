@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -9,11 +8,13 @@ namespace Nethermind.Evm.Test
 {
     public class SignExtTests : VirtualMachineTestsBase
     {
-        [Test]
-        public void Sign_ext_zero()
+        [TestCase(0, 0, Description = "Sign extend zero")]
+        [TestCase(255, -1, Description = "Sign extend max")]
+        public void Sign_ext_value(int value, int expectedResult)
         {
+            UInt256 expected = expectedResult == -1 ? UInt256.MaxValue : (UInt256)expectedResult;
             byte[] code = Prepare.EvmCode
-                .PushData(0)
+                .PushData(value)
                 .PushData(0)
                 .Op(Instruction.SIGNEXTEND)
                 .PushData(0)
@@ -21,22 +22,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             _ = Execute(code);
-            AssertStorage(UInt256.Zero, UInt256.Zero);
-        }
-
-        [Test]
-        public void Sign_ext_max()
-        {
-            byte[] code = Prepare.EvmCode
-                .PushData(255)
-                .PushData(0)
-                .Op(Instruction.SIGNEXTEND)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done;
-
-            _ = Execute(code);
-            AssertStorage(UInt256.Zero, UInt256.MaxValue);
+            AssertStorage(UInt256.Zero, expected);
         }
 
         [Test]
@@ -48,7 +34,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput res = Execute(code);
-            res.Error.Should().Be(EvmExceptionType.StackUnderflow.ToString());
+            Assert.That(res.Error, Is.EqualTo(EvmExceptionType.StackUnderflow.ToString()));
         }
     }
 }

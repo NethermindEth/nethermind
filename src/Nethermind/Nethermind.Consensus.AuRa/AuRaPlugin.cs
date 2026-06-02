@@ -11,6 +11,7 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
@@ -24,7 +25,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -53,29 +53,18 @@ namespace Nethermind.Consensus.AuRa
         private StartBlockProducerAuRa BlockProducerStarter => _blockProducerStarter ??= _nethermindApi!.CreateStartBlockProducer();
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-        public ValueTask DisposeAsync()
-        {
-            return default;
-        }
-
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi as AuRaNethermindApi;
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer()
-        {
-            return BlockProducerStarter!.BuildProducer();
-        }
+        public IBlockProducer InitBlockProducer() => BlockProducerStarter!.BuildProducer();
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            return new StandardBlockProducerRunner(
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new StandardBlockProducerRunner(
                 BlockProducerStarter.CreateTrigger(),
                 _nethermindApi.BlockTree,
                 blockProducer);
-        }
 
         public IModule Module => new AuRaModule(chainSpec);
 
@@ -107,10 +96,10 @@ namespace Nethermind.Consensus.AuRa
 
                 // Steps override
                 .AddStep(typeof(InitializeBlockchainAuRa))
-                .AddStep(typeof(LoadGenesisBlockAuRa))
 
                 // Block processing components
                 .AddSingleton<IBlockValidationModule, AuraValidationModule>()
+                .AddSingleton<IMainProcessingModule, AuraMainProcessingModule>()
                 .AddScoped<IAuRaValidator, NullAuRaValidator>() // Note: for main block processor this is not the case
                 .AddScoped<IBlockProcessor, AuRaBlockProcessor>()
 
@@ -122,6 +111,7 @@ namespace Nethermind.Consensus.AuRa
                 .Bind<ISealValidator, AuRaSealValidator>()
                 .AddSingleton<ISealer, AuRaSealer>()
                 .AddSingleton<AuRaGasLimitOverrideFactory>()
+                .AddScoped<IGenesisPostProcessor, AuraGenesisPostProcessor>()
 
                 // Rpcs
                 .AddSingleton<IHealthHintService, AuraHealthHintService>()
@@ -133,11 +123,11 @@ namespace Nethermind.Consensus.AuRa
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
 
-            if (Rlp.GetStreamDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
+            if (Rlp.GetDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
 
         /// <summary>
-        /// Some validation component that is active in rpc and validation but not in block produccer.
+        /// Some validation component that is active in RPC and validation but not in block producer.
         /// </summary>
         /// <param name="parameters"></param>
         /// <param name="specProvider"></param>
@@ -154,7 +144,8 @@ namespace Nethermind.Consensus.AuRa
                 ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
                 IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
-                ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
+                (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. parameters.RewriteBytecodeTimestampParsed];
+                ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
                 AuRaContractGasLimitOverride? gasLimitOverride = gasLimitOverrideFactory.GetGasLimitCalculator();
 

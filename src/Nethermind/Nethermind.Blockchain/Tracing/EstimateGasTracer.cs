@@ -15,10 +15,7 @@ namespace Nethermind.Blockchain.Tracing;
 
 public class EstimateGasTracer : TxTracer
 {
-    public EstimateGasTracer()
-    {
-        _currentGasAndNesting.Push(new GasAndNesting(0, -1));
-    }
+    public EstimateGasTracer() => _currentGasAndNesting.Push(new GasAndNesting(0, -1));
 
     public override bool IsTracingReceipt => true;
     public override bool IsTracingActions => true;
@@ -38,7 +35,11 @@ public class EstimateGasTracer : TxTracer
 
     public byte StatusCode { get; set; }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
+    public bool OutOfGas { get; private set; }
+
+    public bool TopLevelRevert { get; private set; }
+
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
         GasSpent = gasSpent.SpentGas;
@@ -46,7 +47,7 @@ public class EstimateGasTracer : TxTracer
         StatusCode = Evm.StatusCode.Success;
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
         Hash256? stateRoot = null)
     {
         GasSpent = gasSpent.SpentGas;
@@ -55,18 +56,12 @@ public class EstimateGasTracer : TxTracer
         StatusCode = Evm.StatusCode.Failure;
     }
 
-    private class GasAndNesting
+    private class GasAndNesting(long gasOnStart, int nestingLevel)
     {
-        public GasAndNesting(long gasOnStart, int nestingLevel)
-        {
-            GasOnStart = gasOnStart;
-            NestingLevel = nestingLevel;
-        }
-
-        public long GasOnStart { get; set; }
+        public long GasOnStart { get; set; } = gasOnStart;
         public long GasUsageFromChildren { get; set; }
         public long GasLeft { get; set; }
-        public int NestingLevel { get; set; }
+        public int NestingLevel { get; set; } = nestingLevel;
 
         private long MaxGasNeeded
         {
@@ -105,6 +100,8 @@ public class EstimateGasTracer : TxTracer
     {
         if (_currentNestingLevel == -1)
         {
+            OutOfGas = false;
+            TopLevelRevert = false;
             IntrinsicGasAt = gas;
         }
 
@@ -119,24 +116,34 @@ public class EstimateGasTracer : TxTracer
         }
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-    {
-        UpdateAdditionalGas(gas);
-    }
+    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => UpdateAdditionalGas(gas);
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-    {
+    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
         UpdateAdditionalGas(gas);
-    }
 
     public override void ReportActionError(EvmExceptionType exceptionType)
     {
+        ReportOperationError(exceptionType);
         UpdateAdditionalGas();
     }
 
     public void ReportActionError(EvmExceptionType exceptionType, long gasLeft)
     {
+        ReportOperationError(exceptionType);
         UpdateAdditionalGas(gasLeft);
+    }
+
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        if (_currentNestingLevel == 0)
+        {
+            OutOfGas |= error == EvmExceptionType.OutOfGas;
+
+            if (error == EvmExceptionType.Revert)
+            {
+                TopLevelRevert = true;
+            }
+        }
     }
 
     private void UpdateAdditionalGas(long? gasLeft = null)
@@ -164,14 +171,9 @@ public class EstimateGasTracer : TxTracer
         }
     }
 
-    public override void ReportRefund(long refund)
-    {
-        TotalRefund += refund;
-    }
+    public override void ReportRefund(long refund) => TotalRefund += refund;
 
-    public override void ReportExtraGasPressure(long extraGasPressure)
-    {
+    public override void ReportExtraGasPressure(long extraGasPressure) =>
         _currentGasAndNesting.Peek().ExtraGasPressure =
             Math.Max(_currentGasAndNesting.Peek().ExtraGasPressure, extraGasPressure);
-    }
 }

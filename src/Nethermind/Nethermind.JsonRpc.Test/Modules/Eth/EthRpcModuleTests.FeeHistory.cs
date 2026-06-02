@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -13,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -34,7 +32,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
         string serialized = await ctx.Test.TestEthRpc("eth_feeHistory", blockCount.ToString(), blockParameter, "[0,10.5,20,60,90]");
-        serialized.Should().Be(expected);
+        Assert.That(serialized, Is.EqualTo(expected));
     }
 
     [TestCaseSource(nameof(FeeHistoryBlobTestCases))]
@@ -89,15 +87,15 @@ public partial class EthRpcModuleTests
                 new ulong?[] { 1,
                     2,
                     0,
-                    Cancun.Instance.GetTargetBlobGasPerBlock(),
-                    Cancun.Instance.GetMaxBlobGasPerBlock(),
-                    Cancun.Instance.GetMaxBlobGasPerBlock() * 4 },
+                    Cancun.Instance.GasCosts.TargetBlobGasPerBlock,
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock,
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock * 4 },
                 new ulong?[] { 0,
                     Eip4844Constants.GasPerBlob * 2,
-                    Cancun.Instance.GetMaxBlobGasPerBlock(),
-                    Cancun.Instance.GetMaxBlobGasPerBlock(),
-                    Cancun.Instance.GetMaxBlobGasPerBlock(),
-                    Cancun.Instance.GetMaxBlobGasPerBlock() })
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock,
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock,
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock,
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock })
             {
                 TestName = "Different values",
                 ExpectedResult = (
@@ -108,7 +106,7 @@ public partial class EthRpcModuleTests
 
             yield return new TestCaseData(new ulong?[] { 49152, 1 }, new ulong?[] { 0, 49152 })
             {
-                TestName = "Blocks with arbitary values",
+                TestName = "Blocks with arbitrary values",
                 ExpectedResult = (new UInt256?[] { 1, 1, 1 }, new double?[] { 0.0, 0.0625 })
             };
         }

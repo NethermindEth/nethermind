@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,147 +8,120 @@ using System.Linq;
 using System.Numerics;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.P2P.Subprotocols.Eth.V66;
-using Nethermind.Network.P2P.Subprotocols.Eth.V67;
-using Nethermind.Network.P2P.Subprotocols.Eth.V68;
-using Nethermind.Network.P2P.Subprotocols.Eth.V69;
-using Nethermind.Network.P2P.Subprotocols.NodeData;
-using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.Rlpx;
-using Nethermind.State;
-using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
-using ShouldGossip = Nethermind.TxPool.ShouldGossip;
 
 namespace Nethermind.Network
 {
-    public class ProtocolsManager : IProtocolsManager
+    public class ProtocolsManager : IProtocolsManager, IProtocolRegistrar
     {
         public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
         {
-            new(Protocol.Eth, 66),
-            new(Protocol.Eth, 67),
             new(Protocol.Eth, 68),
-            new(Protocol.NodeData, 1)
         };
 
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
-
-        private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
-            new();
-
-        private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
+        private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols = new();
         private readonly ISyncPeerPool _syncPool;
-        private readonly ISyncServer _syncServer;
         private readonly ITxPool _txPool;
-        private readonly IPooledTxsRequestor _pooledTxsRequestor;
-        private readonly IDiscoveryApp _discoveryApp;
-        private readonly IMessageSerializationService _serializer;
-        private readonly IRlpxHost _rlpxHost;
         private readonly INodeStatsManager _stats;
+        private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
+        private readonly IDiscoveryApp _discoveryApp;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
-        private readonly IForkInfo _forkInfo;
-        private readonly IGossipPolicy _gossipPolicy;
-        private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly ILogManager _logManager;
         private readonly ILogger _logger;
-        private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
+        private readonly IProtocolHandlerFactory[] _factories;
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
-        private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
-        private readonly ISnapServer? _snapServer;
+        private readonly EventHandler<SessionEventArgs> _onSessionCreated;
+        private readonly EventHandler<EventArgs> _onSessionInitialized;
+        private readonly SessionDisconnectedEventHandler _onSessionDisconnected;
+
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
-            ISyncServer syncServer,
-            IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
-            IPooledTxsRequestor pooledTxsRequestor,
             IDiscoveryApp discoveryApp,
-            IMessageSerializationService serializationService,
             IRlpxHost rlpxHost,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
-            IForkInfo forkInfo,
-            IGossipPolicy gossipPolicy,
-            IWorldStateManager worldStateManager,
-            ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
+            IProtocolHandlerFactory[] factories,
+            ILogManager logManager)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _pooledTxsRequestor = pooledTxsRequestor ?? throw new ArgumentNullException(nameof(pooledTxsRequestor));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
-            _serializer = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
-            _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
-            _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
-            _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
-            _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _snapServer = worldStateManager.SnapServer;
-            _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ProtocolsManager>() ?? throw new ArgumentNullException(nameof(logManager));
 
-            _protocolFactories = GetProtocolFactories();
-            rlpxHost.SessionCreated += SessionCreated;
+            // Order is already set by OrderedComponents<T> (AddFirst/AddLast)
+            _factories = factories;
+            _onSessionCreated = SessionCreated;
+            _onSessionInitialized = SessionInitialized;
+            _onSessionDisconnected = SessionDisconnected;
+            rlpxHost.SessionCreated += _onSessionCreated;
+            rlpxHost.SessionDisconnected += _onSessionDisconnected;
         }
 
         private void SessionCreated(object sender, SessionEventArgs e)
         {
             _sessions.TryAdd(e.Session.SessionId, e.Session);
-            e.Session.Initialized += SessionInitialized;
-            e.Session.Disconnected += SessionDisconnected;
+            e.Session.Initialized += _onSessionInitialized;
         }
 
-        private void SessionDisconnected(object sender, DisconnectEventArgs e)
+        private void SessionDisconnected(object sender, ISession session, DisconnectEventArgs e)
         {
-            ISession session = (ISession)sender;
-            session.Initialized -= SessionInitialized;
-            session.Disconnected -= SessionDisconnected;
+            session.Initialized -= _onSessionInitialized;
+            _sessions.TryRemove(session.SessionId, out _);
 
-            if (_syncPeers.TryRemove(session.SessionId, out var removed))
+            if (_logger.IsDebug && session.BestStateReached == SessionState.Initialized)
             {
-                _syncPool.RemovePeer(removed);
-                _txPool.RemovePeer(removed.Node.Id);
-                if (session.BestStateReached == SessionState.Initialized)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
-                }
+                _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
             }
 
-            if (_hangingSatelliteProtocols.TryGetValue(session.Node, out var registrations))
+            if (session.Node is not null
+                && _hangingSatelliteProtocols.TryGetValue(session.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase>? registrations)
+                && registrations is not null)
             {
                 registrations.TryRemove(session.SessionId, out _);
             }
 
-            _sessions.TryRemove(session.SessionId, out session);
+            PublicKey? handlerKey = null;
+            if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
+            {
+                _syncPool.RemovePeer(removed);
+                if (removed.Node?.Id is not null)
+                {
+                    handlerKey = removed.Node.Id;
+                    _txPool.RemovePeer(handlerKey);
+                }
+            }
+
+            PublicKey sessionKey = session.Node?.Id;
+            if (sessionKey is not null && sessionKey != handlerKey)
+            {
+                _txPool.RemovePeer(session.Node.Id);
+            }
         }
 
         private void SessionInitialized(object sender, EventArgs e)
         {
             ISession session = (ISession)sender;
-            InitProtocol(session, Protocol.P2P, session.P2PVersion, true);
+            InitProtocol(session, Protocol.P2P, session.P2PVersion);
         }
 
-        private void InitProtocol(ISession session, string protocolCode, int version, bool addCapabilities = false)
+        private void InitProtocol(ISession session, string protocolCode, int version)
         {
             if (session.State < SessionState.Initialized)
             {
@@ -161,221 +134,182 @@ namespace Nethermind.Network
             }
 
             string code = protocolCode.ToLowerInvariant();
-            if (!_protocolFactories.TryGetValue(code, out Func<ISession, int, IProtocolHandler> protocolFactory))
-            {
-                throw new NotSupportedException($"Protocol {code} {version} is not supported");
-            }
 
-            IProtocolHandler protocolHandler = protocolFactory(session, version);
-            protocolHandler.SubprotocolRequested += (s, e) => InitProtocol(session, e.ProtocolCode, e.Version);
-            session.AddProtocolHandler(protocolHandler);
-            if (addCapabilities)
+            // Try DI-registered factories in reverse order (plugins registered last take priority)
+            for (int i = _factories.Length - 1; i >= 0; i--)
             {
-                foreach (Capability capability in _capabilities)
+                IProtocolHandlerFactory factory = _factories[i];
+                if (factory.ProtocolCode != code) continue;
+                if (factory.TryCreate(session, version, out IProtocolHandler? handler))
                 {
-                    session.AddSupportedCapability(capability);
+                    InitHandler(session, handler);
+                    return;
                 }
             }
 
-            protocolHandler.Init();
+            throw new NotSupportedException($"Protocol {code} {version} is not supported");
         }
 
-        public void AddProtocol(string code, Func<ISession, IProtocolHandler> factory)
+        private void InitHandler(ISession session, IProtocolHandler handler)
         {
-            if (_protocolFactories.ContainsKey(code))
+            session.AddProtocolHandler(handler);
+            handler.RegisterWith(session, this);
+            handler.Init();
+        }
+
+        void IProtocolRegistrar.Register(ISession session, ProtocolHandlerBase handler)
+        {
+        }
+
+        void IProtocolRegistrar.Register(ISession session, P2PProtocolHandler handler)
+        {
+            session.PingSender = handler;
+
+            foreach (Capability capability in _capabilities)
             {
-                throw new InvalidOperationException($"Protocol {code} was already added.");
+                session.AddSupportedCapability(capability);
             }
-
-            _protocolFactories[code] = (session, _) => factory(session);
         }
 
-        private IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
-            => new Dictionary<string, Func<ISession, int, IProtocolHandler>>
-            {
-                [Protocol.P2P] = (session, _) =>
-                {
-                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _logManager);
-                    session.PingSender = handler;
-                    InitP2PProtocol(session, handler);
-
-                    return handler;
-                },
-                [Protocol.Eth] = (session, version) =>
-                {
-                    var ethHandler = version switch
-                    {
-                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
-                    };
-
-                    InitSyncPeerProtocol(session, ethHandler);
-                    return ethHandler;
-                },
-                [Protocol.Snap] = (session, version) =>
-                {
-                    var handler = version switch
-                    {
-                        1 => new SnapProtocolHandler(session, _stats, _serializer, _backgroundTaskScheduler, _logManager, _snapServer),
-                        _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
-                    };
-                    InitSatelliteProtocol(session, handler);
-
-                    return handler;
-                },
-                [Protocol.NodeData] = (session, version) =>
-                {
-                    var handler = version switch
-                    {
-                        1 => new NodeDataProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _logManager),
-                        _ => throw new NotSupportedException($"{Protocol.NodeData}.{version} is not supported.")
-                    };
-                    InitSatelliteProtocol(session, handler);
-
-                    return handler;
-                }
-            };
-
-        private void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
-        {
+        void IProtocolRegistrar.Register(ISession session, SyncPeerProtocolHandlerBase handler) =>
             session.Node.EthDetails = handler.Name;
-            handler.ProtocolInitialized += (sender, args) =>
+
+        void IProtocolRegistrar.OnProtocolInitialized(ISession session, ProtocolHandlerBase handler, ProtocolInitializedEventArgs args)
+        {
+            switch (handler)
             {
-                if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
-                // SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
-                // _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
-                // {
-                //     NetworkId = typedArgs.NetworkId,
-                //     BestHash = typedArgs.BestHash,
-                //     GenesisHash = typedArgs.GenesisHash,
-                //     ProtocolVersion = typedArgs.ProtocolVersion,
-                //     TotalDifficulty = (BigInteger)typedArgs.TotalDifficulty
-                // });
-                bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
-                if (isValid)
+                case P2PProtocolHandler p2pProtocolHandler:
+                    OnP2PProtocolInitialized(session, p2pProtocolHandler, (P2PProtocolInitializedEventArgs)args);
+                    break;
+                case SyncPeerProtocolHandlerBase syncPeerProtocolHandler:
+                    OnSyncPeerProtocolInitialized(session, syncPeerProtocolHandler, (SyncPeerProtocolInitializedEventArgs)args);
+                    break;
+                default:
+                    OnSatelliteProtocolInitialized(session, handler, args);
+                    break;
+            }
+        }
+
+        void IProtocolRegistrar.OnSubprotocolRequested(ISession session, ProtocolHandlerBase handler, string protocolCode, int version) =>
+            InitProtocol(session, protocolCode, version);
+
+        private void OnSatelliteProtocolInitialized(ISession session, ProtocolHandlerBase handler, ProtocolInitializedEventArgs args)
+        {
+            if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
+
+            bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
+            if (isValid)
+            {
+                PeerInfo? peer = _syncPool.GetPeer(session.Node);
+                if (peer is not null)
                 {
-                    var peer = _syncPool.GetPeer(session.Node);
-                    if (peer is not null)
-                    {
-                        peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
-                        if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
-                        if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
-                    }
-                    else
-                    {
-                        _hangingSatelliteProtocols.AddOrUpdate(session.Node,
-                            new ConcurrentDictionary<Guid, ProtocolHandlerBase>(new[] { new KeyValuePair<Guid, ProtocolHandlerBase>(session.SessionId, handler) }),
-                            (node, dict) =>
+                    peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
+                    if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
+                }
+                else
+                {
+                    _hangingSatelliteProtocols.AddOrUpdate(session.Node,
+                        _ => new ConcurrentDictionary<Guid, ProtocolHandlerBase> { [session.SessionId] = handler },
+                        (_, dict) =>
                         {
                             dict[session.SessionId] = handler;
                             return dict;
                         });
 
-                        if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
+                }
 
-                    if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
-                }
-            };
+                if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
+            }
         }
 
-        private void InitP2PProtocol(ISession session, P2PProtocolHandler handler)
+        private void OnP2PProtocolInitialized(ISession session, P2PProtocolHandler handler, P2PProtocolInitializedEventArgs args)
         {
-            handler.ProtocolInitialized += (sender, args) =>
+            if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
+
+            if (handler.ProtocolVersion >= 5)
             {
-                P2PProtocolInitializedEventArgs typedArgs = (P2PProtocolInitializedEventArgs)args;
-                if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
+                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - enabling snappy");
+                session.EnableSnappy();
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - disabling snappy");
+            }
 
-                if (handler.ProtocolVersion >= 5)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - enabling snappy");
-                    session.EnableSnappy();
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - disabling snappy");
-                }
+            _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
+            {
+                ClientId = args.ClientId,
+                Capabilities = args.Capabilities,
+                P2PVersion = args.P2PVersion,
+                ListenPort = args.ListenPort
+            });
 
-                _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
-                {
-                    ClientId = typedArgs.ClientId,
-                    Capabilities = typedArgs.Capabilities,
-                    P2PVersion = typedArgs.P2PVersion,
-                    ListenPort = typedArgs.ListenPort
-                });
+            AddNodeToDiscovery(session, args);
 
-                AddNodeToDiscovery(session, typedArgs);
+            _protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, args);
 
-                _protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, args);
-
-                if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
-            };
+            if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
         }
 
-        private void InitSyncPeerProtocol(ISession session, SyncPeerProtocolHandlerBase handler)
+        private void OnSyncPeerProtocolInitialized(ISession session, SyncPeerProtocolHandlerBase handler, SyncPeerProtocolInitializedEventArgs args)
         {
-            session.Node.EthDetails = handler.Name;
-            handler.ProtocolInitialized += (sender, args) =>
+            if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
+
+            _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
             {
-                if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
-                SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
-                _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
+                NetworkId = args.NetworkId,
+                BestHash = args.BestHash,
+                GenesisHash = args.GenesisHash,
+                ProtocolVersion = args.ProtocolVersion,
+                TotalDifficulty = (BigInteger)args.TotalDifficulty
+            });
+            bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
+            if (isValid)
+            {
+                if (_syncPeers.TryAdd(session.SessionId, handler))
                 {
-                    NetworkId = typedArgs.NetworkId,
-                    BestHash = typedArgs.BestHash,
-                    GenesisHash = typedArgs.GenesisHash,
-                    ProtocolVersion = typedArgs.ProtocolVersion,
-                    TotalDifficulty = (BigInteger)typedArgs.TotalDifficulty
-                });
-                bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
-                if (isValid)
-                {
-                    if (_syncPeers.TryAdd(session.SessionId, handler))
+                    if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase> handlerDictionary))
                     {
-                        if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out var handlerDictionary))
+                        foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
                         {
-                            foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
-                            {
-                                handler.RegisterSatelliteProtocol(registration.Value);
-                                if (registration.Value.IsPriority) handler.IsPriority = true;
-                                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
-                            }
+                            handler.RegisterSatelliteProtocol(registration.Value);
+                            if (registration.Value.IsPriority) handler.IsPriority = true;
+                            if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
                         }
-
-                        _syncPool.AddPeer(handler);
-                        if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
-                        if (_logger.IsTrace) _logger.Trace($"{handler.ClientId} sync peer {session} created.");
-                    }
-                    else
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
-                        session.InitiateDisconnect(DisconnectReason.SessionIdAlreadyExists, "sync peer");
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
-
-                    //Add/Update peer to the storage and to sync manager
-                    _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation(DateTime.UtcNow)));
+                    _syncPool.AddPeer(handler);
+                    if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ClientId} sync peer {session} created.");
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
+                    if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
+                    session.InitiateDisconnect(DisconnectReason.SessionIdAlreadyExists, "sync peer");
                 }
-            };
+
+                if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
+
+                //Add/Update peer to the storage and to sync manager
+                _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation(DateTime.UtcNow)));
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
+            }
         }
 
         private bool RunBasicChecks(ISession session, string protocolCode, int protocolVersion)
         {
             if (session.IsClosing)
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {protocolCode}.{protocolVersion} initialized in {session}");
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {protocolCode}.{protocolVersion} skipping init, session closing: {session}");
                 return false;
             }
 
@@ -384,7 +318,7 @@ namespace Nethermind.Network
         }
 
         /// <summary>
-        /// In case of IN connection we don't know what is the port node is listening on until we receive the Hello message
+        /// In case of IN connection we don't know what the port node is listening on is until we receive the Hello message
         /// </summary>
         private void AddNodeToDiscovery(ISession session, P2PProtocolInitializedEventArgs eventArgs)
         {
@@ -404,10 +338,7 @@ namespace Nethermind.Network
             _discoveryApp.AddNodeToDiscovery(session.Node);
         }
 
-        public void AddSupportedCapability(Capability capability)
-        {
-            _capabilities.Add(capability);
-        }
+        public void AddSupportedCapability(Capability capability) => _capabilities.Add(capability);
 
         public void RemoveSupportedCapability(Capability capability)
         {
@@ -417,29 +348,15 @@ namespace Nethermind.Network
             }
         }
 
-        public void SendNewCapability(Capability capability)
-        {
-            AddCapabilityMessage message = new(capability);
-            foreach ((Guid _, ISession session) in _sessions)
-            {
-                if (!session.HasAgreedCapability(capability) && session.HasAvailableCapability(capability))
-                {
-                    session.DeliverMessage(message);
-                }
-                else
-                {
-                    message.Dispose();
-                }
-            }
-        }
-
         public int GetHighestProtocolVersion(string protocol)
         {
             int highestVersion = 0;
             foreach (Capability capability in _capabilities)
             {
                 if (capability.ProtocolCode == protocol)
+                {
                     highestVersion = Math.Max(highestVersion, capability.Version);
+                }
             }
 
             return highestVersion;

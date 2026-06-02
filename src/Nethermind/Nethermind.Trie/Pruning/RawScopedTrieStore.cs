@@ -16,14 +16,12 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
-    {
-        byte[]? ret = nodeStorage.Get(address, path, hash, flags);
-        if (ret is null) throw new MissingTrieNodeException("Node missing", address, path, hash);
-        return ret;
-    }
+    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        nodeStorage.Get(address, path, hash, flags)
+        ?? throw new MissingTrieNodeException("Node missing", address, path, hash);
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => nodeStorage.Get(address, path, hash, flags);
+    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        nodeStorage.Get(address, path, hash, flags);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new RawScopedTrieStore(nodeStorage, address);
 
@@ -31,32 +29,26 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags);
 
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => nodeStorage.KeyExists(address, path, keccak);
-
     public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags) : ICommitter
     {
         INodeStorage.IWriteBatch _writeBatch = nodeStorage.StartWriteBatch();
 
-        public void Dispose()
-        {
-            _writeBatch.Dispose();
-        }
+        public void Dispose() => _writeBatch.Dispose();
 
-        public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
+        public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
-            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
+            if (!node.IsBoundaryProofNode)
             {
-                TrieNode node = nodeCommitInfo.Node;
-
                 if (node.Keccak is null)
                 {
                     ThrowUnknownHash(node);
                 }
 
-                TrieNode currentNode = nodeCommitInfo.Node;
-                currentNode.IsPersisted = true;
-                _writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.Span, writeFlags);
+                node.IsPersisted = true;
+                _writeBatch.Set(address, path, node.Keccak, node.FullRlp.AsSpan(), writeFlags);
             }
+
+            return node;
         }
 
         [DoesNotReturn, StackTraceHidden]

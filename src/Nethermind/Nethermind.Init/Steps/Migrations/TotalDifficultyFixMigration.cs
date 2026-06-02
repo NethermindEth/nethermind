@@ -14,22 +14,15 @@ using Nethermind.State.Repositories;
 
 namespace Nethermind.Init.Steps.Migrations;
 
-public class TotalDifficultyFixMigration : IDatabaseMigration
+public class TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelInfoRepository, IBlockTree? blockTree, ISyncConfig syncConfig, ILogManager logManager) : IDatabaseMigration
 {
-    private readonly ILogger _logger;
-    private readonly ISyncConfig _syncConfig;
-    private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-    private readonly IBlockTree _blockTree;
-    private readonly ProgressLogger _progressLogger;
+    private const int ProgressReportInterval = 10_000;
 
-    public TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelInfoRepository, IBlockTree? blockTree, ISyncConfig syncConfig, ILogManager logManager)
-    {
-        _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _logger = logManager.GetClassLogger();
-        _syncConfig = syncConfig;
-        _progressLogger = new ProgressLogger("TotalDifficulty Fix", logManager);
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger<TotalDifficultyFixMigration>();
+    private readonly ISyncConfig _syncConfig = syncConfig;
+    private readonly IChainLevelInfoRepository _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+    private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+    private readonly ProgressLogger _progressLogger = new("TotalDifficulty Fix", logManager);
 
     public Task Run(CancellationToken cancellationToken)
     {
@@ -54,10 +47,8 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
 
         if (_logger.IsInfo) _logger.Info($"Starting TotalDifficultyFixMigration. From block {startingBlock} to block {lastBlock}");
 
-        long totalBlocks = lastBlock.Value - startingBlock + 1;
-        long processedBlocks = 0;
+        long totalBlocks = Math.Max(0, lastBlock.Value - startingBlock + 1);
         long fixedBlocks = 0;
-
         _progressLogger.Reset(0, totalBlocks);
 
         for (long blockNumber = startingBlock; blockNumber <= lastBlock; ++blockNumber)
@@ -92,22 +83,18 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
                 _chainLevelInfoRepository.PersistLevel(blockNumber, currentLevel);
             }
 
-            processedBlocks++;
-            
-            // Update progress every 1000 blocks or when progress logger suggests
-            if (processedBlocks % 1000 == 0)
+            long processed = blockNumber - startingBlock + 1;
+            _progressLogger.Update(processed);
+            if (processed % ProgressReportInterval == 0)
             {
-                _progressLogger.Update(processedBlocks);
                 _progressLogger.LogProgress();
             }
         }
 
-        // Final progress update
-        _progressLogger.Update(processedBlocks);
         _progressLogger.MarkEnd();
         _progressLogger.LogProgress();
 
-        if (_logger.IsInfo) _logger.Info($"Ended TotalDifficultyFixMigration. Processed {processedBlocks} blocks, fixed {fixedBlocks} blocks.");
+        if (_logger.IsInfo) _logger.Info($"Ended TotalDifficultyFixMigration. Fixed {fixedBlocks} blocks.");
     }
 
     UInt256? FindParentTd(BlockHeader blockHeader, long level)

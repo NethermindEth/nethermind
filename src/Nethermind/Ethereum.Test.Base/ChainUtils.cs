@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -10,19 +10,16 @@ namespace Ethereum.Test.Base;
 
 public static class ChainUtils
 {
-    public static IReleaseSpec? ResolveSpec(IReleaseSpec? spec, ulong chainId)
-    {
-        if (chainId == BlockchainIds.Gnosis)
-        {
-            return spec switch
+    public static IReleaseSpec? ResolveSpec(IReleaseSpec? spec, ulong chainId) =>
+        chainId == BlockchainIds.Gnosis
+            ? spec switch
             {
+                Amsterdam => AmsterdamGnosis.Instance,
                 Prague => PragueGnosis.Instance,
                 Cancun => CancunGnosis.Instance,
                 Shanghai => ShanghaiGnosis.Instance,
                 London => LondonGnosis.Instance,
                 _ => spec
-            };
-        }
-        return spec;
-    }
+            }
+            : spec;
 }

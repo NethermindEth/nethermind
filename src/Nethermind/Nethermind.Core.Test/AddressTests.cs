@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -12,7 +11,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -51,10 +49,7 @@ public class AddressTests
     [TestCase("52908400098527886E0F7030069857D2E4169EE7", true, true)]
     [TestCase("0x52908400098527886E0F7030069857D2E4169EE7", false, false)]
     [TestCase("52908400098527886E0F7030069857D2E4169EE7", false, true)]
-    public void Can_check_if_address_is_valid(string addressHex, bool allowPrefix, bool expectedResult)
-    {
-        Assert.That(Address.IsValidAddress(addressHex, allowPrefix), Is.EqualTo(expectedResult));
-    }
+    public void Can_check_if_address_is_valid(string addressHex, bool allowPrefix, bool expectedResult) => Assert.That(Address.IsValidAddress(addressHex, allowPrefix), Is.EqualTo(expectedResult));
 
     [Test]
     public void Bytes_are_correctly_assigned()
@@ -120,7 +115,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 1;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Frontier.Instance), Is.True);
+        Assert.That(Frontier.Instance.IsPrecompile(address), Is.True);
     }
 
     [Test]
@@ -129,7 +124,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 4;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Frontier.Instance), Is.True);
+        Assert.That(Frontier.Instance.IsPrecompile(address), Is.True);
     }
 
     [Test]
@@ -138,7 +133,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 5;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Frontier.Instance), Is.False);
+        Assert.That(Frontier.Instance.IsPrecompile(address), Is.False);
     }
 
     [Test]
@@ -147,7 +142,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 5;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Byzantium.Instance), Is.True);
+        Assert.That(Byzantium.Instance.IsPrecompile(address), Is.True);
     }
 
     [Test]
@@ -156,7 +151,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 9;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Byzantium.Instance), Is.False);
+        Assert.That(Byzantium.Instance.IsPrecompile(address), Is.False);
     }
 
     [TestCase(0, false)]
@@ -165,7 +160,7 @@ public class AddressTests
     public void From_number_for_precompile(int number, bool isPrecompile)
     {
         Address address = Address.FromNumber((UInt256)number);
-        Assert.That(address.IsPrecompile(Byzantium.Instance), Is.EqualTo(isPrecompile));
+        Assert.That(Byzantium.Instance.IsPrecompile(address), Is.EqualTo(isPrecompile));
     }
 
     [TestCase(0, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
@@ -178,26 +173,28 @@ public class AddressTests
 
     [TestCaseSource(nameof(PointEvaluationPrecompileTestCases))]
     public bool Is_PointEvaluationPrecompile_properly_activated(IReleaseSpec spec) =>
-        Address.FromNumber(0x0a).IsPrecompile(spec);
+        spec.IsPrecompile(Address.FromNumber(0x0a));
 
     [TestCase(Address.SystemUserHex, false)]
     [TestCase("2" + Address.SystemUserHex, false)]
     [TestCase("2" + Address.SystemUserHex, true)]
+    [TestCase("0x00" + Address.SystemUserHex, true)]
+    [TestCase("0x00fffffffffffffffffffffffffffffffffffffffe", true)]
     public void Parse_variable_length(string addressHex, bool allowOverflow)
     {
-        var result = Address.TryParseVariableLength(addressHex, out Address? address, allowOverflow);
-        result.Should().Be(addressHex.Length <= Address.SystemUserHex.Length || allowOverflow);
+        bool result = Address.TryParseVariableLength(addressHex, out Address? address, allowOverflow);
+        Assert.That(result, Is.EqualTo(addressHex.Length <= Address.SystemUserHex.Length || allowOverflow));
         if (result)
         {
-            address.Should().Be(Address.SystemUser);
+            Assert.That(address, Is.EqualTo(Address.SystemUser));
         }
     }
 
     [Test]
     public void Parse_variable_length_too_short()
     {
-        Address.TryParseVariableLength("1", out Address? address).Should().Be(true);
-        address.Should().Be(new Address("0000000000000000000000000000000000000001"));
+        Assert.That(Address.TryParseVariableLength("1", out Address? address), Is.EqualTo(true));
+        Assert.That(address, Is.EqualTo(new Address("0000000000000000000000000000000000000001")));
     }
 
     [Test]
@@ -205,21 +202,21 @@ public class AddressTests
     [SuppressMessage("Reliability", "CA2014:Do not use stackalloc in loops")]
     public void ToHash_avoid_garbage_in_first_bytes()
     {
-        for (var j = 0; j < 2; j++) // Loop to ensure stack is filled with some data
+        for (int j = 0; j < 2; j++) // Loop to ensure stack is filled with some data
         {
             Span<byte> addressBytes = stackalloc byte[Address.Size];
-            for (var i = 0; i < Address.Size; i++)
+            for (int i = 0; i < Address.Size; i++)
             {
                 addressBytes[i] = (byte)(i + j);
             }
 
-            var address = new Address(addressBytes);
+            Address address = new(addressBytes);
 
             Span<byte> expectedHashBytes = stackalloc byte[Hash256.Size];
             addressBytes.CopyTo(expectedHashBytes[(Hash256.Size - Address.Size)..]);
-            var expectedHash = new ValueHash256(expectedHashBytes);
+            ValueHash256 expectedHash = new(expectedHashBytes);
 
-            address.ToHash().Should().BeEquivalentTo(expectedHash);
+            Assert.That(address.ToHash(), Is.EqualTo(expectedHash));
         }
     }
 

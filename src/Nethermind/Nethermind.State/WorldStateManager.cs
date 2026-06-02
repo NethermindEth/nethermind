@@ -7,29 +7,29 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class WorldStateManager : IWorldStateManager
+public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
 {
-    private readonly IWorldState _worldState;
+    private readonly IWorldStateScopeProvider _worldState;
     private readonly IPruningTrieStore _trieStore;
     private readonly IReadOnlyTrieStore _readOnlyTrieStore;
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _readaOnlyCodeCb;
     private readonly IDbProvider _dbProvider;
+    private readonly StateBoundaryStore _boundaryStore;
     private readonly BlockingVerifyTrie? _blockingVerifyTrie;
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
     public WorldStateManager(
-        IWorldState worldState,
+        IWorldStateScopeProvider worldState,
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
+        IPruningConfig pruningConfig,
         ILastNStateRootTracker lastNStateRootTracker = null
     )
     {
@@ -38,15 +38,29 @@ public class WorldStateManager : IWorldStateManager
         _trieStore = trieStore;
         _readOnlyTrieStore = trieStore.AsReadOnly();
         _logManager = logManager;
+        _boundaryStore = new StateBoundaryStore(dbProvider.StateDb, _logManager);
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
         _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb!, logManager);
         _lastNStateRootTracker = lastNStateRootTracker;
+        SnapServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
+            ? NoopSnapServer.Instance
+            : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
+
+        RetentionWindowBlocks = pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : null;
     }
 
-    public IWorldState GlobalWorldState => _worldState;
+    public long? RetentionWindowBlocks { get; }
+
+    public long? OldestStateBlock
+    {
+        get => _boundaryStore.OldestStateBlock;
+        set => _boundaryStore.OldestStateBlock = value;
+    }
+
+    public IWorldStateScopeProvider GlobalWorldState => _worldState;
 
     public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
 
@@ -56,50 +70,17 @@ public class WorldStateManager : IWorldStateManager
         remove => _trieStore.ReorgBoundaryReached -= value;
     }
 
-    public void InitializeNetwork(IPathRecovery pathRecovery)
-    {
-        if (_worldState is HealingWorldState healingWorldState)
-        {
-            healingWorldState.InitializeNetwork(pathRecovery);
-        }
-    }
-
     public IStateReader GlobalStateReader { get; }
 
-    public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager, _lastNStateRootTracker);
+    public ISnapServer SnapServer { get; }
 
-    public IWorldState CreateResettableWorldState()
-    {
-        return new WorldState(
-            _readOnlyTrieStore,
-            _readaOnlyCodeCb,
-            _logManager);
-    }
+    public IWorldStateScopeProvider CreateResettableWorldState() => new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
 
-    public IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup)
-    {
-        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
-            ? new WorldState(
-                new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
-                _readaOnlyCodeCb,
-                _logManager,
-                preBlockCaches)
-            : CreateResettableWorldState();
-    }
+    public IReadOnlyTrieStore CreateReadOnlyTrieStore() => _readOnlyTrieStore;
 
-    public IOverridableWorldScope CreateOverridableWorldScope()
-    {
-        return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
-    }
+    public IOverridableWorldScope CreateOverridableWorldScope() => new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
 
-    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
-    {
-        return _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
-    }
+    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
 
-    public void FlushCache(CancellationToken cancellationToken)
-    {
-        _trieStore.PersistCache(cancellationToken);
-    }
+    public void FlushCache(CancellationToken cancellationToken) => _trieStore.PersistCache(cancellationToken);
 }

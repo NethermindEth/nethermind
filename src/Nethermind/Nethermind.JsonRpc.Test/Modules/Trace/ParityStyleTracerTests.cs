@@ -5,10 +5,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -18,6 +18,7 @@ using Nethermind.Specs;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -30,6 +31,7 @@ public class ParityStyleTracerTests
     private IPoSSwitcher? _poSSwitcher;
     private ITraceRpcModule _traceRpcModule;
     private IContainer _container;
+    private IBlockProcessingQueue _blockProcessingQueue;
 
     [SetUp]
     public async Task Setup()
@@ -42,7 +44,7 @@ public class ParityStyleTracerTests
             .TestObject;
 
         ChainSpec cp = Build.A.ChainSpec
-            .WithAllocation(new Address("0xdea60e4f8ea50d5ed92b0a5b15ae9d24aeba0bee"), 1.Ether())
+            .WithAllocation(new Address("0xdea60e4f8ea50d5ed92b0a5b15ae9d24aeba0bee"), 1.Ether)
             .TestObject;
 
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
@@ -55,18 +57,17 @@ public class ParityStyleTracerTests
 
         await _container.Resolve<PseudoNethermindRunner>().StartBlockProcessing(default);
         _traceRpcModule = _container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
+        _blockProcessingQueue = _container.Resolve<IBlockProcessingQueue>();
+
     }
 
     [TearDown]
-    public async Task TearDownAsync()
-    {
-        await _container.DisposeAsync();
-    }
+    public async Task TearDownAsync() => await _container.DisposeAsync();
 
     [Test]
     public void Can_trace_raw_parity_style()
     {
-        ResultWrapper<ParityTxTraceFromReplay> result = _traceRpcModule.trace_rawTransaction(Bytes.FromHexString("f889808609184e72a00082271094000000000000000000000000000000000000000080a47f74657374320000000000000000000000000000000000000000000000000000006000571ca08a8bbf888cfa37bbf0bb965423625641fc956967b81d12e23709cead01446075a01ce999b56a8a88504be365442ea61239198e23d1fce7d00fcfc5cd3b44b7215f"), new[] { "trace" });
+        ResultWrapper<ParityTxTraceFromReplay> result = _traceRpcModule.trace_rawTransaction(Bytes.FromHexString("f8838080829c4094000000000000000000000000000000000000000080a47f74657374320000000000000000000000000000000000000000000000000000006000571ca08a8bbf888cfa37bbf0bb965423625641fc956967b81d12e23709cead01446075a01ce999b56a8a88504be365442ea61239198e23d1fce7d00fcfc5cd3b44b7215f"), new[] { "trace" });
         Assert.That(result.Data, Is.Not.Null);
     }
 
@@ -79,24 +80,24 @@ public class ParityStyleTracerTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Should_return_correct_block_reward(bool isPostMerge)
+    public async Task Should_return_correct_block_reward(bool isPostMerge)
     {
         Block block = Build.A.Block.WithParent(_blockTree!.Head!).TestObject;
-        _blockTree!.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+        Assert.That((await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)), Is.EqualTo(AddBlockResult.Added));
         _poSSwitcher!.IsPostMerge(Arg.Any<BlockHeader>()).Returns(isPostMerge);
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));
-        rpcResult.Result.Should().Be(Result.Success);
+        Assert.That(rpcResult.Result, Is.EqualTo(Result.Success));
         ParityTxTraceFromStore[] result = rpcResult.Data.ToArray();
         if (isPostMerge)
         {
-            result.Length.Should().Be(1);
-            result[0].Action.Author.Should().Be(block.Beneficiary!);
-            result[0].Action.Value.Should().Be(0);
+            Assert.That(result.Length, Is.EqualTo(1));
+            Assert.That(result[0].Action.Author, Is.EqualTo(block.Beneficiary!));
+            Assert.That(result[0].Action.Value, Is.EqualTo(UInt256.Zero));
         }
         else
         {
-            result.Length.Should().Be(0);
+            Assert.That(result.Length, Is.EqualTo(0));
         }
     }
 }

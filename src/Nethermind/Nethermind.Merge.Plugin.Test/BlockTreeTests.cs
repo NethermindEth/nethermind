@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -266,7 +265,7 @@ public partial class BlockTreeTests
                 IReceiptStorage? receiptStorage = null
             )
             {
-                TestSpecProvider testSpecProvider = new TestSpecProvider(London.Instance);
+                TestSpecProvider testSpecProvider = new(London.Instance);
                 if (ttd is not null) testSpecProvider.TerminalTotalDifficulty = ttd;
 
                 NotSyncedTreeBuilder = Build.A.BlockTree()
@@ -302,10 +301,8 @@ public partial class BlockTreeTests
                 return this;
             }
 
-            private void OnNewBestSuggestedBlock(object? sender, BlockEventArgs e)
-            {
+            private void OnNewBestSuggestedBlock(object? sender, BlockEventArgs e) =>
                 NotSyncedTree.UpdateMainChain(new[] { e.Block! }, true);
-            }
 
             public ScenarioBuilder InsertBeaconPivot(long num)
             {
@@ -410,8 +407,8 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder InsertFork(long low, long high, bool moveToBeaconMainChain = false, bool moveSyncedTree = true, ulong nonce = 0)
             {
-                List<BlockInfo> blockInfos = new();
-                List<Block> blocks = new List<Block>();
+                List<BlockInfo> blockInfos = [];
+                List<Block> blocks = [];
                 Block? parent = null;
                 for (long i = low; i <= high; i++)
                 {
@@ -430,7 +427,7 @@ public partial class BlockTreeTests
                 if (moveToBeaconMainChain)
                 {
                     if (moveSyncedTree) SyncedTree.UpdateMainChain(blocks, true, true);
-                    NotSyncedTree.UpdateBeaconMainChain(blockInfos.ToArray(), blockInfos[^1].BlockNumber);
+                    NotSyncedTree.UpdateBeaconMainChain(blockInfos, blockInfos[^1].BlockNumber);
                 }
 
                 return this;
@@ -439,7 +436,7 @@ public partial class BlockTreeTests
             public ScenarioBuilder InsertOtherChainToMain(BlockTree blockTree, long low, long high)
             {
                 Block? parent = null;
-                List<Block> newBlocks = new();
+                List<Block> newBlocks = [];
                 for (long i = low; i <= high; i++)
                 {
                     parent ??= blockTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
@@ -546,7 +543,7 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder AssertChainLevelHelperLength(int count)
             {
-                _chainLevelHelper!.GetNextHeaders(1000, 1000)!.Length.Should().Be(count);
+                Assert.That(_chainLevelHelper!.GetNextHeaders(1000, 1000)!.Length, Is.EqualTo(count));
 
                 return this;
             }
@@ -557,11 +554,11 @@ public partial class BlockTreeTests
                 {
                     ChainLevelInfo? level = NotSyncedTree.FindLevel(i)!;
                     BlockInfo? blockInfo = level.MainChainBlock;
-                    blockInfo.Should().NotBe(null, $"Current block number: {i}");
-                    blockInfo!.TotalDifficulty.Should().NotBe(0, $"Current block number: {i}");
+                    Assert.That(blockInfo, Is.Not.EqualTo(null), $"Current block number: {i}");
+                    Assert.That(blockInfo!.TotalDifficulty, Is.Not.EqualTo(UInt256.Zero), $"Current block number: {i}");
 
                     ChainLevelInfo? syncedLevel = SyncedTree.FindLevel(i);
-                    blockInfo.BlockHash.Should().Be(syncedLevel?.MainChainBlock!.BlockHash!, $"Current block number: {i}");
+                    Assert.That(blockInfo.BlockHash, Is.EqualTo(syncedLevel?.MainChainBlock!.BlockHash!), $"Current block number: {i}");
                 }
 
                 return this;
@@ -569,14 +566,14 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder AssertForceNewBeaconSync()
             {
-                _beaconPivot!.ShouldForceStartNewSync.Should().BeTrue();
+                Assert.That(_beaconPivot!.ShouldForceStartNewSync, Is.True);
 
                 return this;
             }
 
             public ScenarioBuilder AssertNotForceNewBeaconSync()
             {
-                _beaconPivot!.ShouldForceStartNewSync.Should().BeFalse();
+                Assert.That(_beaconPivot!.ShouldForceStartNewSync, Is.False);
 
                 return this;
             }
@@ -600,10 +597,8 @@ public partial class BlockTreeTests
             public BlockTreeBuilder NotSyncedTreeBuilder { get; private set; } = null!;
         }
 
-        public static ScenarioBuilder GoesLikeThis()
-        {
-            return new();
-        }
+        public static ScenarioBuilder GoesLikeThis() =>
+            new();
     }
 
     [Test]
@@ -676,8 +671,7 @@ public partial class BlockTreeTests
     }
 
     [Test]
-    public void Best_pointers_are_set_on_restart_with_gap()
-    {
+    public void Best_pointers_are_set_on_restart_with_gap() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20)
             .InsertBeaconPivot(14)
@@ -687,11 +681,9 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
             .AssertBestSuggestedBody(9);
-    }
 
     [Test]
-    public void BeaconBlockInsert_does_not_change_best_blocks()
-    {
+    public void BeaconBlockInsert_does_not_change_best_blocks() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -699,11 +691,9 @@ public partial class BlockTreeTests
             .AssertBestSuggestedBody(3)
             .AssertBestSuggestedHeader(3)
             .AssertBestKnownNumber(3);
-    }
 
     [Test]
-    public void pointers_are_set_on_restart_during_header_sync()
-    {
+    public void pointers_are_set_on_restart_during_header_sync() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -715,11 +705,9 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(3)
             .AssertBestSuggestedHeader(3)
             .AssertBestSuggestedBody(3);
-    }
 
     [Test]
-    public void pointers_are_set_on_restart_after_header_sync_finished()
-    {
+    public void pointers_are_set_on_restart_after_header_sync_finished() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -731,11 +719,9 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(3)
             .AssertBestSuggestedHeader(3)
             .AssertBestSuggestedBody(3);
-    }
 
     [Test]
-    public void pointers_are_set_on_restart_during_filling_block_gap()
-    {
+    public void pointers_are_set_on_restart_during_filling_block_gap() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 30)
             .InsertBeaconPivot(7)
@@ -748,11 +734,9 @@ public partial class BlockTreeTests
             .AssertLowestInsertedBeaconHeader(4)
             .AssertBestSuggestedHeader(25)
             .AssertBestSuggestedBody(25);
-    }
 
     [Test]
-    public void pointers_are_set_on_restart_after_filling_block_gap_finished()
-    {
+    public void pointers_are_set_on_restart_after_filling_block_gap_finished() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -766,11 +750,9 @@ public partial class BlockTreeTests
             .AssertBestSuggestedHeader(7)
             .AssertBestSuggestedBody(7)
             .AssertLowestInsertedBeaconHeader(4);
-    }
 
     [Test]
-    public void Best_pointers_should_not_move_if_sync_is_not_finished()
-    {
+    public void Best_pointers_should_not_move_if_sync_is_not_finished() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -783,7 +765,6 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(3)
             .AssertBestSuggestedHeader(3)
             .AssertBestSuggestedBody(3);
-    }
 
     [Test]
     public void MarkChainAsProcessed_does_not_change_main_chain()
@@ -811,31 +792,27 @@ public partial class BlockTreeTests
 
         scenario.InsertFork(6, 8);
         level6 = scenario.NotSyncedTree.FindLevel(6);
-        level6!.BlockInfos.Length.Should().Be(2);
-        level6.BeaconMainChainBlock!.BlockHash.Should().Be(previousBlockHash);
+        Assert.That(level6!.BlockInfos.Length, Is.EqualTo(2));
+        Assert.That(level6.BeaconMainChainBlock!.BlockHash, Is.EqualTo(previousBlockHash));
     }
 
     [Test]
-    public void Can_reorg_beacon_main_chain()
-    {
+    public void Can_reorg_beacon_main_chain() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconBlocks(4, 9)
             .InsertFork(6, 9, true)
             .SuggestBlocksUsingChainLevels()
             .AssertChainLevel(0, 9);
-    }
 
     [Test]
-    public void Chain_level_helper_stop_on_partial_reorg()
-    {
+    public void Chain_level_helper_stop_on_partial_reorg() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconBlocks(4, 9)
             .InsertFork(5, 9, true, moveSyncedTree: false, nonce: 1)
             .InsertFork(7, 9, true, moveSyncedTree: false, nonce: 2)
             .AssertChainLevelHelperLength(4); // From 3 to 7 where the third branch mismatch second branch
-    }
 
     [Test]
     public void Can_set_total_difficulty_when_suggested_with_0()
@@ -847,7 +824,7 @@ public partial class BlockTreeTests
 
         Block block = scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None)!;
         AddBlockResult result = scenario.NotSyncedTree.SuggestBlock(block);
-        result.Should().Be(AddBlockResult.Added);
-        scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().NotBe((UInt256)0);
+        Assert.That(result, Is.EqualTo(AddBlockResult.Added));
+        Assert.That(scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None)!.TotalDifficulty, Is.Not.EqualTo((UInt256)0));
     }
 }

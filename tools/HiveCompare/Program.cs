@@ -45,15 +45,14 @@ internal class Program
                 : 2;
         });
 
-        CommandLineConfiguration cli = new(rootCommand);
-        cli.Invoke(args);
+        rootCommand.Parse(args).Invoke();
     }
 
     private static bool ParseTests(string firstFile, string secondFile)
     {
         static bool TryLoadTestCases(string file, [NotNullWhen(true)] out Dictionary<string, TestCase>? testCases)
         {
-            bool Fail(out Dictionary<string, TestCase>? testCases)
+            static bool Fail(out Dictionary<string, TestCase>? testCases)
             {
                 Console.WriteLine("Could not parse one of the files!");
                 testCases = null;
@@ -87,7 +86,7 @@ internal class Program
 
     private static bool PrintOutDifferences(Dictionary<string, TestCase> testCases1, Dictionary<string, TestCase> testCases2)
     {
-        void PrintOutUniqueCases(ICollection<TestCase> testCases, int caseSet)
+        static void PrintOutUniqueCases(ICollection<TestCase> testCases, int caseSet)
         {
             if (testCases.Count > 0)
             {
@@ -99,7 +98,7 @@ internal class Program
             }
         }
 
-        List<TestCase> newInTest1 = new();
+        List<TestCase> newInTest1 = [];
 
         foreach (string key in testCases1.Keys)
         {

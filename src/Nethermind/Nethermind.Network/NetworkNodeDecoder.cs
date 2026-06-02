@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.IO;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -10,25 +8,24 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public class NetworkNodeDecoder : IRlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
+    public sealed class NetworkNodeDecoder : RlpDecoder<NetworkNode>
     {
-        static NetworkNodeDecoder()
-        {
-            Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
-        }
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB, nameof(NetworkNode.HostIp));
 
-        public NetworkNode Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            rlpStream.ReadSequenceLength();
+        static NetworkNodeDecoder() => Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
 
-            PublicKey publicKey = new(rlpStream.DecodeByteArraySpan());
-            string ip = rlpStream.DecodeString();
-            int port = (int)rlpStream.DecodeByteArraySpan().ReadEthUInt64();
-            rlpStream.SkipItem();
+        protected override NetworkNode DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            decoderContext.ReadSequenceLength();
+
+            PublicKey publicKey = new(decoderContext.DecodeByteArraySpan(RlpLimit.L64));
+            string ip = decoderContext.DecodeString(RlpLimit);
+            int port = (int)decoderContext.DecodeByteArraySpan(RlpLimit.L8).ReadEthUInt64();
+            decoderContext.SkipItem();
             long reputation = 0L;
             try
             {
-                reputation = rlpStream.DecodeLong();
+                reputation = decoderContext.DecodeLong();
             }
             catch (RlpException)
             {
@@ -39,7 +36,7 @@ namespace Nethermind.Network
             return networkNode;
         }
 
-        public void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int contentLength = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
@@ -50,37 +47,13 @@ namespace Nethermind.Network
             stream.Encode(item.Reputation);
         }
 
-        public Rlp Encode(NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-            stream.StartSequence(contentLength);
-            stream.Encode(item.NodeId.Bytes);
-            stream.Encode(item.Host);
-            stream.Encode(item.Port);
-            stream.Encode(string.Empty);
-            stream.Encode(item.Reputation);
-            return new Rlp(stream.Data.ToArray());
-        }
+        public override int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-        public void Encode(MemoryStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new NotImplementedException();
-        }
-
-        public int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors)
-        {
-            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-        }
-
-        private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors)
-        {
-            return Rlp.LengthOf(item.NodeId.Bytes)
+        private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item.NodeId.Bytes)
                    + Rlp.LengthOf(item.Host)
                    + Rlp.LengthOf(item.Port)
                    + 1
                    + Rlp.LengthOf(item.Reputation);
-        }
 
         public static void Init()
         {

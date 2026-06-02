@@ -18,6 +18,12 @@ namespace Nethermind.Network.P2P
         SessionState State { get; }
         SessionState BestStateReached { get; }
         bool IsClosing { get; }
+
+        /// <summary>
+        /// Gets whether the transport channel has closed before delayed disconnect bookkeeping completes.
+        /// </summary>
+        bool IsChannelClosed => false;
+
         PublicKey RemoteNodeId { get; }
         PublicKey ObsoleteRemoteNodeId { get; }
         string RemoteHost { get; set; }
@@ -29,7 +35,6 @@ namespace Nethermind.Network.P2P
         Node Node { get; }
         DateTime LastPingUtc { get; set; }
         DateTime LastPongUtc { get; set; }
-        void ReceiveMessage(Packet packet);
         void ReceiveMessage(ZeroPacket zeroPacket);
         int DeliverMessage<T>(T message) where T : P2PMessage;
         void EnableSnappy();

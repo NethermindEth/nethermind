@@ -20,8 +20,6 @@ namespace Nethermind.Trie.Pruning
 
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => NullCommitter.Instance;
 
-        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => true;
-
         public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp) { }
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 storageRoot) => this;

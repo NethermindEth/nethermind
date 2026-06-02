@@ -5,18 +5,11 @@ using Nethermind.Core;
 
 namespace Nethermind.Crypto
 {
-    public class ProtectedPrivateKeyFactory : IProtectedPrivateKeyFactory
+    public class ProtectedPrivateKeyFactory(ICryptoRandom random, ITimestamper timestamper, string keyStoreDir) : IProtectedPrivateKeyFactory
     {
-        private readonly ICryptoRandom _random;
-        private readonly ITimestamper _timestamper;
-        private readonly string _keyStoreDir;
-
-        public ProtectedPrivateKeyFactory(ICryptoRandom random, ITimestamper timestamper, string keyStoreDir)
-        {
-            _random = random;
-            _timestamper = timestamper;
-            _keyStoreDir = keyStoreDir;
-        }
+        private readonly ICryptoRandom _random = random;
+        private readonly ITimestamper _timestamper = timestamper;
+        private readonly string _keyStoreDir = keyStoreDir;
 
         public ProtectedPrivateKey Create(PrivateKey privateKey) => new(privateKey, _keyStoreDir, _random, _timestamper);
     }

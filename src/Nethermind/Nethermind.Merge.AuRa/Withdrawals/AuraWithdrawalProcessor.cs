@@ -3,9 +3,9 @@
 
 using System;
 using System.Numerics;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -26,12 +26,12 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         ArgumentNullException.ThrowIfNull(logManager);
 
         _contract = contract ?? throw new ArgumentNullException(nameof(contract));
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<AuraWithdrawalProcessor>();
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
-        if (!spec.WithdrawalsEnabled || block.Withdrawals is null) // The second check seems redundant
+        if (!spec.WithdrawalsEnabled || block.IsGenesis || block.Withdrawals is null)
             return;
 
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");

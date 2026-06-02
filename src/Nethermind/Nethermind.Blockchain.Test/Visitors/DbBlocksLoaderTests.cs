@@ -3,11 +3,11 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -17,6 +17,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Visitors;
 
+[Parallelizable(ParallelScope.All)]
 public class DbBlocksLoaderTests
 {
     private readonly int _dbLoadTimeout = 5000;
@@ -170,8 +171,8 @@ public class DbBlocksLoaderTests
         await tree2.Accept(loader, tokenSource.Token);
 
         Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
-        tree2.Head!.Header.Should().BeEquivalentTo(block3B.Header, options => { return options.Excluding(t => t.MaybeParent); });
-        tree2.BestSuggestedHeader.Should().BeEquivalentTo(block3B.Header, options => { return options.Excluding(t => t.MaybeParent); });
+        Assert.That(tree2.Head!.Header, Is.EqualTo(block3B.Header).UsingBlockHeaderComparer());
+        Assert.That(tree2.BestSuggestedHeader, Is.EqualTo(block3B.Header).UsingBlockHeaderComparer());
 
         Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
         Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");

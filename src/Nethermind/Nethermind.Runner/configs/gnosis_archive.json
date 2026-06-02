@@ -11,9 +11,6 @@
     "Enabled": true,
     "EnginePort": 8551
   },
-  "Mining": {
-    "MinGasPrice": "1000000000"
-  },
   "Blocks": {
     "SecondsPerSlot": 5,
     "BlockProductionTimeoutMs": 3000,
@@ -37,5 +34,8 @@
   },
   "Merge": {
     "FinalTotalDifficulty": "8626000110427538733349499292577475819600160930"
+  },
+  "Db": {
+    "SkipCheckingSstFileSizesOnDbOpen": true
   }
 }

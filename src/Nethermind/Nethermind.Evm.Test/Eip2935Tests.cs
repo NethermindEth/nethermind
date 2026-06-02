@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -50,6 +50,6 @@ public class Eip2935Tests : VirtualMachineTestsBase
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(new ForkActivation(BlockNumber, timestamp))), callOutputTracer);
 
         long expected = blockNumber;
-        callOutputTracer.ReturnValue!.Should().BeEquivalentTo(Keccak.Compute(expected.ToString()).BytesToArray());
+        Assert.That(callOutputTracer.ReturnValue!, Is.EqualTo(Keccak.Compute(expected.ToString()).BytesToArray()));
     }
 }

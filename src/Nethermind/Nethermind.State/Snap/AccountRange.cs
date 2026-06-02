@@ -28,9 +28,6 @@ namespace Nethermind.State.Snap
         /// </summary>
         public ValueHash256? LimitHash { get; } = limitHash;
 
-        public override string ToString()
-        {
-            return $"AccountRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
-        }
+        public override string ToString() => $"AccountRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
     }
 }

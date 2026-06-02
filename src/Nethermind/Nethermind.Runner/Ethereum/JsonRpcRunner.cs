@@ -10,11 +10,11 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Specs;
@@ -31,54 +31,36 @@ using WebHost = Nethermind.Runner.JsonRpc.WebHost;
 
 namespace Nethermind.Runner.Ethereum
 {
-    public class JsonRpcRunner
+    public class JsonRpcRunner(
+        JsonRpcProcessor jsonRpcProcessor,
+        IJsonRpcUrlCollection jsonRpcUrlCollection,
+        IWebSocketsManager webSocketsManager,
+        IConfigProvider configurationProvider,
+        IRpcAuthentication rpcAuthentication,
+        ILogManager logManager,
+        IJsonRpcServiceConfigurer[] jsonRpcServices,
+        ITxPool txPool,
+        ISpecProvider specProvider,
+        IReceiptFinder receiptFinder,
+        IBlockTree blockTree,
+        ISyncPeerPool syncPeerPool,
+        IMainProcessingContext mainProcessingContext)
     {
-        private readonly Nethermind.Logging.ILogger _logger;
-        private readonly IConfigProvider _configurationProvider;
-        private readonly IRpcAuthentication _rpcAuthentication;
-        private readonly ILogManager _logManager;
-        private readonly IJsonRpcProcessor _jsonRpcProcessor;
-        private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
-        private readonly IWebSocketsManager _webSocketsManager;
+        private readonly Nethermind.Logging.ILogger _logger = logManager.GetClassLogger<JsonRpcRunner>();
+        private readonly IConfigProvider _configurationProvider = configurationProvider;
+        private readonly IRpcAuthentication _rpcAuthentication = rpcAuthentication;
+        private readonly ILogManager _logManager = logManager;
+        private readonly JsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
+        private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection = jsonRpcUrlCollection;
+        private readonly IWebSocketsManager _webSocketsManager = webSocketsManager;
         private WebHost? _webApp;
-        private readonly IJsonRpcServiceConfigurer[] _jsonRpcServices;
-        private readonly ITxPool _txPool;
-        private readonly ISpecProvider _specProvider;
-        private readonly IReceiptFinder _receiptFinder;
-        private readonly IBlockTree _blockTree;
-        private readonly ISyncPeerPool _syncPeerPool;
-        private readonly IMainProcessingContext _mainProcessingContext;
-
-        public JsonRpcRunner(
-            IJsonRpcProcessor jsonRpcProcessor,
-            IJsonRpcUrlCollection jsonRpcUrlCollection,
-            IWebSocketsManager webSocketsManager,
-            IConfigProvider configurationProvider,
-            IRpcAuthentication rpcAuthentication,
-            ILogManager logManager,
-            IJsonRpcServiceConfigurer[] jsonRpcServices,
-            ITxPool txPool,
-            ISpecProvider specProvider,
-            IReceiptFinder receiptFinder,
-            IBlockTree blockTree,
-            ISyncPeerPool syncPeerPool,
-            IMainProcessingContext mainProcessingContext)
-        {
-            _configurationProvider = configurationProvider;
-            _rpcAuthentication = rpcAuthentication;
-            _jsonRpcUrlCollection = jsonRpcUrlCollection;
-            _logManager = logManager;
-            _jsonRpcProcessor = jsonRpcProcessor;
-            _webSocketsManager = webSocketsManager;
-            _jsonRpcServices = jsonRpcServices;
-            _logger = logManager.GetClassLogger();
-            _txPool = txPool;
-            _specProvider = specProvider;
-            _receiptFinder = receiptFinder;
-            _blockTree = blockTree;
-            _syncPeerPool = syncPeerPool;
-            _mainProcessingContext = mainProcessingContext;
-        }
+        private readonly IJsonRpcServiceConfigurer[] _jsonRpcServices = jsonRpcServices;
+        private readonly ITxPool _txPool = txPool;
+        private readonly ISpecProvider _specProvider = specProvider;
+        private readonly IReceiptFinder _receiptFinder = receiptFinder;
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly ISyncPeerPool _syncPeerPool = syncPeerPool;
+        private readonly IMainProcessingContext _mainProcessingContext = mainProcessingContext;
 
         public async Task Start(CancellationToken cancellationToken)
         {
