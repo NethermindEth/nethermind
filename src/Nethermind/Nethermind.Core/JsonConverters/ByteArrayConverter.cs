@@ -26,7 +26,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         JsonSerializerOptions options) => Convert(ref reader);
 
     [SkipLocalsInit]
-    public static byte[]? Convert(ref Utf8JsonReader reader, bool strictHexFormat = false, bool requireEvenLength = false)
+    public static byte[]? Convert(ref Utf8JsonReader reader, bool strictHexFormat = false, bool requireEvenLength = true)
     {
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
@@ -46,7 +46,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     }
 
     [SkipLocalsInit]
-    public static bool TryConvertToExactLength(ref Utf8JsonReader reader, scoped Span<byte> destination, bool strictHexFormat = false, bool requireEvenLength = false) =>
+    public static bool TryConvertToExactLength(ref Utf8JsonReader reader, scoped Span<byte> destination, bool strictHexFormat = false, bool requireEvenLength = true) =>
         TryConvertToSpan(ref reader, destination, out int bytesWritten, strictHexFormat, requireEvenLength) &&
         bytesWritten == destination.Length;
 
@@ -56,7 +56,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         scoped Span<byte> destination,
         out int bytesWritten,
         bool strictHexFormat = false,
-        bool requireEvenLength = false)
+        bool requireEvenLength = true)
     {
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
@@ -129,7 +129,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader, bool strictHexFormat, bool requireEvenLength = false)
+    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader, bool strictHexFormat, bool requireEvenLength = true)
     {
         ReadOnlySequence<byte> valueSequence = reader.ValueSequence;
         int length = checked((int)valueSequence.Length);
@@ -501,7 +501,7 @@ public class StrictHexByteArrayConverter : JsonConverter<byte[]>
     {
         try
         {
-            return ByteArrayConverter.Convert(ref reader, strictHexFormat: true, requireEvenLength: true);
+            return ByteArrayConverter.Convert(ref reader, strictHexFormat: true);
         }
         catch (FormatException e)
         {

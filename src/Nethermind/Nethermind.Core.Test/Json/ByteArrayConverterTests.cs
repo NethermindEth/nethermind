@@ -355,7 +355,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(reader.Read(), Is.True);
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.String));
 
-        try { return (ByteArrayConverter.Convert(ref reader), null); }
+        try { return (ByteArrayConverter.Convert(ref reader, requireEvenLength: false), null); }
         catch (Exception ex) { return (null, ex); }
     }
 
@@ -367,7 +367,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(reader.Read(), Is.True);
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.PropertyName));
 
-        try { return (ByteArrayConverter.Convert(ref reader), null); }
+        try { return (ByteArrayConverter.Convert(ref reader, requireEvenLength: false), null); }
         catch (Exception ex) { return (null, ex); }
     }
 
@@ -375,7 +375,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     {
         Utf8JsonReader reader = new(json);
         Assert.That(reader.Read(), Is.True);
-        try { return (ByteArrayConverter.Convert(ref reader), null); }
+        try { return (ByteArrayConverter.Convert(ref reader, requireEvenLength: false), null); }
         catch (Exception ex) { return (null, ex); }
     }
 

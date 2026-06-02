@@ -15,7 +15,7 @@ public class PublicKeyHashedConverter : JsonConverter<PublicKey>
         Type typeToConvert,
         JsonSerializerOptions options)
     {
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader);
+        byte[]? bytes = ByteArrayConverter.Convert(ref reader, requireEvenLength: false);
         if (bytes is null)
         {
             return null;

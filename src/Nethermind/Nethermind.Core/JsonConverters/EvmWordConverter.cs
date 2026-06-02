@@ -22,7 +22,7 @@ public class EvmWordConverter : JsonConverter<EvmWord>
     {
         EvmWord result = default;
         Span<byte> dest = MemoryMarshal.CreateSpan(ref Unsafe.As<EvmWord, byte>(ref result), 32);
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader);
+        byte[]? bytes = ByteArrayConverter.Convert(ref reader, requireEvenLength: false);
         if (bytes is null || bytes.Length == 0)
         {
             return result;
