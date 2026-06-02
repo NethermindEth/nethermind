@@ -368,14 +368,20 @@ public struct EvmPooledMemory
         return new(size, _memory);
     }
 
-    // Per-thread one-deep cache of a previously-rented EVM memory buffer. EVM call frames execute
-    // sequentially on a single block-processing (or prewarm) thread, so a frame's buffer can be
-    // handed directly to the next frame on the same thread instead of cycling through the contended
-    // shared ArrayPool. dotTrace showed SharedArrayPool.Rent/Return + Array.Clear dominating MSTORE;
-    // retaining the largest seen buffer per thread removes most of that Rent/Return traffic and lets
-    // the already-zeroed tail be reused (see RentSlow). Cleared on thread exit by the GC.
+    // Per-thread free-list of previously-rented EVM memory buffers. EVM call frames execute on a
+    // single block-processing (or prewarm) thread but nest (CALL/CREATE), so several buffers can be
+    // live at once on one thread — a one-deep cache misses the nested frames and falls back to the
+    // contended shared ArrayPool, which dotTrace showed dominating MSTORE (SharedArrayPool.Rent).
+    // A small bounded stack lets each frame in a nesting chain reuse a buffer and return it on exit,
+    // keeping the common nesting depths off the shared pool entirely. Bounded so deep/abnormal
+    // recursion cannot pin unbounded memory; overflow falls back to the shared pool. GC reclaims the
+    // stack on thread exit.
+    private const int ThreadBufferStackDepth = 8;
+
     [ThreadStatic]
-    private static byte[]? _threadCachedBuffer;
+    private static byte[]?[]? _threadBufferStack;
+    [ThreadStatic]
+    private static int _threadBufferCount;
 
     public void Dispose()
     {
@@ -384,16 +390,17 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            // Keep the larger of this buffer and any already-cached one for reuse by the next frame
-            // on this thread; return the smaller to the shared pool so we don't leak large arrays.
-            byte[]? cached = _threadCachedBuffer;
-            if (cached is null || memory.Length > cached.Length)
+
+            byte[]?[]? stack = _threadBufferStack ??= new byte[]?[ThreadBufferStackDepth];
+            int count = _threadBufferCount;
+            if (count < ThreadBufferStackDepth)
             {
-                _threadCachedBuffer = memory;
-                if (cached is not null) SafeArrayPool<byte>.Shared.Return(cached);
+                stack[count] = memory;
+                _threadBufferCount = count + 1;
             }
             else
             {
+                // Stack full (unusually deep nesting): return to the shared pool rather than grow.
                 SafeArrayPool<byte>.Shared.Return(memory);
             }
         }
@@ -446,19 +453,21 @@ public struct EvmPooledMemory
         if (_memory is null)
         {
             int wanted = (int)Math.Max((uint)Size, MinRentSize);
-            // Prefer reusing this thread's cached buffer (set by a prior frame's Dispose) over a
-            // shared-pool rent; it is already allocated and avoids the contended pool round-trip.
-            byte[]? cached = _threadCachedBuffer;
-            if (cached is not null && cached.Length >= wanted)
+            // Prefer reusing a buffer from this thread's free-list (released by prior/outer frames)
+            // over a shared-pool rent; it is already allocated and avoids the contended pool.
+            byte[]?[]? stack = _threadBufferStack;
+            int count = _threadBufferCount;
+            byte[]? reused = null;
+            if (stack is not null && count > 0 && stack[count - 1] is byte[] top && top.Length >= wanted)
             {
-                _threadCachedBuffer = null;
-                _memory = cached;
+                stack[count - 1] = null;
+                _threadBufferCount = count - 1;
+                reused = top;
             }
-            else
-            {
-                _memory = SafeArrayPool<byte>.Shared.Rent(wanted);
-            }
-            // The reused/rented buffer's contents are undefined, so zero the live [0, Size) region.
+
+            _memory = reused ?? SafeArrayPool<byte>.Shared.Rent(wanted);
+            // The reused/rented buffer's contents are undefined (a prior frame may have written into
+            // it), so zero the live [0, Size) region before exposing it to this frame.
             Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
         else
