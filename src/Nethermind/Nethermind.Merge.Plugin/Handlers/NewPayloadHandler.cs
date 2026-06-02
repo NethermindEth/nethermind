@@ -395,6 +395,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // we timed out while processing the block, result will be null and we will return SYNCING below, no need to do anything
             if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.FullHashAndNumber)} timed out when processing. Assume Syncing.");
         }
+        finally
+        {
+            // Blocks that exit before the processing queue publishes BlockRemoved would otherwise
+            // leave their completion source pinned in _blockValidationTasks forever.
+            _blockValidationTasks.TryRemove(block.Hash!, out _);
+        }
 
         return (TryCacheResult(result ?? ValidationResult.Syncing, validationMessage), validationMessage);
     }
