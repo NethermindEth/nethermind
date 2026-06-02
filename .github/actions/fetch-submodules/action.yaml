@@ -17,7 +17,7 @@ runs:
         set -euo pipefail
         delay=15
         for i in 1 2 3; do
-          git submodule update --init $RECURSIVE --jobs 4 && exit 0
+          git submodule update --init --depth 1 $RECURSIVE --jobs 4 && exit 0
           echo "::warning::Submodule fetch failed (attempt $i/3)"
           git submodule deinit -f --all || true
           sleep $delay
