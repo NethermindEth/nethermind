@@ -370,6 +370,49 @@ public class BlockCachePreWarmerTests
         Assert.That(new UInt256(populatedStorage, isBigEndian: true), Is.EqualTo((UInt256)0x99));
     }
 
+    /// <summary>
+    /// Verifies that speculative prewarming warms the bytecode of a transaction recipient that
+    /// is a contract, so the cold code (and codeHash) read happens off the critical path rather
+    /// than inside InstructionCall -> GetCachedCodeInfo during the measured block execution.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WarmsRecipientContractCode()
+    {
+        // STOP (0x00): minimal valid contract bytecode so the recipient has code to warm.
+        byte[] contractCode = [0x00];
+        Address contract = TestItem.AddressD;
+
+        IWorldState seedState = _processingScope.Resolve<IWorldState>();
+        Nethermind.Core.Crypto.Hash256 stateRootWithContract;
+        using (seedState.BeginScope(BuildParentHeader()))
+        {
+            seedState.CreateAccountIfNotExists(contract, UInt256.Zero);
+            seedState.InsertCode(contract, contractCode, Osaka.Instance);
+            seedState.Commit(Osaka.Instance);
+            seedState.CommitTree(1);
+            stateRootWithContract = seedState.StateRoot;
+        }
+
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithNonce(0).WithTo(contract).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(0).WithTo(contract).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+        ];
+        Block block = Build.A.Block.WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(1).WithStateRoot(stateRootWithContract).WithGasLimit(30_000_000).TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, parent, Osaka.Instance);
+
+        AddressAsKey contractKey = contract;
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in contractKey, out _), Is.True,
+            "recipient contract account must be pre-warmed");
+    }
+
     private BlockCachePreWarmer CreatePreWarmerFromConfig(bool parallelExecution, bool parallelExecutionBatchRead)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();

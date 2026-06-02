@@ -422,6 +422,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (to is not null)
                 {
                     worldState.WarmUp(to);
+
+                    // The recipient is the directly-called contract for the common CALL-shaped tx.
+                    // Pull its bytecode here so the cold codeHash + code-DB read happens on this
+                    // prewarm thread rather than on the critical path inside InstructionCall ->
+                    // GetCachedCodeInfo. Skip EOAs (no code) to avoid a wasted code-DB lookup.
+                    if (worldState.HasCode(to))
+                    {
+                        worldState.GetCode(to);
+                    }
                 }
             }
             catch (MissingTrieNodeException)
