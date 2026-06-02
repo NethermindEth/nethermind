@@ -8,10 +8,13 @@ using Nethermind.Int256;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Xdc;
 
-internal sealed class RewardsStore(IDb rewardsDb, int rewardHistoryEpochRetention = XdcConstants.RewardHistoryEpochRetention) : IRewardsStore
+internal sealed class RewardsStore(
+    [KeyFilter(XdcRocksDbConfigFactory.XdcRewardsDbName)] IDb rewardsDb,
+    int rewardHistoryEpochRetention = XdcConstants.RewardHistoryEpochRetention) : IRewardsStore
 {
     private readonly IDb _rewardsDb = rewardsDb;
     private readonly int _rewardHistoryEpochRetention = rewardHistoryEpochRetention;

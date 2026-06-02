@@ -104,7 +104,9 @@ public class XdcModule : Module
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName)
+            .AddDatabase(XdcRocksDbConfigFactory.XdcRewardsDbName)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
+            .AddSingleton<IRewardsStore, RewardsStore>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
