@@ -3,7 +3,7 @@ name: Hive tests
 on:
   push:
     tags: ['*']
-    branches: [master, release/*]
+    branches: [master]
   workflow_dispatch:
     inputs:
       test-suite:
@@ -12,14 +12,13 @@ on:
         options:
           - 'all'
           - devp2p
-          - ethereum/consensus
           - ethereum/eest
           - ethereum/engine
           - ethereum/graphql
           - ethereum/rpc-compat
           - ethereum/sync
       limit:
-        description: Limit (ignored for the consensus suite)
+        description: Limit
         required: false
         type: string
       log-level:
@@ -51,11 +50,6 @@ on:
         description: Maximum concurrent matrix jobs (blank = no cap)
         required: false
         type: number
-      shard-count:
-        description: Maximum number of consensus matrix shards
-        required: false
-        default: 256
-        type: number
   workflow_call:
 
 concurrency:
@@ -72,74 +66,34 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - name: Compute scope
-        id: scope
-        run: |
-          event="${{ github.event_name }}"
-          ref="${{ github.ref }}"
-          suite='${{ github.event.inputs.test-suite }}'
-
-          need_static=false
-          need_consensus=false
-
-          if [[ "$event" == "push" ]]; then
-            if [[ "$ref" == "refs/heads/master" || "$ref" == refs/tags/* ]]; then
-              need_static=true
-            elif [[ "$ref" == refs/heads/release/* ]]; then
-              need_consensus=true
-            fi
-          elif [[ "$event" == "pull_request" || "$event" == "workflow_call" ]]; then
-            need_static=true
-          elif [[ "$event" == "workflow_dispatch" ]]; then
-            case "$suite" in
-              all)
-                need_static=true
-                need_consensus=true
-                ;;
-              ethereum/consensus)
-                need_consensus=true
-                ;;
-              *)
-                need_static=true
-                ;;
-            esac
-          fi
-
-          echo "need_static=$need_static" >> "$GITHUB_OUTPUT"
-          echo "need_consensus=$need_consensus" >> "$GITHUB_OUTPUT"
-
-      - name: Check out Nethermind repository
-        if: steps.scope.outputs.need_consensus == 'true'
-        uses: actions/checkout@v6
-        with:
-          path: nethermind
-          submodules: recursive
-
-      - name: Set up .NET
-        if: steps.scope.outputs.need_consensus == 'true'
-        uses: actions/setup-dotnet@v5
-        with:
-          global-json-file: nethermind/global.json
-
       - name: Build matrix
         id: matrix
         run: |
           event="${{ github.event_name }}"
+          ref="${{ github.ref }}"
           suite_input='${{ github.event.inputs.test-suite }}'
           limit_input='${{ github.event.inputs.limit }}'
           parallelism='${{ github.event.inputs.parallelism || env.DEFAULT_PARALLELISM }}'
-          shard_count='${{ github.event.inputs.shard-count || '256' }}'
 
-          static_matrix='[]'
-          consensus_matrix='[]'
+          need_static=false
+          if [[ "$event" == "push" ]]; then
+            if [[ "$ref" == "refs/heads/master" || "$ref" == refs/tags/* ]]; then
+              need_static=true
+            fi
+          elif [[ "$event" == "pull_request" || "$event" == "workflow_call" ]]; then
+            need_static=true
+          elif [[ "$event" == "workflow_dispatch" ]]; then
+            need_static=true
+          fi
 
-          if [[ "${{ steps.scope.outputs.need_static }}" == "true" ]]; then
+          matrix='[]'
+          if [[ "$need_static" == "true" ]]; then
             if [[ "$event" == "workflow_dispatch" && "$suite_input" != "all" ]]; then
-              static_matrix=$(jq -cn \
+              matrix=$(jq -cn \
                 --arg suite "$suite_input" \
                 --arg limit "$limit_input" \
                 --argjson p "$parallelism" \
-                '[{suite:$suite, limits:$limit, parallelism:$p, name:$suite}]')
+                '[{suite:$suite, limit:$limit, parallelism:$p, name:$suite}]')
             else
               # engine-withdrawals at parallelism 2: the 128-block primary build takes
               # ~5 min on shared CI runners at parallelism 4, consuming the entire 300 s
@@ -147,41 +101,24 @@ jobs:
               # engine-cancun and engine-api split into two runners each (I* vs non-I*)
               # to reduce contention.
               # engine-[^acw] catches exchange-capabilities and any future engine suites.
-              static_matrix='[
-                {"suite":"ethereum/engine",     "limits":"engine-cancun/^I",    "parallelism":3, "name":"engine-cancun-i"},
-                {"suite":"ethereum/engine",     "limits":"engine-cancun/^[^I]", "parallelism":3, "name":"engine-cancun-other"},
-                {"suite":"ethereum/engine",     "limits":"engine-api/^I",       "parallelism":3, "name":"engine-api-i"},
-                {"suite":"ethereum/engine",     "limits":"engine-api/^[^I]",    "parallelism":3, "name":"engine-api-other"},
-                {"suite":"ethereum/engine",     "limits":"engine-withdrawals",  "parallelism":2, "name":"engine-withdrawals"},
-                {"suite":"ethereum/engine",     "limits":"engine-auth",         "parallelism":2, "name":"engine-auth"},
-                {"suite":"ethereum/engine",     "limits":"engine-[^acw]",       "parallelism":2, "name":"engine-other"},
-                {"suite":"ethereum/graphql",    "limits":"", "parallelism":4, "name":"graphql"},
-                {"suite":"ethereum/rpc-compat", "limits":"", "parallelism":4, "name":"rpc-compat"},
-                {"suite":"ethereum/sync",       "limits":"", "parallelism":4, "name":"sync"}
+              matrix='[
+                {"suite":"ethereum/engine",     "limit":"engine-cancun/^I",    "parallelism":3, "name":"engine-cancun-i"},
+                {"suite":"ethereum/engine",     "limit":"engine-cancun/^[^I]", "parallelism":3, "name":"engine-cancun-other"},
+                {"suite":"ethereum/engine",     "limit":"engine-api/^I",       "parallelism":3, "name":"engine-api-i"},
+                {"suite":"ethereum/engine",     "limit":"engine-api/^[^I]",    "parallelism":3, "name":"engine-api-other"},
+                {"suite":"ethereum/engine",     "limit":"engine-withdrawals",  "parallelism":2, "name":"engine-withdrawals"},
+                {"suite":"ethereum/engine",     "limit":"engine-auth",         "parallelism":2, "name":"engine-auth"},
+                {"suite":"ethereum/engine",     "limit":"engine-[^acw]",       "parallelism":2, "name":"engine-other"},
+                {"suite":"ethereum/graphql",    "limit":"", "parallelism":4, "name":"graphql"},
+                {"suite":"ethereum/rpc-compat", "limit":"", "parallelism":4, "name":"rpc-compat"},
+                {"suite":"ethereum/sync",       "limit":"", "parallelism":4, "name":"sync"}
               ]'
             fi
           fi
 
-          if [[ "${{ steps.scope.outputs.need_consensus }}" == "true" ]]; then
-            (
-              cd nethermind/tools/HiveConsensusWorkflowGenerator
-              dotnet run -- src/tests "$shard_count"
-            )
-            consensus_matrix=$(jq -c \
-              --argjson p "$parallelism" \
-              'to_entries | map({
-                suite: "ethereum/consensus",
-                limits: ((.value.testNames // []) | map("/" + .) | join("|")),
-                parallelism: $p,
-                name: ("consensus-shard-" + (.key | tostring))
-              })' \
-              nethermind/tools/HiveConsensusWorkflowGenerator/matrix.json)
-          fi
-
-          combined=$(jq -cn --argjson s "$static_matrix" --argjson c "$consensus_matrix" '$s + $c')
           {
             echo "matrix<<MATRIX_END"
-            echo "$combined"
+            echo "$matrix"
             echo "MATRIX_END"
           } >> "$GITHUB_OUTPUT"
 
@@ -263,23 +200,15 @@ jobs:
         continue-on-error: true
         working-directory: hive
         env:
-          LIMITS: ${{ matrix.limits }}
+          LIMIT: ${{ matrix.limit }}
         run: |
-          BASE_ARGS="--client nethermind
+          HIVE_ARGS="--client nethermind
             --sim ${{ matrix.suite }}
             --sim.loglevel $LOG_LEVEL
             --sim.parallelism ${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}"
-          [[ -n "$BUILDARG" ]] && BASE_ARGS+=" --sim.buildarg \"$BUILDARG\""
-
-          if [[ -z "$LIMITS" ]]; then
-            ./hive $BASE_ARGS
-          else
-            IFS='|' read -ra LIMS <<< "$LIMITS"
-            for lim in "${LIMS[@]}"; do
-              [[ -z "$lim" ]] && continue
-              ./hive $BASE_ARGS --sim.limit "$lim"
-            done
-          fi
+          [[ -n "$LIMIT" ]] && HIVE_ARGS+=" --sim.limit $LIMIT"
+          [[ -n "$BUILDARG" ]] && HIVE_ARGS+=" --sim.buildarg \"$BUILDARG\""
+          ./hive $HIVE_ARGS
 
       - name: Upload results
         uses: actions/upload-artifact@v7
