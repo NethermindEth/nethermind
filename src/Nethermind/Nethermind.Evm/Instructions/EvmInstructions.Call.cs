@@ -264,7 +264,7 @@ public static partial class EvmInstructions
                     state.SubtractFromBalance(caller, in callValue, spec);
                     vm.AddTransferLog<TEip7708>(caller, target, in callValue);
                 }
-                state.AddToBalanceAndCreateIfNotExists(target, in hasValueTransfer ? ref callValue : ref UInt256.Zero, spec);
+                state.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
             }
             Metrics.IncrementEmptyCalls();
             vm.ReturnData = null;

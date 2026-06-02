@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test.Collections
             JournalSet<int> journalSet = CreateJournalSet();
             journalSet.Add(3);
 
-            Assert.That(journalSet.Single, Is.EqualTo(3));
+            Assert.That(journalSet.First, Is.EqualTo(3));
         }
     }
 }

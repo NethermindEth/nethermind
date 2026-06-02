@@ -10,20 +10,20 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 {
-    public static CodeInfo Empty { get; } = new();
+    public static CodeInfo Empty { get; }
     // Empty code sentinel
     private static readonly JumpDestinationAnalyzer _emptyAnalyzer;
 
     static CodeInfo()
     {
-        _emptyAnalyzer = new JumpDestinationAnalyzer(Empty, skipAnalysis: true);
-        Empty._analyzer = _emptyAnalyzer;
+        CodeInfo stub = new(); // allocate without analyzer
+        _emptyAnalyzer = new JumpDestinationAnalyzer(stub, skipAnalysis: true);
+        Empty = new CodeInfo(_emptyAnalyzer);
     }
 
     // Empty
-    private CodeInfo()
-    {
-    }
+    private CodeInfo() { }
+    private CodeInfo(JumpDestinationAnalyzer analyzer) => _analyzer = analyzer;
 
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
@@ -51,7 +51,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public IPrecompile? Precompile { get; }
 
-    private JumpDestinationAnalyzer? _analyzer;
+    private readonly JumpDestinationAnalyzer? _analyzer;
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
