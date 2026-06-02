@@ -18,7 +18,7 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class PosForwardHeaderProvider : PowForwardHeaderProvider, IDisposable
+public class PosForwardHeaderProvider : PowForwardHeaderProvider
 {
     private const int CacheBatchMultiplier = 4;
 
@@ -105,47 +105,40 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider, IDisposable
         if (fresh.Length >= fetchSize) UpdateCache(fresh, skipLastN);
 
         int take = Math.Min(fresh.Length, maxHeader);
-        ArrayPoolList<BlockHeader?> result = new(take);
-        result.AddRange(((BlockHeader?[])fresh).AsSpan(0, take));
+        ArrayPoolList<BlockHeader?> result = new(((BlockHeader?[])fresh).AsSpan(0, take));
         return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(result);
     }
 
     private ArrayPoolList<BlockHeader?>? TryServeFromCache(int maxHeader, int skipLastN)
     {
-        BlockHeader?[]? cached;
-        Hash256? cachedHash;
-        long cachedNumber;
-        int cachedSkip;
+        BlockHeader?[] cached;
+        int offset;
+        int take;
         lock (_cacheLock)
         {
+            if (_cachedHeaders is null || _cachedSkipLastN != skipLastN) return null;
+
+            BlockHeader? processDestination = _beaconPivot.ProcessDestination;
+            Hash256? currentHash = processDestination?.Hash;
+            long currentNumber = processDestination?.Number ?? long.MaxValue;
+            if (_cachedProcessDestinationHash != currentHash || _cachedProcessDestinationNumber != currentNumber) return null;
+
             cached = _cachedHeaders;
-            cachedHash = _cachedProcessDestinationHash;
-            cachedNumber = _cachedProcessDestinationNumber;
-            cachedSkip = _cachedSkipLastN;
+            // `cached[0]` is the anchor that `BlockDownloader.AssembleRequest` consumes as `parentHeader`;
+            // start at `BestKnownNumber` (not `+1`) so the anchor stays at slice index 0.
+            long desiredStart = Math.Min(_blockTree.BestKnownNumber, currentNumber);
+            long cacheStart = cached[0]!.Number;
+            long cacheEnd = cached[^1]!.Number;
+            if (desiredStart < cacheStart || desiredStart > cacheEnd) return null;
+
+            offset = (int)(desiredStart - cacheStart);
+            int available = cached.Length - offset;
+            if (available <= 1) return null;
+
+            take = Math.Min(available, maxHeader);
         }
 
-        if (cached is null || cachedSkip != skipLastN) return null;
-
-        BlockHeader? processDestination = _beaconPivot.ProcessDestination;
-        Hash256? currentHash = processDestination?.Hash;
-        long currentNumber = processDestination?.Number ?? long.MaxValue;
-        if (cachedHash != currentHash || cachedNumber != currentNumber) return null;
-
-        // `cached[0]` is the anchor that `BlockDownloader.AssembleRequest` consumes as `parentHeader`;
-        // start at `BestKnownNumber` (not `+1`) so the anchor stays at slice index 0.
-        long desiredStart = Math.Min(_blockTree.BestKnownNumber, currentNumber);
-        long cacheStart = cached[0]!.Number;
-        long cacheEnd = cached[^1]!.Number;
-        if (desiredStart < cacheStart || desiredStart > cacheEnd) return null;
-
-        int offset = (int)(desiredStart - cacheStart);
-        int available = cached.Length - offset;
-        if (available <= 1) return null;
-
-        int take = Math.Min(available, maxHeader);
-        ArrayPoolList<BlockHeader?> slice = new(take);
-        slice.AddRange(cached.AsSpan(offset, take));
-        return slice;
+        return new ArrayPoolList<BlockHeader?>(cached.AsSpan(offset, take));
     }
 
     private void UpdateCache(BlockHeader[] headers, int skipLastN)
@@ -188,6 +181,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider, IDisposable
                     _cachedProcessDestinationNumber = 0;
                     _cachedSkipLastN = 0;
                 }
+                // First in-range block's hash commits to all earlier blocks in this update.
                 return;
             }
         }
@@ -251,5 +245,5 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider, IDisposable
         }
     }
 
-    public void Dispose() => _blockTree.OnUpdateMainChain -= BlockTreeOnUpdateMainChain;
+    internal void UnsubscribeForTest() => _blockTree.OnUpdateMainChain -= BlockTreeOnUpdateMainChain;
 }

@@ -63,7 +63,7 @@ public class PosForwardHeaderProviderCacheTests
     }
 
     [TearDown]
-    public void TearDown() => _provider.Dispose();
+    public void TearDown() => _provider.UnsubscribeForTest();
 
     private Task<IOwnedReadOnlyList<BlockHeader?>?> Get(int skip = 0, int max = Requested) =>
         _provider.GetBlockHeaders(skip, max, CancellationToken.None);
@@ -105,7 +105,8 @@ public class PosForwardHeaderProviderCacheTests
         ExpectCalls(expected: 2, between: first =>
         {
             Block reorgBlock = Build.A.Block.WithNumber(10).WithDifficulty(2).TestObject;
-            Assert.That(reorgBlock.Header.Hash, Is.Not.EqualTo(first[10]!.Hash));
+            Assert.That(reorgBlock.Header.Hash, Is.Not.EqualTo(first[10]!.Hash),
+                "precondition: reorg block must hash differently from the cached header at the same height");
             RaiseMainChainUpdate(reorgBlock);
         });
 
