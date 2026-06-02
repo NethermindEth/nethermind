@@ -31,7 +31,7 @@ public class DebugTraceStreamingBenchmarks
     {
         _tx = Build.A.Transaction.WithTo(TestItem.AddressA).TestObject;
         _block = Build.A.Block.WithTransactions(_tx).TestObject;
-        _env = ExecutionEnvironment.Rent(CodeInfo.Empty, Address.Zero, Address.Zero, null, 1, default, default, default);
+        _env = ExecutionEnvironment.Rent(CodeInfo.Empty, Address.Zero, Address.Zero, null, 1, default, default);
     }
 
     [Benchmark(Baseline = true, Description = "Throughput: buffered — accumulate N entries, then serialize the full envelope")]
