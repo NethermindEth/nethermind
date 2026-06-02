@@ -40,7 +40,7 @@ public class TraceStreamingAllocsBenchmarks
         for (int d = 0; d <= CallDepthPerTx; d++)
         {
             _envByDepth[d] = ExecutionEnvironment.Rent(
-                CodeInfo.Empty, Address.Zero, Address.Zero, null, d, default, default, default);
+                CodeInfo.Empty, Address.Zero, Address.Zero, null, d, default, default);
         }
         _value32 = new byte[32];
         _jsonOptions = EthereumJsonSerializer.JsonOptions;

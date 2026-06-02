@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
@@ -116,7 +117,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         }
         else if (strictHexFormat)
         {
-            Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
+            throw new SafePublicMessageFormatException(Bytes.ErrMissingPrefix);
         }
 
         if (requireEvenLength && hex.Length % 2 != 0)
@@ -152,12 +153,12 @@ public class ByteArrayConverter : JsonConverter<byte[]>
                 {
                     sr.Rewind(1);
                     if (strictHexFormat)
-                        Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
+                        throw new SafePublicMessageFormatException(Bytes.ErrMissingPrefix);
                 }
             }
             else if (strictHexFormat)
             {
-                Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
+                throw new SafePublicMessageFormatException(Bytes.ErrMissingPrefix);
             }
         }
 

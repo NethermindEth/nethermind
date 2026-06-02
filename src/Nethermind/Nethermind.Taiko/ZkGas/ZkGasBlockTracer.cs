@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Frozen;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -20,10 +22,12 @@ public sealed class ZkGasBlockTracer : IBlockTracer
 
     public ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null,
         ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
-        ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas)
+        ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas,
+        ReadOnlyMemory<ushort> opcodeMultipliers = default,
+        FrozenDictionary<AddressAsKey, ushort>? precompileMultipliers = null)
     {
         _inner = inner;
-        _meter = new ZkGasMeter(blockZkGasLimit, txIntrinsicZkGas);
+        _meter = new ZkGasMeter(blockZkGasLimit, txIntrinsicZkGas, opcodeMultipliers, precompileMultipliers);
         // Publish once: the meter reference is stable across blocks (we Reset it in
         // StartNewBlockTrace rather than reallocating), so the holder never needs
         // re-pointing for the lifetime of this tracer.
