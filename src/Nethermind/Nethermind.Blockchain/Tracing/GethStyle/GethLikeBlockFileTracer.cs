@@ -20,7 +20,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     private readonly Block _block;
     private Stream? _file;
     private readonly string _fileNameFormat;
-    private readonly List<string> _fileNames = new();
+    private readonly List<string> _fileNames = [];
     private readonly IFileSystem _fileSystem;
     private Utf8JsonWriter? _jsonWriter;
     private readonly GethTraceOptions _options;

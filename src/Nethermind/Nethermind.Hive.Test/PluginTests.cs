@@ -4,7 +4,7 @@
 using Nethermind.Config.Test;
 using NUnit.Framework;
 
-namespace Nethermind.Hive.Tests
+namespace Nethermind.Hive.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]

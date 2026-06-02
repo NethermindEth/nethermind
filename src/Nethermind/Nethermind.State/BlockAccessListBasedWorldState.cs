@@ -7,7 +7,9 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -26,13 +28,15 @@ namespace Nethermind.State;
 public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogManager logManager) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
-    private BlockAccessList? _suggestedBlockAccessList;
+    private ReadOnlyBlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
     private IWorldState? _parentReader;
     private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
     private uint _blockAccessIndex = 0;
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
+    private UInt256 _scratchBalance;
+    private ValueHash256 _scratchCodeHash;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
 
     // _codeChangesByHash is monotonic across the block (a code blob deployed at any tx is
@@ -91,11 +95,13 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
+    public Task HintBal(ReadOnlyBlockAccessList bal) => _innerWorldState.HintBal(bal);
+
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
-        (IWorldState parentReader, AccountChanges accountChanges) = ResolveContext(storageCell.Address);
+        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(storageCell.Address);
 
-        if (TryGetDeclaredSlotChanges(accountChanges, storageCell.Index, out SlotChanges? slotChanges))
+        if (TryGetDeclaredSlotChanges(accountChanges, storageCell.Index, out ReadOnlySlotChanges? slotChanges))
         {
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {
@@ -114,9 +120,9 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
-        (IWorldState parentReader, AccountChanges accountChanges) = ResolveContext(storageCell.Address);
+        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(storageCell.Address);
 
-        if (TryGetDeclaredSlotChanges(accountChanges, storageCell.Index, out SlotChanges? slotChanges))
+        if (TryGetDeclaredSlotChanges(accountChanges, storageCell.Index, out ReadOnlySlotChanges? slotChanges))
         {
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {
@@ -141,36 +147,42 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public void Set(in StorageCell storageCell, byte[] newValue) { }
 
-    public UInt256 GetBalance(Address address)
+    public ref readonly UInt256 GetBalance(Address address)
     {
-        (IWorldState parentReader, AccountChanges accountChanges) = ResolveContext(address);
+        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
-        return accountChanges.TryGetLastBalanceChangeBefore(_blockAccessIndex, out BalanceChange balanceChange)
-            ? balanceChange.Value
-            : parentReader.GetBalance(address);
+        if (accountChanges.TryGetLastBalanceChangeBefore(_blockAccessIndex, out BalanceChange balanceChange))
+        {
+            _scratchBalance = balanceChange.Value;
+            return ref _scratchBalance;
+        }
+        return ref parentReader.GetBalance(address);
     }
 
     public UInt256 GetNonce(Address address)
     {
-        (IWorldState parentReader, AccountChanges accountChanges) = ResolveContext(address);
+        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
         return accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonceChange)
             ? nonceChange.Value
             : parentReader.GetNonce(address);
     }
 
-    public ValueHash256 GetCodeHash(Address address)
+    public ref readonly ValueHash256 GetCodeHash(Address address)
     {
-        (IWorldState parentReader, AccountChanges accountChanges) = ResolveContext(address);
+        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
-        return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
-            ? codeChange.CodeHash
-            : parentReader.GetCodeHash(address);
+        if (accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange))
+        {
+            _scratchCodeHash = codeChange.CodeHash;
+            return ref _scratchCodeHash;
+        }
+        return ref parentReader.GetCodeHash(address);
     }
 
     public byte[]? GetCode(Address address)
     {
-        (IWorldState parentReader, AccountChanges accountChanges) = ResolveContext(address);
+        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
         return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
             ? codeChange.Code
@@ -190,7 +202,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public bool TryGetAccount(Address address, out AccountStruct account)
     {
-        (IWorldState parentReader, AccountChanges accountChanges) = ResolveContext(address);
+        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
         bool exists = parentReader.TryGetAccount(address, out account);
         UInt256 nonce = exists ? account.Nonce : UInt256.Zero;
@@ -240,7 +252,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public bool AccountExists(Address address)
     {
-        (IWorldState parentReader, AccountChanges accountChanges) = ResolveContext(address);
+        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
         if (parentReader.AccountExists(address))
         {
@@ -293,8 +305,9 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         CheckInitialized();
 
-        ArrayPoolList<AddressAsKey> result = new(_suggestedBlockAccessList.AccountChanges.Count);
-        foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
+        ReadOnlySpan<ReadOnlyAccountChanges> accounts = _suggestedBlockAccessList.AccountChanges.AsSpan();
+        ArrayPoolList<AddressAsKey> result = new(accounts.Length);
+        foreach (ReadOnlyAccountChanges accountChanges in accounts)
         {
             if (accountChanges.HasStateChanges)
             {
@@ -316,6 +329,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public void CreateEmptyAccountIfDeleted(Address address)
         => _innerWorldState.CreateEmptyAccountIfDeleted(address);
 
+    [MemberNotNull(nameof(_suggestedBlockAccessList), nameof(_suggestedBlockHeader))]
     private void CheckInitialized()
     {
         if (_suggestedBlockAccessList is null)
@@ -335,10 +349,10 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         return _parentReader;
     }
 
-    private AccountChanges GetAccountChangesOrThrow(Address address)
+    private ReadOnlyAccountChanges GetAccountChangesOrThrow(Address address)
     {
         Debug.Assert(_suggestedBlockAccessList is not null);
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
         if (accountChanges is null)
         {
             ThrowMissingAccount(address);
@@ -347,7 +361,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         return accountChanges;
     }
 
-    private (IWorldState ParentReader, AccountChanges AccountChanges) ResolveContext(Address address)
+    private (IWorldState ParentReader, ReadOnlyAccountChanges AccountChanges) ResolveContext(Address address)
     {
         CheckInitialized();
         return (GetParentReader(), GetAccountChangesOrThrow(address));
@@ -375,13 +389,17 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         }
 
         // Built once per block; entries are immutable across the block. TryGetCodeByHash filters
-        // by Index < _blockAccessIndex at lookup time so future-tx code stays invisible.
-        Dictionary<ValueHash256, (uint Index, byte[] Code)> codeChangesByHash = [];
-        foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
+        // by Index < _blockAccessIndex at lookup time so future-tx code stays invisible. The
+        // dictionary itself is only allocated when at least one account declares a code change,
+        // so most blocks (which rarely contain deployments) skip the per-block allocation.
+        Dictionary<ValueHash256, (uint Index, byte[] Code)>? codeChangesByHash = null;
+        foreach (ReadOnlyAccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
-            foreach (CodeChange codeChange in accountChanges.CodeChanges)
+            ReadOnlySpan<CodeChange> codeChanges = accountChanges.CodeChanges;
+            if (codeChanges.Length == 0) continue;
+            codeChangesByHash ??= new(GenericEqualityComparer.GetOptimized<ValueHash256>());
+            foreach (CodeChange codeChange in codeChanges)
             {
-                if (codeChange.Index == Eip7928Constants.PrestateIndex) continue;
                 if (!codeChangesByHash.TryGetValue(codeChange.CodeHash, out (uint Index, byte[] Code) existing)
                     || codeChange.Index < existing.Index)
                 {
@@ -393,14 +411,14 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         return codeChangesByHash;
     }
 
-    private static bool TryGetDeclaredSlotChanges(AccountChanges accountChanges, UInt256 slot, out SlotChanges? slotChanges)
+    private static bool TryGetDeclaredSlotChanges(ReadOnlyAccountChanges accountChanges, UInt256 slot, out ReadOnlySlotChanges? slotChanges)
     {
         if (accountChanges.TryGetSlotChanges(slot, out slotChanges))
         {
             return true;
         }
 
-        if (accountChanges.StorageReads.Contains(slot))
+        if (accountChanges.IsStorageRead(slot))
         {
             slotChanges = null;
             return true;
@@ -419,9 +437,9 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingAccount(Address address)
-        => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+        => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader!, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
 
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingStorage(in StorageCell storageCell)
-        => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
+        => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader!, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
 }

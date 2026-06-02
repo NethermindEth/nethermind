@@ -5,8 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Collections.Pooled;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -24,9 +26,9 @@ namespace Nethermind.Consensus.Stateless;
 
 public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder) : IWorldState
 {
-    private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
+    private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = [];
 
-    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new();
+    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new(GenericEqualityComparer.GetOptimized<ValueHash256>());
 
     public Witness GetWitness(BlockHeader parentHeader)
     {
@@ -155,16 +157,16 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         return inner.IsDeadAccount(address);
     }
 
-    public UInt256 GetBalance(Address address)
+    public ref readonly UInt256 GetBalance(Address address)
     {
         RecordEmptySlots(address);
-        return inner.GetBalance(address);
+        return ref inner.GetBalance(address);
     }
 
-    public ValueHash256 GetCodeHash(Address address)
+    public ref readonly ValueHash256 GetCodeHash(Address address)
     {
         RecordEmptySlots(address);
-        return inner.GetCodeHash(address);
+        return ref inner.GetCodeHash(address);
     }
 
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
@@ -288,6 +290,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     public void ResetTransient() => inner.ResetTransient();
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => inner.BeginScope(baseBlock);
+    public Task HintBal(ReadOnlyBlockAccessList bal) => inner.HintBal(bal);
 
     public void CreateEmptyAccountIfDeleted(Address address)
     {
@@ -300,7 +303,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     private HashSet<UInt256> RecordEmptySlots(Address address)
     {
         ref HashSet<UInt256>? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, address, out _);
-        slot ??= new HashSet<UInt256>();
+        slot ??= [];
         return slot;
     }
 

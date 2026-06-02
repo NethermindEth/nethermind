@@ -12,7 +12,7 @@ namespace Nethermind.Xdc;
 
 public class XdcPool<T> where T : IXdcPoolItem
 {
-    private readonly Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> _items = new();
+    private readonly Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> _items = [];
     private readonly McsLock _lock = new();
 
     public long Add(T item)

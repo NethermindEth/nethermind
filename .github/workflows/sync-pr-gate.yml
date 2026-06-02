@@ -5,16 +5,20 @@ on:
     branches: [master]
 
 concurrency:
-  group: sync-pr-${{ github.head_ref || github.ref }}
+  group: sync-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
+permissions:
+  contents: read
+
 jobs:
   sync-hoodi:
     name: "Sync hoodi (${{ matrix.mode }})"
+    if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
     strategy:
@@ -30,7 +34,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -39,7 +43,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
 
       - name: Checkout tests repository
         uses: actions/checkout@v6
@@ -48,6 +53,7 @@ jobs:
           path: tests
           token: ${{ steps.gh-app.outputs.token }}
           clean: true
+          persist-credentials: false
 
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@v1
@@ -86,7 +92,7 @@ jobs:
           docker build -t nethermind:pr-local \
             --build-arg BUILD_CONFIG=release \
             --build-arg CI=true \
-            --build-arg COMMIT_HASH=${{ github.sha }} \
+            --build-arg COMMIT_HASH=${{ github.event.pull_request.head.sha }} \
             .
 
       - name: Generate and run Sedge

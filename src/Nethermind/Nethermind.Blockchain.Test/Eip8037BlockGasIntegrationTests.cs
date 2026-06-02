@@ -6,6 +6,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -55,7 +56,7 @@ public class Eip8037BlockGasIntegrationTests
             .WithNumber(1)
             .WithGasLimit(blockGasLimit)
             .WithTransactions(txs)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);

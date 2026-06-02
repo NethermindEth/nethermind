@@ -44,11 +44,11 @@ namespace Nethermind.Runner.Test.Module;
 public class NetworkModuleTest
 {
     /// <summary>
-    /// Protocol handlers are IDisposable transients resolved via Autofac Func factories — one
+    /// Protocol handlers are IDisposable transients created by protocol handler factories — one
     /// per peer connection. Their lifetime is owned by Session.Dispose(), not the container.
-    /// If the container tracks them (missing ExternallyOwned), they accumulate on Autofac's
-    /// internal dispose stack for the application lifetime, leaking memory proportional to
-    /// peer churn.
+    /// If handler creation routes through a tracked container registration, they accumulate
+    /// on Autofac's internal dispose stack for the application lifetime, leaking memory
+    /// proportional to peer churn.
     ///
     /// This test resolves every registered handler factory, creates a handler, disposes it,
     /// and verifies the GC can collect it — proving the container does not retain a reference.

@@ -21,9 +21,10 @@ public class BalRecorderPlugin(IBalRecorderConfig config) : INethermindPlugin
 }
 
 /// <remarks>
-/// DEVELOPMENT / BENCHMARK USE ONLY. The decorators wrap every registered <see cref="IBlockProcessor"/>,
-/// <see cref="IBlockValidator"/>, and <see cref="ISpecProvider"/> — including those used for simulation,
-/// eth_call, and the producer pipeline — so this plugin must not be enabled on production nodes.
+/// DEVELOPMENT / BENCHMARK USE ONLY. The decorators wrap every registered <see cref="IBranchProcessor"/>,
+/// <see cref="IBlockProcessor"/>, <see cref="IBlockValidator"/>, and <see cref="ISpecProvider"/> — including
+/// those used for simulation, eth_call, and the producer pipeline — so this plugin must not be enabled on
+/// production nodes.
 /// </remarks>
 public class BalRecorderModule : Module
 {
@@ -33,5 +34,6 @@ public class BalRecorderModule : Module
             .AddSingleton<BalRecorderSpecSwitch>()
             .AddDecorator<ISpecProvider, BalRecorderSpecProvider>()
             .AddDecorator<IBlockValidator, BalRecordingBlockValidator>()
+            .AddDecorator<IBranchProcessor, BalRecordingBranchProcessor>()
             .AddDecorator<IBlockProcessor, BalRecordingBlockProcessor>();
 }

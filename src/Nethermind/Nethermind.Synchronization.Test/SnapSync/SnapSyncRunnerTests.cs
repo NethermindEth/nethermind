@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -22,7 +21,7 @@ public class SnapSyncRunnerTests
     [TestCase(DispatcherOutcome.Cancels, typeof(OperationCanceledException))]
     public async Task Run_invokes_lifecycle_in_order(DispatcherOutcome outcome, Type? expectedException)
     {
-        List<string> calls = new();
+        List<string> calls = [];
         ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
         factory.When(f => f.EnsureInitialize()).Do(_ => calls.Add("EnsureInitialize"));
         factory.When(f => f.FinalizeSync()).Do(_ => calls.Add("FinalizeSync"));
@@ -43,10 +42,10 @@ public class SnapSyncRunnerTests
 
         Func<Task> act = () => runner.Run(cts.Token);
         if (expectedException is null)
-            await act.Should().NotThrowAsync();
+            Assert.That(async () => await act(), Throws.Nothing);
         else
-            await act.Should().ThrowAsync<Exception>().Where(e => expectedException.IsInstanceOfType(e));
+            Assert.That(async () => await act(), Throws.InstanceOf(expectedException));
 
-        calls.Should().Equal("EnsureInitialize", "dispatcher", "FinalizeSync");
+        Assert.That(calls, Is.EqualTo(new[] { "EnsureInitialize", "dispatcher", "FinalizeSync" }));
     }
 }

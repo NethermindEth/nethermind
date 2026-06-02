@@ -7,7 +7,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -23,7 +23,6 @@ using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade.Filters;
 using Nethermind.Facade.Eth;
 using Nethermind.State;
 using Nethermind.Config;
@@ -36,7 +35,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Eip2930;
 using Nethermind.Consensus.Stateless;
@@ -45,7 +44,8 @@ namespace Nethermind.Facade
 {
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge(
-        IOverridableEnv<BlockchainBridge.BlockProcessingComponents> processingEnv,
+        IShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents> processingEnv,
+        IShareableTxProcessorSource shareableTxProcessorSource,
         Lazy<ISimulateReadOnlyBlocksProcessingEnv> lazySimulateProcessingEnv,
         Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessGeneratingBlockProcessingEnvFactory,
         IBlockTree blockTree,
@@ -152,24 +152,44 @@ namespace Nethermind.Facade
             return blockHash is not null ? receiptStorage.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
+        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken) =>
+            HasOverrides(stateOverride, blobBaseFeeOverride)
+                ? CallExclusive(header, tx, stateOverride, blobBaseFeeOverride, cancellationToken)
+                : CallShareable(header, tx, cancellationToken);
+
+        private CallOutput CallShareable(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        {
+            using IReadOnlyTxProcessingScope scope = shareableTxProcessorSource.Build(header);
+            return RunCall(stateReader, scope.TransactionProcessor, header, tx, blobBaseFeeOverride: null, cancellationToken);
+        }
+
+        private CallOutput CallExclusive(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
+            // Dual-write: RequestState feeds the VM-time decorator; RunCall applies it during pre-VM header prep.
             scope.Component.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
+            return RunCall(scope.Component.StateReader, scope.Component.TransactionProcessor, header, tx, blobBaseFeeOverride, cancellationToken);
+        }
 
-            CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
-                callOutputTracer.WithCancellation(cancellationToken));
+        private CallOutput RunCall(IStateReader nonceReader, ITransactionProcessor txProcessor, BlockHeader header, Transaction tx, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
+        {
+            CallOutputTracer tracer = new();
+            TransactionResult result = TryCallAndRestore(nonceReader, txProcessor, header, tx, treatBlockHeaderAsParentBlock: false,
+                blobBaseFeeOverride, tracer.WithCancellation(cancellationToken));
 
             return new CallOutput
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error),
-                GasSpent = callOutputTracer.GasSpent,
-                OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted,
-                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert,
+                Error = ConstructError(result, tracer.Error),
+                GasSpent = tracer.GasSpent,
+                OutputData = tracer.ReturnValue,
+                InputError = !result.TransactionExecuted,
+                ExecutionReverted = result.EvmExceptionType == EvmExceptionType.Revert,
             };
         }
+
+        // Empty dict coalesces to no override: the exclusive env path is a free DoS vector for a no-op overlay.
+        private static bool HasOverrides(Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride) =>
+            stateOverride is { Count: > 0 } || blobBaseFeeOverride is not null;
 
         public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken)
         {
@@ -179,49 +199,100 @@ namespace Nethermind.Facade
             return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken) =>
+            HasOverrides(stateOverride, blobBaseFeeOverride)
+                ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, cancellationToken)
+                : EstimateGasShareable(header, tx, errorMargin, cancellationToken);
+
+        private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
+        {
+            using IReadOnlyTxProcessingScope scope = shareableTxProcessorSource.Build(header);
+            return RunEstimateGas(stateReader, scope.TransactionProcessor, scope.WorldState, header, tx, errorMargin, blobBaseFeeOverride: null, cancellationToken);
+        }
+
+        private CallOutput EstimateGasExclusive(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
             BlockProcessingComponents components = scope.Component;
             components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
+            return RunEstimateGas(components.StateReader, components.TransactionProcessor, components.WorldState, header, tx, errorMargin, blobBaseFeeOverride, cancellationToken);
+        }
 
+        private CallOutput RunEstimateGas(IStateReader nonceReader, ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader header, Transaction tx, int errorMargin, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
+        {
             // Cap tx.GasLimit to the sender's affordable allowance before the initial probe,
-            // mirroring Geth's hi = min(hi, (balance - value) / gasFeeCap). This ensures BuyGas
-            // never sees a gas limit that makes gasLimit * feeCap exceed the sender's balance.
-            UInt256 senderBalance = components.WorldState.GetBalance(tx.SenderAddress ?? Address.Zero);
+            // mirroring Geth's hi = min(hi, (balance - value - blobFee) / gasFeeCap), where blobFee = 0 outside EIP-4844. This ensures
+            // BuyGas never sees a gas limit that makes gasLimit * feeCap + blobFee exceed the sender's balance.
+            IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
+            UInt256 senderBalance = worldState.GetBalance(tx.SenderAddress ?? Address.Zero);
             UInt256 feeCap = tx.CalculateFeeCap();
             if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 availableForGas))
             {
+                if (!BlobGasCalculator.TrySubtractBlobFee(spec, tx, ref availableForGas))
+                    availableForGas = UInt256.Zero;
+
                 long allowance = (long)UInt256.Min(availableForGas / feeCap, (UInt256)long.MaxValue);
                 if (tx.GasLimit > allowance)
                     tx.GasLimit = allowance;
             }
 
             EstimateGasTracer estimateGasTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
-                estimateGasTracer.WithCancellation(cancellationToken));
+            TransactionResult tryCallResult = TryCallAndRestore(nonceReader, txProcessor, header, tx, true,
+                blobBaseFeeOverride, estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(components.TransactionProcessor, components.WorldState, specProvider, blocksConfig);
+            GasEstimator gasEstimator = new(txProcessor, worldState, specProvider, blocksConfig);
 
             string? error = ConstructError(tryCallResult, estimateGasTracer.Error);
 
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
-            // Allowance errors take precedence over any earlier revert: the revert was an artifact
-            // of the gas cap, so surfacing it instead of the affordability error would be misleading.
-            if (err is not null && (error is null || err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) || err == GasEstimator.InsufficientBalance))
-                error = err;
+            error = err switch
+            {
+                // Probe failed only because gas hint was below standard intrinsic: if estimation succeeds, clear the probe error.
+                null when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => null,
+                null => error,
+                _ when error is null => err,
+                // Probe's low-gas failure is superseded by whatever the estimator found at full gas.
+                _ when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => err,
+                _ when err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) => err,
+                GasEstimator.InsufficientBalance => err,
+                GasEstimator.InsufficientFundsForGas => err,
+                _ => error
+            };
+
+            bool executionReverted = err is not null
+                ? estimateGasTracer.TopLevelRevert // err comes from GasEstimator; TopLevelRevert is authoritative for revert detection here.
+                : tryCallResult.EvmExceptionType == EvmExceptionType.Revert;
 
             return new CallOutput
             {
                 Error = error,
                 GasSpent = estimate,
                 OutputData = estimateGasTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted || err is not null,
-                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert
+                InputError = !executionReverted && error is not null && (!tryCallResult.TransactionExecuted || err is not null),
+                ExecutionReverted = executionReverted
             };
         }
 
-        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
+        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken) =>
+            HasOverrides(stateOverride, blobBaseFeeOverride)
+                ? CreateAccessListExclusive(header, tx, stateOverride, optimize, blobBaseFeeOverride, cancellationToken)
+                : CreateAccessListShareable(header, tx, optimize, cancellationToken);
+
+        private CallOutput CreateAccessListShareable(BlockHeader header, Transaction tx, bool optimize, CancellationToken cancellationToken)
+        {
+            using IReadOnlyTxProcessingScope scope = shareableTxProcessorSource.Build(header);
+            AccessList? originalAccessList = tx.AccessList;
+            try
+            {
+                return ConvergeAccessList(stateReader, scope.TransactionProcessor, blobBaseFeeOverride: null, header, tx, optimize, cancellationToken);
+            }
+            finally
+            {
+                tx.AccessList = originalAccessList;
+            }
+        }
+
+        private CallOutput CreateAccessListExclusive(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
             BlockProcessingComponents components = scope.Component;
@@ -230,7 +301,7 @@ namespace Nethermind.Facade
             AccessList? originalAccessList = tx.AccessList;
             try
             {
-                return ConvergeAccessList(components, header, tx, optimize, cancellationToken);
+                return ConvergeAccessList(components.StateReader, components.TransactionProcessor, blobBaseFeeOverride, header, tx, optimize, cancellationToken);
             }
             finally
             {
@@ -242,7 +313,7 @@ namespace Nethermind.Facade
         // slots, repeat until the AL stabilizes. Gas and error come from the final (warm) run, so
         // cold-read overcounting is eliminated and OOG due to AL intrinsic cost is surfaced.
         // Starts from the caller-supplied AL so user-provided entries are preserved and counted.
-        private CallOutput ConvergeAccessList(BlockProcessingComponents components, BlockHeader header, Transaction tx, bool optimize, CancellationToken cancellationToken)
+        private CallOutput ConvergeAccessList(IStateReader nonceReader, ITransactionProcessor txProcessor, UInt256? blobBaseFeeOverride, BlockHeader header, Transaction tx, bool optimize, CancellationToken cancellationToken)
         {
             // Loop-invariant: the addresses to filter from the discovered AL depend only on header
             // and tx, neither of which change between iterations. Compute once and reuse.
@@ -263,7 +334,7 @@ namespace Nethermind.Facade
                 accessTracer.Reset();
                 outputTracer.Reset();
                 tx.AccessList = previousAccessList;
-                result = TryCallAndRestore(components, header, tx, false, tracer);
+                result = TryCallAndRestore(nonceReader, txProcessor, header, tx, false, blobBaseFeeOverride, tracer);
                 stop = !result.TransactionExecuted || HasConverged(previousAccessList, accessTracer.AccessList);
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
@@ -313,15 +384,17 @@ namespace Nethermind.Facade
         }
 
         private TransactionResult TryCallAndRestore(
-            BlockProcessingComponents components,
+            IStateReader nonceReader,
+            ITransactionProcessor txProcessor,
             BlockHeader blockHeader,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
+            UInt256? blobBaseFeeOverride,
             ITxTracer tracer)
         {
             try
             {
-                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components);
+                return CallAndRestore(nonceReader, txProcessor, blockHeader, transaction, treatBlockHeaderAsParentBlock, blobBaseFeeOverride, tracer);
             }
             catch (InsufficientBalanceException)
             {
@@ -330,16 +403,18 @@ namespace Nethermind.Facade
         }
 
         private TransactionResult CallAndRestore(
+            IStateReader nonceReader,
+            ITransactionProcessor txProcessor,
             BlockHeader blockHeader,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
-            ITxTracer tracer,
-            BlockProcessingComponents components)
+            UInt256? blobBaseFeeOverride,
+            ITxTracer tracer)
         {
             transaction.SenderAddress ??= Address.Zero;
 
             //Ignore nonce on all CallAndRestore calls
-            transaction.Nonce = components.StateReader.GetNonce(blockHeader, transaction.SenderAddress);
+            transaction.Nonce = nonceReader.GetNonce(blockHeader, transaction.SenderAddress);
 
             BlockHeader callHeader = blockHeader.Clone();
             if (treatBlockHeaderAsParentBlock)
@@ -357,7 +432,6 @@ namespace Nethermind.Facade
                 : blockHeader.BaseFeePerGas;
 
             UInt256 blobBaseFee = UInt256.Zero;
-            UInt256? blobBaseFeeOverride = components.RequestState.BlobBaseFeeOverride;
 
             if (releaseSpec.IsEip4844Enabled)
             {
@@ -380,7 +454,7 @@ namespace Nethermind.Facade
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
             BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, blobBaseFee);
-            return components.TransactionProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
+            return txProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
         }
 
         public ulong GetChainId() => blockTree.ChainId;
@@ -474,7 +548,8 @@ namespace Nethermind.Facade
 
         public Address? RecoverTxSender(Transaction tx) => ecdsa.RecoverAddress(tx);
 
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx> => stateReader.RunTreeVisitor(treeVisitor, baseBlock);
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
+            => stateReader.RunTreeVisitor(treeVisitor, baseBlock, diagnostics: diagnostics);
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => stateReader.HasStateForBlock(baseBlock);
 
@@ -482,15 +557,15 @@ namespace Nethermind.Facade
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, cancellationToken);
 
-        public BlockAccessList? GetBlockAccessList(Hash256 blockHash)
-            => balStore.Get(blockHash);
+        public ReadOnlyBlockAccessList? GetBlockAccessList(long blockNumber, Hash256 blockHash)
+            => balStore.Get(blockNumber, blockHash);
 
-        public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash)
-            => balStore.GetRlp(blockHash);
+        public MemoryManager<byte>? GetBlockAccessListRlp(long blockNumber, Hash256 blockHash)
+            => balStore.GetRlp(blockNumber, blockHash);
 
         // for testing
-        public void DeleteBlockAccessList(Hash256 blockHash)
-            => balStore.Delete(blockHash);
+        public void DeleteBlockAccessList(long blockNumber, Hash256 blockHash)
+            => balStore.Delete(blockNumber, blockHash);
 
         private static string? ConstructError(TransactionResult txResult, string? tracerError)
         {
@@ -536,13 +611,30 @@ namespace Nethermind.Facade
     public class BlockchainBridgeFactory(
         ISimulateReadOnlyBlocksProcessingEnvFactory simulateEnvFactory,
         IOverridableEnvFactory envFactory,
-        ILifetimeScope rootLifetimeScope
+        ILifetimeScope rootLifetimeScope,
+        int overridableEnvPoolSize
     ) : IBlockchainBridgeFactory
     {
         public IBlockchainBridge CreateBlockchainBridge()
         {
-            IOverridableEnv env = envFactory.Create();
+            ShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = new(
+                BuildSingleEnv, overridableEnvPoolSize);
 
+            ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+                .AddScoped<BlockchainBridge>()
+                .AddScoped<ISimulateReadOnlyBlocksProcessingEnv>((_) => simulateEnvFactory.Create())
+                .AddScoped<IShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents>>(blockProcessingEnv));
+
+            blockchainBridgeLifetime.Disposer.AddInstanceForDisposal(blockProcessingEnv);
+            rootLifetimeScope.Disposer.AddInstanceForDisposal(blockchainBridgeLifetime);
+
+            return blockchainBridgeLifetime.Resolve<BlockchainBridge>();
+        }
+
+        // One env per invocation — independent _worldScopeCloser and decorator chain so concurrent renters share no mutable state.
+        private IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
+        {
+            IOverridableEnv env = envFactory.Create();
             ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddModule(env)
                 .AddScoped<SingleCallRequestState>()
@@ -550,19 +642,24 @@ namespace Nethermind.Facade
                 .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
-            // Split it out to isolate the world state and processing components
-            IOverridableEnv<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = overridableScopeLifetime
-                .Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
+            // Pool owns the scope. Registering with rootLifetimeScope.Disposer would retain every created env until shutdown
+            // and turn burst override traffic into long-lived memory.
+            IOverridableEnv<BlockchainBridge.BlockProcessingComponents> inner =
+                overridableScopeLifetime.Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
+            return new DisposableOverridableEnv(inner, overridableScopeLifetime);
+        }
 
-            ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-                .AddScoped<BlockchainBridge>()
-                .AddScoped<ISimulateReadOnlyBlocksProcessingEnv>((_) => simulateEnvFactory.Create())
-                .AddScoped(blockProcessingEnv));
+        private sealed class DisposableOverridableEnv(
+            IOverridableEnv<BlockchainBridge.BlockProcessingComponents> inner,
+            IDisposable scope) : IOverridableEnv<BlockchainBridge.BlockProcessingComponents>, IDisposable
+        {
+            public Scope<BlockchainBridge.BlockProcessingComponents> BuildAndOverride(
+                BlockHeader? header,
+                Dictionary<Address, AccountOverride>? stateOverride = null,
+                IReleaseSpec? specOverride = null) =>
+                inner.BuildAndOverride(header, stateOverride, specOverride);
 
-            blockchainBridgeLifetime.Disposer.AddInstanceForAsyncDisposal(overridableScopeLifetime);
-            rootLifetimeScope.Disposer.AddInstanceForDisposal(blockchainBridgeLifetime);
-
-            return blockchainBridgeLifetime.Resolve<BlockchainBridge>();
+            public void Dispose() => scope.Dispose();
         }
     }
 }

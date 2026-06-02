@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
@@ -49,7 +49,7 @@ public class RegisterRpcModules(
         ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
         ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
 
-        RpcLimits.Init(jsonRpcConfig.RequestQueueLimit);
+        RpcLimits.Init(jsonRpcConfig.RequestQueueLimit, jsonRpcConfig.MaxConcurrentSharedRequests);
 
         // Register the standard subscription types in the dictionary
         subscriptionFactory.RegisterStandardSubscriptions(

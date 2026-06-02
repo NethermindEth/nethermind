@@ -110,6 +110,11 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(503, nameof(Syncing));
 
+        /// <summary>
+        /// The signer could not produce a signature for the transaction (locked account, missing key, remote signer rejection).
+        /// </summary>
+        public static readonly AcceptTxResult SignFailed = new(19, nameof(SignFailed), "authentication needed: password or unlock");
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;

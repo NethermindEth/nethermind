@@ -30,14 +30,14 @@ public readonly struct NewPayloadDescriptorV1 : INewPayloadVersion<NewPayloadV1R
 {
     public static int VersionNumber => EngineApiVersions.NewPayload.V1;
     public static Task<ResultWrapper<PayloadStatusV1>> Call(IEngineRpcModule engine, in NewPayloadV1RequestWire wire)
-        => engine.engine_newPayloadV1(wire.ExecutionPayload.Unwrap());
+        => engine.engine_newPayloadV1(wire.ExecutionPayload.AsExecutionPayload());
 }
 
 public readonly struct NewPayloadDescriptorV2 : INewPayloadVersion<NewPayloadV2RequestWire>
 {
     public static int VersionNumber => EngineApiVersions.NewPayload.V2;
     public static Task<ResultWrapper<PayloadStatusV1>> Call(IEngineRpcModule engine, in NewPayloadV2RequestWire wire)
-        => engine.engine_newPayloadV2(wire.ExecutionPayload.Unwrap());
+        => engine.engine_newPayloadV2(wire.ExecutionPayload.AsExecutionPayload());
 }
 
 public readonly struct NewPayloadDescriptorV3 : INewPayloadVersion<NewPayloadV3RequestWire>
@@ -45,8 +45,8 @@ public readonly struct NewPayloadDescriptorV3 : INewPayloadVersion<NewPayloadV3R
     public static int VersionNumber => EngineApiVersions.NewPayload.V3;
     public static Task<ResultWrapper<PayloadStatusV1>> Call(IEngineRpcModule engine, in NewPayloadV3RequestWire wire)
         => engine.engine_newPayloadV3(
-            wire.ExecutionPayload.Unwrap(),
-            wire.ExpectedBlobVersionedHashes.ToBytesArrays(),
+            wire.ExecutionPayload.AsExecutionPayload(),
+            wire.ExpectedBlobVersionedHashes ?? [],
             wire.ParentBeaconBlockRoot);
 }
 
@@ -55,8 +55,8 @@ public readonly struct NewPayloadDescriptorV4 : INewPayloadVersion<NewPayloadV4R
     public static int VersionNumber => EngineApiVersions.NewPayload.V4;
     public static Task<ResultWrapper<PayloadStatusV1>> Call(IEngineRpcModule engine, in NewPayloadV4RequestWire wire)
         => engine.engine_newPayloadV4(
-            wire.ExecutionPayload.Unwrap(),
-            wire.ExpectedBlobVersionedHashes.ToBytesArrays(),
+            wire.ExecutionPayload.AsExecutionPayload(),
+            wire.ExpectedBlobVersionedHashes ?? [],
             wire.ParentBeaconBlockRoot,
             wire.ExecutionRequests.ToExecutionRequests());
 }
@@ -66,8 +66,8 @@ public readonly struct NewPayloadDescriptorV5 : INewPayloadVersion<NewPayloadV5R
     public static int VersionNumber => EngineApiVersions.NewPayload.V5;
     public static Task<ResultWrapper<PayloadStatusV1>> Call(IEngineRpcModule engine, in NewPayloadV5RequestWire wire)
         => engine.engine_newPayloadV5(
-            wire.ExecutionPayload.Unwrap(),
-            wire.ExpectedBlobVersionedHashes.ToBytesArrays(),
+            wire.ExecutionPayload.AsExecutionPayload(),
+            wire.ExpectedBlobVersionedHashes ?? [],
             wire.ParentBeaconBlockRoot,
             wire.ExecutionRequests.ToExecutionRequests());
 }

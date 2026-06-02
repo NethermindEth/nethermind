@@ -223,7 +223,7 @@ namespace Nethermind.Synchronization.FastSync
             string reviewMessage = $"Node sync queues review ({LevelsDescription}):" + Environment.NewLine;
             reviewMessage += $"  before {Description}" + Environment.NewLine;
 
-            List<StateSyncItem> temp = new();
+            List<StateSyncItem> temp = [];
             while (StateItemsPriority2.TryPop(out StateSyncItem? poppedSyncItem))
             {
                 temp.Add(poppedSyncItem!);

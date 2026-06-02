@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using FluentAssertions;
 using System.Linq;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
@@ -101,7 +100,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             using GetTrieNodesMessage? msg = serializer.Deserialize(data);
             byte[] recode = serializer.Serialize(msg);
 
-            recode.Should().BeEquivalentTo(data);
+            Assert.That(recode, Is.EqualTo(data));
         }
 
         [Test]
@@ -143,7 +142,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         }
 
         /// <summary>
-        /// RlpItemList has a ReadOnlySpan indexer that FluentAssertions cannot reflect over,
+        /// RlpItemList has a ReadOnlySpan indexer that structural assertions cannot reflect over,
         /// so we verify roundtrip via byte equality instead of SerializerTester.TestZero.
         /// </summary>
         private static void AssertByteRoundtrip(GetTrieNodesMessageSerializer serializer, GetTrieNodesMessage msg)
@@ -158,16 +157,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             using GetTrieNodesMessage deserialized = serializer.Deserialize(buffer);
 
-            deserialized.RequestId.Should().Be(msg.RequestId);
-            deserialized.RootHash.Should().Be(msg.RootHash);
-            deserialized.Bytes.Should().Be(msg.Bytes);
-            deserialized.Paths.Count.Should().Be(msg.Paths.Count);
+            Assert.That(deserialized.RequestId, Is.EqualTo(msg.RequestId));
+            Assert.That(deserialized.RootHash, Is.EqualTo(msg.RootHash));
+            Assert.That(deserialized.Bytes, Is.EqualTo(msg.Bytes));
+            Assert.That(deserialized.Paths.Count, Is.EqualTo(msg.Paths.Count));
 
             serializer.Serialize(buffer2, deserialized);
             byte[] secondBytes = new byte[buffer2.ReadableBytes];
             buffer2.GetBytes(buffer2.ReaderIndex, secondBytes);
 
-            secondBytes.Should().BeEquivalentTo(firstBytes);
+            Assert.That(secondBytes, Is.EqualTo(firstBytes));
         }
     }
 }

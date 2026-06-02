@@ -8,8 +8,10 @@ using DotNetty.Common.Utilities;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
@@ -39,12 +41,17 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public void HandleMessage(ZeroPacket message)
         {
             BeforeHandleMessage(message);
-            HandleMessageCore(message);
+            if (!HandleMessageCore(message))
+            {
+                string details = $"Unknown message type {message.PacketType} received on protocol {ProtocolCode}/{ProtocolVersion}";
+                if (Logger.IsDebug) Logger.Debug($"{Session} {details}");
+                Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, details);
+            }
         }
 
         protected virtual void BeforeHandleMessage(ZeroPacket message) { }
 
-        protected abstract void HandleMessageCore(ZeroPacket message);
+        protected abstract bool HandleMessageCore(ZeroPacket message);
 
         protected Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
             MessageQueue<TRequest, TResponse> messageQueue,
@@ -52,7 +59,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             TransferSpeedType speedType,
             Func<TRequest, string> describeRequestFunc,
             CancellationToken token
-        ) where TRequest : MessageBase
+        ) where TRequest : P2PMessage
         {
             Request<TRequest, TResponse> request = new(message);
             messageQueue.Send(request);

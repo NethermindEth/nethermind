@@ -3,14 +3,9 @@
 
 namespace Nethermind.Tools.Kute.SecretProvider;
 
-public sealed class FileSecretProvider : ISecretProvider
+public sealed class FileSecretProvider(string filePath) : ISecretProvider
 {
-    private readonly string _filePath;
-
-    public FileSecretProvider(string filePath)
-    {
-        _filePath = filePath;
-    }
+    private readonly string _filePath = filePath;
 
     private static bool IsHex(char c) =>
         c is >= '0' and <= '9'

@@ -9,7 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp.Eip2930
 {
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccessListDecoder))]
-    public sealed class AccessListDecoder() : RlpValueDecoder<AccessList?>
+    public sealed class AccessListDecoder() : RlpDecoder<AccessList?>
     {
         private const int IndexLength = 32;
 
