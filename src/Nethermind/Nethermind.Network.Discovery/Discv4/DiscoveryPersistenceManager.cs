@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -28,14 +29,14 @@ namespace Nethermind.Network.Discovery.Discv4;
 public class DiscoveryPersistenceManager(
     [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage discoveryStorage,
     INodeStatsManager nodeStatsManager,
-    IKademliaDiscv4Adapter discv4Adapter,
+    IKademliaAdapter discv4Adapter,
     IKademlia<PublicKey, Node> kademlia,
     IDiscoveryConfig discoveryConfig,
     ILogManager logManager)
 {
     private readonly INetworkStorage _discoveryStorage = discoveryStorage;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager;
-    private readonly IKademliaDiscv4Adapter _discv4Adapter = discv4Adapter;
+    private readonly IKademliaAdapter _discv4Adapter = discv4Adapter;
     private readonly IKademlia<PublicKey, Node> _kademlia = kademlia;
     private readonly ILogger _logger = logManager.GetClassLogger<DiscoveryPersistenceManager>();
     private readonly int _persistenceInterval = discoveryConfig.DiscoveryPersistenceInterval;

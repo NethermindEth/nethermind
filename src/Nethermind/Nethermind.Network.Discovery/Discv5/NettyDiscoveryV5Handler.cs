@@ -17,31 +17,16 @@ namespace Nethermind.Network.Discovery.Discv5;
 /// <summary>
 /// DotNetty UDP bridge used by the native discv5 implementation.
 /// </summary>
-public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscoveryBaseHandler(loggerManager)
+public class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel? channel = null) : NettyDiscoveryBaseHandler(loggerManager, channel)
 {
     private const int MaxMessagesBuffered = 1024;
 
     private readonly ILogger _logger = loggerManager.GetClassLogger<NettyDiscoveryV5Handler>();
-    private readonly Channel<DatagramPacket> _inboundQueue = Channel.CreateBounded<DatagramPacket>(MaxMessagesBuffered);
+    private readonly Channel<DatagramPacket> _inboundQueue = System.Threading.Channels.Channel.CreateBounded<DatagramPacket>(MaxMessagesBuffered);
 
-    private IChannel? _nettyChannel;
     private int _activeReaders;
 
-    public void InitializeChannel(IChannel channel) => _nettyChannel = channel;
-
-    public override void ChannelActive(IChannelHandlerContext context) => OnChannelActivated?.Invoke(this, EventArgs.Empty);
-
-    public override void ChannelInactive(IChannelHandlerContext context)
-    {
-        Close();
-        base.ChannelInactive(context);
-    }
-
-    public override void HandlerRemoved(IChannelHandlerContext context)
-    {
-        Close();
-        base.HandlerRemoved(context);
-    }
+    protected override void CloseInbound() => Close();
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
@@ -62,13 +47,11 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
 
     public async Task SendAsync(byte[] data, IPEndPoint destination)
     {
-        if (_nettyChannel is null) throw new("Channel for discovery v5 is not initialized");
-
         DatagramPacket packet = new(Unpooled.WrappedBuffer(data), destination);
 
         try
         {
-            await _nettyChannel.WriteAndFlushAsync(packet);
+            await Channel.WriteAndFlushAsync(packet);
         }
         catch (SocketException exception)
         {
@@ -130,7 +113,6 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
         }
     }
 
-    public Task ListenAsync(CancellationToken token = default) => Task.CompletedTask;
     public void Close()
     {
         _inboundQueue.Writer.TryComplete();
@@ -149,6 +131,4 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
     }
 
     public static void Register(IServiceCollection services) => services.AddSingleton<NettyDiscoveryV5Handler>();
-
-    public event EventHandler? OnChannelActivated;
 }

@@ -12,23 +12,24 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Utils;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Kademlia;
+using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Discovery.Test.Discv4
+namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 {
     [Parallelizable(ParallelScope.Self)]
     [TestFixture]
-    public class KademliaNodeSourceTests
+    public class NodeSourceTests
     {
         private TestKademlia _kademlia = null!;
         private IIteratorNodeLookup<PublicKey, Node> _lookup = null!;
-        private IKademliaDiscv4Adapter _discv4Adapter = null!;
-        private KademliaNodeSource _nodeSource = null!;
+        private IKademliaAdapter _discv4Adapter = null!;
+        private NodeSource _nodeSource = null!;
         private NodeSession _nodeSession = null!;
         private INodeStats _nodeStats = null!;
         private ManualTimestamper _timestamper = null!;
@@ -40,7 +41,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         {
             _kademlia = new();
             _lookup = Substitute.For<IIteratorNodeLookup<PublicKey, Node>>();
-            _discv4Adapter = Substitute.For<IKademliaDiscv4Adapter>();
+            _discv4Adapter = Substitute.For<IKademliaAdapter>();
 
             _discoveryConfig = new DiscoveryConfig
             {
@@ -59,7 +60,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _nodeSession = new(_nodeStats, _timestamper);
             _discv4Adapter.GetSession(Arg.Any<Node>()).Returns(_nodeSession);
 
-            _nodeSource = new KademliaNodeSource(
+            _nodeSource = new NodeSource(
                 _kademlia,
                 _lookup,
                 _discv4Adapter,

@@ -13,11 +13,11 @@ internal sealed class NodesMsgSerializer : MsgSerializerBase
     public int GetContentLength(NodesMsg msg)
         => GetRequestIdLength(msg.RequestId) + Rlp.LengthOf(msg.Total) + GetNodeRecordsLength(msg.Records);
 
-    public void Serialize(Span<byte> buffer, ref int position, NodesMsg msg)
+    public void Serialize(NettyRlpStream stream, NodesMsg msg)
     {
-        EncodeRequestId(buffer, ref position, msg.RequestId);
-        Encode(buffer, ref position, msg.Total);
-        EncodeNodeRecords(buffer, ref position, msg.Records);
+        EncodeRequestId(stream, msg.RequestId);
+        Encode(stream, msg.Total);
+        EncodeNodeRecords(stream, msg.Records);
     }
 
     public NodesMsg Deserialize(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ArrayPoolSpan<byte>? owner)
@@ -37,7 +37,7 @@ internal sealed class NodesMsgSerializer : MsgSerializerBase
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static void EncodeNodeRecords(Span<byte> buffer, ref int position, IReadOnlyList<NodeRecord> records)
+    private static void EncodeNodeRecords(NettyRlpStream stream, IReadOnlyList<NodeRecord> records)
     {
         int contentLength = 0;
         for (int i = 0; i < records.Count; i++)
@@ -45,10 +45,10 @@ internal sealed class NodesMsgSerializer : MsgSerializerBase
             contentLength += records[i].GetRlpLengthWithSignature();
         }
 
-        position = Rlp.StartSequence(buffer, position, contentLength);
+        stream.StartSequence(contentLength);
         for (int i = 0; i < records.Count; i++)
         {
-            records[i].Encode(buffer, ref position);
+            records[i].Encode(stream);
         }
     }
 

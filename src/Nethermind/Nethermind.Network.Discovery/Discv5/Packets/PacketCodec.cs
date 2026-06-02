@@ -348,8 +348,8 @@ public sealed class PacketCodec(
             return EncodePacketCore(destinationNodeId, flag, nonce, authData, default, default, out messageAd);
         }
 
-        using ArrayPoolSpan<byte> encodedMessage = MessageCodec.Encode(message);
-        return EncodePacketCore(destinationNodeId, flag, nonce, authData, encryptionKey, encodedMessage, out messageAd);
+        using NettyRlpStream encodedMessage = MessageCodec.Encode(message);
+        return EncodePacketCore(destinationNodeId, flag, nonce, authData, encryptionKey, encodedMessage.AsSpan(), out messageAd);
     }
 
     private byte[] EncodePacketCore(

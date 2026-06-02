@@ -30,7 +30,7 @@ public class NettyDiscoveryHandler(
     NodeFilter? inboundMessageFilter = null,
     int? globalInboundMessageBurst = null,
     int? inboundMessageQueueCapacity = null,
-    int? inboundMessageWorkerCount = null) : NettyDiscoveryBaseHandler(logManager), IMsgSender
+    int? inboundMessageWorkerCount = null) : NettyDiscoveryBaseHandler(logManager, channel ?? throw new ArgumentNullException(nameof(channel))), IMsgSender
 {
     private static readonly TimeSpan MaxFutureExpirationOffset = TimeSpan.FromHours(1);
     private static readonly TimeSpan DefaultInboundMessageWindow = TimeSpan.FromMilliseconds(100);
@@ -42,14 +42,13 @@ public class NettyDiscoveryHandler(
     private const int DefaultInboundMessageWorkerCount = 16;
     private readonly ILogger _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly IDiscoveryMsgListener _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
-    private readonly IChannel _channel = channel ?? throw new ArgumentNullException(nameof(channel));
     private readonly IMessageSerializationService _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
     private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
     private readonly NodeFilter[] _inboundMessageFilters = inboundMessageFilter is null
             ? CreateDefaultInboundMessageFilters()
             : [inboundMessageFilter];
     private readonly FixedWindowLimiter _globalInboundMessageLimiter = new(Math.Max(1, globalInboundMessageBurst ?? DefaultGlobalInboundMessageBurst), DefaultGlobalInboundMessageWindow);
-    private readonly Channel<InboundDiscoveryPacket> _inboundMessages = Channel.CreateBounded<InboundDiscoveryPacket>(
+    private readonly Channel<InboundDiscoveryPacket> _inboundMessages = System.Threading.Channels.Channel.CreateBounded<InboundDiscoveryPacket>(
         new BoundedChannelOptions(Math.Max(1, inboundMessageQueueCapacity ?? DefaultInboundMessageQueueCapacity))
         {
             SingleReader = false,
@@ -58,19 +57,7 @@ public class NettyDiscoveryHandler(
     private readonly int _inboundMessageWorkerCount = Math.Max(1, inboundMessageWorkerCount ?? DefaultInboundMessageWorkerCount);
     private int _dispatchWorkersStarted;
 
-    public override void ChannelActive(IChannelHandlerContext context) => OnChannelActivated?.Invoke(this, EventArgs.Empty);
-
-    public override void ChannelInactive(IChannelHandlerContext context)
-    {
-        _inboundMessages.Writer.TryComplete();
-        base.ChannelInactive(context);
-    }
-
-    public override void HandlerRemoved(IChannelHandlerContext context)
-    {
-        _inboundMessages.Writer.TryComplete();
-        base.HandlerRemoved(context);
-    }
+    protected override void CloseInbound() => _inboundMessages.Writer.TryComplete();
 
     public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
     {
@@ -95,7 +82,7 @@ public class NettyDiscoveryHandler(
         try
         {
             if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMsg}");
-            msgBuffer = Serialize(discoveryMsg, _channel.Allocator);
+            msgBuffer = Serialize(discoveryMsg, Channel.Allocator);
         }
         catch (Exception e)
         {
@@ -121,7 +108,7 @@ public class NettyDiscoveryHandler(
         IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(msgBuffer, discoveryMsg.FarAddress);
         try
         {
-            await _channel.WriteAndFlushAsync(packet);
+            await Channel.WriteAndFlushAsync(packet);
         }
         catch (Exception e)
         {
@@ -453,6 +440,4 @@ public class NettyDiscoveryHandler(
     }
 
     private readonly record struct InboundDiscoveryPacket(IChannelHandlerContext Context, DatagramPacket Packet, MsgType Type, EndPoint Address, int Size);
-
-    public event EventHandler? OnChannelActivated;
 }

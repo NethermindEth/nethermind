@@ -6,12 +6,12 @@ using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Network.Discovery.Discv4.Handlers;
+using Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Discovery.Test.Discv4.Handlers
+namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
 {
     [Parallelizable(ParallelScope.Self)]
     [TestFixture]

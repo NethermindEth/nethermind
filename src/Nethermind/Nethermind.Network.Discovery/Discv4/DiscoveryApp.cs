@@ -11,6 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
@@ -20,7 +21,7 @@ namespace Nethermind.Network.Discovery.Discv4;
 public class DiscoveryApp : KademliaDiscoveryApp
 {
     private readonly DiscoveryPersistenceManager _persistenceManager;
-    private readonly IKademliaDiscv4Adapter _discv4Adapter;
+    private readonly IKademliaAdapter _discv4Adapter;
     private readonly Func<IChannel, NettyDiscoveryHandler> _discoveryHandlerFactory;
     private readonly ILifetimeScope _discv4Services;
 
@@ -65,7 +66,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
             (builder) =>
             {
                 builder
-                .AddModule(new DiscV4KademliaModule(nodeKey.PublicKey, bootNodes))
+                .AddModule(new KademliaModule(nodeKey.PublicKey, bootNodes))
                 .AddSingleton<DiscV4Services>();
 
                 configureDiscv4Services?.Invoke(builder);
@@ -84,7 +85,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
     private record DiscV4Services(
         IKademliaNodeSource NodeSource,
         DiscoveryPersistenceManager PersistenceManager,
-        IKademliaDiscv4Adapter Discv4Adapter,
+        IKademliaAdapter Discv4Adapter,
         IKademlia<PublicKey, Node> Kademlia,
         Func<IChannel, NettyDiscoveryHandler> NettyDiscoveryHandlerFactory
     )

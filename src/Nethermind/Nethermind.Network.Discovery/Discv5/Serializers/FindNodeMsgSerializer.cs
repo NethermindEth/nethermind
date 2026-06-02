@@ -12,10 +12,10 @@ internal sealed class FindNodeMsgSerializer : MsgSerializerBase
     public int GetContentLength(FindNodeMsg msg)
         => GetRequestIdLength(msg.RequestId) + GetDistancesLength(msg.Distances);
 
-    public void Serialize(Span<byte> buffer, ref int position, FindNodeMsg msg)
+    public void Serialize(NettyRlpStream stream, FindNodeMsg msg)
     {
-        EncodeRequestId(buffer, ref position, msg.RequestId);
-        EncodeDistances(buffer, ref position, msg.Distances);
+        EncodeRequestId(stream, msg.RequestId);
+        EncodeDistances(stream, msg.Distances);
     }
 
     public FindNodeMsg Deserialize(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ArrayPoolSpan<byte>? owner)
@@ -32,7 +32,7 @@ internal sealed class FindNodeMsgSerializer : MsgSerializerBase
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static void EncodeDistances(Span<byte> buffer, ref int position, Distances distances)
+    private static void EncodeDistances(NettyRlpStream stream, Distances distances)
     {
         int contentLength = 0;
         for (int i = 0; i < distances.Count; i++)
@@ -40,10 +40,10 @@ internal sealed class FindNodeMsgSerializer : MsgSerializerBase
             contentLength += Rlp.LengthOf(distances[i]);
         }
 
-        position = Rlp.StartSequence(buffer, position, contentLength);
+        stream.StartSequence(contentLength);
         for (int i = 0; i < distances.Count; i++)
         {
-            Encode(buffer, ref position, distances[i]);
+            Encode(stream, distances[i]);
         }
     }
 

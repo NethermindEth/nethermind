@@ -17,25 +17,23 @@ internal static class MessageCodec
     private static readonly TalkReqMsgSerializer TalkReqSerializer = new();
     private static readonly TalkRespMsgSerializer TalkRespSerializer = new();
 
-    public static ArrayPoolSpan<byte> Encode(Discv5Message message)
+    public static NettyRlpStream Encode(Discv5Message message)
     {
         int contentLength = GetContentLength(message);
-        ArrayPoolSpan<byte> result = new(Rlp.LengthOfSequence(contentLength) + 1);
+        NettyRlpStream stream = new(NethermindBuffers.Default.Buffer(Rlp.LengthOfSequence(contentLength) + 1));
         try
         {
-            Span<byte> resultSpan = result;
-            int position = 0;
-            resultSpan[position++] = (byte)message.MessageType;
-            position = Rlp.StartSequence(resultSpan, position, contentLength);
-            EncodeContent(resultSpan, ref position, message);
+            stream.WriteByte((byte)message.MessageType);
+            stream.StartSequence(contentLength);
+            EncodeContent(stream, message);
         }
         catch
         {
-            result.Dispose();
+            stream.Dispose();
             throw;
         }
 
-        return result;
+        return stream;
     }
 
     public static Discv5Message Decode(ReadOnlySpan<byte> message)
@@ -134,27 +132,27 @@ internal static class MessageCodec
         _ => throw new RlpException($"Unsupported discv5 message {message.GetType().Name}.")
     };
 
-    private static void EncodeContent(Span<byte> buffer, ref int position, Discv5Message message)
+    private static void EncodeContent(NettyRlpStream stream, Discv5Message message)
     {
         switch (message)
         {
             case PingMsg ping:
-                PingSerializer.Serialize(buffer, ref position, ping);
+                PingSerializer.Serialize(stream, ping);
                 break;
             case PongMsg pong:
-                PongSerializer.Serialize(buffer, ref position, pong);
+                PongSerializer.Serialize(stream, pong);
                 break;
             case FindNodeMsg findNode:
-                FindNodeSerializer.Serialize(buffer, ref position, findNode);
+                FindNodeSerializer.Serialize(stream, findNode);
                 break;
             case NodesMsg nodes:
-                NodesSerializer.Serialize(buffer, ref position, nodes);
+                NodesSerializer.Serialize(stream, nodes);
                 break;
             case TalkReqMsg talkReq:
-                TalkReqSerializer.Serialize(buffer, ref position, talkReq);
+                TalkReqSerializer.Serialize(stream, talkReq);
                 break;
             case TalkRespMsg talkResp:
-                TalkRespSerializer.Serialize(buffer, ref position, talkResp);
+                TalkRespSerializer.Serialize(stream, talkResp);
                 break;
             default:
                 throw new RlpException($"Unsupported discv5 message {message.GetType().Name}.");

@@ -10,8 +10,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Kademlia;
+using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -28,7 +29,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         private MemDb _discoveryDb = null!;
         private INetworkStorage _networkStorage = null!;
         private INodeStatsManager _nodeStatsManager = null!;
-        private IKademliaDiscv4Adapter _discv4Adapter = null!;
+        private IKademliaAdapter _discv4Adapter = null!;
         private IDiscoveryConfig _discoveryConfig = null!;
         private ILogManager _logManager = null!;
         private IKademlia<PublicKey, Node> _kademlia = null!;
@@ -42,7 +43,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _discoveryDb = new MemDb();
             _networkStorage = new NetworkStorage(_discoveryDb, LimboLogs.Instance);
             _nodeStatsManager = Substitute.For<INodeStatsManager>();
-            _discv4Adapter = Substitute.For<IKademliaDiscv4Adapter>();
+            _discv4Adapter = Substitute.For<IKademliaAdapter>();
             _discoveryConfig = new DiscoveryConfig()
             {
                 DiscoveryPersistenceInterval = 100,
@@ -68,7 +69,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _discoveryConfig,
             _logManager);
 
-        private static Task PingReceived(IKademliaDiscv4Adapter adapter, NetworkNode node, int times = 1) =>
+        private static Task PingReceived(IKademliaAdapter adapter, NetworkNode node, int times = 1) =>
             adapter.Received(times).Ping(
                 Arg.Is<Node>(n => n.Id.Equals(node.NodeId)),
                 Arg.Any<CancellationToken>());

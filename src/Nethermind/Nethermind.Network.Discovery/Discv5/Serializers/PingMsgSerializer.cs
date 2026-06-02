@@ -12,10 +12,10 @@ internal sealed class PingMsgSerializer : MsgSerializerBase
     public int GetContentLength(PingMsg msg)
         => GetRequestIdLength(msg.RequestId) + Rlp.LengthOf(msg.EnrSequence);
 
-    public void Serialize(Span<byte> buffer, ref int position, PingMsg msg)
+    public void Serialize(NettyRlpStream stream, PingMsg msg)
     {
-        EncodeRequestId(buffer, ref position, msg.RequestId);
-        Encode(buffer, ref position, msg.EnrSequence);
+        EncodeRequestId(stream, msg.RequestId);
+        Encode(stream, msg.EnrSequence);
     }
 
     public PingMsg Deserialize(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ArrayPoolSpan<byte>? owner)

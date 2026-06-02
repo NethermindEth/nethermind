@@ -12,10 +12,10 @@ internal sealed class TalkRespMsgSerializer : MsgSerializerBase
     public int GetContentLength(TalkRespMsg msg)
         => GetRequestIdLength(msg.RequestId) + Rlp.LengthOf(msg.Response);
 
-    public void Serialize(Span<byte> buffer, ref int position, TalkRespMsg msg)
+    public void Serialize(NettyRlpStream stream, TalkRespMsg msg)
     {
-        EncodeRequestId(buffer, ref position, msg.RequestId);
-        position = Rlp.Encode(buffer, position, msg.Response);
+        EncodeRequestId(stream, msg.RequestId);
+        stream.Encode(msg.Response);
     }
 
     public TalkRespMsg Deserialize(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)

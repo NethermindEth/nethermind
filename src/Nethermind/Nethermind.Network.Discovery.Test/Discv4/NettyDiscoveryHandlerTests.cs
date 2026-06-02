@@ -20,6 +20,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -37,7 +38,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         private readonly PrivateKey _privateKey2 = new("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
         private List<IChannel> _channels = [];
         private List<NettyDiscoveryHandler> _discoveryHandlers = [];
-        private List<IKademliaDiscv4Adapter> _kademliaAdaptersMocks = [];
+        private List<IKademliaAdapter> _kademliaAdaptersMocks = [];
         private readonly IPEndPoint _address = new(IPAddress.Loopback, 10001);
         private readonly IPEndPoint _address2 = new(IPAddress.Loopback, 10002);
         private int _channelActivatedCounter;
@@ -50,11 +51,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _discoveryHandlers = [];
             _kademliaAdaptersMocks = [];
             _channelActivatedCounter = 0;
-            IKademliaDiscv4Adapter? kademliaAdapterMock = Substitute.For<IKademliaDiscv4Adapter>();
+            IKademliaAdapter? kademliaAdapterMock = Substitute.For<IKademliaAdapter>();
             kademliaAdapterMock.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
             IMessageSerializationService? messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
 
-            IKademliaDiscv4Adapter? kademliaAdapterMock2 = Substitute.For<IKademliaDiscv4Adapter>();
+            IKademliaAdapter? kademliaAdapterMock2 = Substitute.For<IKademliaAdapter>();
             kademliaAdapterMock2.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
             IMessageSerializationService? messageSerializationService2 = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
 
@@ -161,13 +162,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await _kademliaAdaptersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Neighbors));
         }
 
-        private (IKademliaDiscv4Adapter Adapter, NettyDiscoveryHandler Handler, IChannelHandlerContext Ctx, IMessageSerializationService Service) CreateHandler(
+        private (IKademliaAdapter Adapter, NettyDiscoveryHandler Handler, IChannelHandlerContext Ctx, IMessageSerializationService Service) CreateHandler(
             NodeFilter? nodeFilter = null,
             int? globalInboundMessageBurst = null,
             int? inboundMessageQueueCapacity = null,
             int? inboundMessageWorkerCount = null)
         {
-            IKademliaDiscv4Adapter adapter = Substitute.For<IKademliaDiscv4Adapter>();
+            IKademliaAdapter adapter = Substitute.For<IKademliaAdapter>();
             adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
             IMessageSerializationService service = Build.A.SerializationService().WithDiscovery(_privateKey2).TestObject;
             IChannel channel = Substitute.For<IChannel>();
@@ -188,7 +189,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public void UndersizedPacketIsNotForwardedToDiscoveryManager()
         {
-            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService _) = CreateHandler();
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService _) = CreateHandler();
 
             byte[] data = new byte[50];
             IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
@@ -231,7 +232,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public async Task RateLimitedMessagesAreIgnored()
         {
-            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(NodeFilter.CreateExact(16, TimeSpan.FromMinutes(1)));
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(NodeFilter.CreateExact(16, TimeSpan.FromMinutes(1)));
             using SemaphoreSlim called = new(0);
             adapter.When(x => x.OnIncomingMsg(Arg.Any<DiscoveryMsg>())).Do(_ => called.Release());
 
@@ -249,7 +250,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public async Task DefaultInboundRateLimiter_Allows_ShortBurstFromSameIp()
         {
-            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
 
             byte[] data = SerializePing(service);
 
@@ -264,7 +265,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public async Task DefaultInboundRateLimiter_Drops_Message_AboveBurstLimit()
         {
-            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
 
             byte[] data = SerializePing(service);
 
@@ -281,7 +282,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public async Task GlobalInboundRateLimiter_Drops_Messages_AboveBurstLimit()
         {
-            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(globalInboundMessageBurst: 2);
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(globalInboundMessageBurst: 2);
             using SemaphoreSlim called = new(0);
             adapter.When(x => x.OnIncomingMsg(Arg.Any<DiscoveryMsg>())).Do(_ => called.Release());
 
@@ -304,7 +305,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         public async Task InboundDispatchQueue_Drops_Messages_WhenFull()
         {
             TaskCompletionSource unblockHandler = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(
                 globalInboundMessageBurst: 64,
                 inboundMessageQueueCapacity: 1,
                 inboundMessageWorkerCount: 1);
@@ -344,7 +345,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             return data;
         }
 
-        private async Task StartUdpChannel(string address, int port, IKademliaDiscv4Adapter kademliaAdapter, IMessageSerializationService service)
+        private async Task StartUdpChannel(string address, int port, IKademliaAdapter kademliaAdapter, IMessageSerializationService service)
         {
             MultithreadEventLoopGroup group = new(1);
 
@@ -357,7 +358,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _channels.Add(await bootstrap.BindAsync(IPAddress.Parse(address), port));
         }
 
-        private void InitializeChannel(IDatagramChannel channel, IKademliaDiscv4Adapter kademliaAdapter, IMessageSerializationService service)
+        private void InitializeChannel(IDatagramChannel channel, IKademliaAdapter kademliaAdapter, IMessageSerializationService service)
         {
             NettyDiscoveryHandler handler = new(kademliaAdapter, channel, service, new Timestamper(), LimboLogs.Instance);
             handler.OnChannelActivated += (_, _) =>

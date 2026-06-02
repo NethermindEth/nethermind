@@ -3,15 +3,16 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery.Discv4;
+namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
 /// <summary>
 /// Interfaces between <see cref="Kademlia{TKey,TNode}"/> and discv4. Largely handles the transport and session handling.
 /// </summary>
-public interface IKademliaDiscv4Adapter : IKademliaMessageSender<PublicKey, Node>, IDiscoveryMsgListener, IAsyncDisposable
+public interface IKademliaAdapter : IKademliaMessageSender<PublicKey, Node>, IDiscoveryMsgListener, IAsyncDisposable
 {
     /// <summary>
     /// Gets or sets the message sender used to send discovery messages.

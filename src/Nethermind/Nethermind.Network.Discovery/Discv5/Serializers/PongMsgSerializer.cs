@@ -16,12 +16,12 @@ internal sealed class PongMsgSerializer : MsgSerializerBase
             GetAddressRlpLength(msg.RecipientIp) +
             Rlp.LengthOf(msg.RecipientPort);
 
-    public void Serialize(Span<byte> buffer, ref int position, PongMsg msg)
+    public void Serialize(NettyRlpStream stream, PongMsg msg)
     {
-        EncodeRequestId(buffer, ref position, msg.RequestId);
-        Encode(buffer, ref position, msg.EnrSequence);
-        EncodeAddress(buffer, ref position, msg.RecipientIp);
-        Encode(buffer, ref position, msg.RecipientPort);
+        EncodeRequestId(stream, msg.RequestId);
+        Encode(stream, msg.EnrSequence);
+        EncodeAddress(stream, msg.RecipientIp);
+        Encode(stream, msg.RecipientPort);
     }
 
     public PongMsg Deserialize(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ArrayPoolSpan<byte>? owner)
@@ -47,15 +47,15 @@ internal sealed class PongMsgSerializer : MsgSerializerBase
         return Rlp.LengthOf(ip.GetAddressBytes());
     }
 
-    private static void EncodeAddress(Span<byte> buffer, ref int position, IPAddress ip)
+    private static void EncodeAddress(NettyRlpStream stream, IPAddress ip)
     {
         Span<byte> bytes = stackalloc byte[16];
         if (ip.TryWriteBytes(bytes, out int bytesWritten))
         {
-            position = Rlp.Encode(buffer, position, bytes[..bytesWritten]);
+            stream.Encode(bytes[..bytesWritten]);
             return;
         }
 
-        position = Rlp.Encode(buffer, position, ip.GetAddressBytes());
+        stream.Encode(ip.GetAddressBytes());
     }
 }

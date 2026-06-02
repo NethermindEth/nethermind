@@ -7,15 +7,16 @@ using System.Threading.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery.Discv4;
+namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
-public class KademliaNodeSource(
+public class NodeSource(
     IKademlia<PublicKey, Node> kademlia,
     IIteratorNodeLookup<PublicKey, Node> lookup,
-    IKademliaDiscv4Adapter discv4Adapter,
+    IKademliaAdapter discv4Adapter,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     ILogManager logManager)
@@ -23,7 +24,7 @@ public class KademliaNodeSource(
 {
     private const int ChannelCapacity = 64;
 
-    private readonly ILogger _logger = logManager.GetClassLogger<KademliaNodeSource>();
+    private readonly ILogger _logger = logManager.GetClassLogger<NodeSource>();
     private readonly int _recentNodeLimit = Math.Max(ChannelCapacity, kademliaConfig.KSize * Hash256KademliaDistance.Instance.MaxDistance);
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)

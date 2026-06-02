@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery.Discv4.Handlers;
+namespace Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 
 public class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
 {

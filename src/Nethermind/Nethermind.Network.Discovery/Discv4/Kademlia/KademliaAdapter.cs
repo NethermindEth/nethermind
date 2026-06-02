@@ -7,15 +7,16 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
-using Nethermind.Network.Discovery.Discv4.Handlers;
+using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NonBlocking;
 
-namespace Nethermind.Network.Discovery.Discv4;
+namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
-public class KademliaDiscv4Adapter(
+public class KademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia, // Cyclic dependency
     Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
     IDiscoveryConfig discoveryConfig,
@@ -25,7 +26,7 @@ public class KademliaDiscv4Adapter(
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     ILogManager logManager
-) : IKademliaDiscv4Adapter
+) : IKademliaAdapter
 {
     private const int MaxNodesPerNeighborsMsg = 12;
 
@@ -35,7 +36,7 @@ public class KademliaDiscv4Adapter(
     private readonly TimeSpan _expirationTime = TimeSpan.FromMilliseconds(discoveryConfig.MessageExpiryTime);
     private readonly TimeSpan _waitAfterPongDelay = TimeSpan.FromMilliseconds(discoveryConfig.BondWaitTime);
 
-    private readonly ILogger _logger = logManager.GetClassLogger<KademliaDiscv4Adapter>();
+    private readonly ILogger _logger = logManager.GetClassLogger<KademliaAdapter>();
     private readonly RateLimiter _outboundRateLimiter = new(discoveryConfig.MaxOutgoingMessagePerSecond);
     public IMsgSender? MsgSender { get; set; }
 

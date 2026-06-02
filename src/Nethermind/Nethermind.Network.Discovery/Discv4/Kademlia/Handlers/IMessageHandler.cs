@@ -3,7 +3,7 @@
 
 using Nethermind.Network.Discovery.Discv4.Messages;
 
-namespace Nethermind.Network.Discovery.Discv4.Handlers;
+namespace Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 
 internal interface IMessageHandler
 {

@@ -26,11 +26,11 @@ internal abstract class MsgSerializerBase
         return Rlp.LengthOf(bytes[..requestId.Length]);
     }
 
-    protected static void EncodeRequestId(Span<byte> buffer, ref int position, RequestId requestId)
+    protected static void EncodeRequestId(NettyRlpStream stream, RequestId requestId)
     {
         Span<byte> bytes = stackalloc byte[RequestId.MaxLength];
         requestId.CopyTo(bytes);
-        position = Rlp.Encode(buffer, position, bytes[..requestId.Length]);
+        stream.Encode(bytes[..requestId.Length]);
     }
 
     protected static ReadOnlyMemory<byte> DecodeByteMemory(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage)
@@ -44,17 +44,7 @@ internal abstract class MsgSerializerBase
         return ownedMessage.Slice(1 + ctx.Position - value.Length, value.Length);
     }
 
-    protected static void Encode(Span<byte> buffer, ref int position, ulong value)
-    {
-        int length = Rlp.LengthOf(value);
-        Rlp.Encode(value, buffer.Slice(position, length));
-        position += length;
-    }
+    protected static void Encode(NettyRlpStream stream, ulong value) => stream.Encode(value);
 
-    protected static void Encode(Span<byte> buffer, ref int position, int value)
-    {
-        int length = Rlp.LengthOf(value);
-        Rlp.Encode((long)value, buffer.Slice(position, length));
-        position += length;
-    }
+    protected static void Encode(NettyRlpStream stream, int value) => stream.Encode(value);
 }

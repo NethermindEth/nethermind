@@ -13,9 +13,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Kademlia;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
-using Nethermind.Kademlia;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Test.Builders;
@@ -24,11 +25,11 @@ using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Discovery.Test.Discv4
+namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 {
     [Parallelizable(ParallelScope.Self)]
     [TestFixture]
-    public class KademliaDiscv4AdapterTests
+    public class KademliaAdapterTests
     {
         public enum NoResponseRequest
         {
@@ -37,7 +38,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             SendEnrRequest
         }
 
-        private IKademliaDiscv4Adapter _adapter = null!;
+        private IKademliaAdapter _adapter = null!;
 
         private IKademlia<PublicKey, Node> _kademliaMessageReceiver = null!;
         private INodeHealthTracker<Node> _nodeHealthTracker = null!;
@@ -111,7 +112,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _nodeStatsManager = Substitute.For<INodeStatsManager>();
             _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
-            _adapter = new KademliaDiscv4Adapter(
+            _adapter = new KademliaAdapter(
                 new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
                 new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
                 new DiscoveryConfig
