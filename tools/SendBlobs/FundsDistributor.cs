@@ -27,8 +27,12 @@ public class FundsDistributor(IJsonRpcClient rpcClient, ulong chainId, string? k
         if (keysToMake == 0)
             throw new ArgumentException("keysToMake must be greater than zero.", nameof(keysToMake));
 
+        using PendingKeyFile? pending = string.IsNullOrWhiteSpace(_keyFilePath)
+            ? null
+            : PendingKeyFile.Open(_keyFilePath);
+
         DistributionPlan plan = await BuildDistributionPlan(distributeFrom.Address, keysToMake, maxFee, maxPriorityFee);
-        return await ExecuteDistribution(distributeFrom, plan, keysToMake, maxFee);
+        return await ExecuteDistribution(distributeFrom, plan, keysToMake, maxFee, pending);
     }
 
     private async Task<DistributionPlan> BuildDistributionPlan(Address from, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
@@ -60,14 +64,11 @@ public class FundsDistributor(IJsonRpcClient rpcClient, ulong chainId, string? k
         return new DistributionPlan(nonce, maxPriorityFeePerGas, perKeyAmount);
     }
 
-    private async Task<IEnumerable<string>> ExecuteDistribution(Signer distributeFrom, DistributionPlan plan, uint keysToMake, UInt256 maxFee)
+    private async Task<IEnumerable<string>> ExecuteDistribution(Signer distributeFrom, DistributionPlan plan, uint keysToMake, UInt256 maxFee, PendingKeyFile? pending)
     {
         List<string> txHashes = new((int)keysToMake);
 
         using PrivateKeyGenerator generator = new();
-        using PendingKeyFile? pending = string.IsNullOrWhiteSpace(_keyFilePath)
-            ? null
-            : PendingKeyFile.Open(_keyFilePath);
 
         ulong nonce = plan.Nonce;
         UInt256 priorityFee = plan.MaxPriorityFee;

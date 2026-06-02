@@ -115,7 +115,7 @@ public class FundsDistributorTests
 
         Assert.That(File.ReadAllText(_pendingPath), Is.EqualTo("0xrecovery-candidate\n"));
         Assert.That(File.ReadAllText(_keyFilePath), Is.EqualTo(originalContents));
-        rpcClient.DidNotReceive().Post<string>("eth_sendRawTransaction", Arg.Any<object?[]>());
+        rpcClient.DidNotReceive().Post<string>(Arg.Any<string>(), Arg.Any<object?[]>());
     }
 
     private static IJsonRpcClient BuildClientReturningOkForEverySend()
