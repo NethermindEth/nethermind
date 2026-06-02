@@ -172,7 +172,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             }
 
             if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
-            _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
+            _blockCacheService.TryAddBlock(block);
             return NewPayloadV1Result.Syncing;
         }
 
@@ -395,6 +395,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // we timed out while processing the block, result will be null and we will return SYNCING below, no need to do anything
             if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.FullHashAndNumber)} timed out when processing. Assume Syncing.");
         }
+        finally
+        {
+            // Blocks that exit before the processing queue publishes BlockRemoved would otherwise
+            // leave their completion source pinned in _blockValidationTasks forever.
+            _blockValidationTasks.TryRemove(block.Hash!, out _);
+        }
 
         return (TryCacheResult(result ?? ValidationResult.Syncing, validationMessage), validationMessage);
     }
@@ -479,13 +485,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (current is null)
             {
                 // block not part of beacon pivot chain, save in cache
-                _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
+                _blockCacheService.TryAddBlock(block);
                 return false;
             }
 
             while (stack.TryPop(out Block? child))
             {
                 _blockTree.Insert(child, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
+                _blockCacheService.TryRemoveBlock(child.Hash!);
             }
 
             _beaconPivot.ProcessDestination = block.Header;

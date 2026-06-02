@@ -5,6 +5,9 @@ namespace Nethermind.Network.Dns;
 
 public static class EnrTreeParser
 {
+    private const string EnrPrefix = "enr:";
+    private const string EnrLinkedTreePrefix = "enrtree://";
+
     private const int HashLengthBase32 = 26;
     private const int SigLengthBase32 = 87;
 
@@ -22,12 +25,12 @@ public static class EnrTreeParser
             return ParseEnrRoot(enrTreeNodeText);
         }
 
-        if (enrTreeNodeText.StartsWith("enr:"))
+        if (enrTreeNodeText.StartsWith(EnrPrefix))
         {
             return ParseEnrLeaf(enrTreeNodeText);
         }
 
-        if (enrTreeNodeText.StartsWith("enrtree://"))
+        if (enrTreeNodeText.StartsWith(EnrLinkedTreePrefix))
         {
             return ParseEnrLinkedTree(enrTreeNodeText);
         }
@@ -38,14 +41,14 @@ public static class EnrTreeParser
     private static EnrLinkedTree ParseEnrLinkedTree(string enrLinkedTreeText)
     {
         EnrLinkedTree leaf = new();
-        leaf.Link = enrLinkedTreeText[10..];
+        leaf.Link = enrLinkedTreeText[EnrLinkedTreePrefix.Length..];
         return leaf;
     }
 
     private static EnrLeaf ParseEnrLeaf(string enrLeafText)
     {
         EnrLeaf leaf = new();
-        leaf.NodeRecord = enrLeafText;
+        leaf.NodeRecord = enrLeafText[EnrPrefix.Length..];
         return leaf;
     }
 
