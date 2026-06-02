@@ -283,10 +283,22 @@ public class PrewarmerScopeProvider(
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                     Db.Metrics.IncrementStorageTreeCache();
                 }
+                else if (crossBlockStorageCache is not null && crossBlockStorageCache.TryGetValue(in storageCell, out value))
+                {
+                    // The prewarmer (this populate==true path) accounts for ~75% of SLOAD cost, so the
+                    // cross-block cache must be consulted here too — otherwise prewarm threads re-read
+                    // every slot from flat state each block. Promote the hit into the per-block cache.
+                    preBlockCache.Set(in storageCell, value);
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
+                    Db.Metrics.IncrementStorageTreeCache();
+                }
                 else
                 {
                     value = LoadFromTreeStorage(in storageCell);
                     preBlockCache.Set(in storageCell, value);
+                    // Seed the cross-block cache from the base-state read so the next block's prewarm
+                    // is a hit. Safe: the prewarmer reads committed base state, not speculative writes.
+                    crossBlockStorageCache?.Set(in storageCell, value);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
                 return value;
