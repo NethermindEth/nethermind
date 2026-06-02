@@ -31,6 +31,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 {
     private const int MaxPooledParameterCount = 8;
     private const string EthGetBalanceMethodName = "eth_getBalance";
+    private const string MissingHexPrefixError = "hex string without 0x prefix";
     private const string LeadingZeroHexNumberError = "hex number with leading zero digits";
 
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
@@ -365,7 +366,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return;
         }
 
-        throw new SafePublicMessageFormatException(Bytes.ErrMissingPrefix);
+        throw new SafePublicMessageFormatException(MissingHexPrefixError);
     }
 
     private static void ValidateEthGetBalanceAddress(ReadOnlyMemory<byte> addressParameter)
@@ -395,7 +396,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             }
         }
 
-        throw new SafePublicMessageFormatException(Bytes.ErrMissingPrefix);
+        throw new SafePublicMessageFormatException(MissingHexPrefixError);
     }
 
     private static void ValidateEthGetBalanceBlockParameter(JsonElement blockParameter)
