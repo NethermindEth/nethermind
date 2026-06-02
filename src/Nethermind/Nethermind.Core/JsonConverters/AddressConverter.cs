@@ -20,12 +20,12 @@ public class AddressConverter : JsonConverter<Address>
     internal static Address? ReadAddress(ref Utf8JsonReader reader)
     {
         Span<byte> bytes = stackalloc byte[Address.Size];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, requireEvenLength: true))
         {
             return new Address(bytes);
         }
 
-        byte[]? addressBytes = ByteArrayConverter.Convert(ref reader);
+        byte[]? addressBytes = ByteArrayConverter.Convert(ref reader, requireEvenLength: true);
         return addressBytes is null ? null : new Address(addressBytes);
     }
 
@@ -46,12 +46,12 @@ public class AddressConverter : JsonConverter<Address>
     internal static Address ReadAddressPropertyName(ref Utf8JsonReader reader)
     {
         Span<byte> bytes = stackalloc byte[Address.Size];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, requireEvenLength: true))
         {
             return new Address(bytes);
         }
 
-        return new Address(ByteArrayConverter.Convert(ref reader) ?? throw new JsonException("Invalid address property name"));
+        return new Address(ByteArrayConverter.Convert(ref reader, requireEvenLength: true) ?? throw new JsonException("Invalid address property name"));
     }
 
     [SkipLocalsInit]
