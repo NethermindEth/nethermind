@@ -54,27 +54,13 @@ public static class StateOverridesExtensions
         IReleaseSpec spec,
         long blockNumber)
     {
-        state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
-        state.CommitWithOverrideGuard(spec, overrides, blockNumber);
-        state.RecalculateStateRoot();
-    }
-
-    /// <summary>
-    /// Commits pending state changes using a spec that disables EIP-158 when overrides are present,
-    /// preventing accounts whose code/nonce were zeroed while storage remains from being deleted
-    /// before EIP-7610 CREATE collision checks can inspect them.
-    /// </summary>
-    public static void CommitWithOverrideGuard(
-        this IWorldState state,
-        IReleaseSpec spec,
-        IDictionary<Address, AccountOverride>? overrides,
-        long blockNumber)
-    {
-        // State overrides are simulation-only; EIP-158 must not delete accounts whose code/nonce
-        // were zeroed while storage remains, or EIP-7610 CREATE collision checks will miss it.
-        IReleaseSpec commitSpec = overrides?.Count > 0 ? new NoEip158Spec(spec) : spec;
-        state.Commit(commitSpec, commitRoots: true);
+        // Disable EIP-158 when overrides are present so accounts that carry storage but no
+        // code/balance/nonce are not deleted during commit, preserving EIP-7610 collision detection.
+        IReleaseSpec effectiveSpec = overrides?.Count > 0 ? new NoEip158Spec(spec) : spec;
+        state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, effectiveSpec);
+        state.Commit(effectiveSpec, commitRoots: true);
         state.CommitTree(blockNumber);
+        state.RecalculateStateRoot();
     }
 
     private static void UpdateState(this IWorldState stateProvider, AccountOverride accountOverride, Address address)
