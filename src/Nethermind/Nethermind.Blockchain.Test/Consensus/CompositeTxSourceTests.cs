@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -53,7 +52,7 @@ public class CompositeTxSourceTests
 
         BlockHeader parentHeader = Build.A.BlockHeader.TestObject;
         int gasLimit = 1000;
-        List<Transaction> expected = new();
+        List<Transaction> expected = [];
 
         ITxSource innerPendingTxSelector = Substitute.For<ITxSource>();
 
@@ -70,6 +69,6 @@ public class CompositeTxSourceTests
         Transaction[] transactions = compositeTxSource.GetTransactions(parentHeader, gasLimit).ToArray();
         expected.AddRange(originalTxs);
 
-        transactions.Should().BeEquivalentTo(expected);
+        Assert.That(transactions, Is.EqualTo(expected));
     }
 }

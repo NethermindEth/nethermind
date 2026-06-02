@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -522,9 +521,9 @@ public class SessionTests
         _packetSender.Enqueue(message).Returns(10);
         session.DeliverMessage(message);
         _packetSender.Received().Enqueue(message);
-        message.WasDisposed.Should().BeTrue();
+        Assert.That(message.WasDisposed, Is.True);
 
-        Metrics.P2PBytesSent.Should().Be(10);
+        Assert.That(Metrics.P2PBytesSent, Is.EqualTo(10));
     }
 
     [Test]
@@ -535,7 +534,7 @@ public class SessionTests
         Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(message));
         session.Handshake(TestItem.PublicKeyA);
         Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(message));
-        message.WasDisposed.Should().BeTrue();
+        Assert.That(message.WasDisposed, Is.True);
         session.Init(5, _channelHandlerContext, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
@@ -567,7 +566,7 @@ public class SessionTests
         TestMessage message = new();
         session.DeliverMessage(message);
         _packetSender.DidNotReceive().Enqueue(Arg.Any<TestMessage>());
-        message.WasDisposed.Should().BeTrue();
+        Assert.That(message.WasDisposed, Is.True);
     }
 
     [Test]
@@ -624,15 +623,12 @@ public class SessionTests
             .Received()
             .Enqueue(message);
 
-        message.WasDisposed.Should().BeTrue();
+        Assert.That(message.WasDisposed, Is.True);
     }
 
-    [Test, Retry(3)]
-    [Parallelizable(ParallelScope.None)] // It touches global metrics
+    [Test]
     public void Can_receive_messages()
     {
-        Metrics.P2PBytesReceived = 0;
-
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
@@ -660,7 +656,7 @@ public class SessionTests
 
         session.ReceiveMessage(new Packet("---", 100, data));
 
-        Metrics.P2PBytesReceived.Should().Be(data.Length * 5);
+        Assert.That(session.BytesReceived, Is.EqualTo(data.Length * 5));
     }
 
     [Test]

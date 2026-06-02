@@ -26,15 +26,15 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
     /// <summary>Serialized byte size of a single storage key.</summary>
     public const int StorageKeySize = 32;
 
-    public static AccessList Empty { get; } = new(new List<(Address, int)>(), new List<UInt256>());
+    public static AccessList Empty { get; } = new([], []);
 
     public bool IsEmpty => _addresses.Count == 0;
     public (int AddressesCount, int StorageKeysCount) Count => (_addresses.Count, _keys.Count);
 
     public class Builder
     {
-        private readonly List<(Address address, int count)> _addresses = new();
-        private readonly List<UInt256> _keys = new();
+        private readonly List<(Address address, int count)> _addresses = [];
+        private readonly List<UInt256> _keys = [];
 
         private Address? _currentAddress;
 

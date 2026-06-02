@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
-using Nethermind.Core;
+using Nethermind.Core.RequestSizer;
 using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
 
@@ -34,6 +34,7 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f) : INodeS
     private float _averageBodiesTransferSpeed = float.NaN;
     private float _averageReceiptsTransferSpeed = float.NaN;
     private float _averageSnapRangesTransferSpeed = float.NaN;
+    private float _averageAccessListsTransferSpeed = float.NaN;
     private float _averageLatency = float.NaN;
 
     private readonly int[] _statCountersArray = new int[_statsLength];
@@ -219,6 +220,7 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f) : INodeS
             case TransferSpeedType.Bodies: return ref _averageBodiesTransferSpeed;
             case TransferSpeedType.Receipts: return ref _averageReceiptsTransferSpeed;
             case TransferSpeedType.SnapRanges: return ref _averageSnapRangesTransferSpeed;
+            case TransferSpeedType.BlockAccessLists: return ref _averageAccessListsTransferSpeed;
             default: throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, "Unsupported transfer speed type.");
         }
     }
@@ -386,6 +388,7 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f) : INodeS
         if (requestType == RequestType.Bodies) return _bodiesRequestSizer.RequestSize;
         if (requestType == RequestType.Receipts) return _receiptsRequestSizer.RequestSize;
         if (requestType == RequestType.SnapRanges) return _snapRequestSizer.RequestSize;
+        if (requestType == RequestType.BlockAccessLists) return GethSyncLimits.MaxBodyFetch;
         if (requestType == RequestType.Headers)
         {
             return Node.ClientType switch

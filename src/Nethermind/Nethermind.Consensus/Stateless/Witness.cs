@@ -31,8 +31,8 @@ public class Witness : IDisposable
 
 public static class WitnessExtensions
 {
-    private static readonly IRlpValueDecoder<BlockHeader> _decoder =
-        Rlp.GetValueDecoder<BlockHeader>() ?? new HeaderDecoder();
+    private static readonly IRlpDecoder<BlockHeader> _decoder =
+        Rlp.GetDecoder<BlockHeader>() ?? new HeaderDecoder();
 
     extension(Witness witness)
     {
@@ -63,11 +63,12 @@ public static class WitnessExtensions
         public ArrayPoolList<BlockHeader> DecodeHeaders()
         {
             IOwnedReadOnlyList<byte[]> headers = witness.Headers;
-            ArrayPoolList<BlockHeader> decodedHeaders = new(headers.Count, headers.Count);
+            ReadOnlySpan<byte[]> headersSpan = headers.AsSpan();
+            ArrayPoolList<BlockHeader> decodedHeaders = new(headersSpan.Length, headersSpan.Length);
 
-            for (int i = 0; i < headers.Count; i++)
+            for (int i = 0; i < headersSpan.Length; i++)
             {
-                Rlp.ValueDecoderContext stream = new(headers[i]);
+                Rlp.ValueDecoderContext stream = new(headersSpan[i]);
 
                 decodedHeaders[i] = _decoder.Decode(ref stream)
                     ?? throw new InvalidOperationException($"No header decoded at index {i}");

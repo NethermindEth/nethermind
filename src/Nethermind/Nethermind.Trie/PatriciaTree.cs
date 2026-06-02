@@ -1034,20 +1034,23 @@ namespace Nethermind.Trie
         }
 
         /// <summary>
-        /// Run tree visitor
+        /// Run tree visitor.
         /// </summary>
         /// <param name="visitor">The visitor</param>
         /// <param name="rootHash">State root hash (not storage root)</param>
         /// <param name="visitingOptions">Options</param>
-        /// <param name="storageAddr">Address of storage, if it should visit storage. </param>
+        /// <param name="storageAddr">Address of storage, if it should visit storage.</param>
         /// <param name="storageRoot">Root of storage if it should visit storage. Optional for performance.</param>
+        /// <param name="diagnostics">When non-null, the resolver is wrapped with <see cref="MeteredTrieNodeResolver"/>
+        /// and per-call lookup, cache-miss, and depth counters are accumulated into this instance.</param>
         /// <typeparam name="TNodeContext"></typeparam>
         public void Accept<TNodeContext>(
             ITreeVisitor<TNodeContext> visitor,
             Hash256 rootHash,
             VisitingOptions? visitingOptions = null,
             Hash256? storageAddr = null,
-            Hash256? storageRoot = null
+            Hash256? storageRoot = null,
+            VisitingStats? diagnostics = null
         ) where TNodeContext : struct, INodeContext<TNodeContext>
         {
             ArgumentNullException.ThrowIfNull(visitor);
@@ -1065,6 +1068,7 @@ namespace Nethermind.Trie
                 Hash256 DecodeStorageRoot(Hash256 root, Hash256 address)
                 {
                     ReadOnlySpan<byte> bytes = Get(address.Bytes, root);
+                    if (bytes.IsEmpty) return Keccak.EmptyTreeHash;
                     Rlp.ValueDecoderContext valueContext = bytes.AsRlpValueContext();
                     return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueContext);
                 }
@@ -1094,6 +1098,11 @@ namespace Nethermind.Trie
             if (storageAddr is not null)
             {
                 resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
+            }
+
+            if (diagnostics is not null)
+            {
+                resolver = new MeteredTrieNodeResolver(resolver, diagnostics);
             }
 
             bool TryGetRootRef(out TrieNode? rootRef)

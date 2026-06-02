@@ -1,23 +1,23 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain.Filters;
+using System.Buffers;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
-using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.Trie;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Threading;
 using Block = Nethermind.Core.Block;
-using Nethermind.Core.BlockAccessLists;
-using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Facade
 {
@@ -51,13 +51,16 @@ namespace Nethermind.Facade
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null, CancellationToken cancellationToken = default);
 
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
-        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>;
+        /// <inheritdoc cref="Nethermind.State.IStateReader.RunTreeVisitor{TCtx}"/>
+        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
+
         bool HasStateForBlock(BlockHeader? baseBlock);
 
         Witness GenerateExecutionWitness(BlockHeader parent, Block block);
         Witness GenerateExecutionWitness(BlockHeader header, Transaction tx);
 
-        BlockAccessList? GetBlockAccessList(Hash256 blockHash);
-        void DeleteBlockAccessList(Hash256 blockHash);
+        ReadOnlyBlockAccessList? GetBlockAccessList(long blockNumber, Hash256 blockHash);
+        MemoryManager<byte>? GetBlockAccessListRlp(long blockNumber, Hash256 blockHash);
+        void DeleteBlockAccessList(long blockNumber, Hash256 blockHash);
     }
 }

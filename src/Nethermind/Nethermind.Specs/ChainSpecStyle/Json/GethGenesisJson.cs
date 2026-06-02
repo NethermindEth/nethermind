@@ -33,11 +33,13 @@ public class GethGenesisJson
 
     public Address? Coinbase { get; set; }
 
-    public ulong? BaseFeePerGas { get; set; }
+    public UInt256? BaseFeePerGas { get; set; }
 
     public ulong? ExcessBlobGas { get; set; }
 
     public ulong? BlobGasUsed { get; set; }
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
+
+    public ulong? SlotNumber { get; set; }
 }

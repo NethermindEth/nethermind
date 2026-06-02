@@ -8,7 +8,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class NullReceiptStorage : IReceiptStorage
+    public class NullReceiptStorage : IReceiptMigrationStore
     {
         public static NullReceiptStorage Instance { get; } = new();
 
@@ -25,6 +25,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null) { }
         public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber = null) { }
+        public void InsertForMigration(Block block, TxReceipt[] receipts) { }
 
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = false) => [];
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => [];

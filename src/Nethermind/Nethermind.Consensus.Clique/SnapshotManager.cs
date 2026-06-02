@@ -10,6 +10,7 @@ using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -17,7 +18,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.Clique
                 return snapshot;
             }
 
-            List<BlockHeader> headers = new();
+            List<BlockHeader> headers = [];
             lock (_snapshotCreationLock)
             {
                 BlockHeader? header = null;
@@ -112,13 +112,11 @@ namespace Nethermind.Consensus.Clique
 
                     // If we're at an checkpoint block, make a snapshot if it's known
                     BlockHeader? previousHeader = header;
-                    header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    if (header is null)
-                    {
-                        throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
-                    }
+                    header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                        ?? throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
 
-                    if (header.Hash is null) throw new InvalidOperationException("Block tree block without hash set");
+                    if (header.Hash is null)
+                        throw new InvalidOperationException("Block tree block without hash set");
 
                     Hash256 parentHash = header.ParentHash;
                     if (IsEpochTransition(number))
@@ -229,20 +227,12 @@ namespace Nethermind.Consensus.Clique
         [Todo(Improve.Refactor, "I guess it was only added here because of the use of blocksdb")]
         private Snapshot? LoadSnapshot(Hash256 hash)
         {
-            Hash256 key = GetSnapshotKey(hash);
-            byte[]? bytes = _blocksDb.Get(key);
-            if (bytes is null) return null;
-
-            return _decoder.Decode(bytes);
+            byte[]? bytes = _blocksDb.Get(GetSnapshotKey(hash));
+            return bytes is null ? null : _decoder.Decode(bytes);
         }
 
-        private void Store(Snapshot snapshot)
-        {
-            RlpStream stream = new(_decoder.GetLength(snapshot, RlpBehaviors.None));
-            _decoder.Encode(stream, snapshot);
-            Hash256 key = GetSnapshotKey(snapshot.Hash);
-            _blocksDb.Set(key, stream.Data);
-        }
+        private void Store(Snapshot snapshot) =>
+            _blocksDb.Set(GetSnapshotKey(snapshot.Hash), _decoder.Encode(snapshot).Bytes);
 
         private Snapshot Apply(Snapshot original, List<BlockHeader> headers, ulong epoch)
         {

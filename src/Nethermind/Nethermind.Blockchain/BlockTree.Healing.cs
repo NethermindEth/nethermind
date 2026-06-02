@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Repositories;
@@ -9,6 +10,9 @@ namespace Nethermind.Blockchain
 {
     public partial class BlockTree : IBlockTreeHealer
     {
+        // Cap per-flush memory of the upward scan at a few MB (~50-200 B per entry).
+        private const int ClearStaleMarkersFlushThreshold = 65_536;
+
         public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth)
         {
             BlockHeader? start = FindHeader(startHash, BlockTreeLookupOptions.None);
@@ -24,8 +28,11 @@ namespace Nethermind.Blockchain
 
         private long ClearStaleMarkersAbove(long fromExclusive, BatchWrite batch)
         {
+            // Cap at the highest level we could have written — a corrupted DB must not drive an unbounded scan.
+            long upperBound = Math.Max(BestKnownNumber, BestKnownBeaconNumber);
             long cleared = 0L;
-            for (long levelNumber = fromExclusive + 1; ; levelNumber++)
+            int writesSinceFlush = 0;
+            for (long levelNumber = fromExclusive + 1; levelNumber <= upperBound; levelNumber++)
             {
                 ChainLevelInfo? level = LoadLevel(levelNumber);
                 if (level is null) break;
@@ -34,6 +41,12 @@ namespace Nethermind.Blockchain
                     level.HasBlockOnMainChain = false;
                     _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
                     cleared++;
+
+                    if (++writesSinceFlush >= ClearStaleMarkersFlushThreshold)
+                    {
+                        batch.Flush();
+                        writesSinceFlush = 0;
+                    }
                 }
             }
             return cleared;

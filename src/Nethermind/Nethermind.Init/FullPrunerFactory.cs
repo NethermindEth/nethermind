@@ -36,7 +36,7 @@ public class FullPrunerFactory(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FullPrunerFactory>();
 
-    public FullPruner? Create(IStateReader stateReader, IPruningTrieStore trieStore)
+    public FullPruner? Create(IWorldStateManager worldStateManager, IPruningTrieStore trieStore)
     {
         IDb stateDb = dbProvider.StateDb;
 
@@ -49,6 +49,9 @@ public class FullPrunerFactory(
             compositePruningTrigger.Add(automaticTrigger);
         }
 
+        // Resolve the drive from pruningDbPath rather than the BaseDbPath-keyed registration:
+        // if the pruning subdirectory is symlinked or bind-mounted to a different volume, we
+        // want the free-space trigger to read that volume, not BaseDbPath's drive.
         IDriveInfo? drive = fileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
         return new FullPruner(
             fullPruningDb,
@@ -57,7 +60,8 @@ public class FullPrunerFactory(
             compositePruningTrigger,
             pruningConfig,
             blockTree,
-            stateReader,
+            (IStateBoundaryWriter)worldStateManager,
+            worldStateManager.GlobalStateReader,
             processExit,
             ChainSizes.CreateChainSizeInfo(chainSpec.ChainId),
             drive,

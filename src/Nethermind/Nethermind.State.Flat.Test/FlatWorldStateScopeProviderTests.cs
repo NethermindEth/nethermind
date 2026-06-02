@@ -90,14 +90,11 @@ public class FlatWorldStateScopeProviderTests
             ConfigureFlatWorldStateScope();
         }
 
-        private void ConfigureSnapshotBundle()
-        {
+        private void ConfigureSnapshotBundle() =>
             _containerBuilder.RegisterType<SnapshotBundle>()
                 .SingleInstance()
                 .WithParameter(TypedParameter.From(ResourcePool.Usage.MainBlockProcessing))
                 .ExternallyOwned();
-            ;
-        }
 
         private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()

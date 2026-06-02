@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -43,7 +42,7 @@ internal class SubnetPenaltyTests
             ctx.Headers[(int)(target - 1)].Hash!,
             []);
 
-        penalties.Should().BeEmpty();
+        Assert.That(penalties, Is.Empty);
     }
 
 
@@ -63,8 +62,8 @@ internal class SubnetPenaltyTests
             ctx.Headers[(int)(target - 1)].Hash!,
             []);
 
-        penalties.Length.Should().Be(1);
-        penalties[0].Should().Be(ctx.ValidatorKeys.Last().Address);
+        Assert.That(penalties.Length, Is.EqualTo(1));
+        Assert.That(penalties[0], Is.EqualTo(ctx.ValidatorKeys.Last().Address));
     }
 
     [Test]
@@ -80,7 +79,7 @@ internal class SubnetPenaltyTests
         Address[] injectedPenalties = [TestItem.AddressA, TestItem.AddressB];
         byte[] penaltyBytes = new byte[injectedPenalties.Length * Address.Size];
         for (int i = 0; i < injectedPenalties.Length; i++)
-            injectedPenalties[i].Bytes.CopyTo(penaltyBytes, i * Address.Size);
+            injectedPenalties[i].Bytes.CopyTo(penaltyBytes.AsSpan(i * Address.Size));
         ctx.Headers[target - EpochLength + 1].Penalties = penaltyBytes;
 
         Address[] penalties = ctx.Handler.HandlePenalties(
@@ -88,7 +87,7 @@ internal class SubnetPenaltyTests
             ctx.Headers[(int)(target - 1)].Hash!,
             []);
 
-        penalties.Should().BeEquivalentTo(injectedPenalties);
+        Assert.That(penalties, Is.EquivalentTo(injectedPenalties));
     }
 
     [Test]
@@ -110,7 +109,7 @@ internal class SubnetPenaltyTests
             target,
             ctx.Headers[(int)(target - 1)].Hash!,
             []);
-        penalties.Should().BeEmpty();
+        Assert.That(penalties, Is.Empty);
     }
 
     [Test]
@@ -132,8 +131,8 @@ internal class SubnetPenaltyTests
             target,
             ctx.Headers[(int)(target - 1)].Hash!,
             []);
-        penalties.Length.Should().Be(1);
-        penalties[0].Should().Be(ctx.ValidatorKeys.Last().Address);
+        Assert.That(penalties.Length, Is.EqualTo(1));
+        Assert.That(penalties[0], Is.EqualTo(ctx.ValidatorKeys.Last().Address));
     }
 
 
@@ -156,8 +155,8 @@ internal class SubnetPenaltyTests
             target,
             ctx.Headers[(int)(target - 1)].Hash!,
             []);
-        penalties.Length.Should().Be(1);
-        penalties[0].Should().Be(ctx.ValidatorKeys.Last().Address);
+        Assert.That(penalties.Length, Is.EqualTo(1));
+        Assert.That(penalties[0], Is.EqualTo(ctx.ValidatorKeys.Last().Address));
     }
 
     [Test]
@@ -173,13 +172,13 @@ internal class SubnetPenaltyTests
         Address eip55First = new("0xECf1aC276D2D3333483cF394d2F73BaB6915feCb");
         Address eip55Second = new("0xe3eE640071486df6A007021c34D52b5DE7be94e3");
 
-        string.CompareOrdinal(eip55First.ToString(), eip55Second.ToString()).Should().BeGreaterThan(0);
-        string.CompareOrdinal(eip55First.ToString(withEip55Checksum: true), eip55Second.ToString(withEip55Checksum: true)).Should().BeLessThan(0);
+        Assert.That(string.CompareOrdinal(eip55First.ToString(), eip55Second.ToString()), Is.GreaterThan(0));
+        Assert.That(string.CompareOrdinal(eip55First.ToString(withEip55Checksum: true), eip55Second.ToString(withEip55Checksum: true)), Is.LessThan(0));
 
         Address[] injectedPenalties = [eip55Second, eip55First];
         byte[] penaltyBytes = new byte[injectedPenalties.Length * Address.Size];
         for (int i = 0; i < injectedPenalties.Length; i++)
-            injectedPenalties[i].Bytes.CopyTo(penaltyBytes, i * Address.Size);
+            injectedPenalties[i].Bytes.CopyTo(penaltyBytes.AsSpan(i * Address.Size));
         ctx.Headers[target - EpochLength + 1].Penalties = penaltyBytes;
 
         Address[] penalties = ctx.Handler.HandlePenalties(
@@ -187,7 +186,7 @@ internal class SubnetPenaltyTests
             ctx.Headers[(int)(target - 1)].Hash!,
             []);
 
-        penalties.Should().Equal(eip55First, eip55Second);
+        Assert.That(penalties, Is.EqualTo(new[] { eip55First, eip55Second }));
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────
@@ -218,8 +217,8 @@ internal class SubnetPenaltyTests
 
         XdcSubnetBlockHeader[] headers = new XdcSubnetBlockHeader[chainLength];
         Block[] blocks = new Block[chainLength];
-        Dictionary<Hash256, XdcSubnetBlockHeader> hashToHeader = new();
-        Dictionary<Hash256, Block> hashToBlock = new();
+        Dictionary<Hash256, XdcSubnetBlockHeader> hashToHeader = [];
+        Dictionary<Hash256, Block> hashToBlock = [];
 
         for (int i = 0; i < chainLength; i++)
         {

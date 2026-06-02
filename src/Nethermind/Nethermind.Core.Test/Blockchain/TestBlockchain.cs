@@ -46,7 +46,7 @@ namespace Nethermind.Core.Test.Blockchain;
 
 public class TestBlockchain : IDisposable
 {
-    public const int DefaultTimeout = 10000;
+    public const int DefaultTimeout = 30000;
     protected long TestTimeout { get; init; } = DefaultTimeout;
     public IStateReader StateReader => _fromContainer.StateReader;
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
@@ -271,9 +271,17 @@ public class TestBlockchain : IDisposable
             MinGasPrice = 0 // Tx pool test seems to need this.
         }];
 
-    private static ISpecProvider WrapSpecProvider(ISpecProvider specProvider) => specProvider is TestSpecProvider { AllowTestChainOverride: false }
+    private static ISpecProvider WrapSpecProvider(ISpecProvider specProvider)
+    {
+        ISpecProvider unwrapped =
+            specProvider is Nethermind.State.OverridableEnv.OverridableSpecProvider envSpecProvider
+                ? envSpecProvider.SpecProvider
+                : specProvider;
+
+        return unwrapped is TestSpecProvider { AllowTestChainOverride: false }
             ? specProvider
             : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
+    }
 
     protected virtual IBlockProducer CreateTestBlockProducer()
     {

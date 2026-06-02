@@ -10,12 +10,12 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Serialization.Rlp
 {
     [Rlp.SkipGlobalRegistration]
-    public class CompactLogEntryDecoder : IRlpDecoder<LogEntry>
+    public class CompactLogEntryDecoder : RlpDecoder<LogEntry?>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static CompactLogEntryDecoder Instance { get; } = new();
 
-        public static LogEntry? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override LogEntry? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -82,7 +82,7 @@ namespace Nethermind.Serialization.Rlp
             return topics.ToArray();
         }
 
-        public static void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -107,7 +107,7 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.Encode(withoutLeadingZero);
         }
 
-        public int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -119,13 +119,8 @@ namespace Nethermind.Serialization.Rlp
 
         private static byte[] DecodeCompactData(scoped ref Rlp.ValueDecoderContext decoderContext)
         {
-            int zeroPrefix = decoderContext.DecodeInt();
+            int zeroPrefix = decoderContext.DecodePositiveInt();
             ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
-
-            if (zeroPrefix < 0)
-            {
-                throw new RlpLimitException($"Expanded {nameof(LogEntry)} data with zero prefix {zeroPrefix} and content length {rlpData.Length} exceeds limit {RlpLimit.Limit}.");
-            }
 
             Rlp.GuardLimit(zeroPrefix, RlpLimit.Limit - rlpData.Length, RlpLimit);
 

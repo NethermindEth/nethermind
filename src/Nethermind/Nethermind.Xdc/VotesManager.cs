@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.P2P;
@@ -17,7 +18,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -30,7 +35,8 @@ internal class VotesManager(
     IQuorumCertificateManager quorumCertificateManager,
     ISpecProvider specProvider,
     ISigner signer,
-    IForensicsProcessor forensicsProcessor) : IVotesManager
+    IForensicsProcessor forensicsProcessor,
+    ILogManager logManager) : IVotesManager
 {
     private readonly IBlockTree _blockTree = tree;
     private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
@@ -41,6 +47,7 @@ internal class VotesManager(
     private readonly IForensicsProcessor _forensicsProcessor = forensicsProcessor;
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly ISigner _signer = signer;
+    private readonly ILogger _logger = logManager.GetClassLogger<VotesManager>();
 
     private readonly XdcPool<Vote> _votePool = new();
     private static readonly VoteDecoder _voteDecoder = new();
@@ -51,9 +58,8 @@ internal class VotesManager(
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(blockInfo.Hash);
-        if (epochSwitchInfo is null)
-            throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(blockInfo.Hash) ??
+            throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(blockInfo));
         //Optimize this by fetching with block number and round only
 
         if (_blockTree.FindHeader(blockInfo.Hash) is not XdcBlockHeader header)
@@ -65,7 +71,11 @@ internal class VotesManager(
 
         Vote vote = new(blockInfo, (ulong)gapNumber, isMyVote: true);
         // Sets signature and signer for the vote
-        Sign(vote);
+        if (!TrySign(vote))
+        {
+            if (_logger.IsWarn) _logger.Warn($"XDC signer {_signer.Address} could not sign vote for block {blockInfo.Hash} (round {blockInfo.Round}) — skipping broadcast.");
+            return Task.CompletedTask;
+        }
 
         _highestVotedRound = (long)blockInfo.Round;
 
@@ -84,7 +94,11 @@ internal class VotesManager(
         // Collect votes
         _votePool.Add(vote);
         IReadOnlyCollection<Vote> roundVotes = _votePool.GetItems(vote);
-        _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
+        IReadOnlyCollection<Vote> roundVotesFromOtherKeys = _votePool.GetItemsFromRoundExcludingKey(vote);
+        // Forensics is expected to run asynchronously and must not block vote processing.
+        // The two calls are complementary: one checks signer conflicts across pool keys in the same round,
+        // the other validates against committed-QC ancestry.
+        _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotesFromOtherKeys);
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
         if (_blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) is not XdcBlockHeader proposedHeader)
@@ -133,8 +147,8 @@ internal class VotesManager(
     {
         _votePool.EndRound(round);
 
-        foreach (ulong key in _qcBuildStartedByRound.Keys)
-            if (key <= round) _qcBuildStartedByRound.TryRemove(key, out _);
+        foreach (KeyValuePair<ulong, byte> kvp in _qcBuildStartedByRound)
+            if (kvp.Key <= round) _qcBuildStartedByRound.TryRemove(kvp.Key, out _);
     }
 
     public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc, out string? error) =>
@@ -243,10 +257,10 @@ internal class VotesManager(
         return nextBlockHash == ancestorBlockInfo.Hash;
     }
 
-    private Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
+    private static Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
     {
-        HashSet<Address> masternodeSet = new(masternodes);
-        List<Signature> signatures = new();
+        HashSet<Address> masternodeSet = [.. masternodes];
+        List<Signature> signatures = [];
         foreach (Vote vote in votes)
         {
             vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
@@ -259,12 +273,63 @@ internal class VotesManager(
         return signatures.ToArray();
     }
 
-    private void Sign(Vote vote)
+    /// <summary>
+    /// Verifies each signature against <paramref name="allowedSigners"/>, deduplicates by
+    /// recovered address, and returns the number of distinct valid signers.
+    /// </summary>
+    /// <returns>
+    /// Signatures count if all are valid, or <c>null</c>
+    /// if there's any validation <paramref name="error"/>.
+    /// </returns>
+    public static int? CountValidSignatures(
+        IReadOnlyCollection<Address> allowedSigners,
+        IReadOnlyCollection<Signature> signatures,
+        ValueHash256 messageHash,
+        out string? error)
+    {
+        //TODO: try to minimize number of allocations, at least for common cases
+        Dictionary<Address, int> signedBy = new(allowedSigners.Count);
+        foreach (Address signer in allowedSigners)
+            signedBy.TryAdd(signer, 0);
+
+        int count = 0;
+        string? localError = null; // concurrent "overwrite" is ok, no need to synchronize
+        Parallel.ForEach(signatures, (s, state) =>
+        {
+            Address signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
+            ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
+
+            if (Unsafe.IsNullRef(ref signCount))
+            {
+                localError = "Certificate contains an invalid signature";
+                state.Stop();
+                return;
+            }
+
+            if (Interlocked.Increment(ref signCount) != 1)
+            {
+                localError = $"Certificate contains a duplicate signature from {signer}";
+                state.Stop();
+                return;
+            }
+
+            Interlocked.Increment(ref count);
+        });
+
+        error = localError;
+        return error is null ? count : null;
+    }
+
+    private bool TrySign(Vote vote)
     {
         KeccakRlpStream stream = new();
         _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-        vote.Signature = _signer.Sign(stream.GetValueHash());
+        ValueHash256 hash = stream.GetValueHash();
+        if (!_signer.TrySign(in hash, out Signature signature))
+            return false;
+        vote.Signature = signature;
         vote.Signer = _signer.Address;
+        return true;
     }
 
     public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);

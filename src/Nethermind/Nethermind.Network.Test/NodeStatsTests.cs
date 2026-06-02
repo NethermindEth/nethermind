@@ -4,10 +4,10 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
@@ -26,6 +26,7 @@ public class NodeStatsTests
     [TestCase(TransferSpeedType.Receipts)]
     [TestCase(TransferSpeedType.Latency)]
     [TestCase(TransferSpeedType.NodeData)]
+    [TestCase(TransferSpeedType.BlockAccessLists)]
     public void TransferSpeedCaptureTest(TransferSpeedType speedType)
     {
         _nodeStats = new NodeStatsLight(_node, 0.5f);
@@ -84,7 +85,7 @@ public class NodeStatsTests
 
         _nodeStats.AddNodeStatsEvent(eventType);
         (isConnDelayed, _) = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
-        isConnDelayed.Should().Be(connectionDelayed);
+        Assert.That(isConnDelayed, Is.EqualTo(connectionDelayed));
     }
 
     [TestCase(DisconnectType.Local, DisconnectReason.UselessPeer, true)]
@@ -99,7 +100,7 @@ public class NodeStatsTests
         _nodeStats.AddNodeStatsDisconnectEvent(disconnectType, reason);
         await Task.Delay(125); // Standard disconnect delay without specific handling
         (isConnDelayed, _) = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
-        isConnDelayed.Should().Be(connectionDelayed);
+        Assert.That(isConnDelayed, Is.EqualTo(connectionDelayed));
     }
 
     [TestCase(null, DisconnectReason.Other, 0)]
@@ -116,19 +117,20 @@ public class NodeStatsTests
             _nodeStats.AddNodeStatsDisconnectEvent(disconnectType.Value, reason);
         }
 
-        _nodeStats.CurrentNodeReputation().Should().Be(reputation);
+        Assert.That(_nodeStats.CurrentNodeReputation(), Is.EqualTo(reputation));
     }
 
     [Test]
     public async Task TestRequestLimit()
     {
         _nodeStats = new NodeStatsLight(_node);
-        _nodeStats.GetCurrentRequestLimit(RequestType.Bodies).Should().Be(4);
+        Assert.That(_nodeStats.GetCurrentRequestLimit(RequestType.Bodies), Is.EqualTo(4));
+        Assert.That(_nodeStats.GetCurrentRequestLimit(RequestType.BlockAccessLists), Is.EqualTo(GethSyncLimits.MaxBodyFetch));
 
         int[] result = await _nodeStats.RunSizeAndLatencyRequestSizer<int[], int, int>(RequestType.Bodies, [1, 2, 3, 4, 5],
             (mapped) => Task.FromResult<(int[], long)>((mapped.ToArray(), 1)));
 
-        result.Should().BeEquivalentTo([1, 2, 3, 4]);
-        _nodeStats.GetCurrentRequestLimit(RequestType.Bodies).Should().Be(6);
+        Assert.That(result, Is.EqualTo([1, 2, 3, 4]));
+        Assert.That(_nodeStats.GetCurrentRequestLimit(RequestType.Bodies), Is.EqualTo(6));
     }
 }

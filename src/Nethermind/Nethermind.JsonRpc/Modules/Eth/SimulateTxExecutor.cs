@@ -54,7 +54,7 @@ public class SimulateTxExecutor<TTrace>(
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
                         IReleaseSpec spec = specProvider.GetSpec(header);
-                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation, spec: spec);
+                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation, gasCap: _rpcConfig.GasCap, spec: spec);
                         if (!txResult.Success(out Transaction? tx, out string? error))
                         {
                             return error;
@@ -134,7 +134,7 @@ public class SimulateTxExecutor<TTrace>(
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
 
                 if (givenNumber <= (ulong)lastBlockNumber)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.BlockNumberNotIncreasing, ErrorCodes.InvalidInputBlocksOutOfOrder);
 
                 // if the no. of filler blocks are greater than maximum simulate blocks cap
                 if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
@@ -255,11 +255,11 @@ public class SimulateTxExecutor<TTrace>(
                 TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
                     or TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.FeeCapBelowBaseFee,
                 TransactionResult.ErrorType.NonceOverflow => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.InvalidParams,
+                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.SenderIsNotEoa,
                 TransactionResult.ErrorType.SenderNotSpecified => ErrorCodes.InternalError,
                 TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => ErrorCodes.MaxInitCodeSizeExceeded,
-                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.NonceTooHigh,
+                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.NonceTooLow,
                 _ => ErrorCodes.InternalError
             };
         }
@@ -314,4 +314,11 @@ internal static class SimulateErrorMessages
     /// (error code <see cref="ErrorCodes.InsufficientFunds"/>).
     /// </summary>
     public const string InsufficientFunds = "Insufficient funds to pay for gas fees and value for a transaction";
+
+    /// <summary>
+    /// Returned when a simulated block number is not strictly greater than the previous one
+    /// (error code <see cref="ErrorCodes.InvalidInputBlocksOutOfOrder"/>). Mandated verbatim by
+    /// the execution-apis spec.
+    /// </summary>
+    public const string BlockNumberNotIncreasing = "Block number in sequence did not increase";
 }

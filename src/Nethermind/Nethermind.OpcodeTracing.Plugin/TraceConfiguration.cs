@@ -113,7 +113,7 @@ public sealed record TraceConfiguration
         // Resolve effective block range
         long effectiveStart;
         long effectiveEnd;
-        List<string> warnings = new();
+        List<string> warnings = [];
 
         // Check for conflicting parameters
         if (config.StartBlock.HasValue && config.EndBlock.HasValue && config.RecentBlocks.HasValue)

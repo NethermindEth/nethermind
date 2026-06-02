@@ -9,6 +9,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 
@@ -115,11 +116,8 @@ public class EraExporter(
             {
                 for (long y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
                 {
-                    Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-                    if (block is null)
-                    {
-                        throw new EraException($"Could not find a block with number {y}.");
-                    }
+                    Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
+                        ?? throw new EraException($"Could not find a block with number {y}.");
 
                     TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                     if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
