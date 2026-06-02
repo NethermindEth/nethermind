@@ -92,7 +92,7 @@ namespace Nethermind.Runner.JsonRpc
         {
             if (!_jsonRpcConfig.RestrictIpcSocketPermissions)
             {
-                if (_logger.IsTrace) _logger.Trace("IPC socket permission restriction disabled by configuration.");
+                if (_logger.IsWarn) _logger.Warn("IPC socket permission restriction is disabled by configuration. Any local user can connect to the IPC socket.");
                 return;
             }
 
