@@ -105,6 +105,18 @@ public class JsonRpcServiceTests
             .SetName("Block number boundary leading zero");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
+            """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x01"]""",
+            "hex number with leading zero digits",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
+            .SetName("Block number single digit leading zero one");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBalance),
+            """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x0f"]""",
+            "hex number with leading zero digits",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
+            .SetName("Block number single digit leading zero f");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBalance),
             """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x00001036640"]""",
             "hex number with leading zero digits",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))

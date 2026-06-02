@@ -303,12 +303,31 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (useUtf8Parameters)
         {
-            using JsonDocument document = JsonDocument.Parse(providedParametersUtf8);
-            ValidateEthGetBalanceParameters(document.RootElement);
+            ValidateEthGetBalanceUtf8Parameters(providedParametersUtf8);
             return;
         }
 
         ValidateEthGetBalanceParameters(providedParameters);
+    }
+
+    private static void ValidateEthGetBalanceUtf8Parameters(ReadOnlyMemory<byte> providedParametersUtf8)
+    {
+        int offset = 0;
+        JsonReaderState readerState = default;
+        bool started = false;
+
+        if (!JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> addressParameter))
+        {
+            return;
+        }
+
+        ValidateEthGetBalanceAddress(addressParameter);
+        if (!JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> blockParameter))
+        {
+            return;
+        }
+
+        ValidateEthGetBalanceBlockParameter(blockParameter);
     }
 
     private static void ValidateEthGetBalanceParameters(JsonElement providedParameters)
@@ -349,6 +368,36 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         throw new SafePublicMessageFormatException(Bytes.ErrMissingPrefix);
     }
 
+    private static void ValidateEthGetBalanceAddress(ReadOnlyMemory<byte> addressParameter)
+    {
+        Utf8JsonReader reader = new(addressParameter.Span, isFinalBlock: true, state: default);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.String)
+        {
+            return;
+        }
+
+        int maxLength = reader.HasValueSequence ? checked((int)reader.ValueSequence.Length) : reader.ValueSpan.Length;
+        byte[]? rented = null;
+        Span<byte> buffer = maxLength <= 128 ? stackalloc byte[128] : (rented = ArrayPool<byte>.Shared.Rent(maxLength));
+        try
+        {
+            ReadOnlySpan<byte> value = buffer[..reader.CopyString(buffer)];
+            if (value.IsEmpty || Has0xPrefix(value))
+            {
+                return;
+            }
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+
+        throw new SafePublicMessageFormatException(Bytes.ErrMissingPrefix);
+    }
+
     private static void ValidateEthGetBalanceBlockParameter(JsonElement blockParameter)
     {
         if (blockParameter.ValueKind != JsonValueKind.String)
@@ -373,19 +422,86 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return;
         }
 
-        if ((hexValue.Length == 2 && hexValue[0] == '0' && hexValue[1] == '0')
-            || (hexValue.Length > 2 && hexValue[0] == '0'))
+        if (HasLeadingZeroHexQuantity(hexValue))
         {
             throw new SafePublicMessageFormatException(LeadingZeroHexNumberError);
         }
     }
 
+    private static void ValidateEthGetBalanceBlockParameter(ReadOnlyMemory<byte> blockParameter)
+    {
+        Utf8JsonReader reader = new(blockParameter.Span, isFinalBlock: true, state: default);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.String)
+        {
+            return;
+        }
+
+        int maxLength = reader.HasValueSequence ? checked((int)reader.ValueSequence.Length) : reader.ValueSpan.Length;
+        byte[]? rented = null;
+        Span<byte> buffer = maxLength <= 128 ? stackalloc byte[128] : (rented = ArrayPool<byte>.Shared.Rent(maxLength));
+        try
+        {
+            ReadOnlySpan<byte> value = buffer[..reader.CopyString(buffer)];
+            if (value.IsEmpty || IsNamedBlockParameter(value) || !Has0xPrefix(value))
+            {
+                return;
+            }
+
+            ReadOnlySpan<byte> hexValue = value[2..];
+            if (hexValue.Length == 0)
+            {
+                throw new SafePublicMessageFormatException($"hex string \"{Bytes.EmptyHexValue}\"");
+            }
+
+            if (hexValue.Length == 64)
+            {
+                return;
+            }
+
+            if (HasLeadingZeroHexQuantity(hexValue))
+            {
+                throw new SafePublicMessageFormatException(LeadingZeroHexNumberError);
+            }
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+    }
+
     private static bool IsNamedBlockParameter(string value) =>
-        value.Equals("latest", StringComparison.OrdinalIgnoreCase)
-        || value.Equals("earliest", StringComparison.OrdinalIgnoreCase)
-        || value.Equals("pending", StringComparison.OrdinalIgnoreCase)
-        || value.Equals("finalized", StringComparison.OrdinalIgnoreCase)
-        || value.Equals("safe", StringComparison.OrdinalIgnoreCase);
+        value.Length switch
+        {
+            4 => value.Equals("safe", StringComparison.OrdinalIgnoreCase),
+            6 => value.Equals("latest", StringComparison.OrdinalIgnoreCase),
+            7 => value.Equals("pending", StringComparison.OrdinalIgnoreCase),
+            8 => value.Equals("earliest", StringComparison.OrdinalIgnoreCase),
+            9 => value.Equals("finalized", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+        };
+
+    private static bool IsNamedBlockParameter(ReadOnlySpan<byte> value) =>
+        value.Length switch
+        {
+            4 => Ascii.EqualsIgnoreCase(value, "safe"u8),
+            6 => Ascii.EqualsIgnoreCase(value, "latest"u8),
+            7 => Ascii.EqualsIgnoreCase(value, "pending"u8),
+            8 => Ascii.EqualsIgnoreCase(value, "earliest"u8),
+            9 => Ascii.EqualsIgnoreCase(value, "finalized"u8),
+            _ => false,
+        };
+
+    private static bool Has0xPrefix(ReadOnlySpan<byte> value) =>
+        value.Length >= 2 && Ascii.EqualsIgnoreCase(value[..2], "0x"u8);
+
+    private static bool HasLeadingZeroHexQuantity(ReadOnlySpan<char> hexValue) =>
+        hexValue.Length > 1 && hexValue[0] == '0';
+
+    private static bool HasLeadingZeroHexQuantity(ReadOnlySpan<byte> hexValue) =>
+        hexValue.Length > 1 && hexValue[0] == (byte)'0';
 
     private JsonRpcErrorResponse? PrepareUtf8Parameters(
         ExpectedParameter[] expectedParameters,
