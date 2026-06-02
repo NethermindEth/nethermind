@@ -706,21 +706,6 @@ public class DebugRpcModule(
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
-        // debug_traceCallMany defaults missing gas to gasCap (not block gas limit). The simulate engine
-        // decides "explicit vs default" from the request's Gas field, so we normalize here before
-        // SimulateTxExecutor captures HadGasLimitInRequest.
-        // With gasCap unset/0 ("no cap"), both missing gas and gas: 0x0 should stay omitted so the
-        // engine's normal fallback applies.
-        foreach (TransactionBundle bundle in bundles)
-        {
-            foreach (TransactionForRpc call in bundle.Transactions)
-            {
-                if (call.Gas is null or 0)
-                {
-                    call.Gas = jsonRpcConfig.GasCap is null or 0 ? null : jsonRpcConfig.GasCap;
-                }
-            }
-        }
         SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>
@@ -748,7 +733,7 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> simulationResult =
-            new SimulateTxExecutor<GethLikeTxTrace>(
+            new TraceCallManySimulateTxExecutor(
                 blockchainBridge,
                 blockFinder,
                 jsonRpcConfig,
@@ -769,6 +754,34 @@ public class DebugRpcModule(
             .Select(blockResult => blockResult.Traces);
 
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
+    }
+
+    private sealed class TraceCallManySimulateTxExecutor(
+        IBlockchainBridge blockchainBridge,
+        IBlockFinder blockFinder,
+        IJsonRpcConfig rpcConfig,
+        ISpecProvider specProvider,
+        ISimulateBlockTracerFactory<GethLikeTxTrace> simulateBlockTracerFactory,
+        ulong secondsPerSlot)
+        : SimulateTxExecutor<GethLikeTxTrace>(
+            blockchainBridge,
+            blockFinder,
+            rpcConfig,
+            specProvider,
+            simulateBlockTracerFactory,
+            secondsPerSlot)
+    {
+        protected override void NormalizeTransactionForSimulation(TransactionForRpc transactionForRpc)
+        {
+            // debug_traceCallMany defaults missing gas to gasCap, not block gas limit.
+            // Normalize the request shape before the shared simulate prepare flow captures
+            // whether gas was explicit. With GasCap unset/0, both omitted gas and gas: 0x0
+            // stay omitted so the uncapped simulate path still applies.
+            if (transactionForRpc.Gas is null or 0)
+            {
+                transactionForRpc.Gas = _rpcConfig.GasCap is null or 0 ? null : _rpcConfig.GasCap;
+            }
+        }
     }
 
     private ResultWrapper<byte[]> GetBlockRlpOrFail(BlockParameter blockParameter)

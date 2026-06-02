@@ -30,6 +30,10 @@ public class SimulateTxExecutor<TTrace>(
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
+    protected virtual void NormalizeTransactionForSimulation(TransactionForRpc transactionForRpc)
+    {
+    }
+
     protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
     {
         List<BlockStateCall<TransactionWithSourceDetails>>? blockStateCalls = null;
@@ -49,6 +53,7 @@ public class SimulateTxExecutor<TTrace>(
                     for (int i = 0; i < blockStateCall.Calls.Length; i++)
                     {
                         TransactionForRpc callTransactionModel = blockStateCall.Calls[i];
+                        NormalizeTransactionForSimulation(callTransactionModel);
                         LegacyTransactionForRpc? asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
