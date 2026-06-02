@@ -1,8 +1,8 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Utils;
 
@@ -15,7 +15,7 @@ public abstract class RefCountingDisposable : IDisposable
     private const int NoAccessors = 0;
     private const int Disposing = -1;
 
-    protected PaddedValue _leases;
+    protected CacheLinePaddedLong _leases;
 
     protected RefCountingDisposable(int initialCount = Single) => _leases.Value = initialCount;
 
@@ -119,12 +119,5 @@ public abstract class RefCountingDisposable : IDisposable
     {
         long leases = Volatile.Read(ref _leases.Value);
         return leases == Disposing ? "Disposed" : $"Leases: {leases}";
-    }
-
-    [StructLayout(LayoutKind.Explicit, Size = 128)]
-    protected struct PaddedValue
-    {
-        [FieldOffset(64)]
-        public long Value;
     }
 }

@@ -10,6 +10,6 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <typeparam name="TNode"></typeparam>
 public interface IKademliaMessageSender<TKey, TNode>
 {
-    Task Ping(TNode receiver, CancellationToken token);
-    Task<TNode[]> FindNeighbours(TNode receiver, TKey target, CancellationToken token);
+    Task<bool> Ping(TNode receiver, CancellationToken token);
+    Task<TNode[]?> FindNeighbours(TNode receiver, TKey target, CancellationToken token);
 }
