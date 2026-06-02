@@ -56,9 +56,25 @@ namespace Nethermind.Logging.NLog
             if (IsTrace) _logger.Trace(text);
         }
 
-        public void Error(string text, Exception ex = null)
+        public void Error(string text, Exception? ex = null)
         {
             if (IsError) _logger.Error(ex, text);
+        }
+
+        public void Warn(string text, LogEventKind kind)
+        {
+            if (!IsWarn) return;
+            LogEventInfo evt = LogEventInfo.Create(global::NLog.LogLevel.Warn, _logger.Name, text);
+            evt.Properties["Kind"] = Enum.GetName(kind);
+            _logger.Log(evt);
+        }
+
+        public void Error(string text, LogEventKind kind, Exception? ex = null)
+        {
+            if (!IsError) return;
+            LogEventInfo evt = LogEventInfo.Create(global::NLog.LogLevel.Error, _logger.Name, ex, null, text);
+            evt.Properties["Kind"] = Enum.GetName(kind);
+            _logger.Log(evt);
         }
     }
 }

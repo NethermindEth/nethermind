@@ -1,26 +1,17 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
+public partial class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
 {
-    public static readonly Ripemd160Precompile Instance = new();
+    public static Ripemd160Precompile Instance { get; } = new();
 
-    // missing in .NET Core
-    //        private static RIPEMD160 _ripemd;
-
-    private Ripemd160Precompile()
-    {
-        // missing in .NET Core
-        //            _ripemd = RIPEMD160.Create();
-        //            _ripemd.Initialize();
-    }
+    private Ripemd160Precompile() { }
 
     public static Address Address { get; } = Address.FromNumber(3);
 
@@ -31,9 +22,5 @@ public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         120L * EvmCalculations.Div32Ceiling((ulong)inputData.Length);
 
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        Metrics.Ripemd160Precompile++;
-        return Ripemd.Compute(inputData.Span);
-    }
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 }

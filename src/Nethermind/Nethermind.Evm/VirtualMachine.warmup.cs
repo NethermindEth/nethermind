@@ -58,7 +58,6 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             vm.VmState = vmState;
             vm._worldState = state;
             vm._codeInfoRepository = codeInfoRepository;
-            vmState.InitializeStacks();
 
             RunOpCodes<OnFlag>(vm, state, vmState, spec);
             RunOpCodes<OffFlag>(vm, state, vmState, spec);
@@ -154,7 +153,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
-        EvmStack stack = new(0, txTracer, vmState.DataStack);
+        vmState.InitializeStacks(txTracer, vmState.Env.CodeInfo.CodeSpan, out EvmStack stack);
         TGasPolicy gas = TGasPolicy.FromLong(long.MaxValue);
         int pc = 0;
 
@@ -178,7 +177,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                 }
 
                 state.Reset(resetBlockChanges: true);
-                stack = new(0, txTracer, vmState.DataStack);
+                stack.Head = 0;
                 gas = TGasPolicy.FromLong(long.MaxValue);
                 pc = 0;
             }

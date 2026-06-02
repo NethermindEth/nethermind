@@ -12,7 +12,7 @@ namespace Nethermind.Core;
 
 public static class TypeDiscovery
 {
-    private static readonly HashSet<Assembly> _assembliesWithNethermindTypes = new();
+    private static readonly HashSet<Assembly> _assembliesWithNethermindTypes = [];
     private static readonly Lock _lock = new();
     private static int _allLoaded;
     private static Type? _pluginType;
@@ -38,7 +38,7 @@ public static class TypeDiscovery
             if (Volatile.Read(ref _allLoaded) == 1) return;
 
             List<Assembly> loadedAssemblies = new(capacity: 48);
-            Dictionary<string, Assembly> considered = new();
+            Dictionary<string, Assembly> considered = [];
             foreach (Assembly assembly in AssemblyLoadContext.Default.Assemblies)
             {
                 // Skip null names (shouldn't happen)
@@ -73,7 +73,7 @@ public static class TypeDiscovery
             LoadOnce(loadedAssemblies, considered);
 
             foreach (KeyValuePair<string, Assembly> kv in considered.Where(static kv =>
-                         kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindBasedTypes(kv.Value, _pluginType).Any())))
+                kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindBasedTypes(kv.Value, _pluginType).Any())))
             {
                 _assembliesWithNethermindTypes.Add(kv.Value);
             }

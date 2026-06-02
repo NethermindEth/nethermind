@@ -78,7 +78,6 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    [Ignore("// https://github.com/NethermindEth/nethermind/issues/140")]
     public void Trace_invalid_jump_exception()
     {
         byte[] code = Prepare.EvmCode
@@ -92,7 +91,6 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    [Ignore("// https://github.com/NethermindEth/nethermind/issues/140")]
     public void Trace_invalid_jumpi_exception()
     {
         byte[] code = Prepare.EvmCode
@@ -506,6 +504,19 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32)), "gas");
         Assert.That(traces.Entries.Last().Memory.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void MCopy_zero_length_does_not_validate_offsets()
+    {
+        byte[] bytecode = Prepare.EvmCode
+            .MCOPY(UInt256.MaxValue, UInt256.MaxValue, UInt256.Zero)
+            .STOP()
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.CancunActivation, bytecode);
+
+        Assert.That(receipt.Error, Is.Null);
     }
 
     [Test]

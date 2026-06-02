@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -18,6 +17,7 @@ using Nethermind.Core.Resettables;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
+using EvmMetrics = Nethermind.Evm.Metrics;
 using Nethermind.Logging;
 
 namespace Nethermind.State;
@@ -57,6 +57,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
 
+    public override void Set(in StorageCell storageCell, byte[] newValue)
+    {
+        EvmMetrics.IncrementStorageWrites();
+        base.Set(in storageCell, newValue);
+    }
+
     /// <summary>
     /// Get the current value at the specified location
     /// </summary>
@@ -70,7 +76,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         if (!_originalValues.TryGetValue(storageCell, out byte[] value))
         {
@@ -269,7 +275,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             LoadFromTree(in storageCell);
     }
 
-    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) => GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
+    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
+        GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
     {
@@ -453,6 +460,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             else
             {
                 valueChanges = new StorageChangeTrace(valueChanges.Before, value);
+            }
+
+            if (!storageCell.IsHash)
+            {
+                EnsureStorageTree();
+                _backend.HintSet(storageCell.Index, value);
             }
         }
 

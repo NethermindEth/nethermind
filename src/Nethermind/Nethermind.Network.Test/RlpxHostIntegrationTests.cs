@@ -3,7 +3,6 @@
 
 using System.Net;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
@@ -34,8 +33,8 @@ public class RlpxHostIntegrationTests
         RlpxHost host = CreateHost(filterEnabled, subnetBucketing, externalIp);
         try
         {
-            host.ShouldContact(IPAddress.Parse(addr1)).Should().BeTrue("first IP should be accepted");
-            host.ShouldContact(IPAddress.Parse(addr2)).Should().Be(secondExpected);
+            Assert.That(host.ShouldContact(IPAddress.Parse(addr1)), Is.True, "first IP should be accepted");
+            Assert.That(host.ShouldContact(IPAddress.Parse(addr2)), Is.EqualTo(secondExpected));
         }
         finally
         {
@@ -56,7 +55,7 @@ public class RlpxHostIntegrationTests
             host.TrackSessionActivity(receivedSession);
             receivedSession.MsgReceived += Raise.EventWith(receivedSession, new PeerEventArgs(receivedSession.Node, "eth", 1, 32));
 
-            host.ShouldContact(receivedIp).Should().BeFalse("received traffic should keep the active session filtered");
+            Assert.That(host.ShouldContact(receivedIp), Is.False, "received traffic should keep the active session filtered");
 
             IPAddress deliveredIp = IPAddress.Parse("198.51.100.1");
             ISession deliveredSession = Substitute.For<ISession>();
@@ -65,7 +64,7 @@ public class RlpxHostIntegrationTests
             host.TrackSessionActivity(deliveredSession);
             deliveredSession.MsgDelivered += Raise.EventWith(deliveredSession, new PeerEventArgs(deliveredSession.Node, "eth", 2, 64));
 
-            host.ShouldContact(deliveredIp).Should().BeFalse("sent traffic should keep the active session filtered");
+            Assert.That(host.ShouldContact(deliveredIp), Is.False, "sent traffic should keep the active session filtered");
         }
         finally
         {

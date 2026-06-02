@@ -8,12 +8,22 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public interface ITrieWarmer
 {
-    public void PushSlotJob(
+    public bool PushSlotJob(
         IStorageWarmer storageTree,
-        in UInt256? index,
+        in UInt256 index,
         int sequenceId);
 
-    public void PushAddressJob(
+    /// <summary>
+    /// Like <see cref="PushSlotJob"/>, but safe to call from multiple producer threads.
+    /// Routes through the MPMC job buffer so background <c>HintBal</c> enqueuers do not violate the
+    /// single-producer invariant of the main-thread slot buffer.
+    /// </summary>
+    public bool PushSlotJobMpmc(
+        IStorageWarmer storageTree,
+        in UInt256 index,
+        int sequenceId);
+
+    public bool PushAddressJob(
         IAddressWarmer scope,
         Address? path,
         int sequenceId);

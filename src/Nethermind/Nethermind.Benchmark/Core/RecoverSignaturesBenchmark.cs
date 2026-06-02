@@ -97,7 +97,7 @@ namespace Nethermind.Benchmarks.Core
 
             Transaction[] CreateTransactions(int txCount, int authPerTx)
             {
-                List<Transaction> list = new();
+                List<Transaction> list = [];
                 for (int i = 0; i < txCount; i++)
                 {
                     PrivateKey signer = _privateKeys[i];
@@ -144,7 +144,7 @@ namespace Nethermind.Benchmarks.Core
             ResetSigs(_block10TxWith0AuthSigs);
             ResetSigs(_block3TxWith1AuthSigs);
 
-            void ResetSigs(Block block) => Parallel.ForEach(block.Transactions, (t) =>
+            static void ResetSigs(Block block) => Parallel.ForEach(block.Transactions, (t) =>
             {
                 t.SenderAddress = null;
                 t.Hash = null;

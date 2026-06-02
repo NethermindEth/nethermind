@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -14,11 +15,12 @@ using Nethermind.Specs.ChainSpecStyle.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
-    public class ChainSpecBasedSpecProvider : SpecProviderBase, ISpecProvider
+    public class ChainSpecBasedSpecProvider : SpecProviderBase, IForkAwareSpecProvider
     {
         private readonly ChainSpec _chainSpec;
+        private IForkAwareSpecProvider? _forkAware;
 
-        public ChainSpecBasedSpecProvider(ChainSpec chainSpec, ILogManager logManager = null)
+        public ChainSpecBasedSpecProvider(ChainSpec chainSpec, ILogManager? logManager = null)
             : base(logManager?.GetClassLogger<ChainSpecBasedSpecProvider>() ?? LimboTraceLogger.Instance)
         {
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
@@ -31,8 +33,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private void BuildTransitions()
         {
-            SortedSet<long> transitionBlockNumbers = new();
-            SortedSet<ulong> transitionTimestamps = new();
+            SortedSet<long> transitionBlockNumbers = [];
+            SortedSet<ulong> transitionTimestamps = [];
             transitionBlockNumbers.Add(0L);
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
@@ -124,6 +126,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             LoadTransitions(allTransitions);
 
             TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
+            _forkAware = ForkAwareForChain(_chainSpec.ChainId);
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
@@ -132,6 +135,38 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
+
+        private static readonly List<IForkAwareSpecProvider> _knownProviders =
+        [
+            MainnetSpecProvider.Instance,
+            GnosisSpecProvider.Instance,
+            ChiadoSpecProvider.Instance,
+            SepoliaSpecProvider.Instance,
+            HoodiSpecProvider.Instance,
+            MordenSpecProvider.Instance,
+        ];
+        private static FrozenDictionary<ulong, IForkAwareSpecProvider>? _knownProvidersByChainId;
+
+        /// <summary>
+        /// Built-in plus plugin-registered <see cref="IForkAwareSpecProvider"/>s, keyed by chain id.
+        /// The dictionary is rebuilt lazily after each <see cref="RegisterProvider"/> call.
+        /// </summary>
+        /// <remarks>Plugin registration is expected at startup only; not safe for concurrent mutation.</remarks>
+        public static FrozenDictionary<ulong, IForkAwareSpecProvider> KnownProvidersByChainId =>
+            _knownProvidersByChainId ??= _knownProviders.ToFrozenDictionary(static p => p.ChainId);
+
+        /// <summary>
+        /// Registers an additional <see cref="IForkAwareSpecProvider"/> (e.g. from a plugin) so that
+        /// <see cref="ChainSpecBasedSpecProvider"/> can resolve forks for its chain id. Call at startup.
+        /// </summary>
+        public static void RegisterProvider(IForkAwareSpecProvider provider)
+        {
+            _knownProviders.Add(provider);
+            _knownProvidersByChainId = null;
+        }
+
+        private static IForkAwareSpecProvider? ForkAwareForChain(ulong chainId) =>
+            KnownProvidersByChainId.GetValueOrDefault(chainId);
 
         private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
@@ -182,12 +217,14 @@ namespace Nethermind.Specs.ChainSpecStyle
         protected virtual ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
             ReleaseSpec releaseSpec = CreateEmptyReleaseSpec();
-            releaseSpec.MaximumUncleCount = 2;
+            // EIP-3675: zero uncles post-merge. Runtime fallback is MergeHeaderValidator.
+            releaseSpec.MaximumUncleCount = IsPostMergeRelease(chainSpec, releaseStartBlock, releaseStartTimestamp) ? 0 : 2;
             releaseSpec.DifficultyBoundDivisor = 1;
             releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
             releaseSpec.MaximumExtraDataSize = chainSpec.Parameters.MaximumExtraDataSize;
             releaseSpec.MinGasLimit = chainSpec.Parameters.MinGasLimit;
             releaseSpec.MinHistoryRetentionEpochs = chainSpec.Parameters.MinHistoryRetentionEpochs;
+            releaseSpec.MinBalRetentionEpochs = chainSpec.Parameters.MinBalRetentionEpochs;
             releaseSpec.GasLimitBoundDivisor = chainSpec.Parameters.GasLimitBoundDivisor;
             releaseSpec.IsEip170Enabled = (chainSpec.Parameters.MaxCodeSizeTransition ?? long.MaxValue) <= releaseStartBlock ||
                                           (chainSpec.Parameters.MaxCodeSizeTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -277,16 +314,17 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7251Enabled = (chainSpec.Parameters.Eip7251TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip7251ContractAddress = chainSpec.Parameters.Eip7251ContractAddress;
             releaseSpec.IsEip7623Enabled = (chainSpec.Parameters.Eip7623TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            // EIP-7976 and EIP-7981 are the "Amsterdam floor pricing" bundle: they activate
+            // automatically when the Amsterdam timestamp fires, even if the chainspec omits
+            // their individual transition fields. Other Amsterdam-fork EIPs require explicit
+            // per-EIP transitions in the chainspec.
+            releaseSpec.IsEip7976Enabled = (chainSpec.Parameters.Eip7976TransitionTimestamp ?? chainSpec.AmsterdamTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip7981Enabled = (chainSpec.Parameters.Eip7981TransitionTimestamp ?? chainSpec.AmsterdamTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7883Enabled = (chainSpec.Parameters.Eip7883TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsEip7594Enabled = (chainSpec.Parameters.Eip7594TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7825Enabled = (chainSpec.Parameters.Eip7825TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7918Enabled = (chainSpec.Parameters.Eip7918TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.IsEip7907Enabled = (chainSpec.Parameters.Eip7907TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            if (releaseSpec.IsEip7907Enabled)
-            {
-                releaseSpec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7907;
-            }
             releaseSpec.IsEip8024Enabled = (chainSpec.Parameters.Eip8024TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock;
@@ -308,7 +346,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7708Enabled = (chainSpec.Parameters.Eip7708TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsEip7954Enabled = (chainSpec.Parameters.Eip7954TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            if (releaseSpec.IsEip7954Enabled && !releaseSpec.IsEip7907Enabled)
+            if (releaseSpec.IsEip7954Enabled)
             {
                 releaseSpec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
             }
@@ -347,6 +385,19 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
         }
 
+        // Shanghai (EIP-4895) is the first post-Paris timestamp-activated fork, so TTD-driven
+        // chains like mainnet cross into post-merge once they reach it - that's the only
+        // non-obvious branch below. TTD=0 covers PoS-from-genesis. TerminalPoWBlockNumber
+        // fires only when releaseStartBlock advances past it, which requires the chainspec to
+        // carry post-merge block-number transitions (TerminalPoWBlockNumber is excluded from
+        // AddTransitions above, so it creates no spec boundary of its own). Paris-era blocks
+        // on TTD-driven chains with no such later transitions are not detected here - runtime
+        // MergeHeaderValidator (UnclesHash == empty via PoSSwitcher) is the safety net.
+        private static bool IsPostMergeRelease(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp) =>
+            chainSpec.Parameters.TerminalTotalDifficulty?.IsZero == true
+            || releaseStartBlock > (chainSpec.Parameters.TerminalPoWBlockNumber ?? long.MaxValue)
+            || (chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue) <= (releaseStartTimestamp ?? 0);
+
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
@@ -371,5 +422,12 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;
         public string SealEngine => _chainSpec.SealEngineType;
+        public IEnumerable<string> AvailableForks => _forkAware?.AvailableForks ?? [];
+
+        public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec)
+        {
+            spec = null;
+            return _forkAware?.TryGetForkSpec(forkName, out spec) ?? false;
+        }
     }
 }

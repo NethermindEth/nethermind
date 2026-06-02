@@ -16,6 +16,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public class FlatWorldStateManager(
     IFlatDbManager flatDbManager,
     IPersistence persistence,
+    IPersistenceManager persistenceManager,
     IFlatDbConfig configuration,
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
@@ -46,6 +47,17 @@ public class FlatWorldStateManager(
         flatStateRootIndex,
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
+
+    public long? RetentionWindowBlocks => null;
+
+    public long? OldestStateBlock
+    {
+        get
+        {
+            long blockNumber = persistenceManager.GetCurrentPersistedStateId().BlockNumber;
+            return blockNumber >= 0 ? blockNumber : null;
+        }
+    }
 
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(

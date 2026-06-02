@@ -12,6 +12,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -110,13 +111,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        BlockDecodingResult decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
-        Block? block = decodingResult.Block;
-        if (block is null)
+        Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+        if (decodingResult.IsError)
         {
             if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
+        Block block = decodingResult.Data;
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
@@ -182,7 +183,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
-        if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
+        if (_blockTree.IsOnMainChainBehindOrEqualHead(block.Header))
         {
             if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
             return NewPayloadV1Result.Valid(block.Hash);

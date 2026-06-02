@@ -48,10 +48,7 @@ namespace Nethermind.Api.Steps
             return type;
         }
 
-        public static implicit operator StepInfo(Type type)
-        {
-            return new StepInfo(type);
-        }
+        public static implicit operator StepInfo(Type type) => new(type);
 
         public static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
     }

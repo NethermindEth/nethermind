@@ -29,10 +29,10 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
     }
 
     public IEnumerable<Block> GetAll() => blockDb.GetAllValues(true).Select(bytes =>
-                                               {
-                                                   Rlp.ValueDecoderContext ctx = ((byte[]?)bytes ?? []).AsRlpValueContext();
-                                                   return _blockDecoder.Decode(ref ctx);
-                                               });
+    {
+        Rlp.ValueDecoderContext ctx = ((byte[]?)bytes ?? []).AsRlpValueContext();
+        return _blockDecoder.Decode(ref ctx);
+    });
 
     private void TruncateToMaxSize()
     {

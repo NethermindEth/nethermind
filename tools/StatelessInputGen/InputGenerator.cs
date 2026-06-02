@@ -1,21 +1,71 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
-using System.Globalization;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stateless.Execution;
+using Nethermind.Specs;
+using Nethermind.Stateless.Execution.IO;
 using Spectre.Console;
+using System.Buffers.Binary;
+using System.Globalization;
 
 namespace Nethermind.StatelessInputGen;
 
 internal static class InputGenerator
 {
+    internal static void ConvertToSsz(string filename)
+    {
+        ReadOnlySpan<byte> data = File.ReadAllBytes(filename);
+        ulong dataLen = BinaryPrimitives.ReadUInt64LittleEndian(data);
+        data = data.Slice(sizeof(ulong), checked((int)dataLen));
+
+        (Block block, Witness witness, ulong chainId) = InputSerializer.Deserialize(data);
+
+        NewPayloadRequest<SszExecutionPayloadV3> request = NewPayloadRequest<SszExecutionPayloadV3>.From(block);
+        StatelessInput<SszExecutionPayloadV3> input;
+
+        using (witness)
+        {
+            input = new()
+            {
+                NewPayloadRequest = request,
+                Witness = ExecutionWitness.From(witness),
+                ChainConfig = new()
+                {
+                    ChainId = chainId,
+                    ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId))
+                },
+            };
+        }
+
+        byte[] encoded = StatelessInput<SszExecutionPayloadV3>.Encode(input);
+        byte[] versioned = new byte[encoded.Length + sizeof(ushort)];
+
+        BinaryPrimitives.WriteUInt16BigEndian(versioned, 0);
+        Buffer.BlockCopy(encoded, 0, versioned, sizeof(ushort), encoded.Length);
+
+        {
+            int rem = versioned.Length % sizeof(ulong);
+            int len = sizeof(ulong) + versioned.Length + (rem == 0 ? 0 : (sizeof(ulong) - rem));
+            byte[] framedData = new byte[len];
+
+            BinaryPrimitives.WriteUInt64LittleEndian(framedData, (ulong)versioned.Length);
+            Buffer.BlockCopy(versioned, 0, framedData, sizeof(ulong), versioned.Length);
+            encoded = framedData;
+        }
+
+        string dir = Path.GetDirectoryName(filename) ?? string.Empty;
+        filename = $"{Path.GetFileNameWithoutExtension(filename)}.ssz";
+
+        File.WriteAllBytes(Path.Join(dir, filename), encoded);
+    }
+
     internal static async Task<int> Generate(string blockParam, Uri host, string output, bool forZisk)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
@@ -31,7 +81,23 @@ internal static class InputGenerator
             if (block is null || witness is null || chainId is null)
                 return 1;
 
-            data = InputSerializer.Serialize(block, witness, chainId.Value);
+            StatelessInput<SszExecutionPayloadV3> input = new()
+            {
+                NewPayloadRequest = NewPayloadRequest<SszExecutionPayloadV3>.From(block),
+                Witness = ExecutionWitness.From(witness),
+                ChainConfig = new()
+                {
+                    ChainId = chainId.Value,
+                    ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId.Value))
+                },
+            };
+
+            byte[] encoded = StatelessInput<SszExecutionPayloadV3>.Encode(input);
+            data = new byte[encoded.Length + sizeof(ushort)];
+
+            BinaryPrimitives.WriteUInt16BigEndian(data, 0);
+
+            Buffer.BlockCopy(encoded, 0, data, sizeof(ushort), encoded.Length);
         }
 
         if (forZisk)
@@ -48,7 +114,7 @@ internal static class InputGenerator
 
         Directory.CreateDirectory(output);
 
-        string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}.bin";
+        string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}.ssz";
         string path = Path.Join(output, fileName);
 
         File.WriteAllBytes(path, data);
@@ -82,7 +148,7 @@ internal static class InputGenerator
 
                 byte[] rlp = Convert.FromHexString(rlpHex![2..]);
 
-                IRlpValueDecoder<Block> blockDecoder = Rlp.GetValueDecoder<Block>()!;
+                IRlpDecoder<Block> blockDecoder = Rlp.GetDecoder<Block>()!;
                 Rlp.ValueDecoderContext blockContext = new(rlp);
                 block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
                 blockContext.Check(rlp.Length);
@@ -104,7 +170,7 @@ internal static class InputGenerator
                 AnsiConsole.MarkupLine(
                     $"[green]✓[/] Fetched witness for block {blockNumber}: {GetWitnessSize(witness):N0} bytes");
 
-                ctx.Status = $"[orange1]Fetching chain id[/]";
+                ctx.Status = $"[orange1]Fetching chainId id[/]";
 
                 chainId = await client.Post<ulong?>("eth_chainId");
 
@@ -164,5 +230,13 @@ internal static class InputGenerator
         BlockchainIds.Mainnet => "Mainnet",
         BlockchainIds.Sepolia => "Sepolia",
         _ => $"Not supported ({chainId})"
+    };
+
+    internal static ISpecProvider GetSpecProvider(ulong chainId) => chainId switch
+    {
+        BlockchainIds.Hoodi => HoodiSpecProvider.Instance,
+        BlockchainIds.Mainnet => MainnetSpecProvider.Instance,
+        BlockchainIds.Sepolia => SepoliaSpecProvider.Instance,
+        _ => throw new ArgumentException($"Unsupported chainId id: {chainId}", nameof(chainId))
     };
 }

@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
@@ -41,6 +42,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
+using Nethermind.History;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -48,6 +50,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
+        private bool? _previousStrictHexFormat;
+
         public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig();
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
         public IDebugRpcModule DebugRpcModule => Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
@@ -168,6 +172,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.RpcConfig,
             @this.Bridge,
             @this.BlockFinder,
+            @this.BlockTree,
             @this.ReceiptFinder,
             @this.StateReader,
             @this.TxPool,
@@ -183,10 +188,19 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ProtocolsManager,
             @this.ForkInfo,
             @this.LogIndexConfig,
-            @this.BlocksConfig.SecondsPerSlot);
+            @this.BlocksConfig.SecondsPerSlot,
+            new HeadBlockSignal(@this.BlockTree),
+            new EthCapabilitiesProvider(
+                @this.BlockTree.AsReadOnly(),
+                @this.WorldStateManager,
+                @this.Container.Resolve<ISyncConfig>(),
+                Substitute.For<ISyncPointers>(),
+                Substitute.For<IHistoryConfig>(),
+                Substitute.For<IHistoryPruner>()));
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
+            _previousStrictHexFormat ??= EthereumJsonSerializer.StrictHexFormat;
             EthereumJsonSerializer.StrictHexFormat = RpcConfig.StrictHexFormat;
             await base.Build(builder =>
             {
@@ -217,6 +231,22 @@ namespace Nethermind.JsonRpc.Test.Modules
             EthRpcModule = _ethRpcModuleBuilder(this);
 
             return this;
+        }
+
+        public override void Dispose()
+        {
+            try
+            {
+                base.Dispose();
+            }
+            finally
+            {
+                if (_previousStrictHexFormat is bool previousStrictHexFormat)
+                {
+                    EthereumJsonSerializer.StrictHexFormat = previousStrictHexFormat;
+                    _previousStrictHexFormat = null;
+                }
+            }
         }
 
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>

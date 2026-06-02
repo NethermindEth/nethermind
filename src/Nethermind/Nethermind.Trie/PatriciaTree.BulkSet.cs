@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -15,7 +14,8 @@ namespace Nethermind.Trie;
 
 public partial class PatriciaTree
 {
-    public const int MinEntriesToParallelizeThreshold = 256;
+    public const int MinEntriesToParallelizeThreshold = 128;
+    private const int InPlaceSortThreshold = 32;
     private const int BSearchThreshold = 128;
     private const int FullBranch = (1 << TrieNode.BranchesCount) - 1;
 
@@ -62,33 +62,61 @@ public partial class PatriciaTree
 #if ZK_EVM
         flags |= Flags.DoNotParallelize;
 #endif
+
+        TraverseStack traverseStack = GetTraverseStack();
+
+        TreePath path = TreePath.Empty;
+
+        // Small-batch fast path: skip the ArrayPool<BulkSetEntry>.Rent of a sort buffer and
+        // reuse the entries array for both spans, since InPlaceBucketSort16 / SortTiny sort
+        // in place without needing a separate target.
+        if (entries.Count < InPlaceSortThreshold)
+        {
+            Context ctx = new()
+            {
+                OriginalEntriesArray = entries.UnsafeGetInternalArray(),
+                OriginalSortBufferArray = entries.UnsafeGetInternalArray(),
+            };
+
+            TrieNode? newRoot = BulkSet(
+                ctx,
+                traverseStack,
+                entries.AsSpan(),
+                entries.AsSpan(),
+                ref path,
+                RootRef,
+                0,
+                flags);
+            RootRef = newRoot;
+            _writeBeforeCommit += entries.Count;
+            ReturnTraverseStack(traverseStack);
+            return;
+        }
+
+        // Large-batch path: BucketSort16 needs a separate sort target. Rent a buffer once here
+        // and flip-flop entries/sortBuffer on each recursion level (see `flipCount` in the
+        // recursive BulkSet).
         using ArrayPoolListRef<BulkSetEntry> sortBuffer = new(entries.Count, entries.Count);
 
-        Context ctx = new()
+        Context ctx2 = new()
         {
             OriginalSortBufferArray = sortBuffer.UnsafeGetInternalArray(),
             OriginalEntriesArray = entries.UnsafeGetInternalArray(),
         };
 
-        if (_traverseStack is null)
-            _traverseStack = new Stack<TraverseStack>();
-        else if (_traverseStack.Count > 0)
-            _traverseStack.Clear();
-
-        TreePath path = TreePath.Empty;
-
-        TrieNode? newRoot = BulkSet(
-            ctx,
-            _traverseStack,
+        TrieNode? newRoot2 = BulkSet(
+            ctx2,
+            traverseStack,
             entries.AsSpan(),
             sortBuffer.AsSpan(),
             ref path,
             RootRef,
             0,
             flags);
-        RootRef = newRoot;
+        RootRef = newRoot2;
 
         _writeBeforeCommit += entries.Count;
+        ReturnTraverseStack(traverseStack);
     }
 
     private readonly record struct Context(BulkSetEntry[] OriginalEntriesArray, BulkSetEntry[] OriginalSortBufferArray);
@@ -106,7 +134,7 @@ public partial class PatriciaTree
     /// <exception cref="InvalidOperationException"></exception>
     private TrieNode? BulkSet(
         in Context ctx,
-        Stack<TraverseStack> traverseStack,
+        TraverseStack traverseStack,
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> sortBuffer,
         ref TreePath path,
@@ -145,9 +173,17 @@ public partial class PatriciaTree
 
         int nibMask;
 
-        if ((flags & Flags.WasSorted) != 0)
+        if (entries.Length <= 3)
+        {
+            nibMask = SortTiny(entries, path.Length, indexes);
+        }
+        else if ((flags & Flags.WasSorted) != 0)
         {
             nibMask = HexarySearchAlreadySorted(entries, path.Length, indexes);
+        }
+        else if (entries.Length < InPlaceSortThreshold)
+        {
+            nibMask = InPlaceBucketSort16(entries, path.Length, indexes);
         }
         else
         {
@@ -194,7 +230,8 @@ public partial class PatriciaTree
                 jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
-            Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions, GetTraverseStack,
+            Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
+                GetTraverseStack,
                 (i, _, workerTraverseStack) =>
                 {
                     (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
@@ -298,7 +335,7 @@ public partial class PatriciaTree
     }
 
     [SkipLocalsInit]
-    private TrieNode? BulkSetOne(Stack<TraverseStack> traverseStack, in BulkSetEntry entry, ref TreePath path, TrieNode? node)
+    private TrieNode? BulkSetOne(TraverseStack traverseStack, in BulkSetEntry entry, ref TreePath path, TrieNode? node)
     {
         Span<byte> nibble = stackalloc byte[64];
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);
@@ -338,6 +375,107 @@ public partial class PatriciaTree
         existingNode.SetChild(branchIdx, newChild);
 
         return existingNode;
+    }
+
+    /// <summary>
+    /// Branchless sort for 2-3 entries using compare-and-swap.
+    /// Same contract as <see cref="BucketSort16"/>: returns usedMask and populates indexes.
+    /// </summary>
+    internal static int SortTiny(
+        Span<BulkSetEntry> entries,
+        int pathIndex,
+        Span<int> indexes)
+    {
+        byte n0 = entries[0].GetPathNibble(pathIndex);
+        byte n1 = entries[1].GetPathNibble(pathIndex);
+
+        if (entries.Length == 2)
+        {
+            if (n0 > n1)
+            {
+                (entries[0], entries[1]) = (entries[1], entries[0]);
+                (n0, n1) = (n1, n0);
+            }
+            indexes[n0] = 0;
+            int nibMask = (1 << n0) | (1 << n1);
+            if (n0 != n1) indexes[n1] = 1;
+            return nibMask;
+        }
+
+        // Length == 3: sorting network, 3 compare-and-swaps
+        byte n2 = entries[2].GetPathNibble(pathIndex);
+        if (n0 > n1) { (entries[0], entries[1]) = (entries[1], entries[0]); (n0, n1) = (n1, n0); }
+        if (n1 > n2) { (entries[1], entries[2]) = (entries[2], entries[1]); (n1, n2) = (n2, n1); }
+        if (n0 > n1) { (entries[0], entries[1]) = (entries[1], entries[0]); (n0, n1) = (n1, n0); }
+
+        indexes[n0] = 0;
+        int mask = (1 << n0) | (1 << n1) | (1 << n2);
+        if (n0 != n1) indexes[n1] = 1;
+        if (n1 != n2) indexes[n2] = 2;
+        return mask;
+    }
+
+    /// <summary>
+    /// In-place variant of <see cref="BucketSort16"/> using index-sort + permute.
+    /// Sorts small (index, nibble) pairs (8 bytes) instead of full BulkSetEntry (40 bytes),
+    /// then permutes entries in-place via cycle-following.
+    /// Same contract: returns usedMask and populates indexes.
+    /// </summary>
+    internal static int InPlaceBucketSort16(
+        Span<BulkSetEntry> entries,
+        int pathIndex,
+        Span<int> indexes)
+    {
+        Span<(int idx, byte nib)> sorted = stackalloc (int, byte)[entries.Length];
+        for (int i = 0; i < entries.Length; i++)
+            sorted[i] = (i, entries[i].GetPathNibble(pathIndex));
+
+        for (int i = 1; i < sorted.Length; i++)
+        {
+            (int idx, byte nib) key = sorted[i];
+            int j = i - 1;
+            while (j >= 0 && sorted[j].nib > key.nib)
+            {
+                sorted[j + 1] = sorted[j];
+                j--;
+            }
+            sorted[j + 1] = key;
+        }
+
+        int usedMask = 0;
+        byte prevNib = byte.MaxValue;
+        for (int i = 0; i < sorted.Length; i++)
+        {
+            if (sorted[i].nib != prevNib)
+            {
+                indexes[sorted[i].nib] = i;
+                usedMask |= 1 << sorted[i].nib;
+                prevNib = sorted[i].nib;
+            }
+        }
+
+        // Cycle-following permutation to rearrange entries in-place
+        for (int i = 0; i < sorted.Length; i++)
+        {
+            if (sorted[i].idx == i) continue;
+
+            BulkSetEntry temp = entries[i];
+            int j = i;
+            do
+            {
+                int src = sorted[j].idx;
+                sorted[j].idx = j;
+                if (src == i)
+                {
+                    entries[j] = temp;
+                    break;
+                }
+                entries[j] = entries[src];
+                j = src;
+            } while (true);
+        }
+
+        return usedMask;
     }
 
     /// <summary>
@@ -550,26 +688,6 @@ public partial class PatriciaTree
 
         return usedMask;
     }
-
-    [ThreadStatic]
-    private static Stack<TraverseStack>? _threadStaticTraverseStackPool;
-
-    private Stack<TraverseStack> GetTraverseStack()
-    {
-        Stack<TraverseStack>? traverseStack = _threadStaticTraverseStackPool;
-        if (traverseStack is not null)
-        {
-            _threadStaticTraverseStackPool = null;
-            return traverseStack;
-        }
-        else
-        {
-            return new Stack<TraverseStack>();
-        }
-    }
-
-    private void ReturnTraverseStack(Stack<TraverseStack> threadResource) =>
-        _threadStaticTraverseStackPool = threadResource;
 
     private static int GetSpanOffset<T>(T[] array, Span<T> span)
     {

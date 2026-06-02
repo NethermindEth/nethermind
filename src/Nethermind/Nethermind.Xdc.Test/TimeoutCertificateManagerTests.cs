@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -17,13 +18,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Xdc.Test.Helpers;
 
 namespace Nethermind.Xdc.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class TimeoutCertificateManagerTests
 {
-
     [Test]
     public void VerifyTC_NullCert_Throws()
     {
@@ -60,7 +61,8 @@ public class TimeoutCertificateManagerTests
             specProvider,
             blockTree,
 
-            Substitute.For<ISigner>());
+            Substitute.For<ISigner>(),
+            NullLogManager.Instance);
 
         bool ok = tcManager.VerifyTimeoutCertificate(tc, out string? err);
         Assert.That(ok, Is.False);
@@ -90,7 +92,8 @@ public class TimeoutCertificateManagerTests
             specProvider,
             blockTree,
 
-            Substitute.For<ISigner>());
+            Substitute.For<ISigner>(),
+            NullLogManager.Instance);
 
         bool ok = tcManager.VerifyTimeoutCertificate(tc, out string? err);
         Assert.That(ok, Is.False);
@@ -102,22 +105,36 @@ public class TimeoutCertificateManagerTests
         PrivateKeyGenerator keyBuilder = new();
         PrivateKey[] keys = keyBuilder.Generate(20).ToArray();
         IEnumerable<Address> masterNodes = keys.Select(k => k.Address);
+        int quorumCount = (int)Math.Ceiling(keys.Length * 0.667);
 
         // Base case
-        yield return new TestCaseData(BuildTimeoutCertificate(keys), masterNodes, true);
+        yield return new TestCaseData(BuildTimeoutCertificate(keys), masterNodes, true)
+            .SetName("BaseCase");
 
         // Insufficient signature count
-        PrivateKey[] notEnoughKeys = keys.Take(13).ToArray();
-        yield return new TestCaseData(BuildTimeoutCertificate(notEnoughKeys), masterNodes, false);
+        PrivateKey[] notEnoughKeys = [.. keys.Take(quorumCount - 1)];
+        yield return new TestCaseData(BuildTimeoutCertificate(notEnoughKeys), masterNodes, false)
+            .SetName("InsufficientSignatureCount");
 
         // Duplicated signatures still should fail if not enough
-        yield return new TestCaseData(BuildTimeoutCertificate(notEnoughKeys.Concat(notEnoughKeys).ToArray()), masterNodes, false);
+        yield return new TestCaseData(BuildTimeoutCertificate([.. notEnoughKeys, .. notEnoughKeys]), masterNodes, false)
+            .SetName("DuplicatedSignaturesNotEnough");
 
         // Sufficient signature count
-        yield return new TestCaseData(BuildTimeoutCertificate(keys.Take(14).ToArray()), masterNodes, true);
+        yield return new TestCaseData(BuildTimeoutCertificate([.. keys.Take(quorumCount)]), masterNodes, true)
+            .SetName("SufficientSignatureCount");
 
         // Signer not in master nodes
-        yield return new TestCaseData(BuildTimeoutCertificate(keys), keys.Skip(1).Select(k => k.Address), false);
+        yield return new TestCaseData(BuildTimeoutCertificate(keys), keys.Skip(1).Select(k => k.Address), false)
+            .SetName("SignerNotInMasterNodes");
+
+        //N byte-distinct signatures but only N-1 unique signer addresses (keys[0] signs twice via ECDSA malleability)
+        EthereumEcdsa ecdsa = new(0);
+        ValueHash256 msgHash = TimeoutCertificateManager.ComputeTimeoutMsgHash(1, 0);
+        Signature[] sigs = [.. keys.Take(quorumCount - 1).Select(k => ecdsa.Sign(k, msgHash))];
+        Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
+        yield return new TestCaseData(new TimeoutCertificate(1, [.. sigs, malleable], 0), masterNodes, false)
+            .SetName("MalleableDuplicateSigner");
     }
 
     [TestCaseSource(nameof(TcCases))]
@@ -155,7 +172,7 @@ public class TimeoutCertificateManagerTests
 
         TimeoutCertificateManager tcManager = new(context, Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(), snapshotManager, epochSwitchManager, specProvider,
-            blockTree, signer);
+            blockTree, signer, NullLogManager.Instance);
 
         Assert.That(tcManager.VerifyTimeoutCertificate(timeoutCertificate, out _), Is.EqualTo(expected));
     }
@@ -199,7 +216,7 @@ public class TimeoutCertificateManagerTests
         TimeoutCertificateManager tcManager = new(context,
             Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(), snapshotManager, epochSwitchManager, specProvider,
-            blockTree, signer);
+            blockTree, signer, NullLogManager.Instance);
 
         PrivateKey key = correctSigner ? keys.First() : keys.Last();
         Timeout timeout = XdcTestHelper.BuildSignedTimeout(key, round, gap);
@@ -216,7 +233,8 @@ public class TimeoutCertificateManagerTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockTree>(),
 
-            Substitute.For<ISigner>());
+            Substitute.For<ISigner>(),
+            NullLogManager.Instance);
 
     private static TimeoutCertificate BuildTimeoutCertificate(PrivateKey[] keys, ulong round = 1, ulong gap = 0)
     {

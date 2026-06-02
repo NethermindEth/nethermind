@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -12,6 +12,16 @@ namespace Nethermind.Evm.Precompiles
         static virtual Address Address => Address.Zero;
         static virtual string Name => string.Empty;
         bool SupportsCaching => true;
+
+        /// <summary>
+        /// Returns the normalized input version, that produces the same <see cref="Run"/> output.
+        /// </summary>
+        /// <remarks>
+        /// Used to minimize caching memory usage by grouping same-result inputs under the same key.
+        /// Should be much faster than executing <see cref="Run"/> itself and not allocate.
+        /// </remarks>
+        ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) => inputData;
+
         long BaseGasCost(IReleaseSpec releaseSpec);
         long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
@@ -21,8 +31,8 @@ namespace Nethermind.Evm.Precompiles
     }
 
 
-    public interface IPrecompile<TPrecompileTypeInstance> : IPrecompile
+    public interface IPrecompile<out TPrecompileTypeInstance> : IPrecompile
     {
-        static TPrecompileTypeInstance Instance { get; }
+        static abstract TPrecompileTypeInstance Instance { get; }
     }
 }

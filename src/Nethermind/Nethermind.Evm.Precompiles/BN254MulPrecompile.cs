@@ -16,7 +16,7 @@ public partial class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
     private const int InputLength = 96;
     private const int OutputLength = 64;
 
-    public static readonly BN254MulPrecompile Instance = new();
+    public static BN254MulPrecompile Instance { get; } = new();
 
     public static Address Address { get; } = Address.FromNumber(7);
 
@@ -27,6 +27,13 @@ public partial class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
     public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 6_000L : 40_000L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
+
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData)
+    {
+        ReadOnlyMemory<byte> clamped = inputData.Length > InputLength ? inputData[..InputLength] : inputData;
+        int end = clamped.Span.LastIndexOfAnyExcept((byte)0);
+        return end < 0 ? ReadOnlyMemory<byte>.Empty : clamped[..(end + 1)];
+    }
 
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)

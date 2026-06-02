@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
@@ -45,7 +44,22 @@ namespace Nethermind.AuRa.Test
 
             AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
-            finalizationManager.LastFinalizedBlockLevel.Should().Be(1);
+            Assert.That(finalizationManager.LastFinalizedBlockLevel, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void repeated_SetMainBlockBranchProcessor_is_idempotent()
+        {
+            // The merge plugin can end up calling SetMainBlockBranchProcessor via the wrapper
+            // as well. Initialization must be safe to invoke more than once.
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(3, 1, 1);
+            FinalizeToLevel(1, blockTreeBuilder.ChainLevelInfoRepository);
+
+            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager);
+            finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
+            finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
+
+            Assert.That(finalizationManager.LastFinalizedBlockLevel, Is.EqualTo(1));
         }
 
         private void FinalizeToLevel(long upperLevel, IChainLevelInfoRepository chainLevelInfoRepository)
@@ -82,7 +96,7 @@ namespace Nethermind.AuRa.Test
             _validatorStore.GetValidators(Arg.Any<long?>()).Returns(blockCreators);
 
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree();
-            HashSet<BlockHeader> finalizedBlocks = new();
+            HashSet<BlockHeader> finalizedBlocks = [];
 
             AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager, twoThirdsMajorityTransition);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
@@ -106,8 +120,8 @@ namespace Nethermind.AuRa.Test
 
             IEnumerable<bool> isBlockFinalized = Enumerable.Range(start, chainLength).Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.IsFinalized);
             IEnumerable<bool> expected = Enumerable.Range(start, chainLength).Select(i => i < chainLength - notFinalizedExpectedCount);
-            finalizedBlocks.Count.Should().Be(chainLength - notFinalizedExpectedCount);
-            isBlockFinalized.Should().BeEquivalentTo(expected);
+            Assert.That(finalizedBlocks.Count, Is.EqualTo(chainLength - notFinalizedExpectedCount));
+            Assert.That(isBlockFinalized, Is.EqualTo(expected));
         }
 
         [Test]
@@ -119,7 +133,7 @@ namespace Nethermind.AuRa.Test
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
 
             IEnumerable<bool> result = Enumerable.Range(0, count).Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.IsFinalized);
-            result.Should().BeEquivalentTo(new[] { true, false });
+            Assert.That(result, Is.EqualTo(new[] { true, false }));
         }
 
         [TestCase(2, 4, ExpectedResult = new[] { 1, 3, 1, 0 })]
@@ -269,10 +283,10 @@ namespace Nethermind.AuRa.Test
             int majority = (twoThirdsMajorityTransition ? (validatorCount - 1) * 2 / 3 : (validatorCount - 1) / 2) + 1;
             for (int i = 1; i < rerun + majority; i++)
             {
-                blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(chainLength - i).MainChainBlock.IsFinalized.Should().BeFalse();
+                Assert.That(blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(chainLength - i).MainChainBlock.IsFinalized, Is.False);
             }
 
-            blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(chainLength - rerun - majority - 1).MainChainBlock.IsFinalized.Should().BeTrue();
+            Assert.That(blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(chainLength - rerun - majority - 1).MainChainBlock.IsFinalized, Is.True);
         }
     }
 }

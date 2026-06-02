@@ -9,10 +9,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using ConcurrentCollections;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -54,13 +54,13 @@ public class BlockchainProcessorTests
         {
             private readonly ILogger _logger;
 
-            private readonly ConcurrentHashSet<Hash256> _allowed = new();
+            private readonly ConcurrentHashSet<Hash256> _allowed = [];
 
-            internal readonly HashSet<Hash256> Processed = new();
+            internal readonly HashSet<Hash256> Processed = [];
 
-            private readonly ConcurrentHashSet<Hash256> _allowedToFail = new();
+            private readonly ConcurrentHashSet<Hash256> _allowedToFail = [];
 
-            private readonly HashSet<Hash256> _rootProcessed = new();
+            private readonly HashSet<Hash256> _rootProcessed = [];
 
             private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
 
@@ -493,14 +493,35 @@ public class BlockchainProcessorTests
 
             public ProcessingTestContext IsDeletedAsInvalid()
             {
-                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be deleted");
-                // Drain any stale signal (no NewHeadBlock fires for invalid blocks, so this always times out).
-                processingTestContext._resetEvent.WaitOne(IgnoreWait);
-                Assert.That(processingTestContext._blockTree.Head!.Hash, Is.EqualTo(processingTestContext._headBefore), "head");
-                // Poll until the block is actually deleted — the 200 ms drain above is not enough on slow CI.
-                Assert.That(() => processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None),
-                    Is.Null.After(ProcessingWait, 50), $"block {block.ToString(Block.Format.Short)} should be deleted as invalid");
-                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to be deleted");
+                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be deleted as invalid");
+
+                // BlockchainProcessor.BlockRemoved fires after ProcessBranch's finally
+                // block runs DeleteInvalidBlocks, so waiting on it guarantees the block
+                // is gone from the tree with no polling needed.
+                // Subscribe before checking to avoid missing the event if it fires
+                // between the check and the subscription.
+                ManualResetEventSlim deletedEvent = new(false);
+                void OnBlockRemoved(object? sender, BlockRemovedEventArgs args)
+                {
+                    if (args.BlockHash == block.Hash) deletedEvent.Set();
+                }
+
+                processingTestContext._processor.BlockRemoved += OnBlockRemoved;
+                try
+                {
+                    // Handle the case where BlockRemoved already fired before we subscribed.
+                    if (processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None) is null)
+                        deletedEvent.Set();
+
+                    Assert.That(deletedEvent.Wait(ProcessingWait), Is.True, $"block {block.ToString(Block.Format.Short)} should be deleted as invalid");
+                }
+                finally
+                {
+                    processingTestContext._processor.BlockRemoved -= OnBlockRemoved;
+                }
+
+                Assert.That(processingTestContext._blockTree.Head?.Hash, Is.EqualTo(processingTestContext._headBefore), "head");
+                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to be deleted as invalid");
                 return processingTestContext;
             }
         }
@@ -513,7 +534,7 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext AssertProcessedBlocks(params IEnumerable<Block> blocks)
         {
-            _branchProcessor.Processed.Should().BeEquivalentTo(blocks.Select(b => b.Hash));
+            Assert.That(_branchProcessor.Processed, Is.EqualTo(blocks.Select(b => b.Hash)));
             return this;
         }
 
@@ -593,7 +614,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_block0).BecomesGenesis();
 
         long metricsAfter = Metrics.LastBlockProcessingTimeInMs;
-        metricsAfter.Should().NotBe(metricsBefore);
+        Assert.That(metricsAfter, Is.Not.EqualTo(metricsBefore));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

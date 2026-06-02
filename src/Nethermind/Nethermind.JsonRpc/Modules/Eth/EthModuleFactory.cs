@@ -35,16 +35,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IProtocolsManager protocolsManager,
         IBlocksConfig blocksConfig,
         IForkInfo forkInfo,
-        ILogIndexConfig logIndexConfig)
+        ILogIndexConfig logIndexConfig,
+        IEthCapabilitiesProvider capabilitiesProvider)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
         private readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
+        private readonly HeadBlockSignal _headBlockSignal = new(blockTree);
 
         public override IEthRpcModule Create() => new EthRpcModule(
                 config,
                 blockchainBridgeFactory.CreateBlockchainBridge(),
                 _blockTree,
+                blockTree,
                 receiptStorage,
                 stateReader,
                 txPool,
@@ -58,6 +61,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 protocolsManager,
                 forkInfo,
                 logIndexConfig,
-                _secondsPerSlot);
+                _secondsPerSlot,
+                _headBlockSignal,
+                capabilitiesProvider);
     }
 }

@@ -93,6 +93,10 @@ jobs:
                   runner_label: (
                     (if $mode == "Flat" then "f-" else "hp-" end)
                     + $run_id + "-master-" + $config.network
+                  ),
+                  timeout: (
+                    if $config.network == "mainnet" and $mode == "Flat" then 360
+                    else $config.timeout end
                   )
                 }]')
 
@@ -116,7 +120,7 @@ jobs:
 
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
@@ -150,7 +154,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -336,7 +340,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}

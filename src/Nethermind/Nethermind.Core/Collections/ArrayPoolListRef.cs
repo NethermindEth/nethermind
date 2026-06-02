@@ -30,6 +30,13 @@ public ref struct ArrayPoolListRef<T>
         _count = startingCount;
     }
 
+    internal ArrayPoolListRef(T[] array, int capacity, int count)
+    {
+        _array = array;
+        _capacity = capacity;
+        _count = count;
+    }
+
     public readonly int Count => _count;
     public readonly int Capacity => _capacity;
     public void Add(T item) => ArrayPoolListCore<T>.Add(SafeArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, item);

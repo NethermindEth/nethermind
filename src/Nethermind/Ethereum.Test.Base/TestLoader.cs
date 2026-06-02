@@ -56,12 +56,8 @@ public static class TestLoader
     {
         Assembly assembly = typeof(TTest).Assembly;
         string[] resourceNames = assembly.GetManifestResourceNames();
-        string resourceName = resourceNames.SingleOrDefault(r => r.Contains(testFileName));
-        if (resourceName is null)
-        {
-            throw new ArgumentException($"Cannot find test resource: {testFileName}");
-        }
-
+        string resourceName = resourceNames.SingleOrDefault(r => r.Contains(testFileName))
+            ?? throw new ArgumentException($"Cannot find test resource: {testFileName}");
         JsonSerializerOptions jsonOptions = new()
         {
             PropertyNameCaseInsensitive = true,

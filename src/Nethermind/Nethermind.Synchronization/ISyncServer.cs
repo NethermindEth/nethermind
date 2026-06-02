@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Synchronization;
@@ -17,7 +18,8 @@ namespace Nethermind.Synchronization
         void HintBlock(Hash256 hash, long number, ISyncPeer receivedFrom);
         void AddNewBlock(Block block, ISyncPeer node);
         void StopNotifyingPeersAboutNewBlocks();
-        TxReceipt[] GetReceipts(Hash256 blockHashes);
+        TxReceipt[]? GetReceipts(Hash256 blockHashes);
+        MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
         Block? Find(Hash256 hash);
         BlockHeader? FindHeader(Hash256 hash);
         Hash256? FindHash(long number);

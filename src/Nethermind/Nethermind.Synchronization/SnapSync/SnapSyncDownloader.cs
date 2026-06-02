@@ -47,8 +47,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 catch (Exception e)
                 {
-                    if (Logger.IsDebug)
-                        Logger.Error($"DEBUG/ERROR Error after dispatching the snap sync request. Request: {batch}", e);
+                    Logger.DebugError($"Error after dispatching the snap sync request. Request: {batch}", e);
                 }
             }
         }

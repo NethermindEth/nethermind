@@ -63,13 +63,20 @@ jobs:
           if [[ "${{ github.event_name }}" == "push" || "${{ github.event.inputs.test-suite }}" == "all" ]]; then
             # engine-withdrawals at parallelism 2: the 128-block primary build takes
             # ~5 min on shared CI runners at parallelism 4, consuming the entire 300 s
-            # test timeout before the syncing client starts. engine-[^w] covers all
-            # other engine suites automatically.
+            # test timeout before the syncing client starts.
+            # engine-cancun and engine-api split into two runners each (I* vs non-I*)
+            # to reduce contention.
+            # engine-[^acw] catches exchange-capabilities and any future engine suites.
             {
               echo 'matrix<<MATRIX_END'
               echo '[
+                {"suite":"ethereum/engine", "limit":"engine-cancun/^I", "parallelism":3, "name":"engine-cancun-i"},
+                {"suite":"ethereum/engine", "limit":"engine-cancun/^[^I]", "parallelism":3, "name":"engine-cancun-other"},
+                {"suite":"ethereum/engine", "limit":"engine-api/^I", "parallelism":3, "name":"engine-api-i"},
+                {"suite":"ethereum/engine", "limit":"engine-api/^[^I]", "parallelism":3, "name":"engine-api-other"},
                 {"suite":"ethereum/engine", "limit":"engine-withdrawals", "parallelism":2, "name":"engine-withdrawals"},
-                {"suite":"ethereum/engine", "limit":"engine-[^w]", "name":"engine-other"},
+                {"suite":"ethereum/engine", "limit":"engine-auth", "parallelism":2, "name":"engine-auth"},
+                {"suite":"ethereum/engine", "limit":"engine-[^acw]", "parallelism":2, "name":"engine-other"},
                 {"suite":"ethereum/graphql"},
                 {"suite":"ethereum/rpc-compat"},
                 {"suite":"ethereum/sync"}

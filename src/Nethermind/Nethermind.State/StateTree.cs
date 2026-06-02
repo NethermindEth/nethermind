@@ -17,9 +17,9 @@ namespace Nethermind.State
 {
     public class StateTree : PatriciaTree
     {
-        private readonly AccountDecoder _decoder = new();
+        private static readonly AccountDecoder _decoder = new();
 
-        public static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
+        public static readonly Rlp EmptyAccountRlp = _decoder.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
@@ -38,7 +38,13 @@ namespace Nethermind.State
         public Account? Get(Address address, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
-            return bytes.IsEmpty ? null : _decoder.Decode(bytes);
+            if (bytes.IsEmpty)
+            {
+                return null;
+            }
+
+            Rlp.ValueDecoderContext context = new(bytes);
+            return _decoder.Decode(ref context);
         }
 
         [DebuggerStepThrough]
@@ -59,42 +65,47 @@ namespace Nethermind.State
         internal Account? Get(Hash256 keccak) // for testing
         {
             ReadOnlySpan<byte> bytes = Get(keccak.Bytes);
-            return bytes.IsEmpty ? null : _decoder.Decode(bytes);
+            if (bytes.IsEmpty)
+            {
+                return null;
+            }
+
+            Rlp.ValueDecoderContext context = new(bytes);
+            return _decoder.Decode(ref context);
         }
 
         public void Set(Address address, Account? account)
         {
             KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
-            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account));
         }
 
         public StateTreeBulkSetter BeginSet(int estimatedEntries) => new(estimatedEntries, this);
 
         public class StateTreeBulkSetter(int estimatedEntries, StateTree tree) : IDisposable
         {
-            ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
+            readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
 
             public void Set(Address key, Account? account)
             {
                 KeccakCache.ComputeTo(key.Bytes, out ValueHash256 keccak);
 
-                Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
+                Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : _decoder.Encode(account);
 
                 _bulkWrite.Add(new BulkSetEntry(keccak, accountRlp?.Bytes));
             }
 
             public void Dispose()
             {
-                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = new(_bulkWrite.AsSpan());
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
                 tree.BulkSet(asRef);
-                _bulkWrite.Dispose();
             }
         }
 
         [DebuggerStepThrough]
         public Rlp? Set(Hash256 keccak, Account? account)
         {
-            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
+            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
 
             Set(keccak.Bytes, rlp);
             return rlp;
@@ -102,7 +113,7 @@ namespace Nethermind.State
 
         public Rlp? Set(in ValueHash256 keccak, Account? account)
         {
-            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
+            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
 
             Set(keccak.Bytes, rlp);
             return rlp;
