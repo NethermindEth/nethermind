@@ -106,7 +106,7 @@ namespace Nethermind.Runner.JsonRpc
                 }
                 else if (OperatingSystem.IsWindows())
                 {
-                    if (_logger.IsTrace) _logger.Trace("IPC socket on Windows uses named pipes with OS-level access control; skipping Unix permission setting.");
+                    if (_logger.IsTrace) _logger.Trace("IPC socket on Windows does not support Unix file permission bits; skipping permission restriction.");
                 }
                 else
                 {
