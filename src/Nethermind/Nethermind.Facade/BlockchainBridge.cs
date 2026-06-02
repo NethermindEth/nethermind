@@ -245,25 +245,31 @@ namespace Nethermind.Facade
             string? error = ConstructError(tryCallResult, estimateGasTracer.Error);
 
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
-            // Allowance errors take precedence over any earlier revert: the revert was an artifact
-            // of the gas cap, so surfacing it instead of the affordability error would be misleading.
             error = err switch
             {
+                // Probe failed only because gas hint was below standard intrinsic: if estimation succeeds, clear the probe error.
+                null when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => null,
                 null => error,
                 _ when error is null => err,
+                // Probe's low-gas failure is superseded by whatever the estimator found at full gas.
+                _ when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => err,
                 _ when err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) => err,
                 GasEstimator.InsufficientBalance => err,
                 GasEstimator.InsufficientFundsForGas => err,
                 _ => error
             };
 
+            bool executionReverted = err is not null
+                ? estimateGasTracer.TopLevelRevert // err comes from GasEstimator; TopLevelRevert is authoritative for revert detection here.
+                : tryCallResult.EvmExceptionType == EvmExceptionType.Revert;
+
             return new CallOutput
             {
                 Error = error,
                 GasSpent = estimate,
                 OutputData = estimateGasTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted || err is not null,
-                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert
+                InputError = !executionReverted && error is not null && (!tryCallResult.TransactionExecuted || err is not null),
+                ExecutionReverted = executionReverted
             };
         }
 

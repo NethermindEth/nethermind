@@ -114,7 +114,7 @@ public partial struct ForkchoiceUpdatedRequestWire
 public partial struct ForkchoiceUpdatedResponseWire
 {
     public PayloadStatusWire PayloadStatus { get; set; }
-    [SszList(1)] public SszBytes8[]? PayloadId { get; set; }
+    [SszList(1)] public ulong[]? PayloadId { get; set; }
 }
 
 [SszContainer]
@@ -367,7 +367,6 @@ public partial struct GetBlobsV3ResponseWire
 {
     [SszList(128)] public NullableBlobAndProofV2Wire[]? BlobsAndProofs { get; set; }
 }
-
 [SszContainer(isCollectionItself: true)]
 public partial struct SszWitnessItem
 {
@@ -381,4 +380,3 @@ public partial struct ExecutionWitnessV1Wire
     [SszList(1048576)] public SszWitnessItem[]? Codes { get; set; }
     [SszList(1048576)] public SszWitnessItem[]? Headers { get; set; }
 }
-
