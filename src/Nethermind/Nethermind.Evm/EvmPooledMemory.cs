@@ -152,6 +152,50 @@ public struct EvmPooledMemory
             => memory.AsSpan(offset, length).Clear();
     }
 
+    /// <summary>
+    /// Writes <paramref name="value"/> (with zero padding) into memory at <paramref name="location"/>,
+    /// assuming the caller has already charged memory-expansion gas for this exact destination and
+    /// length (so memory is grown, rented, and the bounds are valid).
+    /// </summary>
+    /// <remarks>
+    /// The copy-to-memory opcodes (CODECOPY/CALLDATACOPY/RETURNDATACOPY) call
+    /// <see cref="IGasPolicy{TSelf}.UpdateMemoryCost"/> immediately before this, which runs
+    /// <see cref="CheckMemoryAccessViolation(in UInt256, ulong, out ulong, out bool)"/> and
+    /// <see cref="UpdateSize"/> for the same (location, length). Re-validating in <see cref="TrySave"/>
+    /// repeats that bounds check and the array-length check behind <c>AsSpan</c>. This variant mirrors
+    /// the already-costed contract of <see cref="CopyAfterGas"/>: it skips the re-validation and writes
+    /// through <see cref="MemoryMarshal.GetArrayDataReference"/>, eliding the redundant bounds checks.
+    /// The <c>location.IsUint64</c> / in-bounds invariant is asserted in debug builds.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void SaveAfterGas(in UInt256 location, in ZeroPaddedSpan value)
+    {
+        if (value.Length == 0)
+        {
+            return;
+        }
+
+        Debug.Assert(location.IsUint64);
+        // UpdateMemoryCost already advanced Size for (location, length) but defers the actual rent
+        // (it calls UpdateSize with rentIfNeeded:false), so we still materialize the buffer here —
+        // PrepareAccessAfterGas only rents, it does NOT re-run the bounds check that TrySave repeats.
+        Debug.Assert(location.u0 + (ulong)value.Length <= Size);
+        PrepareAccessAfterGas(location.u0 + (ulong)value.Length);
+
+        int intLocation = TruncateToInt32(location.u0);
+        int spanLength = value.Span.Length;
+        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
+
+        if (spanLength > 0)
+        {
+            value.Span.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref memory, intLocation), spanLength));
+        }
+        if (value.PaddingLength > 0)
+        {
+            MemoryMarshal.CreateSpan(ref Unsafe.Add(ref memory, intLocation + spanLength), value.PaddingLength).Clear();
+        }
+    }
+
     public bool TryLoadSpan(scoped in UInt256 location, out Span<byte> data)
     {
         CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out bool isViolation);
