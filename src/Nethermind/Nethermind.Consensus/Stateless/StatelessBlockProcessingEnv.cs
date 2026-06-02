@@ -55,7 +55,8 @@ public class StatelessBlockProcessingEnv(
                 ParallelExecution = false,
                 ParallelExecutionBatchRead = false
             },
-            new WithdrawalProcessorFactory(logManager)
+            new WithdrawalProcessorFactory(logManager),
+            witnessMode: true
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
