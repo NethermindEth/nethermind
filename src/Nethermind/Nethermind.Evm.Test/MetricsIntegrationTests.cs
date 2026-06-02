@@ -161,9 +161,9 @@ public class MetricsIntegrationTests
     }
 
     [TestCase(ExecutionOptions.Commit, false, 1, TestName = "Block gas metrics count committed transactions")]
+    [TestCase(ExecutionOptions.Commit, true, 1, TestName = "Block gas metrics count committed system transactions")]
     [TestCase(ExecutionOptions.CommitAndRestore, false, 0, TestName = "Block gas metrics skip call-and-restore transactions")]
     [TestCase(ExecutionOptions.SkipValidationAndCommit, true, 0, TestName = "Block gas metrics skip trace-style system calls")]
-    [TestCase(ExecutionOptions.SkipValidationAndCommit | ExecutionOptions.OriginalValidate, true, 1, TestName = "Block gas metrics count committed system transactions with original validate marker")]
     public void Block_gas_metrics_track_only_block_like_execution_modes(ExecutionOptions options, bool useSystemCall, long expectedTransactions)
     {
         Metrics.ResetBlockStats();

@@ -17,6 +17,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private readonly bool _isAura;
+    private const ExecutionOptions OriginalValidate = (ExecutionOptions)(1 << 30);
 
     /// <summary>
     /// Initializes a processor for system-transaction execution paths.
@@ -44,7 +45,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
         return base.Execute(tx, tracer, !coreOpts.HasFlag(ExecutionOptions.SkipValidation)
-            ? opts | ExecutionOptions.OriginalValidate | ExecutionOptions.SkipValidationAndCommit
+            ? opts | OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
 
@@ -70,7 +71,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {
-        if (opts.HasFlag(ExecutionOptions.OriginalValidate))
+        if (opts.HasFlag(OriginalValidate))
         {
             base.PayValue(tx, spec, opts);
         }
@@ -82,7 +83,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
             effectiveGasPrice);
 
     private static bool ShouldUpdateCommittedSystemMetrics(ExecutionOptions opts) =>
-        opts.HasFlag(ExecutionOptions.OriginalValidate)
+        opts.HasFlag(OriginalValidate)
         && !opts.HasFlag(ExecutionOptions.Restore)
         && !opts.HasFlag(ExecutionOptions.Warmup);
 

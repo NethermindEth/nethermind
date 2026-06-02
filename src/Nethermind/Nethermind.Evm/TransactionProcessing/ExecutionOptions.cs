@@ -48,8 +48,4 @@ public enum ExecutionOptions
     /// </summary>
     CommitAndRestore = Commit | Restore | SkipValidation,
 
-    /// <summary>
-    /// Internal marker set for committed system-transaction paths that still need original validation semantics.
-    /// </summary>
-    OriginalValidate = 1 << 30,
 }
