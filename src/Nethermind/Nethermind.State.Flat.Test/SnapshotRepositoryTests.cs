@@ -170,14 +170,14 @@ public class SnapshotRepositoryTests
     }
 
     [Test]
-    public void TryLeaseState_MultipleLeases_AllSucceed()
+    public void TryLeaseState_MultipleLeases_AllSucceed([Values] bool compacted)
     {
-        AddSnapshotToRepository(0, 1);
+        AddSnapshotToRepository(0, 1, compacted: compacted);
 
         StateId to = CreateStateId(1);
-        bool leased1 = _repository.TryLeaseState(to, out Snapshot? snapshot1);
-        bool leased2 = _repository.TryLeaseState(to, out Snapshot? snapshot2);
-        bool leased3 = _repository.TryLeaseState(to, out Snapshot? snapshot3);
+        bool leased1 = TryLease(to, compacted, out Snapshot? snapshot1);
+        bool leased2 = TryLease(to, compacted, out Snapshot? snapshot2);
+        bool leased3 = TryLease(to, compacted, out Snapshot? snapshot3);
 
         Assert.That(leased1, Is.True);
         Assert.That(leased2, Is.True);
@@ -189,22 +189,6 @@ public class SnapshotRepositoryTests
         snapshot1!.Dispose();
         snapshot2!.Dispose();
         snapshot3!.Dispose();
-    }
-
-    [Test]
-    public void TryLeaseCompactedState_MultipleLeases_AllSucceed()
-    {
-        AddSnapshotToRepository(0, 1, compacted: true);
-
-        StateId to = CreateStateId(1);
-        bool leased1 = _repository.TryLeaseCompactedState(to, out Snapshot? snapshot1);
-        bool leased2 = _repository.TryLeaseCompactedState(to, out Snapshot? snapshot2);
-
-        Assert.That(leased1, Is.True);
-        Assert.That(leased2, Is.True);
-
-        snapshot1!.Dispose();
-        snapshot2!.Dispose();
     }
 
     #endregion
