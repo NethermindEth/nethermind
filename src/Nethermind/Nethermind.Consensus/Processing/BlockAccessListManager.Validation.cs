@@ -301,6 +301,17 @@ public partial class BlockAccessListManager
     /// column-index fast path (no lane rows land for it on either side) but must still be
     /// rejected — <see cref="ValidateBlockAccessList"/>'s fallback walk catches it.
     /// </summary>
+    /// <remarks>
+    /// This is the read-only-account analogue of <see cref="IsToleratedGeneratedOnlyAccount"/>:
+    /// both decide whether a generated-only account (present in generated, absent from suggested)
+    /// is benign, but they tolerate slightly different sets. This predicate tolerates <em>any</em>
+    /// storage-read row, whereas <see cref="IsToleratedGeneratedOnlyAccount"/> keys off
+    /// <c>hasChargeableReads</c>; neither tolerates system contracts. The asymmetry is safe because
+    /// account-set presence is independently backstopped on both validation paths — the parallel
+    /// path by <see cref="ValidateStructuralEquivalence"/> (called from the verify-only branch of
+    /// <c>SetBlockAccessList</c>) and the sequential path by the <c>BlockAccessListHash</c>
+    /// recompute — so a missed account here cannot make an invalid block validate.
+    /// </remarks>
     private static bool HasRequiredReadAccountMissing(BlockAccessListAtIndex slice, BlockAccessListValidationIndex suggestedValidationIndex)
     {
         foreach (AccountChangesAtIndex ac in slice.AccountChanges)
