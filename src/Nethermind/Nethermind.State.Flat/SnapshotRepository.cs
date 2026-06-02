@@ -34,10 +34,9 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     {
         if (baseBlock == targetState) return SnapshotPooledList.Empty();
 
-        // BFS over the snapshot graph: each StateId node has up to 2 edges, explored widest-jump
-        // first - the in-memory compacted snapshot, then the in-memory base snapshot. Finds a path
-        // from `baseBlock` back to exactly `targetState`. `visited` owns a lease on every leased
-        // snapshot; the winning path is re-leased before the finally releases all of them.
+        // BFS from baseBlock back to targetState across both compacted (wider jump, tried first) and
+        // base snapshot edges. `visited` owns a lease on every leased snapshot for the duration of
+        // the search; the winning path is re-acquired before the finally releases them all.
         using ArrayPoolListRef<(Snapshot Snapshot, int ParentIndex)> visited = new(estimatedSize);
         using PooledQueue<(StateId Current, int ParentIndex)> queue = new();
         using PooledSet<StateId> seen = new();
@@ -86,14 +85,12 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
             if (winnerIndex < 0) return SnapshotPooledList.Empty();
 
-            // Walk winner -> root: yields ascending order directly (result[0].From == targetState,
-            // result[^1].To == baseBlock).
+            // Walk winner -> root yields ascending order: result[0].From == targetState, result[^1].To == baseBlock.
             SnapshotPooledList result = new(estimatedSize);
             for (int walk = winnerIndex; walk >= 0; walk = visited[walk].ParentIndex)
             {
-                // `visited` still holds the BFS lease, so the ref-count is at least 1 and
-                // re-acquisition cannot fail. Asserted to flag any future Snapshot lifecycle change
-                // (e.g. a "closing" sentinel) that could invalidate the invariant.
+                // `visited` still holds a lease, so re-acquire cannot fail; assert flags future
+                // Snapshot lifecycle changes that could break this invariant.
                 bool acquired = visited[walk].Snapshot.TryAcquire();
                 Debug.Assert(acquired, "TryAcquire failed despite held lease");
                 result.Add(visited[walk].Snapshot);
@@ -222,7 +219,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return sortedSnapshots.GetViewBetween(min, max).ToPooledList(0);
     }
 
-    public bool HasForkAt(long blockNumber)
+    private bool HasForkAt(long blockNumber)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
@@ -303,12 +300,9 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public void RemoveSiblingAndDescendents(in StateId canonicalStateId)
     {
-        // Walk blocks above the persisted state in batches of `PruneBatchSize`. For each state
-        // probe a DFS path back to `canonicalStateId`; states with no such path are orphaned
-        // descendants of a non-canonical sibling and must be dropped. Processing ascending lets the
-        // DFS for higher states short-circuit cheaply: once a non-canonical state is removed its
-        // descendants' edges lead into an empty entry and the search returns immediately. Compacted
-        // snapshots are followed too - their wider jumps make the canonical probe terminate fast.
+        // Fast-fail when the persisted block has no sibling state: nothing above it can be orphaned.
+        if (!HasForkAt(canonicalStateId.BlockNumber)) return;
+
         StateId? lastStateId = GetLastSnapshotId();
         if (lastStateId is null || lastStateId.Value.BlockNumber <= canonicalStateId.BlockNumber) return;
 

@@ -75,6 +75,17 @@ public class SnapshotRepositoryTests
         return snapshots;
     }
 
+    private void BuildSnapshotChain(StateId start, long endBlock, byte rootByte = 0)
+    {
+        StateId prev = start;
+        for (long block = start.BlockNumber + 1; block <= endBlock; block++)
+        {
+            StateId next = CreateStateId(block, rootByte);
+            AddSnapshotToRepository(prev, next);
+            prev = next;
+        }
+    }
+
     #region Snapshot Addition and Removal
 
     [Test]
@@ -396,7 +407,7 @@ public class SnapshotRepositoryTests
     public void AssembleSnapshots_CompactedOvershoot_FallsBackToBaseEdges()
     {
         BuildSnapshotChain(0, 5);
-        AddSnapshotToRepository(0, 5, compacted: true); // Compacted edge overshoots target 2
+        AddSnapshotToRepository(0, 5, compacted: true);
 
         using SnapshotPooledList assembled = _repository.AssembleSnapshots(CreateStateId(5), CreateStateId(2), 10);
 
@@ -418,11 +429,7 @@ public class SnapshotRepositoryTests
     [Test]
     public void AssembleSnapshots_UnreachableTarget_ReturnsEmpty()
     {
-        // Chain starts at block 1, so block 0 is not reachable.
-        for (long block = 1; block < 4; block++)
-        {
-            AddSnapshotToRepository(block, block + 1);
-        }
+        BuildSnapshotChain(1, 4);
 
         using SnapshotPooledList assembled = _repository.AssembleSnapshots(CreateStateId(4), CreateStateId(0), 10);
 
@@ -432,7 +439,6 @@ public class SnapshotRepositoryTests
     [Test]
     public void AssembleSnapshots_SelfReferencingSnapshot_ReturnsEmptyWithoutHanging()
     {
-        // A snapshot whose From == To must not cause an infinite walk.
         AddSnapshotToRepository(CreateStateId(1), CreateStateId(1));
 
         using SnapshotPooledList assembled = _repository.AssembleSnapshots(CreateStateId(1), CreateStateId(0), 10);
@@ -456,19 +462,11 @@ public class SnapshotRepositoryTests
     [Test]
     public void RemoveSiblingAndDescendents_OrphanedFork_PrunesUnreachableDescendantsAbovePersistedBlock()
     {
-        // Common chain 0->1->2->3, then a canonical branch and a non-canonical branch both
-        // diverging at block 3. Persisting canonical block 5 orphans the non-canonical
-        // descendants above block 5 - they must be pruned so HasState stops reporting them.
+        // Common 0->3, then canonical and non-canonical branches both diverging at block 3.
+        // Persisting C(5) must prune NC descendants above block 5 (kept at/below — that's RemoveStatesUntil's job).
         BuildSnapshotChain(0, 3);
-        for (long block = 3; block < 7; block++)
-        {
-            AddSnapshotToRepository(CreateStateId(block), CreateStateId(block + 1));
-        }
-        for (long block = 3; block < 7; block++)
-        {
-            StateId from = block == 3 ? CreateStateId(3) : CreateStateId(block, rootByte: 1);
-            AddSnapshotToRepository(from, CreateStateId(block + 1, rootByte: 1));
-        }
+        BuildSnapshotChain(CreateStateId(3), 7);
+        BuildSnapshotChain(CreateStateId(3), 7, rootByte: 1);
 
         _repository.RemoveSiblingAndDescendents(CreateStateId(5));
 
@@ -483,8 +481,6 @@ public class SnapshotRepositoryTests
     [Test]
     public void RemoveSiblingAndDescendents_ForkAbovePersistedBlock_KeepsBothBranches()
     {
-        // A fork that diverges above the persisted block is still reachable from the
-        // canonical state and must be kept.
         BuildSnapshotChain(0, 6);
         AddSnapshotToRepository(CreateStateId(6), CreateStateId(7));
         AddSnapshotToRepository(CreateStateId(6), CreateStateId(7, rootByte: 1));
