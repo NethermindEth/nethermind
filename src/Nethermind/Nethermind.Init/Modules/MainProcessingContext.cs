@@ -50,11 +50,10 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor, IBlockProcessor, IProcessingStats>((branchProcessor, blockProcessor, processingStats) =>
+                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
                     new BlockchainProcessor(
                         blockTree,
                         branchProcessor,
-                        blockProcessor,
                         compositeBlockPreprocessorStep,
                         worldStateManager.GlobalStateReader,
                         logManager,

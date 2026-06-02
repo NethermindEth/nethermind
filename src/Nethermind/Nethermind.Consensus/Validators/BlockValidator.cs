@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
@@ -155,6 +156,9 @@ public class BlockValidator(
     /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
     /// <param name="error">Detailed error message if validation fails otherwise <value>null</value>.</param>
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
+    public bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState) =>
+        InclusionListValidator.IsSatisfied(block, parentSenderState, _specProvider.GetSpec(block.Header));
+
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
     {
         // EIP-7928: enforce the BAL item gas-limit floor against the BAL produced during

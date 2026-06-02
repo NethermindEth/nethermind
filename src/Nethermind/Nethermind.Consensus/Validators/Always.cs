@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
@@ -41,6 +42,7 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
     public bool ValidateSuggestedBlock(Block block, BlockHeader parent, out string? error, bool validateHashes = true) => Validate(out error);
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error) => Validate(out error);
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) => Validate(out error);
+    public bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState) => _result;
 
     private bool Validate(out string? error)
     {

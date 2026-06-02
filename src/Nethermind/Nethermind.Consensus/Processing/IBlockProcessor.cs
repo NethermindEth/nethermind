@@ -34,9 +34,6 @@ namespace Nethermind.Consensus.Processing
             IReleaseSpec spec,
             CancellationToken token = default);
 
-        bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options);
-
-
         public interface IBlockTransactionsExecutor
         {
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);

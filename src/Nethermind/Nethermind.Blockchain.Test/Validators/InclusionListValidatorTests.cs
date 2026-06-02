@@ -19,14 +19,12 @@ public class InclusionListValidatorTests
     private readonly Dictionary<AddressAsKey, AccountSnapshot> ParentSenderState = new() { [TestItem.AddressA] = new AccountSnapshot(10.Ether, 0) };
 
     private ISpecProvider _specProvider = null!;
-    private InclusionListValidator _inclusionListValidator = null!;
     private Transaction _validTx = null!;
 
     [SetUp]
     public void Setup()
     {
         _specProvider = new CustomSpecProvider(((ForkActivation)0, Bogota.Instance));
-        _inclusionListValidator = new InclusionListValidator(_specProvider);
 
         _validTx = Build.A.Transaction
             .WithGasLimit(100_000)
@@ -47,7 +45,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -60,7 +58,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -72,7 +70,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.False);
+        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.False);
     }
 
     [Test]
@@ -83,14 +81,13 @@ public class InclusionListValidatorTests
             .WithGasUsed(1_000_000)
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, new Dictionary<AddressAsKey, AccountSnapshot>()), Is.False);
+        Assert.That(InclusionListValidator.IsSatisfied(block, new Dictionary<AddressAsKey, AccountSnapshot>(), _specProvider.GetSpec(block.Header)), Is.False);
     }
 
     [Test]
     public void When_il_disabled_by_spec_then_accept_even_if_excluded()
     {
-        ISpecProvider prePragueProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance));
-        InclusionListValidator preBogotaValidator = new(prePragueProvider);
+        IReleaseSpec preBogotaSpec = Prague.Instance;
 
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
@@ -98,7 +95,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(preBogotaValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, preBogotaSpec), Is.True);
     }
 
     [Test]
@@ -119,7 +116,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([expensiveTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -140,7 +137,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([futureNonceTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -162,7 +159,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([lowGasPriceTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -183,7 +180,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([wideTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -207,7 +204,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx, invalidTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -219,7 +216,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, new Dictionary<AddressAsKey, AccountSnapshot>()), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, new Dictionary<AddressAsKey, AccountSnapshot>(), _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     /// <summary>
@@ -246,7 +243,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.False);
+        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.False);
     }
 
     /// <summary>
@@ -274,6 +271,6 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([eip1559Tx])
             .TestObject;
 
-        Assert.That(_inclusionListValidator.ValidateInclusionList(block, ParentSenderState), Is.False);
+        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.False);
     }
 }

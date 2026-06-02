@@ -41,7 +41,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public ITracerBag Tracers => _compositeBlockTracer;
 
     private readonly IBranchProcessor _branchProcessor;
-    private readonly IBlockProcessor _blockProcessor;
     private readonly IBlockPreprocessorStep _recoveryStep;
     private readonly IStateReader _stateReader;
     private readonly Options _options;
@@ -97,7 +96,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
-        IBlockProcessor blockProcessor,
         IBlockPreprocessorStep recoveryStep,
         IStateReader stateReader,
         ILogManager logManager,
@@ -107,7 +105,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
         _branchProcessor = branchProcessor;
-        _blockProcessor = blockProcessor;
         _recoveryStep = recoveryStep;
         _stateReader = stateReader;
         _options = options;
@@ -378,7 +375,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 {
                     NotifyFailedOrSkipped(blockRef, block, error);
                 }
-                else if (!_blockProcessor.ValidateInclusionList(block, processedBlock, blockRef.ProcessingOptions))
+                else if (!blockRef.ProcessingOptions.ContainsFlag(ProcessingOptions.NoValidation) && block.InclusionListUnsatisfied)
                 {
                     NotifyInvalidInclusionList(blockRef, block, error);
                 }

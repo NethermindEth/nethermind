@@ -52,7 +52,6 @@ public partial class BlockProcessor(
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
     protected readonly ILogManager _logManager = logManager;
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
-    private readonly IInclusionListValidator _inclusionListValidator = new InclusionListValidator(specProvider);
     private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() =>
         new(
             beaconBlockRootHandler,
@@ -103,8 +102,7 @@ public partial class BlockProcessor(
         if (runInclusionListValidation)
         {
             block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
-            suggestedBlock.InclusionListUnsatisfied =
-                !_inclusionListValidator.ValidateInclusionList(block, parentSenderState);
+            suggestedBlock.InclusionListUnsatisfied = !blockValidator.ValidateInclusionList(block, parentSenderState);
         }
 
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
@@ -130,20 +128,6 @@ public partial class BlockProcessor(
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
         suggestedBlock.GeneratedBlockAccessList = block.GeneratedBlockAccessList;
         suggestedBlock.EncodedBlockAccessList = block.EncodedBlockAccessList ?? suggestedBlock.EncodedBlockAccessList;
-    }
-
-    /// <summary>
-    /// Reads back the IL verdict cached in <see cref="ProcessOne"/>. Safe outside the
-    /// worldstate scope (the actual check ran inside it).
-    /// </summary>
-    public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
-    {
-        if (options.ContainsFlag(ProcessingOptions.NoValidation))
-        {
-            return true;
-        }
-
-        return !suggestedBlock.InclusionListUnsatisfied;
     }
 
     private static readonly Dictionary<AddressAsKey, AccountSnapshot> EmptyParentSenderState = [];

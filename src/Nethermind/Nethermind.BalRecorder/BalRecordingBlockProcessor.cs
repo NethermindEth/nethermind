@@ -43,7 +43,4 @@ public class BalRecordingBlockProcessor(
             store.Insert(block, balManager.GeneratedBlockAccessList);
         return (block, receipts);
     }
-
-    public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
-        => inner.ValidateInclusionList(suggestedBlock, block, options);
 }

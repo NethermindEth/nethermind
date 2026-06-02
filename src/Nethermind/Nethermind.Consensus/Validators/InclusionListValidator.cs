@@ -14,12 +14,9 @@ namespace Nethermind.Consensus.Validators;
 /// effects of any IL txs the block already includes; post-execution state would let a
 /// censoring builder defeat the IL with a same-nonce replacement tx.
 /// </summary>
-public class InclusionListValidator(ISpecProvider specProvider) : IInclusionListValidator
+public static class InclusionListValidator
 {
-    public bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState) =>
-        ValidateInclusionList(block, parentSenderState, specProvider.GetSpec(block.Header));
-
-    private static bool ValidateInclusionList(
+    public static bool IsSatisfied(
         Block block,
         IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState,
         IReleaseSpec spec)

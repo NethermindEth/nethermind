@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using System.Diagnostics.CodeAnalysis;
 
@@ -12,4 +13,10 @@ public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
     bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true);
     bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error);
     bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error);
+
+    /// <summary>
+    /// EIP-7805 IL satisfaction. Reference state is the parent block snapshot — post-execution
+    /// state can be manipulated by a censoring builder via a same-nonce replacement tx.
+    /// </summary>
+    bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState);
 }

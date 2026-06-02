@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -27,6 +28,9 @@ public class BalRecordingBlockValidator(IBlockValidator inner, BalRecorderSpecSw
 
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
         inner.ValidateBodyAgainstHeader(header, toBeValidated, out error);
+
+    public bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState) =>
+        inner.ValidateInclusionList(block, parentSenderState);
 
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
     {

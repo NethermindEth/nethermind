@@ -1218,9 +1218,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     throw;
                 }
             }
-
-            public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
-                => blockProcessor.ValidateInclusionList(suggestedBlock, block, options);
         }
     }
 }

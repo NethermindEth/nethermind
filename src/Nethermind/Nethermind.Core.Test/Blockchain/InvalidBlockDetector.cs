@@ -40,8 +40,5 @@ public class InvalidBlockDetector
                 throw;
             }
         }
-
-        public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
-            => baseBlockProcessor.ValidateInclusionList(suggestedBlock, block, options);
     }
 }
