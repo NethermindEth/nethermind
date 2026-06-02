@@ -15,6 +15,15 @@ on:
         options:
           - mainnet
           - gnosis
+      target_url:
+        description: Target node RPC URL
+        required: false
+        default: 'http://localhost:8545'
+        type: string
+      reference_url:
+        description: Reference node RPC URL
+        required: true
+        type: string
 
 jobs:
   build-and-push:
@@ -61,8 +70,8 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.RPC_MONITOR_SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.RPC_MONITOR_SLACK_CHANNEL_ID }}
-          REFERENCE_URL: ${{ secrets.RPC_MONITOR_REFERENCE_URL }}
-          TARGET_URL: ${{ secrets.RPC_MONITOR_TARGET_URL || 'http://localhost:8545' }}
+          TARGET_URL: ${{ inputs.target_url }}
+          REFERENCE_URL: ${{ inputs.reference_url }}
           CHAIN: ${{ inputs.chain }}
         with:
           host: ${{ secrets.RPC_MONITOR_SSH_HOST }}
