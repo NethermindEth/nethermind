@@ -67,8 +67,6 @@ public class BalRecordingBlockProcessorTests
         public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
             => (ProcessedBlock ?? suggestedBlock, []);
 
-        public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options) => true;
-
         public event Action? TransactionsExecuted;
 
         public void RaiseTransactionsExecuted() => TransactionsExecuted?.Invoke();
