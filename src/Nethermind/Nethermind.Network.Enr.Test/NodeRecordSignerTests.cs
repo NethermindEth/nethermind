@@ -192,6 +192,16 @@ public class NodeRecordSignerTests
         Assert.That(() => NodeRecord.FromBytes(recordWithTrailingBytes), Throws.TypeOf<RlpException>());
     }
 
+    [Test]
+    public void FromBytes_throws_rlp_exception_when_signature_cannot_recover()
+    {
+        byte[] publicKey = new byte[CompressedPublicKey.LengthInBytes];
+        RlpStream rlpStream = CreateRecord(
+            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")),
+            (EnrContentKey.SecP256k1, stream => stream.Encode(publicKey), Rlp.LengthOf(publicKey)));
+
+        Assert.That(() => NodeRecord.FromBytes(rlpStream.Data), Throws.TypeOf<RlpException>());
+    }
 
     [Test]
     public void Cannot_verify_when_signature_missing()

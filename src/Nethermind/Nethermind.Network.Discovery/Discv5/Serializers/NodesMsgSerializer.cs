@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv5.Messages;
@@ -60,14 +61,40 @@ internal sealed class NodesMsgSerializer : MsgSerializerBase
         int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(checkPosition);
         NodeRecord[] records = new NodeRecord[count];
+        int recordCount = 0;
         for (int i = 0; i < count; i++)
         {
             ReadOnlySpan<byte> record = ctx.PeekNextItem();
-            records[i] = NodeRecord.FromBytes(record, _ecdsa);
             ctx.SkipItem();
+            if (TryDecodeNodeRecord(record, out NodeRecord? nodeRecord))
+            {
+                records[recordCount++] = nodeRecord;
+            }
         }
 
         ctx.Check(checkPosition);
+        if (recordCount != count)
+        {
+            Array.Resize(ref records, recordCount);
+        }
+
         return records;
     }
+
+    private bool TryDecodeNodeRecord(ReadOnlySpan<byte> record, [NotNullWhen(true)] out NodeRecord? nodeRecord)
+    {
+        try
+        {
+            nodeRecord = NodeRecord.FromBytes(record, _ecdsa);
+            return true;
+        }
+        catch (Exception e) when (IsMalformedNodeRecordException(e))
+        {
+            nodeRecord = null;
+            return false;
+        }
+    }
+
+    private static bool IsMalformedNodeRecordException(Exception exception)
+        => exception is RlpException or ArgumentException or InvalidOperationException or FormatException;
 }

@@ -203,15 +203,15 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
             contentHash = nodeRecord.ContentHash;
         }
 
-        CompressedPublicKey publicKeyA =
-            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, in contentHash)!;
+        CompressedPublicKey? publicKeyA =
+            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, in contentHash);
         Signature sigB = new(nodeRecord.Signature!.Bytes, 1);
-        CompressedPublicKey publicKeyB =
-            _ecdsa.RecoverCompressedPublicKey(sigB, in contentHash)!;
+        CompressedPublicKey? publicKeyB =
+            _ecdsa.RecoverCompressedPublicKey(sigB, in contentHash);
 
         CompressedPublicKey? reportedKey =
             nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
 
-        return publicKeyA.Equals(reportedKey) || publicKeyB.Equals(reportedKey);
+        return publicKeyA?.Equals(reportedKey) == true || publicKeyB?.Equals(reportedKey) == true;
     }
 }

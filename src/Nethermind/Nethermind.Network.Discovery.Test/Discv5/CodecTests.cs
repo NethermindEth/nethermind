@@ -259,8 +259,9 @@ public class CodecTests
     }
 
     [Test]
-    public void MessageCodec_Rejects_Nodes_With_Invalid_Enr()
+    public void MessageCodec_Skips_Invalid_Enrs_In_Nodes()
     {
+        NodeRecord expectedRecord = CreateNodeRecord(new PrivateKey(GethNodeBPrivateKey));
         byte[] invalidRecord = new byte[304];
         invalidRecord[0] = 0xf9;
         invalidRecord[1] = 0x01;
@@ -269,12 +270,17 @@ public class CodecTests
         Rlp data = Rlp.Encode(
             Rlp.Encode(new byte[] { 1 }),
             Rlp.Encode(1),
-            Rlp.Encode(new Rlp(invalidRecord)));
+            Rlp.Encode(new Rlp(invalidRecord), new Rlp(expectedRecord.ToRlpBytes()), new Rlp(invalidRecord)));
         byte[] message = new byte[data.Length + 1];
         message[0] = (byte)MessageType.Nodes;
         data.Bytes.CopyTo(message.AsSpan(1));
 
-        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
+        using Discv5Message decoded = MessageCodec.Decode(message);
+
+        Assert.That(decoded, Is.InstanceOf<NodesMsg>());
+        NodesMsg nodes = (NodesMsg)decoded;
+        Assert.That(nodes.Records.Count, Is.EqualTo(1));
+        Assert.That(nodes.Records[0].EnrString, Is.EqualTo(expectedRecord.EnrString));
     }
 
     private static PacketCodec CreateCodec(PrivateKey privateKey)
