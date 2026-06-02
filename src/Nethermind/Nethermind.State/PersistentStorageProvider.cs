@@ -511,20 +511,50 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
+            // Inserts/updates must be applied before deletes. Final root is identical regardless of order
+            // (an MPT is canonical for its key set), but a delete can collapse a branch (compression) which needs
+            // resolving the surviving sibling node. Applying deletes last keeps the trie traversal aligned with
+            // stateless verifiers that insert before deleting (see EELS client), which may avoid unnecessary branch
+            // node collapses causing extra node resolving. So the captured witness node-set matches and partial-trie replay stays consistent.
+            // Deletes are usually rare i think, so we defer them into a pooled list only when encountered rather than scanning twice.
+
+            ArrayPoolList<KeyValuePair<UInt256, StorageChangeTrace>>? deferredDeletes = null;
+
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
                 byte[] after = kvp.Value.After;
                 if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
                 {
-                    BlockChange[kvp.Key] = new(after, after);
-                    storageWriteBatch.Set(kvp.Key, after);
+                    if (after.IsZero())
+                    {
+                        (deferredDeletes ??= new ArrayPoolList<KeyValuePair<UInt256, StorageChangeTrace>>(BlockChange.EstimatedSize)).Add(kvp);
+                    }
+                    else
+                    {
+                        BlockChange[kvp.Key] = new(after, after);
+                        storageWriteBatch.Set(kvp.Key, after);
 
-                    writes++;
+                        writes++;
+                    }
                 }
                 else
                 {
                     skipped++;
                 }
+            }
+
+            if (deferredDeletes is not null)
+            {
+                foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in deferredDeletes)
+                {
+                    byte[] after = kvp.Value.After;
+                    BlockChange[kvp.Key] = new(after, after);
+                    storageWriteBatch.Set(kvp.Key, after);
+
+                    writes++;
+                }
+
+                deferredDeletes.Dispose();
             }
 
             return (writes, skipped);
