@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -56,6 +57,7 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     public bool IsInScope => Current.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => Current.ScopeProvider;
     public IDisposable BeginScope(BlockHeader? baseBlock) => Current.BeginScope(baseBlock);
+    public Task HintBal(ReadOnlyBlockAccessList bal) => Current.HintBal(bal);
 
     public bool TryGetAccount(Address address, out AccountStruct account) => Current.TryGetAccount(address, out account);
     public UInt256 GetNonce(Address address) => Current.GetNonce(address);
