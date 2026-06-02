@@ -518,8 +518,8 @@ public sealed class PacketCodec(
         out byte[] initiatorKey,
         out byte[] recipientKey)
     {
-        byte[] secret = SecP256k1Agreement.AgreeCompressed(remotePublicKey, ephemeralPrivateKey);
-        DeriveKeys(secret, initiatorNodeId, recipientNodeId, challengeData, out initiatorKey, out recipientKey);
+        byte[] sharedPoint = ephemeralPrivateKey.GetCompressedSharedPoint(remotePublicKey);
+        DeriveKeys(sharedPoint, initiatorNodeId, recipientNodeId, challengeData, out initiatorKey, out recipientKey);
     }
 
     private void DeriveKeys(
@@ -530,8 +530,8 @@ public sealed class PacketCodec(
         out byte[] initiatorKey,
         out byte[] recipientKey)
     {
-        byte[] secret = SecP256k1Agreement.AgreeCompressed(ephemeralPublicKey, _privateKey);
-        DeriveKeys(secret, initiatorNodeId, recipientNodeId, challengeData, out initiatorKey, out recipientKey);
+        byte[] sharedPoint = _privateKey.GetCompressedSharedPoint(ephemeralPublicKey);
+        DeriveKeys(sharedPoint, initiatorNodeId, recipientNodeId, challengeData, out initiatorKey, out recipientKey);
     }
 
     private static void DeriveKeys(
