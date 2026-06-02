@@ -91,6 +91,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns account balance",
             IsSharable = true,
+            RawParametersValidation = RawParametersValidation.EthGetBalance,
             ExampleResponse = "0x6c8ae945bfe6e")]
         Task<ResultWrapper<UInt256?>> eth_getBalance([JsonRpcParameter(ExampleValue = "[\"0x78467cada5f1883e79fcf0f3ebfa50abeec8c820\"]")] Address address, BlockParameter? blockParameter = null);
 

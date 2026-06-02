@@ -478,6 +478,24 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Raw_utf8_balance_specific_validation_does_not_apply_to_eth_getCode()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        byte[] expected = [0x01];
+        ethRpcModule.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>())
+            .ReturnsForAnyArgs(ResultWrapper<byte[]>.Success(expected));
+
+        byte[] result = RpcTest.AssertSuccess<byte[]>(
+            TestRawRequest(
+                ethRpcModule,
+                nameof(IEthRpcModule.eth_getCode),
+                """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x01"]"""));
+
+        Assert.That(result, Is.EqualTo(expected));
+        ethRpcModule.Received(1).eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
+    }
+
+    [Test]
     public void IncorrectMethodNameTest() =>
         AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound);
 

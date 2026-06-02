@@ -14,6 +14,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Nethermind.Logging;
+using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 using System.Threading;
 using Nethermind.Core.Collections;
@@ -126,9 +127,9 @@ namespace Nethermind.JsonRpc.Modules
 
         private IEnumerable<KeyValuePair<string, ResolvedMethodInfo>> GetMethods<T>(string moduleType) where T : IRpcModule
         {
-            foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
+            foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability, RawParameterValidator? rawParameterValidator)) in GetMethodDict(typeof(T)))
             {
-                ResolvedMethodInfo resolvedMethodInfo = new(moduleType, info, readOnly, availability);
+                ResolvedMethodInfo resolvedMethodInfo = new(moduleType, info, readOnly, availability, rawParameterValidator);
                 if (_filter.AcceptMethod(resolvedMethodInfo.ToString()))
                 {
                     yield return new(name, resolvedMethodInfo);
@@ -276,7 +277,7 @@ namespace Nethermind.JsonRpc.Modules
             public ResolvedMethodInfo?[] HotMethods { get; } = hotMethods;
         }
 
-        private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
+        private static IDictionary<string, (MethodInfo, bool, RpcEndpoint, RawParameterValidator?)> GetMethodDict(Type type)
         {
             BindingFlags methodFlags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
@@ -289,7 +290,11 @@ namespace Nethermind.JsonRpc.Modules
                 x =>
                 {
                     JsonRpcMethodAttribute? jsonRpcMethodAttribute = x.GetCustomAttribute<JsonRpcMethodAttribute>();
-                    return (x, jsonRpcMethodAttribute?.IsSharable ?? true, jsonRpcMethodAttribute?.Availability ?? RpcEndpoint.All);
+                    return (
+                        x,
+                        jsonRpcMethodAttribute?.IsSharable ?? true,
+                        jsonRpcMethodAttribute?.Availability ?? RpcEndpoint.All,
+                        RawParametersValidators.Resolve(jsonRpcMethodAttribute?.RawParametersValidation ?? RawParametersValidation.None));
                 });
         }
 
@@ -377,11 +382,12 @@ namespace Nethermind.JsonRpc.Modules
 
             public ResolvedMethodInfo() => ExpectedParameters = [];
 
-            public ResolvedMethodInfo(
+            internal ResolvedMethodInfo(
                 string moduleType,
                 MethodInfo methodInfo,
                 bool readOnly,
-                RpcEndpoint availability)
+                RpcEndpoint availability,
+                RawParameterValidator? rawParameterValidator)
             {
                 ModuleType = moduleType;
                 MethodInfo = methodInfo;
@@ -446,6 +452,7 @@ namespace Nethermind.JsonRpc.Modules
                 ExpectedParameters = expectedParameters;
                 ReadOnly = readOnly;
                 Availability = availability;
+                RawParameterValidator = rawParameterValidator;
                 IsTaskWrapped = TryGetTaskResultType(methodInfo.ReturnType, out Type? taskResultType);
                 ResultWrapperType = IsTaskWrapped ? taskResultType : methodInfo.ReturnType;
                 if (!ResultWrapperType.IsAssignableTo(typeof(IResultWrapper)))
@@ -481,6 +488,7 @@ namespace Nethermind.JsonRpc.Modules
             public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
+            internal RawParameterValidator? RawParameterValidator { get; }
             internal Type? ResultWrapperType { get; }
             internal Type? SuccessPayloadType { get; }
             internal Type? ErrorDataPayloadType { get; }

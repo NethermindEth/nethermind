@@ -12,6 +12,8 @@ namespace Nethermind.JsonRpc.Modules
 
         public string? EdgeCaseHint { get; set; }
 
+        public RawParametersValidation RawParametersValidation { get; set; }
+
         public bool IsImplemented { get; set; } = true;
 
         public bool IsSharable { get; set; } = true;

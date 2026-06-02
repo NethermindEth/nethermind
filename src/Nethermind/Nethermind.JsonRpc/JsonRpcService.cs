@@ -14,7 +14,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
@@ -30,9 +29,6 @@ namespace Nethermind.JsonRpc;
 public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
 {
     private const int MaxPooledParameterCount = 8;
-    private const string EthGetBalanceMethodName = "eth_getBalance";
-    private const string MissingHexPrefixError = "hex string without 0x prefix";
-    private const string LeadingZeroHexNumberError = "hex number with leading zero digits";
 
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
@@ -217,6 +213,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             : PrepareNonEmptyParameters(
                 request,
                 methodName,
+                method,
                 expectedParameters,
                 useUtf8Parameters,
                 providedParametersUtf8,
@@ -246,6 +243,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private JsonRpcErrorResponse? PrepareNonEmptyParameters(
         JsonRpcRequest request,
         string methodName,
+        ResolvedMethodInfo method,
         ExpectedParameter[] expectedParameters,
         bool useUtf8Parameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
@@ -259,7 +257,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         returnParametersToPool = false;
         try
         {
-            ValidateMethodSpecificRawParameters(methodName, useUtf8Parameters, providedParametersUtf8, providedParameters);
+            method.RawParameterValidator?.Invoke(useUtf8Parameters, providedParametersUtf8, providedParameters);
 
             return useUtf8Parameters
                 ? PrepareUtf8Parameters(
@@ -290,219 +288,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }
     }
-
-    private static void ValidateMethodSpecificRawParameters(
-        string methodName,
-        bool useUtf8Parameters,
-        ReadOnlyMemory<byte> providedParametersUtf8,
-        JsonElement providedParameters)
-    {
-        if (!methodName.Equals(EthGetBalanceMethodName, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        if (useUtf8Parameters)
-        {
-            ValidateEthGetBalanceUtf8Parameters(providedParametersUtf8);
-            return;
-        }
-
-        ValidateEthGetBalanceParameters(providedParameters);
-    }
-
-    private static void ValidateEthGetBalanceUtf8Parameters(ReadOnlyMemory<byte> providedParametersUtf8)
-    {
-        int offset = 0;
-        JsonReaderState readerState = default;
-        bool started = false;
-
-        if (!JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> addressParameter))
-        {
-            return;
-        }
-
-        ValidateEthGetBalanceAddress(addressParameter);
-        if (!JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> blockParameter))
-        {
-            return;
-        }
-
-        ValidateEthGetBalanceBlockParameter(blockParameter);
-    }
-
-    private static void ValidateEthGetBalanceParameters(JsonElement providedParameters)
-    {
-        if (providedParameters.ValueKind != JsonValueKind.Array)
-        {
-            return;
-        }
-
-        JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
-        if (!enumerator.MoveNext())
-        {
-            return;
-        }
-
-        ValidateEthGetBalanceAddress(enumerator.Current);
-        if (!enumerator.MoveNext())
-        {
-            return;
-        }
-
-        ValidateEthGetBalanceBlockParameter(enumerator.Current);
-    }
-
-    private static void ValidateEthGetBalanceAddress(JsonElement addressParameter)
-    {
-        if (addressParameter.ValueKind != JsonValueKind.String)
-        {
-            return;
-        }
-
-        string? value = addressParameter.GetString();
-        if (string.IsNullOrEmpty(value) || value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        throw new SafePublicMessageFormatException(MissingHexPrefixError);
-    }
-
-    private static void ValidateEthGetBalanceAddress(ReadOnlyMemory<byte> addressParameter)
-    {
-        Utf8JsonReader reader = new(addressParameter.Span, isFinalBlock: true, state: default);
-        if (!reader.Read() || reader.TokenType != JsonTokenType.String)
-        {
-            return;
-        }
-
-        int maxLength = reader.HasValueSequence ? checked((int)reader.ValueSequence.Length) : reader.ValueSpan.Length;
-        byte[]? rented = null;
-        Span<byte> buffer = maxLength <= 128 ? stackalloc byte[128] : (rented = ArrayPool<byte>.Shared.Rent(maxLength));
-        try
-        {
-            ReadOnlySpan<byte> value = buffer[..reader.CopyString(buffer)];
-            if (value.IsEmpty || Has0xPrefix(value))
-            {
-                return;
-            }
-        }
-        finally
-        {
-            if (rented is not null)
-            {
-                ArrayPool<byte>.Shared.Return(rented);
-            }
-        }
-
-        throw new SafePublicMessageFormatException(MissingHexPrefixError);
-    }
-
-    private static void ValidateEthGetBalanceBlockParameter(JsonElement blockParameter)
-    {
-        if (blockParameter.ValueKind != JsonValueKind.String)
-        {
-            return;
-        }
-
-        string? value = blockParameter.GetString();
-        if (string.IsNullOrEmpty(value) || IsNamedBlockParameter(value) || !value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        ReadOnlySpan<char> hexValue = value.AsSpan(2);
-        if (hexValue.Length == 0)
-        {
-            throw new SafePublicMessageFormatException($"hex string \"{Bytes.EmptyHexValue}\"");
-        }
-
-        if (hexValue.Length == 64)
-        {
-            return;
-        }
-
-        if (HasLeadingZeroHexQuantity(hexValue))
-        {
-            throw new SafePublicMessageFormatException(LeadingZeroHexNumberError);
-        }
-    }
-
-    private static void ValidateEthGetBalanceBlockParameter(ReadOnlyMemory<byte> blockParameter)
-    {
-        Utf8JsonReader reader = new(blockParameter.Span, isFinalBlock: true, state: default);
-        if (!reader.Read() || reader.TokenType != JsonTokenType.String)
-        {
-            return;
-        }
-
-        int maxLength = reader.HasValueSequence ? checked((int)reader.ValueSequence.Length) : reader.ValueSpan.Length;
-        byte[]? rented = null;
-        Span<byte> buffer = maxLength <= 128 ? stackalloc byte[128] : (rented = ArrayPool<byte>.Shared.Rent(maxLength));
-        try
-        {
-            ReadOnlySpan<byte> value = buffer[..reader.CopyString(buffer)];
-            if (value.IsEmpty || IsNamedBlockParameter(value) || !Has0xPrefix(value))
-            {
-                return;
-            }
-
-            ReadOnlySpan<byte> hexValue = value[2..];
-            if (hexValue.Length == 0)
-            {
-                throw new SafePublicMessageFormatException($"hex string \"{Bytes.EmptyHexValue}\"");
-            }
-
-            if (hexValue.Length == 64)
-            {
-                return;
-            }
-
-            if (HasLeadingZeroHexQuantity(hexValue))
-            {
-                throw new SafePublicMessageFormatException(LeadingZeroHexNumberError);
-            }
-        }
-        finally
-        {
-            if (rented is not null)
-            {
-                ArrayPool<byte>.Shared.Return(rented);
-            }
-        }
-    }
-
-    private static bool IsNamedBlockParameter(string value) =>
-        value.Length switch
-        {
-            4 => value.Equals("safe", StringComparison.OrdinalIgnoreCase),
-            6 => value.Equals("latest", StringComparison.OrdinalIgnoreCase),
-            7 => value.Equals("pending", StringComparison.OrdinalIgnoreCase),
-            8 => value.Equals("earliest", StringComparison.OrdinalIgnoreCase),
-            9 => value.Equals("finalized", StringComparison.OrdinalIgnoreCase),
-            _ => false,
-        };
-
-    private static bool IsNamedBlockParameter(ReadOnlySpan<byte> value) =>
-        value.Length switch
-        {
-            4 => Ascii.EqualsIgnoreCase(value, "safe"u8),
-            6 => Ascii.EqualsIgnoreCase(value, "latest"u8),
-            7 => Ascii.EqualsIgnoreCase(value, "pending"u8),
-            8 => Ascii.EqualsIgnoreCase(value, "earliest"u8),
-            9 => Ascii.EqualsIgnoreCase(value, "finalized"u8),
-            _ => false,
-        };
-
-    private static bool Has0xPrefix(ReadOnlySpan<byte> value) =>
-        value.Length >= 2 && Ascii.EqualsIgnoreCase(value[..2], "0x"u8);
-
-    private static bool HasLeadingZeroHexQuantity(ReadOnlySpan<char> hexValue) =>
-        hexValue.Length > 1 && hexValue[0] == '0';
-
-    private static bool HasLeadingZeroHexQuantity(ReadOnlySpan<byte> hexValue) =>
-        hexValue.Length > 1 && hexValue[0] == (byte)'0';
 
     private JsonRpcErrorResponse? PrepareUtf8Parameters(
         ExpectedParameter[] expectedParameters,
