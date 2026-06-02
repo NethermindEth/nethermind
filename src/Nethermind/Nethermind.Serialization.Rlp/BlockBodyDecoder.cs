@@ -90,13 +90,13 @@ public sealed class BlockBodyDecoder(IHeaderDecoder headerDecoder = null) : RlpD
 
     public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
     {
-        Transaction[] transactions = ctx.DecodeArray(_txDecoder, allowNulls: false, limit: TransactionsCountLimit);
-        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, allowNulls: false, limit: UnclesCountLimit);
+        Transaction[] transactions = ctx.DecodeArray(_txDecoder, limit: TransactionsCountLimit);
+        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, limit: UnclesCountLimit);
         Withdrawal[]? withdrawals = null;
 
         if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
         {
-            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder, allowNulls: false, limit: WithdrawalsCountLimit);
+            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
         }
 
         return new BlockBody(transactions, uncles, withdrawals);

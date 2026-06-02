@@ -43,7 +43,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
 
         // EIP-7928 SlotChanges is a 2-field sequence (slot key + storage changes list);
         // an empty inner list (RLP 0xc0) gets decoded as null by DecodeArray.
-        ReadOnlySlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, allowNulls: false, limit: _slotsLimit);
+        ReadOnlySlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, limit: _slotsLimit);
         UInt256? lastSlot = null;
         foreach (ReadOnlySlotChanges slotChange in slotChanges)
         {

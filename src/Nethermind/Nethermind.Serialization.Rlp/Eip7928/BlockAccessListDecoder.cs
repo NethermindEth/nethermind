@@ -31,7 +31,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
 
         // EIP-7928 AccountChanges is a 6-field sequence; an empty inner
         // list (RLP 0xc0) is rejected by DecodeArray as defaultElement -> null.
-        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, allowNulls: false, limit: _accountsLimit);
+        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, limit: _accountsLimit);
         ReadOnlySpan<byte> wireRlp = ctx.Data[startPosition..ctx.Position];
 
         Address? lastAddress = null;

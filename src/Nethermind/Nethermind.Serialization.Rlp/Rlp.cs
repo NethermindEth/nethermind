@@ -1450,7 +1450,7 @@ namespace Nethermind.Serialization.Rlp
             /// consensus-relevant decoding bug (see the EIP-7928 BAL decoder). Value-type arrays must therefore use
             /// <see cref="RlpDecoder{T}.DecodeArray"/>, which decodes every element and rejects <c>0xc0</c>.
             /// </remarks>
-            public T[] DecodeArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, bool allowNulls = true, T defaultElement = default, RlpLimit? limit = null)
+            public T[] DecodeArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, bool allowNulls = false, T defaultElement = default, RlpLimit? limit = null)
                 where T : class?
             {
                 decoder ??= GetDecoder<T>()
