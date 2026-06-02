@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
 
@@ -50,6 +51,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     return new PrewarmerScopeProvider(
                         worldStateScopeProvider,
                         ctx.Resolve<PreBlockCaches>(),
+                        ctx.Resolve<ILogManager>(),
                         populatePreBlockCache: false
                     );
                 })

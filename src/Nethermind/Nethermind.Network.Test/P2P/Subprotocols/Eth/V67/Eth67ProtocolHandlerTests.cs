@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -14,7 +13,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
@@ -84,36 +82,39 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        _handler.ProtocolCode.Should().Be("eth");
-        _handler.Name.Should().Be("eth67");
-        _handler.ProtocolVersion.Should().Be(67);
-        _handler.MessageIdSpaceSize.Should().Be(17);
-        _handler.IncludeInTxPool.Should().BeTrue();
-        _handler.ClientId.Should().Be(_session.Node?.ClientId);
-        _handler.HeadHash.Should().BeNull();
-        _handler.HeadNumber.Should().Be(0);
+        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+        Assert.That(_handler.Name, Is.EqualTo("eth67"));
+        Assert.That(_handler.ProtocolVersion, Is.EqualTo(67));
+        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+        Assert.That(_handler.IncludeInTxPool, Is.True);
+        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+        Assert.That(_handler.HeadHash, Is.Null);
+        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
     }
 
     [Test]
-    public void Can_ignore_get_node_data()
+    public void Should_disconnect_on_get_node_data()
     {
         using GetNodeDataMessage msg63 = new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
         using Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage msg66 = new(1111, msg63);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth66MessageCode.GetNodeData);
+
         _session.DidNotReceive().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>());
+        _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 
     [Test]
-    public void Can_ignore_node_data_and_not_throw_when_receiving_unrequested_node_data()
+    public void Should_disconnect_on_node_data()
     {
         using NodeDataMessage msg63 = new(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
         using Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage msg66 = new(1111, msg63);
 
         HandleIncomingStatusMessage();
-        System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-        act.Should().NotThrow<SubprotocolException>();
+        HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 
     [Test]

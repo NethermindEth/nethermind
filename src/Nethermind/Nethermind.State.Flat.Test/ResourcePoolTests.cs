@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -55,7 +56,7 @@ public class ResourcePoolTests
         // For MainBlockProcessing: capacity = config.CompactSize + 8 = 2 + 8 = 10
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
         int capacity = _config.CompactSize + 8;
-        List<SnapshotContent> items = new();
+        List<SnapshotContent> items = [];
 
         for (int i = 0; i < capacity + 5; i++)
         {
@@ -144,6 +145,28 @@ public class ResourcePoolTests
         SnapshotContent recycledContent = _resourcePool.GetSnapshotContent(usage);
         Assert.That(recycledContent, Is.SameAs(content));
     }
+
+    [TestCase(1, ResourcePool.Usage.Compact2)]
+    [TestCase(2, ResourcePool.Usage.Compact2)]
+    [TestCase(4, ResourcePool.Usage.Compact4)]
+    [TestCase(8, ResourcePool.Usage.Compact8)]
+    [TestCase(16, ResourcePool.Usage.Compact16)]
+    [TestCase(32, ResourcePool.Usage.Compact32)]
+    [TestCase(64, ResourcePool.Usage.Compact64)]
+    [TestCase(128, ResourcePool.Usage.Compact128)]
+    [TestCase(256, ResourcePool.Usage.Compact256)]
+    [TestCase(512, ResourcePool.Usage.Compact512)]
+    [TestCase(1024, ResourcePool.Usage.Compact1024)]
+    [TestCase(2048, ResourcePool.Usage.Compact2048)]
+    [TestCase(4096, ResourcePool.Usage.Compact2048)]
+    public void Test_CompactUsage_MapsCompactSizeToUsage(int compactSize, ResourcePool.Usage expected) =>
+        Assert.That(ResourcePool.CompactUsage(compactSize), Is.EqualTo(expected));
+
+    [TestCase(3)]
+    [TestCase(5)]
+    [TestCase(2047)]
+    public void Test_CompactUsage_ThrowsOnInvalidSize(int compactSize) =>
+        Assert.That(() => ResourcePool.CompactUsage(compactSize), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]
     public void Test_DifferentUsages_HaveIndependentPools()

@@ -24,7 +24,7 @@ namespace Nethermind.Core.Test
         private readonly IBlockTree _remoteTree;
         private readonly ISyncServer? _remoteSyncServer;
         private readonly ISnapSyncPeer? _snapSyncPeer;
-        private readonly TaskCompletionSource _closeTaskCompletionSource = new();
+        private readonly TaskCompletionSource _closeTaskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public SyncPeerMock(IBlockTree remoteTree, ISyncServer? remoteSyncServer = null, PublicKey? remotePublicKey = null, string remoteClientId = "", ISnapSyncPeer? snapSyncPeer = null)
         {
@@ -129,7 +129,7 @@ namespace Nethermind.Core.Test
 
         public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) => Task.FromResult(_remoteTree.Head?.Header);
 
-        private readonly BlockingCollection<Action> _sendQueue = new();
+        private readonly BlockingCollection<Action> _sendQueue = [];
 
         public void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {

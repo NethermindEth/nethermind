@@ -11,12 +11,17 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
 
-// todo: maybe split into smaller classes
 public interface IBlockAccessListManager
 {
-    BlockAccessList GeneratedBlockAccessList { get; set; }
+    GeneratedBlockAccessList GeneratedBlockAccessList { get; set; }
     bool Enabled { get; }
     bool ParallelExecutionEnabled { get; }
+    bool BatchReadEnabled { get; }
+
+    /// <summary>When set, the manager always builds the constructed GeneratedBlockAccessList
+    /// even on the parallel-validation path. BAL recorder must set this before
+    /// PrepareForProcessing.</summary>
+    bool ForceConstructGeneratedBlockAccessList { get; set; }
 
     void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options);
     void Setup(Block block);

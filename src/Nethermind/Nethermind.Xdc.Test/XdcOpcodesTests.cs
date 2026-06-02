@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -61,12 +60,12 @@ public class XdcOpcodesTests : VirtualMachineTestsBase
 
         if (eip4844Enabled)
         {
-            tracer.Error.Should().BeNull();
+            Assert.That(tracer.Error, Is.Null);
             AssertStorage(UInt256.Zero, UInt256.Zero);
         }
         else
         {
-            tracer.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
+            Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.BadInstruction.ToString()));
         }
     }
 
@@ -93,7 +92,7 @@ public class XdcOpcodesTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, ctx, tracer);
 
-        tracer.Error.Should().BeNull();
+        Assert.That(tracer.Error, Is.Null);
         AssertStorage(UInt256.Zero, new Hash256(expectedPrevRandaoHex));
     }
 

@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
@@ -27,7 +26,7 @@ public class ChainHeadSpecProviderTests
 
         for (int i = 0; i < 100; i++)
         {
-            provider.GetCurrentHeadSpec().Should().BeSameAs(Cancun.Instance);
+            Assert.That(provider.GetCurrentHeadSpec(), Is.SameAs(Cancun.Instance));
         }
 
         specProvider.Received(1).GetSpec(header);
@@ -48,8 +47,8 @@ public class ChainHeadSpecProviderTests
 
         ChainHeadSpecProvider provider = new(specProvider, blockFinder);
 
-        provider.GetCurrentHeadSpec().Should().BeSameAs(Cancun.Instance);
-        provider.GetCurrentHeadSpec().Should().BeSameAs(Prague.Instance);
+        Assert.That(provider.GetCurrentHeadSpec(), Is.SameAs(Cancun.Instance));
+        Assert.That(provider.GetCurrentHeadSpec(), Is.SameAs(Prague.Instance));
     }
 
     [Test]
@@ -63,7 +62,7 @@ public class ChainHeadSpecProviderTests
 
         ChainHeadSpecProvider provider = new(specProvider, blockFinder);
 
-        provider.GetCurrentHeadSpec().Should().BeSameAs(Cancun.Instance);
+        Assert.That(provider.GetCurrentHeadSpec(), Is.SameAs(Cancun.Instance));
     }
 
     [Test]
@@ -82,7 +81,7 @@ public class ChainHeadSpecProviderTests
             {
                 for (int i = 0; i < iterations; i++)
                 {
-                    provider.GetCurrentHeadSpec().Should().BeSameAs(Cancun.Instance);
+                    Assert.That(provider.GetCurrentHeadSpec(), Is.SameAs(Cancun.Instance));
                 }
             });
         }
@@ -106,7 +105,7 @@ public class ChainHeadSpecProviderTests
         IReleaseSpec[] specs = { Cancun.Instance, Prague.Instance, Osaka.Instance };
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        HashSet<IReleaseSpec> validSpecs = new();
+        HashSet<IReleaseSpec> validSpecs = [];
         for (int i = 0; i < headers.Length; i++)
         {
             specProvider.GetSpec(headers[i]).Returns(specs[i]);
@@ -129,8 +128,8 @@ public class ChainHeadSpecProviderTests
                 while (!cts.IsCancellationRequested)
                 {
                     IReleaseSpec spec = provider.GetCurrentHeadSpec();
-                    spec.Should().NotBeNull();
-                    validSpecs.Contains(spec).Should().BeTrue();
+                    Assert.That(spec, Is.Not.Null);
+                    Assert.That(validSpecs.Contains(spec), Is.True);
                 }
             });
         }

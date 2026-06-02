@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Core;
@@ -34,7 +35,7 @@ public static class SszCodec
 
     public static int EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp, IBufferWriter<byte> writer)
     {
-        SszBytes8[]? pidList = null;
+        ulong[]? pidList = null;
         if (resp.PayloadId is not null)
         {
             ReadOnlySpan<char> hex = resp.PayloadId.AsSpan();
@@ -43,7 +44,7 @@ public static class SszCodec
                 throw new InvalidOperationException($"Invalid payload id '{resp.PayloadId}': expected 16 hex chars, got {hex.Length}");
             Span<byte> stack = stackalloc byte[8];
             Bytes.FromHexString(hex, stack);
-            pidList = [SszBytes8.FromSpan(stack)];
+            pidList = [BinaryPrimitives.ReadUInt64LittleEndian(stack)];
         }
 
         return EncodeToWriter(new ForkchoiceUpdatedResponseWire
@@ -65,14 +66,14 @@ public static class SszCodec
     public static int EncodeGetPayloadV2Response(GetPayloadV2Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV2Wire
         {
-            ExecutionPayload = new SszExecutionPayload(r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV2(r!.ExecutionPayload),
             BlockValue = r.BlockValue
         }, writer);
 
     public static int EncodeGetPayloadV3Response(GetPayloadV3Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV3Wire
         {
-            ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV3(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder
@@ -81,7 +82,7 @@ public static class SszCodec
     public static int EncodeGetPayloadV4Response(GetPayloadV4Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV4Wire
         {
-            ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV3(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
@@ -91,7 +92,7 @@ public static class SszCodec
     public static int EncodeGetPayloadV5Response(GetPayloadV5Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV5Wire
         {
-            ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV3(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
@@ -101,7 +102,7 @@ public static class SszCodec
     public static int EncodeGetPayloadV6Response(GetPayloadV6Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV6Wire
         {
-            ExecutionPayload = new SszExecutionPayloadV4((ExecutionPayloadV4)r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV4(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,

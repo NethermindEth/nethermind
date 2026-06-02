@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using System.Collections.Immutable;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 

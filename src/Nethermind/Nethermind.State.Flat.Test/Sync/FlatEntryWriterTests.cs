@@ -26,7 +26,7 @@ public class FlatEntryWriterTests
     private static byte[] Nibbles(string hex) =>
         hex.Select(c => (byte)(c >= 'a' ? c - 'a' + 10 : c >= 'A' ? c - 'A' + 10 : c - '0')).ToArray();
 
-    private static byte[] SmallAccountRlp() => new AccountDecoder().Encode(new Account(0, 1)).Bytes;
+    private static byte[] SmallAccountRlp() => Rlp.Encode(new Account(0, 1)).Bytes;
 
     #region WriteAccountFlatEntries Tests
 

@@ -22,7 +22,7 @@ namespace Nethermind.Network.Test.Builders
     public class SerializationBuilder(ITimestamper timestamper = null) : BuilderBase<IMessageSerializationService>
     {
         private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
-        private List<SerializerInfo> _serializers = new();
+        private List<SerializerInfo> _serializers = [];
 
         public SerializationBuilder With<T>(IZeroMessageSerializer<T> serializer) where T : MessageBase
         {

@@ -9,7 +9,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class InMemoryReceiptStorage : IReceiptStorage
+    public class InMemoryReceiptStorage : IReceiptMigrationStore
     {
         private readonly bool _allowReceiptIterator;
         private readonly IBlockTree? _blockTree;
@@ -77,6 +77,8 @@ namespace Nethermind.Blockchain.Receipts
 
             ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
+
+        public void InsertForMigration(Block block, TxReceipt[] receipts) => Insert(block, receipts);
 
         public bool HasBlock(long blockNumber, Hash256 hash)
             => _receipts.ContainsKey(hash);

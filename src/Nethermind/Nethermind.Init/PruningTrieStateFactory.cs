@@ -27,6 +27,7 @@ namespace Nethermind.Init;
 
 public class PruningTrieStateFactory(
     ISyncConfig syncConfig,
+    IPruningConfig pruningConfig,
     IDbProvider dbProvider,
     IBlockTree blockTree,
     MainPruningTrieStoreFactory mainPruningTrieStoreFactory,
@@ -64,18 +65,20 @@ public class PruningTrieStateFactory(
             : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
                 codeDb,
-                logManager);
+                logManager,
+                codeDbIsPersistent: true);
 
         IWorldStateManager stateManager = new WorldStateManager(
             scopeProvider,
             trieStore,
             dbProvider,
             logManager,
+            pruningConfig,
             new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
 
         disposeStack.Push(mainWorldTrieStore);
 
-        FullPruner? fullPruner = fullPrunerFactory.Create(stateManager.GlobalStateReader, trieStore);
+        FullPruner? fullPruner = fullPrunerFactory.Create(stateManager, trieStore);
         if (fullPruner is not null)
         {
             disposeStack.Push(fullPruner);

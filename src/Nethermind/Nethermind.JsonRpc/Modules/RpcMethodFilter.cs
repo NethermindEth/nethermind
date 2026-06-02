@@ -10,13 +10,14 @@ using System.Text.RegularExpressions;
 using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Runner.Test")]
 
 namespace Nethermind.JsonRpc.Modules
 {
     internal class RpcMethodFilter : IRpcMethodFilter
     {
         private readonly ILogger _logger;
-        private readonly HashSet<string> _filters = new();
+        private readonly HashSet<string> _filters = [];
 
         private readonly ConcurrentDictionary<string, bool> _methodsCache
             = new();

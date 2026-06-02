@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using FluentAssertions;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -35,8 +34,8 @@ internal class SubnetMasternodesCalculatorTests
 
         (Address[] masternodes, Address[] penalties) = calculator.CalculateNextEpochMasternodes(0, Hash256.Zero, spec);
 
-        masternodes.Should().Equal(a3, a4, a5);
-        penalties.Should().Equal(a1, a2);
+        Assert.That(masternodes, Is.EqualTo(new[] { a3, a4, a5 }));
+        Assert.That(penalties, Is.EqualTo(new[] { a1, a2 }));
     }
 
     [Test]
@@ -56,7 +55,7 @@ internal class SubnetMasternodesCalculatorTests
 
         (Address[] nextEpochCandidates, Address[] nextPenalties) = calculator.GetNextEpochCandidatesAndPenalties(parentHash);
 
-        nextEpochCandidates.Should().BeSameAs(snapshot.NextEpochCandidates);
-        nextPenalties.Should().BeSameAs(snapshot.NextEpochPenalties);
+        Assert.That(nextEpochCandidates, Is.SameAs(snapshot.NextEpochCandidates));
+        Assert.That(nextPenalties, Is.SameAs(snapshot.NextEpochPenalties));
     }
 }

@@ -7,7 +7,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -58,12 +57,12 @@ public class TestingRpcModuleTests
 
         ResultWrapper<object> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, [], []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().BeOfType<GetPayloadV5Result>();
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Data, Is.AssignableTo<GetPayloadV5Result>());
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
-        payloadResult.ExecutionPayload.BlobGasUsed.Should().Be(0);
-        payloadResult.ExecutionPayload.ExcessBlobGas.Should().Be(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance));
-        suggestedWithdrawalsRoot.Should().Be(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash);
+        Assert.That(payloadResult.ExecutionPayload.BlobGasUsed, Is.EqualTo(0));
+        Assert.That(payloadResult.ExecutionPayload.ExcessBlobGas, Is.EqualTo(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance)));
+        Assert.That(suggestedWithdrawalsRoot, Is.EqualTo(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash));
     }
 
     [Test]
@@ -78,7 +77,7 @@ public class TestingRpcModuleTests
             CreateDefaultPayloadAttributes(parentHeader),
             (byte[][])[]);
 
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        Assert.That(response, Is.TypeOf<ResultWrapper<object>>());
     }
 
     [TestCaseSource(nameof(BuildBlockV1ForkCases))]
@@ -107,35 +106,35 @@ public class TestingRpcModuleTests
 
         using JsonDocument doc = JsonDocument.Parse(json);
         JsonElement root = doc.RootElement;
-        root.TryGetProperty("error", out _).Should().BeFalse();
+        Assert.That(root.TryGetProperty("error", out _), Is.False);
 
         JsonElement executionPayload = root.GetProperty("result").GetProperty("executionPayload");
         JsonElement transactionsJson = executionPayload.GetProperty("transactions");
 
-        transactionsJson.GetArrayLength().Should().Be(txHex.Length);
+        Assert.That(transactionsJson.GetArrayLength(), Is.EqualTo(txHex.Length));
         for (int i = 0; i < txHex.Length; i++)
         {
-            transactionsJson[i].GetString().Should().Be(txHex[i]);
+            Assert.That(transactionsJson[i].GetString(), Is.EqualTo(txHex[i]));
         }
 
         if (expectsBlockAccessList)
         {
-            executionPayload.TryGetProperty("blockAccessList", out JsonElement blockAccessList).Should().BeTrue();
-            blockAccessList.GetString().Should().NotBeNullOrEmpty();
+            Assert.That(executionPayload.TryGetProperty("blockAccessList", out JsonElement blockAccessList), Is.True);
+            Assert.That(blockAccessList.GetString(), Is.Not.Null.And.Not.Empty);
         }
         else
         {
-            executionPayload.TryGetProperty("blockAccessList", out _).Should().BeFalse();
+            Assert.That(executionPayload.TryGetProperty("blockAccessList", out _), Is.False);
         }
 
         if (expectsSlotNumber)
         {
-            executionPayload.TryGetProperty("slotNumber", out JsonElement slotNumberJson).Should().BeTrue();
-            slotNumberJson.GetString().Should().Be(slotNumber!.Value.ToHexString(skipLeadingZeros: true));
+            Assert.That(executionPayload.TryGetProperty("slotNumber", out JsonElement slotNumberJson), Is.True);
+            Assert.That(slotNumberJson.GetString(), Is.EqualTo(slotNumber!.Value.ToHexString(skipLeadingZeros: true)));
         }
         else
         {
-            executionPayload.TryGetProperty("slotNumber", out _).Should().BeFalse();
+            Assert.That(executionPayload.TryGetProperty("slotNumber", out _), Is.False);
         }
     }
 
@@ -162,8 +161,8 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(
             parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        ((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Should().HaveCount(expectedTxCount);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Length, Is.EqualTo(expectedTxCount));
 
         if (useNull)
             txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), true);
@@ -191,8 +190,8 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(
             parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, []);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("expected 2 transactions but only 1 were included");
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.Result.Error, Does.Contain("expected 2 transactions but only 1 were included"));
     }
 
     [Test]
@@ -204,8 +203,8 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(
             unknownHash, CreateDefaultPayloadAttributes(parentHeader), null);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("unknown parent block");
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.Result.Error, Does.Contain("unknown parent block"));
     }
 
     [Test]
@@ -219,14 +218,67 @@ public class TestingRpcModuleTests
             [],
             []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
 
         Block suggested = (Block)blockTree.ReceivedCalls()
-            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlockAsync))
+            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlock))
             .GetArguments()[0]!;
-        suggested.Header.Number.Should().Be(chainHeadHeader.Number + 1);
-        suggested.Hash.Should().NotBeNull();
-        result.Data.Should().Be(suggested.Hash!);
+        Assert.That(suggested.Header.Number, Is.EqualTo(chainHeadHeader.Number + 1));
+        Assert.That(suggested.Hash, Is.Not.Null);
+        Assert.That(result.Data, Is.EqualTo(suggested.Hash!));
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_skips_reprocessing_by_setting_main_chain_directly()
+    {
+        (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) =
+            CreateCommitTestingModule(suggestResult: AddBlockResult.Added);
+
+        ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
+            CreateDefaultPayloadAttributes(chainHeadHeader), [], []);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+
+        BlockTreeSuggestOptions suggestOptions = (BlockTreeSuggestOptions)blockTree.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlock))
+            .GetArguments()[1]!;
+        Assert.That(suggestOptions, Is.EqualTo(BlockTreeSuggestOptions.ForceDontSetAsMain),
+            "ShouldProcess would force the main BlockchainProcessor to re-execute every tx; " +
+            "ForceDontSetAsMain leaves the main-chain write to UpdateMainChain (single writer).");
+
+        object?[] updateMainChainArgs = blockTree.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.UpdateMainChain))
+            .GetArguments();
+        IReadOnlyList<Block> updatedBlocks = (IReadOnlyList<Block>)updateMainChainArgs[0]!;
+        bool wereProcessed = (bool)updateMainChainArgs[1]!;
+        bool forceHeadBlock = (bool)updateMainChainArgs[2]!;
+        Assert.That(updatedBlocks.Count, Is.EqualTo(1));
+        Assert.That(wereProcessed, Is.True, "the producer already executed the block; the main chain must reflect that");
+        Assert.That(forceHeadBlock, Is.True,
+            "post-merge chains have TotalDifficulty=0; without forceHeadBlock MoveToMain skips UpdateHeadBlock and the next commit reads a stale head.");
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_passes_correct_flags_to_producer()
+    {
+        // ReadOnlyChain must NOT be set — empirically, the producer pass under FlatDb
+        // only appends a snapshot bundle when the chain is not read-only; without it the
+        // next testing_commitBlockV1's BeginScope(parent) fails with "Unable to gather snapshots".
+        ProcessingOptions? observedOptions = null;
+        (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
+            CreateCommitTestingModule(suggestResult: AddBlockResult.Added,
+                onProcess: (block, opts) => observedOptions = opts);
+
+        await module.testing_commitBlockV1(CreateDefaultPayloadAttributes(chainHeadHeader), [], []);
+
+        Assert.That(observedOptions, Is.Not.Null);
+        ProcessingOptions opts = observedOptions!.Value;
+        Assert.That(opts.ContainsFlag(ProcessingOptions.StoreReceipts), Is.True);
+        Assert.That(opts.ContainsFlag(ProcessingOptions.NoValidation), Is.True);
+        Assert.That(opts.ContainsFlag(ProcessingOptions.ForceProcessing), Is.True);
+        Assert.That(opts.ContainsFlag(ProcessingOptions.DoNotUpdateHead), Is.True);
+        Assert.That(opts.ContainsFlag(ProcessingOptions.ReadOnlyChain), Is.False,
+            "ReadOnlyChain blocks FlatDb snapshot append; the producer must write FlatDb here");
     }
 
     [Test]
@@ -240,23 +292,23 @@ public class TestingRpcModuleTests
             [],
             null);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
     public async Task Testing_commitBlockV1_fails_when_block_commit_fails()
     {
         (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
-            CreateCommitTestingModule(suggestResult: AddBlockResult.InvalidBlock, fireNewHeadEvent: false);
+            CreateCommitTestingModule(suggestResult: AddBlockResult.InvalidBlock);
 
         ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
             CreateDefaultPayloadAttributes(chainHeadHeader),
             [],
             null);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -269,9 +321,9 @@ public class TestingRpcModuleTests
             new[] { new byte[] { 0xff, 0xff, 0xff } },
             null);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("invalid transaction RLP");
-        result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.Result.Error, Does.Contain("invalid transaction RLP"));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
     }
 
     [TestCase(null, Description = "No config — uses default target, adjusts up from parent below default")]
@@ -284,7 +336,7 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(
             parentHash, CreateDefaultPayloadAttributes(parentHeader), [], []);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
 
         long effectiveTarget = targetBlockGasLimit ?? TestingRpcGasLimitCalculator.DefaultGasLimit;
@@ -292,7 +344,7 @@ public class TestingRpcModuleTests
             new TestSpecProvider(Osaka.Instance),
             new BlocksConfig { TargetBlockGasLimit = effectiveTarget });
         long expectedGasLimit = expectedCalculator.GetGasLimit(parentHeader);
-        payloadResult.ExecutionPayload.GasLimit.Should().Be(expectedGasLimit);
+        Assert.That(payloadResult.ExecutionPayload.GasLimit, Is.EqualTo(expectedGasLimit));
     }
 
     private (TestingRpcModule module, IBlockTree blockTree, IBlockFinder blockFinder, BlockHeader parentHeader) CreateModuleWithMocks(
@@ -301,7 +353,8 @@ public class TestingRpcModuleTests
         Action<Block>? onProcess = null,
         Func<Block, Block?>? processOverride = null,
         ITxSource? txSource = null,
-        long? targetBlockGasLimit = null)
+        long? targetBlockGasLimit = null,
+        Action<Block, ProcessingOptions>? onProcessWithOptions = null)
     {
         BlockHeader parentHeader = CreateDefaultParentHeader(slotNumber);
 
@@ -311,7 +364,7 @@ public class TestingRpcModuleTests
         TestingRpcGasLimitCalculator gasLimitCalculator = new(
             specProvider, new BlocksConfig { TargetBlockGasLimit = targetBlockGasLimit });
 
-        IBlockchainProcessor blockchainProcessor = CreateBlockProcessor(processOverride, onProcess);
+        IBlockchainProcessor blockchainProcessor = CreateBlockProcessor(processOverride, onProcess, onProcessWithOptions);
 
         IBlockProducerEnv blockProducerEnv = Substitute.For<IBlockProducerEnv>();
         blockProducerEnv.ChainProcessor.Returns(blockchainProcessor);
@@ -319,6 +372,7 @@ public class TestingRpcModuleTests
             blockProducerEnv.TxSource.Returns(txSource);
 
         IBlockProducerEnvFactory blockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
+        blockProducerEnvFactory.CreatePersistent().Returns(blockProducerEnv);
         blockProducerEnvFactory.CreateTransient().Returns(new ScopedBlockProducerEnv(blockProducerEnv, Substitute.For<IAsyncDisposable>()));
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
@@ -349,31 +403,15 @@ public class TestingRpcModuleTests
 
     private (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) CreateCommitTestingModule(
         AddBlockResult suggestResult = AddBlockResult.Added,
-        bool fireNewHeadEvent = true,
-        bool nullChainHead = false)
+        bool nullChainHead = false,
+        Action<Block, ProcessingOptions>? onProcess = null)
     {
-        (TestingRpcModule module, IBlockTree blockTree, _, BlockHeader chainHeadHeader) = CreateModuleWithMocks();
+        (TestingRpcModule module, IBlockTree blockTree, _, BlockHeader chainHeadHeader) =
+            CreateModuleWithMocks(onProcessWithOptions: onProcess);
         Block chainHeadBlock = new(chainHeadHeader, [], [], []);
 
         blockTree.Head.Returns(nullChainHead ? null : chainHeadBlock);
-
-        // Raise NewHeadBlock inside Returns() so the event fires before SuggestBlockAsync
-        // returns — matches the production subscribe-then-suggest ordering the endpoint relies on.
-        if (fireNewHeadEvent && suggestResult == AddBlockResult.Added)
-        {
-            blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
-                .Returns(callInfo =>
-                {
-                    Block block = callInfo.Arg<Block>();
-                    blockTree.NewHeadBlock += Raise.EventWith(blockTree, new BlockEventArgs(block));
-                    return suggestResult;
-                });
-        }
-        else
-        {
-            blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
-                .Returns(suggestResult);
-        }
+        blockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>()).Returns(suggestResult);
 
         return (module, blockTree, chainHeadHeader);
     }
@@ -403,7 +441,8 @@ public class TestingRpcModuleTests
 
     private static IBlockchainProcessor CreateBlockProcessor(
         Func<Block, Block?>? processOverride = null,
-        Action<Block>? onProcess = null)
+        Action<Block>? onProcess = null,
+        Action<Block, ProcessingOptions>? onProcessWithOptions = null)
     {
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
 
@@ -440,6 +479,13 @@ public class TestingRpcModuleTests
             processor
                 .When(x => x.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()))
                 .Do(callInfo => onProcess(callInfo.Arg<Block>()));
+        }
+
+        if (onProcessWithOptions is not null)
+        {
+            processor
+                .When(x => x.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()))
+                .Do(callInfo => onProcessWithOptions(callInfo.Arg<Block>(), callInfo.Arg<ProcessingOptions>()));
         }
 
         return processor;
