@@ -155,10 +155,14 @@ public class GetPayloadDirectResponseTests
         await AssertStreamableJsonMatchesPlainAsync(expected, direct);
     }
 
-    [TestCase(1, false)]
-    [TestCase(2, false)]
-    [TestCase(2, true)]
-    public async Task Payload_bodies_raw_block_rlp_response_matches_dto_json_and_ssz(int version, bool blockAccessList)
+    [TestCase(1, false, -1)]
+    [TestCase(1, false, 0)]
+    [TestCase(1, false, 2)]
+    [TestCase(2, false, -1)]
+    [TestCase(2, false, 0)]
+    [TestCase(2, false, 2)]
+    [TestCase(2, true, 2)]
+    public async Task Payload_bodies_raw_block_rlp_response_matches_dto_json_and_ssz(int version, bool blockAccessList, int withdrawalCount)
     {
         Transaction[] transactions =
         [
@@ -167,7 +171,7 @@ public class GetPayloadDirectResponseTests
             CreateTransaction(TxType.Blob),
             CreateTransaction(TxType.SetCode)
         ];
-        Withdrawal[] withdrawals = CreateWithdrawals(2);
+        Withdrawal[]? withdrawals = withdrawalCount < 0 ? null : CreateWithdrawals(withdrawalCount);
         Block block = CreateBlock(transactions, withdrawals, requests: null, BalKind.None, slotNumber: null);
         byte[] blockRlp = Rlp.Encode(block).Bytes;
 

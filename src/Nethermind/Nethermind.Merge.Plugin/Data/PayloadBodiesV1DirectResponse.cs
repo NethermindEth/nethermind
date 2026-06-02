@@ -158,7 +158,7 @@ internal static class PayloadBodiesDirectResponseWriter
 
         ctx.SkipItem(); // uncles
         writer.Write(",\"withdrawals\":"u8);
-        WriteWithdrawals(writer, ctx.Position == blockEnd ? null : WithdrawalDecoder.DecodeArray(ref ctx));
+        WriteWithdrawalsFromBlockRlp(writer, ref ctx, blockEnd);
 
         if (blockAccessList is not null)
         {
@@ -320,6 +320,27 @@ internal static class PayloadBodiesDirectResponseWriter
         WriteWithdrawalArray(writer, withdrawals);
     }
 
+    private static void WriteWithdrawalsFromBlockRlp(IBufferWriter<byte> writer, ref Rlp.ValueDecoderContext ctx, int blockEnd)
+    {
+        if (ctx.Position == blockEnd)
+        {
+            writer.Write("null"u8);
+            return;
+        }
+
+        int withdrawalsEnd = ctx.ReadSequenceLength() + ctx.Position;
+        writer.Write("["u8);
+
+        for (int i = 0; ctx.Position < withdrawalsEnd; i++)
+        {
+            if (i > 0) writer.Write(","u8);
+            WriteWithdrawalFromBlockRlp(writer, ref ctx);
+        }
+
+        ctx.Check(withdrawalsEnd);
+        writer.Write("]"u8);
+    }
+
     public static void WriteWithdrawalArray(IBufferWriter<byte> writer, Withdrawal[] withdrawals)
     {
         writer.Write("["u8);
@@ -354,5 +375,39 @@ internal static class PayloadBodiesDirectResponseWriter
         writer.Write(",\"amount\":"u8);
         HexWriter.WriteUlongHexString(writer, withdrawal.AmountInGwei);
         writer.Write("}"u8);
+    }
+
+    private static void WriteWithdrawalFromBlockRlp(IBufferWriter<byte> writer, ref Rlp.ValueDecoderContext ctx)
+    {
+        int withdrawalEnd = ctx.ReadSequenceLength() + ctx.Position;
+
+        writer.Write("{\"index\":"u8);
+        HexWriter.WriteUlongHexString(writer, ctx.DecodeULong());
+        writer.Write(",\"validatorIndex\":"u8);
+        HexWriter.WriteUlongHexString(writer, ctx.DecodeULong());
+        writer.Write(",\"address\":"u8);
+        WriteAddressFromBlockRlp(writer, ref ctx);
+        writer.Write(",\"amount\":"u8);
+        HexWriter.WriteUlongHexString(writer, ctx.DecodeULong());
+        writer.Write("}"u8);
+
+        ctx.Check(withdrawalEnd);
+    }
+
+    private static void WriteAddressFromBlockRlp(IBufferWriter<byte> writer, ref Rlp.ValueDecoderContext ctx)
+    {
+        int prefix = ctx.ReadByte();
+        if (prefix == Rlp.EmptyByteArrayByte)
+        {
+            writer.Write("null"u8);
+            return;
+        }
+
+        if (prefix != Rlp.EmptyByteArrayByte + Address.Size)
+        {
+            throw new RlpException($"Invalid withdrawal address prefix {prefix}");
+        }
+
+        HexWriter.WriteHexString(writer, ctx.Read(Address.Size), chunked: false);
     }
 }
