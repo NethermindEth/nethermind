@@ -33,7 +33,8 @@ public class BuiltInStepsModule : Module
         typeof(StartBlockProcessor),
         typeof(StartBlockProducer),
         typeof(StartMonitoring),
-        typeof(StartLogIndex)
+        typeof(StartLogIndex),
+        typeof(WarmUpReprocessBlocks)
     ];
 
     protected override void Load(ContainerBuilder builder)
