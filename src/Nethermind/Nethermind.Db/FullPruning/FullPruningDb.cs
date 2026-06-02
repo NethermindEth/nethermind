@@ -125,10 +125,13 @@ namespace Nethermind.Db.FullPruning
         }
 
         // we also need to duplicate writes that are in batches
-        public IWriteBatch StartWriteBatch() =>
-            _pruningContext is null
+        public IWriteBatch StartWriteBatch()
+        {
+            IDb? cloningDb = _pruningContext?.CloningDb;
+            return cloningDb is null
                 ? _currentDb.StartWriteBatch()
-                : new DuplicatingWriteBatch(_currentDb.StartWriteBatch(), _pruningContext.CloningDb.StartWriteBatch(), this);
+                : new DuplicatingWriteBatch(_currentDb.StartWriteBatch(), cloningDb.StartWriteBatch(), this);
+        }
 
         public void Dispose()
         {
