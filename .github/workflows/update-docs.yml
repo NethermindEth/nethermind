@@ -1,14 +1,20 @@
 name: Update docs
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch or tag
+        required: false
+        default: master
+        type: string
   workflow_dispatch:
     inputs:
       ref:
         description: Branch or tag
         required: true
         default: master
+        type: string
 
 jobs:
   update-docs:
@@ -27,7 +33,7 @@ jobs:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.ref }}
           path: n
       - name: Check out Nethermind docs repository
         uses: actions/checkout@v6

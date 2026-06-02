@@ -1,0 +1,54 @@
+name: Master CI
+
+on:
+  push:
+    branches: [master, 'release/*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  build-solutions:
+    name: Build solutions
+    uses: ./.github/workflows/build-solutions.yml
+
+  build-tools:
+    name: Build tools
+    uses: ./.github/workflows/build-tools.yml
+
+  nethermind-tests:
+    name: Nethermind/Ethereum tests
+    uses: ./.github/workflows/nethermind-tests.yml
+    secrets: inherit
+
+  nethermind-tests-checked:
+    name: Nethermind extra test variants
+    uses: ./.github/workflows/nethermind-tests-checked.yml
+
+  nethermind-tests-flat:
+    name: Nethermind tests (Flat DB)
+    uses: ./.github/workflows/nethermind-tests-flat.yml
+
+  code-quality:
+    name: Code quality
+    uses: ./.github/workflows/_code-quality.yml
+
+  trivy:
+    name: Trivy scanner
+    uses: ./.github/workflows/trivy.yml
+
+  stateless-tests:
+    name: Stateless execution tests
+    uses: ./.github/workflows/stateless-tests.yml
+
+  hive-consensus-tests:
+    name: Hive consensus tests
+    if: startsWith(github.ref, 'refs/heads/release/')
+    uses: ./.github/workflows/hive-consensus-tests.yml
+    secrets: inherit

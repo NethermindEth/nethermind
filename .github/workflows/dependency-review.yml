@@ -1,6 +1,7 @@
 name: Dependency review
 
-on: [pull_request]
+on:
+  workflow_call:
 
 permissions:
   contents: read

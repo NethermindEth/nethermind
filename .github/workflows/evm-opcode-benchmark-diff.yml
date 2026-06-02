@@ -1,17 +1,7 @@
 name: EVM Opcode Benchmark Diff
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - "src/Nethermind/Nethermind.Evm/**"
-      - "Directory.Packages.props"
-      - ".github/workflows/evm-opcode-benchmark-diff.yml"
-      - "scripts/evm_benchmark_utils.py"
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 permissions:
   contents: read
@@ -66,7 +56,7 @@ jobs:
   compare-evm-opcodes:
     name: Compare EVM opcode benchmarks (base vs PR)
     needs: check-trigger
-    if: needs.check-trigger.outputs.should_run == 'true'
+    if: needs.check-trigger.outputs.should_run == 'true' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: benchmark
     timeout-minutes: 720
     env:

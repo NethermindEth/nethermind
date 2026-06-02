@@ -1,0 +1,417 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches: [master]
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  actions: read
+  security-events: write
+
+jobs:
+  select:
+    name: Select tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.select.outputs.docs_only }}
+      run_full: ${{ steps.select.outputs.run_full }}
+      tests_matrix: ${{ steps.select.outputs.tests_matrix }}
+      spec_runners: ${{ steps.select.outputs.spec_runners }}
+      chunked_runners: ${{ steps.select.outputs.chunked_runners }}
+      variant_checked: ${{ steps.select.outputs.variant_checked }}
+      variant_flat: ${{ steps.select.outputs.variant_flat }}
+      variant_amsterdam: ${{ steps.select.outputs.variant_amsterdam }}
+      evm: ${{ steps.select.outputs.evm }}
+      taiko: ${{ steps.select.outputs.taiko }}
+    steps:
+      - name: Check out policy from base ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          sparse-checkout: .github
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Select tests
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          EVENT_NAME: ${{ github.event_name }}
+          POLICY_FILE: .github/test-selection.yml
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, re, subprocess, sys
+          import yaml
+
+          event = os.environ.get('EVENT_NAME', '')
+          out_path = os.environ['GITHUB_OUTPUT']
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/null')
+
+          def emit(**kv):
+              with open(out_path, 'a') as f:
+                  for k, v in kv.items():
+                      f.write(f'{k}={v}\n')
+
+          # Safe defaults for merge_group (paths analysis is PR-only).
+          if event != 'pull_request':
+              emit(
+                  docs_only='false',
+                  run_full='false',
+                  tests_matrix='{"include":[]}',
+                  spec_runners='["ubuntu-latest","ubuntu-24.04-arm"]',
+                  chunked_runners='["ubuntu-latest","ubuntu-24.04-arm","windows-latest","macos-latest"]',
+                  variant_checked='false',
+                  variant_flat='false',
+                  variant_amsterdam='false',
+                  evm='false',
+                  taiko='false',
+              )
+              with open(summary_path, 'a') as f:
+                  f.write(f'## Test selection\nEvent {event!r}: emitting merge_group defaults.\n')
+              sys.exit(0)
+
+          fallback_full = False
+          try:
+              with open(os.environ['POLICY_FILE']) as f:
+                  policy = yaml.safe_load(f) or {}
+              if not isinstance(policy, dict):
+                  raise ValueError(f'policy root is not a mapping: {type(policy).__name__}')
+          except (FileNotFoundError, yaml.YAMLError, ValueError) as e:
+              print(f'::warning::Could not load {os.environ["POLICY_FILE"]} from base ref: {e}. Falling back to full matrix.', flush=True)
+              policy = {}
+              fallback_full = True
+
+          ALLOWED_RUNNERS = {
+              'ubuntu-latest',
+              'ubuntu-24.04-arm',
+              'windows-latest',
+              'macos-latest',
+          }
+          PROJECT_RE = re.compile(r'\A[A-Za-z][A-Za-z0-9_.]{0,127}\Z')
+
+          try:
+              files = subprocess.check_output(
+                  ['gh', 'api', f"repos/{os.environ['REPO']}/pulls/{os.environ['PR']}/files",
+                   '--paginate', '--jq', '.[].filename'],
+                  text=True,
+              ).strip().splitlines()
+          except subprocess.CalledProcessError as e:
+              print(f'::warning::gh api failed enumerating PR files: {e}. Falling back to full matrix.', flush=True)
+              files = []
+              fallback_full = True
+
+          labels = set(json.loads(os.environ.get('LABELS_JSON') or 'null') or [])
+
+          def glob_to_regex(g):
+              out = ['^']
+              i = 0
+              while i < len(g):
+                  c = g[i]
+                  if c == '*':
+                      if i + 1 < len(g) and g[i + 1] == '*':
+                          # `**/` and `/**` collapse one slash.
+                          if i + 2 < len(g) and g[i + 2] == '/':
+                              out.append('(?:.*/)?')
+                              i += 3
+                              continue
+                          if out and out[-1] == '/':
+                              out[-1] = '(?:/.*)?'
+                              i += 2
+                              continue
+                          out.append('.*')
+                          i += 2
+                          continue
+                      out.append('[^/]*')
+                  elif c == '?':
+                      out.append('[^/]')
+                  elif c in r'.\\+(){}[]|^$':
+                      out.append('\\' + c)
+                  else:
+                      out.append(c)
+                  i += 1
+              out.append('$')
+              return ''.join(out)
+
+          _regex_cache = {}
+          def matches_any(path, globs):
+              for g in globs:
+                  rx = _regex_cache.get(g) or _regex_cache.setdefault(g, re.compile(glob_to_regex(g)))
+                  if rx.match(path):
+                      return True
+              return False
+
+          docs_only_paths = policy.get('docs_only_paths', [])
+          full_matrix_paths = policy.get('full_matrix_paths', [])
+          rules_raw = policy.get('rules', [])
+          os_extensions_raw = policy.get('os_extensions', {})
+
+          def _filter_projects(names, where):
+              clean = []
+              for n in names or []:
+                  if isinstance(n, str) and PROJECT_RE.match(n):
+                      clean.append(n)
+                  else:
+                      print(f'::warning::Dropping non-conforming project name {n!r} from {where}', flush=True)
+              return clean
+
+          baseline_projects = _filter_projects(
+              policy.get('baseline', {}).get('projects', []), 'baseline.projects')
+          rules = [
+              {
+                  'paths': r.get('paths', []),
+                  'projects': _filter_projects(r.get('projects', []), 'rules[].projects'),
+                  'variants': list(r.get('variants', [])),
+              }
+              for r in rules_raw
+          ]
+          os_extensions = {
+              k: _filter_projects(v, f'os_extensions.{k}')
+              for k, v in os_extensions_raw.items()
+              if k in ALLOWED_RUNNERS
+          }
+
+          deep_ci = 'deep-ci' in labels
+          needs_variants = 'needs-variants' in labels
+
+          docs_only = (not fallback_full) and bool(files) and all(matches_any(f, docs_only_paths) for f in files)
+          run_full = fallback_full or deep_ci or any(matches_any(f, full_matrix_paths) for f in files)
+
+          selected_projects = set(baseline_projects)
+          variants = set()
+
+          if run_full:
+              for rule in rules:
+                  selected_projects.update(rule.get('projects', []))
+                  variants.update(rule.get('variants', []))
+              variants |= {'checked', 'no-intrinsics', 'flat-db', 'amsterdam'}
+          else:
+              for rule in rules:
+                  if any(matches_any(f, rule.get('paths', [])) for f in files):
+                      selected_projects.update(rule.get('projects', []))
+                      variants.update(rule.get('variants', []))
+
+          if needs_variants:
+              variants |= {'checked', 'no-intrinsics', 'flat-db', 'amsterdam'}
+
+          runners_for_project = {p: ['ubuntu-latest'] for p in selected_projects}
+          for os_label, projects in os_extensions.items():
+              for p in projects:
+                  if p in runners_for_project:
+                      runners_for_project[p].append(os_label)
+
+          include = [
+              {'runner': r, 'project': p}
+              for p in sorted(selected_projects)
+              if not p.startswith('Ethereum.')
+              for r in runners_for_project.get(p, ['ubuntu-latest'])
+          ]
+          tests_matrix = {'include': include}
+
+          if run_full:
+              spec_runners = ['ubuntu-latest', 'ubuntu-24.04-arm']
+              chunked_runners = ['ubuntu-latest', 'ubuntu-24.04-arm', 'windows-latest', 'macos-latest']
+          else:
+              spec_runners = ['ubuntu-latest']
+              chunked_runners = ['ubuntu-latest']
+          spec_runners = [r for r in spec_runners if r in ALLOWED_RUNNERS]
+          chunked_runners = [r for r in chunked_runners if r in ALLOWED_RUNNERS]
+
+          evm_paths = [
+              'src/Nethermind/Nethermind.Evm/**',
+              'Directory.Packages.props',
+              '.github/workflows/evm-opcode-benchmark-diff.yml',
+              'scripts/evm_benchmark_utils.py',
+          ]
+          taiko_paths = [
+              'src/Nethermind/Nethermind.Taiko/**',
+              '.github/workflows/_taiko-integration.yml',
+          ]
+          evm = any(matches_any(f, evm_paths) for f in files)
+          taiko = any(matches_any(f, taiko_paths) for f in files)
+
+          variant_checked = bool(variants & {'checked', 'no-intrinsics'})
+          variant_flat = 'flat-db' in variants
+          variant_amsterdam = 'amsterdam' in variants
+
+          def b(x):
+              return 'true' if x else 'false'
+
+          emit(
+              docs_only=b(docs_only),
+              run_full=b(run_full),
+              tests_matrix=json.dumps(tests_matrix),
+              spec_runners=json.dumps(spec_runners),
+              chunked_runners=json.dumps(chunked_runners),
+              variant_checked=b(variant_checked),
+              variant_flat=b(variant_flat),
+              variant_amsterdam=b(variant_amsterdam),
+              evm=b(evm),
+              taiko=b(taiko),
+          )
+
+          with open(summary_path, 'a') as f:
+              f.write('## Test selection\n\n')
+              f.write(f'- **Changed files**: {len(files)}\n')
+              f.write(f'- **Labels**: {", ".join(sorted(labels)) or "(none)"}\n')
+              f.write(f'- **docs_only**: {b(docs_only)}\n')
+              f.write(f'- **run_full**: {b(run_full)}\n')
+              f.write(f'- **Variants**: {", ".join(sorted(variants)) or "(none)"}\n')
+              f.write(f'- **spec_runners**: {", ".join(spec_runners)}\n')
+              f.write(f'- **chunked_runners**: {", ".join(chunked_runners)}\n')
+              f.write(f'- **evm path-gate**: {b(evm)}\n')
+              f.write(f'- **taiko path-gate**: {b(taiko)}\n')
+              f.write(f'\n**Selected projects** ({len(include)} matrix entries):\n\n')
+              by_proj = {}
+              for e in include:
+                  by_proj.setdefault(e['project'], []).append(e['runner'])
+              for p in sorted(by_proj):
+                  f.write(f'- `{p}` → {", ".join(by_proj[p])}\n')
+          PYEOF
+
+  build-solutions:
+    name: Build solutions
+    needs: select
+    if: needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/build-solutions.yml
+    with:
+      include_debug: ${{ github.event_name == 'merge_group' }}
+
+  build-tools:
+    name: Build tools
+    needs: select
+    if: needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/build-tools.yml
+
+  code-quality:
+    name: Code quality
+    needs: select
+    if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/_code-quality.yml
+
+  nethermind-tests:
+    name: Nethermind/Ethereum tests
+    needs: [select, build-solutions, code-quality]
+    if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/nethermind-tests.yml
+    secrets: inherit
+    with:
+      tests_matrix: ${{ needs.select.outputs.tests_matrix }}
+      spec_runners: ${{ needs.select.outputs.spec_runners }}
+      chunked_runners: ${{ needs.select.outputs.chunked_runners }}
+
+  stateless-tests:
+    name: Stateless execution tests
+    needs: [select, build-solutions]
+    if: needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/stateless-tests.yml
+
+  trivy:
+    name: Trivy scanner
+    needs: select
+    if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/trivy.yml
+
+  dependency-review:
+    name: Dependency review
+    needs: select
+    if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/dependency-review.yml
+
+  nethermind-tests-checked:
+    name: Nethermind extra test variants
+    needs: [select, nethermind-tests]
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.select.outputs.docs_only != 'true' &&
+      needs.select.outputs.variant_checked == 'true'
+    uses: ./.github/workflows/nethermind-tests-checked.yml
+
+  nethermind-tests-flat:
+    name: Nethermind tests (Flat DB)
+    needs: [select, nethermind-tests]
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.select.outputs.docs_only != 'true' &&
+      needs.select.outputs.variant_flat == 'true'
+    uses: ./.github/workflows/nethermind-tests-flat.yml
+    with:
+      include_amsterdam: ${{ needs.select.outputs.variant_amsterdam == 'true' }}
+
+  evm-opcode-benchmark-diff:
+    name: EVM Opcode Benchmark Diff
+    needs: select
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.select.outputs.docs_only != 'true' &&
+      needs.select.outputs.evm == 'true'
+    uses: ./.github/workflows/evm-opcode-benchmark-diff.yml
+
+  taiko-integration:
+    name: Taiko integration
+    needs: select
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.select.outputs.docs_only != 'true' &&
+      needs.select.outputs.taiko == 'true'
+    uses: ./.github/workflows/_taiko-integration.yml
+    secrets: inherit
+
+  sync-pr-gate:
+    name: Sync PR Gate (Hoodi)
+    needs: [select, nethermind-tests, stateless-tests]
+    if: github.event_name == 'pull_request' && needs.select.outputs.docs_only != 'true'
+    uses: ./.github/workflows/sync-pr-gate.yml
+    secrets: inherit
+
+  pr-required:
+    name: PR required
+    needs:
+      - select
+      - build-solutions
+      - build-tools
+      - code-quality
+      - nethermind-tests
+      - nethermind-tests-checked
+      - nethermind-tests-flat
+      - stateless-tests
+      - trivy
+      - dependency-review
+      - sync-pr-gate
+      - evm-opcode-benchmark-diff
+      - taiko-integration
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required jobs
+        env:
+          NEEDS_JSON: ${{ toJson(needs) }}
+        run: |
+          set -e
+          echo "$NEEDS_JSON" > /tmp/needs.json
+          fail=0
+          while IFS= read -r job; do
+            result=$(jq -r --arg j "$job" '.[$j].result' /tmp/needs.json)
+            case "$result" in
+              success|skipped)
+                echo "  $job: $result"
+                ;;
+              *)
+                echo "::error::Required job '$job' did not succeed: $result"
+                fail=1
+                ;;
+            esac
+          done < <(jq -r 'keys[]' /tmp/needs.json)
+          exit $fail

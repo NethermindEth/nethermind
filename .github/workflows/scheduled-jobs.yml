@@ -1,0 +1,46 @@
+name: Scheduled jobs
+
+on:
+  schedule:
+    # Weekly Sunday 00:00 UTC — codeql + weekly updates (fast-sync, superchain)
+    - cron: '0 0 * * 0'
+    # Daily 00:00 UTC — update-dockerfiles
+    - cron: '0 0 * * *'
+    # Thursday 19:29 UTC — trivy
+    - cron: '29 19 * * 4'
+  # Re-scan with CodeQL on every release tag (preserves pre-refactor codeql.yml trigger).
+  push:
+    tags: ['*']
+
+permissions:
+  contents: write
+  pull-requests: write
+  security-events: write
+  actions: read
+
+jobs:
+  codeql:
+    name: CodeQL
+    if: github.event.schedule == '0 0 * * 0' || github.event_name == 'push'
+    uses: ./.github/workflows/codeql.yml
+
+  trivy:
+    name: Trivy
+    if: github.event.schedule == '29 19 * * 4'
+    uses: ./.github/workflows/trivy.yml
+
+  weekly-updates:
+    name: Weekly updates
+    if: github.event.schedule == '0 0 * * 0'
+    uses: ./.github/workflows/_scheduled-updates.yml
+    with:
+      which: 'update-fast-sync,update-superchain'
+    secrets: inherit
+
+  daily-updates:
+    name: Daily updates
+    if: github.event.schedule == '0 0 * * *'
+    uses: ./.github/workflows/_scheduled-updates.yml
+    with:
+      which: 'update-dockerfiles'
+    secrets: inherit

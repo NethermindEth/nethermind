@@ -1,0 +1,22 @@
+name: Release pipeline
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  publish-packages:
+    name: Publish packages
+    uses: ./.github/workflows/publish-packages.yml
+    secrets: inherit
+
+  update-docs:
+    name: Update docs
+    uses: ./.github/workflows/update-docs.yml
+    with:
+      ref: ${{ github.ref_name }}
+    secrets: inherit

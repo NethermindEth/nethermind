@@ -1,15 +1,13 @@
 name: Build solutions
 
 on:
-  pull_request:
-    branches: [master]
-  push:
-    branches: [master]
-  merge_group:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
+    inputs:
+      include_debug:
+        description: Build every solution in both release and debug configurations.
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -17,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        config: [release, debug]
+        config: ${{ fromJson(inputs.include_debug && '["release","debug"]' || '["release"]') }}
         solution: [Nethermind, EthereumTests, Benchmarks]
     steps:
       - name: Free up disk space
