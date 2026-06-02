@@ -19,18 +19,9 @@ public class SyncFeedComponent<TBatch>(ISyncFeed<TBatch> feed, SyncDispatcher<TB
     public ISyncDownloader<TBatch> Downloader => downloader;
     public BlockDownloader BlockDownloader => (BlockDownloader)blockDownloader.Value;
 
-    public void Dispose()
-    {
-        lifetimeScope.Dispose();
-    }
+    public void Dispose() => lifetimeScope.Dispose();
 
-    public async ValueTask DisposeAsync()
-    {
-        await lifetimeScope.DisposeAsync();
-    }
+    public async ValueTask DisposeAsync() => await lifetimeScope.DisposeAsync();
 
-    public override string ToString()
-    {
-        return $"SyncFeedComponent Feed:{feed}";
-    }
+    public override string ToString() => $"SyncFeedComponent Feed:{feed}";
 }

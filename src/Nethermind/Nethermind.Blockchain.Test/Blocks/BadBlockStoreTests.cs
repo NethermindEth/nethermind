@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -12,6 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
 
+[Parallelizable(ParallelScope.All)]
 public class BadBlockStoreTests
 {
     [Test]
@@ -31,7 +30,7 @@ public class BadBlockStoreTests
             badBlockStore.Insert(block);
         }
 
-        badBlockStore.GetAll().Should().BeEquivalentTo(toAdd, options => options.Excluding(b => b.EncodedSize));
+        Assert.That(badBlockStore.GetAll(), Is.EquivalentTo(toAdd).UsingBlockComparer());
     }
 
     [Test]
@@ -51,6 +50,13 @@ public class BadBlockStoreTests
             badBlockStore.Insert(block);
         }
 
-        badBlockStore.GetAll().Count().Should().Be(2);
+        int count = 0;
+        foreach (Block _ in badBlockStore.GetAll())
+        {
+            count++;
+        }
+
+        Assert.That(count, Is.EqualTo(2));
     }
+
 }

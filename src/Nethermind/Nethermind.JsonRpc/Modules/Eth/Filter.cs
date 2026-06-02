@@ -13,13 +13,15 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class Filter : IJsonRpcParam
 {
-    public AddressAsKey[]? Address { get; set; }
+    public HashSet<AddressAsKey>? Address { get; set; }
 
-    public BlockParameter FromBlock { get; set; }
+    public BlockParameter FromBlock { get; set; } = BlockParameter.Latest;
 
-    public BlockParameter ToBlock { get; set; }
+    public BlockParameter ToBlock { get; set; } = BlockParameter.Latest;
 
     public IEnumerable<Hash256[]?>? Topics { get; set; }
+
+    public bool UseIndex { get; set; } = true;
 
     public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {
@@ -28,7 +30,13 @@ public class Filter : IJsonRpcParam
         {
             if (filter.ValueKind == JsonValueKind.String)
             {
-                doc = JsonDocument.Parse(filter.GetString());
+                string filterString = filter.GetString()!;
+                if (filterString.Length > JsonRpcLimits.MaxJsonStringArgLength)
+                {
+                    throw new ArgumentException($"filter string length {filterString.Length} exceeds maximum allowed length of {JsonRpcLimits.MaxJsonStringArgLength}");
+                }
+
+                doc = JsonDocument.Parse(filterString);
                 filter = doc.RootElement;
             }
 
@@ -65,6 +73,16 @@ public class Filter : IJsonRpcParam
             {
                 Topics = GetTopics(topicsElement, options);
             }
+
+            if (filter.TryGetProperty("useIndex"u8, out JsonElement useIndex))
+            {
+                UseIndex = useIndex.ValueKind switch
+                {
+                    JsonValueKind.False => false,
+                    JsonValueKind.True => true,
+                    _ => UseIndex
+                };
+            }
         }
         finally
         {
@@ -72,7 +90,10 @@ public class Filter : IJsonRpcParam
         }
     }
 
-    private static AddressAsKey[]? GetAddress(JsonElement token, JsonSerializerOptions options)
+    private const int MaxAddressCount = 1000;
+    private const int MaxTopicValuesPerSlot = 1000;
+
+    private static HashSet<AddressAsKey>? GetAddress(JsonElement token, JsonSerializerOptions options)
     {
         switch (token.ValueKind)
         {
@@ -81,49 +102,65 @@ public class Filter : IJsonRpcParam
             case JsonValueKind.String:
                 return [new AddressAsKey(new Address(token.ToString()))];
             case JsonValueKind.Array:
-                var enumerator = token.EnumerateArray();
-                List<AddressAsKey> result = new();
-                while (enumerator.MoveNext())
+                int addressCount = token.GetArrayLength();
+                if (addressCount > MaxAddressCount)
                 {
-                    result.Add(new(new Address(enumerator.Current.ToString())));
+                    throw new JsonException($"Too many addresses ({addressCount}). Max is {MaxAddressCount}.");
                 }
 
-                return result.ToArray();
+                HashSet<AddressAsKey> result = new(addressCount);
+                foreach (JsonElement element in token.EnumerateArray())
+                {
+                    result.Add(new(new Address(element.ToString())));
+                }
+
+                return result;
             default:
                 throw new ArgumentException("invalid address field");
         }
     }
 
-    private static IEnumerable<Hash256[]?>? GetTopics(JsonElement? array, JsonSerializerOptions options)
+    private static Hash256[]?[]? GetTopics(JsonElement? array, JsonSerializerOptions options)
     {
         if (array is null)
         {
-            yield break;
+            return null;
         }
 
-        foreach (var token in array.GetValueOrDefault().EnumerateArray())
+        int topicSlotCount = array.Value.GetArrayLength();
+        Hash256[]?[] topics = new Hash256[]?[topicSlotCount];
+        int slotIndex = 0;
+        foreach (JsonElement token in array.Value.EnumerateArray())
         {
             switch (token.ValueKind)
             {
                 case JsonValueKind.Undefined or JsonValueKind.Null:
-                    yield return null;
+                    topics[slotIndex++] = null;
                     break;
                 case JsonValueKind.String:
-                    yield return [new Hash256(token.GetString()!)];
+                    topics[slotIndex++] = [new Hash256(token.GetString()!)];
                     break;
                 case JsonValueKind.Array:
-                    JsonElement.ArrayEnumerator enumerator = token.EnumerateArray();
-                    List<Hash256> result = new();
-                    while (enumerator.MoveNext())
+                    int topicCount = token.GetArrayLength();
+                    if (topicCount > MaxTopicValuesPerSlot)
                     {
-                        result.Add(new(enumerator.Current.ToString()));
+                        throw new JsonException($"Too many topic values ({topicCount}). Max is {MaxTopicValuesPerSlot}.");
                     }
 
-                    yield return result.ToArray();
+                    Hash256[] result = new Hash256[topicCount];
+                    int i = 0;
+                    foreach (JsonElement element in token.EnumerateArray())
+                    {
+                        result[i++] = new Hash256(element.ToString());
+                    }
+
+                    topics[slotIndex++] = result;
                     break;
                 default:
                     throw new ArgumentException("invalid topics field");
             }
         }
+
+        return topics;
     }
 }

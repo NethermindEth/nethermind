@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -25,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class Eth63ProtocolHandler : Eth62ProtocolHandler
     {
-        private readonly MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>> _nodeDataRequests;
+        private readonly MessageQueue<GetNodeDataMessage, IByteArrayList> _nodeDataRequests;
 
         private readonly MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests;
 
@@ -40,50 +39,48 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ITxGossipPolicy? transactionsGossipPolicy = null)
             : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
-            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>>(Send);
-            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(Send);
+            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(this);
+            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(this);
         }
 
         public override byte ProtocolVersion => EthVersions.Eth63;
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go
 
-        public override void HandleMessage(ZeroPacket message)
+        protected override bool HandleMessageCore(ZeroPacket message)
         {
-            base.HandleMessage(message);
             int size = message.Content.ReadableBytes;
 
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
                     HandleInBackground<GetReceiptsMessage, ReceiptsMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth63MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
                     ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
-                    break;
+                    return true;
                 case Eth63MessageCode.GetNodeData:
                     HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth63MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
                     ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
-                    break;
+                    return true;
+                default:
+                    return base.HandleMessageCore(message);
             }
         }
 
         public override string Name => "eth63";
 
-        protected virtual void Handle(ReceiptsMessage msg, long size)
-        {
-            _receiptsRequests.Handle((msg.TxReceipts, size), size);
-        }
+        protected virtual void Handle(ReceiptsMessage msg, long size) => _receiptsRequests.Handle((msg.TxReceipts, size), size);
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
-            using var message = msg;
+            using GetNodeDataMessage message = msg;
 
             long startTime = Stopwatch.GetTimestamp();
             NodeDataMessage response = await FulfillNodeDataRequest(message, cancellationToken);
@@ -94,20 +91,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected Task<NodeDataMessage> FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
-            IOwnedReadOnlyList<byte[]> nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
+            IByteArrayList nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
             return Task.FromResult(new NodeDataMessage(nodeData));
         }
 
-        protected virtual void Handle(NodeDataMessage msg, int size)
-        {
-            _nodeDataRequests.Handle(msg.Data, size);
-        }
+        protected virtual void Handle(NodeDataMessage msg, int size) => _nodeDataRequests.Handle(msg.Data, size);
 
-        public override Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
+        public override Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
         {
             if (keys.Count == 0)
             {
-                return Task.FromResult<IOwnedReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty());
+                return Task.FromResult<IByteArrayList>(EmptyByteArrayList.Instance);
             }
 
             GetNodeDataMessage msg = new(keys.ToPooledList());
@@ -129,7 +123,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             return txReceipts;
         }
 
-        protected virtual Task<IOwnedReadOnlyList<byte[]>> SendRequest(GetNodeDataMessage message, CancellationToken token)
+        protected virtual Task<IByteArrayList> SendRequest(GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

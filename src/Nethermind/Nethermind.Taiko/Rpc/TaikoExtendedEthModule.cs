@@ -1,31 +1,43 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using static Nethermind.Taiko.TaikoBlockValidator;
 
 namespace Nethermind.Taiko.Rpc;
 
+/// <summary>
+/// Implements the public <c>taiko_</c> JSON-RPC namespace. Batch-lookup helpers
+/// (<c>taiko_lastL1OriginByBatchID</c> / <c>taiko_lastBlockIDByBatchID</c>) intentionally
+/// live only on the engine/auth namespace (<see cref="TaikoEngineRpcModule"/>) — matching
+/// the alethia-reth reference shape — to avoid two divergent code paths.
+/// </summary>
 public class TaikoExtendedEthModule(
     ISyncConfig syncConfig,
-    IL1OriginStore l1OriginStore,
-    IBlockFinder blockFinder) : ITaikoExtendedEthRpcModule
+    IL1OriginStore l1OriginStore) : ITaikoExtendedEthRpcModule
 {
-    private static readonly ResultWrapper<L1Origin?> L1OriginNotFound = ResultWrapper<L1Origin?>.Fail("not found");
-    private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
+    /// <summary>
+    /// Cached "not found" result for L1-origin lookups.
+    /// Uses ResourceNotFound (-32000) instead of the default InternalError (-32603), and
+    /// IsTemporary so the JsonRpc framework's SuppressWarning flag fires
+    /// (JsonRpcService.cs:158 -> JsonRpcProcessor.cs:428). Without this, every cold-boot
+    /// taiko_headL1Origin / taiko_l1OriginByID poll on a node that hasn't yet seen any L1
+    /// batches produces a loud "Error response handling JsonRpc..." WARN line on a
+    /// known-transient miss.
+    /// </summary>
+    internal static readonly ResultWrapper<L1Origin?> L1OriginNotFound =
+        ResultWrapper<L1Origin?>.Fail("not found", ErrorCodes.ResourceNotFound, isTemporary: true);
 
+    /// <inheritdoc />
     public Task<ResultWrapper<string>> taiko_getSyncMode() => ResultWrapper<string>.Success(syncConfig switch
     {
         { SnapSync: true } => "snap",
         _ => "full",
     });
 
+    /// <inheritdoc />
     public Task<ResultWrapper<L1Origin?>> taiko_headL1Origin()
     {
         UInt256? head = l1OriginStore.ReadHeadL1Origin();
@@ -39,108 +51,11 @@ public class TaikoExtendedEthModule(
         return origin is null ? L1OriginNotFound : ResultWrapper<L1Origin?>.Success(origin);
     }
 
+    /// <inheritdoc />
     public Task<ResultWrapper<L1Origin?>> taiko_l1OriginByID(UInt256 blockId)
     {
         L1Origin? origin = l1OriginStore.ReadL1Origin(blockId);
 
         return origin is null ? L1OriginNotFound : ResultWrapper<L1Origin?>.Success(origin);
-    }
-
-    public Task<ResultWrapper<L1Origin?>> taiko_lastL1OriginByBatchID(UInt256 batchId)
-    {
-        UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
-        if (blockId is null)
-        {
-            blockId = GetLastBlockByBatchId(batchId);
-            if (blockId is null)
-            {
-                return L1OriginNotFound;
-            }
-        }
-
-        L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
-
-        return origin is null ? L1OriginNotFound : ResultWrapper<L1Origin?>.Success(origin);
-    }
-
-    public Task<ResultWrapper<UInt256?>> taiko_lastBlockIDByBatchID(UInt256 batchId)
-    {
-        UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
-        if (blockId is null)
-        {
-            blockId = GetLastBlockByBatchId(batchId);
-            if (blockId is null)
-            {
-                return BlockIdNotFound;
-            }
-        }
-
-        return ResultWrapper<UInt256?>.Success(blockId);
-    }
-
-    /// <summary>
-    /// Traverses the blockchain backwards to find the last Shasta block of the given Shasta batch ID.
-    /// </summary>
-    /// <param name="batchId">The batch ID.</param>
-    /// <returns>The last block ID.</returns>
-    private UInt256? GetLastBlockByBatchId(UInt256 batchId)
-    {
-        Block? currentBlock = blockFinder.Head;
-
-        while (currentBlock is not null &&
-               currentBlock.Transactions.Length > 0 &&
-               HasAnchorV4Prefix(currentBlock.Transactions[0].Data))
-        {
-            if (currentBlock.Number == 0)
-            {
-                break;
-            }
-
-            UInt256? proposalId = ExtractAnchorV4ProposalId(currentBlock.Transactions[0].Data);
-
-            if (proposalId is null)
-            {
-                return null;
-            }
-
-            if (proposalId.Value == batchId)
-            {
-                return (UInt256)currentBlock.Number;
-            }
-
-            currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);
-        }
-
-        return null;
-    }
-
-    private static bool HasAnchorV4Prefix(ReadOnlyMemory<byte> data)
-    {
-        return data.Length >= 4 && AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4]);
-    }
-
-    private static UInt256? ExtractAnchorV4ProposalId(ReadOnlyMemory<byte> data)
-    {
-        // Calldata layout: 4-byte selector + ABI-encoded arguments.
-        // The first 32 bytes hold the offset (relative to args start) where the proposal id is stored.
-        const int selectorLength = 4;
-        const int dataLength = 32;
-
-        if (data.Length <= selectorLength + dataLength)
-        {
-            return null;
-        }
-
-        ReadOnlySpan<byte> args = data.Span[selectorLength..];
-        var offset = new UInt256(args[..dataLength], true);
-
-        // Check if the offset is invalid
-        if (offset > int.MaxValue || offset + dataLength > args.Length)
-        {
-            return null;
-        }
-
-        ReadOnlySpan<byte> proposalIdBytes = args.Slice((int)offset, dataLength);
-        return new UInt256(proposalIdBytes, true);
     }
 }

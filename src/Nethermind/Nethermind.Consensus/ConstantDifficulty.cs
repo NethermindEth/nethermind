@@ -6,18 +6,13 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus
 {
-    public class ConstantDifficulty : IDifficultyCalculator
+    public class ConstantDifficulty(in UInt256 constantDifficulty) : IDifficultyCalculator
     {
-        private readonly UInt256 _constantDifficulty;
+        private readonly UInt256 _constantDifficulty = constantDifficulty;
 
         public static readonly IDifficultyCalculator Zero = new ConstantDifficulty(UInt256.Zero);
 
         public static readonly IDifficultyCalculator One = new ConstantDifficulty(UInt256.One);
-
-        public ConstantDifficulty(in UInt256 constantDifficulty)
-        {
-            _constantDifficulty = constantDifficulty;
-        }
 
         public UInt256 Calculate(BlockHeader header, BlockHeader parent) => _constantDifficulty;
     }

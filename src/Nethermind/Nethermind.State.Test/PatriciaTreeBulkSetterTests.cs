@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -90,6 +90,12 @@ public class PatriciaTreeBulkSetterTests
             (new Hash256("cccccccc00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
             (new Hash256("cccc000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
         }).SetName("deep value");
+
+        yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
+        {
+            (new Hash256("3333333333333333333333333333333333333333333333333333333333333333"), MakeRandomValue(rng)),
+            (new Hash256("3333333332222222222222222222222222222222222222222222222222222222"), MakeRandomValue(rng)),
+        }).SetName("matching long extension");
     }
 
     public static IEnumerable<TestCaseData> PreExistingDataGen()
@@ -109,6 +115,13 @@ public class PatriciaTreeBulkSetterTests
             (new Hash256("3322222222222222222222222222222222222222222222222222222222222222"), MakeRandomValue(rng)),
         }).SetName("one extension");
 
+        yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
+        {
+            (new Hash256("3333333332222222222222222222222222222222222222222222222222222222"), MakeRandomValue(rng)),
+            (new Hash256("3333333333333333333333333333333333333333333333333333333333333333"), MakeRandomValue(rng)),
+            (new Hash256("3333333344444444444444444444444444444444444444444444444444444444"), MakeRandomValue(rng)),
+        }).SetName("long extension with branch child");
+
         yield return new TestCaseData(GenRandomOfLength(1000)).SetName("random 1000");
     }
 
@@ -122,6 +135,10 @@ public class PatriciaTreeBulkSetterTests
             {
                 yield return new TestCaseData(existingData.Arguments[0], testCaseData.Arguments[0]).SetName(existingData.TestName + " and " + testCaseData.TestName);
             }
+
+            List<(Hash256 key, byte[] value)> originalSet = (List<(Hash256 key, byte[] value)>)existingData.Arguments[0];
+            List<(Hash256 key, byte[] value)> removal = originalSet.Select((kv) => (kv.key, (byte[])null)).ToList();
+            yield return new TestCaseData(existingData.Arguments[0], removal).SetName(existingData.TestName + " and remove self completely ");
         }
 
         yield return new TestCaseData(
@@ -172,16 +189,15 @@ public class PatriciaTreeBulkSetterTests
             }
         ).SetName("replace");
 
-        var reappliedEntry =
-            new List<(Hash256 key, byte[] value)>()
-            {
+        List<(Hash256 key, byte[] value)> reappliedEntry =
+            [
                 (new Hash256("abaa000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
                 (new Hash256("aaaadddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
                 (new Hash256("bbbbdddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
                 (new Hash256("bbbbeeee00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
                 (new Hash256("cccccccc00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
                 (new Hash256("cccc000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false))
-            };
+            ];
         yield return new TestCaseData(reappliedEntry, reappliedEntry).SetName("reapply specific");
 
         yield return new TestCaseData(GenRandomOfLength(100), GenRandomOfLength(100)).SetName("reapply 100");
@@ -228,14 +244,14 @@ public class PatriciaTreeBulkSetterTests
 
     private static List<(Hash256 key, byte[] value)> GenRandomOfLength(int itemCount, int seed = 0)
     {
-        Random rng = new Random(seed);
-        List<(Hash256 key, byte[] value)> items = new List<(Hash256 key, byte[] value)>(0);
+        Random rng = new(seed);
+        List<(Hash256 key, byte[] value)> items = [];
 
         for (int i = 0; i < itemCount; i++)
         {
             byte[] buffer = new byte[32];
             rng.NextBytes(buffer);
-            Hash256 key = new Hash256(buffer);
+            Hash256 key = new(buffer);
             rng.NextBytes(buffer);
 
             items.Add((key, buffer.AsSpan().ToArray()));
@@ -254,12 +270,12 @@ public class PatriciaTreeBulkSetterTests
         TimeSpan newTime;
         long newWriteCount = 0;
         {
-            TestMemDb db = new TestMemDb();
-            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
-            PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
+            TestMemDb db = new();
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(db));
+            PatriciaTree pTree = new(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
-            foreach (var existingItem in existingItems)
+            foreach ((Hash256 key, byte[] value) existingItem in existingItems)
             {
                 pTree.Set(existingItem.key.Bytes, existingItem.value);
             }
@@ -267,7 +283,7 @@ public class PatriciaTreeBulkSetterTests
             pTree.Commit();
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
-            foreach (var valueTuple in items)
+            foreach ((Hash256 key, byte[] value) valueTuple in items)
             {
                 entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
             }
@@ -280,23 +296,23 @@ public class PatriciaTreeBulkSetterTests
 
             if (recordDump)
             {
-                TreeDumper td = new TreeDumper(expectAccounts: false);
+                TreeDumper td = new(expectAccounts: false);
                 pTree.Commit();
                 pTree.Accept(td, pTree.RootHash);
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
-                    TestContext.Error.WriteLine($"But got {td.ToString()}");
+                    TestContext.Error.WriteLine($"But got {td}");
                 }
             }
 
-            newWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
-            pTree.RootHash.Should().Be(root);
+            Assert.That(newWriteCount, Is.LessThanOrEqualTo(baselineWriteCount));
+            Assert.That(pTree.RootHash, Is.EqualTo(root));
         }
 
         TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Bulk: {newTime}");
         TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Bulk: {newWriteCount}");
-        newWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
+        Assert.That(newWriteCount, Is.LessThanOrEqualTo(baselineWriteCount));
     }
 
     [TestCaseSource(nameof(BulkSetTestGen))]
@@ -305,12 +321,12 @@ public class PatriciaTreeBulkSetterTests
         const bool recordDump = true;
         (Hash256 root, TimeSpan baselineTime, long baselineWriteCount, string originalDump) = CalculateBaseline(existingItems, items, recordDump);
 
-        TestMemDb db = new TestMemDb();
-        IScopedTrieStore trieStore = new RawScopedTrieStore(db);
-        PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
+        TestMemDb db = new();
+        IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(db));
+        PatriciaTree pTree = new(trieStore, LimboLogs.Instance);
         pTree.RootHash = Keccak.EmptyTreeHash;
 
-        foreach (var existingItem in existingItems)
+        foreach ((Hash256 key, byte[] value) existingItem in existingItems)
         {
             pTree.Set(existingItem.key.Bytes, existingItem.value);
         }
@@ -318,14 +334,14 @@ public class PatriciaTreeBulkSetterTests
         pTree.UpdateRootHash();
 
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
-        foreach (var valueTuple in items)
+        foreach ((Hash256 key, byte[] value) valueTuple in items)
         {
             entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
         }
 
         pTree.BulkSet(entries);
         pTree.UpdateRootHash();
-        pTree.RootHash.Should().Be(root);
+        Assert.That(pTree.RootHash, Is.EqualTo(root));
     }
 
     [TestCaseSource(nameof(BulkSetTestGen))]
@@ -337,12 +353,12 @@ public class PatriciaTreeBulkSetterTests
         TimeSpan preSortedTime;
         long preSortedWriteCount;
         {
-            TestMemDb db = new TestMemDb();
-            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
-            PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
+            TestMemDb db = new();
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(db));
+            PatriciaTree pTree = new(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
-            foreach (var existingItem in existingItems)
+            foreach ((Hash256 key, byte[] value) existingItem in existingItems)
             {
                 pTree.Set(existingItem.key.Bytes, existingItem.value);
             }
@@ -351,7 +367,7 @@ public class PatriciaTreeBulkSetterTests
 
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
-            foreach (var valueTuple in items)
+            foreach ((Hash256 key, byte[] value) valueTuple in items)
             {
                 entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
             }
@@ -366,22 +382,22 @@ public class PatriciaTreeBulkSetterTests
 
             if (recordDump)
             {
-                TreeDumper td = new TreeDumper(expectAccounts: false);
+                TreeDumper td = new(expectAccounts: false);
                 pTree.Commit();
                 pTree.Accept(td, pTree.RootHash);
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
-                    TestContext.Error.WriteLine($"But in sorted got {td.ToString()}");
+                    TestContext.Error.WriteLine($"But in sorted got {td}");
                 }
             }
 
-            pTree.RootHash.Should().Be(root);
+            Assert.That(pTree.RootHash, Is.EqualTo(root));
         }
 
         TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Sorted Bulk: {preSortedTime}");
         TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Sorted Bulk: {preSortedWriteCount}");
-        preSortedWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
+        Assert.That(preSortedWriteCount, Is.LessThanOrEqualTo(baselineWriteCount));
     }
 
     [TestCaseSource(nameof(BulkSetTestGen))]
@@ -395,12 +411,12 @@ public class PatriciaTreeBulkSetterTests
 
         {
             // Just the bulk set one stack
-            TestMemDb db = new TestMemDb();
-            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
-            PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
+            TestMemDb db = new();
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(db));
+            PatriciaTree pTree = new(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
-            foreach (var existingItem in existingItems)
+            foreach ((Hash256 key, byte[] value) existingItem in existingItems)
             {
                 pTree.Set(existingItem.key.Bytes, existingItem.value);
             }
@@ -409,7 +425,7 @@ public class PatriciaTreeBulkSetterTests
 
 
             long sw = Stopwatch.GetTimestamp();
-            foreach (var valueTuple in items)
+            foreach ((Hash256 key, byte[] value) valueTuple in items)
             {
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
                 entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
@@ -422,22 +438,22 @@ public class PatriciaTreeBulkSetterTests
 
             if (recordDump)
             {
-                TreeDumper td = new TreeDumper(expectAccounts: false);
+                TreeDumper td = new(expectAccounts: false);
                 pTree.Commit();
                 pTree.Accept(td, pTree.RootHash);
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
-                    TestContext.Error.WriteLine($"But in multiple set one got {td.ToString()}");
+                    TestContext.Error.WriteLine($"But in multiple set one got {td}");
                 }
             }
 
-            pTree.RootHash.Should().Be(root);
+            Assert.That(pTree.RootHash, Is.EqualTo(root));
         }
 
         TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, One by one time: {bulkSetOne}");
         TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Write count: {writeCount}");
-        writeCount.Should().BeLessOrEqualTo(baselineWriteCount);
+        Assert.That(writeCount, Is.LessThanOrEqualTo(baselineWriteCount));
     }
 
     private static (Hash256, TimeSpan, long, string originalDump) CalculateBaseline(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items, bool recordDump)
@@ -447,12 +463,12 @@ public class PatriciaTreeBulkSetterTests
         TimeSpan baselineTime;
         long baselineWriteCount = 0;
         {
-            TestMemDb db = new TestMemDb();
-            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
-            PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
+            TestMemDb db = new();
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(db));
+            PatriciaTree pTree = new(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
-            foreach (var existingItem in existingItems)
+            foreach ((Hash256 key, byte[] value) existingItem in existingItems)
             {
                 pTree.Set(existingItem.key.Bytes, existingItem.value);
             }
@@ -460,7 +476,7 @@ public class PatriciaTreeBulkSetterTests
 
             long sw = Stopwatch.GetTimestamp();
 
-            foreach (var valueTuple in items) pTree.Set(valueTuple.key.Bytes, valueTuple.value);
+            foreach ((Hash256 key, byte[] value) valueTuple in items) pTree.Set(valueTuple.key.Bytes, valueTuple.value);
 
             pTree.Commit();
 
@@ -469,7 +485,7 @@ public class PatriciaTreeBulkSetterTests
             if (recordDump)
             {
                 pTree.Commit();
-                TreeDumper td = new TreeDumper(expectAccounts: false);
+                TreeDumper td = new(expectAccounts: false);
                 pTree.Accept(td, pTree.RootHash);
                 originalDump = td.ToString();
             }
@@ -484,11 +500,11 @@ public class PatriciaTreeBulkSetterTests
     [Test]
     public void BulkSet_ShouldThrowOnNonUniqueEntries()
     {
-        IScopedTrieStore trieStore = new RawScopedTrieStore(new TestMemDb());
-        PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
+        IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(new TestMemDb()));
+        PatriciaTree pTree = new(trieStore, LimboLogs.Instance);
         pTree.RootHash = Keccak.EmptyTreeHash;
 
-        Random rng = new Random(0);
+        Random rng = new(0);
 
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(3);
         entries.Add(new PatriciaTree.BulkSetEntry(new ValueHash256("8818888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
@@ -507,7 +523,7 @@ public class PatriciaTreeBulkSetterTests
             thrown = true;
         }
 
-        thrown.Should().BeTrue();
+        Assert.That(thrown, Is.True);
     }
 
     public static IEnumerable<TestCaseData> BucketSortTestCase()
@@ -623,8 +639,8 @@ public class PatriciaTreeBulkSetterTests
         TestCaseData GenRandom(int nibIndex, int count)
         {
             byte[] buffer = new byte[32];
-            Random rng = new Random(0);
-            List<ValueHash256> hashes = new List<ValueHash256>();
+            Random rng = new(0);
+            List<ValueHash256> hashes = [];
             for (int i = 0; i < count; i++)
             {
                 rng.NextBytes(buffer);
@@ -666,35 +682,35 @@ public class PatriciaTreeBulkSetterTests
     [TestCaseSource(nameof(BucketSortTestCase))]
     public void TestBucketSort(int nibIndex, List<ValueHash256> paths, List<ValueHash256> expectedPaths, int[] expectedResult, ushort expectedMask)
     {
-        using ArrayPoolList<PatriciaTree.BulkSetEntry> items = new ArrayPoolList<PatriciaTree.BulkSetEntry>(paths.Count);
+        using ArrayPoolList<PatriciaTree.BulkSetEntry> items = new(paths.Count);
         foreach (ValueHash256 ValueHash256 in paths)
         {
             items.Add(new PatriciaTree.BulkSetEntry(ValueHash256, Array.Empty<byte>()));
         }
 
         Span<int> result = stackalloc int[TrieNode.BranchesCount];
-        using ArrayPoolList<PatriciaTree.BulkSetEntry> buffer = new ArrayPoolList<PatriciaTree.BulkSetEntry>(paths.Count, paths.Count);
+        using ArrayPoolList<PatriciaTree.BulkSetEntry> buffer = new(paths.Count, paths.Count);
 
         int resultMask = PatriciaTree.BucketSort16Small(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        buffer.Select((it) => it.Path).ToList().Should().BeEquivalentTo(expectedPaths);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
-        resultMask.Should().Be(expectedMask);
+        Assert.That(buffer.Select((it) => it.Path), Is.EquivalentTo(expectedPaths));
+        Assert.That(result.ToArray(), Is.EquivalentTo(expectedResult));
+        Assert.That(resultMask, Is.EqualTo(expectedMask));
 
         resultMask = PatriciaTree.BucketSort16Large(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        buffer.Select((it) => it.Path).ToList().Should().BeEquivalentTo(expectedPaths);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
-        resultMask.Should().Be(expectedMask);
+        Assert.That(buffer.Select((it) => it.Path), Is.EquivalentTo(expectedPaths));
+        Assert.That(result.ToArray(), Is.EquivalentTo(expectedResult));
+        Assert.That(resultMask, Is.EqualTo(expectedMask));
 
         resultMask = PatriciaTree.BucketSort16(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        buffer.Select((it) => it.Path).ToList().Should().BeEquivalentTo(expectedPaths);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
-        resultMask.Should().Be(expectedMask);
+        Assert.That(buffer.Select((it) => it.Path), Is.EquivalentTo(expectedPaths));
+        Assert.That(result.ToArray(), Is.EquivalentTo(expectedResult));
+        Assert.That(resultMask, Is.EqualTo(expectedMask));
     }
 
     [TestCaseSource(nameof(BucketSortTestCase))]
     public void HexarySearch(int nibIndex, List<ValueHash256> paths, List<ValueHash256> expectedPaths, int[] expectedResult, ushort expectedMask)
     {
-        using ArrayPoolList<PatriciaTree.BulkSetEntry> items = new ArrayPoolList<PatriciaTree.BulkSetEntry>(paths.Count);
+        using ArrayPoolList<PatriciaTree.BulkSetEntry> items = new(paths.Count);
         foreach (ValueHash256 hash256 in paths)
         {
             items.Add(new PatriciaTree.BulkSetEntry(hash256, Array.Empty<byte>()));
@@ -703,16 +719,40 @@ public class PatriciaTreeBulkSetterTests
 
         Span<int> result = stackalloc int[TrieNode.BranchesCount];
         int resultMask = PatriciaTree.HexarySearchAlreadySortedSmall(items.AsSpan(), nibIndex, result);
-        resultMask.Should().Be(expectedMask);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
+        Assert.That(resultMask, Is.EqualTo(expectedMask));
+        Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
 
         resultMask = PatriciaTree.HexarySearchAlreadySortedLarge(items.AsSpan(), nibIndex, result);
-        resultMask.Should().Be(expectedMask);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
+        Assert.That(resultMask, Is.EqualTo(expectedMask));
+        Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
 
         resultMask = PatriciaTree.HexarySearchAlreadySorted(items.AsSpan(), nibIndex, result);
-        resultMask.Should().Be(expectedMask);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
+        Assert.That(resultMask, Is.EqualTo(expectedMask));
+        Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
 
+    }
+
+    public class StrictRawScopedTrieStore(IScopedTrieStore baseTrieStore) : IScopedTrieStore
+    {
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+        {
+            TrieNode node = baseTrieStore.FindCachedOrUnknown(in path, hash);
+            if (hash != Keccak.EmptyTreeHash)
+            {
+                byte[] rlp = LoadRlp(path, hash);
+                Assert.That(Keccak.Compute(rlp), Is.EqualTo(hash));
+            }
+            return node;
+        }
+
+        public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, hash, flags);
+
+        public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => baseTrieStore.GetStorageTrieNodeResolver(address);
+
+        public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
+
+        public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) => baseTrieStore.BeginCommit(root, writeFlags);
     }
 }

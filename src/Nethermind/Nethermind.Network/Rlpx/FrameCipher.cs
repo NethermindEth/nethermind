@@ -30,13 +30,7 @@ public class FrameCipher : IFrameCipher
         _decryptionCipher.Init(false, new ParametersWithIV(ParameterUtilities.CreateKeyParameter("AES", aesKey), new byte[BlockSize]));
     }
 
-    public void Encrypt(byte[] input, int offset, int length, byte[] output, int outputOffset)
-    {
-        _encryptionCipher.ProcessBytes(input, offset, length, output, outputOffset);
-    }
+    public void Encrypt(byte[] input, int offset, int length, byte[] output, int outputOffset) => _encryptionCipher.ProcessBytes(input, offset, length, output, outputOffset);
 
-    public void Decrypt(byte[] input, int offset, int length, byte[] output, int outputOffset)
-    {
-        _decryptionCipher.ProcessBytes(input, offset, length, output, outputOffset);
-    }
+    public void Decrypt(byte[] input, int offset, int length, byte[] output, int outputOffset) => _decryptionCipher.ProcessBytes(input, offset, length, output, outputOffset);
 }

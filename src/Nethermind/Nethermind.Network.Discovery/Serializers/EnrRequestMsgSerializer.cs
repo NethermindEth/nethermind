@@ -10,11 +10,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<EnrRequestMsg>
+public class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<EnrRequestMsg>
 {
-    public EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, nodeKey, nodeIdResolver) { }
-
     public void Serialize(IByteBuffer byteBuffer, EnrRequestMsg msg)
     {
         int length = GetLength(msg, out int contentLength);
@@ -28,16 +25,21 @@ public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMes
         byteBuffer.ResetIndex();
 
         AddSignatureAndMdc(byteBuffer, length + 1);
+
+        byteBuffer.MarkReaderIndex();
+        msg.Hash = byteBuffer.Slice(0, 32).ReadAllBytesAsArray();
+        byteBuffer.ResetReaderIndex();
     }
 
     public EnrRequestMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey farPublicKey, Memory<byte> mdc, IByteBuffer data) = PrepareForDeserialization(msgBytes);
-        NettyRlpStream rlpStream = new(data);
+        Rlp.ValueDecoderContext ctx = data.AsRlpContext();
 
-        rlpStream.ReadSequenceLength();
-        long expirationTime = rlpStream.DecodeLong();
+        ctx.ReadSequenceLength();
+        long expirationTime = ctx.DecodeLong();
 
+        data.SetReaderIndex(data.ReaderIndex + ctx.Position);
         EnrRequestMsg msg = new(farPublicKey, mdc, expirationTime);
         return msg;
     }

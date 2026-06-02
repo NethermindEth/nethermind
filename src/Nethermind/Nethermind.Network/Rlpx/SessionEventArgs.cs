@@ -6,13 +6,8 @@ using Nethermind.Network.P2P;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class SessionEventArgs : EventArgs
+    public class SessionEventArgs(ISession session) : EventArgs
     {
-        public ISession Session { get; }
-
-        public SessionEventArgs(ISession session)
-        {
-            Session = session;
-        }
+        public ISession Session { get; } = session;
     }
 }

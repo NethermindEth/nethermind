@@ -51,7 +51,7 @@ namespace Nethermind.Crypto
 
         public static SecureString Secure(this string notSecureString)
         {
-            var secureString = new SecureString();
+            SecureString secureString = new();
             foreach (char c in notSecureString)
             {
                 secureString.AppendChar(c);

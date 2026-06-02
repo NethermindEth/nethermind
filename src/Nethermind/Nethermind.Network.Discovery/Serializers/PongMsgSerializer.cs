@@ -10,12 +10,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<PongMsg>
+public class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PongMsg>
 {
-    public PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
-    {
-    }
-
     public void Serialize(IByteBuffer byteBuffer, PongMsg msg)
     {
         if (msg.FarAddress is null)
@@ -42,18 +38,19 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
     {
         (PublicKey farPublicKey, _, IByteBuffer data) = PrepareForDeserialization(msgBytes);
 
-        NettyRlpStream rlp = new(data);
+        Rlp.ValueDecoderContext ctx = data.AsRlpContext();
 
-        rlp.ReadSequenceLength();
-        rlp.ReadSequenceLength();
+        ctx.ReadSequenceLength();
+        ctx.ReadSequenceLength();
 
-        // GetAddress(rlp.DecodeByteArray(), rlp.DecodeInt());
-        rlp.DecodeByteArraySpan();
-        rlp.DecodeInt(); // UDP port (we ignore and take it from Netty)
-        rlp.DecodeInt(); // TCP port
-        byte[] token = rlp.DecodeByteArray();
-        long expirationTime = rlp.DecodeLong();
+        // GetAddress(ctx.DecodeByteArray(), ctx.DecodeInt());
+        ctx.DecodeByteArraySpan(IpAddressRlpLimit);
+        ctx.DecodeInt(); // UDP port (we ignore and take it from Netty)
+        ctx.DecodeInt(); // TCP port
+        byte[] token = ctx.DecodeByteArray();
+        long expirationTime = ctx.DecodeLong();
 
+        data.SetReaderIndex(data.ReaderIndex + ctx.Position);
         PongMsg msg = new(farPublicKey, expirationTime, token);
         return msg;
     }

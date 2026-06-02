@@ -12,7 +12,7 @@ public class TxTypeExtensionsTests
     public void TxType_Should_Contain_All_Expected_Values()
     {
         // while adding new txs types, please add a new test case in the below test TxTypes_supported_functionality
-        var expectedTxTypes = new[]
+        TxType[] expectedTxTypes = new[]
         {
             TxType.Legacy,
             TxType.AccessList,
@@ -24,7 +24,7 @@ public class TxTypeExtensionsTests
 
         TxType[] actualTxTypes = (TxType[])Enum.GetValues(typeof(TxType));
         Assert.That(actualTxTypes.Length, Is.EqualTo(expectedTxTypes.Length));
-        Assert.That(actualTxTypes, Is.EquivalentTo(expectedTxTypes));
+        Assert.That(actualTxTypes, Is.EqualTo(expectedTxTypes));
     }
 
     public enum TxFeatureSupport

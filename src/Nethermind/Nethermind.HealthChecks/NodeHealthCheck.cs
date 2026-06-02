@@ -1,0 +1,59 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Nethermind.Logging;
+
+namespace Nethermind.HealthChecks
+{
+    public class NodeHealthCheck(
+        INodeHealthService nodeHealthService,
+        ILogManager logManager) : IHealthCheck
+    {
+        private readonly INodeHealthService _nodeHealthService = nodeHealthService ?? throw new ArgumentNullException(nameof(nodeHealthService));
+        private readonly ILogger _logger = logManager.GetClassLogger<NodeHealthCheck>();
+
+        public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                CheckHealthResult healthResult = _nodeHealthService.CheckHealth();
+                if (_logger.IsTrace) _logger.Trace($"Checked health result. Healthy: {healthResult.Healthy}");
+                string description = FormatMessages(healthResult.Messages.Select(static x => x.LongMessage));
+                if (healthResult.Healthy)
+                    return Task.FromResult(HealthCheckResult.Healthy(description, CreateData(healthResult)));
+
+                return Task.FromResult(HealthCheckResult.Unhealthy(description, null, CreateData(healthResult)));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(new HealthCheckResult(context.Registration.FailureStatus, exception: ex));
+            }
+        }
+
+        private static IReadOnlyDictionary<string, object> CreateData(CheckHealthResult healthResult) => new Dictionary<string, object>
+            {
+                { nameof(healthResult.IsSyncing), healthResult.IsSyncing },
+                { nameof(healthResult.Errors), healthResult.Errors }
+            };
+
+        private static string FormatMessages(IEnumerable<string> messages)
+        {
+            if (messages.Any(static x => !string.IsNullOrWhiteSpace(x)))
+            {
+                string joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
+                if (!string.IsNullOrWhiteSpace(joined))
+                {
+                    return joined + ".";
+                }
+            }
+
+            return string.Empty;
+        }
+    }
+}

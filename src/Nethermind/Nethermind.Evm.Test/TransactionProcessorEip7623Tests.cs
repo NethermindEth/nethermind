@@ -16,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -36,23 +35,20 @@ public class TransactionProcessorEip7623Tests
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _worldStateCloser?.Dispose();
-    }
+    public void TearDown() => _worldStateCloser?.Dispose();
 
     [TestCase(21006, false, TestName = "GasLimit=IntrinsicGas")]
     [TestCase(21010, true, TestName = "GasLimit=FloorGas")]
 
     public void transaction_validation_intrinsic_below_floor(long gasLimit, bool executed)
     {
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -61,7 +57,7 @@ public class TransactionProcessorEip7623Tests
             .WithGasPrice(1)
             .WithMaxFeePerGas(1)
             .WithTo(TestItem.AddressB)
-            .WithValue(100.GWei())
+            .WithValue(100.GWei)
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
@@ -78,7 +74,7 @@ public class TransactionProcessorEip7623Tests
     [Test]
     public void balance_validation_intrinsic_below_floor()
     {
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -87,7 +83,7 @@ public class TransactionProcessorEip7623Tests
             .WithGasPrice(1)
             .WithMaxFeePerGas(1)
             .WithTo(TestItem.AddressB)
-            .WithValue(100.GWei())
+            .WithValue(100.GWei)
             .WithGasLimit(21010)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
@@ -100,6 +96,6 @@ public class TransactionProcessorEip7623Tests
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
         UInt256 balance = _stateProvider.GetBalance(TestItem.AddressA);
-        Assert.That(balance, Is.EqualTo(1.Ether() - 100.GWei() - 21010));
+        Assert.That(balance, Is.EqualTo(1.Ether - 100.GWei - 21010));
     }
 }

@@ -15,8 +15,6 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -25,10 +23,8 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
-using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 
@@ -45,7 +41,7 @@ namespace Nethermind.Network.Benchmarks
         public void SetUp()
         {
             Console.WriteLine("AAA");
-            Session session = new Session(8545, Substitute.For<IChannel>(), Substitute.For<IDisconnectsAnalyzer>(), LimboLogs.Instance);
+            Session session = new(8545, Substitute.For<IChannel>(), Substitute.For<IDisconnectsAnalyzer>(), LimboLogs.Instance);
             session.RemoteNodeId = TestItem.PublicKeyA;
             session.RemoteHost = "127.0.0.1";
             session.RemotePort = 30303;
@@ -53,12 +49,12 @@ namespace Nethermind.Network.Benchmarks
                 SerializerInfo.Create(new TransactionsMessageSerializer()),
                 SerializerInfo.Create(new StatusMessageSerializer())
                 );
-            NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
-            var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
-            var tree = Build.A.BlockTree().TestObject;
+            NodeStatsManager stats = new(TimerFactory.Default, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
+            BlockTree tree = Build.A.BlockTree().TestObject;
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-            var specProvider = MainnetSpecProvider.Instance;
-            TxPool.TxPool txPool = new TxPool.TxPool(
+            MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
+            TxPool.TxPool txPool = new(
                 ecdsa,
                 new BlobTxStorage(),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
@@ -72,7 +68,7 @@ namespace Nethermind.Network.Benchmarks
             _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, RunImmediatelyScheduler.Instance, txPool, Consensus.ShouldGossip.Instance, LimboLogs.Instance);
             _handler.DisableTxFiltering();
 
-            StatusMessage statusMessage = new StatusMessage();
+            StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 63;
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
@@ -104,10 +100,7 @@ namespace Nethermind.Network.Benchmarks
         }
 
         [Benchmark]
-        public void JustSerialize()
-        {
-            _ser.ZeroSerialize(_txMsg);
-        }
+        public void JustSerialize() => _ser.ZeroSerialize(_txMsg);
 
         [Benchmark]
         public void SerializeAndCreatePacket()

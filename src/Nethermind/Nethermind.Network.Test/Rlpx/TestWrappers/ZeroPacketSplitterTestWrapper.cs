@@ -23,9 +23,6 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
             return result;
         }
 
-        public ZeroPacketSplitterTestWrapper() : base()
-        {
-            _context.Allocator.Returns(PooledByteBufferAllocator.Default);
-        }
+        public ZeroPacketSplitterTestWrapper() : base() => _context.Allocator.Returns(PooledByteBufferAllocator.Default);
     }
 }

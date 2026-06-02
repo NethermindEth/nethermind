@@ -18,7 +18,7 @@ public static class T8nCommand
     private static readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
     private const string Stdout = "stdout";
     private static ILogManager _logManager = new NLogManager("t8n.log");
-    private static ILogger _logger = _logManager.GetClassLogger();
+    private static ILogger _logger = _logManager.GetClassLogger(typeof(T8nCommand));
 
     static T8nCommand()
     {
@@ -32,7 +32,7 @@ public static class T8nCommand
 
         cmd.SetAction(parseResult =>
         {
-            var arguments = T8nCommandArguments.FromParseResult(parseResult);
+            T8nCommandArguments arguments = T8nCommandArguments.FromParseResult(parseResult);
 
             T8nOutput t8nOutput = new();
             try

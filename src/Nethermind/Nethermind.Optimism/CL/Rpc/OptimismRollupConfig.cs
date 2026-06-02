@@ -81,9 +81,7 @@ public sealed record OptimismRollupConfig
     public static OptimismRollupConfig Build(
         CLChainSpecEngineParameters clParameters,
         OptimismChainSpecEngineParameters engineParameters,
-        ChainSpec chainSpec)
-    {
-        return new OptimismRollupConfig
+        ChainSpec chainSpec) => new()
         {
             Genesis = new OptimismGenesis
             {
@@ -120,5 +118,4 @@ public sealed record OptimismRollupConfig
                 EIP1559DenominatorCanyon = (ulong)engineParameters.CanyonBaseFeeChangeDenominator!.Value
             }
         };
-    }
 }

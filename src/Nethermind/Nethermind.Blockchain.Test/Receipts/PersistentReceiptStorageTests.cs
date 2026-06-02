@@ -2,12 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
-using FluentAssertions.Equivalency;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -15,13 +11,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NSubstitute;
-using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts;
@@ -29,22 +25,18 @@ namespace Nethermind.Blockchain.Test.Receipts;
 
 [TestFixture(true)]
 [TestFixture(false)]
-public class PersistentReceiptStorageTests
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+public class PersistentReceiptStorageTests(bool useCompactReceipts)
 {
-    private readonly TestSpecProvider _specProvider = new TestSpecProvider(Byzantium.Instance);
+    private readonly TestSpecProvider _specProvider = new(Byzantium.Instance);
     private TestMemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
     private ReceiptsRecovery _receiptsRecovery = null!;
     private IBlockTree _blockTree = null!;
     private IBlockStore _blockStore = null!;
-    private readonly bool _useCompactReceipts;
     private ReceiptConfig _receiptConfig = null!;
     private PersistentReceiptStorage _storage = null!;
     private ReceiptArrayStorageDecoder _decoder = null!;
-
-    public PersistentReceiptStorageTests(bool useCompactReceipts)
-    {
-        _useCompactReceipts = useCompactReceipts;
-    }
 
     [SetUp]
     public void SetUp()
@@ -60,14 +52,11 @@ public class PersistentReceiptStorageTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _receiptsDb.Dispose();
-    }
+    public void TearDown() => _receiptsDb.Dispose();
 
     private void CreateStorage()
     {
-        _decoder = new ReceiptArrayStorageDecoder(_useCompactReceipts);
+        _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
         _storage = new PersistentReceiptStorage(
             _receiptsDb,
             _specProvider,
@@ -84,14 +73,14 @@ public class PersistentReceiptStorageTests
     public void Returns_null_for_missing_tx()
     {
         Hash256 blockHash = _storage.FindBlockHash(Keccak.Zero);
-        blockHash.Should().BeNull();
+        Assert.That(blockHash, Is.Null);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void ReceiptsIterator_does_not_throw_on_empty_span()
     {
         _storage.TryGetReceiptsIterator(1, Keccak.Zero, out ReceiptsIterator iterator);
-        iterator.TryGetNext(out _).Should().BeFalse();
+        Assert.That(iterator.TryGetNext(out _), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -99,24 +88,22 @@ public class PersistentReceiptStorageTests
     {
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, null!);
         _storage.TryGetReceiptsIterator(1, Keccak.Zero, out ReceiptsIterator iterator);
-        iterator.TryGetNext(out _).Should().BeFalse();
+        Assert.That(iterator.TryGetNext(out _), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Get_returns_empty_on_empty_span()
-    {
-        _storage.Get(Keccak.Zero).Should().BeEquivalentTo(Array.Empty<TxReceipt>());
-    }
+    public void Get_returns_empty_on_empty_span() =>
+        Assert.That(_storage.Get(Keccak.Zero), Is.EqualTo(Array.Empty<TxReceipt>()));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
 
         _storage.ClearCache();
-        _storage.Get(block).Should().BeEquivalentTo(receipts, ReceiptCompareOpt);
+        _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
         // second should be from cache
-        _storage.Get(block).Should().BeEquivalentTo(receipts, ReceiptCompareOpt);
+        _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
     }
 
     [Test]
@@ -128,7 +115,7 @@ public class PersistentReceiptStorageTests
         block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
         block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
 
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockNumPrefixed].Should().NotBeNull();
+        Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockNumPrefixed], Is.Not.Null);
     }
 
     [Test]
@@ -148,18 +135,18 @@ public class PersistentReceiptStorageTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Get_receipts_for_block_without_recovering_sender()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
         foreach (Transaction tx in block.Transactions)
         {
             tx.SenderAddress = null;
         }
 
         _storage.ClearCache();
-        _storage.Get(block, recoverSender: false).Should().BeEquivalentTo(receipts, ReceiptCompareOpt);
+        _storage.Get(block, recoverSender: false).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
 
         foreach (Transaction tx in block.Transactions)
         {
-            tx.SenderAddress.Should().BeNull();
+            Assert.That(tx.SenderAddress, Is.Null);
         }
     }
 
@@ -195,7 +182,7 @@ public class PersistentReceiptStorageTests
         using NettyRlpStream rlpStream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = rlpStream.AsSpan().ToArray();
 
-        _storage.Get(block).Length.Should().Be(receipts.Length);
+        Assert.That(_storage.Get(block).Length, Is.EqualTo(receipts.Length));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -207,52 +194,52 @@ public class PersistentReceiptStorageTests
             .TestObject;
 
         TxReceipt[] emptyReceipts = [];
-        _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);
+        Assert.That(_storage.Get(block), Is.EqualTo(emptyReceipts));
         // can be from cache:
-        _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);
+        Assert.That(_storage.Get(block), Is.EqualTo(emptyReceipts));
         (_, TxReceipt[] receipts) = InsertBlock(block);
         // before should not be cached
-        _storage.Get(block).Should().BeEquivalentTo(receipts);
+        Assert.That(_storage.Get(block), Is.EqualTo(receipts));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_insert()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
 
-        _storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
-        iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
-        receiptStructRef.LogsRlp.ToArray().Should().BeEmpty();
-        receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
-        iterator.TryGetNext(out _).Should().BeFalse();
+        Assert.That(_storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator), Is.True);
+        Assert.That(iterator.TryGetNext(out TxReceiptStructRef receiptStructRef), Is.True);
+        Assert.That(receiptStructRef.LogsRlp.ToArray(), Is.Empty);
+        receiptStructRef.Logs.AssertEquivalentTo(receipts.First().Logs);
+        Assert.That(iterator.TryGetNext(out _), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block_with_iterator()
     {
-        var (block, _) = InsertBlock();
+        (Block? block, TxReceipt[] _) = InsertBlock();
 
         _storage.ClearCache();
-        _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
-        iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
-        receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
-        receiptStructRef.Logs.Should().BeNullOrEmpty();
+        Assert.That(_storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator), Is.True);
+        Assert.That(iterator.TryGetNext(out TxReceiptStructRef receiptStructRef), Is.True);
+        Assert.That(receiptStructRef.LogsRlp.ToArray(), Is.Not.Empty);
+        Assert.That(receiptStructRef.Logs, Is.Null.Or.Empty);
 
-        iterator.TryGetNext(out _).Should().BeFalse();
+        Assert.That(iterator.TryGetNext(out _), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_get()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
 
         _storage.ClearCache();
         _storage.Get(block);
-        _storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
-        iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
-        receiptStructRef.LogsRlp.ToArray().Should().BeEmpty();
-        receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
-        iterator.TryGetNext(out _).Should().BeFalse();
+        Assert.That(_storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator), Is.True);
+        Assert.That(iterator.TryGetNext(out TxReceiptStructRef receiptStructRef), Is.True);
+        Assert.That(receiptStructRef.LogsRlp.ToArray(), Is.Empty);
+        receiptStructRef.Logs.AssertEquivalentTo(receipts.First().Logs);
+        Assert.That(iterator.TryGetNext(out _), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -263,16 +250,14 @@ public class PersistentReceiptStorageTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void HasBlock_should_returnFalseForMissingHash()
-    {
-        _storage.HasBlock(0, Keccak.Compute("missing-value")).Should().BeFalse();
-    }
+    public void HasBlock_should_returnFalseForMissingHash() =>
+        Assert.That(_storage.HasBlock(0, Keccak.Compute("missing-value")), Is.False);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void HasBlock_should_returnTrueForKnownHash()
     {
-        var (block, _) = InsertBlock();
-        _storage.HasBlock(block.Number, block.Hash!).Should().BeTrue();
+        (Block? block, TxReceipt[] _) = InsertBlock();
+        Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -281,7 +266,7 @@ public class PersistentReceiptStorageTests
         [Values(false, true)] bool isFinalized)
     {
         (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: isFinalized);
-        _storage.FindBlockHash(receipts[0].TxHash!).Should().Be(block.Hash!);
+        Assert.That(_storage.FindBlockHash(receipts[0].TxHash!), Is.EqualTo(block.Hash!));
 
         Block anotherBlock = Build.A.Block
             .WithTransactions(block.Transactions)
@@ -289,18 +274,18 @@ public class PersistentReceiptStorageTests
             .WithExtraData(new byte[] { 1 })
             .TestObject;
 
-        anotherBlock.Hash.Should().NotBe(block.Hash!);
+        Assert.That(anotherBlock.Hash, Is.Not.EqualTo(block.Hash!));
         _storage.Insert(anotherBlock, new[] { Build.A.Receipt.TestObject }, ensureCanonical);
         _blockTree.FindBlockHash(anotherBlock.Number).Returns(anotherBlock.Hash);
 
         Hash256 findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
         if (ensureCanonical)
         {
-            findBlockHash.Should().Be(anotherBlock.Hash!);
+            Assert.That(findBlockHash, Is.EqualTo(anotherBlock.Hash!));
         }
         else
         {
-            findBlockHash.Should().NotBe(anotherBlock.Hash!);
+            Assert.That(findBlockHash, Is.Not.EqualTo(anotherBlock.Hash!));
         }
     }
 
@@ -311,11 +296,11 @@ public class PersistentReceiptStorageTests
         Span<byte> txHashBytes = receipts[0].TxHash!.Bytes;
         if (_receiptConfig.CompactTxIndex)
         {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes], Is.EqualTo(Rlp.Encode(block.Number).Bytes));
         }
         else
         {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes].Should().NotBeNull();
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes], Is.Not.Null);
         }
     }
 
@@ -384,13 +369,13 @@ public class PersistentReceiptStorageTests
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1b, b1a));
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b2b, b2a));
 
-        _storage.FindBlockHash(tx.Hash!).Should().Be(b1b.Hash!);
+        Assert.That(_storage.FindBlockHash(tx.Hash!), Is.EqualTo(b1b.Hash!));
     }
 
     [Test]
     public async Task When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock_Unless_ItsAlsoInNewBlock()
     {
-        _receiptConfig.CompactTxIndex = _useCompactReceipts;
+        _receiptConfig.CompactTxIndex = useCompactReceipts;
         CreateStorage();
         (Block block, _) = InsertBlock();
         Block block2 = Build.A.Block
@@ -403,11 +388,11 @@ public class PersistentReceiptStorageTests
 
         if (_receiptConfig.CompactTxIndex)
         {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block.Transactions[0].Hash!.Bytes], Is.EqualTo(Rlp.Encode(block.Number).Bytes));
         }
         else
         {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(block.Hash!.Bytes.ToArray());
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block.Transactions[0].Hash!.Bytes], Is.EqualTo(block.Hash!.Bytes.ToArray()));
         }
 
         Block block3 = Build.A.Block
@@ -427,11 +412,11 @@ public class PersistentReceiptStorageTests
         await Task.Delay(100);
         if (_receiptConfig.CompactTxIndex)
         {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block4.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block4.Number).Bytes);
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block4.Transactions[0].Hash!.Bytes], Is.EqualTo(Rlp.Encode(block4.Number).Bytes));
         }
         else
         {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block4.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(block4.Hash!.Bytes.ToArray());
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block4.Transactions[0].Hash!.Bytes], Is.EqualTo(block4.Hash!.Bytes.ToArray()));
         }
     }
 
@@ -445,11 +430,11 @@ public class PersistentReceiptStorageTests
         Span<byte> txHashBytes = receipts[0].TxHash!.Bytes;
         if (_receiptConfig.CompactTxIndex)
         {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes], Is.EqualTo(Rlp.Encode(block.Number).Bytes));
         }
         else
         {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes].Should().NotBeNull();
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes], Is.Not.Null);
         }
 
         Block newHead = Build.A.Block.WithNumber(_receiptConfig.TxLookupLimit.Value + 1).TestObject;
@@ -461,6 +446,32 @@ public class PersistentReceiptStorageTests
             Is.Null.After(1000, 100)
             );
         Assert.That(_storage.HasBlock(receipts[0].BlockNumber, receipts[0].BlockHash!));
+    }
+
+    [TestCase(false, 5L, TestName = "Insert tracks the lowest inserted block")]
+    [TestCase(true, long.MaxValue, TestName = "InsertForMigration leaves the pointer to the migration")]
+    public void Migration_pointer_is_advanced_only_by_the_normal_insert_path(bool viaMigration, long expectedMigratedBlockNumber)
+    {
+        const long blockNumber = 5;
+        _storage.MigratedBlockNumber = long.MaxValue;
+
+        (Block block, TxReceipt[] receipts) = PrepareBlock(Build.A.Block
+            .WithNumber(blockNumber)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA)
+            .TestObject);
+
+        if (viaMigration)
+        {
+            ((IReceiptMigrationStore)_storage).InsertForMigration(block, receipts);
+        }
+        else
+        {
+            _storage.Insert(block, receipts);
+        }
+
+        Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(expectedMigratedBlockNumber),
+            "the migration owns the pointer under parallel out-of-order inserts, so only the normal Insert path may advance it");
     }
 
     private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
@@ -508,9 +519,4 @@ public class PersistentReceiptStorageTests
         return (block, receipts);
     }
 
-    private EquivalencyAssertionOptions<TxReceipt> ReceiptCompareOpt(EquivalencyAssertionOptions<TxReceipt> opts)
-    {
-        return opts
-            .Excluding(static su => su.Error);
-    }
 }

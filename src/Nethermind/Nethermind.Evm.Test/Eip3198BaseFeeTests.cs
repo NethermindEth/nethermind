@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
@@ -27,7 +26,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, 0, false)]
         public void Base_fee_opcode_should_return_expected_results(bool eip3198Enabled, int baseFee, bool send1559Tx)
         {
-            _processor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+            _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.BASEFEE)
                 .PushData(0)
@@ -56,7 +55,7 @@ namespace Nethermind.Evm.Test
             }
             else
             {
-                tracer.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
+                Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.BadInstruction.ToString()));
                 AssertStorage((UInt256)0, (UInt256)0);
             }
         }

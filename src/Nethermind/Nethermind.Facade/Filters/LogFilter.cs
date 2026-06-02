@@ -1,11 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Facade.Filters
 {
     public class LogFilter(
         int id,
@@ -19,6 +19,11 @@ namespace Nethermind.Blockchain.Filters
         public TopicsFilter TopicsFilter { get; } = topicsFilter;
         public BlockParameter FromBlock { get; } = fromBlock;
         public BlockParameter ToBlock { get; } = toBlock;
+        public bool UseIndex { get; set; } = true;
+
+        public bool AcceptsAnyBlock =>
+            AddressFilter.Addresses.Count == 0 &&
+            TopicsFilter.AcceptsAnyBlock;
 
         public bool Accepts(LogEntry logEntry) => AddressFilter.Accepts(logEntry.Address) && TopicsFilter.Accepts(logEntry);
 

@@ -25,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -40,13 +41,13 @@ public partial class BlockProducerBaseTests
         DevBlockProducer blockProducer = new(
             Substitute.For<ITxSource>(),
             testRpc.BlockchainProcessor,
-            testRpc.WorldStateManager.GlobalWorldState,
+            testRpc.MainWorldState,
             testRpc.BlockTree,
             testRpc.Timestamper,
             testRpc.SpecProvider,
             new BlocksConfig(),
             LimboLogs.Instance);
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -59,14 +60,14 @@ public partial class BlockProducerBaseTests
         TestBlockProducer blockProducer = new(
             Substitute.For<ITxSource>(),
             testRpc.BlockchainProcessor,
-            testRpc.WorldStateManager.GlobalWorldState,
+            testRpc.MainWorldState,
             Substitute.For<ISealer>(),
             testRpc.BlockTree,
             testRpc.Timestamper,
             testRpc.SpecProvider,
             LimboLogs.Instance,
             blocksConfig);
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -81,13 +82,13 @@ public partial class BlockProducerBaseTests
             testRpc.BlockchainProcessor,
             Substitute.For<ISealer>(),
             testRpc.BlockTree,
-            testRpc.WorldStateManager.GlobalWorldState,
+            testRpc.MainWorldState,
             Substitute.For<IGasLimitCalculator>(),
             testRpc.Timestamper,
             testRpc.SpecProvider,
             LimboLogs.Instance,
             blocksConfig);
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -111,7 +112,7 @@ public partial class BlockProducerBaseTests
             Substitute.For<ISpecProvider>(),
             LimboLogs.Instance,
             Substitute.For<IBlocksConfig>());
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), Substitute.For<IBlockTree>(), blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -123,7 +124,7 @@ public partial class BlockProducerBaseTests
         CliqueBlockProducer blockProducer = new(
             Substitute.For<ITxSource>(),
             testRpc.BlockchainProcessor,
-            testRpc.WorldStateManager.GlobalWorldState,
+            testRpc.MainWorldState,
             testRpc.Timestamper,
             Substitute.For<ICryptoRandom>(),
             Substitute.For<ISnapshotManager>(),
@@ -133,7 +134,7 @@ public partial class BlockProducerBaseTests
             new CliqueConfig(),
             LimboLogs.Instance);
 
-        CliqueBlockProducerRunner runner = new CliqueBlockProducerRunner(
+        CliqueBlockProducerRunner runner = new(
             testRpc.BlockTree,
             testRpc.Timestamper,
             Substitute.For<ICryptoRandom>(),
@@ -152,7 +153,7 @@ public partial class BlockProducerBaseTests
         DevBlockProducer blockProducer = new(
             Substitute.For<ITxSource>(),
             testRpc.BlockchainProcessor,
-            testRpc.WorldStateManager.GlobalWorldState,
+            new WorldState(testRpc.WorldStateManager.GlobalWorldState, testRpc.LogManager),
             testRpc.BlockTree,
             testRpc.Timestamper,
             testRpc.SpecProvider,
@@ -179,7 +180,7 @@ public partial class BlockProducerBaseTests
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(spec);
         testRpc.TestWallet.UnlockAccount(address, new SecureString());
-        await testRpc.AddFunds(address, 1.Ether());
+        await testRpc.AddFunds(address, 1.Ether);
         return testRpc;
     }
 

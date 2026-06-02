@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
@@ -194,10 +192,7 @@ public class NodeStorage(
 
     private class WriteBatch(IWriteBatch writeBatch, NodeStorage nodeStorage) : INodeStorage.IWriteBatch
     {
-        public void Dispose()
-        {
-            writeBatch.Dispose();
-        }
+        public void Dispose() => writeBatch.Dispose();
 
         public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
         {

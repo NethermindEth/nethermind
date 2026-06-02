@@ -36,7 +36,7 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             _leastRecentlyUsed = null;
             _cacheMap.Clear();
@@ -44,7 +44,7 @@ namespace Nethermind.Core.Caching
 
         public TValue Get(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -58,7 +58,7 @@ namespace Nethermind.Core.Caching
 
         public bool TryGet(TKey key, out TValue value)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -71,9 +71,50 @@ namespace Nethermind.Core.Caching
             return false;
         }
 
+        /// <summary>
+        /// Sets a missing cached value or atomically returns the existing one for the specified key.
+        /// </summary>
+        /// <param name="key">The cache key.</param>
+        /// <param name="state">State passed to <paramref name="valueFactory"/> without requiring a closure.</param>
+        /// <param name="valueFactory">Factory used to create the value when the key is missing.</param>
+        /// <typeparam name="TState">Type of the factory state.</typeparam>
+        /// <returns>The existing value, or the value created by <paramref name="valueFactory"/>.</returns>
+        public TValue SetOrGet<TState>(TKey key, TState state, Func<TKey, TState, TValue> valueFactory)
+        {
+            ArgumentNullException.ThrowIfNull(valueFactory);
+
+            using McsLock.Disposable lockRelease = _lock.Acquire();
+
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            {
+                TValue value = node.Value.Value;
+                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                return value;
+            }
+
+            TValue newValue = valueFactory(key, state);
+            if (newValue is null)
+            {
+                return newValue;
+            }
+
+            if (_cacheMap.Count >= _maxCapacity)
+            {
+                Replace(key, newValue);
+            }
+            else
+            {
+                LinkedListNode<LruCacheItem> newNode = new(new(key, newValue));
+                LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                _cacheMap.Add(key, newNode);
+            }
+
+            return newValue;
+        }
+
         public bool Set(TKey key, TValue val)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (val is null)
             {
@@ -103,7 +144,7 @@ namespace Nethermind.Core.Caching
 
         public bool Delete(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             return DeleteNoLock(key);
         }
@@ -122,17 +163,17 @@ namespace Nethermind.Core.Caching
 
         public bool Contains(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             return _cacheMap.ContainsKey(key);
         }
 
         public KeyValuePair<TKey, TValue>[] ToArray()
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             int i = 0;
-            var array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
+            KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = new KeyValuePair<TKey, TValue>(kvp.Key, kvp.Value.Value.Value);
@@ -145,7 +186,7 @@ namespace Nethermind.Core.Caching
         public TValue[] GetValues()
         {
             int i = 0;
-            var array = new TValue[_cacheMap.Count];
+            TValue[] array = new TValue[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = kvp.Value.Value.Value;
@@ -171,11 +212,8 @@ namespace Nethermind.Core.Caching
             _cacheMap.Add(key, node);
 
             [DoesNotReturn]
-            static void ThrowInvalidOperationException()
-            {
-                throw new InvalidOperationException(
+            static void ThrowInvalidOperationException() => throw new InvalidOperationException(
                     $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
-            }
         }
 
         private struct LruCacheItem(TKey k, TValue v)

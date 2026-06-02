@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -38,7 +39,7 @@ namespace Nethermind.Consensus.Processing
 
         private void DoLoad()
         {
-            using var _ = worldState.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
 
             Block genesis = genesisBuilder.Build();
 
@@ -84,7 +85,7 @@ namespace Nethermind.Consensus.Processing
         {
             if (expectedGenesisHash is not null && genesis.Hash != expectedGenesisHash)
             {
-                if (_logger.IsTrace) _logger.Trace(stateReader.DumpState(genesis.StateRoot!));
+                if (_logger.IsTrace) _logger.Trace(stateReader.DumpState(genesis));
                 if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
                 if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
             }

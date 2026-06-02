@@ -13,6 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,7 +24,7 @@ internal class TestXdcBlockProducer(
     ISigner signer,
     CandidateContainer candidateContainer,
     IEpochSwitchManager epochSwitchManager,
-    ISnapshotManager snapshotManager,
+    IMasternodesCalculator masternodesCalculator,
     IXdcConsensusContext xdcContext,
     ITxSource txSource,
     IBlockchainProcessor processor,
@@ -35,7 +36,7 @@ internal class TestXdcBlockProducer(
     ISpecProvider specProvider,
     ILogManager logManager,
     IDifficultyCalculator? difficultyCalculator,
-    IBlocksConfig? blocksConfig) : XdcBlockProducer(epochSwitchManager, snapshotManager, xdcContext, txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
+    IBlocksConfig? blocksConfig) : XdcBlockProducer(epochSwitchManager, masternodesCalculator, xdcContext, txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
 {
     private readonly Signer signer = (Signer)signer;
 
@@ -43,10 +44,10 @@ internal class TestXdcBlockProducer(
     {
         if (parent is not XdcBlockHeader xdcParent)
             throw new ArgumentException($"Must be a {nameof(XdcBlockHeader)}", nameof(parent));
-        var prepared = (XdcBlockHeader)base.PrepareBlockHeader(parent, payloadAttributes);
+        XdcBlockHeader prepared = (XdcBlockHeader)base.PrepareBlockHeader(parent, payloadAttributes);
 
         IXdcReleaseSpec headSpec = _specProvider.GetXdcSpec(prepared, xdcContext.CurrentRound);
-        var leader = GetLeaderAddress(xdcParent, xdcContext.CurrentRound, headSpec);
+        Address leader = GetLeaderAddress(xdcParent, xdcContext.CurrentRound, headSpec);
         signer.SetSigner(candidateContainer.MasternodeCandidates.First(k => k.Address == leader));
         prepared.Beneficiary = leader;
         return prepared;
@@ -57,11 +58,11 @@ internal class TestXdcBlockProducer(
         Address[] masternodes;
         if (epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
         {
-            (masternodes, _) = snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash!, spec);
+            (masternodes, _) = masternodesCalculator.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash!, spec);
         }
         else
         {
-            var epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead);
+            EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead);
             masternodes = epochSwitchInfo!.Masternodes;
         }
 

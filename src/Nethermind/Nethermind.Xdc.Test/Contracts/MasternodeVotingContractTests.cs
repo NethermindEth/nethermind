@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -28,7 +28,7 @@ using System;
 using System.Collections.Generic;
 using static Nethermind.Consensus.Processing.AutoReadOnlyTxProcessingEnvFactory;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.Contracts;
 
 internal class MasternodeVotingContractTests
 {
@@ -47,7 +47,7 @@ internal class MasternodeVotingContractTests
         BlockHeader genesis;
         using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
         {
-            stateProvider.CreateAccount(sender.Address, 1.Ether());
+            stateProvider.CreateAccount(sender.Address, 1.Ether);
             byte[] code = XdcContractData.XDCValidatorBin();
             stateProvider.CreateAccountIfNotExists(codeSource, 0);
             stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, Shanghai.Instance);
@@ -67,22 +67,28 @@ internal class MasternodeVotingContractTests
 
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-        TransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        EthereumTransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
-        MasternodeVotingContract masterVoting = new(stateProvider, new AbiEncoder(), codeSource, new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>()));
+        AutoReadOnlyTxProcessingEnv autoReadOnlyTxProcessingEnv = new(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>());
+
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+
+        readOnlyTxProcessingEnvFactory.Create().Returns(autoReadOnlyTxProcessingEnv);
+
+        MasternodeVotingContract masterVoting = new(new AbiEncoder(), codeSource, readOnlyTxProcessingEnvFactory);
 
         Address[] candidates = masterVoting.GetCandidates(genesis);
-        candidates.Length.Should().Be(3);
+        Assert.That(candidates.Length, Is.EqualTo(3));
 
         foreach (Address candidate in candidates)
         {
             UInt256 stake = masterVoting.GetCandidateStake(genesis, candidate);
-            stake.Should().Be(10_000_000.Ether());
+            Assert.That(stake, Is.EqualTo(10_000_000.Ether));
         }
     }
 
     private static Dictionary<string, string> GenesisAllocation =
-        new Dictionary<string, string>
+        new()
         {
             ["0x0000000000000000000000000000000000000000000000000000000000000007"] = "0x0000000000000000000000000000000000000000000000000000000000000001",
             ["0x0000000000000000000000000000000000000000000000000000000000000008"] = "0x0000000000000000000000000000000000000000000000000000000000000003",

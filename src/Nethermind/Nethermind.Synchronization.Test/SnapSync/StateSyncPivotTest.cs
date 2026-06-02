@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -31,10 +30,10 @@ public class StateSyncPivotTest
         blockTree.FindHeader(Arg.Any<long>())
             .Returns(static (ci) => Build.A.BlockHeader.WithNumber((long)ci[0]).TestObject);
 
-        Synchronization.FastSync.StateSyncPivot stateSyncPivot = new Synchronization.FastSync.StateSyncPivot(blockTree,
+        Synchronization.FastSync.StateSyncPivot stateSyncPivot = new(blockTree,
             new TestSyncConfig()
             {
-                PivotNumber = syncPivot.ToString(),
+                PivotNumber = syncPivot,
                 FastSync = true,
                 StateMinDistanceFromHead = minDistance,
                 StateMaxDistanceFromHead = maxDistance,
@@ -42,9 +41,9 @@ public class StateSyncPivotTest
         blockTree.SyncPivot = (syncPivot, Keccak.Zero);
 
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(originalBestSuggested).TestObject);
-        stateSyncPivot.GetPivotHeader().Should().NotBeNull();
+        Assert.That(stateSyncPivot.GetPivotHeader(), Is.Not.Null);
 
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(newBestSuggested).TestObject);
-        stateSyncPivot.GetPivotHeader()?.Number.Should().Be(newPivotHeader);
+        Assert.That(stateSyncPivot.GetPivotHeader()?.Number, Is.EqualTo(newPivotHeader));
     }
 }

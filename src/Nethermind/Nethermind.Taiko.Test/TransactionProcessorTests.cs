@@ -17,9 +17,7 @@ using System.Collections;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using Nethermind.Evm;
-using Nethermind.State;
 using Nethermind.Taiko.TaikoSpec;
-using FluentAssertions;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Taiko.Test;
@@ -34,7 +32,7 @@ public class TransactionProcessorTests
     private IDisposable _worldStateCloser;
     private readonly Address SelfDestructAddress = new("0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3");
 
-    private static readonly UInt256 AccountBalance = 1.Ether();
+    private static readonly UInt256 AccountBalance = 1.Ether;
 
     [SetUp]
     public void Setup()
@@ -51,15 +49,13 @@ public class TransactionProcessorTests
         _stateProvider.CommitTree(0);
 
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TaikoTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
     [TearDown]
-    public void TearDown()
-    {
+    public void TearDown() =>
         _worldStateCloser.Dispose();
-    }
 
     [TestCaseSource(nameof(FeesDistributionTests))]
     public void Fees_distributed_correctly(byte basefeeSharingPct, UInt256 goesToTreasury, UInt256 goesToBeneficiary, ulong gasPrice)
@@ -73,7 +69,7 @@ public class TransactionProcessorTests
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-        var extraData = new byte[32];
+        byte[] extraData = new byte[32];
         extraData[31] = basefeeSharingPct;
 
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx)
@@ -166,8 +162,8 @@ public class TransactionProcessorTests
         UInt256 expectedTipFees = isAnchorTx ? 0 : (UInt256)gasUsed * tipFee;
         UInt256 expectedBaseFees = isAnchorTx ? 0 : (UInt256)gasUsed * baseFee;
 
-        receivedTipFees.Should().Be(expectedTipFees, "Transaction did not receive expected tip fees");
-        receivedBaseFees.Should().Be(expectedBaseFees, "Transaction did not receive expected base fees");
+        Assert.That(receivedTipFees, Is.EqualTo(expectedTipFees), "Transaction did not receive expected tip fees");
+        Assert.That(receivedBaseFees, Is.EqualTo(expectedBaseFees), "Transaction did not receive expected base fees");
     }
 
     [TestCase(true)]
@@ -178,7 +174,7 @@ public class TransactionProcessorTests
         _spec.IsOntakeEnabled = isOntakeEnabled;
         byte defaultBaseFeeSharingPct = 25;
 
-        _stateProvider!.CreateAccount(TestItem.AddressB, 100.Ether());
+        _stateProvider!.CreateAccount(TestItem.AddressB, 100.Ether);
 
         byte[] byteCode = Prepare.EvmCode
             .PushData(SelfDestructAddress)
@@ -193,7 +189,7 @@ public class TransactionProcessorTests
             .WithCode(byteCode)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
-        var extraData = new byte[32];
+        byte[] extraData = new byte[32];
         extraData[31] = defaultBaseFeeSharingPct;
 
         Block block = Build.A.Block.WithNumber(1)
@@ -214,8 +210,8 @@ public class TransactionProcessorTests
         UInt256 finalTreasuryBalance = _stateProvider.GetBalance(_spec.FeeCollector!);
         UInt256 receivedBaseFees = finalTreasuryBalance - initialTreasuryBalance;
 
-        tracer.Fees.Should().Be(525213);
-        tracer.BurntFees.Should().Be(58357);
+        Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
+        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
 
         UInt256 expectedBaseFees = tracer.BurntFees;
         if (isOntakeEnabled)
@@ -223,9 +219,9 @@ public class TransactionProcessorTests
             expectedBaseFees -= expectedBaseFees * defaultBaseFeeSharingPct / 100;
         }
 
-        receivedBaseFees.Should().Be(expectedBaseFees, "Burnt fees should be paid to treasury");
+        Assert.That(receivedBaseFees, Is.EqualTo(expectedBaseFees), "Burnt fees should be paid to treasury");
 
-        _stateProvider.AccountExists(SelfDestructAddress).Should().BeFalse("SelfDestructAddress should be destroyed");
-        _stateProvider.GetBalance(SelfDestructAddress).Should().Be(0, "SelfDestructAddress balance should be 0");
+        Assert.That(_stateProvider.AccountExists(SelfDestructAddress), Is.False, "SelfDestructAddress should be destroyed");
+        Assert.That(_stateProvider.GetBalance(SelfDestructAddress), Is.EqualTo(UInt256.Zero), "SelfDestructAddress balance should be 0");
     }
 }
