@@ -100,7 +100,7 @@ public class StatelessBlockProcessingEnv(
             specProvider,
             state,
             new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
-            new EthereumCodeInfoRepository(state),
+            new CodeInfoRepository(state, new EthereumPrecompileProvider()),
             logManager
         );
 }
