@@ -28,13 +28,10 @@ using System.Threading;
 namespace Nethermind.Blockchain.Test;
 
 /// <summary>
-/// Direct coverage for the column-index fast path on the sequential execution path. The fast
-/// path (<c>BlockAccessListManager.TryFastPath</c>) is only reachable on the sequential path
-/// because <c>MergeAndReturnBal</c> now feeds each per-tx slice into the generated validation
-/// index via <c>RegisterGeneratedSlice</c>. These tests drive real transaction execution
-/// through the sequential <c>ParallelBlockValidationTransactionsExecutor</c>, generate the BAL
-/// the executor produces, then re-validate it: a matching BAL must take the fast path and be
-/// accepted, a tampered BAL must be rejected.
+/// Covers the column-index fast path on the sequential execution path, reachable only because
+/// <c>MergeAndReturnBal</c> feeds each per-tx slice into the generated validation index. Drives
+/// real execution to produce a BAL, then re-validates it: a matching BAL is accepted via the
+/// fast path, a tampered BAL is rejected.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class BlockAccessListSequentialValidationTests
@@ -47,9 +44,8 @@ public class BlockAccessListSequentialValidationTests
         BlockAccessListManager balManager = null!;
         Assert.DoesNotThrow(() => balManager = RunSequentialValidation(generated));
 
-        // The generated column index received per-tx slices on the sequential path. This gates
-        // TryFastPath, so with a matching BAL the fast path is what accepted it (the slow-path
-        // fallback would also accept and hide a regression of the sequential wiring).
+        // Index fed on the sequential path gates TryFastPath, so a matching BAL was accepted via
+        // the fast path rather than the slow-path fallback that would mask a wiring regression.
         Assert.That(balManager.HasGeneratedValidationIndexUpdates, Is.True);
     }
 
@@ -58,9 +54,8 @@ public class BlockAccessListSequentialValidationTests
     {
         ReadOnlyBlockAccessList generated = GenerateBlockAccessList();
 
-        // Tamper: append an extra storage read to the sender's entry. The generated BAL the
-        // re-execution produces no longer matches, so the fast-path row compare diverges and the
-        // fallback walk must reject.
+        // Tamper: an extra storage read on the sender no longer matches what re-execution
+        // produces, so the fast-path row compare diverges and the fallback walk must reject.
         ReadOnlyBlockAccessList tampered = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)

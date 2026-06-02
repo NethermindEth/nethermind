@@ -77,10 +77,7 @@ public partial class BlockAccessListManager(
     private int _suggestedChargeableStorageReads;
     private int _generatedChargeableStorageReads;
     private bool _hasGeneratedValidationIndexUpdates;
-    // Whether the generated column index has received any per-tx slices. On the sequential path
-    // this only becomes true when MergeAndReturnBal feeds slices through RegisterGeneratedSlice;
-    // exposed read-only so tests can confirm the fast path is reachable (it gates TryFastPath)
-    // without adding any per-call work to the validation hot path.
+    // Exposed read-only for tests: gates TryFastPath and is set only when slices are fed via RegisterGeneratedSlice.
     internal bool HasGeneratedValidationIndexUpdates => _hasGeneratedValidationIndexUpdates;
     // Latched when a per-tx slice surfaces a generated-only account that the column index
     // can't see (no lane data on either side). Forces the validator's fallback walk so the
