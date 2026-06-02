@@ -30,8 +30,8 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         string? user,
         string? password)
     {
-        var registry = new CollectorRegistry();
-        var factory = new MetricFactory(registry);
+        CollectorRegistry registry = new();
+        MetricFactory factory = new(registry);
 
         _messageCounter = factory.CreateCounter(GetMetricName("messages_total"), "");
         _succeededCounter = factory.CreateCounter(GetMetricName("messages_succeeded"), "");
@@ -41,13 +41,13 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         _singleDuration = factory.CreateHistogram(GetMetricName("single_duration_seconds"), "", labelNames: ["jsonrpc_id", "method"]);
         _batchDuration = factory.CreateHistogram(GetMetricName("batch_duration_seconds"), "", labelNames: ["jsonrpc_id"]);
 
-        string instanceLabel = labels.TryGetValue("instance", out var instance) ? instance : Guid.NewGuid().ToString();
+        string instanceLabel = labels.TryGetValue("instance", out string? instance) ? instance : Guid.NewGuid().ToString();
         labels.Remove("instance");
 
-        var httpClient = new HttpClient();
+        HttpClient httpClient = new();
         if (user is not null && password is not null)
         {
-            var authParameter = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}"));
+            string authParameter = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}"));
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authParameter);
         }
 
@@ -97,17 +97,23 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
 
     public Task Batch(JsonRpc.Request.Batch batch, TimeSpan elapsed, CancellationToken token = default)
     {
-        _batchDuration
-            .WithLabels(batch.Id)
-            .Observe(elapsed.TotalSeconds);
+        if (batch.Id is not null)
+        {
+            _batchDuration
+                .WithLabels(batch.Id)
+                .Observe(elapsed.TotalSeconds);
+        }
         return Task.CompletedTask;
     }
 
     public Task Single(JsonRpc.Request.Single single, TimeSpan elapsed, CancellationToken token = default)
     {
-        _singleDuration
-            .WithLabels(single.Id, single.MethodName)
-            .Observe(elapsed.TotalSeconds);
+        if (single.Id is not null && single.MethodName is not null)
+        {
+            _singleDuration
+                .WithLabels(single.Id, single.MethodName)
+                .Observe(elapsed.TotalSeconds);
+        }
         return Task.CompletedTask;
     }
 
@@ -119,8 +125,8 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
 
     private static string GetMetricName(string name)
     {
-        var lowerName = name.ToLowerInvariant();
-        var sanitizedName = lowerName.Replace(" ", "_").Replace("-", "_");
+        string lowerName = name.ToLowerInvariant();
+        string sanitizedName = lowerName.Replace(" ", "_").Replace("-", "_");
         return $"{JobName}_{sanitizedName}";
     }
 }

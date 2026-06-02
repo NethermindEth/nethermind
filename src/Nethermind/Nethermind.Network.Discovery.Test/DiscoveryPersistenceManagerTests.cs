@@ -5,12 +5,14 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Nethermind.Core.Extensions;
+using Nethermind.Config;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Lifecycle;
+using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -20,12 +22,17 @@ namespace Nethermind.Network.Discovery.Test
     [Parallelizable(ParallelScope.Self)]
     public class DiscoveryPersistenceManagerTests
     {
+        private static readonly NetworkNode NodeA = new(TestItem.PublicKeyA, "192.168.1.1", 30303, 0);
+        private static readonly NetworkNode NodeB = new(TestItem.PublicKeyB, "192.168.1.2", 30303, 0);
+
         private MemDb _discoveryDb = null!;
         private INetworkStorage _networkStorage = null!;
+        private INodeStatsManager _nodeStatsManager = null!;
+        private IKademliaDiscv4Adapter _discv4Adapter = null!;
         private IDiscoveryConfig _discoveryConfig = null!;
         private ILogManager _logManager = null!;
+        private IKademlia<PublicKey, Node> _kademlia = null!;
         private DiscoveryPersistenceManager _persistenceManager = null!;
-        private IDiscoveryManager _discoveryManager;
 
         [SetUp]
         public void Setup()
@@ -34,54 +41,140 @@ namespace Nethermind.Network.Discovery.Test
 
             _discoveryDb = new MemDb();
             _networkStorage = new NetworkStorage(_discoveryDb, LimboLogs.Instance);
+            _nodeStatsManager = Substitute.For<INodeStatsManager>();
+            _discv4Adapter = Substitute.For<IKademliaDiscv4Adapter>();
             _discoveryConfig = new DiscoveryConfig()
             {
                 DiscoveryPersistenceInterval = 100,
             };
             _logManager = LimboLogs.Instance;
-            _discoveryManager = Substitute.For<IDiscoveryManager>();
+            _kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
 
-            _persistenceManager = new DiscoveryPersistenceManager(
-                _networkStorage,
-                _discoveryManager,
-                _discoveryConfig,
-                _logManager);
+            _persistenceManager = CreateManager(_networkStorage);
         }
 
         [TearDown]
-        public void Teardown()
+        public async Task Teardown()
         {
+            await _discv4Adapter.DisposeAsync();
             _discoveryDb.Dispose();
+        }
+
+        private DiscoveryPersistenceManager CreateManager(INetworkStorage storage) => new(
+            storage,
+            _nodeStatsManager,
+            _discv4Adapter,
+            _kademlia,
+            _discoveryConfig,
+            _logManager);
+
+        private static Task PingReceived(IKademliaDiscv4Adapter adapter, NetworkNode node, int times = 1) =>
+            adapter.Received(times).Ping(
+                Arg.Is<Node>(n => n.Id.Equals(node.NodeId)),
+                Arg.Any<CancellationToken>());
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Ping_Each_Valid_Node(CancellationToken cancellationToken)
+        {
+            NetworkNode[] nodes = [NodeA, NodeB];
+            _networkStorage.UpdateNodes(nodes);
+
+            await _persistenceManager.LoadPersistedNodes(cancellationToken);
+
+            await _discv4Adapter.Received(nodes.Length).Ping(
+                Arg.Is<Node>(n => nodes.Any(nn => nn.NodeId.Equals(n.Id) && nn.Host == n.Host && nn.Port == n.Port)),
+                Arg.Any<CancellationToken>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Skip_Nodes_That_Fail_Node_Construction(CancellationToken cancellationToken)
+        {
+            INetworkStorage storageMock = Substitute.For<INetworkStorage>();
+            NetworkNode badNode = new(TestItem.PublicKeyB, "192.168.1.2", -1, 0);
+            storageMock.GetPersistedNodes().Returns([badNode, NodeA]);
+
+            await CreateManager(storageMock).LoadPersistedNodes(cancellationToken);
+
+            await PingReceived(_discv4Adapter, NodeA);
+            await _discv4Adapter.DidNotReceive().Ping(
+                Arg.Is<Node>(n => n.Id.Equals(badNode.NodeId)),
+                Arg.Any<CancellationToken>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Handle_Ping_Exceptions(CancellationToken cancellationToken)
+        {
+            _networkStorage.UpdateNodes([NodeA, NodeB]);
+
+            _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeA.NodeId)), Arg.Any<CancellationToken>())
+                .Returns(true);
+            _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeB.NodeId)), Arg.Any<CancellationToken>())
+                .Returns(Task.FromException<bool>(new Exception("Test exception")));
+
+            await _persistenceManager.LoadPersistedNodes(cancellationToken);
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public void AddPersistedNodes_Should_Propagate_Cancellation(CancellationToken cancellationToken)
+        {
+            // A non-cancellation exception is swallowed (above), but a cancelled ping is lifecycle
+            // shutdown and must stop the load promptly rather than be swallowed.
+            _networkStorage.UpdateNodes([NodeA]);
+            _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeA.NodeId)), Arg.Any<CancellationToken>())
+                .Returns(Task.FromException<bool>(new OperationCanceledException()));
+
+            Assert.ThrowsAsync<OperationCanceledException>(
+                async () => await _persistenceManager.LoadPersistedNodes(cancellationToken));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Restore_Reputation(CancellationToken cancellationToken)
+        {
+            const int reputation = 123;
+            NetworkNode networkNode = new(TestItem.PublicKeyA, "192.168.1.1", 30303, reputation);
+            INodeStats nodeStats = Substitute.For<INodeStats>();
+
+            _networkStorage.UpdateNodes([networkNode]);
+            _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(nodeStats);
+
+            await _persistenceManager.LoadPersistedNodes(cancellationToken);
+
+            _nodeStatsManager.Received(1).GetOrAdd(Arg.Is<Node>(n =>
+                n.Id.Equals(networkNode.NodeId) &&
+                n.Host == networkNode.Host &&
+                n.Port == networkNode.Port));
+            nodeStats.Received(1).CurrentPersistedNodeReputation = reputation;
         }
 
         [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Update_Nodes_In_Storage()
         {
-            var nodes = new[]
-            {
+            Node[] nodes =
+            [
                 new Node(TestItem.PublicKeyA, "192.168.1.1", 30303),
                 new Node(TestItem.PublicKeyB, "192.168.1.2", 30303)
-            };
+            ];
 
-            var cls = new CancellationTokenSource().ThatCancelAfter(TimeSpan.FromMilliseconds(5000));
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
 
-            var lifecycleManagers = nodes.Select((node) =>
+            _kademlia.IterateNodes().Returns(nodes);
+
+            _ = _persistenceManager.RunDiscoveryPersistenceCommit(cts.Token);
+
+            while (_discoveryDb.Count < nodes.Length)
             {
-                INodeLifecycleManager lifecycle = Substitute.For<INodeLifecycleManager>();
-                lifecycle.ManagedNode.Returns(node);
-                return lifecycle;
-            }).ToArray();
+                cts.Token.ThrowIfCancellationRequested();
+                await Task.Delay(10, cts.Token);
+            }
 
-            _discoveryManager.GetNodeLifecycleManagers().Returns(lifecycleManagers);
+            await cts.CancelAsync();
 
-            _ = _persistenceManager.RunDiscoveryPersistenceCommit(cls.Token);
-
-            // Wait a bit to allow at least one persistence cycle to complete
-            await Task.Delay(_discoveryConfig.DiscoveryPersistenceInterval * 2, cls.Token);
-
-            await cls.CancelAsync();
-
-            _discoveryDb.Count.Should().Be(2);
+            Assert.That(_discoveryDb.Count, Is.EqualTo(nodes.Length));
         }
     }
 }

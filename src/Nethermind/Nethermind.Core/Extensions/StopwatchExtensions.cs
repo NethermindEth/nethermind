@@ -7,9 +7,6 @@ namespace Nethermind.Core.Extensions
 {
     public static class StopwatchExtensions
     {
-        public static long ElapsedMicroseconds(this Stopwatch stopwatch)
-        {
-            return stopwatch.ElapsedTicks * 1000000 / Stopwatch.Frequency;
-        }
+        public static long ElapsedMicroseconds(this Stopwatch stopwatch) => stopwatch.ElapsedTicks * 1000000 / Stopwatch.Frequency;
     }
 }

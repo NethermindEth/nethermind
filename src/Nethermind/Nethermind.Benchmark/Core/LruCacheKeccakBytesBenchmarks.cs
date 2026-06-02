@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Benchmarks.Core
 {
-    [EvaluateOverhead(false)]
     public class LruCacheKeccakBytesBenchmarks
     {
         [GlobalSetup]
@@ -28,12 +27,12 @@ namespace Nethermind.Benchmarks.Core
 
         public Hash256[] Keys { get; set; } = new Hash256[64];
 
-        public byte[] Value { get; set; } = new byte[0];
+        public byte[] Value { get; set; } = Array.Empty<byte>();
 
         [Benchmark]
         public LruCache<ValueHash256, byte[]> WithItems()
         {
-            LruCache<ValueHash256, byte[]> cache = new LruCache<ValueHash256, byte[]>(MaxCapacity, MaxCapacity, String.Empty);
+            LruCache<ValueHash256, byte[]> cache = new(MaxCapacity, MaxCapacity, String.Empty);
             Fill(cache);
 
             return cache;

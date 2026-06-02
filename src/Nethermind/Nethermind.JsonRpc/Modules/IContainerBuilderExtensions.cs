@@ -10,16 +10,11 @@ namespace Nethermind.JsonRpc.Modules;
 
 public static class IContainerBuilderExtensions
 {
-    public static ContainerBuilder RegisterSingletonJsonRpcModule<T, TImpl>(this ContainerBuilder builder) where T : IRpcModule where TImpl : T
-    {
-        return builder
+    public static ContainerBuilder RegisterSingletonJsonRpcModule<T, TImpl>(this ContainerBuilder builder) where T : IRpcModule where TImpl : T => builder
             .AddSingleton<T, TImpl>()
             .RegisterSingletonJsonRpcModule<T>();
-    }
 
-    public static ContainerBuilder RegisterSingletonJsonRpcModule<T>(this ContainerBuilder builder) where T : IRpcModule
-    {
-        return builder
+    public static ContainerBuilder RegisterSingletonJsonRpcModule<T>(this ContainerBuilder builder) where T : IRpcModule => builder
             .AddLast<RpcModuleInfo>((ctx) =>
             {
                 Lazy<T> instance = ctx.Resolve<Lazy<T>>();
@@ -28,16 +23,13 @@ public static class IContainerBuilderExtensions
                     return new SingletonModulePool<T>(instance.Value, true);
                 })));
             });
-    }
 
     public static ContainerBuilder RegisterBoundedJsonRpcModule<T, TFactory>(
         this ContainerBuilder builder,
         int maxCount,
         int timeout)
         where T : IRpcModule
-        where TFactory : IRpcModuleFactory<T>
-    {
-        return builder
+        where TFactory : IRpcModuleFactory<T> => builder
             .AddSingleton<TFactory>()
             .AddSingleton<IRpcModuleFactory<T>, TFactory>()
             .AddLast<RpcModuleInfo>((ctx) =>
@@ -48,5 +40,4 @@ public static class IContainerBuilderExtensions
                     return new BoundedModulePool<T>(factory.Value, maxCount, timeout);
                 })));
             });
-    }
 }

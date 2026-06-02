@@ -6,8 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -17,21 +17,21 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
 public class ParityLikeTxTracer : TxTracer
 {
-    private readonly Transaction? _tx;
+    private Transaction? _tx;
     private readonly ParityTraceTypes _parityTraceTypes;
-    private readonly ParityLikeTxTrace _trace;
+    protected readonly ParityLikeTxTrace _trace;
 
     private readonly Stack<ParityTraceAction> _actionStack = new();
     private ParityTraceAction? _currentAction;
 
     private ParityVmOperationTrace? _currentOperation;
-    private readonly List<byte[]> _currentPushList = new();
+    private readonly List<byte[]> _currentPushList = [];
 
     private readonly Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new();
     private (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) _currentVmTrace;
 
-    private bool _treatGasParityStyle; // strange cost calculation from parity
-    private bool _gasAlreadySetForCurrentOp; // workaround for jump destination errors
+    protected bool _treatGasParityStyle;
+    protected bool _gasAlreadySetForCurrentOp;
 
     public ParityLikeTxTracer(Block block, Transaction? tx, ParityTraceTypes parityTraceTypes)
     {
@@ -50,7 +50,7 @@ public class ParityLikeTxTracer : TxTracer
         {
             IsTracingState = true;
             IsTracingStorage = true;
-            _trace.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
+            _trace.StateChanges = [];
         }
 
         if ((_parityTraceTypes & ParityTraceTypes.Trace) != 0)
@@ -75,50 +75,37 @@ public class ParityLikeTxTracer : TxTracer
     public sealed override bool IsTracingState { get; protected set; }
     public sealed override bool IsTracingStorage { get; protected set; }
 
-    private static string GetCallType(ExecutionType executionType)
+    private static string GetCallType(ExecutionType executionType) => executionType switch
     {
-        return executionType switch
-        {
-            ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE
-                or ExecutionType.TXCREATE => "create",
-            ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
-            ExecutionType.DELEGATECALL => "delegatecall",
-            ExecutionType.STATICCALL => "staticcall",
-            ExecutionType.CALLCODE => "callcode",
-            _ => throw new NotSupportedException($"Parity trace call type is undefined for {executionType}")
-        };
-    }
+        ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
+        ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
+        ExecutionType.DELEGATECALL => "delegatecall",
+        ExecutionType.STATICCALL => "staticcall",
+        ExecutionType.CALLCODE => "callcode",
+        _ => throw new NotSupportedException($"Parity trace call type is undefined for {executionType}")
+    };
 
-    private static string GetActionType(ExecutionType executionType)
+    private static string GetActionType(ExecutionType executionType) => executionType switch
     {
-        return executionType switch
-        {
-            ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE
-                or ExecutionType.TXCREATE => "create",
-            _ => "call"
-        };
-    }
+        ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
+        _ => "call"
+    };
 
-    private static string? GetErrorDescription(EvmExceptionType evmExceptionType)
+    private static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
     {
-        return evmExceptionType switch
-        {
-            EvmExceptionType.None => null,
-            EvmExceptionType.BadInstruction => "Bad instruction",
-            EvmExceptionType.StackOverflow => "Stack overflow",
-            EvmExceptionType.StackUnderflow => "Stack underflow",
-            EvmExceptionType.OutOfGas => "Out of gas",
-            EvmExceptionType.InvalidSubroutineEntry => "Invalid subroutine entry",
-            EvmExceptionType.InvalidSubroutineReturn => "Invalid subroutine return",
-            EvmExceptionType.InvalidJumpDestination => "Bad jump destination",
-            EvmExceptionType.AccessViolation => "Access violation",
-            EvmExceptionType.StaticCallViolation => "Static call violation",
-            EvmExceptionType.Revert => "Reverted",
-            _ => "Error",
-        };
-    }
+        EvmExceptionType.None => null,
+        EvmExceptionType.BadInstruction => "Bad instruction",
+        EvmExceptionType.StackOverflow => "Stack overflow",
+        EvmExceptionType.StackUnderflow => "Stack underflow",
+        EvmExceptionType.OutOfGas => "Out of gas",
+        EvmExceptionType.InvalidJumpDestination => "Bad jump destination",
+        EvmExceptionType.AccessViolation => "Access violation",
+        EvmExceptionType.StaticCallViolation => "Static call violation",
+        EvmExceptionType.Revert => "Reverted",
+        _ => "Error",
+    };
 
-    public ParityLikeTxTrace BuildResult()
+    public virtual ParityLikeTxTrace BuildResult()
     {
         if ((_parityTraceTypes & ParityTraceTypes.Trace) == ParityTraceTypes.None)
         {
@@ -128,18 +115,62 @@ public class ParityLikeTxTracer : TxTracer
         return _trace;
     }
 
+    protected virtual ParityTraceAction RentAction() => new();
+
+    protected virtual CappedArray<int> RentTraceAddress(int length) =>
+        length == 0 ? CappedArray<int>.Empty : new CappedArray<int>(new int[length], length);
+
+    protected virtual ParityAccountStateChange RentAccountStateChange() => new();
+
+    protected virtual Dictionary<UInt256, ParityStateChange<byte[]>> RentStorageDictionary() => [];
+
+    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[] before, byte[] after) => new(before, after);
+
+    protected virtual ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after) => new(before, after);
+
+    protected virtual CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
+    {
+        if (input.IsEmpty) return CappedArray<byte>.Empty;
+        byte[] copy = new byte[input.Length];
+        input.Span.CopyTo(copy);
+        return new CappedArray<byte>(copy, copy.Length);
+    }
+
+    protected virtual void ReturnInputBytes(in CappedArray<byte> input) { }
+
+    protected void ResetTracerState(Block block, Transaction? tx)
+    {
+        _tx = tx;
+        _trace.TransactionHash = tx?.Hash;
+        _trace.TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx);
+        _trace.BlockNumber = block.Number;
+        _trace.BlockHash = block.Hash!;
+        _trace.Output = null;
+        _trace.Action = null;
+        _trace.VmTrace = null;
+        _trace.StateChanges?.Clear();
+
+        _actionStack.Clear();
+        _currentAction = null;
+        _currentOperation = null;
+        _currentPushList.Clear();
+        _vmTraceStack.Clear();
+        _currentVmTrace = (null!, null!);
+        _treatGasParityStyle = false;
+        _gasAlreadySetForCurrentOp = false;
+    }
+
     private void PushAction(ParityTraceAction action)
     {
         if (_currentAction is not null)
         {
-            action.TraceAddress = new int[_currentAction!.TraceAddress!.Length + 1];
-            for (int i = 0; i < _currentAction.TraceAddress.Length; i++)
-            {
-                action.TraceAddress[i] = _currentAction.TraceAddress[i];
-            }
-
-            action.TraceAddress[_currentAction.TraceAddress.Length] =
-                _currentAction.Subtraces.Count(static st => st.IncludeInTrace);
+            int parentLen = _currentAction.TraceAddress.Length;
+            CappedArray<int> traceAddress = RentTraceAddress(parentLen + 1);
+            ReadOnlySpan<int> parentSpan = _currentAction.TraceAddress.AsSpan();
+            Span<int> childSpan = traceAddress.AsSpan();
+            parentSpan.CopyTo(childSpan);
+            childSpan[parentLen] = _currentAction.Subtraces.Count;
+            action.TraceAddress = traceAddress;
             if (action.IncludeInTrace)
             {
                 _currentAction.Subtraces.Add(action);
@@ -148,59 +179,65 @@ public class ParityLikeTxTracer : TxTracer
         else
         {
             _trace.Action = action;
-            action.TraceAddress = [];
+            action.TraceAddress = CappedArray<int>.Empty;
         }
 
         _actionStack.Push(action);
         _currentAction = action;
 
-        if (IsTracingInstructions)
-        {
-            (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) currentVmTrace = (new ParityVmTrace(),
-                new List<ParityVmOperationTrace>());
-            if (_currentOperation is not null)
-            {
-                if (action.Type != "suicide")
-                {
-                    _currentOperation.Sub = currentVmTrace.VmTrace;
-                }
-            }
+        OnEnterVmFrame(action);
+    }
 
-            _vmTraceStack.Push(currentVmTrace);
-            _currentVmTrace = currentVmTrace;
-            _trace.VmTrace ??= _currentVmTrace.VmTrace;
+    protected virtual void OnEnterVmFrame(ParityTraceAction action)
+    {
+        if (!IsTracingInstructions) return;
+
+        (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) currentVmTrace = (new ParityVmTrace(),
+            new List<ParityVmOperationTrace>());
+        if (_currentOperation is not null && action.Type != "suicide")
+        {
+            _currentOperation.Sub = currentVmTrace.VmTrace;
         }
+
+        _vmTraceStack.Push(currentVmTrace);
+        _currentVmTrace = currentVmTrace;
+        _trace.VmTrace ??= _currentVmTrace.VmTrace;
     }
 
     private void PopAction()
     {
-        if (IsTracingInstructions)
-        {
-            _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops.ToArray();
-            _vmTraceStack.Pop();
-            _currentVmTrace = _vmTraceStack.Count == 0 ? (null, null) : _vmTraceStack.Peek();
-            _currentOperation = _currentVmTrace.Ops?.Last();
-            _gasAlreadySetForCurrentOp = false;
-
-            if (_actionStack.Peek().Type != "suicide")
-            {
-                _treatGasParityStyle = true;
-            }
-        }
+        ParityTraceAction popped = _actionStack.Peek();
+        OnLeaveVmFrame(popped);
 
         _actionStack.Pop();
         _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
+    protected virtual void OnLeaveVmFrame(ParityTraceAction action)
+    {
+        if (!IsTracingInstructions) return;
+
+        _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops;
+        _vmTraceStack.Pop();
+        _currentVmTrace = _vmTraceStack.Count == 0 ? (null, null) : _vmTraceStack.Peek();
+        _currentOperation = _currentVmTrace.Ops?.Last();
+        _gasAlreadySetForCurrentOp = false;
+
+        if (action.Type != "suicide")
+        {
+            _treatGasParityStyle = true;
+        }
+    }
+
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
         if (_currentAction is not null)
         {
-            throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress?.Length ?? 0}");
+            throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
         }
 
-        if (_trace.Action!.TraceAddress!.Length == 0)
+        if (_trace.Action!.TraceAddress.Length == 0)
         {
             _trace.Output = output;
         }
@@ -208,38 +245,36 @@ public class ParityLikeTxTracer : TxTracer
         _trace.Action!.Result!.Output = output;
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
         Hash256? stateRoot = null)
     {
         if (_currentAction is not null)
         {
-            throw new InvalidOperationException($"Closing trace at level {_currentAction!.TraceAddress!.Length}");
+            throw new InvalidOperationException($"Closing trace at level {_currentAction!.TraceAddress.Length}");
         }
 
         _trace.Output = output;
 
-        // quick tx fail (before execution)
-        _trace.Action ??= new ParityTraceAction
+        if (_trace.Action is null)
         {
-            From = _tx!.SenderAddress,
-            To = _tx.To,
-            Value = _tx.Value,
-            Input = _tx.Data.AsArray(),
-            Gas = _tx.GasLimit,
-            CallType = _tx.IsMessageCall ? "call" : "init",
-            Error = error
-        };
+            ParityTraceAction action = RentAction();
+            action.From = _tx!.SenderAddress;
+            action.To = _tx.To;
+            action.Value = _tx.Value;
+            action.Input = CopyInput(_tx.Data);
+            action.Gas = _tx.GasLimit;
+            action.CallType = _tx.IsMessageCall ? "call" : "init";
+            action.Error = error;
+            _trace.Action = action;
+        }
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env,
-        int codeSection = 0, int functionDepth = 0)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         ParityVmOperationTrace operationTrace = new();
         _gasAlreadySetForCurrentOp = false;
-        operationTrace.Pc = pc + env.CodeInfo.PcOffset();
+        operationTrace.Pc = pc;
         operationTrace.Cost = gas;
-        // skip codeSection
-        // skip functionDepth
         _currentOperation = operationTrace;
         _currentPushList.Clear();
         _currentVmTrace.Ops.Add(operationTrace);
@@ -275,10 +310,7 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
-    {
-        _currentPushList.Add(stackItem.ToArray());
-    }
+    public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => _currentPushList.Add(stackItem.ToArray());
 
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
     {
@@ -288,10 +320,8 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-    {
+    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
         _currentOperation!.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
-    }
 
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -304,14 +334,14 @@ public class ParityLikeTxTracer : TxTracer
             ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
         if (!exists)
         {
-            value = new ParityAccountStateChange();
+            value = RentAccountStateChange();
         }
         else
         {
             before = value.Balance?.Before ?? before;
         }
 
-        value.Balance = new ParityStateChange<UInt256?>(before, after);
+        value.Balance = RentNullableUInt256StateChange(before, after);
     }
 
     public override void ReportCodeChange(Address address, byte[] before, byte[] after)
@@ -325,14 +355,14 @@ public class ParityLikeTxTracer : TxTracer
             ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
         if (!exists)
         {
-            value = new ParityAccountStateChange();
+            value = RentAccountStateChange();
         }
         else
         {
             before = value.Code?.Before ?? before;
         }
 
-        value.Code = new ParityStateChange<byte[]>(before, after);
+        value.Code = RentByteStateChange(before, after);
     }
 
     public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
@@ -341,14 +371,14 @@ public class ParityLikeTxTracer : TxTracer
             ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
         if (!exists)
         {
-            value = new ParityAccountStateChange();
+            value = RentAccountStateChange();
         }
         else
         {
             before = value.Nonce?.Before ?? before;
         }
 
-        value.Nonce = new ParityStateChange<UInt256?>(before, after);
+        value.Nonce = RentNullableUInt256StateChange(before, after);
     }
 
     public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
@@ -357,10 +387,10 @@ public class ParityLikeTxTracer : TxTracer
             ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, storageCell.Address, out bool exists);
         if (!exists)
         {
-            value = new ParityAccountStateChange();
+            value = RentAccountStateChange();
         }
 
-        Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ??= [];
+        Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ??= RentStorageDictionary();
         ref ParityStateChange<byte[]>? change =
             ref CollectionsMarshal.GetValueRefOrAddDefault(storage, storageCell.Index, out exists);
         if (exists)
@@ -368,51 +398,47 @@ public class ParityLikeTxTracer : TxTracer
             before = change.Before ?? before;
         }
 
-        change = new ParityStateChange<byte[]>(before, after);
+        change = RentByteStateChange(before, after);
     }
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
-        ParityTraceAction action = new()
-        {
-            IsPrecompiled = isPrecompileCall,
-            // ignore pre compile calls with Zero value that originates from contracts
-            IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.TRANSACTION && value.IsZero),
-            From = from,
-            To = to,
-            Value = value,
-            Input = input.ToArray(),
-            Gas = gas,
-            CallType = GetCallType(callType),
-            Type = GetActionType(callType),
-            CreationMethod = GetCreateMethod(callType)
-        };
+        ParityTraceAction action = RentAction();
+        action.IsPrecompiled = isPrecompileCall;
+        // ignore pre compile calls with Zero value that originates from contracts
+        action.IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.TRANSACTION && value.IsZero);
+        action.From = from;
+        action.To = to;
+        action.Value = value;
+        action.Input = CopyInput(input);
+        action.Gas = gas;
+        action.CallType = GetCallType(callType);
+        action.Type = GetActionType(callType);
+        action.CreationMethod = GetCreateMethod(callType);
 
         if (_currentOperation is not null && callType.IsAnyCreate())
         {
-            // another Parity quirkiness
             _currentOperation.Cost += gas;
         }
 
         PushAction(action);
     }
 
-    private static string? GetCreateMethod(ExecutionType callType)
+    private static string? GetCreateMethod(ExecutionType callType) => callType switch
     {
-        return callType switch
-        {
-            ExecutionType.CREATE => "create",
-            ExecutionType.CREATE2 => "create2",
-            ExecutionType.EOFCREATE => "create3",
-            ExecutionType.TXCREATE => "create4",
-            _ => null
-        };
-    }
+        ExecutionType.CREATE => "create",
+        ExecutionType.CREATE2 => "create2",
+        _ => null
+    };
 
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
-        ParityTraceAction action = new() { From = address, To = refundAddress, Value = balance, Type = "suicide" };
+        ParityTraceAction action = RentAction();
+        action.From = address;
+        action.To = refundAddress;
+        action.Value = balance;
+        action.Type = "suicide";
         PushAction(action);
         _currentAction!.Result = null;
         PopAction();
@@ -452,14 +478,10 @@ public class ParityLikeTxTracer : TxTracer
         PopAction();
     }
 
-    public override void ReportByteCode(ReadOnlyMemory<byte> byteCode)
-    {
+    public override void ReportByteCode(ReadOnlyMemory<byte> byteCode) =>
         // TODO: use memory pool?
         _currentVmTrace.VmTrace.Code = byteCode.ToArray();
-    }
 
-    public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
-    {
+    public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable) =>
         _currentOperation!.Used = gasAvailable;
-    }
 }

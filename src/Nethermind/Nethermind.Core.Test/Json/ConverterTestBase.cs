@@ -16,7 +16,7 @@ public class ConverterTestBase<T>
 
     protected void TestConverter<TItem>(TItem? item, JsonConverter<T> converter, Func<TItem, TItem, bool>? equalityComparer = null)
     {
-        var options = new JsonSerializerOptions
+        JsonSerializerOptions options = new()
         {
             Converters =
             {

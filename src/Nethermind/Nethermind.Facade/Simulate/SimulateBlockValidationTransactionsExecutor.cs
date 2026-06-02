@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -40,7 +39,7 @@ public class SimulateBlockValidationTransactionsExecutor(
             processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation;
         }
 
-        var result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+        TxReceipt[] result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
 
         // Many gas calculation not done with skip validation, but needed for response
         long currentGasUsedTotal = 0;

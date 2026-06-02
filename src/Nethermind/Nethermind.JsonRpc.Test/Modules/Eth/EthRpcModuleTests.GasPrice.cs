@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
@@ -54,6 +53,69 @@ public partial class EthRpcModuleTests
         return await ctx.Test.TestEthRpc("eth_blobBaseFee");
     }
 
+    [TestCaseSource(nameof(GetBaseFeeTestCases))]
+    public async Task<string> Eth_baseFee_ShouldGiveCorrectResult(UInt256 baseFeePerGas, long gasLimit, long gasUsed, ISpecProvider specProvider)
+    {
+        using Context ctx = await Context.Create(specProvider);
+        Block[] blocks = [
+            Build.A.Block.WithNumber(0).WithBaseFeePerGas(baseFeePerGas).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject,
+        ];
+        BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
+
+        return await ctx.Test.TestEthRpc("eth_baseFee");
+    }
+
+    public static IEnumerable<TestCaseData> GetBaseFeeTestCases
+    {
+        get
+        {
+            static string Success(UInt256 result) => $"{{\"jsonrpc\":\"2.0\",\"result\":\"{result.ToHexString(true)}\",\"id\":67}}";
+            const string NullResult = "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}";
+
+            yield return new TestCaseData(UInt256.Zero, 30_000_000L, 0L, GetSpecProviderWithEip1559EnabledAs(false))
+            {
+                TestName = "Pre-London block returns null",
+                ExpectedResult = NullResult
+            };
+            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000L, 15_000_000L, new TestSpecProvider(London.Instance))
+            {
+                TestName = "Block at gas target returns same base fee",
+                ExpectedResult = Success(1_000_000_000)
+            };
+            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000L, 30_000_000L, new TestSpecProvider(London.Instance))
+            {
+                TestName = "Block over gas target increases base fee by 12.5%",
+                ExpectedResult = Success(1_125_000_000)
+            };
+            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000L, 0L, new TestSpecProvider(London.Instance))
+            {
+                TestName = "Block under gas target decreases base fee by 12.5%",
+                ExpectedResult = Success(875_000_000)
+            };
+        }
+    }
+
+    // AddBlocksOnStart builds 3 blocks on top of genesis, so head = block 3.
+    // Setting ForkOnBlockNumber = 4 makes block 3 the last pre-London block,
+    // with Eip1559TransitionBlock = 4, so eth_baseFee returns ForkBaseFee.
+    [Test]
+    public async Task Eth_baseFee_ForkTransition_ReturnsInitialForkBaseFee()
+    {
+        TestSpecProvider specProvider = new(Berlin.Instance)
+        {
+            ForkOnBlockNumber = 4,
+            NextForkSpec = new OverridableReleaseSpec(London.Instance) { Eip1559TransitionBlock = 4 }
+        };
+        using Context ctx = await Context.Create(specProvider);
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+
+        string result = await ctx.Test.TestEthRpc("eth_baseFee");
+
+        UInt256 expected = Eip1559Constants.DefaultForkBaseFee;
+        Assert.That(result, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected.ToHexString(true)}\",\"id\":67}}"));
+    }
+
     [TestCase(true, "0x3")] //Gas Prices: 1,2,3,3,4,5 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 3 (0x3)
     [TestCase(false, "0x2")] //Gas Prices: 0,1,1,2,2,3 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 2 (0x2)
     public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheckWith1559Tx_ShouldGiveCorrectResult(bool eip1559Enabled, string expected)
@@ -73,21 +135,21 @@ public partial class EthRpcModuleTests
     private static Block[] GetThreeTestBlocks(bool eip1559Enabled = true)
     {
         Block firstBlock = Build.A.Block.WithNumber(0).WithParentHash(Keccak.Zero)
-            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.GetMaxBlobGasPerBlock() * 4 : null)
+            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.GasCosts.MaxBlobGasPerBlock * 4 : null)
             .WithTransactions(
             Build.A.Transaction.WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject,
             Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0).TestObject
         ).TestObject;
 
         Block secondBlock = Build.A.Block.WithNumber(1).WithParentHash(firstBlock.Hash!)
-            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.GetMaxBlobGasPerBlock() * 8 : null)
+            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.GasCosts.MaxBlobGasPerBlock * 8 : null)
             .WithTransactions(
             Build.A.Transaction.WithGasPrice(3).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0).TestObject,
             Build.A.Transaction.WithGasPrice(4).SignedAndResolved(TestItem.PrivateKeyD).WithNonce(0).TestObject
         ).TestObject;
 
         Block thirdBlock = Build.A.Block.WithNumber(2).WithParentHash(secondBlock.Hash!)
-            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.GetMaxBlobGasPerBlock() * 12 : null)
+            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.GasCosts.MaxBlobGasPerBlock * 12 : null)
             .WithTransactions(
             Build.A.Transaction.WithGasPrice(5).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject,
             Build.A.Transaction.WithGasPrice(6).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1).TestObject
@@ -122,11 +184,12 @@ public partial class EthRpcModuleTests
         {
             static string Success(UInt256 result) => $"{{\"jsonrpc\":\"2.0\",\"result\":\"{result.ToHexString(true)}\",\"id\":67}}";
             static string Fail() => $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"Unable to calculate the current blob base fee\"}},\"id\":67}}";
+            const string NullResult = "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}";
 
             yield return new TestCaseData((ulong?)null)
             {
                 TestName = "Pre-Cancun block",
-                ExpectedResult = Success(0)
+                ExpectedResult = NullResult
             };
             yield return new TestCaseData(0ul)
             {
@@ -143,22 +206,22 @@ public partial class EthRpcModuleTests
                 TestName = $"Low {nameof(BlockHeader.ExcessBlobGas)}",
                 ExpectedResult = Success(Eip4844Constants.MinBlobGasPrice)
             };
-            yield return new TestCaseData(Cancun.Instance.GetMaxBlobGasPerBlock() * 4)
+            yield return new TestCaseData(Cancun.Instance.GasCosts.MaxBlobGasPerBlock * 4)
             {
                 TestName = "Initial price spike",
                 ExpectedResult = Success(2)
             };
-            yield return new TestCaseData(Cancun.Instance.GetMaxBlobGasPerBlock() * 42)
+            yield return new TestCaseData(Cancun.Instance.GasCosts.MaxBlobGasPerBlock * 42)
             {
                 TestName = "Price spike",
                 ExpectedResult = Success(19806)
             };
-            yield return new TestCaseData(Cancun.Instance.GetMaxBlobGasPerBlock() * 419)
+            yield return new TestCaseData(Cancun.Instance.GasCosts.MaxBlobGasPerBlock * 419)
             {
                 TestName = $"Price spike higher than {nameof(UInt64)} value",
                 ExpectedResult = Success(UInt256.Parse("0x54486950184d094e079641e7e0d6dd85a81c"))
             };
-            yield return new TestCaseData(Cancun.Instance.GetMaxBlobGasPerBlock() * 3000)
+            yield return new TestCaseData(Cancun.Instance.GasCosts.MaxBlobGasPerBlock * 3000)
             {
                 TestName = $"Overflow for huge {nameof(BlockHeader.ExcessBlobGas)} value",
                 ExpectedResult = Fail()

@@ -8,19 +8,11 @@ namespace Nethermind.Network.Enr;
 /// <summary>
 /// An entry storing TCP IPv4 port number.
 /// </summary>
-public class TcpEntry : EnrContentEntry<int>
+public class TcpEntry(int portNumber) : EnrContentEntry<int>(portNumber)
 {
-    public TcpEntry(int portNumber) : base(portNumber) { }
-
     public override string Key => EnrContentKey.Tcp;
 
-    protected override int GetRlpLengthOfValue()
-    {
-        return Rlp.LengthOf(Value);
-    }
+    protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
 
-    protected override void EncodeValue(RlpStream rlpStream)
-    {
-        rlpStream.Encode(Value);
-    }
+    protected override void EncodeValue(RlpStream rlpStream) => rlpStream.Encode(Value);
 }

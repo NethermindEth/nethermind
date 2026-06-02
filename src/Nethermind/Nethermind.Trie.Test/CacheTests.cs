@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -10,13 +9,14 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class CacheTests
     {
         [Test]
         public void Cache_initial_memory_calculated_correctly()
         {
             MemCountingCache cache = new(1024, string.Empty);
-            cache.MemorySize.Should().Be(136);
+            Assert.That(cache.MemorySize, Is.EqualTo(136));
         }
 
         [Test]
@@ -24,7 +24,7 @@ namespace Nethermind.Trie.Test
         {
             MemCountingCache cache = new(1024, string.Empty);
             cache.Set(Keccak.Zero, []);
-            cache.MemorySize.Should().Be(344);
+            Assert.That(cache.MemorySize, Is.EqualTo(344));
         }
 
         [Test]
@@ -35,7 +35,7 @@ namespace Nethermind.Trie.Test
             cache.Set(TestItem.KeccakB, []);
             cache.Set(TestItem.KeccakC, []);
             cache.Set(TestItem.KeccakD, []);
-            cache.MemorySize.Should().Be(672);
+            Assert.That(cache.MemorySize, Is.EqualTo(672));
         }
 
         [Test]
@@ -46,19 +46,19 @@ namespace Nethermind.Trie.Test
             cache.Set(TestItem.KeccakB, []);
             cache.Set(TestItem.KeccakC, []);
 
-            cache.MemorySize.Should().Be(488);
-            cache.Get(TestItem.KeccakA).Should().NotBeNull();
+            Assert.That(cache.MemorySize, Is.EqualTo(488));
+            Assert.That(cache.Get(TestItem.KeccakA), Is.Not.Null);
 
             cache.Set(TestItem.KeccakD, []);
-            cache.MemorySize.Should().Be(488);
-            cache.Get(TestItem.KeccakB).Should().BeNull();
-            cache.Get(TestItem.KeccakD).Should().NotBeNull();
+            Assert.That(cache.MemorySize, Is.EqualTo(488));
+            Assert.That(cache.Get(TestItem.KeccakB), Is.Null);
+            Assert.That(cache.Get(TestItem.KeccakD), Is.Not.Null);
 
             cache.Set(TestItem.KeccakE, []);
-            cache.MemorySize.Should().Be(488);
-            cache.Get(TestItem.KeccakB).Should().BeNull();
-            cache.Get(TestItem.KeccakC).Should().BeNull();
-            cache.Get(TestItem.KeccakE).Should().NotBeNull();
+            Assert.That(cache.MemorySize, Is.EqualTo(488));
+            Assert.That(cache.Get(TestItem.KeccakB), Is.Null);
+            Assert.That(cache.Get(TestItem.KeccakC), Is.Null);
+            Assert.That(cache.Get(TestItem.KeccakE), Is.Not.Null);
         }
 
         [Test]
@@ -71,13 +71,13 @@ namespace Nethermind.Trie.Test
 
             cache.Set(TestItem.KeccakA, null);
 
-            cache.MemorySize.Should().Be(416);
-            cache.Get(TestItem.KeccakA).Should().BeNull();
+            Assert.That(cache.MemorySize, Is.EqualTo(416));
+            Assert.That(cache.Get(TestItem.KeccakA), Is.Null);
 
             cache.Set(TestItem.KeccakD, []);
-            cache.MemorySize.Should().Be(488);
-            cache.Get(TestItem.KeccakB).Should().NotBeNull();
-            cache.Get(TestItem.KeccakD).Should().NotBeNull();
+            Assert.That(cache.MemorySize, Is.EqualTo(488));
+            Assert.That(cache.Get(TestItem.KeccakB), Is.Not.Null);
+            Assert.That(cache.Get(TestItem.KeccakD), Is.Not.Null);
         }
     }
 }

@@ -4,20 +4,19 @@
 using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using Autofac.Features.AttributeFilters;
-using CommunityToolkit.HighPerformance;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Era1.Exceptions;
 using Nethermind.Logging;
 
 
 namespace Nethermind.Era1;
+
 public class EraImporter(
     IFileSystem fileSystem,
     IBlockTree blockTree,
@@ -35,6 +34,13 @@ public class EraImporter(
     private readonly ILogger _logger = logManager.GetClassLogger<EraImporter>();
     private readonly int _maxEra1Size = eraConfig.MaxEra1Size;
 
+    /// <summary>
+    /// Snapshot of the pacer used by the current import run. <see cref="BlockTreeSuggestPacer.WaitForPausedAsync"/>
+    /// lets callers (notably tests) wait deterministically for the importer to back off when its suggest queue
+    /// outruns the chain head, instead of relying on real-time delays.
+    /// </summary>
+    public BlockTreeSuggestPacer? CurrentPacer { get; private set; }
+
     public async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
     {
         if (!fileSystem.Directory.Exists(src))
@@ -48,7 +54,7 @@ public class EraImporter(
             trustedAccumulators = (await fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation)).Select(EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry).ToHashSet();
         }
 
-        IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
+        using IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
 
         long lastBlockInStore = eraStore.LastBlock;
         if (to == 0) to = long.MaxValue;
@@ -103,11 +109,12 @@ public class EraImporter(
 
         using IEraStore _ = eraStore;
 
-        ProgressLogger progressLogger = new ProgressLogger("Era import", logManager);
+        ProgressLogger progressLogger = new("Era import", logManager);
         progressLogger.Reset(0, to - from + 1);
         long blocksProcessed = 0;
 
-        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
+        using BlockTreeSuggestPacer pacer = new(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
+        CurrentPacer = pacer;
         long blockNumber = from;
 
         long suggestFromBlock = (blockTree.Head?.Number ?? 0) + 1;
@@ -133,7 +140,7 @@ public class EraImporter(
         long partitionSize = _maxEra1Size;
         if (blockNumber + partitionSize < suggestFromBlock)
         {
-            ConcurrentQueue<long> partitionStartBlocks = new ConcurrentQueue<long>();
+            ConcurrentQueue<long> partitionStartBlocks = new();
             for (; blockNumber + partitionSize < suggestFromBlock && blockNumber + partitionSize < to; blockNumber += partitionSize)
             {
                 partitionStartBlocks.Enqueue(blockNumber);
@@ -232,7 +239,7 @@ public class EraImporter(
             throw new EraVerificationException($"Block validation failed: {error}");
         }
 
-        var addResult = await blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
+        AddBlockResult addResult = await blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
         switch (addResult)
         {
             case AddBlockResult.AlreadyKnown:

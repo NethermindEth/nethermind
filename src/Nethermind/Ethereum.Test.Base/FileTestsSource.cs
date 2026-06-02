@@ -4,15 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
-using Ethereum.Test.Base.Interfaces;
 
 namespace Ethereum.Test.Base
 {
     public class FileTestsSource(string fileName, string? wildcard = null)
     {
         private readonly string _fileName = fileName ?? throw new ArgumentNullException(nameof(fileName));
-        private readonly string? _wildcard = wildcard;
 
         public IEnumerable<EthereumTest> LoadTests(TestType testType)
         {
@@ -23,17 +20,17 @@ namespace Ethereum.Test.Base
                     return [];
                 }
 
-                if (_wildcard is not null && !_fileName.Contains(_wildcard))
+                if (wildcard is not null && !_fileName.Contains(wildcard))
                 {
                     return [];
                 }
 
-                string json = File.ReadAllText(_fileName, Encoding.Default);
+                byte[] json = File.ReadAllBytes(_fileName);
 
                 return testType switch
                 {
-                    TestType.Eof => JsonToEthereumTest.ConvertToEofTests(json),
                     TestType.State => JsonToEthereumTest.ConvertStateTest(json),
+                    TestType.Transaction => JsonToEthereumTest.ConvertTransactionTests(json),
                     _ => JsonToEthereumTest.ConvertToBlockchainTests(json)
                 };
             }

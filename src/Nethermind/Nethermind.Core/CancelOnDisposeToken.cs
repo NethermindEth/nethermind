@@ -14,7 +14,7 @@ namespace Nethermind.Core;
 /// </summary>
 public class CancelOnDisposeToken : IAsyncDisposable
 {
-    private readonly CancellationTokenSource cts = new CancellationTokenSource();
+    private readonly CancellationTokenSource cts = new();
     public CancellationToken Token => cts.Token;
 
     public async ValueTask DisposeAsync()

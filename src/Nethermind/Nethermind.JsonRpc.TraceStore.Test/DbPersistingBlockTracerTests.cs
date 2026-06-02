@@ -4,8 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
+using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -13,9 +14,11 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
-namespace Nethermind.JsonRpc.TraceStore.Tests;
+namespace Nethermind.JsonRpc.TraceStore.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class DbPersistingBlockTracerTests
@@ -61,8 +64,9 @@ public class DbPersistingBlockTracerTests
             }
         );
 
-        traces.Should().BeEquivalentTo(new ParityLikeTxTrace[]
-        {
+        EthereumJsonSerializer serializer = new();
+        ParityLikeTxTrace[] expected =
+        [
             new()
             {
                 BlockHash = hash,
@@ -76,7 +80,7 @@ public class DbPersistingBlockTracerTests
                     Input = TestItem.RandomDataA,
                     Result = new ParityTraceResult { GasUsed = 50, Output = TestItem.RandomDataB },
                     To = TestItem.AddressB,
-                    TraceAddress = [],
+                    TraceAddress = CappedArray<int>.Empty,
                     Type = "call",
                     Value = 50,
                     Subtraces =
@@ -89,9 +93,9 @@ public class DbPersistingBlockTracerTests
                             IncludeInTrace = true,
                             Input = TestItem.RandomDataC,
                             Result = new ParityTraceResult { GasUsed = 20, Output = TestItem.RandomDataD },
-                            Subtraces = new List<ParityTraceAction>(),
+                            Subtraces = [],
                             To = TestItem.AddressC,
-                            TraceAddress = [0],
+                            TraceAddress = new int[] { 0 },
                             CreationMethod = "create",
                             Type = "create",
                             Value = 20
@@ -99,7 +103,9 @@ public class DbPersistingBlockTracerTests
                     ]
                 }
             }
-        });
+        ];
+
+        Assert.That(JToken.Parse(serializer.Serialize(traces)), Is.EqualTo(JToken.Parse(serializer.Serialize(expected))).Using(JToken.EqualityComparer));
     }
 
     [TestCase(510)]
@@ -107,30 +113,45 @@ public class DbPersistingBlockTracerTests
     [TestCase(1500)]
     public void check_depth(int depth)
     {
-        // depth = depth / 2 - 1;
-        Test test = new();
-        (_, List<ParityLikeTxTrace> traces) = test.Trace(tracer =>
-            {
-                for (int i = 0; i < depth; i++)
-                {
-                    tracer.ReportAction(100, 50, TestItem.AddressA, TestItem.AddressB, TestItem.RandomDataA, ExecutionType.CALL);
-                }
-
-                for (int i = 0; i < depth; i++)
-                {
-                    tracer.ReportActionEnd(60, TestItem.RandomDataD);
-                }
-            }
-        );
-
-        ParityTraceAction? action = traces.FirstOrDefault()?.Action;
-        int checkedDepth = 0;
-        while (action is not null)
+        // ParityTraceActionConverter.Read() recurses per nesting level during STJ deserialization.
+        // Windows default 1MB stack overflows at ~600 depth, so run on a thread with 4MB stack.
+        Exception? caught = null;
+        Thread thread = new(() =>
         {
-            checkedDepth += 1;
-            action = action.Subtraces.FirstOrDefault();
-        }
+            try
+            {
+                Test test = new();
+                (_, List<ParityLikeTxTrace> traces) = test.Trace(tracer =>
+                    {
+                        for (int i = 0; i < depth; i++)
+                        {
+                            tracer.ReportAction(100, 50, TestItem.AddressA, TestItem.AddressB, TestItem.RandomDataA, ExecutionType.CALL);
+                        }
 
-        checkedDepth.Should().Be(depth);
+                        for (int i = 0; i < depth; i++)
+                        {
+                            tracer.ReportActionEnd(60, TestItem.RandomDataD);
+                        }
+                    }
+                );
+
+                ParityTraceAction? action = traces.FirstOrDefault()?.Action;
+                int checkedDepth = 0;
+                while (action is not null)
+                {
+                    checkedDepth += 1;
+                    action = action.Subtraces.FirstOrDefault();
+                }
+
+                Assert.That(checkedDepth, Is.EqualTo(depth));
+            }
+            catch (Exception ex)
+            {
+                caught = ex;
+            }
+        }, maxStackSize: 4 * 1024 * 1024);
+        thread.Start();
+        thread.Join();
+        if (caught is not null) throw caught;
     }
 }

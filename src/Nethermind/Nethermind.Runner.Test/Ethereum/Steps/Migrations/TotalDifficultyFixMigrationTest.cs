@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -32,7 +31,7 @@ public class TotalDifficultyFixMigrationTest
         long firstBlock = 3;
         // Setup headers
         BlockHeader[] headers = new BlockHeader[numberOfBlocks];
-        Dictionary<Hash256, BlockHeader> hashesToHeaders = new();
+        Dictionary<Hash256, BlockHeader> hashesToHeaders = [];
         headers[0] = Core.Test.Builders.Build.A.BlockHeader.WithDifficulty(1).TestObject;
         for (int i = 1; i < numberOfBlocks; ++i)
         {
@@ -79,11 +78,11 @@ public class TotalDifficultyFixMigrationTest
         {
             if (i == brokenLevel && firstBlock <= brokenLevel && brokenLevel <= (lastBlock ?? numberOfBlocks))
             {
-                persistedLevels[i].BlockInfos[0].TotalDifficulty.Should().Be((UInt256)expectedTd);
+                Assert.That(persistedLevels[i].BlockInfos[0].TotalDifficulty, Is.EqualTo((UInt256)expectedTd));
             }
             else
             {
-                persistedLevels[i].Should().Be(null);
+                Assert.That(persistedLevels[i], Is.EqualTo(null));
             }
         }
     }
@@ -91,7 +90,7 @@ public class TotalDifficultyFixMigrationTest
     [Test]
     public async Task should_fix_non_canonical()
     {
-        Dictionary<Hash256, BlockHeader> hashesToHeaders = new();
+        Dictionary<Hash256, BlockHeader> hashesToHeaders = [];
         BlockHeader g = Core.Test.Builders.Build.A.BlockHeader.WithDifficulty(1).TestObject;
 
         // Canonical
@@ -148,15 +147,15 @@ public class TotalDifficultyFixMigrationTest
         // Run
         await migration.Run(CancellationToken.None);
 
-        persistedLevels[0].Should().BeNull();
-        persistedLevels[1].Should().BeNull();
-        persistedLevels[2].Should().BeNull();
+        Assert.That(persistedLevels[0], Is.Null);
+        Assert.That(persistedLevels[1], Is.Null);
+        Assert.That(persistedLevels[2], Is.Null);
 
-        persistedLevels[3].BlockInfos.Length.Should().Be(2);
-        persistedLevels[3].BlockInfos[0].TotalDifficulty.Should().Be(10);
-        persistedLevels[3].BlockInfos[1].TotalDifficulty.Should().Be(303);
+        Assert.That(persistedLevels[3].BlockInfos.Length, Is.EqualTo(2));
+        Assert.That(persistedLevels[3].BlockInfos[0].TotalDifficulty, Is.EqualTo((UInt256)10));
+        Assert.That(persistedLevels[3].BlockInfos[1].TotalDifficulty, Is.EqualTo((UInt256)303));
 
-        persistedLevels[4].BlockInfos.Length.Should().Be(1);
-        persistedLevels[4].BlockInfos[0].TotalDifficulty.Should().Be(15);
+        Assert.That(persistedLevels[4].BlockInfos.Length, Is.EqualTo(1));
+        Assert.That(persistedLevels[4].BlockInfos[0].TotalDifficulty, Is.EqualTo((UInt256)15));
     }
 }

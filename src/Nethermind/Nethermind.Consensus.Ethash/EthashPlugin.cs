@@ -7,7 +7,6 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -32,20 +31,14 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer()
-        {
-            return null;
-        }
+        public IBlockProducer InitBlockProducer() => null;
 
         public string SealEngineType => Core.SealEngineType.Ethash;
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            return new StandardBlockProducerRunner(
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new StandardBlockProducerRunner(
                 _nethermindApi.ManualBlockProductionTrigger,
                 _nethermindApi.BlockTree,
                 blockProducer);
-        }
 
         public IModule Module => new EthHashModule(miningConfig);
     }

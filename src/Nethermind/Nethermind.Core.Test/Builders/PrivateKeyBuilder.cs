@@ -9,9 +9,6 @@ namespace Nethermind.Core.Test.Builders
     {
         private readonly PrivateKeyGenerator _generator = new();
 
-        public PrivateKeyBuilder()
-        {
-            TestObject = _generator.Generate();
-        }
+        public PrivateKeyBuilder() => TestObject = _generator.Generate();
     }
 }

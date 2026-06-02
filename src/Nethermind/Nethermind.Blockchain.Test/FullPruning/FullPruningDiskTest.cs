@@ -9,7 +9,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
@@ -17,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
@@ -30,6 +30,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.FullPruning;
 
+[Parallelizable(ParallelScope.All)]
 public class FullPruningDiskTest
 {
     public class PruningTestBlockchain : TestBlockchain
@@ -44,10 +45,7 @@ public class FullPruningDiskTest
         public IChainEstimations _chainEstimations = Substitute.For<IChainEstimations>();
         public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
-        public PruningTestBlockchain()
-        {
-            TempDirectory = TempPath.GetTempDirectory();
-        }
+        public PruningTestBlockchain() => TempDirectory = TempPath.GetTempDirectory();
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null)
         {
@@ -66,6 +64,7 @@ public class FullPruningDiskTest
                 PruningTrigger,
                 PruningConfig,
                 BlockTree,
+                Container.Resolve<IStateBoundaryWriter>(),
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,
@@ -103,32 +102,30 @@ public class FullPruningDiskTest
             PruningTestBlockchain chain = new()
             {
                 PruningConfig = pruningConfig ?? new PruningConfig(),
-                TestTimout = testTimeoutMs,
+                TestTimeout = testTimeoutMs,
             };
             await chain.Build();
             return chain;
         }
 
-        public class FullTestPruner : FullPruner
+        public class FullTestPruner(
+            IFullPruningDb pruningDb,
+            INodeStorageFactory nodeStorageFactory,
+            INodeStorage mainNodeStorage,
+            IPruningTrigger pruningTrigger,
+            IPruningConfig pruningConfig,
+            IBlockTree blockTree,
+            IStateBoundaryWriter stateBoundary,
+            IStateReader stateReader,
+            IProcessExitSource processExitSource,
+            IDriveInfo driveInfo,
+            IPruningTrieStore trieStore,
+            IChainEstimations chainEstimations,
+            ILogManager logManager)
+            : FullPruner(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree,
+                stateBoundary, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
         {
             public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false);
-
-            public FullTestPruner(
-                IFullPruningDb pruningDb,
-                INodeStorageFactory nodeStorageFactory,
-                INodeStorage mainNodeStorage,
-                IPruningTrigger pruningTrigger,
-                IPruningConfig pruningConfig,
-                IBlockTree blockTree,
-                IStateReader stateReader,
-                IProcessExitSource processExitSource,
-                IDriveInfo driveInfo,
-                IPruningTrieStore trieStore,
-                IChainEstimations chainEstimations,
-                ILogManager logManager)
-                : base(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
-            {
-            }
 
             protected override async Task RunFullPruning(CancellationToken cancellationToken)
             {
@@ -136,6 +133,12 @@ public class FullPruningDiskTest
                 WaitHandle.Set();
             }
         }
+    }
+
+    [SetUp]
+    public void Setup()
+    {
+        if (PseudoNethermindModule.TestUseFlat) Assert.Ignore("Disabled in flat");
     }
 
     [Test, MaxTime(Timeout.LongTestTime)]
@@ -169,7 +172,7 @@ public class FullPruningDiskTest
         chain.DriveInfo.AvailableFreeSpace.Returns(availableSpace);
         PruningTriggerEventArgs args = new();
         chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
-        args.Status.Should().Be(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace);
+        Assert.That(args.Status, Is.EqualTo(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace));
     }
 
     private static async Task RunPruning(PruningTestBlockchain chain, int time, bool onlyFirstRuns)
@@ -193,7 +196,7 @@ public class FullPruningDiskTest
 
         if (!onlyFirstRuns || time == 0)
         {
-            pruningFinished.Should().BeTrue();
+            Assert.That(pruningFinished, Is.True);
 
             await WriteFileStructure(chain);
 
@@ -203,8 +206,12 @@ public class FullPruningDiskTest
                 );
 
             HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
-            currentItems.IsSubsetOf(allItems).Should().BeTrue();
-            currentItems.Count.Should().BeGreaterThan(0);
+            // Exclude the boundary marker FullPruner writes on commit — it's absent from the pre-prune snapshot.
+            byte[]? boundaryValue = chain.DbProvider.StateDb[StateBoundaryStore.OldestStateBlockKey];
+            Assert.That(boundaryValue, Is.Not.Null, "FullPruner should record the OldestStateBlock floor on a successful prune");
+            currentItems.Remove(boundaryValue!);
+            Assert.That(currentItems.IsSubsetOf(allItems), Is.True);
+            Assert.That(currentItems.Count, Is.GreaterThan(0));
         }
     }
 

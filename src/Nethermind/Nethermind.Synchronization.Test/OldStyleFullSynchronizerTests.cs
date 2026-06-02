@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -41,7 +40,7 @@ namespace Nethermind.Synchronization.Test
         {
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
-            ConfigProvider configProvider = new ConfigProvider();
+            ConfigProvider configProvider = new();
             ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
             syncConfig.FastSync = false;
 
@@ -62,10 +61,8 @@ namespace Nethermind.Synchronization.Test
         }
 
         [TearDown]
-        public async Task TearDown()
-        {
-            await _container.DisposeAsync();
-        }
+        public Task TearDown() =>
+            _container.DisposeAsync().AsTask();
 
         private IDb _stateDb => _container.Resolve<IDbProvider>().StateDb;
         private IBlockTree _blockTree = null!;
@@ -113,7 +110,7 @@ namespace Nethermind.Synchronization.Test
         {
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SyncBatchSizeMax * 2).TestObject;
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(2).TestObject;
-            _remoteBlockTree.Head?.Number.Should().NotBe(0);
+            Assert.That(_remoteBlockTree.Head?.Number, Is.Not.EqualTo(0));
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new(false);
@@ -191,7 +188,7 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool.AddPeer(miner1);
 
             Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After((int)_standardTimeoutUnit.TotalMilliseconds, 100));
-            miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, "client agrees with miner before split");
+            BlockTestAssertions.AssertBlockHeaderEquivalent(miner1Tree.BestSuggestedHeader, _blockTree.BestSuggestedHeader);
 
             Block splitBlock = Build.A.Block
                 .WithParent(miner1Tree.FindParent(miner1Tree.Head!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!)
@@ -204,7 +201,7 @@ namespace Nethermind.Synchronization.Test
             miner1Tree.SuggestBlock(splitBlockChild);
             miner1Tree.UpdateMainChain(splitBlockChild);
 
-            splitBlockChild.Header.Should().BeEquivalentTo(miner1Tree.BestSuggestedHeader, "split as expected");
+            BlockTestAssertions.AssertBlockHeaderEquivalent(splitBlockChild.Header, miner1Tree.BestSuggestedHeader);
 
             SyncServer.AddNewBlock(splitBlockChild, miner1);
 
@@ -313,12 +310,12 @@ namespace Nethermind.Synchronization.Test
         public void Can_retrieve_node_values()
         {
             _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            IOwnedReadOnlyList<byte[]?> data = SyncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
+            using IByteArrayList data = SyncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
 
             Assert.That(data, Is.Not.Null);
             Assert.That(data.Count, Is.EqualTo(2), "data.Length");
-            Assert.That(data[0], Is.EqualTo(TestItem.RandomDataA), "data[0]");
-            Assert.That(data[1], Is.EqualTo(null), "data[1]");
+            Assert.That(data[0].ToArray(), Is.EqualTo(TestItem.RandomDataA), "data[0]");
+            Assert.That(data[1].IsEmpty, Is.True, "data[1]");
         }
 
         [Test]
@@ -328,9 +325,9 @@ namespace Nethermind.Synchronization.Test
             Block? block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
             Block? block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
-            SyncServer.GetReceipts(block0!.Hash!).Should().HaveCount(0);
-            SyncServer.GetReceipts(block1!.Hash!).Should().HaveCount(0);
-            SyncServer.GetReceipts(TestItem.KeccakA).Should().HaveCount(0);
+            Assert.That(SyncServer.GetReceipts(block0!.Hash!), Is.Empty);
+            Assert.That(SyncServer.GetReceipts(block1!.Hash!), Is.Null);
+            Assert.That(SyncServer.GetReceipts(TestItem.KeccakA), Is.Null);
         }
     }
 }

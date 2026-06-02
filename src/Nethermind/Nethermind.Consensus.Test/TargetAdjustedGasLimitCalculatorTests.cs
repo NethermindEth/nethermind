@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -45,11 +44,11 @@ namespace Nethermind.Consensus.Test
                 });
             BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber - 1).WithGasLimit(gasLimit).TestObject;
             long actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
-            actualValue.Should().Be(expectedGasLimit);
+            Assert.That(actualValue, Is.EqualTo(expectedGasLimit));
         }
 
         [Test]
-        public void Doesnt_go_below_minimum()
+        public void DoesNot_go_below_minimum()
         {
             int londonBlock = 5;
             long gasLimit = 5000;

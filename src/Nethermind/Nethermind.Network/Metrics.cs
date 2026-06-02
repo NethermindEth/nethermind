@@ -103,7 +103,7 @@ namespace Nethermind.Network
         [KeyIsLabel("protocol", "message")]
         public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> IncomingP2PMessageBytes { get; } = new();
 
-        [CounterMetric]
+        [GaugeMetric]
         [Description("Number of candidate peers in peer manager")]
         [DetailedMetric]
         public static int PeerCandidateCount { get; set; }

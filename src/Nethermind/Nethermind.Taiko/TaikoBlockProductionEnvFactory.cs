@@ -7,6 +7,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.State;
 using Nethermind.Taiko.BlockTransactionExecutors;
+using Nethermind.Taiko.ZkGas;
 
 namespace Nethermind.Taiko;
 
@@ -15,5 +16,6 @@ public class TaikoBlockProductionEnvFactory(ILifetimeScope rootLifetime, IWorldS
     protected override ContainerBuilder ConfigureBuilder(ContainerBuilder builder) =>
         // Taiko does not seems to use `BlockProductionTransactionsExecutor`
         base.ConfigureBuilder(builder)
+            .AddScoped<ZkGasMeterHolder>()
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
 }

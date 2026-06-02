@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain;
@@ -111,7 +110,7 @@ public partial class BlockTree
 
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            BlockHeader? header = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+            BlockHeader? header = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (header is not null)
             {
                 if (findBeacon && blockInfo.IsBeaconHeader)
@@ -139,7 +138,7 @@ public partial class BlockTree
 
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+            Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (block is not null)
             {
                 if (findBeacon && blockInfo.IsBeaconBody)
@@ -159,8 +158,8 @@ public partial class BlockTree
     private void LoadForkChoiceInfo()
     {
         Logger.Info("Loading fork choice info");
-        FinalizedHash ??= _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpStream().DecodeKeccak();
-        SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpStream().DecodeKeccak();
+        FinalizedHash ??= _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpValueContext().DecodeKeccak();
+        SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpValueContext().DecodeKeccak();
     }
 
     private void LoadLowestInsertedBeaconHeader()
@@ -168,7 +167,7 @@ public partial class BlockTree
         if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedBeaconHeaderHash))
         {
             Hash256? lowestBeaconHeaderHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedBeaconHeaderHash)?
-                .AsRlpStream().DecodeKeccak();
+                .AsRlpValueContext().DecodeKeccak();
             _lowestInsertedBeaconHeader = FindHeader(lowestBeaconHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
     }
@@ -178,7 +177,7 @@ public partial class BlockTree
         if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedFastHeaderHash))
         {
             Hash256? headerHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash)?
-                .AsRlpStream().DecodeKeccak();
+                .AsRlpValueContext().DecodeKeccak();
             _lowestInsertedHeader = FindHeader(headerHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
         else
@@ -324,7 +323,7 @@ public partial class BlockTree
     {
         Block? startBlock = null;
         byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-        BestPersistedState = persistedNumberData is null ? null : new RlpStream(persistedNumberData).DecodeLong();
+        BestPersistedState = persistedNumberData is null ? null : new Rlp.ValueDecoderContext(persistedNumberData).DecodeLong();
         long? persistedNumber = BestPersistedState;
         if (persistedNumber is not null)
         {
@@ -373,22 +372,22 @@ public partial class BlockTree
         byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
         if (pivotFromDb is null)
         {
-            _syncPivot = (LongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+            _syncPivot = (_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
             return;
         }
 
-        RlpStream pivotStream = new(pivotFromDb!);
+        Rlp.ValueDecoderContext pivotStream = new(pivotFromDb!);
         long updatedPivotBlockNumber = pivotStream.DecodeLong();
         Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
 
         if (updatedPivotBlockHash.IsZero)
         {
-            _syncPivot = (LongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+            _syncPivot = (_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
             return;
         }
 
         SyncPivot = (updatedPivotBlockNumber, updatedPivotBlockHash);
-        _syncConfig.MaxAttemptsToUpdatePivot = 0; // Disable pivot updator
+        _syncConfig.MaxAttemptsToUpdatePivot = 0; // Disable pivot updater
 
         if (Logger.IsInfo) Logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
     }

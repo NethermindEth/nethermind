@@ -1,22 +1,23 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Timers;
 
 namespace Nethermind.Xdc
 {
     internal class TimeoutTimer : IDisposable, ITimeoutTimer
     {
-        private System.Timers.Timer timer;
-        private readonly ITimeoutCertificateManager _timeoutCertificateManager;
+        private readonly System.Timers.Timer timer;
 
-        public TimeoutTimer(ITimeoutCertificateManager timeoutCertificateManager)
+        public TimeoutTimer()
         {
             timer = new System.Timers.Timer();
             timer.AutoReset = false;
-            timer.Elapsed += (s, e) => Callback();
-            _timeoutCertificateManager = timeoutCertificateManager;
+            timer.Elapsed += (s, e) => TimeoutElapsed?.Invoke(s, e);
         }
+
+        public event EventHandler<ElapsedEventArgs> TimeoutElapsed;
 
         public void Start(TimeSpan period)
         {
@@ -31,19 +32,8 @@ namespace Nethermind.Xdc
             timer.Enabled = true;
         }
 
-        public void Dispose()
-        {
-            timer.Elapsed -= (s, e) => Callback();
-            timer?.Dispose();
-        }
+        public void Dispose() => timer?.Dispose();
 
-        public void TriggerTimeout()
-        {
-            Callback();
-        }
-        private void Callback()
-        {
-            _timeoutCertificateManager.OnCountdownTimer();
-        }
+        public void TriggerTimeout() => TimeoutElapsed?.Invoke(this, new ElapsedEventArgs(DateTime.UtcNow));
     }
 }

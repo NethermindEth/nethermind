@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
+
 public class EraWriter : IDisposable
 {
     public const int MaxEra1Size = 8192;
@@ -20,7 +21,7 @@ public class EraWriter : IDisposable
     private readonly ArrayPoolList<long> _entryIndexes;
 
     private readonly HeaderDecoder _headerDecoder = new();
-    private readonly BlockBodyDecoder _blockBodyDecoder = new();
+    private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
 
     private readonly E2StoreWriter _e2StoreWriter;
@@ -130,15 +131,9 @@ public class EraWriter : IDisposable
         return (root, _e2StoreWriter.FinalizeChecksum());
     }
 
-    private static void WriteInt64(Span<byte> destination, int off, long value)
-    {
-        BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, 8), value);
-    }
+    private static void WriteInt64(Span<byte> destination, int off, long value) => BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, 8), value);
 
-    private Task<int> WriteVersion()
-    {
-        return _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
-    }
+    private Task<int> WriteVersion() => _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
 
     public void Dispose()
     {

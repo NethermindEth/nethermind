@@ -24,13 +24,13 @@ jobs:
       IMAGE_TAG: nethermind:${{ github.sha }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
 
       - name: Build Docker image
         run: docker build -t $IMAGE_TAG .
-      
+
       - name: Scan
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 #v0.28.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 #v0.35.0
         with:
           image-ref: ${{ env.IMAGE_TAG }}
           format: template
@@ -41,6 +41,6 @@ jobs:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db
 
       - name: Upload scan results
-        uses: github/codeql-action/upload-sarif@cf5b0a9041d3c1d336516f1944c96d96598193cc #v2.19.1
+        uses: github/codeql-action/upload-sarif@0c0c5dc2f136b98cb0537075ccfa21f94cd9a63e #v2.24.3
         with:
           sarif_file: trivy-results.sarif

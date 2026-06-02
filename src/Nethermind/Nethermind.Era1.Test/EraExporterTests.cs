@@ -7,8 +7,10 @@ using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
+
 public class EraExporterTests
 {
     [TestCase(1, 0, 1 - 1, 1, 1)]

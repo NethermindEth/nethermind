@@ -14,13 +14,9 @@ using Nethermind.Int256;
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
-    : IBlockhashStore
+public class BlockhashStore(IWorldState worldState) : IBlockhashStore
 {
     private static readonly byte[] EmptyBytes = [0];
-
-    public void ApplyBlockhashStateChanges(BlockHeader blockHeader)
-        => ApplyBlockhashStateChanges(blockHeader, specProvider.GetSpec(blockHeader));
 
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
@@ -30,13 +26,10 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
         if (!worldState.IsContract(eip2935Account)) return;
 
         Hash256 parentBlockHash = blockHeader.ParentHash;
-        UInt256 parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % spec.Eip2935RingBufferSize));
+        UInt256 parentBlockIndex = new((ulong)((blockHeader.Number - 1) % spec.Eip2935RingBufferSize));
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
         worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
     }
-
-    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)
-        => GetBlockHashFromState(currentHeader, requiredBlockNumber, specProvider.GetSpec(currentHeader));
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IReleaseSpec spec)
     {
@@ -45,7 +38,7 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
         {
             return null;
         }
-        UInt256 blockIndex = new UInt256((ulong)(requiredBlockNumber % spec.Eip2935RingBufferSize));
+        UInt256 blockIndex = new((ulong)(requiredBlockNumber % spec.Eip2935RingBufferSize));
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);

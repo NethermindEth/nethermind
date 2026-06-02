@@ -81,21 +81,13 @@ public class BloomStorageBenchmark
         public IFileStore Create(string name) => new FixedSizeFileStoreOld(Path.Combine(_basePath, name + "." + _extension), _elementSize);
     }
 
-    private class FixedSizeFileStoreOld : IFileStore
+    private class FixedSizeFileStoreOld(string path, int elementSize) : IFileStore
     {
-        private readonly string _path;
-        private readonly int _elementSize;
-        private readonly Stream _fileWrite;
-        private readonly Stream _fileRead;
+        private readonly string _path = path;
+        private readonly int _elementSize = elementSize;
+        private readonly Stream _fileWrite = File.Open(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
+        private readonly Stream _fileRead = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         private int _needsFlush;
-
-        public FixedSizeFileStoreOld(string path, int elementSize)
-        {
-            _path = path;
-            _elementSize = elementSize;
-            _fileWrite = File.Open(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
-            _fileRead = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        }
 
         public void Write(long index, ReadOnlySpan<byte> element)
         {

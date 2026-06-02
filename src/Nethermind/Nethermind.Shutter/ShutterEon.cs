@@ -22,7 +22,7 @@ public class ShutterEon(
     private IShutterEon.Info? _currentInfo;
     private readonly Address _keyBroadcastContractAddress = new(shutterConfig.KeyBroadcastContractAddress!);
     private readonly Address _keyperSetManagerContractAddress = new(shutterConfig.KeyperSetManagerContractAddress!);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterEon>();
 
     public IShutterEon.Info? GetCurrentEonInfo() => _currentInfo;
 
@@ -66,7 +66,7 @@ public class ShutterEon(
                 }
                 else if (_logger.IsError)
                 {
-                    _logger.Error("Cannot use unfinalised Shutter keyper set contract.");
+                    _logger.Error("Cannot use unfinalized Shutter keyper set contract.");
                 }
             }
         }

@@ -14,7 +14,12 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
     {
         private readonly IChannelHandlerContext _context;
 
-        public ZeroFrameDecoderTestWrapper(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor)
+        public ZeroFrameDecoderTestWrapper(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor)
+            : this(frameCipher, frameMacProcessor, ZeroFrameDecoder.DefaultMaxInboundFrameSize)
+        {
+        }
+
+        public ZeroFrameDecoderTestWrapper(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor, int maxFrameSize) : base(frameCipher, frameMacProcessor, maxFrameSize)
         {
             _context = Substitute.For<IChannelHandlerContext>();
             _context.Allocator.Returns(PooledByteBufferAllocator.Default);
@@ -22,7 +27,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
 
         public IByteBuffer Decode(IByteBuffer input, bool throwOnCorruptedFrames = true)
         {
-            List<object> result = new();
+            List<object> result = [];
             try
             {
                 base.Decode(_context, input, result);

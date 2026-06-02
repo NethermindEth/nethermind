@@ -4,14 +4,14 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 
 namespace Nethermind.State.OverridableEnv;
 
 /// <summary>
 /// A utility that provide `IOverridableEnv<T>`
-/// Dont forget do dispose it!
+/// Don't forget to dispose it!
 /// </summary>
 /// <param name="overridableEnv"></param>
 /// <param name="resolvedComponents"></param>
@@ -21,9 +21,9 @@ public class DisposableScopeOverridableEnv<T>(
     T resolvedComponents
 ) : IOverridableEnv<T>
 {
-    public Scope<T> BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride = null)
+    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null)
     {
-        IDisposable disposable = overridableEnv.BuildAndOverride(header, stateOverride);
+        IDisposable disposable = overridableEnv.BuildAndOverride(header, stateOverride, specOverride);
         return new Scope<T>(resolvedComponents, disposable);
     }
 }
@@ -38,8 +38,5 @@ public class Scope<T>(T component, IDisposable scopeCloser) : IDisposable
 {
     public T Component { get; } = component;
 
-    public void Dispose()
-    {
-        scopeCloser.Dispose();
-    }
+    public void Dispose() => scopeCloser.Dispose();
 }

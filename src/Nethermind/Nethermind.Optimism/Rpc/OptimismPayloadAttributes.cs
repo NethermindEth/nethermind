@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,6 +16,7 @@ namespace Nethermind.Optimism.Rpc;
 
 public class OptimismPayloadAttributes : PayloadAttributes
 {
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     private byte[][]? _encodedTransactions;
 
     public byte[][]? Transactions
@@ -49,7 +50,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         {
             try
             {
-                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping);
+                return TxRlpDecoder.DecodeCompleteNotNull(t, RlpBehaviors.SkipTypedWrapping);
             }
             catch (RlpException e)
             {
@@ -78,7 +79,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
-        var offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
+        int offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
 
         inputSpan[offset] = NoTxPool ? (byte)1 : (byte)0;
         offset += 1;
@@ -105,7 +106,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         return offset;
     }
 
-    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int apiVersion,
+    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,
         [NotNullWhen(false)] out string? error)
     {
         if (GasLimit == 0)
@@ -120,10 +121,25 @@ public class OptimismPayloadAttributes : PayloadAttributes
             error = $"{nameof(EIP1559Params)} should be null before Holocene";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        if (releaseSpec.IsOpHoloceneEnabled && !this.TryDecodeEIP1559Parameters(out _, out var decodeError))
+        if (releaseSpec.IsOpHoloceneEnabled)
         {
-            error = decodeError;
-            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            if (!this.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out string? decodeError))
+            {
+                error = decodeError;
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
+
+            (int version, string reason) versionCheck = parameters switch
+            {
+                // Newer forks should be added on top
+                _ when releaseSpec.IsOpJovianEnabled => (1, "since Jovian"),
+                _ => (0, "before Jovian")
+            };
+            if (versionCheck.version != parameters.Version)
+            {
+                error = $"{nameof(EIP1559Params)} version should be {versionCheck.version} {versionCheck.reason}";
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
         }
 
         try
@@ -135,7 +151,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             error = $"Error decoding transactions: {e}";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        return base.Validate(specProvider, apiVersion, out error);
+        return base.Validate(specProvider, fcuVersion, out error);
     }
 
     public override string ToString()

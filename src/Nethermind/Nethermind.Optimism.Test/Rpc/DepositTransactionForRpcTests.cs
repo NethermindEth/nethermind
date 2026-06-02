@@ -7,7 +7,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Core;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using System;
@@ -17,7 +16,7 @@ namespace Nethermind.Optimism.Test.Rpc;
 
 public class DepositTransactionForRpcTests
 {
-    private readonly IJsonSerializer serializer = new EthereumJsonSerializer();
+    private readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
     private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction.WithType(TxType.DepositTx);
     public static readonly Transaction[] Transactions = [
@@ -37,41 +36,39 @@ public class DepositTransactionForRpcTests
     ];
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() =>
         TransactionForRpc.RegisterTransactionType<DepositTransactionForRpc>();
-    }
 
     [TestCaseSource(nameof(Transactions))]
     public void Always_satisfies_schema(Transaction transaction)
     {
         TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction);
-        string serialized = serializer.Serialize(rpcTransaction);
-        using var jsonDocument = JsonDocument.Parse(serialized);
+        string serialized = _serializer.Serialize(rpcTransaction);
+        using JsonDocument jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
         ValidateSchema(json);
     }
 
     private static void ValidateSchema(JsonElement json)
     {
-        json.GetProperty("type").GetString().Should().MatchRegex("^0x7[eE]$");
-        json.GetProperty("sourceHash").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{64}$");
-        json.GetProperty("from").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-        json.GetProperty("to").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-        var hasMint = json.TryGetProperty("mint", out var mint);
+        Assert.That(json.GetProperty("type").GetString(), Does.Match("^0x7[eE]$"));
+        Assert.That(json.GetProperty("sourceHash").GetString(), Does.Match("^0x[0-9a-fA-F]{64}$"));
+        Assert.That(json.GetProperty("from").GetString(), Does.Match("^0x[0-9a-fA-F]{40}$"));
+        Assert.That(json.GetProperty("to").GetString(), Does.Match("^0x[0-9a-fA-F]{40}$"));
+        bool hasMint = json.TryGetProperty("mint", out JsonElement mint);
         if (hasMint)
         {
-            mint.GetString()?.Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+            Assert.That(mint.GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         }
-        json.GetProperty("value").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("gas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        var hasIsSystemTx = json.TryGetProperty("isSystemTx", out var isSystemTx);
+        Assert.That(json.GetProperty("value").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("gas").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        bool hasIsSystemTx = json.TryGetProperty("isSystemTx", out JsonElement isSystemTx);
         if (hasIsSystemTx)
         {
             isSystemTx.GetBoolean();
         }
-        json.GetProperty("input").GetString().Should().MatchRegex("^0x[0-9a-f]*$");
-        json.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        Assert.That(json.GetProperty("input").GetString(), Does.Match("^0x[0-9a-f]*$"));
+        Assert.That(json.GetProperty("nonce").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
     }
 
     private static readonly IEnumerable<(string, string)> MalformedJsonTransactions = [
@@ -85,11 +82,11 @@ public class DepositTransactionForRpcTests
     [TestCaseSource(nameof(MalformedJsonTransactions))]
     public void Rejects_malformed_transaction_missing_field((string missingField, string json) testCase)
     {
-        var rpcTx = serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
-        rpcTx.Should().NotBeNull();
+        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
+        Assert.That(rpcTx, Is.Not.Null);
 
-        var toTransaction = rpcTx.ToTransaction;
-        toTransaction.Should().Throw<ArgumentNullException>().WithParameterName(testCase.missingField);
+        Func<Result<Transaction>> toTransaction = () => rpcTx.ToTransaction();
+        Assert.That(toTransaction, Throws.TypeOf<ArgumentNullException>().With.Property(nameof(ArgumentException.ParamName)).EqualTo(testCase.missingField));
     }
 
     private static readonly IEnumerable<(string, string)> ValidJsonTransactions = [
@@ -100,10 +97,44 @@ public class DepositTransactionForRpcTests
     [TestCaseSource(nameof(ValidJsonTransactions))]
     public void Accepts_valid_transaction_missing_field((string missingField, string json) testCase)
     {
-        var rpcTx = serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
-        rpcTx.Should().NotBeNull();
+        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
+        Assert.That(rpcTx, Is.Not.Null);
 
-        var toTransaction = rpcTx.ToTransaction;
-        toTransaction.Should().NotThrow();
+        Func<Result<Transaction>> toTransaction = () => rpcTx.ToTransaction();
+        Assert.That(toTransaction, Throws.Nothing);
+    }
+
+    private static DepositTransactionForRpc DepositTxWithGas(long? gas) => new()
+    {
+        SourceHash = Hash256.Zero,
+        From = Address.Zero,
+        Value = 0,
+        Input = [],
+        Gas = gas,
+    };
+
+    [TestCase(5_000L, null, 5_000L)]
+    [TestCase(5_000L, 0L, 5_000L)]
+    [TestCase(5_000L, 1_000L, 1_000L)]
+    [TestCase(5_000L, 10_000L, 5_000L)]
+    [TestCase(null, 1_000L, 1_000L)]
+    public void ToTransaction_caps_and_defaults_gas(long? gas, long? gasCap, long expectedGasLimit)
+    {
+        DepositTransactionForRpc rpcTx = DepositTxWithGas(gas);
+
+        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: gasCap);
+
+        Assert.That(tx.GasLimit, Is.EqualTo(expectedGasLimit));
+    }
+
+    [TestCase(null, null)]
+    [TestCase(null, 0L)]
+    public void ToTransaction_throws_when_gas_missing_and_no_cap(long? gas, long? gasCap)
+    {
+        DepositTransactionForRpc rpcTx = DepositTxWithGas(gas);
+
+        Func<Result<Transaction>> toTransaction = () => rpcTx.ToTransaction(gasCap: gasCap);
+
+        Assert.That(toTransaction, Throws.TypeOf<ArgumentNullException>().With.Property(nameof(ArgumentException.ParamName)).EqualTo(nameof(DepositTransactionForRpc.Gas)));
     }
 }

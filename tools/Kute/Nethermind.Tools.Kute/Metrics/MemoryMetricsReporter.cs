@@ -27,7 +27,7 @@ public sealed class MemoryMetricsReporter
 
     public Task Batch(JsonRpc.Request.Batch batch, TimeSpan elapsed, CancellationToken token = default)
     {
-        var id = batch.Id;
+        string? id = batch.Id;
         if (id is not null)
         {
             _batches[id] = elapsed;
@@ -38,11 +38,11 @@ public sealed class MemoryMetricsReporter
 
     public Task Single(JsonRpc.Request.Single single, TimeSpan elapsed, CancellationToken token = default)
     {
-        var id = single.Id;
-        var methodName = single.MethodName;
+        string? id = single.Id;
+        string? methodName = single.MethodName;
         if (id is not null && methodName is not null)
         {
-            var newMethodDict = new ConcurrentDictionary<string, TimeSpan>
+            ConcurrentDictionary<string, TimeSpan> newMethodDict = new()
             {
                 [id] = elapsed,
             };
@@ -64,22 +64,19 @@ public sealed class MemoryMetricsReporter
         return Task.CompletedTask;
     }
 
-    public MetricsReport Report()
+    public MetricsReport Report() => new()
     {
-        return new MetricsReport
-        {
-            TotalMessages = _messages,
-            Failed = _failed,
-            Succeeded = _succeeded,
-            Ignored = _ignored,
-            Responses = _responses,
-            TotalTime = _totalRunningTime,
-            Singles = _singles.ToDictionary(
+        TotalMessages = _messages,
+        Failed = _failed,
+        Succeeded = _succeeded,
+        Ignored = _ignored,
+        Responses = _responses,
+        TotalTime = _totalRunningTime,
+        Singles = _singles.ToDictionary(
                 kvp => kvp.Key,
                 IReadOnlyDictionary<string, TimeSpan> (kvp) => kvp.Value.ToDictionary(
                     ikvp => ikvp.Key,
                     ikvp => ikvp.Value)),
-            Batches = _batches.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
-        };
-    }
+        Batches = _batches.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+    };
 }

@@ -18,15 +18,27 @@ namespace Nethermind.Core
 
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
+        private readonly Action<string>? _logAction;
         private string _prefix;
         private (long, long, long, long) _lastReportState = (0, 0, 0, 0);
         private Func<ProgressLogger, string>? _formatter;
 
-        public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
+        public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null, LogLevel logLevel = LogLevel.Info)
         {
-            _logger = logManager.GetClassLogger(nameof(ProgressLogger));
             _prefix = prefix;
             _timestamper = timestamper ?? Timestamper.Default;
+            _logger = logManager.GetClassLogger<ProgressLogger>();
+            ILogger logger = _logger;
+            InterfaceLogger underlying = logger.UnderlyingLogger;
+            _logAction = logLevel switch
+            {
+                LogLevel.Info when logger.IsInfo => underlying.Info,
+                LogLevel.Debug when logger.IsDebug => underlying.Debug,
+                LogLevel.Warn when logger.IsWarn => underlying.Warn,
+                LogLevel.Error when logger.IsError => s => underlying.Error(s),
+                LogLevel.Trace when logger.IsTrace => underlying.Trace,
+                _ => null,
+            };
         }
 
         public void Update(long value)
@@ -42,10 +54,7 @@ namespace Nethermind.Core
             CurrentValue = value;
         }
 
-        public void IncrementSkipped(int skipped = 1)
-        {
-            Interlocked.Add(ref _skipped, skipped);
-        }
+        public void IncrementSkipped(int skipped = 1) => Interlocked.Add(ref _skipped, skipped);
 
         public void SetMeasuringPoint(bool resetCompletion = true)
         {
@@ -155,27 +164,20 @@ namespace Nethermind.Core
             }
         }
 
-        public void SetFormat(Func<ProgressLogger, string> formatter)
-        {
-            _formatter = formatter;
-        }
+        public void SetFormat(Func<ProgressLogger, string> formatter) => _formatter = formatter;
 
         public void LogProgress()
         {
             (long, long, long, long) reportState = (CurrentValue, TargetValue, CurrentQueued, _skipped);
             if (reportState != _lastReportState)
             {
-                string reportString = _formatter is not null ? _formatter(this) : DefaultFormatter();
                 _lastReportState = reportState;
-                _logger.Info(reportString);
+                _logAction?.Invoke(_formatter is not null ? _formatter(this) : DefaultFormatter());
             }
             SetMeasuringPoint(resetCompletion: false);
         }
 
-        private string DefaultFormatter()
-        {
-            return GenerateReport(_prefix, CurrentValue, TargetValue, CurrentQueued, CurrentPerSecond, SkippedPerSecond);
-        }
+        private string DefaultFormatter() => GenerateReport(_prefix, CurrentValue, TargetValue, CurrentQueued, CurrentPerSecond, SkippedPerSecond);
 
         private static string GenerateReport(string prefix, long current, long total, long queue, decimal speed, decimal skippedPerSecond)
         {
