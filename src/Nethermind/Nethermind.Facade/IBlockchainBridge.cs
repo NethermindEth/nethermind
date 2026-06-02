@@ -32,6 +32,16 @@ namespace Nethermind.Facade
         bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true);
         CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, CancellationToken cancellationToken = default);
         SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Streaming variant of <see cref="Simulate{TTrace}"/>: invokes <paramref name="onBlockComplete"/>
+        /// once per processed block with its <see cref="SimulateBlockResult{TTrace}"/>, rather than
+        /// accumulating all blocks into <see cref="SimulateOutput{TTrace}.Items"/>. The handler runs
+        /// inline on the simulate execution thread; it must not retain a reference to the result
+        /// after returning. Errors raised by the engine are reported via the returned
+        /// <see cref="SimulateOutput{TTrace}"/> (its <c>Items</c> is always empty in streaming mode).
+        /// </summary>
+        SimulateOutput<TTrace> SimulateStreaming<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, System.Action<SimulateBlockResult<TTrace>> onBlockComplete, long gasCapLimit, CancellationToken cancellationToken);
         CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, CancellationToken cancellationToken = default);
 
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, CancellationToken cancellationToken = default);

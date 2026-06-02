@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
+using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -14,6 +17,8 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -23,12 +28,19 @@ public class SimulateTxExecutor<TTrace>(
     IJsonRpcConfig rpcConfig,
     ISpecProvider specProvider,
     ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
-    ulong? secondsPerSlot = null)
+    ulong? secondsPerSlot = null,
+    ILogManager? logManager = null)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<SimulateTxExecutor<TTrace>>();
+    // The buffered JSON-RPC pipeline serializes SimulateBlockResult<TTrace> with the standard
+    // (non-indented) Ethereum options; reusing the same JsonSerializerOptions instance for each
+    // streamed block keeps the emitted bytes property-for-property identical and lets the
+    // serializer cache its reflection metadata across blocks.
+    private static readonly JsonSerializerOptions _streamingJsonOptions = EthereumJsonSerializer.JsonOptions;
 
     protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
     {
@@ -88,6 +100,16 @@ public class SimulateTxExecutor<TTrace>(
             BlockStateCalls = blockStateCalls
         };
     }
+
+    /// <summary>
+    /// When enabled, <see cref="Execute(SimulatePayload{TransactionForRpc}, BlockParameter?, Dictionary{Address, AccountOverride}?, SearchResult{BlockHeader}?)"/>
+    /// will, after performing all input validation, return a <see cref="SimulateStreamingResult{TTrace}"/>
+    /// (typed as <see cref="IReadOnlyList{T}"/>) that emits one <see cref="SimulateBlockResult{TTrace}"/>
+    /// JSON object to the wire as each simulated block completes. Validation errors are still
+    /// returned as buffered <see cref="ResultWrapper{T}.Fail"/> envelopes before any output bytes,
+    /// so HTTP status semantics are preserved.
+    /// </summary>
+    public bool StreamingEnabled { get; init; } = rpcConfig.EnableSimulateStreamMode;
 
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
         SimulatePayload<TransactionForRpc> call,
@@ -188,12 +210,113 @@ public class SimulateTxExecutor<TTrace>(
             call.BlockStateCalls = [.. completeBlockStateCalls];
         }
 
+        if (StreamingEnabled)
+        {
+            Result<SimulatePayload<TransactionWithSourceDetails>> streamingPrepare = Prepare(call, header);
+            if (!streamingPrepare.Success(out SimulatePayload<TransactionWithSourceDetails>? streamingData, out string? streamingPrepError))
+            {
+                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(streamingPrepError, ErrorCodes.InvalidInput);
+            }
+            return BuildStreamingResult(header.Clone(), streamingData, stateOverride);
+        }
+
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
 
         Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
         return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
             : Execute(header.Clone(), data, stateOverride, timeout.Token);
+    }
+
+    private ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> BuildStreamingResult(
+        BlockHeader header,
+        SimulatePayload<TransactionWithSourceDetails> payload,
+        Dictionary<Address, AccountOverride>? stateOverride)
+    {
+        // The streaming result owns the timeoutCts and disposes it after the response writes
+        // through StreamingResultBase.Dispose; the buffered `using CancellationTokenSource timeout`
+        // pattern from the non-streaming branch would dispose the CTS before the lazy response
+        // pipeline actually runs.
+        CancellationTokenSource timeoutCts = _rpcConfig.BuildTimeoutCancellationToken();
+        SimulateStreamingResult<TTrace> streamingResult;
+        try
+        {
+            streamingResult = new SimulateStreamingResult<TTrace>(
+                (writer, pipeWriter, token) => RunStreamingSimulation(header, payload, stateOverride, writer, pipeWriter, token),
+                timeoutCts,
+                _logger);
+        }
+        catch
+        {
+            timeoutCts.Dispose();
+            throw;
+        }
+
+        return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success(streamingResult);
+    }
+
+    private void RunStreamingSimulation(
+        BlockHeader header,
+        SimulatePayload<TransactionWithSourceDetails> payload,
+        Dictionary<Address, AccountOverride>? stateOverride,
+        Utf8JsonWriter writer,
+        PipeWriter? pipeWriter,
+        CancellationToken cancellationToken)
+    {
+        // The cross-block accumulator is never materialized — each block is serialized
+        // and flushed inline as BlockProcessor.ProcessOne returns for it.
+        SimulateOutput<TTrace> results = _blockchainBridge.SimulateStreaming(
+            header,
+            payload,
+            simulateBlockTracerFactory,
+            blockResult =>
+            {
+                ApplyCallErrorCodeMapping(blockResult);
+                JsonSerializer.Serialize(writer, blockResult, _streamingJsonOptions);
+                FlushBetweenBlocks(writer, pipeWriter, cancellationToken);
+            },
+            _rpcConfig.GasCap!.Value,
+            cancellationToken);
+
+        if (results.Error is null) return;
+
+        int errorCode = results.IsInvalidInput
+            ? ErrorCodes.Default
+            : results.TransactionResult.TransactionExecuted
+                ? ErrorCodes.InternalError
+                : MapSimulateErrorCode(results.TransactionResult);
+        string message = MapSimulateErrorMessage(results.TransactionResult) ?? results.Error;
+        // Streaming has already begun: failures are inlined into the outer array so the
+        // client distinguishes them by the `error`/`errorCode` keys (regular blocks have `number`).
+        SimulateEnvelopeWriter.WriteFailureObject(writer, message, errorCode);
+    }
+
+    private static void ApplyCallErrorCodeMapping(SimulateBlockResult<TTrace> blockResult)
+    {
+        if (blockResult is not SimulateBlockResult<SimulateCallResult> callResult) return;
+        foreach (SimulateCallResult? c in callResult.Calls)
+        {
+            if (c is { Error: not null } && !string.IsNullOrEmpty(c.Error.Message))
+            {
+                EvmExceptionType exception = c.Error.EvmException;
+                c.Error.Code = MapEvmExceptionType(exception);
+                if (exception != EvmExceptionType.Revert)
+                {
+                    c.Error.Message = c.Error.EvmException.GetEvmExceptionDescription();
+                    c.Error.Data = null;
+                }
+            }
+        }
+    }
+
+    private static void FlushBetweenBlocks(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+    {
+        if (pipeWriter is null) return;
+        writer.Flush();
+        // Mirrors the synchronous flush pattern in GethLikeTxDirectStreamingTracer.MaybeFlushToWire
+        // and GethLikeTxTraceStreamingBundleResult.FlushBetweenBundles. The EmitContent callback is
+        // synchronous by design so the streaming result types don't have to plumb async tracers.
+        pipeWriter.FlushAsync(cancellationToken).GetAwaiter().GetResult();
     }
 
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(

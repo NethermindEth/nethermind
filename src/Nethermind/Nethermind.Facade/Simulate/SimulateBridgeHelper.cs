@@ -67,7 +67,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         try
         {
-            Simulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken);
+            Simulate(parent, payload, tracer, env, list, onBlockComplete: null, gasCapLimit, cancellationToken);
         }
         catch (ArgumentException ex)
         {
@@ -92,11 +92,37 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return result;
     }
 
+    /// <summary>
+    /// Streaming variant: emits each completed <see cref="SimulateBlockResult{TTrace}"/> via
+    /// <paramref name="onBlockComplete"/> as soon as <c>BlockProcessor.ProcessOne</c> returns
+    /// for that block, without accumulating a cross-block list. The handler is invoked inline
+    /// on the simulate execution thread; exceptions propagate so the streaming envelope can
+    /// surface them via <see cref="SimulateEnvelopeWriter.WriteFailureObject"/>.
+    /// <para>
+    /// The peak in-flight payload is bounded by <i>one</i> <c>SimulateBlockResult</c> plus
+    /// its inner <c>Calls</c> list — the previous block is GC-eligible the moment the
+    /// handler returns and the next block starts processing.
+    /// </para>
+    /// </summary>
+    public void TrySimulateStreaming<TTrace>(
+        BlockHeader parent,
+        SimulatePayload<TransactionWithSourceDetails> payload,
+        IBlockTracer<TTrace> tracer,
+        SimulateReadOnlyBlocksProcessingScope env,
+        Action<SimulateBlockResult<TTrace>> onBlockComplete,
+        long gasCapLimit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(onBlockComplete);
+        Simulate(parent, payload, tracer, env, output: null, onBlockComplete, gasCapLimit, cancellationToken);
+    }
+
     private void Simulate<TTrace>(BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
-        List<SimulateBlockResult<TTrace>> output,
+        List<SimulateBlockResult<TTrace>>? output,
+        Action<SimulateBlockResult<TTrace>>? onBlockComplete,
         long gasCapLimit,
         CancellationToken cancellationToken)
     {
@@ -108,6 +134,12 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (payload.BlockStateCalls is not null)
         {
+            // Locate the underlying SimulateBlockTracer (if any) up-front. Streaming wraps it
+            // in a StreamingSimulateBlockTracer so the existing `is SimulateBlockTracer` check
+            // below would miss; we still need to apply the post-processing block hash to logs.
+            SimulateBlockTracer? simulateTracer = tracer as SimulateBlockTracer
+                ?? (tracer as StreamingSimulateBlockTracer<TTrace>)?.Inner as SimulateBlockTracer;
+
             Dictionary<Address, ulong> nonceCache = [];
             IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
@@ -148,17 +180,31 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
                 blockTree.UpdateHeadBlock(processedBlock.Hash!);
 
-                if (tracer is SimulateBlockTracer simulateTracer)
+                if (simulateTracer is not null)
                 {
                     simulateTracer.ReapplyBlockHash(processedBlock.Hash);
                 }
 
+                // Streaming wrapper builds its result from the inner tracer; the wrapper itself
+                // intentionally returns an empty collection from BuildResult so the buffered path
+                // can never accidentally accumulate cross-block state on a streaming run.
+                IReadOnlyCollection<TTrace> txTraces = tracer is StreamingSimulateBlockTracer<TTrace> streamingTracer
+                    ? streamingTracer.Inner.BuildResult()
+                    : tracer.BuildResult();
+
                 SimulateBlockResult<TTrace> blockResult = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
                 {
-                    Calls = [.. tracer.BuildResult()],
+                    Calls = [.. txTraces],
                 };
 
-                output.Add(blockResult);
+                if (onBlockComplete is not null)
+                {
+                    onBlockComplete(blockResult);
+                }
+                else
+                {
+                    output!.Add(blockResult);
+                }
                 parent = processedBlock.Header;
             }
         }

@@ -131,6 +131,11 @@ public interface IJsonRpcConfig : IConfig
     public bool EnableLogsStreamMode { get; set; }
 
     [ConfigItem(
+        Description = "Whether to stream `eth_simulateV1`, `debug_simulateV1`, and `trace_simulateV1` responses block-by-block as each simulated block completes execution. Lower time-to-first-byte for multi-block payloads and bounded cross-block memory. Disabled by default until end-to-end soak testing completes.",
+        DefaultValue = "false")]
+    public bool EnableSimulateStreamMode { get; set; }
+
+    [ConfigItem(
         Description = "The max response body size, in bytes, for streamed `eth_getLogs` and `eth_getFilterLogs` JSON-RPC responses. Ignored unless `EnableLogsStreamMode` is enabled. `null` to use `MaxBatchResponseBodySize`.",
         DefaultValue = "null")]
     public long? MaxLogsResponseBodySize { get; set; }

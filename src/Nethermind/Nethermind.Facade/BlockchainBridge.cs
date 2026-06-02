@@ -199,6 +199,40 @@ namespace Nethermind.Facade
             return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
         }
 
+        public SimulateOutput<TTrace> SimulateStreaming<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, Action<SimulateBlockResult<TTrace>> onBlockComplete, long gasCapLimit, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(onBlockComplete);
+            using SimulateReadOnlyBlocksProcessingScope env = lazySimulateProcessingEnv.Value.Begin(header);
+            env.SimulateRequestState.Validate = payload.Validation;
+            IBlockTracer<TTrace> innerTracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header);
+            StreamingSimulateBlockTracer<TTrace> wrapped = new(innerTracer);
+            SimulateOutput<TTrace> result = new() { Items = Array.Empty<SimulateBlockResult<TTrace>>() };
+            try
+            {
+                _simulateBridgeHelper.TrySimulateStreaming(header, payload, wrapped, env, onBlockComplete, gasCapLimit, cancellationToken);
+            }
+            catch (ArgumentException ex)
+            {
+                result.Error = ex.Message;
+                result.IsInvalidInput = true;
+            }
+            catch (InvalidTransactionException ex)
+            {
+                result.Error = ex.Reason.ErrorDescription;
+                result.TransactionResult = ex.Reason;
+            }
+            catch (InsufficientBalanceException ex)
+            {
+                result.Error = ex.Message;
+                result.TransactionResult = TransactionResult.InsufficientSenderBalance;
+            }
+            catch (Exception ex)
+            {
+                result.Error = ex.Message;
+            }
+            return result;
+        }
+
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken) =>
             HasOverrides(stateOverride, blobBaseFeeOverride)
                 ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, cancellationToken)

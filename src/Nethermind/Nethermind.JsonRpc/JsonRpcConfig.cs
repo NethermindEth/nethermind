@@ -50,6 +50,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int MaxLogsPerResponse { get; set; } = 20_000;
     public bool EnableTracingStreamMode { get; set; } = true;
     public bool EnableLogsStreamMode { get; set; } = false;
+    public bool EnableSimulateStreamMode { get; set; } = false;
     public long? MaxLogsResponseBodySize { get; set; } = null;
     public int? DebugModuleConcurrentInstances { get; set; } = null;
     public int? EthModuleConcurrentInstances { get; set; } = null;
