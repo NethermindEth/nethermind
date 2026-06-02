@@ -100,7 +100,7 @@ namespace Nethermind.Runner.JsonRpc
             {
                 if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
                 {
-                    File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite); // 600 (rw-------)
+                    _fileSystem.File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite); // 600 (rw-------)
 
                     if (_logger.IsTrace) _logger.Trace($"Restricted IPC socket permissions to 600 at {path}.");
                 }
