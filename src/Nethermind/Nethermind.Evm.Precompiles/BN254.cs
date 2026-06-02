@@ -35,10 +35,10 @@ internal static unsafe class BN254
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
-            if (!DeserializeG1(data, out mclBnG1 x))
+            if (!DeserializeG1(data, out mclBnG1 x, out _))
                 return false;
 
-            if (!DeserializeG1(data + chunkSize, out mclBnG1 y))
+            if (!DeserializeG1(data + chunkSize, out mclBnG1 y, out _))
                 return false;
 
             mclBnG1_add(ref x, x, y); // x += y
@@ -58,7 +58,7 @@ internal static unsafe class BN254
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
-            if (!DeserializeG1(data, out mclBnG1 x))
+            if (!DeserializeG1(data, out mclBnG1 x, out _))
                 return false;
 
             Unsafe.SkipInit(out mclBnFr y);
@@ -95,14 +95,16 @@ internal static unsafe class BN254
 
             for (int i = 0; i < input.Length; i += PairSize)
             {
-                if (!DeserializeG1(data + i, out mclBnG1 g1))
+                if (!DeserializeG1(data + i, out mclBnG1 g1, out bool g1Infinity))
                     return false;
 
-                if (!DeserializeG2(data + i + 64, out mclBnG2 g2))
+                if (!DeserializeG2(data + i + 64, out mclBnG2 g2, out bool g2Infinity))
                     return false;
 
-                // Skip if g1 or g2 are zero
-                if (IsZero(g1) || IsZero(g2))
+                // Skip if g1 or g2 are the point at infinity. DeserializeG1/G2 already detect this
+                // from the (cheaper) all-zero input-byte check, so reuse that instead of re-scanning
+                // the deserialized ~96B G1 / ~192B G2 structs with a second SIMD pass per pair.
+                if (g1Infinity || g2Infinity)
                     continue;
 
                 mclBn_millerLoop(ref hasMl ? ref ml : ref acc, g1, g2); // Miller loop only
@@ -133,15 +135,8 @@ internal static unsafe class BN254
         return true;
     }
 
-    private static bool IsZero<T>(in T data)
-        where T : unmanaged, allows ref struct
-    {
-        ref byte start = ref Unsafe.As<T, byte>(ref Unsafe.AsRef(in data));
-        ReadOnlySpan<byte> span = MemoryMarshal.CreateReadOnlySpan(in start, sizeof(T));
-        return span.IndexOfAnyExcept((byte)0) < 0;
-    }
 
-    private static bool DeserializeG1(byte* data, out mclBnG1 point)
+    private static bool DeserializeG1(byte* data, out mclBnG1 point, out bool isInfinity)
     {
         const int chunkSize = 32;
 
@@ -150,8 +145,11 @@ internal static unsafe class BN254
         // Treat all-zero as point at infinity for your calling convention
         if (IsZero64(data))
         {
+            isInfinity = true;
             return true;
         }
+
+        isInfinity = false;
 
         // Input is big-endian; MCL call below expects little-endian byte order for Fp
         byte* tmp = stackalloc byte[chunkSize];
@@ -169,7 +167,7 @@ internal static unsafe class BN254
         return mclBnG1_isValid(point) == 1;
     }
 
-    private static bool DeserializeG2(byte* data, out mclBnG2 point)
+    private static bool DeserializeG2(byte* data, out mclBnG2 point, out bool isInfinity)
     {
         const int chunkSize = 32;
 
@@ -178,8 +176,11 @@ internal static unsafe class BN254
         // Treat all-zero as point at infinity
         if (IsZero128(data))
         {
+            isInfinity = true;
             return true;
         }
+
+        isInfinity = false;
 
         // Input layout: x_im, x_re, y_im, y_re (each 32 bytes, big-endian)
         // MCL Fp2 layout: d0 = re, d1 = im
