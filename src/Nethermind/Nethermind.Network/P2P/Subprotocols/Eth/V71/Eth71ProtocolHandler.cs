@@ -53,7 +53,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
             gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy) =>
-        _balRequests = new MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage>(Send);
+        _balRequests = new MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage>(this);
 
     public override string Name => "eth71";
 
@@ -64,22 +64,21 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
     // Message IDs 0x00–0x13 → 20 codes
     public override int MessageIdSpaceSize => 20;
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {
             case Eth71MessageCode.GetBlockAccessLists:
                 HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
-                break;
+                return true;
             case Eth71MessageCode.BlockAccessLists:
                 BlockAccessListsMessage balMsg = Deserialize<BlockAccessListsMessage>(message.Content);
                 ReportIn(balMsg, size);
                 Handle(balMsg, size);
-                break;
+                return true;
             default:
-                base.HandleMessageCore(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 
@@ -90,21 +89,22 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
     {
         using GetBlockAccessListsMessage req = request;
         IOwnedReadOnlyList<Hash256> hashes = req.Hashes;
+        ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
         long totalSize = 0;
         RlpByteArrayList results;
 
-        using (DeferredRlpItemList.Builder builder = new(entryCapacity: hashes.Count))
+        using (DeferredRlpItemList.Builder builder = new(entryCapacity: hashesSpan.Length))
         {
             using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
             {
-                for (int i = 0; i < hashes.Count; i++)
+                for (int i = 0; i < hashesSpan.Length; i++)
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
                         break;
                     }
 
-                    using MemoryManager<byte>? balRlp = SyncServer.GetBlockAccessListRlp(hashes[i]);
+                    using MemoryManager<byte>? balRlp = SyncServer.GetBlockAccessListRlp(hashesSpan[i]);
                     ReadOnlySpan<byte> balRlpSpan = balRlp is null ? ReadOnlySpan<byte>.Empty : balRlp.Memory.Span;
                     writer.WriteValue(balRlpSpan);
                     totalSize += Rlp.LengthOf(balRlpSpan);

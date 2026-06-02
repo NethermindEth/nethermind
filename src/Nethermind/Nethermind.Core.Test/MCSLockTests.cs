@@ -33,7 +33,7 @@ public class MCSLockTests
     {
         int counter = 0;
         int numberOfThreads = 10;
-        List<Thread> threads = new();
+        List<Thread> threads = [];
 
         for (int i = 0; i < numberOfThreads; i++)
         {
@@ -56,25 +56,38 @@ public class MCSLockTests
     }
 
     [Test]
-    [Retry(3)]
     public void LockFairnessTest()
     {
-        int numberOfThreads = 10;
-        List<int> executionOrder = new();
-        List<Thread> threads = new();
+        const int numberOfThreads = 10;
+        List<int> executionOrder = [];
+        List<Thread> threads = [];
+        SemaphoreSlim[] gates = Enumerable.Range(0, numberOfThreads)
+            .Select(_ => new SemaphoreSlim(0, 1)).ToArray();
+        SemaphoreSlim[] reachedAcquire = Enumerable.Range(0, numberOfThreads)
+            .Select(_ => new SemaphoreSlim(0, 1)).ToArray();
 
-        for (int i = 0; i < numberOfThreads; i++)
+        using (McsLock.Disposable orchestrator = mcsLock.Acquire())
         {
-            int threadId = i;
-            Thread thread = new(() =>
+            for (int i = 0; i < numberOfThreads; i++)
             {
-                using McsLock.Disposable handle = mcsLock.Acquire();
-                executionOrder.Add(threadId);
-                Thread.Sleep(15); // Ensure the order is maintained
-            });
-            threads.Add(thread);
-            thread.Start();
-            Thread.Sleep(1); // Ensure the order is maintained
+                int threadId = i;
+                Thread thread = new(() =>
+                {
+                    gates[threadId].Wait();
+                    reachedAcquire[threadId].Release();
+                    using McsLock.Disposable handle = mcsLock.Acquire();
+                    executionOrder.Add(threadId);
+                });
+                threads.Add(thread);
+                thread.Start();
+            }
+
+            for (int i = 0; i < numberOfThreads; i++)
+            {
+                gates[i].Release();
+                reachedAcquire[i].Wait();
+                Thread.Sleep(5);
+            }
         }
 
         foreach (Thread thread in threads)
@@ -83,6 +96,6 @@ public class MCSLockTests
         }
 
         List<int> expectedOrder = Enumerable.Range(0, numberOfThreads).ToList();
-        Assert.That(expectedOrder, Is.EqualTo(executionOrder), "Threads did not acquire lock in the order they were started.");
+        Assert.That(executionOrder, Is.EqualTo(expectedOrder));
     }
 }

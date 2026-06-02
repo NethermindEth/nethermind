@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain.Contracts.Json
 {
     public partial class AbiDefinitionParser : IAbiDefinitionParser
     {
-        private readonly IList<IAbiTypeFactory> _abiTypeFactories = new List<IAbiTypeFactory>();
+        private readonly IList<IAbiTypeFactory> _abiTypeFactories = [];
 
         public AbiDefinitionParser()
         {

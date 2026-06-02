@@ -7,7 +7,7 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-internal sealed class XdcBlockInfoDecoder : RlpValueDecoder<BlockRoundInfo>
+internal sealed class XdcBlockInfoDecoder : RlpDecoder<BlockRoundInfo>
 {
     protected override BlockRoundInfo DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

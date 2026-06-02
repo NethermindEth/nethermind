@@ -74,7 +74,10 @@ internal static partial class Eip2537
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryDecodeG2(ReadOnlySpan<byte> source, Span<byte> destination)
     {
-        if (source[..16].ContainsAnyExcept((byte)0) || source[64..80].ContainsAnyExcept((byte)0))
+        if (source[..16].ContainsAnyExcept((byte)0) ||
+            source[64..80].ContainsAnyExcept((byte)0) ||
+            source[128..144].ContainsAnyExcept((byte)0) ||
+            source[192..208].ContainsAnyExcept((byte)0))
             return false;
 
         source[16..64].CopyTo(destination);

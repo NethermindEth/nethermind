@@ -17,6 +17,7 @@ namespace Nethermind.Optimism.Rpc;
 
 public class OptimismPayloadAttributes : PayloadAttributes
 {
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     private byte[][]? _encodedTransactions;
 
     public byte[][]? Transactions
@@ -50,7 +51,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         {
             try
             {
-                return TxDecoder.Instance.DecodeCompleteNotNull(t, RlpBehaviors.SkipTypedWrapping);
+                return TxRlpDecoder.DecodeCompleteNotNull(t, RlpBehaviors.SkipTypedWrapping);
             }
             catch (RlpException e)
             {

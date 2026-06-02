@@ -270,7 +270,7 @@ namespace Nethermind.Benchmarks.Store
             _memoryTrieStore = TestTrieStoreFactory.Build(_backingMemory, Prune.WhenCacheReaches(1.GB), No.Persistence, NullLogManager.Instance);
 
             // Preparing access for large entries
-            List<Hash256> currentItems = new();
+            List<Hash256> currentItems = [];
 
             _largerEntriesAccess = new (bool, Hash256, Account)[_largerEntryCount];
             _uniqueLargeSet = new (Hash256, Account)[_largerEntryCount];

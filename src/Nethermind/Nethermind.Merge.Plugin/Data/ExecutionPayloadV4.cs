@@ -26,24 +26,24 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
     public new static ExecutionPayloadV4 Create(Block block) => Create<ExecutionPayloadV4>(block);
 
-    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
-        BlockDecodingResult baseResult = base.TryGetBlock(totalDifficulty);
-        Block? block = baseResult.Block;
-        if (block is null)
+        Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
+        if (baseResult.IsError)
         {
             return baseResult;
         }
 
+        Block block = baseResult.Data;
         if (BlockAccessList is not null)
         {
             try
             {
-                block.BlockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
+                block.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(BlockAccessList);
             }
             catch (RlpException e)
             {
-                return new($"Error decoding block access list: {e}");
+                return Result<Block>.Fail($"Error decoding block access list: {e}");
             }
         }
 

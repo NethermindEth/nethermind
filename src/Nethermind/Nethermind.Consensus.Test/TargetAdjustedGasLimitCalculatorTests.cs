@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -40,18 +39,19 @@ namespace Nethermind.Consensus.Test
             const long parentGasLimit = 1000000000000000000;
             OverridableReleaseSpec spec = new(London.Instance) { Eip1559TransitionBlock = londonBlock };
 
-            Calc(spec, parentGasLimit, blockNumber: londonBlock)
-                .Should().Be(parentGasLimit * Eip1559Constants.DefaultElasticityMultiplier);
+            Assert.That(
+                Calc(spec, parentGasLimit, blockNumber: londonBlock),
+                Is.EqualTo(parentGasLimit * Eip1559Constants.DefaultElasticityMultiplier));
         }
 
         [TestCase(30_000_000, 100_000_000, 30029295)]
         public void Is_calculating_correct_gasLimit(long parentGasLimit, long configTarget, long expected)
-            => Calc(Prague.Instance, parentGasLimit, configTarget: configTarget).Should().Be(expected);
+            => Assert.That(Calc(Prague.Instance, parentGasLimit, configTarget: configTarget), Is.EqualTo(expected));
 
         [TestCase(30_000_000, 20_000_000, 50_000_000, 30029295)]
         [TestCase(30_000_000, 100_000_000, 20_000_000, 29970705)]
         public void Override_takes_precedence_over_config_target(long parentGasLimit, long configTarget, long overrideTarget, long expected)
-            => Calc(Prague.Instance, parentGasLimit, configTarget, overrideTarget).Should().Be(expected);
+            => Assert.That(Calc(Prague.Instance, parentGasLimit, configTarget, overrideTarget), Is.EqualTo(expected));
 
         [Test]
         public void Null_override_falls_back_to_config_target()
@@ -59,8 +59,9 @@ namespace Nethermind.Consensus.Test
             const long parentGasLimit = 30_000_000;
             const long configTarget = 100_000_000;
 
-            Calc(Prague.Instance, parentGasLimit, configTarget, overrideTarget: null)
-                .Should().Be(Calc(Prague.Instance, parentGasLimit, configTarget));
+            Assert.That(
+                Calc(Prague.Instance, parentGasLimit, configTarget, overrideTarget: null),
+                Is.EqualTo(Calc(Prague.Instance, parentGasLimit, configTarget)));
         }
 
         [Test]
@@ -68,8 +69,9 @@ namespace Nethermind.Consensus.Test
         {
             const int londonBlock = 5;
 
-            Calc(London.Instance, parentGasLimit: 5000, configTarget: 1, blockNumber: londonBlock)
-                .Should().Be(London.Instance.MinGasLimit);
+            Assert.That(
+                Calc(London.Instance, parentGasLimit: 5000, configTarget: 1, blockNumber: londonBlock),
+                Is.EqualTo(London.Instance.MinGasLimit));
         }
     }
 }

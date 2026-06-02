@@ -20,13 +20,13 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             ?? throw new InvalidOperationException($"Header not found for block {number - 1}");
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header);
 
-        HashSet<Address> penalties = new();
+        HashSet<Address> penalties = [];
 
 
         List<Hash256> listBlockHash = [];
         List<long> listBlockNumber = [];
 
-        Dictionary<Address, int> minerStatistics = new();
+        Dictionary<Address, int> minerStatistics = [];
 
 
         long parentNumber = number - 1;
@@ -71,7 +71,7 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             parentHash = parentHeader.ParentHash;
         }
 
-        HashSet<Hash256> blockHashes = new();
+        HashSet<Hash256> blockHashes = [];
 
         long startRange = Math.Max(number - (long)currentSpec.RangeReturnSigner + 1, 0);
         for (int i = listBlockNumber.Count - 1; i >= 0; i--)
@@ -96,14 +96,11 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
                     penalties.Remove(fromSigner);
             }
         }
-        // TODO Optimize
-        // Must use EIP-55 checksummed hex to match XDC Go node ordering (addr.Hex()).
-        // Plain lowercase comparison gives wrong order: e.g. "0xAb..." < "0xaa..." but "0xab..." > "0xaa..."
+        // EIP-55 checksummed hex is required: lowercase byte comparison reorders
+        // (e.g. "0xAb..." < "0xaa..." vs "0xab..." > "0xaa...").
         Address[] result = new Address[penalties.Count];
         penalties.CopyTo(result);
-        Array.Sort(result, (a, b) => string.CompareOrdinal(
-            a.ToString(withEip55Checksum: true),
-            b.ToString(withEip55Checksum: true)));
+        result.AsSpan().Sort(default(AddressByEip55ChecksumOrdinalComparer));
         return result;
     }
 }

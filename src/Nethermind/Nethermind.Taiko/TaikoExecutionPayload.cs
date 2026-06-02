@@ -90,7 +90,7 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     // but that value is never read by the Taiko code path. Removing the previous (also 3-returning)
     // Taiko override eliminates dead code without changing observable behaviour.
 
-    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         if (Withdrawals is null && Transactions is null)
         {
@@ -120,47 +120,39 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
             };
 
             ApplyUnzenPinnedFields(header);
-            return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>()));
+            return new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
         }
 
-        BlockDecodingResult result = base.TryGetBlock(totalDifficulty);
-        if (result.Block is not null)
+        Result<Block> result = base.TryGetBlock(totalDifficulty);
+        if (result.IsSuccess)
         {
+            Block block = result.Data;
             if (HeaderDifficulty is not null)
             {
-                result.Block.Header.Difficulty = HeaderDifficulty.Value;
+                block.Header.Difficulty = HeaderDifficulty.Value;
             }
-            ApplyUnzenPinnedFields(result.Block.Header);
+            ApplyUnzenPinnedFields(block.Header);
         }
         return result;
     }
 
     /// <summary>
-    /// Restores header fields that the V2 Engine API payload cannot carry through JSON so
-    /// that the reconstructed header hash matches the one Nethermind produced originally.
-    /// <list type="bullet">
-    ///   <item><description><see cref="BlobGasUsed"/> / <see cref="ExcessBlobGas"/> are
-    ///     serialised (<c>JsonIgnoreCondition.WhenWritingNull</c>) so the payload carries
-    ///     them when present; we only copy them across when non-null.</description></item>
-    ///   <item><description><see cref="ExecutionPayload.ParentBeaconBlockRoot"/> is
-    ///     <c>[JsonIgnore]</c> on the base type and therefore always arrives <c>null</c>.
-    ///     Pin it to <see cref="Keccak.Zero"/> only from Unzen onwards (Taiko L2 has no
-    ///     beacon chain root, but pre-Unzen Shasta blocks must leave the field absent so
-    ///     the canonical-chain hash matches what the driver expects).</description></item>
-    ///   <item><description><c>RequestsHash</c> is not a payload field at all. Pin it to
-    ///     <see cref="ExecutionRequestExtensions.EmptyRequestsHash"/> only from Unzen
-    ///     onwards for the same reason.</description></item>
-    /// </list>
-    /// Gating these on Unzen (rather than the underlying EIP-4788 / EIP-7685 timestamps)
-    /// matches alethia-reth's <c>normalize_parent_beacon_block_root</c>.
-    /// The spec provider is attached by <see cref="Rpc.TaikoEngineRpcModule"/> before the
-    /// request is dispatched to the base handler.
+    /// Normalizes the four header fields a V2 Engine API payload cannot carry
+    /// (<see cref="BlockHeader.BlobGasUsed"/>, <see cref="BlockHeader.ExcessBlobGas"/>,
+    /// <see cref="BlockHeader.ParentBeaconBlockRoot"/>, <c>RequestsHash</c>) to their canonical
+    /// Unzen values, or to <c>null</c> pre-Unzen, so the reconstructed header hash matches what
+    /// the producer originally sealed.
     /// </summary>
+    /// <remarks>
+    /// The assignment is unconditional rather than null-coalescing: a strict V2 driver (Rust)
+    /// omits these fields entirely while a Go driver round-trips them, and both must reduce to
+    /// the same header. This mirrors alethia-reth's <c>TaikoEngineValidator::convert_payload_to_block</c>
+    /// (<c>is_unzen_active.then_some(..)</c>). Gating on Unzen rather than the underlying
+    /// EIP-4788 / EIP-4844 / EIP-7685 timestamps also matches alethia-reth. The spec provider is
+    /// attached by <see cref="Rpc.TaikoEngineRpcModule"/> before the request reaches the base handler.
+    /// </remarks>
     private void ApplyUnzenPinnedFields(BlockHeader header)
     {
-        if (BlobGasUsed is not null) header.BlobGasUsed ??= BlobGasUsed.Value;
-        if (ExcessBlobGas is not null) header.ExcessBlobGas ??= ExcessBlobGas.Value;
-
         // Fail loudly rather than silently skip the pinning. A null _specProvider here means
         // a caller bypassed Rpc.TaikoEngineRpcModule.engine_newPayloadV{1,2} (which calls
         // AttachSpecProvider before delegating to base). Skipping the pinning would produce
@@ -171,12 +163,17 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
                 $"{nameof(TaikoExecutionPayload)}.{nameof(AttachSpecProvider)} must be called before {nameof(TryGetBlock)}.");
         }
 
-        IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(header.Number, header.Timestamp));
+        bool isUnzen = _specProvider.GetSpec(new ForkActivation(header.Number, header.Timestamp))
+            is ITaikoReleaseSpec { IsUnzenEnabled: true };
 
-        if (spec is ITaikoReleaseSpec { IsUnzenEnabled: true })
-        {
-            header.ParentBeaconBlockRoot ??= Keccak.Zero;
-            header.RequestsHash ??= ExecutionRequestExtensions.EmptyRequestsHash;
-        }
+        // Force the four header fields the V2 payload cannot carry to their canonical Unzen
+        // values (and back to null pre-Unzen), regardless of what the inbound payload held.
+        // Unconditional assignment keeps the reconstructed hash identical to alethia-reth's
+        // TaikoEngineValidator::convert_payload_to_block whether the driver sends these fields
+        // (Go) or omits them on the strict V2 wire (Rust).
+        header.BlobGasUsed = isUnzen ? 0UL : null;
+        header.ExcessBlobGas = isUnzen ? 0UL : null;
+        header.ParentBeaconBlockRoot = isUnzen ? Keccak.Zero : null;
+        header.RequestsHash = isUnzen ? ExecutionRequestExtensions.EmptyRequestsHash : null;
     }
 }

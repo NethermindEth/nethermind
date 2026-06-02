@@ -65,7 +65,7 @@ class ShutterValidatorRegistryTests
         Assert.Multiple(() =>
         {
             Assert.That(!contract.IsRegistered(updates, validatorsInfo, out HashSet<ulong> unregistered));
-            Assert.That(unregistered, Has.Count.EqualTo(4));
+            Assert.That(unregistered.Count, Is.EqualTo(4));
         });
     }
 

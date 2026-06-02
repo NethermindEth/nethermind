@@ -23,6 +23,8 @@ jobs:
     name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       matrix:
@@ -100,10 +102,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: |
-            src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: ${{ matrix.project }}
         id: test
@@ -121,6 +119,8 @@ jobs:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       matrix:
@@ -160,10 +160,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: |
-            src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test

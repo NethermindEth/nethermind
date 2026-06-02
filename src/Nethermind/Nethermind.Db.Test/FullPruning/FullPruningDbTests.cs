@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Db.FullPruning;
 using NSubstitute;
@@ -16,15 +15,15 @@ namespace Nethermind.Db.Test.FullPruning
         public void initial_values_correct()
         {
             TestContext test = new();
-            test.FullPruningDb.Name.Should().BeEquivalentTo(test.Name);
+            Assert.That(test.FullPruningDb.Name, Is.EqualTo(test.Name));
         }
 
         [Test]
         public void can_start_pruning()
         {
             TestContext test = new();
-            test.FullPruningDb.TryStartPruning(out _).Should().BeTrue();
-            test.DbIndex.Should().Be(1);
+            Assert.That(test.FullPruningDb.TryStartPruning(out _), Is.True);
+            Assert.That(test.DbIndex, Is.EqualTo(1));
         }
 
         [Test]
@@ -32,7 +31,7 @@ namespace Nethermind.Db.Test.FullPruning
         {
             TestContext test = new();
             test.FullPruningDb.TryStartPruning(out _);
-            test.FullPruningDb.TryStartPruning(out _).Should().BeFalse();
+            Assert.That(test.FullPruningDb.TryStartPruning(out _), Is.False);
         }
 
         [Test]
@@ -42,8 +41,8 @@ namespace Nethermind.Db.Test.FullPruning
             test.FullPruningDb.TryStartPruning(out IPruningContext context);
             context.Commit();
             context.Dispose();
-            test.FullPruningDb.TryStartPruning(out _).Should().BeTrue();
-            test.DbIndex.Should().Be(2);
+            Assert.That(test.FullPruningDb.TryStartPruning(out _), Is.True);
+            Assert.That(test.DbIndex, Is.EqualTo(2));
         }
 
         [Test]
@@ -52,7 +51,7 @@ namespace Nethermind.Db.Test.FullPruning
             TestContext test = new();
             test.FullPruningDb.TryStartPruning(out IPruningContext context);
             context.Dispose();
-            test.FullPruningDb.TryStartPruning(out _).Should().BeTrue();
+            Assert.That(test.FullPruningDb.TryStartPruning(out _), Is.True);
         }
 
         [Test]
@@ -63,7 +62,7 @@ namespace Nethermind.Db.Test.FullPruning
             byte[] key = { 1, 2 };
             byte[] value = { 5, 6 };
             test.FullPruningDb[key] = value;
-            test.CurrentMirrorDb[key].Should().BeEquivalentTo(value);
+            Assert.That(test.CurrentMirrorDb[key], Is.EqualTo(value));
         }
 
         [Test]
@@ -77,7 +76,7 @@ namespace Nethermind.Db.Test.FullPruning
             test.FullPruningDb.TryStartPruning(out IPruningContext _);
 
             test.FullPruningDb.Get(key);
-            test.CurrentMirrorDb[key].Should().BeEquivalentTo(value);
+            Assert.That(test.CurrentMirrorDb[key], Is.EqualTo(value));
         }
 
         [Test]
@@ -91,7 +90,7 @@ namespace Nethermind.Db.Test.FullPruning
             test.FullPruningDb.TryStartPruning(out IPruningContext _);
 
             test.FullPruningDb.Get(key, ReadFlags.SkipDuplicateRead);
-            test.CurrentMirrorDb[key].Should().BeNull();
+            Assert.That(test.CurrentMirrorDb[key], Is.Null);
         }
 
         [Test]
@@ -103,7 +102,7 @@ namespace Nethermind.Db.Test.FullPruning
             byte[] value = { 5, 6 };
             test.FullPruningDb[key] = value;
             context[value] = key;
-            test.Metrics.Should().Be(2);
+            Assert.That(test.Metrics, Is.EqualTo(2));
         }
 
         private class TestContext
