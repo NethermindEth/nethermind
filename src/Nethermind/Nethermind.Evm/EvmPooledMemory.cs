@@ -425,6 +425,7 @@ public struct EvmPooledMemory
         const int MinRentSize = 1_024;
         if (_memory is null)
         {
+            // First rent: take at least MinRentSize so the common small-memory case never has to grow.
             _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
             Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
@@ -433,8 +434,15 @@ public struct EvmPooledMemory
             int lastZeroedSize = (int)_lastZeroedSize;
             if (Size > (ulong)_memory.LongLength)
             {
+                // Geometric capacity growth: grow the backing buffer to at least 2x its current
+                // length (capped at MaxMemorySize) rather than exact-fitting Size. EVM memory grows
+                // monotonically within a frame, so exact-fit caused an O(n) rent/copy/return churn
+                // on the shared pool; doubling makes it O(log n). Capacity (buffer length) and logical
+                // Size are decoupled — only [0, Size) is ever zeroed/readable, so consensus semantics
+                // are unchanged.
                 byte[] beforeResize = _memory;
-                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
+                ulong targetCapacity = Math.Min(Math.Max(Size, (ulong)_memory.LongLength * 2UL), MaxMemorySize);
+                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(targetCapacity));
                 Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
                 Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
                 SafeArrayPool<byte>.Shared.Return(beforeResize);
