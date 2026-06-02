@@ -44,18 +44,21 @@ public class FundsDistributorTests
     [TearDown]
     public void TearDown() => _workDir.Dispose();
 
-    [Test]
-    public async Task DistributeFunds_OnSuccessfulRun_TargetFileContainsAllGeneratedKeys()
+    [TestCase(OneGwei, 1, TestName = "DistributeFunds_OnSuccessfulRun_WithExplicitMaxFee")]
+    [TestCase(0UL, 1 + 3, TestName = "DistributeFunds_OnSuccessfulRun_WithMaxFeeZero_RefetchesGasPricePerKey")]
+    public async Task DistributeFunds_OnSuccessfulRun_TargetFileContainsAllGeneratedKeys(ulong maxFee, int expectedGasPriceCalls)
     {
-        FundsDistributor distributor = new(BuildClientReturningOkForEverySend(), ChainId, _keyFilePath, LimboLogs.Instance);
+        IJsonRpcClient rpcClient = BuildClientReturningOkForEverySend();
+        FundsDistributor distributor = new(rpcClient, ChainId, _keyFilePath, LimboLogs.Instance);
 
-        await distributor.DistributeFunds(_funder, keysToMake: 3, maxFee: OneGwei, maxPriorityFee: OneGwei);
+        await distributor.DistributeFunds(_funder, keysToMake: 3, maxFee: maxFee, maxPriorityFee: OneGwei);
 
         Assert.That(File.Exists(_pendingPath), Is.False);
         string[] lines = File.ReadAllLines(_keyFilePath);
         Assert.That(lines.Length, Is.EqualTo(3));
         foreach (string line in lines)
             Assert.That(line.Length, Is.EqualTo(66));
+        rpcClient.Received(expectedGasPriceCalls).Post<string>("eth_gasPrice", Arg.Any<object?[]>());
     }
 
     [Test]
