@@ -9,6 +9,10 @@ namespace Nethermind.Serialization.Rlp;
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
 public sealed class BlockBodyDecoder(IHeaderDecoder headerDecoder = null) : RlpDecoder<BlockBody>
 {
+    private static readonly RlpLimit TransactionsCountLimit = RlpLimit.For<BlockBody>(65536, nameof(BlockBody.Transactions)); // enough for all chains atm
+    private static readonly RlpLimit UnclesCountLimit = RlpLimit.For<BlockBody>(2, nameof(BlockBody.Uncles));
+    private static readonly RlpLimit WithdrawalsCountLimit = RlpLimit.For<BlockBody>(16, nameof(BlockBody.Withdrawals));
+
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
@@ -86,13 +90,13 @@ public sealed class BlockBodyDecoder(IHeaderDecoder headerDecoder = null) : RlpD
 
     public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
     {
-        Transaction[] transactions = ctx.DecodeArray(_txDecoder);
-        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
+        Transaction[] transactions = ctx.DecodeArray(_txDecoder, limit: TransactionsCountLimit);
+        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, limit: UnclesCountLimit);
         Withdrawal[]? withdrawals = null;
 
         if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
         {
-            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
+            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
         }
 
         return new BlockBody(transactions, uncles, withdrawals);
