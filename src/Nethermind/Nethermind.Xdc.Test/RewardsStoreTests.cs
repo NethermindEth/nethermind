@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -28,9 +27,9 @@ public class RewardsStoreTests
 
         store.SaveEpochRewards(120, rewards);
 
-        store.HasEpochRewards(120).Should().BeTrue();
-        store.TryGetAccountReward(account, 120, out UInt256 savedReward).Should().BeTrue();
-        savedReward.Should().Be((UInt256)30);
+        Assert.That(store.HasEpochRewards(120), Is.True);
+        Assert.That(store.TryGetAccountReward(account, 120, out UInt256 savedReward), Is.True);
+        Assert.That(savedReward, Is.EqualTo((UInt256)30));
     }
 
     [Test]
@@ -43,7 +42,7 @@ public class RewardsStoreTests
 
         store.SaveEpochRewards(120, [new BlockReward(savedAccount, (UInt256)10)]);
 
-        store.TryGetAccountReward(missingAccount, 120, out _).Should().BeFalse();
+        Assert.That(store.TryGetAccountReward(missingAccount, 120, out _), Is.False);
     }
 
     [Test]
@@ -56,9 +55,9 @@ public class RewardsStoreTests
         store.SaveEpochRewards(120, [new BlockReward(account, (UInt256)10)]);
         store.SaveEpochRewards(180, [new BlockReward(account, (UInt256)20)]);
 
-        store.TryGetRetainedRange(out ulong oldest, out ulong newest).Should().BeTrue();
-        oldest.Should().Be(120);
-        newest.Should().Be(180);
+        Assert.That(store.TryGetRetainedRange(out ulong oldest, out ulong newest), Is.True);
+        Assert.That(oldest, Is.EqualTo(120));
+        Assert.That(newest, Is.EqualTo(180));
     }
 
     [Test]
@@ -77,16 +76,14 @@ public class RewardsStoreTests
             store.SaveEpochRewards(epoch, [new BlockReward(account, (UInt256)epoch)]);
         }
 
-        store.HasEpochRewards(oldEpoch).Should().BeFalse();
-        store.TryGetAccountReward(account, oldEpoch, out _).Should().BeFalse();
-
+        Assert.That(store.HasEpochRewards(oldEpoch), Is.False);
+        Assert.That(store.TryGetAccountReward(account, oldEpoch, out _), Is.False);
         ulong newOldestKeptEpoch = 2;
-        store.HasEpochRewards(newOldestKeptEpoch).Should().BeTrue();
-        store.TryGetAccountReward(account, newOldestKeptEpoch, out UInt256 keptReward).Should().BeTrue();
-        keptReward.Should().Be((UInt256)newOldestKeptEpoch);
-
-        store.TryGetRetainedRange(out ulong oldest, out ulong newest).Should().BeTrue();
-        oldest.Should().Be(newOldestKeptEpoch);
-        newest.Should().Be(latestEpoch);
+        Assert.That(store.HasEpochRewards(newOldestKeptEpoch), Is.True);
+        Assert.That(store.TryGetAccountReward(account, newOldestKeptEpoch, out UInt256 keptReward), Is.True);
+        Assert.That(keptReward, Is.EqualTo((UInt256)newOldestKeptEpoch));
+        Assert.That(store.TryGetRetainedRange(out ulong oldest, out ulong newest), Is.True);
+        Assert.That(oldest, Is.EqualTo(newOldestKeptEpoch));
+        Assert.That(newest, Is.EqualTo(latestEpoch));
     }
 }

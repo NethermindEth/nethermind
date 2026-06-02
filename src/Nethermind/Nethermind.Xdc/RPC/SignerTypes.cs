@@ -3,7 +3,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RPC;
 
 public class SignerTypes
 {

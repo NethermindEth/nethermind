@@ -5,9 +5,8 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Xdc.RPC;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RPC;
 
 [RpcModule(ModuleTypeExt.Xdc)]
 public interface IXdcRpcModule : IRpcModule

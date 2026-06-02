@@ -28,7 +28,7 @@ internal static class RpcHelpers
         IEpochSwitchManager epochSwitchManager,
         ISpecProvider specProvider)
     {
-        List<MissedRoundInfo> missedRounds = new();
+        List<MissedRoundInfo> missedRounds = [];
 
         EpochSwitchInfo? switchInfo = epochSwitchManager.GetEpochSwitchInfo(header) ??
             throw new InvalidOperationException($"Cannot get epoch switch info for block {header.Number}, hash {header.Hash}");

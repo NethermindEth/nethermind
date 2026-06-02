@@ -13,6 +13,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.RPC;
 
@@ -103,12 +104,12 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> pool,
         Address[] masternodes)
     {
-        Dictionary<(ulong Round, Hash256 Hash), SignerTypes> message = new();
+        Dictionary<(ulong Round, Hash256 Hash), SignerTypes> message = [];
 
         foreach (((ulong, Hash256) key, Dictionary<Address, T> objs) in pool)
         {
-            List<Address> currentSigners = new();
-            HashSet<Address> missingSigners = new(masternodes);
+            List<Address> currentSigners = [];
+            HashSet<Address> missingSigners = [.. masternodes];
 
             int num = objs.Count;
             foreach (Address signer in objs.Keys)
@@ -269,7 +270,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
         catch (Exception ex)
         {
-            return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail(ex);
+            return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail(ex.Message);
         }
     }
 
@@ -343,7 +344,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                 Address = account,
                 AccountStatus = "owner",
                 AccountReward = accountReward,
-                DelegatedReward = new Dictionary<string, UInt256>()
+                DelegatedReward = []
             });
         }
 
@@ -356,7 +357,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                 StartBlockNum = (ulong)begin,
                 EndBlockNum = (ulong)end,
                 TotalAccountReward = totalReward,
-                TotalDelegatedReward = new Dictionary<string, UInt256>()
+                TotalDelegatedReward = []
             }
         });
     }
@@ -586,7 +587,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
         catch (Exception ex)
         {
-            return ResultWrapper<V2BlockInfo>.Fail(ex);
+            return ResultWrapper<V2BlockInfo>.Fail(ex.Message);
         }
 
         // Build and return V2BlockInfo

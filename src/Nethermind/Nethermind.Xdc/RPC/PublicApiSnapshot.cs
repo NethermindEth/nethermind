@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using System.Collections.Generic;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RPC;
 
 public class PublicApiSnapshot
 {

@@ -3,7 +3,7 @@
 
 using Nethermind.Int256;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RPC;
 
 public class PublicApiMissedRoundsMetadata
 {

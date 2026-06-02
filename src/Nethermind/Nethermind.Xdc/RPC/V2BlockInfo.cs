@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RPC;
 
 public class V2BlockInfo
 {

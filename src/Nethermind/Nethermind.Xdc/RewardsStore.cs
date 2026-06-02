@@ -27,7 +27,7 @@ internal sealed class RewardsStore(IDb rewardsDb, int rewardHistoryEpochRetentio
 
     public void SaveEpochRewards(ulong epochBlockNumber, BlockReward[] rewards)
     {
-        Dictionary<Address, UInt256> rewardsByAccount = new();
+        Dictionary<Address, UInt256> rewardsByAccount = [];
         foreach (BlockReward reward in rewards)
         {
             if (!rewardsByAccount.TryAdd(reward.Address, reward.Value))
@@ -228,7 +228,7 @@ internal sealed class RewardsStore(IDb rewardsDb, int rewardHistoryEpochRetentio
         int offset = sizeof(int);
         for (int i = 0; i < count; i++)
         {
-            Address address = new(span.Slice(offset, AddressByteLength).ToArray());
+            Address address = new(span.Slice(offset, AddressByteLength));
             offset += AddressByteLength;
 
             UInt256 reward = new(span.Slice(offset, UInt256ByteLength), isBigEndian: true);

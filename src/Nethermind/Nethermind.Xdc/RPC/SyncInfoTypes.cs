@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RPC;
 
 public class SyncInfoTypes
 {

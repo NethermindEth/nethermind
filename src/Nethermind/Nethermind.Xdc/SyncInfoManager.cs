@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Xdc.Errors;
+using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Types;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -21,7 +22,7 @@ internal class SyncInfoManager(
     private readonly ILogger _logger = logManager.GetClassLogger<SyncInfoManager>();
     private readonly object _syncInfoCacheLock = new();
 
-    private readonly Dictionary<(ulong Round, Hash256 Hash), SyncInfoTypes> _syncInfoCache = new();
+    private readonly Dictionary<(ulong Round, Hash256 Hash), SyncInfoTypes> _syncInfoCache = [];
 
     public IDictionary<(ulong Round, Hash256 Hash), SyncInfoTypes> GetReceivedSyncInfos()
     {

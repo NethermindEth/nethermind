@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -37,7 +36,7 @@ public class RpcModuleTests
 
     private EpochSwitchInfo[] GenerateEpochSwitchInfos(long begin, long end, int switchEpoch, int epochLength)
     {
-        List<EpochSwitchInfo> epochSwitchInfos = new();
+        List<EpochSwitchInfo> epochSwitchInfos = [];
         for (long blockNum = begin; blockNum <= end; blockNum += epochLength)
         {
             ulong epochNumber = (ulong)(blockNum / epochLength);
@@ -63,7 +62,7 @@ public class RpcModuleTests
         int? minePeriod = null,
         int? configsCount = null)
     {
-        List<V2ConfigParams> v2Configs = new();
+        List<V2ConfigParams> v2Configs = [];
 
         int count = configsCount ?? 1;
 
@@ -132,7 +131,7 @@ public class RpcModuleTests
 
             // Other settings
             MergeSignRange = 15,
-            BlackListedAddresses = new HashSet<Address>(),
+            BlackListedAddresses = [],
 
             // V2 configuration parameters
             V2Configs = v2Configs
@@ -174,8 +173,8 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.CalculateBlockInfoByV1EpochNum(1);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
 
@@ -198,13 +197,13 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().NotBeNull();
-        result.Data!.EpochBlockHash.Should().Be(expectedHash);
-        result.Data.EpochRound.Should().Be((UInt256)expectedRound);
-        result.Data.EpochFirstBlockNumber.Should().Be((UInt256)expectedBlockNumber);
-        result.Data.EpochLastBlockNumber.Should().Be((UInt256)(nextBlockRoundInfo.BlockNumber - 1));
-        result.Data.EpochConsensusVersion.Should().Be("v2");
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.EpochBlockHash, Is.EqualTo(expectedHash));
+        Assert.That(result.Data.EpochRound, Is.EqualTo((UInt256)expectedRound));
+        Assert.That(result.Data.EpochFirstBlockNumber, Is.EqualTo((UInt256)expectedBlockNumber));
+        Assert.That(result.Data.EpochLastBlockNumber, Is.EqualTo((UInt256)(nextBlockRoundInfo.BlockNumber - 1)));
+        Assert.That(result.Data.EpochConsensusVersion, Is.EqualTo("v2"));
     }
 
     [Test]
@@ -224,9 +223,9 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().NotBeNull();
-        result.Data!.EpochLastBlockNumber.Should().BeNull();
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.EpochLastBlockNumber, Is.Null);
     }
 
     [Test]
@@ -240,8 +239,8 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
 
@@ -264,8 +263,8 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByEpochNum(epochNumber);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -290,7 +289,7 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByEpochNum(epochNumber);
 
         // Assert
-        result.Result.Should().Be(Result.Success);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
         _epochSwitchManager.Received(1).GetBlockByEpochNumber(epochNumber);
     }
 
@@ -323,9 +322,9 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
 
         // Assert
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().HaveCount(2);
-        result.Data.Should().Equal(100UL, 150UL);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Has.Length.EqualTo(2));
+        Assert.That(result.Data, Is.EqualTo(new[] { 100UL, 150UL }));
     }
 
     [Test]
@@ -341,8 +340,8 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -362,8 +361,8 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -386,8 +385,8 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -410,8 +409,8 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -434,8 +433,8 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
 
@@ -457,8 +456,8 @@ public class RpcModuleTests
 
         _epochSwitchManager.GetEpochSwitchInfo(header).Returns(epochSwitchInfo);
 
-        Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Vote>> receivedVotes = new();
-        Dictionary<Address, Vote> voteList = new();
+        Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Vote>> receivedVotes = [];
+        Dictionary<Address, Vote> voteList = [];
         Vote vote1 = new(new BlockRoundInfo(TestItem.KeccakA, 10, 100), 0) { Signer = TestItem.AddressA };
         Vote vote2 = new(new BlockRoundInfo(TestItem.KeccakA, 10, 100), 0) { Signer = TestItem.AddressB };
         voteList[TestItem.AddressA] = vote1;
@@ -473,11 +472,11 @@ public class RpcModuleTests
         ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
 
         // Assert
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().NotBeNull();
-        result.Data!.Vote.Should().NotBeNull();
-        result.Data.Timeout.Should().NotBeNull();
-        result.Data.SyncInfo.Should().NotBeNull();
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.Vote, Is.Not.Null);
+        Assert.That(result.Data.Timeout, Is.Not.Null);
+        Assert.That(result.Data.SyncInfo, Is.Not.Null);
     }
 
     [Test]
@@ -490,8 +489,8 @@ public class RpcModuleTests
         ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -505,8 +504,8 @@ public class RpcModuleTests
         ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -521,8 +520,8 @@ public class RpcModuleTests
         ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
 
@@ -556,13 +555,13 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(BlockParameter.Latest);
 
         // Assert
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().NotBeNull();
-        result.Data!.Masternodes.Should().BeEquivalentTo(masternodes);
-        result.Data.Penalty.Should().BeEquivalentTo(penalties);
-        result.Data.Standbynodes.Should().BeEquivalentTo(standbynodes);
-        result.Data.Number.Should().Be(100);
-        result.Data.Round.Should().Be((UInt256)50);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.Masternodes, Is.EquivalentTo(masternodes));
+        Assert.That(result.Data.Penalty, Is.EquivalentTo(penalties));
+        Assert.That(result.Data.Standbynodes, Is.EquivalentTo(standbynodes));
+        Assert.That(result.Data.Number, Is.EqualTo(100));
+        Assert.That(result.Data.Round, Is.EqualTo((UInt256)50));
     }
 
     [Test]
@@ -594,8 +593,8 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(BlockParameter.Finalized);
 
         // Assert
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().NotBeNull();
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
     }
 
     [Test]
@@ -608,8 +607,8 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(BlockParameter.Finalized);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -622,8 +621,8 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -637,8 +636,8 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -654,8 +653,8 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -673,8 +672,8 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
 
@@ -700,8 +699,8 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.GetSigners(BlockParameter.Latest);
 
         // Assert
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().BeEquivalentTo(expectedSigners);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.EquivalentTo(expectedSigners));
     }
 
     [Test]
@@ -727,8 +726,8 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.GetSigners(blockParameter);
 
         // Assert
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().BeEquivalentTo(expectedSigners);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.EquivalentTo(expectedSigners));
     }
 
     [Test]
@@ -741,8 +740,8 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.GetSigners(blockParameter);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -756,8 +755,8 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.GetSigners(blockParameter);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
 
@@ -771,8 +770,8 @@ public class RpcModuleTests
         ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.GetMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -786,8 +785,8 @@ public class RpcModuleTests
         ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.GetMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -803,8 +802,8 @@ public class RpcModuleTests
         ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.GetMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
 
@@ -858,13 +857,13 @@ public class RpcModuleTests
         ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
 
         // Assert
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().NotBeNull();
-        result.Data!.EpochRewards.Should().NotBeNull();
-        result.Data.EpochRewards!.Length.Should().Be(2);
-        result.Data.Total.Should().NotBeNull();
-        result.Data.Total!.Address.Should().Be(account);
-        result.Data.Total.TotalAccountReward.Should().Be((UInt256)30);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.EpochRewards, Is.Not.Null);
+        Assert.That(result.Data.EpochRewards!.Length, Is.EqualTo(2));
+        Assert.That(result.Data.Total, Is.Not.Null);
+        Assert.That(result.Data.Total!.Address, Is.EqualTo(account));
+        Assert.That(result.Data.Total.TotalAccountReward, Is.EqualTo((UInt256)30));
     }
 
     [Test]
@@ -902,8 +901,8 @@ public class RpcModuleTests
         ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.PrunedHistoryUnavailable);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
     }
 
     [Test]
@@ -934,8 +933,8 @@ public class RpcModuleTests
         ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]
@@ -956,8 +955,8 @@ public class RpcModuleTests
         ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
 
         // Assert
-        result.Result.Should().NotBe(Result.Success);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
 }

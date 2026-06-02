@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using System.Collections.Generic;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RPC;
 
 public class AccountEpochReward
 {
