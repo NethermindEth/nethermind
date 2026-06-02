@@ -97,8 +97,7 @@ public class FundsDistributorTests
             await distributor.DistributeFunds(_funder, keysToMake: 3, maxFee: OneGwei, maxPriorityFee: OneGwei));
 
         string[] lines = File.ReadAllLines(_pendingPath);
-        Assert.That(lines.Length, Is.EqualTo(2),
-            "both keys 1 (sent OK) and 2 (send failed) must be on disk before either send was attempted");
+        Assert.That(lines.Length, Is.EqualTo(2));
     }
 
     [Test]

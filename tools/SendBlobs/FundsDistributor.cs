@@ -84,10 +84,7 @@ public class FundsDistributor(IJsonRpcClient rpcClient, ulong chainId, string? k
             }
 
             Transaction tx = CreateTx(_chainId, key.Address, currentMaxFee, nonce, priorityFee, plan.PerKeyAmount);
-            string? result = await SignAndSendAsync(distributeFrom, tx);
-            if (result is not null)
-                txHashes.Add(result);
-
+            txHashes.Add(await SignAndSendAsync(distributeFrom, tx));
             nonce++;
         }
 
@@ -137,17 +134,12 @@ public class FundsDistributor(IJsonRpcClient rpcClient, ulong chainId, string? k
                                       nonceValue,
                                       maxPriorityFeePerGas,
                                       toSend);
-            string? result = await SignAndSendAsync(signer, tx);
-
-            if (result is not null)
-            {
-                txHashes.Add(result);
-            }
+            txHashes.Add(await SignAndSendAsync(signer, tx));
         }
         return txHashes;
     }
 
-    private async Task<string?> SignAndSendAsync(Signer signer, Transaction tx)
+    private async Task<string> SignAndSendAsync(Signer signer, Transaction tx)
     {
         if (!signer.TrySign(tx))
             throw new InvalidOperationException($"Signer {signer.Address} could not sign transaction.");
