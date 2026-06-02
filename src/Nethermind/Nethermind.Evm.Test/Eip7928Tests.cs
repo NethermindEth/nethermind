@@ -1167,6 +1167,38 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(Instruction.CALL, TestName = "EIP7702_call_with_insufficient_balance_excludes_delegation_from_BAL_for_CALL")]
+    [TestCase(Instruction.CALLCODE, TestName = "EIP7702_call_with_insufficient_balance_excludes_delegation_from_BAL_for_CALLCODE")]
+    public void Call_into_7702_delegated_eoa_with_insufficient_balance_does_not_record_delegation_target(Instruction callOpcode)
+    {
+        InitWorldState(TestState);
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        Block block = Build.A.Block.TestObject;
+
+        // EIP-7928 (PR 11699): value-transferring CALL/CALLCODE with sender_balance < value
+        // must not load the delegation; only the original call target is recorded.
+        UInt256 callerBalance = 100;
+        UInt256 callValue = 1000;
+        byte[] code = callOpcode == Instruction.CALL
+            ? Prepare.EvmCode.CallWithValue(_callTargetAddress, 50_000, callValue).Done
+            : Prepare.EvmCode.CallCode(_callTargetAddress, 50_000, callValue).Done;
+
+        Transaction tx = BuildContractTx(code, executionGas: 100_000, callerBalance, block.Header);
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        CallOutputTracer tracer = new();
+        TransactionResult res = processor.Execute(tx, tracer);
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted);
+            Assert.That(bal.GetAccountChanges(_callTargetAddress), Is.Not.Null);
+            Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null);
+        }
+    }
+
     [TestCase(120_000_000L, 30_000_000L, true, TestName = "EIP2935_system_call_records_storage_change_when_state_gas_affordable")]
     [TestCase(120_000_000L, 30_000L, false, TestName = "EIP2935_system_call_records_no_storage_access_when_state_gas_not_affordable")]
     public void Eip2935_system_call_bal_respects_eip8037_state_gas(long blockGasLimit, long systemCallGasLimit, bool shouldStoreParentHash)

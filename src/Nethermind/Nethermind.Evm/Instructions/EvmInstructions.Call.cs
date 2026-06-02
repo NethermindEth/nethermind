@@ -191,18 +191,6 @@ public static partial class EvmInstructions
 
         if (newAccountOutOfGas) goto OutOfGas;
 
-        // EIP-7702: load delegated code after cold-access charge above.
-        if (delegated is not null)
-        {
-            // EIP-7928: decorator fast-path skips world-state reads; record explicitly.
-            state.AddAccountRead(delegated);
-
-            // EIP-7702: precompile MUST NOT execute via delegation; the decorator would route to the precompile CodeInfo.
-            codeInfo = spec.IsPrecompile(delegated)
-                ? CodeInfo.Empty
-                : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
-        }
-
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
         long gasLimitUl;
 
@@ -260,6 +248,18 @@ public static partial class EvmInstructions
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
             }
             return pushResult;
+        }
+
+        // EIP-7928 (PR 11699): defer delegated load past the depth/balance preflight so a failed check doesn't leak delegation into BAL.
+        if (delegated is not null)
+        {
+            // EIP-7928: decorator fast-path skips world-state reads; record explicitly.
+            state.AddAccountRead(delegated);
+
+            // EIP-7702: precompile MUST NOT execute via delegation; the decorator would route to the precompile CodeInfo.
+            codeInfo = spec.IsPrecompile(delegated)
+                ? CodeInfo.Empty
+                : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
         }
 
         // Take a snapshot of the state for potential rollback.
