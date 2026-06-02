@@ -748,7 +748,11 @@ public class OpcodeTracingPluginTests
     {
         Type = TxType.Legacy,
         Nonce = nonce,
-        GasLimit = 200_000,
+        // Must cover the Amsterdam intrinsic cost: under EIP-8037 a creation tx reserves
+        // "state gas" (createStateCost) on top of the regular intrinsic gas, so the pre-8037
+        // figure of 200_000 is rejected by the block producer ("intrinsic gas too low").
+        // 1_000_000 comfortably covers both the pre-Amsterdam and Amsterdam (EIP-8037) costs.
+        GasLimit = 1_000_000,
         GasPrice = 20_000_000_000UL, // 20 gwei — well above any realistic base fee on a fresh chain
         To = null,
         Value = UInt256.Zero,
