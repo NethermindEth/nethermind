@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
@@ -216,12 +217,12 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.True);
-            AssertTransactionsEquivalent(blobTxReturned, blobTxAdded);
+            Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
 
             Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
             if (isPersistentStorage)
             {
-                AssertTransactionsEquivalent(blobTxFromDb, blobTxAdded, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+                Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
             }
         }
 
@@ -380,17 +381,17 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(oldTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
             Assert.That(_txPool.TryGetPendingTransaction(oldTx.Hash!, out Transaction blobTxReturned), Is.True);
-            AssertTransactionsEquivalent(blobTxReturned, oldTx);
+            Assert.That(blobTxReturned, Is.EqualTo(oldTx).UsingTransactionComparer());
             Assert.That(blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress!, oldTx.Timestamp, out Transaction blobTxFromDb), Is.True);
-            AssertTransactionsEquivalent(blobTxFromDb, oldTx, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+            Assert.That(blobTxFromDb, Is.EqualTo(oldTx).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
 
             Assert.That(_txPool.SubmitTx(newTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
             Assert.That(_txPool.TryGetPendingTransaction(newTx.Hash!, out blobTxReturned), Is.True);
-            AssertTransactionsEquivalent(blobTxReturned, newTx);
+            Assert.That(blobTxReturned, Is.EqualTo(newTx).UsingTransactionComparer());
             Assert.That(blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress, oldTx.Timestamp, out blobTxFromDb), Is.False);
             Assert.That(blobTxStorage.TryGet(newTx.Hash, newTx.SenderAddress!, newTx.Timestamp, out blobTxFromDb), Is.True);
-            AssertTransactionsEquivalent(blobTxFromDb, newTx, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+            Assert.That(blobTxFromDb, Is.EqualTo(newTx).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
         }
 
         [Test]
@@ -417,7 +418,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
 
             _txPool.TryGetBlobTxSortingEquivalent(tx.Hash!, out Transaction returned);
-            AssertTransactionsEquivalent(returned, isPersistentStorage ? new LightTransaction(tx) : tx);
+            Assert.That(returned, Is.EqualTo(isPersistentStorage ? new LightTransaction(tx) : tx).UsingTransactionComparer());
         }
 
         [Test]
@@ -450,13 +451,13 @@ namespace Nethermind.TxPool.Test
             {
                 _txPool.TryGetBlobTxSortingEquivalent(tx.Hash!, out Transaction returned);
                 Assert.That(returned.GasBottleneck, Is.EqualTo(UInt256.Zero));
-                AssertTransactionsEquivalent(returned, isPersistentStorage ? new LightTransaction(tx) : tx, nameof(Transaction.GasBottleneck));
+                Assert.That(returned, Is.EqualTo(isPersistentStorage ? new LightTransaction(tx) : tx).UsingTransactionComparer(nameof(Transaction.GasBottleneck)));
                 Assert.That(returned, Is.Not.EqualTo(isPersistentStorage ? tx : new LightTransaction(tx)));
             }
             else
             {
                 Assert.That(_txPool.TryGetPendingTransaction(tx.Hash!, out Transaction eip1559Tx), Is.True);
-                AssertTransactionsEquivalent(eip1559Tx, tx);
+                Assert.That(eip1559Tx, Is.EqualTo(tx).UsingTransactionComparer());
                 Assert.That(eip1559Tx.GasBottleneck, Is.EqualTo(1.GWei));
             }
         }
@@ -495,11 +496,11 @@ namespace Nethermind.TxPool.Test
             if (shouldReplace)
             {
                 Assert.That(returnedFirstTx, Is.Null);
-                AssertTransactionsEquivalent(returnedSecondTx, secondTx);
+                Assert.That(returnedSecondTx, Is.EqualTo(secondTx).UsingTransactionComparer());
             }
             else
             {
-                AssertTransactionsEquivalent(returnedFirstTx, firstTx);
+                Assert.That(returnedFirstTx, Is.EqualTo(firstTx).UsingTransactionComparer());
                 Assert.That(returnedSecondTx, Is.Null);
             }
         }
@@ -544,7 +545,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.TryGetPendingTransaction(firstTx.Hash!, out Transaction returnedFirstTx), Is.False);
             Assert.That(_txPool.TryGetPendingTransaction(secondTx.Hash!, out Transaction returnedSecondTx), Is.True);
             Assert.That(returnedFirstTx, Is.Null);
-            AssertTransactionsEquivalent(returnedSecondTx, secondTx);
+            Assert.That(returnedSecondTx, Is.EqualTo(secondTx).UsingTransactionComparer());
         }
 
         [Test]
@@ -668,7 +669,7 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] returnedTxs), Is.True);
             Assert.That(returnedTxs.Length, Is.EqualTo(txs.Length));
-            AssertTransactionsEquivalent(returnedTxs, txs, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex), nameof(Transaction.SenderAddress));
+            Assert.That(returnedTxs, Is.EquivalentTo(txs).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex), nameof(Transaction.SenderAddress)));
 
             blobTxStorage.DeleteBlobTransactionsFromBlock(blockNumber);
             Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out returnedTxs), Is.False);
@@ -717,16 +718,16 @@ namespace Nethermind.TxPool.Test
             // tx from block B should be removed from blob pool, but present in processed txs db
             Assert.That(_txPool.TryGetPendingBlobTransaction(txsB[0].Hash!, out _), Is.False);
             Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] blockBTxs), Is.True);
-            AssertTransactionsEquivalent(txsB, blockBTxs, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex), nameof(Transaction.SenderAddress));
+            Assert.That(txsB, Is.EquivalentTo(blockBTxs).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex), nameof(Transaction.SenderAddress)));
 
             // blob txs from reorganized blockA should be readded to blob pool
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(txsA.Length));
             Assert.That(_txPool.TryGetPendingBlobTransaction(txsA[0].Hash!, out Transaction tx1), Is.True);
             Assert.That(_txPool.TryGetPendingBlobTransaction(txsA[1].Hash!, out Transaction tx2), Is.True);
 
-            AssertTransactionsEquivalent(tx1, txsA[0], nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+            Assert.That(tx1, Is.EqualTo(txsA[0]).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
 
-            AssertTransactionsEquivalent(tx2, txsA[1], nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+            Assert.That(tx2, Is.EqualTo(txsA[1]).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
         }
 
         [Test]
@@ -899,7 +900,7 @@ namespace Nethermind.TxPool.Test
 
             if (isTxValid)
             {
-                AssertTransactionsEquivalent(blobTxReturned, blobTxAdded);
+                Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
                 ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
                 Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
                 Assert.That(wrapper.Version, Is.EqualTo(hasTxCellProofs ? ProofVersion.V1 : ProofVersion.V0));
@@ -907,7 +908,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
                 if (isPersistentStorage)
                 {
-                    AssertTransactionsEquivalent(blobTxFromDb, blobTxAdded, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+                    Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
                 }
             }
             else
@@ -952,7 +953,7 @@ namespace Nethermind.TxPool.Test
 
             if (isTxValid)
             {
-                AssertTransactionsEquivalent(blobTxReturned, blobTxAdded);
+                Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
                 ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
                 Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
                 Assert.That(wrapper.Version, Is.EqualTo(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0));
@@ -960,7 +961,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
                 if (isPersistentStorage)
                 {
-                    AssertTransactionsEquivalent(blobTxFromDb, blobTxAdded, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+                    Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
                 }
             }
             else

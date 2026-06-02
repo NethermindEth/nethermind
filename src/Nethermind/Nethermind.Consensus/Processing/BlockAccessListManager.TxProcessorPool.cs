@@ -353,7 +353,9 @@ public partial class BlockAccessListManager
 
         public void MergeAndReturnBal(uint _, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null)
         {
-            if (target is not null) _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
+            BlockAccessListAtIndex slice = _txProcessorWithWorldState.WorldState.GetGeneratingBlockAccessList()!;
+            target?.Merge(slice);
+            onSlice?.Invoke(slice);
         }
     }
 

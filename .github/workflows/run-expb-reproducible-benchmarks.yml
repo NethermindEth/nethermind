@@ -93,7 +93,7 @@ permissions:
 
 jobs:
   resolve:
-    if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'reproducible-benchmark' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'performance is good' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
@@ -182,7 +182,7 @@ jobs:
               mode="multi"
             fi
           elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            if [[ "${PR_LABEL}" != "reproducible-benchmark" ]]; then
+            if [[ "${PR_LABEL}" != "performance is good" ]]; then
               should_run="false"
             fi
             if [[ -n "${PR_HEAD_REPO:-}" && "${PR_HEAD_REPO}" != "${CURRENT_REPO}" ]]; then
