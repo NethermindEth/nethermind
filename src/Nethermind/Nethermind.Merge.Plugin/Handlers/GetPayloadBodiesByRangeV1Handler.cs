@@ -12,7 +12,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IBlockStore blockStore, ILogManager logManager)
+public sealed class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IBlockStore blockStore, ILogManager logManager)
     : IGetPayloadBodiesByRangeV1Handler
 {
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeV1Handler));
@@ -22,7 +22,7 @@ public class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IBlockStore 
         if (start < 1 || count < 1)
         {
             const string error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
-            if (_logger.IsError) _logger.Error($"{GetType().Name}: ${error}");
+            if (_logger.IsError) _logger.Error($"{GetType().Name}: {error}");
             return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Fail(error, ErrorCodes.InvalidParams);
         }
 

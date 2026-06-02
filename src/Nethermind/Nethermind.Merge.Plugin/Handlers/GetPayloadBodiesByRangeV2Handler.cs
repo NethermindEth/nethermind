@@ -13,7 +13,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager logManager, IBlockAccessListStore balStore, IBlockStore blockStore)
+public sealed class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager logManager, IBlockAccessListStore balStore, IBlockStore blockStore)
     : IGetPayloadBodiesByRangeV2Handler
 {
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeV2Handler));
