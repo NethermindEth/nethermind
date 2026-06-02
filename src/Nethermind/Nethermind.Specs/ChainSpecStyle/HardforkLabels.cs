@@ -36,7 +36,7 @@ public static partial class HardforkLabels
     public static IReadOnlyList<IHardforkLabel> All { get; } = BuildAll();
 
     /// <summary>Implemented by the source generator; emits the explicit <c>Block</c>/<c>Time</c> registrations.</summary>
-    private static partial IReadOnlyList<IHardforkLabel> BuildAll();
+    private static IReadOnlyList<IHardforkLabel> BuildAll() => System.Array.Empty<IHardforkLabel>();
 
     /// <summary>
     /// Expands every hardfork label that <paramref name="source"/> carries — looked up in either

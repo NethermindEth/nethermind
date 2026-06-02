@@ -83,15 +83,43 @@ internal static class InputGenerator
             $"block #{block.Number}, chainId={chainId}, " +
             $"witness state={witness.State.Count} codes={witness.Codes.Count} headers={witness.Headers.Count}");
 
+        block.Header.Hash ??= Keccak.Compute(Rlp.Encode(block.Header).Bytes);
+
         byte[] data;
+        ChainConfig configForResult;
         using (witness)
         {
-            data = InputSerializer.Serialize(block, witness, chainId, envelope);
+            // When the fixture carries an embedded chain_config envelope, build
+            // the SSZ ChainConfig around it: the guest re-parses it into a
+            // SingleReleaseSpecProvider so synthetic fork activations validate
+            // correctly. Otherwise fall back to the hardcoded chain map keyed
+            // off ChainId.
+            ChainConfig chainConfig = envelope is { Length: > 0 }
+                ? new() { ChainId = chainId, ChainConfigJson = envelope }
+                : new()
+                {
+                    ChainId = chainId,
+                    ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId))
+                };
+            configForResult = chainConfig;
+
+            StatelessInput<SszExecutionPayloadV3> input = new()
+            {
+                NewPayloadRequest = NewPayloadRequest<SszExecutionPayloadV3>.From(block),
+                Witness = ExecutionWitness.From(witness),
+                ChainConfig = chainConfig,
+            };
+
+            byte[] encoded = StatelessInput<SszExecutionPayloadV3>.Encode(input);
+            data = new byte[encoded.Length + sizeof(ushort)];
+
+            BinaryPrimitives.WriteUInt16BigEndian(data, 0);
+            Buffer.BlockCopy(encoded, 0, data, sizeof(ushort), encoded.Length);
         }
 
         if (envelope is not null)
             AnsiConsole.MarkupLine(
-                $"[green]✓[/] Appended chain_config envelope ({envelope.Length} bytes)");
+                $"[green]✓[/] Embedded chain_config envelope ({envelope.Length} bytes)");
 
         if (forZisk)
             data = ApplyZiskFrame(data);
@@ -101,16 +129,31 @@ internal static class InputGenerator
         string path = Path.Join(output, fileName);
         File.WriteAllBytes(path, data);
 
-        // Emit a sibling `<num>.hash` containing the block hash as 32 raw bytes
-        // (RLP-encode the header + keccak256). This lets the host-side benchmark
-        // runner know the expected guest output without having to re-implement
-        // header hashing in Rust.
-        byte[] headerRlp = Rlp.Encode(block.Header).Bytes;
-        Hash256 blockHash = Keccak.Compute(headerRlp);
+        // Emit a sibling `<num>.hash` containing the SSZ-encoded
+        // StatelessValidationResult that the guest is expected to write to
+        // stdout on successful validation. The host-side benchmark runner
+        // compares the guest's public values byte-for-byte against this.
+        NewPayloadRequest<SszExecutionPayloadV3>.Merkleize(
+            NewPayloadRequest<SszExecutionPayloadV3>.From(block),
+            out Nethermind.Int256.UInt256 newPayloadRoot);
+        // Mirror what the guest does on success — drop the ChainConfigJson so
+        // we stay inside ziskos' output-buffer limit.
+        StatelessValidationResult expected = new()
+        {
+            NewPayloadRequestRoot = new Hash256(newPayloadRoot.ToLittleEndian()),
+            IsSuccess = true,
+            ChainConfig = new()
+            {
+                ChainId = configForResult.ChainId,
+                ActiveFork = configForResult.ActiveFork,
+                ChainConfigJson = []
+            }
+        };
+        byte[] expectedBytes = StatelessValidationResult.Encode(expected);
         string hashPath = Path.Join(output, $"{block.Number}.hash");
-        File.WriteAllBytes(hashPath, blockHash.Bytes.ToArray());
+        File.WriteAllBytes(hashPath, expectedBytes);
 
-        AnsiConsole.MarkupLine($"[green]✓[/] Saved to [dim]{Path.GetDirectoryName(path)}{Path.DirectorySeparatorChar}[/]{fileName} (hash={blockHash})");
+        AnsiConsole.MarkupLine($"[green]✓[/] Saved to [dim]{Path.GetDirectoryName(path)}{Path.DirectorySeparatorChar}[/]{fileName} (expected {expectedBytes.Length} bytes)");
         return 0;
     }
 

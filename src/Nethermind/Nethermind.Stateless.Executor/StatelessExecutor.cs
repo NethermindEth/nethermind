@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
@@ -12,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Stateless.Execution.IO;
 
 namespace Nethermind.Stateless.Execution;
@@ -21,8 +23,10 @@ public static class StatelessExecutor
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
         StatelessPayload payload = InputDecoder.Decode(data);
-        ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig.ChainId);
-        IReleaseSpec spec = specProvider.GetSpec(payload.ChainConfig.ActiveFork.Activation.ToForkActivation());
+        ISpecProvider specProvider = payload.ChainConfig.ChainConfigJson is { Length: > 0 }
+            ? BuildSpecProviderFromGenesis(payload.ChainConfig.ChainConfigJson, payload.Block.Header.Timestamp)
+            : GetSpecProvider(payload.ChainConfig.ChainId);
+        IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
         EthereumEcdsa ecdsa = new(payload.ChainConfig.ChainId);
 
         // Recover sender addresses for transactions,
@@ -32,14 +36,23 @@ public static class StatelessExecutor
 
         using Witness witness = payload.Witness.ToWitness();
         bool success = Execute(payload.Block, witness, specProvider);
+        // Drop the input envelope from the result — the JSON is large enough to
+        // bust ziskos' output buffer, and consumers reconstruct chain identity
+        // from ChainId + ActiveFork.
         StatelessValidationResult result = new()
         {
             NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
             IsSuccess = success,
-            ChainConfig = payload.ChainConfig
+            ChainConfig = new()
+            {
+                ChainId = payload.ChainConfig.ChainId,
+                ActiveFork = payload.ChainConfig.ActiveFork,
+                ChainConfigJson = []
+            }
         };
 
-        return StatelessValidationResult.Encode(result);
+        byte[] enc = StatelessValidationResult.Encode(result);
+        return enc;
     }
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
@@ -104,6 +117,34 @@ public static class StatelessExecutor
 
         return true;
     }
+
+    private static ISpecProvider BuildSpecProviderFromGenesis(byte[] chainConfigJson, ulong blockTimestamp)
+    {
+        using JsonDocument doc = JsonDocument.Parse(chainConfigJson);
+        JsonElement config = doc.RootElement.GetProperty("config");
+        ulong chainId = config.GetProperty("chainId").GetUInt64();
+        IReleaseSpec spec = SelectLatestActivatedSpec(config, blockTimestamp);
+        return new SingleReleaseSpecProvider(spec, networkId: chainId, chainId: chainId);
+    }
+
+    private static IReleaseSpec SelectLatestActivatedSpec(JsonElement config, ulong blockTimestamp)
+    {
+        if (HasActivatedTime(config, "osakaTime", blockTimestamp)) return Osaka.Instance;
+        if (HasActivatedTime(config, "pragueTime", blockTimestamp)) return Prague.Instance;
+        if (HasActivatedTime(config, "cancunTime", blockTimestamp)) return Cancun.Instance;
+        if (HasActivatedTime(config, "shanghaiTime", blockTimestamp)) return Shanghai.Instance;
+
+        throw new NotSupportedException(
+            $"Embedded chain_config has no recognized timestamp-based fork activated at block " +
+            $"timestamp {blockTimestamp}. The stateless executor supports post-Shanghai chains only " +
+            "(shanghaiTime / cancunTime / pragueTime / osakaTime).");
+    }
+
+    private static bool HasActivatedTime(JsonElement config, string field, ulong blockTimestamp)
+        => config.TryGetProperty(field, out JsonElement v)
+            && v.ValueKind == JsonValueKind.Number
+            && v.TryGetUInt64(out ulong forkTime)
+            && forkTime <= blockTimestamp;
 
     private static ISpecProvider GetSpecProvider(ulong chainId) => chainId switch
     {
