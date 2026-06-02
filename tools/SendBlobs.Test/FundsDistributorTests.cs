@@ -58,7 +58,7 @@ public class FundsDistributorTests
         Assert.That(lines.Length, Is.EqualTo(3));
         foreach (string line in lines)
             Assert.That(line.Length, Is.EqualTo(66));
-        rpcClient.Received(expectedGasPriceCalls).Post<string>("eth_gasPrice", Arg.Any<object?[]>());
+        await rpcClient.Received(expectedGasPriceCalls).Post<string>("eth_gasPrice", Arg.Any<object?[]>());
     }
 
     [Test]
