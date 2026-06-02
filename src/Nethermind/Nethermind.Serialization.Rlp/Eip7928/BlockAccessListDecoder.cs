@@ -28,7 +28,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         // Capture the BAL's RLP slice so the wire hash can be cached on the returned instance;
         // BlockValidator would otherwise recompute the same keccak per block.
         int startPosition = ctx.Position;
-        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
+        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, limit: _accountsLimit);
         ReadOnlySpan<byte> wireRlp = ctx.Data.Slice(startPosition, ctx.Position - startPosition);
 
         Address? lastAddress = null;

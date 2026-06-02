@@ -41,7 +41,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
 
         Address address = ctx.DecodeAddress();
 
-        ReadOnlySlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
+        ReadOnlySlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, limit: _slotsLimit);
         UInt256? lastSlot = null;
         foreach (ReadOnlySlotChanges slotChange in slotChanges)
         {

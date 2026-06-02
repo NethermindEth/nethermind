@@ -17,7 +17,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder headerDecoder = null) : RlpD
     private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
 
-    private static BlockBodyDecoder? _instance = null;
+    private static BlockBodyDecoder? _instance;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
     public override int GetLength(BlockBody item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetBodyLength(item));
@@ -90,13 +90,13 @@ public sealed class BlockBodyDecoder(IHeaderDecoder headerDecoder = null) : RlpD
 
     public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
     {
-        Transaction[] transactions = ctx.DecodeArray(_txDecoder, limit: TransactionsCountLimit);
-        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, limit: UnclesCountLimit);
+        Transaction[] transactions = ctx.DecodeArray(_txDecoder, allowNulls: false, limit: TransactionsCountLimit);
+        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, allowNulls: false, limit: UnclesCountLimit);
         Withdrawal[]? withdrawals = null;
 
         if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
         {
-            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
+            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder, allowNulls: false, limit: WithdrawalsCountLimit);
         }
 
         return new BlockBody(transactions, uncles, withdrawals);
