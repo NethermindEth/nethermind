@@ -43,10 +43,18 @@ public class JsonRpcServiceTests
         _configurationProvider = new ConfigProvider();
         _logManager = LimboLogs.Instance;
         _context = new JsonRpcContext(RpcEndpoint.Http);
+        _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
+        EthereumJsonSerializer.StrictHexFormat = _configurationProvider.GetConfig<IJsonRpcConfig>().StrictHexFormat;
     }
 
     [TearDown]
-    public void TearDown() => _context?.Dispose();
+    public void TearDown()
+    {
+        EthereumJsonSerializer.StrictHexFormat = _previousStrictHexFormat;
+        _context?.Dispose();
+    }
+
+    private bool _previousStrictHexFormat;
 
     private IJsonRpcService _jsonRpcService = null!;
     private IConfigProvider _configurationProvider = null!;
@@ -475,24 +483,6 @@ public class JsonRpcServiceTests
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         AssertInvalidParamsWithoutData(TestRawRequest(ethRpcModule, method, rawParameters), expectedMessage);
         assertNotInvoked(ethRpcModule);
-    }
-
-    [Test]
-    public void Raw_utf8_balance_specific_validation_does_not_apply_to_eth_getCode()
-    {
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        byte[] expected = [0x01];
-        ethRpcModule.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>())
-            .ReturnsForAnyArgs(ResultWrapper<byte[]>.Success(expected));
-
-        byte[] result = RpcTest.AssertSuccess<byte[]>(
-            TestRawRequest(
-                ethRpcModule,
-                nameof(IEthRpcModule.eth_getCode),
-                """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x01"]"""));
-
-        Assert.That(result, Is.EqualTo(expected));
-        ethRpcModule.Received(1).eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
     }
 
     [Test]

@@ -19,13 +19,14 @@ public class AddressConverter : JsonConverter<Address>
 
     internal static Address? ReadAddress(ref Utf8JsonReader reader)
     {
+        bool strictHexFormat = Bytes.StrictHexFormat;
         Span<byte> bytes = stackalloc byte[Address.Size];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, strictHexFormat))
         {
             return new Address(bytes);
         }
 
-        byte[]? addressBytes = ByteArrayConverter.Convert(ref reader);
+        byte[]? addressBytes = ByteArrayConverter.Convert(ref reader, strictHexFormat);
         return addressBytes is null ? null : new Address(addressBytes);
     }
 

@@ -257,8 +257,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         returnParametersToPool = false;
         try
         {
-            method.RawParameterValidator?.Invoke(useUtf8Parameters, providedParametersUtf8, providedParameters);
-
             return useUtf8Parameters
                 ? PrepareUtf8Parameters(
                     expectedParameters,
