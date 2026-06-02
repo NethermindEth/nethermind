@@ -7,9 +7,10 @@ using System.Collections.Generic;
 namespace Ethereum.Test.Base;
 
 /// <summary>
-/// Filters tests into chunks for parallel CI execution.
-/// Set TEST_CHUNK environment variable to "1of3", "2of3", "3of3" etc.
-/// Partitions tests by index for consistent and even distribution.
+/// Partitions tests into chunks for parallel CI execution. Driven by the
+/// <c>TEST_CHUNK</c> environment variable (format: <c>"1of4"</c>).
+/// <see cref="FilterByChunk{T}"/> slices an enumeration by index;
+/// <see cref="ShouldRunInChunk"/> picks per-test by stable name hash.
 /// </summary>
 public static class TestChunkFilter
 {
@@ -28,10 +29,31 @@ public static class TestChunkFilter
         return FilterByChunkIterator(tests, chunkIndex, totalChunks);
     }
 
+    /// <summary>
+    /// True when <paramref name="stableTestName"/> belongs to the currently
+    /// selected chunk, or when no chunk is configured. Hash is deterministic
+    /// across processes (unlike <see cref="string.GetHashCode()"/>).
+    /// </summary>
+    public static bool ShouldRunInChunk(string stableTestName)
+    {
+        (int Index, int Total)? chunkConfig = GetChunkConfig();
+
+        if (chunkConfig is null)
+        {
+            return true;
+        }
+
+        (int chunkIndex, int totalChunks) = chunkConfig.Value;
+        uint hash = StableHash(stableTestName);
+        return (hash % (uint)totalChunks) == (uint)(chunkIndex - 1);
+    }
+
+    /// <summary>1-based chunk index and total, or null when <c>TEST_CHUNK</c> is unset.</summary>
+    public static (int Index, int Total)? TryGetChunkConfig() => GetChunkConfig();
+
     private static IEnumerable<T> FilterByChunkIterator<T>(IEnumerable<T> tests, int chunkIndex, int totalChunks)
     {
-        // Interleaved distribution: test 0→chunk 1, test 1→chunk 2, etc.
-        // Spreads heavy tests evenly across chunks instead of clustering them.
+        // Interleaved (test[i] → chunk i % N) so heavy tests don't cluster.
         int testIndex = 0;
         foreach (T test in tests)
         {
@@ -64,5 +86,25 @@ public static class TestChunkFilter
         }
 
         return (index, total);
+    }
+
+    // FNV-1a-style 32-bit hash, byte-by-byte over each UTF-16 char. Only property
+    // we rely on: same input ⇒ same output across processes/platforms.
+    private static uint StableHash(string value)
+    {
+        const uint offsetBasis = 2166136261u;
+        const uint prime = 16777619u;
+
+        uint hash = offsetBasis;
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = value[i];
+            hash ^= (byte)(c & 0xFF);
+            hash *= prime;
+            hash ^= (byte)((c >> 8) & 0xFF);
+            hash *= prime;
+        }
+
+        return hash;
     }
 }
