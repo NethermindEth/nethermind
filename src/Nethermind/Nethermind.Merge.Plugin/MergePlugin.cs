@@ -90,7 +90,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_api.SpecProvider is null) throw new ArgumentException(nameof(_api.SpecProvider));
 
             EnsureJsonRpcUrl();
-            EnsureReceiptAvailable();
 
             _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
             _poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
@@ -139,22 +138,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 throw new InvalidConfigurationException($"Configuration mismatch at {nameof(IBlocksConfig.SecondsPerSlot)} " +
                                                             $"with conflicting values {blocksConfig.SecondsPerSlot} and {mergeConfig.SecondsPerSlot}",
                         ExitCodes.ConflictingConfigurations);
-            }
-        }
-    }
-
-    private void EnsureReceiptAvailable()
-    {
-        if (!HasTtd()) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
-            return;
-
-        if (_syncConfig.FastSync)
-        {
-            if (!_syncConfig.NonValidatorNode && (!_syncConfig.DownloadReceiptsInFastSync || !_syncConfig.DownloadBodiesInFastSync))
-            {
-                throw new InvalidConfigurationException(
-                    "Receipt and body must be available for merge to function. The following configs values should be set to true: Sync.DownloadReceiptsInFastSync, Sync.DownloadBodiesInFastSync",
-                    ExitCodes.NoDownloadOldReceiptsOrBlocks);
             }
         }
     }

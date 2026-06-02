@@ -132,6 +132,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
+            RecordBadBlock(block);
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
 
@@ -162,6 +163,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"orphaned block is invalid: {error}"));
+                RecordBadBlock(block);
                 return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
             }
 
@@ -174,7 +176,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             }
 
             if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
-            _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
+            _blockCacheService.TryAddBlock(block);
             return NewPayloadV1Result.Syncing;
         }
 
@@ -196,6 +198,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out string? error, validateHashes: false))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
+                RecordBadBlock(block);
                 return NewPayloadV1Result.Invalid(error);
             }
 
@@ -275,6 +278,29 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     [StackTraceHidden]
     private ResultWrapper<PayloadStatusV1> ThrowUnknownValidationResult(ValidationResult result) =>
         throw new InvalidOperationException($"Unknown validation result {result}.");
+
+    /// <summary>Records a block rejected before <c>BranchProcessor</c> ever runs.</summary>
+    /// <remarks>
+    /// Mirrors the bookkeeping <see cref="Nethermind.Consensus.Processing.BlockchainProcessor"/> does
+    /// when it catches an <c>InvalidBlockException</c>: bumps the bad-block metrics, marks the chain
+    /// as invalid in <see cref="IInvalidChainTracker"/>, and forwards the block to the
+    /// <c>BadBlockStore</c> so it surfaces in <c>debug_getBadBlocks</c>.
+    /// Pre-process rejection sites (hash mismatch, failed orphan validation, failed suggested-block
+    /// validation) previously skipped all three.
+    /// </remarks>
+    private void RecordBadBlock(Block block)
+    {
+        if (block.Hash is null) return;
+
+        Nethermind.Blockchain.Metrics.BadBlocks++;
+        if (block.IsByNethermindNode())
+        {
+            Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
+        }
+
+        _invalidChainTracker.OnInvalidBlock(block.Hash, block.ParentHash);
+        _blockTree.ReportBadBlock(block);
+    }
 
     /// <summary>
     /// Decides if we should process the block or try syncing to it. It also returns what options to process the block with.
@@ -413,6 +439,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // we timed out while processing the block, result will be null and we will return SYNCING below, no need to do anything
             if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.FullHashAndNumber)} timed out when processing. Assume Syncing.");
         }
+        finally
+        {
+            // Blocks that exit before the processing queue publishes BlockRemoved would otherwise
+            // leave their completion source pinned in _blockValidationTasks forever.
+            _blockValidationTasks.TryRemove(block.Hash!, out _);
+        }
 
         return (TryCacheResult(result ?? ValidationResult.Syncing, validationMessage), validationMessage);
     }
@@ -498,13 +530,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (current is null)
             {
                 // block not part of beacon pivot chain, save in cache
-                _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
+                _blockCacheService.TryAddBlock(block);
                 return false;
             }
 
             while (stack.TryPop(out Block? child))
             {
                 _blockTree.Insert(child, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
+                _blockCacheService.TryRemoveBlock(child.Hash!);
             }
 
             _beaconPivot.ProcessDestination = block.Header;

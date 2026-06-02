@@ -86,7 +86,6 @@ public class MultipleUnsignedOperations
             codeInfo: new CodeInfo(_bytecode.Concat(_bytecode).Concat(_bytecode).Concat(_bytecode).ToArray()),
             callDepth: 0,
             value: 0,
-            transferValue: 0,
             inputData: default
         );
 
