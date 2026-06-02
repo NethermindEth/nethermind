@@ -1,0 +1,70 @@
+name: Deploy RPC Monitor
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment to deploy to
+        required: true
+        type: environment
+      chain:
+        description: Chain to monitor
+        required: true
+        default: mainnet
+        type: choice
+        options:
+          - mainnet
+          - gnosis
+
+jobs:
+  build-and-push:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Publish Docker image
+        uses: ./.github/actions/publish-docker
+        with:
+          image-name: rpc-monitor
+          tag: latest
+          dockerfile: tools/RpcTests/RpcTests.Monitor/Dockerfile
+          build-config: release
+          add-master-tag: 'false'
+          docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          docker-hub-password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+  deploy:
+    name: Deploy to monitor machine
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Deploy Monitor
+        uses: appleboy/ssh-action@v1
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.RPC_MONITOR_SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.RPC_MONITOR_SLACK_CHANNEL_ID }}
+          REFERENCE_URL: ${{ secrets.RPC_MONITOR_REFERENCE_URL }}
+          TARGET_URL: ${{ secrets.RPC_MONITOR_TARGET_URL || 'http://localhost:8545' }}
+          CHAIN: ${{ inputs.chain }}
+        with:
+          host: ${{ secrets.RPC_MONITOR_SSH_HOST }}
+          username: ${{ secrets.RPC_MONITOR_SSH_USER }}
+          key: ${{ secrets.RPC_MONITOR_SSH_KEY }}
+          envs: SLACK_BOT_TOKEN,SLACK_CHANNEL_ID,REFERENCE_URL,TARGET_URL,CHAIN
+          script: |
+            docker pull nethermindeth/rpc-monitor:latest
+            docker stop rpc-monitor 2>/dev/null || true
+            docker rm rpc-monitor 2>/dev/null || true
+            docker run -d \
+              --name rpc-monitor \
+              --restart unless-stopped \
+              --network host \
+              -e RPC_MONITOR_BOT_TOKEN="$SLACK_BOT_TOKEN" \
+              -e RPC_MONITOR_CHANNEL_ID="$SLACK_CHANNEL_ID" \
+              nethermindeth/rpc-monitor:latest \
+              --target "$TARGET_URL" \
+              --reference "$REFERENCE_URL" \
+              --tests "$CHAIN/**/*"
