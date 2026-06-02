@@ -266,7 +266,7 @@ namespace Nethermind.Core.Test.Encoding
 
 
         [TestCaseSource(nameof(InvalidEncodingTestCases))]
-        public void Rejects_invalid_tx_encoding(byte[] invalidTxBytes, string error)
+        public void Rejects_invalid_tx_encoding(byte[] invalidTxBytes, string? error, Type? exceptionType = null)
         {
             void DecodeStream()
             {
@@ -274,7 +274,10 @@ namespace Nethermind.Core.Test.Encoding
                 _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
 
-            Assert.That(DecodeStream, Throws.InstanceOf<RlpException>().With.Message.Contains(error).IgnoreCase);
+            error ??= "";
+            exceptionType ??= typeof(RlpException);
+
+            Assert.That(DecodeStream, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
 
             void DecodeContext()
             {
@@ -282,7 +285,7 @@ namespace Nethermind.Core.Test.Encoding
                 _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
 
-            Assert.That(DecodeContext, Throws.InstanceOf<RlpException>().With.Message.Contains(error).IgnoreCase);
+            Assert.That(DecodeContext, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
         }
 
         public static IEnumerable<(string, Hash256)> SkipTypedWrappingTestCases()
@@ -392,19 +395,38 @@ namespace Nethermind.Core.Test.Encoding
 
         private static IEnumerable<TestCaseData> InvalidEncodingTestCases()
         {
-            static TestCaseData TestCase(string testName, string invalidTxBytes, string error) =>
-                new(Convert.FromHexString(invalidTxBytes), error) { TestName = testName };
+            static TestCaseData TestCase(string testName, byte[] invalidTxBytes, string? error = null, Type? exceptionType = null) =>
+                new(invalidTxBytes, error, exceptionType) { TestName = testName };
 
             yield return TestCase("Missing storage keys array in access list",
-                "01e3010101825208808080d6d5940000000000000000000000000000000000000001010101",
+                Convert.FromHexString("01e3010101825208808080d6d5940000000000000000000000000000000000000001010101"),
                 "storage keys"
             );
 
             yield return TestCase(
                 "Signed legacy tx prefixed with 0-byte (simulating 'legacy' type)",
-                Convert.ToHexString([0, .. _txDecoder.Encode(Build.A.Transaction.SignedAndResolved().TestObject).Bytes]),
+                [0, .. _txDecoder.Encode(Build.A.Transaction.SignedAndResolved().TestObject).Bytes],
                 "legacy"
             );
+
+            yield return TestCase(
+                "SetCode auth list count over limit",
+                BuildSetCodeTxBytes(300_000),
+                exceptionType: typeof(RlpLimitException)
+            );
+
+            yield return TestCase(
+                "SetCode null auth element",
+                BuildSetCodeTxBytes(1)
+            );
         }
+
+        private static byte[] BuildSetCodeTxBytes(int authCount) => _txDecoder.Encode(new Transaction
+        {
+            Type = TxType.SetCode,
+            ChainId = 1,
+            GasLimit = 21000,
+            AuthorizationList = new AuthorizationTuple[authCount]
+        }, RlpBehaviors.SkipTypedWrapping).Bytes;
     }
 }
