@@ -10,7 +10,7 @@ public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseEIP1559TxDecoder<T>(TxType.SetCode, transactionFactory) where T : Transaction, new()
 {
     private static readonly RlpLimit AuthorizationListLimit = RlpLimit.For<Transaction>(
-        (int)(RlpConstants.MaxGasLimit / GasCostOf.PerAuthBaseRegular + 1),
+        (int)(SupportedChainLimits.MaxBlockGasLimit / GasCostOf.PerAuthBaseRegular + 1),
         nameof(Transaction.AuthorizationList)
     );
 

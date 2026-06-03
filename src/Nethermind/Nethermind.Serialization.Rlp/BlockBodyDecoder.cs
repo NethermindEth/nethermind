@@ -10,7 +10,7 @@ namespace Nethermind.Serialization.Rlp;
 public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpDecoder<BlockBody>
 {
     private static readonly RlpLimit TransactionsCountLimit = RlpLimit.For<BlockBody>(
-        (int)(RlpConstants.MaxGasLimit / GasCostOf.Transaction + 1),
+        (int)(SupportedChainLimits.MaxBlockGasLimit / GasCostOf.Transaction + 1),
         nameof(BlockBody.Transactions)
     );
 
