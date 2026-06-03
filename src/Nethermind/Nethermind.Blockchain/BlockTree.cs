@@ -1006,9 +1006,10 @@ namespace Nethermind.Blockchain
                     return false;
                 }
 
-                // Genesis is loaded and canonicalized at init (standard GenesisLoader, and TaikoGenesisBuilder
-                // for Taiko), so it is always on the main chain before any reorg; stop at it without re-moving.
-                if (parent.IsGenesis || IsMainChain(parent)) break;
+                // Stop at the reorg's common ancestor - the first parent already on the main chain. Genesis is
+                // canonicalized at init (GenesisLoader, and TaikoGenesisBuilder for Taiko), so it is caught here
+                // by IsMainChain; we deliberately do not special-case it, so a not-yet-canonical root is moved.
+                if (IsMainChain(parent)) break;
 
                 // A header whose body is missing cannot be moved onto the main chain. Preloaded blocks
                 // already carry their body, so only store-fetched parents need the check. For a forced (FCU)

@@ -210,7 +210,9 @@ public class BlockTreeTests
         Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(0).WithParent(block1).TestObject;
         Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(0).WithParent(block2).TestObject;
 
+        // Canonicalize genesis first (as a real node does) so the later walk stops at it instead of moving it.
         blockTree.SuggestBlock(block0);
+        blockTree.TryUpdateMainChain(block0.Header, true);
         blockTree.NewHeadBlock += (_, _) => { newHeadBlockNotifications++; };
         blockTree.BlockAddedToMain += (_, _) => { blockAddedToMainNotifications++; };
 
