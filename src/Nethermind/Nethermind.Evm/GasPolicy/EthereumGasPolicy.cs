@@ -222,7 +222,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             accessTracker.WarmUp(address);
         }
 
-        return (!spec.IsPrecompile(address) && accessTracker.WarmUp(address)) switch
+        // WarmUp first so the warm path skips IsPrecompile; charged gas matches (!IsPrecompile && WarmUp).
+        return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
         {
             true => UpdateGas(ref gas, GasCostOf.ColdAccountAccess),
             false when kind == AccountAccessKind.SelfDestructBeneficiary => true,

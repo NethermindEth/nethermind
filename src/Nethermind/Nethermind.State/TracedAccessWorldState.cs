@@ -45,6 +45,11 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     // Scratch buffer for intra-tx SLOAD on the parallel path (see GetInternal). Per-worker —
     // the returned span is consumed by the EVM stack push before another GetInternal runs.
     private readonly byte[] _scratchStorage = new byte[32];
+    // Single-slot cache for the last storage cell read: a repeated same-cell SLOAD skips the BAL
+    // read-recording. Reset in Clear() and Restore() (a revert can un-record the cell's slot).
+    private StorageCell _lastReadStorageCell;
+    private AccountChangesAtIndex? _lastReadStorageChanges;
+    private bool _hasLastReadCell;
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
 
@@ -90,8 +95,20 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
-        _generatingBlockAccessList.AddStorageRead(storageCell);
-        return GetInternal(storageCell);
+        AccountChangesAtIndex accountChanges;
+        if (_hasLastReadCell && _lastReadStorageCell.Equals(storageCell))
+        {
+            // Already recorded this exact cell; reuse its entry and skip the read-recording.
+            accountChanges = _lastReadStorageChanges!;
+        }
+        else
+        {
+            accountChanges = _generatingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
+            _lastReadStorageCell = storageCell;
+            _lastReadStorageChanges = accountChanges;
+            _hasLastReadCell = true;
+        }
+        return GetInternal(accountChanges, in storageCell);
     }
 
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
@@ -127,8 +144,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public ref readonly UInt256 GetBalance(Address address)
     {
-        AddAccountRead(address);
-        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        AccountChangesAtIndex? accountChanges = RecordReadAndGetChanges(address);
         if (accountChanges?.BalanceChange is { } bc)
         {
             _scratchBalance = bc.Value;
@@ -145,8 +161,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public ref readonly ValueHash256 GetCodeHash(Address address)
     {
-        AddAccountRead(address);
-        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        AccountChangesAtIndex? accountChanges = RecordReadAndGetChanges(address);
         if (accountChanges?.CodeChange is { } cc)
         {
             _scratchCodeHash = cc.CodeHash;
@@ -218,6 +233,17 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         }
     }
 
+    /// <summary>Records the account read (honoring SystemUser suppression) and returns its change entry in one probe.</summary>
+    private AccountChangesAtIndex? RecordReadAndGetChanges(Address address)
+    {
+        // Suppressed SystemUser reads must not be recorded: use a non-mutating lookup.
+        if (_systemAccountReadSuppressionDepth != 0 && address == Address.SystemUser)
+        {
+            return _generatingBlockAccessList.GetAccountChanges(address);
+        }
+        return _generatingBlockAccessList.RecordReadAndGet(address);
+    }
+
     public void SetIndex(uint index)
         => _generatingBlockAccessList.Index = index;
 
@@ -228,12 +254,15 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     {
         _generatingBlockAccessList.Clear();
         _systemAccountReadSuppressionDepth = 0;
+        _hasLastReadCell = false;
     }
 
     BlockAccessListAtIndex? IBlockAccessListSource.GeneratedBlockAccessList => _generatingBlockAccessList;
 
     public void Restore(Snapshot snapshot)
     {
+        // A revert can un-record the last cell's slot, so drop the single-slot cache.
+        _hasLastReadCell = false;
         _generatingBlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
         _innerWorldState.Restore(snapshot);
     }
@@ -355,19 +384,18 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         => GetCodeHashCurrent(address, out ValueHash256? hash) ? hash.Value : _innerWorldState.GetCodeHash(address);
 
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
+        => GetInternal(parallel ? _generatingBlockAccessList.GetAccountChanges(storageCell.Address) : null, in storageCell);
+
+    private ReadOnlySpan<byte> GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell)
     {
-        if (parallel)
+        if (parallel && accountChanges is not null && accountChanges.TryGetStorageChange(storageCell.Index, out StorageChange? change))
         {
-            AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);
-            if (accountChanges is not null && accountChanges.TryGetStorageChange(storageCell.Index, out StorageChange? change))
-            {
-                // Copy the BE word into _scratchStorage so the returned span outlives this
-                // frame without allocating a new byte[32] per SLOAD.
-                EvmWord value = change.Value.Value;
-                MemoryMarshal.CreateReadOnlySpan(
-                    ref Unsafe.As<EvmWord, byte>(ref value), 32).CopyTo(_scratchStorage);
-                return _scratchStorage;
-            }
+            // Copy the BE word into _scratchStorage so the returned span outlives this
+            // frame without allocating a new byte[32] per SLOAD.
+            EvmWord value = change.Value.Value;
+            MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<EvmWord, byte>(ref value), 32).CopyTo(_scratchStorage);
+            return _scratchStorage;
         }
 
         return _innerWorldState.Get(storageCell);
