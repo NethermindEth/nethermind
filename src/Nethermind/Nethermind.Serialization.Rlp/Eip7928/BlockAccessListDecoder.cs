@@ -29,8 +29,8 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         // BlockValidator would otherwise recompute the same keccak per block.
         int startPosition = ctx.Position;
 
-        // EIP-7928 AccountChanges is a 6-field sequence; an empty inner
-        // list (RLP 0xc0) is rejected by DecodeArray as defaultElement -> null.
+        // EIP-7928 AccountChanges is a 6-field sequence;
+        // an empty inner list (RLP 0xc0) causes DecodeArray to throw RlpException.
         ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, limit: _accountsLimit);
         ReadOnlySpan<byte> wireRlp = ctx.Data[startPosition..ctx.Position];
 
@@ -181,10 +181,6 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
             accountChangesDecoder.EncodePrepared(stream, sortedAccounts[i], in accountLengths[i], rlpBehaviors);
         }
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowEmptyAccountChanges() =>
-        throw new RlpException("Empty AccountChanges entry; EIP-7928 requires a 6-field sequence.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowAccountChangesOutOfOrder() =>

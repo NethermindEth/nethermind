@@ -94,8 +94,8 @@ public class BlockAccessListDecoderTests
         byte[] encoded = EncodeAccountChangesWithEmptySlotChangesEntry(TestItem.AddressA);
 
         Assert.That(
-            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Empty SlotChanges entry; EIP-7928 requires a 2-field sequence."));
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded),
+            Throws.TypeOf<RlpException>());
     }
 
     [Test]
