@@ -111,6 +111,18 @@ public class WitnessGeneratingWorldState(IWorldState state, IStateReader stateRe
         return State.TryGetAccount(address, out account);
     }
 
+    public override UInt256 GetNonce(Address address)
+    {
+        RecordEmptySlots(address);
+        return State.GetNonce(address);
+    }
+
+    public override bool IsStorageEmpty(Address address)
+    {
+        RecordEmptySlots(address);
+        return State.IsStorageEmpty(address);
+    }
+
     public override byte[]? GetCode(Address address)
     {
         RecordEmptySlots(address);

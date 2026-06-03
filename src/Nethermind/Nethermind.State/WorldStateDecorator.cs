@@ -36,18 +36,10 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
         => State.TryGetAccount(address, out account);
 
     public virtual UInt256 GetNonce(Address address)
-    {
-        TryGetAccount(address, out AccountStruct account);
-
-        return account.Nonce;
-    }
+        => State.GetNonce(address);
 
     public virtual bool IsStorageEmpty(Address address)
-    {
-        TryGetAccount(address, out AccountStruct account);
-
-        return account.IsStorageEmpty;
-    }
+        => State.IsStorageEmpty(address);
 
     public virtual ref readonly UInt256 GetBalance(Address address)
         => ref State.GetBalance(address);
