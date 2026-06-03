@@ -138,8 +138,6 @@ namespace Nethermind.Runner.Ethereum
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
-            // WebHost.DisposeAsync awaits StopAsync (which has its own 60 s graceful-drain cap, see WebHost.cs)
-            // and then disposes the Kestrel service provider. StopAsync alone would leak the service provider.
             try
             {
                 if (_webApp is not null) await _webApp.DisposeAsync();
