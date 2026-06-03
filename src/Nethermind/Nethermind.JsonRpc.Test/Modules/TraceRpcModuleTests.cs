@@ -1097,19 +1097,7 @@ public class TraceRpcModuleTests
         IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(
-            new(new(1)
-            {
-                new()
-                {
-                    Transaction = new LegacyTransactionForRpc
-                    {
-                        From = TestItem.AddressA,
-                        To = TestItem.AddressC
-                    },
-                    TraceTypes = ["trace"]
-                }
-            }));
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = TraceCallMany(context);
 
         traces.Data.Single().Action!.Gas.Should().BeGreaterThan(blockGasLimit);
     }
@@ -1124,21 +1112,17 @@ public class TraceRpcModuleTests
         IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> omittedGasTraces = context.TraceRpcModule.trace_callMany(
-            new(new(1)
-            {
-                new()
-                {
-                    Transaction = new LegacyTransactionForRpc
-                    {
-                        From = TestItem.AddressA,
-                        To = TestItem.AddressC
-                    },
-                    TraceTypes = ["trace"]
-                }
-            }));
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> omittedGasTraces = TraceCallMany(context);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> zeroGasTraces = TraceCallMany(context, gas: 0);
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> zeroGasTraces = context.TraceRpcModule.trace_callMany(
+        omittedGasTraces.Result.Error.Should().BeNull();
+        zeroGasTraces.Result.Error.Should().BeNull();
+        zeroGasTraces.Data.Single().Action!.Gas.Should().Be(omittedGasTraces.Data.Single().Action!.Gas);
+        zeroGasTraces.Data.Single().Action!.Gas.Should().BeGreaterThan(blockGasLimit);
+    }
+
+    private static ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> TraceCallMany(Context context, long? gas = null) =>
+        context.TraceRpcModule.trace_callMany(
             new(new(1)
             {
                 new()
@@ -1147,17 +1131,11 @@ public class TraceRpcModuleTests
                     {
                         From = TestItem.AddressA,
                         To = TestItem.AddressC,
-                        Gas = 0
+                        Gas = gas
                     },
                     TraceTypes = ["trace"]
                 }
             }));
-
-        omittedGasTraces.Result.Error.Should().BeNull();
-        zeroGasTraces.Result.Error.Should().BeNull();
-        zeroGasTraces.Data.Single().Action!.Gas.Should().Be(omittedGasTraces.Data.Single().Action!.Gas);
-        zeroGasTraces.Data.Single().Action!.Gas.Should().BeGreaterThan(blockGasLimit);
-    }
 
     [TestCase(0, 0, false)]
     [TestCase(2, 2, false)]
