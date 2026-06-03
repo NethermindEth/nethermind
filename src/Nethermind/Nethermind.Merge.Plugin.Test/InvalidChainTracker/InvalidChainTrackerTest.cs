@@ -180,7 +180,7 @@ public class InvalidChainTrackerTest
         Hash256 invalidBlock = Keccak.Compute("A");
         BlockHeader parentBlockHeader = new BlockHeaderBuilder().TestObject;
 
-        blockCacheService.BlockCache[parentBlockHeader.GetOrCalculateHash()] = new Block(parentBlockHeader);
+        blockCacheService.TryAddBlock(new Block(parentBlockHeader));
 
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.IsPostMerge(parentBlockHeader).Returns(false);
@@ -202,8 +202,8 @@ public class InvalidChainTrackerTest
         BlockHeader blockHeader = new BlockHeaderBuilder()
             .WithParentHash(parentBlockHeader.GetOrCalculateHash()).TestObject;
 
-        blockCacheService.BlockCache[blockHeader.GetOrCalculateHash()] = new Block(blockHeader);
-        blockCacheService.BlockCache[parentBlockHeader.GetOrCalculateHash()] = new Block(parentBlockHeader);
+        blockCacheService.TryAddBlock(new Block(blockHeader));
+        blockCacheService.TryAddBlock(new Block(parentBlockHeader));
 
         IPoSSwitcher alwaysPos = Substitute.For<IPoSSwitcher>();
         alwaysPos.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);

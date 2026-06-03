@@ -9,7 +9,18 @@ namespace Nethermind.Network.Dns;
 /// </summary>
 public class EnrLeaf : EnrTreeNode
 {
-    public string NodeRecord { get; set; } = string.Empty;
+    private string _nodeRecord = string.Empty;
+    private string[]? _records;
+
+    public string NodeRecord
+    {
+        get => _nodeRecord;
+        set
+        {
+            _nodeRecord = value;
+            _records = null;
+        }
+    }
 
     public override string ToString() => $"enr:{NodeRecord}";
 
@@ -17,5 +28,5 @@ public class EnrLeaf : EnrTreeNode
 
     public override string[] Refs => [];
 
-    public override string[] Records => new[] { NodeRecord };
+    public override string[] Records => _records ??= [ToString()];
 }
