@@ -23,6 +23,13 @@ public class MultiVersionMemoryScopeProvider(
 {
     public HashSet<Read<ParallelStateKey>> ReadSet { get; private set; } = null!;
     public Dictionary<ParallelStateKey, object> WriteSet { get; private set; } = null!;
+    /// <summary>
+    /// Code bytes inserted by this per-tx scope's EVM. The resettable world state's codeDb
+    /// is read-only, so writes to it are dropped — PushChanges must replay these onto the
+    /// main world state via InsertCode so the Account on the main state can resolve its
+    /// CodeHash.
+    /// </summary>
+    public Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> CodeWrites { get; private set; } = null!;
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
@@ -30,8 +37,9 @@ public class MultiVersionMemoryScopeProvider(
     {
         ReadSet = []; //TODO: object pooling?
         WriteSet = [];
+        CodeWrites = [];
         object writeSetLock = new();
-        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, writeSetLock);
+        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, writeSetLock, CodeWrites);
     }
 
     private static TResult Get<TStorage, TResult>(
@@ -67,8 +75,11 @@ public class MultiVersionMemoryScopeProvider(
         FeeAccumulator feeAccumulator,
         HashSet<Read<ParallelStateKey>> readSet,
         Dictionary<ParallelStateKey, object> writeSet,
-        object writeSetLock) : IWorldStateScopeProvider.IScope
+        object writeSetLock,
+        Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.IScope
     {
+        private readonly TrackingCodeDb _codeDb = new(baseScope.CodeDb, codeWrites);
+
         public void Dispose() => baseScope.Dispose();
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -118,7 +129,7 @@ public class MultiVersionMemoryScopeProvider(
             Nethermind.Core.BlockAccessLists.ReadOnlyBlockAccessList bal,
             IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => baseScope.HintBal(bal, sink);
 
-        public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
+        public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
             new MultiVersionMemoryStorageTree(address, version.TxIndex, baseScope.CreateStorageTree(address), multiVersionMemory, readSet);
@@ -304,6 +315,39 @@ public class MultiVersionMemoryScopeProvider(
 
                 readSet.Add(new Read<ParallelStateKey>(feeKey, feeVersion));
             }
+        }
+    }
+
+    // Captures code inserts so PushChanges can replay them onto the main world state.
+    // The resettable world state's codeDb (read-only DbProvider) drops writes, so without
+    // this the per-tx scope's InsertCode call leaves no trace and Account.CodeHash on the
+    // main state can't be resolved.
+    private sealed class TrackingCodeDb(
+        IWorldStateScopeProvider.ICodeDb inner,
+        Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.ICodeDb
+    {
+        public byte[]? GetCode(in Nethermind.Core.Crypto.ValueHash256 codeHash) =>
+            codeWrites.TryGetValue(codeHash, out byte[]? captured) ? captured : inner.GetCode(in codeHash);
+
+        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new TrackingSetter(inner.BeginCodeWrite(), codeWrites);
+
+        public bool ContainsCode(in Nethermind.Core.Crypto.ValueHash256 codeHash) =>
+            codeWrites.ContainsKey(codeHash) || inner.ContainsCode(in codeHash);
+
+        public void MarkCodePersisted(in Nethermind.Core.Crypto.ValueHash256 codeHash) => inner.MarkCodePersisted(in codeHash);
+
+        private sealed class TrackingSetter(
+            IWorldStateScopeProvider.ICodeSetter inner,
+            Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.ICodeSetter
+        {
+            public void Set(in Nethermind.Core.Crypto.ValueHash256 codeHash, System.ReadOnlySpan<byte> code)
+            {
+                // Capture before forwarding so PushChanges can re-insert onto the main state.
+                codeWrites[codeHash] = code.ToArray();
+                inner.Set(in codeHash, code);
+            }
+
+            public void Dispose() => inner.Dispose();
         }
     }
 }

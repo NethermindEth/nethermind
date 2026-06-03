@@ -66,9 +66,13 @@ public class BlockStmTransactionsExecutor(
         ParallelBlockMetricsCollector blockMetrics = new(txCount);
         FeeAccumulator feeAccumulator = new(txCount, block.Header.GasBeneficiary, _blockExecutionContext.Spec.FeeCollector);
         ParallelScheduler scheduler = new(txCount, trace, _setPool);
+        // Block-level aggregate of every code-write performed by any tx's EVM. Per-tx
+        // resettable scopes use a read-only codeDb so their InsertCode is dropped — we
+        // accumulate writes here and replay onto the main state in PushChanges.
+        Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> blockCodeWrites = [];
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, feeAccumulator, preBlockCaches, receipts, results, in _blockExecutionContext);
+        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, feeAccumulator, preBlockCaches, receipts, results, blockCodeWrites, in _blockExecutionContext);
         try
         {
             using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, _concurrencyLevel, blockMetrics);
@@ -76,7 +80,7 @@ public class BlockStmTransactionsExecutor(
             ThrowIfInvalidResults(block, transactions, results);
             FinalizeGasUsed(block, receipts);
             IReleaseSpec spec = _blockExecutionContext.Spec;
-            FeeRecipientWriteInfo feeRecipientWrites = PushChanges(stateProvider, multiVersionMemory, feeAccumulator, spec, txCount);
+            FeeRecipientWriteInfo feeRecipientWrites = PushChanges(stateProvider, multiVersionMemory, feeAccumulator, spec, txCount, blockCodeWrites);
             ApplyAccumulatedFees(stateProvider, feeAccumulator, spec, feeRecipientWrites);
             RaiseTransactionProcessedEvents(block, transactions, receipts);
             AccumulateBlockBloom(block, receipts);
@@ -124,7 +128,7 @@ public class BlockStmTransactionsExecutor(
         }
     }
 
-    private FeeRecipientWriteInfo PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, IReleaseSpec spec, int txCount)
+    private FeeRecipientWriteInfo PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, IReleaseSpec spec, int txCount, Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> blockCodeWrites)
     {
         HashSet<Address> storageTouched = [];
         Address? gasBeneficiary = feeAccumulator.GasBeneficiary;
@@ -201,7 +205,7 @@ public class BlockStmTransactionsExecutor(
             {
                 foreach (KeyValuePair<Address, Account?> accountUpdate in accountUpdates)
                 {
-                    ApplyAccountUpdate(worldState, accountUpdate.Key, accountUpdate.Value, spec);
+                    ApplyAccountUpdate(worldState, accountUpdate.Key, accountUpdate.Value, spec, blockCodeWrites);
 
                     if (gasBeneficiary is not null && accountUpdate.Key == gasBeneficiary)
                     {
@@ -219,12 +223,16 @@ public class BlockStmTransactionsExecutor(
         return new FeeRecipientWriteInfo(gasBeneficiaryLastWrite, feeCollectorLastWrite);
     }
 
-    // Applies a captured final Account state via the typed IWorldState primitives.
-    // Code bytes propagate via the shared KeyValueWithBatchingBackedCodeDb that backs
-    // every per-tx TrieStoreScopeProvider — per-tx scope.WorldState.Commit flushes
-    // InsertCode buffers to that shared store, so by the time PushChanges runs, the
-    // updated Account's CodeHash already resolves through worldState.GetCode.
-    private static void ApplyAccountUpdate(IWorldState worldState, Address address, Account? account, IReleaseSpec spec)
+    // Replays a captured final Account state onto the main world state using the typed
+    // IWorldState primitives. Code bytes captured by TrackingCodeDb during the per-tx run
+    // are re-inserted here (the resettable codeDb dropped them); without this the main
+    // state's Account.CodeHash would not resolve and the state root would diverge.
+    private static void ApplyAccountUpdate(
+        IWorldState worldState,
+        Address address,
+        Account? account,
+        IReleaseSpec spec,
+        Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> blockCodeWrites)
     {
         if (account is null)
         {
@@ -246,6 +254,13 @@ public class BlockStmTransactionsExecutor(
             worldState.SubtractFromBalance(address, oldBalance - account.Balance, spec, out _);
         }
         worldState.SetNonce(address, account.Nonce);
+
+        ref readonly Nethermind.Core.Crypto.ValueHash256 oldCodeHash = ref worldState.GetCodeHash(address);
+        if (oldCodeHash != account.CodeHash.ValueHash256
+            && blockCodeWrites.TryGetValue(account.CodeHash.ValueHash256, out byte[]? code))
+        {
+            worldState.InsertCode(address, account.CodeHash.ValueHash256, code, spec);
+        }
     }
 
     private static void ApplyAccumulatedFees(IWorldState worldState, FeeAccumulator feeAccumulator, IReleaseSpec spec, FeeRecipientWriteInfo feeRecipientWrites)
@@ -409,6 +424,7 @@ public class ParallelTransactionProcessor(
     PreBlockCaches preBlockCaches,
     TxReceipt[] receipts,
     TransactionResult[] results,
+    Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> blockCodeWrites,
     in BlockExecutionContext blockExecutionContext) : IParallelTransactionProcessor<ParallelStateKey, object>
 {
     // BlockReceiptsTracer's ctor takes (parallel: true); needs a custom policy.
@@ -447,6 +463,19 @@ public class ParallelTransactionProcessor(
             if (result) scope.WorldState.Commit(_blockExecutionContext.Spec, txTracer, commitRoots: true);
             EnsureFeeKeys(env.WorldStateScopeProvider, txIndex);
             feeAccumulator.MarkCommitted(txIndex);
+            // Aggregate per-tx code writes into the block-level dict so PushChanges can
+            // re-insert them onto the main state. Codehashes are content-addressed so
+            // collisions are idempotent; the lock prevents racing dictionary updates.
+            if (env.WorldStateScopeProvider.CodeWrites.Count > 0)
+            {
+                lock (blockCodeWrites)
+                {
+                    foreach (KeyValuePair<Nethermind.Core.Crypto.ValueHash256, byte[]> kv in env.WorldStateScopeProvider.CodeWrites)
+                    {
+                        blockCodeWrites[kv.Key] = kv.Value;
+                    }
+                }
+            }
             wroteNewLocation = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
             // BlockReceiptsTracer resets CurrentIndex = 0 per borrow, so the receipt the
             // tracer built has Index = 0. Stamp the real tx index here.

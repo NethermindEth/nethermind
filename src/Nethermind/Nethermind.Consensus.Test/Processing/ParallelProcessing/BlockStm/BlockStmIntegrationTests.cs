@@ -241,7 +241,6 @@ public class BlockStmIntegrationTests
     }
 
     [Test]
-    [Ignore("TODO: state roots diverge from sequential — uncovers a real selfdestruct/recreate bug in the parallel scope. Likely related to clear-key + account-update interaction in PushChanges; needs further audit.")]
     public async Task SelfDestruct_recreate_in_same_transaction_matches_sequential()
     {
         // Shanghai: SELFDESTRUCT does full destroy + recreate within one outer tx.
@@ -293,7 +292,6 @@ public class BlockStmIntegrationTests
     }
 
     [Test]
-    [Ignore("TODO: state roots diverge from sequential — exercises EIP-6780 same-tx-create gating. Likely a real bug in the parallel selfdestruct path; documented in README outstanding work.")]
     public async Task SelfDestruct_post_Cancun_keeps_contract_unless_created_same_tx()
     {
         // EIP-6780: SELFDESTRUCT in Cancun only destroys when called in the same tx as CREATE.
@@ -362,7 +360,6 @@ public class BlockStmIntegrationTests
     }
 
     [Test]
-    [Ignore("TODO: state roots diverge from sequential — receiver create lands after caller call under delays, exposing a revalidation or ordering issue in the parallel scope.")]
     public async Task Cross_contract_calls_match_sequential_under_delays()
     {
         // Receiver contract created later than caller's call — STM forces revalidation;
