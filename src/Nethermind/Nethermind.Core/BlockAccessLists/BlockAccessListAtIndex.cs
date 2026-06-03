@@ -29,18 +29,34 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public uint Index { get; set; }
 
-    private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
+    private readonly Dictionary<AddressAsKey, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
     private readonly List<Change> _changes = new(InitialChangeCapacity);
 
     private readonly List<CodeChange> _previousCodeChanges = [];
 
     private readonly Stack<AccountChangesAtIndex> _accountChangesPool = new();
 
-    public Dictionary<Address, AccountChangesAtIndex>.ValueCollection AccountChanges => _accountChanges.Values;
+    // Single-slot cache: repeated same-address reads skip the dict probe. Reset in Clear() (pooled);
+    // safe as entries are never individually removed.
+    private Address? _lastReadAddress;
+    private AccountChangesAtIndex? _lastReadChanges;
+
+    public Dictionary<AddressAsKey, AccountChangesAtIndex>.ValueCollection AccountChanges => _accountChanges.Values;
     public int AccountCount => _accountChanges.Count;
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
     public AccountChangesAtIndex? GetAccountChanges(Address address)
-        => _accountChanges.TryGetValue(address, out AccountChangesAtIndex? value) ? value : null;
+    {
+        // Read-only fast path reusing the single-slot cache (see RecordReadAndGet). Never creates an
+        // entry; only memoizes a dict hit, so it cannot change recorded BAL contents.
+        if (address.Equals(_lastReadAddress)) return _lastReadChanges;
+        if (_accountChanges.TryGetValue(address, out AccountChangesAtIndex? value))
+        {
+            _lastReadAddress = address;
+            _lastReadChanges = value;
+            return value;
+        }
+        return null;
+    }
 
     public void Clear()
     {
@@ -54,6 +70,8 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         _accountChanges.Clear();
         _changes.Clear();
         _previousCodeChanges.Clear();
+        _lastReadAddress = null;
+        _lastReadChanges = null;
     }
 
     public void Reset()
@@ -145,12 +163,26 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         accountChanges.NonceChange = new NonceChange(Index, newNonce);
     }
 
-    public void AddAccountRead(Address address)
+    public void AddAccountRead(Address address) => RecordReadAndGet(address);
+
+    /// <summary>Records an account read and returns its entry; one-slot cache skips repeat same-address probes.</summary>
+    public AccountChangesAtIndex RecordReadAndGet(Address address)
     {
-        if (!_accountChanges.ContainsKey(address))
+        if (!address.Equals(_lastReadAddress))
         {
-            _accountChanges.Add(address, RentAccountChanges(address));
+            _lastReadChanges = GetOrAddAccountChanges(address);
+            _lastReadAddress = address;
         }
+        return _lastReadChanges!;
+    }
+
+    /// <summary>Records a storage-slot read and returns the account entry in a single account resolution.</summary>
+    public AccountChangesAtIndex RecordStorageReadAndGet(Address address, UInt256 key)
+    {
+        AccountChangesAtIndex accountChanges = RecordReadAndGet(address);
+        if (!accountChanges.HasStorageChange(key))
+            accountChanges.AddStorageRead(key);
+        return accountChanges;
     }
 
     public void AddStorageChange(Address address, UInt256 key, UInt256 before, UInt256 after)
@@ -256,6 +288,8 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void Restore(int snapshot)
     {
+        // Intentionally does not reset _lastReadAddress/_lastReadChanges: Restore reverts entry values
+        // in place and never evicts an entry, so the cached reference stays valid. See class invariant.
         snapshot = int.Max(0, snapshot);
         Span<Change> span = CollectionsMarshal.AsSpan(_changes);
         int end = span.Length;
