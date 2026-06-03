@@ -43,6 +43,8 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
             }
         }
 
+        headers.Reverse();
+
         return headers;
     }
 }
