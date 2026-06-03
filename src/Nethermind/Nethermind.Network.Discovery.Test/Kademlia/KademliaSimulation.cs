@@ -185,21 +185,7 @@ public class KademliaSimulation
         return val;
     }
 
-    private static Hash256 ToHash(ValueHash256 hash) => hash.ToHash256();
-
-    private static ValueHash256 ToValueHash(Hash256 hash) => hash.ValueHash256;
-
-    private class ValueHashNodeHashProvider : IKeyOperator<ValueHash256, TestNode, Hash256>
-    {
-        public ValueHash256 GetKey(TestNode node) => node.Hash;
-
-        public Hash256 GetKeyHash(ValueHash256 key) => ToHash(key);
-
-        public ValueHash256 CreateRandomKeyAtDistance(Hash256 nodePrefix, int depth) =>
-            ToValueHash(Hash256KademliaDistance.Instance.GetRandomHashAtDistance(nodePrefix, depth));
-
-        public Hash256 GetHash(ValueHash256 key) => ToHash(key);
-    }
+    private static Hash256 ToHash(ValueHash256 hash) => ValueHashKeyOperator<TestNode>.ToHash(hash);
 
     private class TestFabric(KademliaConfig<ValueHash256> config)
     {
@@ -211,7 +197,7 @@ public class KademliaSimulation
         public bool SimulateLatency { get; set; } = false;
 
         internal ConcurrentDictionary<ValueHash256, ILifetimeScope> _nodes = new();
-        readonly ValueHashNodeHashProvider _nodeHashProvider = new();
+        private readonly ValueHashKeyOperator<TestNode> _nodeHashProvider = new(static node => node.Hash);
         private readonly Random _random = new(0);
 
         private bool TryGetReceiver(TestNode receiverHash, out ReceiverForNode contentKademliaMessageReceiver)

@@ -16,43 +16,19 @@ namespace Nethermind.Network.Discovery.Test.Discv5.Handlers;
 
 public class NodesResponseHandlerTests
 {
-    [Test]
-    public void ShouldRejectNonRoutableRecordFromPublicReceiver()
+    [TestCase("8.8.8.8", "127.0.0.1", 0)]
+    [TestCase("127.0.0.1", "127.0.0.1", 1)]
+    [TestCase("127.0.0.1", "192.0.2.1", 0)]
+    public void ShouldFilterRecordByReceiverAndRecordAddress(string receiverIp, string recordIp, int expectedCount)
     {
-        Node receiver = new(TestItem.PublicKeyA, "8.8.8.8", 30303);
-        NodeRecord loopbackRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
-        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, loopbackRecord);
+        Node receiver = new(TestItem.PublicKeyA, receiverIp, 30303);
+        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse(recordIp));
+        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, record);
 
-        using NodesMsg nodes = new([1], 1, [loopbackRecord]);
+        using NodesMsg nodes = new([1], 1, [record]);
         handler.Handle(nodes);
 
-        Assert.That(handler.GetNodes(), Is.Empty);
-    }
-
-    [Test]
-    public void ShouldAcceptNonRoutableRecordFromNonRoutableReceiver()
-    {
-        Node receiver = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303);
-        NodeRecord loopbackRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
-        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, loopbackRecord);
-
-        using NodesMsg nodes = new([1], 1, [loopbackRecord]);
-        handler.Handle(nodes);
-
-        Assert.That(handler.GetNodes(), Has.Length.EqualTo(1));
-    }
-
-    [Test]
-    public void ShouldRejectSpecialUseRecordFromNonRoutableReceiver()
-    {
-        Node receiver = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303);
-        NodeRecord documentationRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("192.0.2.1"));
-        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, documentationRecord);
-
-        using NodesMsg nodes = new([1], 1, [documentationRecord]);
-        handler.Handle(nodes);
-
-        Assert.That(handler.GetNodes(), Is.Empty);
+        Assert.That(handler.GetNodes(), Has.Length.EqualTo(expectedCount));
     }
 
     private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress)

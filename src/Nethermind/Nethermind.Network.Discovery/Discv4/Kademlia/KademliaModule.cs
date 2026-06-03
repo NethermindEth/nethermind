@@ -17,9 +17,9 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 /// </summary>
 /// <param name="masterNode"></param>
 /// <param name="bootNodes"></param>
-public class KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : Module
+public class KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(masterNode, bootNodes)
 {
-    protected override void Load(ContainerBuilder builder) => builder
+    protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
             .AddSingleton<DiscoveryPersistenceManager>()
 
             // This two class contains the actual `INodeSource` logic. As in finding nodes within the network.
@@ -28,13 +28,7 @@ public class KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes)
             // Some transport wiring.
             .AddSingleton<IKademliaAdapter, KademliaAdapter>()
             .Bind<IDiscoveryMsgListener, IKademliaAdapter>()
-            .AddSingleton<NettyDiscoveryHandler>()
-
-            // Register the main kademlia module and integration
-            .AddModule(new KademliaModule<PublicKey, Node, Hash256>())
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()
-            .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
-            .AddSingleton<IKeyOperator<PublicKey, Node, Hash256>, PublicKeyKeyOperator>()
-            .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => DiscoveryKademliaConfigFactory.Create(masterNode, bootNodes, discoveryConfig))
+            .AddSingleton<NettyDiscoveryHandler>()
             ;
 }

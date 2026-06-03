@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
@@ -112,7 +113,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
     protected static void Encode(RlpStream stream, IPEndPoint address, int length)
     {
         stream.StartSequence(length);
-        stream.Encode(address.Address.GetAddressBytes());
+        IPAddressRlp.Encode(stream, address.Address);
         //tcp port
         stream.Encode(address.Port);
         //udp port
@@ -121,7 +122,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
 
     protected static int GetIPEndPointLength(IPEndPoint address)
     {
-        int length = Rlp.LengthOf(address.Address.GetAddressBytes());
+        int length = IPAddressRlp.GetLength(address.Address);
         length += Rlp.LengthOf(address.Port);
         length += Rlp.LengthOf(address.Port);
         return length;
@@ -131,7 +132,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
     {
         int length = GetLengthSerializeNode(address, id);
         stream.StartSequence(length);
-        stream.Encode(address.Address.GetAddressBytes());
+        IPAddressRlp.Encode(stream, address.Address);
         //tcp port
         stream.Encode(address.Port);
         //udp port
@@ -141,7 +142,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
 
     protected static int GetLengthSerializeNode(IPEndPoint address, byte[] id)
     {
-        int length = Rlp.LengthOf(address.Address.GetAddressBytes());
+        int length = IPAddressRlp.GetLength(address.Address);
         length += Rlp.LengthOf(address.Port);
         length += Rlp.LengthOf(address.Port);
         length += Rlp.LengthOf(id);

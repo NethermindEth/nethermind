@@ -39,14 +39,14 @@ public class NettyDiscoveryHandler(
     private const int DefaultInboundMessageFilterSize = 8_192;
     private const int DefaultGlobalInboundMessageBurst = 512;
     private const int DefaultInboundMessageQueueCapacity = 1_024;
-    private const int DefaultInboundMessageWorkerCount = 16;
+    private const int DefaultInboundMessageWorkerCount = 4;
     private readonly ILogger _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly IDiscoveryMsgListener _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
     private readonly IMessageSerializationService _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
     private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-    private readonly NodeFilter[] _inboundMessageFilters = inboundMessageFilter is null
-            ? CreateDefaultInboundMessageFilters()
-            : [inboundMessageFilter];
+    private readonly AddressBurstLimiter _inboundMessageLimiter = inboundMessageFilter is null
+        ? new(DefaultInboundMessageBurstPerIp, DefaultInboundMessageFilterSize, DefaultInboundMessageWindow)
+        : new(inboundMessageFilter);
     private readonly FixedWindowLimiter _globalInboundMessageLimiter = new(Math.Max(1, globalInboundMessageBurst ?? DefaultGlobalInboundMessageBurst), DefaultGlobalInboundMessageWindow);
     private readonly Channel<InboundDiscoveryPacket> _inboundMessages = System.Threading.Channels.Channel.CreateBounded<InboundDiscoveryPacket>(
         new BoundedChannelOptions(Math.Max(1, inboundMessageQueueCapacity ?? DefaultInboundMessageQueueCapacity))
@@ -265,32 +265,10 @@ public class NettyDiscoveryHandler(
         Metrics.DiscoveryMessagesReceived.Increment(msg.MsgType);
     }
 
+    // Allow a small burst from the same IP so split Neighbors and other valid
+    // multi-packet exchanges are not dropped before signature verification.
     private bool TryAcceptInbound(IPEndPoint remoteEndpoint)
-    {
-        // Allow a small burst from the same IP so split Neighbors and other valid
-        // multi-packet exchanges are not dropped before signature verification.
-        NodeFilter[] inboundMessageFilters = _inboundMessageFilters;
-        for (int i = 0; i < inboundMessageFilters.Length; i++)
-        {
-            if (inboundMessageFilters[i].TryAccept(remoteEndpoint.Address, exactOnly: true))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static NodeFilter[] CreateDefaultInboundMessageFilters()
-    {
-        NodeFilter[] filters = new NodeFilter[DefaultInboundMessageBurstPerIp];
-        for (int i = 0; i < filters.Length; i++)
-        {
-            filters[i] = NodeFilter.CreateExact(DefaultInboundMessageFilterSize, DefaultInboundMessageWindow);
-        }
-
-        return filters;
-    }
+        => _inboundMessageLimiter.TryAccept(remoteEndpoint.Address);
 
     private async Task LogDisconnectFailureAsync(Task disconnectTask)
     {

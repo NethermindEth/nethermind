@@ -20,7 +20,7 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 /// Maps discv5 FINDNODE distance requests onto the protocol-specific Kademlia table.
 /// </summary>
 public class KademliaAdapter(
-    Lazy<IKademlia<PublicKey, Node>> kademlia,
+    Lazy<IKademlia<PublicKey, Node>> kademlia, // Cyclic dependency: Kademlia uses this adapter as its message sender.
     NettyDiscoveryV5Handler discoveryHandler,
     PacketCodec packetCodec,
     INodeRecordProvider nodeRecordProvider,
@@ -57,7 +57,7 @@ public class KademliaAdapter(
     private readonly LruCache<ResponseKey, IResponseHandler> _responseHandlers = new(MaxResponseHandlers, "discv5 response handlers");
     private readonly LruCache<Hash256, NodeRecord> _knownRecords = new(MaxKnownRecords, "discv5 known records");
     private readonly LruCache<SessionKey, long> _endpointChecks = new(MaxEndpointChecks, "discv5 endpoint checks");
-    private readonly NodeFilter[] _challengeRateLimiters = CreateChallengeRateLimiters();
+    private readonly AddressBurstLimiter _challengeRateLimiter = new(ChallengeRateLimitBurstPerIp, ChallengeRateLimitFilterSize, ChallengeRateLimitWindow);
 
     /// <inheritdoc/>
     public Node[] GetNodesAtDistances(IEnumerable<int> distances, Node? excluding = null)
@@ -719,28 +719,7 @@ public class KademliaAdapter(
         => now - challenge.CreatedAtMilliseconds > SentChallengeTtlMilliseconds;
 
     internal bool TryAcceptChallenge(IPEndPoint endpoint)
-    {
-        for (int i = 0; i < _challengeRateLimiters.Length; i++)
-        {
-            if (_challengeRateLimiters[i].TryAccept(endpoint.Address, exactOnly: true))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static NodeFilter[] CreateChallengeRateLimiters()
-    {
-        NodeFilter[] filters = new NodeFilter[ChallengeRateLimitBurstPerIp];
-        for (int i = 0; i < filters.Length; i++)
-        {
-            filters[i] = NodeFilter.CreateExact(ChallengeRateLimitFilterSize, ChallengeRateLimitWindow);
-        }
-
-        return filters;
-    }
+        => _challengeRateLimiter.TryAccept(endpoint.Address);
 
     private void StartEndpointCheck(Node remoteNode, CancellationToken token)
     {

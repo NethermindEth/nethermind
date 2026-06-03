@@ -14,16 +14,12 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 /// <summary>
 /// Specifies the protocol-specific Kademlia services used by discv5.
 /// </summary>
-public class KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : Module
+public class KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(masterNode, bootNodes)
 {
-    protected override void Load(ContainerBuilder builder) => builder
+    protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
         .AddSingleton<IKademliaNodeSource, NodeSource>()
         .AddSingleton<IKademliaAdapter, KademliaAdapter>()
         .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()
         .AddSingleton<NettyDiscoveryV5Handler>()
-        .AddSingleton<PacketCodec>()
-        .AddModule(new KademliaModule<PublicKey, Node, Hash256>())
-        .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
-        .AddSingleton<IKeyOperator<PublicKey, Node, Hash256>, PublicKeyKeyOperator>()
-        .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => DiscoveryKademliaConfigFactory.Create(masterNode, bootNodes, discoveryConfig));
+        .AddSingleton<PacketCodec>();
 }

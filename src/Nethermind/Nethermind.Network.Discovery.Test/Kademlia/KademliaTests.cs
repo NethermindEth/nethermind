@@ -26,7 +26,7 @@ public class KademliaTests
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
             .AddSingleton<ITimestamper>(new ManualTimestamper(new System.DateTime(2025, 5, 13, 21, 0, 0, System.DateTimeKind.Utc)))
             .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
-            .AddSingleton<IKeyOperator<ValueHash256, ValueHash256, Hash256>>(new ValueHashNodeHashProvider())
+            .AddSingleton<IKeyOperator<ValueHash256, ValueHash256, Hash256>>(new ValueHashKeyOperator<ValueHash256>(static node => node))
             .AddSingleton(config)
             .AddSingleton(_kademliaMessageSender)
             .AddSingleton<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>>()
@@ -197,20 +197,11 @@ public class KademliaTests
         Assert.That(kad.GetAllAtDistance(250).ToHashSet(), Is.EquivalentTo(testHashes[10..].ToHashSet()));
     }
 
-    private static Hash256 ToHash(ValueHash256 hash) => hash.ToHash256();
+    private static Hash256 ToHash(ValueHash256 hash) => ValueHashKeyOperator<ValueHash256>.ToHash(hash);
 
-    private static ValueHash256 ToValueHash(Hash256 hash) => hash.ValueHash256;
+    private static ValueHash256 ToValueHash(Hash256 hash) => ValueHashKeyOperator<ValueHash256>.ToValueHash(hash);
 
     private static ValueHash256 RandomValueHashAtDistance(ValueHash256 currentHash, int distance) =>
         ToValueHash(Hash256KademliaDistance.Instance.GetRandomHashAtDistance(ToHash(currentHash), distance));
 
-    private class ValueHashNodeHashProvider : IKeyOperator<ValueHash256, ValueHash256, Hash256>
-    {
-        public ValueHash256 GetKey(ValueHash256 node) => node;
-
-        public Hash256 GetKeyHash(ValueHash256 key) => ToHash(key);
-
-        public ValueHash256 CreateRandomKeyAtDistance(Hash256 nodePrefix, int depth) =>
-            ToValueHash(Hash256KademliaDistance.Instance.GetRandomHashAtDistance(nodePrefix, depth));
-    }
 }
