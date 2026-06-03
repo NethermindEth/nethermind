@@ -5,22 +5,22 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 
-public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime, ILogManager logManager)
+public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime)
 {
     public ParallelAutoReadOnlyTxProcessingEnv Create(TxVersion version, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, PreBlockCaches preBlockCaches)
     {
+        // Do NOT wrap the per-tx resettable scope in a populating prewarmer here. That
+        // prewarmer would write every fresh read into the SHARED PreBlockCaches.StateCache,
+        // poisoning subsequent txs whose outer (read-only) prewarmer would then return that
+        // stale value without consulting MultiVersionMemory. The outer prewarmer in the DI
+        // chain provides block-level caching; per-tx reads must go directly through MVMM.
         MultiVersionMemoryScopeProvider worldState = new(
             version,
-            new PrewarmerScopeProvider(
-                worldStateManager.CreateResettableWorldState(),
-                preBlockCaches,
-                logManager,
-                populatePreBlockCache: true),
+            worldStateManager.CreateResettableWorldState(),
             multiVersionMemory,
             feeAccumulator
         );

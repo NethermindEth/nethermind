@@ -36,6 +36,12 @@ public class BlockStmTransactionsExecutor(
     private readonly ObjectPool<HashSet<int>> _setPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>());
     private BlockExecutionContext _blockExecutionContext;
     private readonly ILogger _logger = logManager.GetClassLogger<BlockStmTransactionsExecutor>();
+
+    /// <summary>
+    /// Most recent per-block metrics from this executor instance. Tests can assert against
+    /// this without contending on the static <see cref="Metrics"/> counters.
+    /// </summary>
+    public ParallelBlockMetrics LastBlockSnapshot { get; private set; } = ParallelBlockMetrics.Empty;
     // 0 => use logical-processor count, otherwise the configured value.
     private readonly int _concurrencyLevel = blocksConfig.BlockStmConcurrency > 0
         ? blocksConfig.BlockStmConcurrency
@@ -80,6 +86,7 @@ public class BlockStmTransactionsExecutor(
         finally
         {
             ParallelBlockMetrics snapshot = blockMetrics.Snapshot();
+            LastBlockSnapshot = snapshot;
             Metrics.ReportBlock(snapshot);
             LogParallelBlockReport(block, snapshot, results, processedSuccessfully);
         }
@@ -213,8 +220,10 @@ public class BlockStmTransactionsExecutor(
     }
 
     // Applies a captured final Account state via the typed IWorldState primitives.
-    // TODO(audit): CodeHash bytes inserted by an in-tx CREATE live in the per-tx scope's
-    // CodeDb and are discarded on scope dispose — not yet propagated to the outer state.
+    // Code bytes propagate via the shared KeyValueWithBatchingBackedCodeDb that backs
+    // every per-tx TrieStoreScopeProvider — per-tx scope.WorldState.Commit flushes
+    // InsertCode buffers to that shared store, so by the time PushChanges runs, the
+    // updated Account's CodeHash already resolves through worldState.GetCode.
     private static void ApplyAccountUpdate(IWorldState worldState, Address address, Account? account, IReleaseSpec spec)
     {
         if (account is null)
@@ -439,7 +448,11 @@ public class ParallelTransactionProcessor(
             EnsureFeeKeys(env.WorldStateScopeProvider, txIndex);
             feeAccumulator.MarkCommitted(txIndex);
             wroteNewLocation = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
-            receipts[txIndex] = !result ? null : tracer.LastReceipt;
+            // BlockReceiptsTracer resets CurrentIndex = 0 per borrow, so the receipt the
+            // tracer built has Index = 0. Stamp the real tx index here.
+            TxReceipt? receipt = !result ? null : tracer.LastReceipt;
+            if (receipt is not null) receipt.Index = txIndex;
+            receipts[txIndex] = receipt;
 
             return Status.Ok;
         }

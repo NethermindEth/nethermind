@@ -58,7 +58,26 @@ public static class Metrics
         Interlocked.Add(ref Reexecutions, LastBlockReexecutions = snapshot.Reexecutions);
         Interlocked.Add(ref Revalidations, LastBlockRevalidations = snapshot.Revalidations);
         Interlocked.Add(ref BlockedReads, LastBlockBlockedReads = snapshot.BlockedReads);
+    }
 
+    /// <summary>
+    /// Resets all global counters and the last-block snapshot to zero. Test-only helper —
+    /// production never calls this. Mirrors what fresh-process startup state looks like so
+    /// tests that assert on counter deltas don't bleed into each other.
+    /// </summary>
+    public static void ResetForTests()
+    {
+        _lastBlock = default;
+        Interlocked.Exchange(ref LastBlockSnapshotSequence, 0);
+        LastBlockParallelizationPercent = 0;
+        Interlocked.Exchange(ref TxCount, 0);
+        Interlocked.Exchange(ref LastBlockTxCount, 0);
+        Interlocked.Exchange(ref Reexecutions, 0);
+        Interlocked.Exchange(ref LastBlockReexecutions, 0);
+        Interlocked.Exchange(ref Revalidations, 0);
+        Interlocked.Exchange(ref LastBlockRevalidations, 0);
+        Interlocked.Exchange(ref BlockedReads, 0);
+        Interlocked.Exchange(ref LastBlockBlockedReads, 0);
     }
 
     /// <summary>
