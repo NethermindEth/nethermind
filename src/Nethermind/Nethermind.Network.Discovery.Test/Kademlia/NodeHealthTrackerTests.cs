@@ -89,9 +89,10 @@ public class NodeHealthTrackerTests
         Assert.That(routing.RemoveCalls, Does.Not.Contain(staleHash));
     }
 
-    [Test]
+    [TestCase(false)]
+    [TestCase(true)]
     [CancelAfter(10000)]
-    public async Task Dispose_ShouldCancelActiveRefreshWithoutRemovingNode(CancellationToken token)
+    public async Task Dispose_ShouldCancelActiveRefreshWithoutRemovingNode(bool asyncDispose, CancellationToken token)
     {
         TaskCompletionSource pingStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource pingCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -120,7 +121,14 @@ public class NodeHealthTrackerTests
         tracker.OnIncomingMessageFrom(Remote);
         await pingStarted.Task.WaitAsync(token);
 
-        tracker.Dispose();
+        if (asyncDispose)
+        {
+            await tracker.DisposeAsync();
+        }
+        else
+        {
+            tracker.Dispose();
+        }
 
         await pingCancelled.Task.WaitAsync(token);
         Assert.That(routing.RemoveCalls, Does.Not.Contain(ToHash(ValueKeccak.Compute(Stale))));

@@ -15,7 +15,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
     INodeHashProvider<TNode, TKadKey> nodeHashProvider,
     IKademliaMessageSender<TKey, TNode> kademliaMessageSender,
     ILogManager? logManager = null
-) : INodeHealthTracker<TNode>, IDisposable
+) : INodeHealthTracker<TNode>, IDisposable, IAsyncDisposable
     where TNode : notnull
     where TKadKey : notnull
 {
@@ -140,34 +140,8 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-        {
-            return;
-        }
-
-        _refreshCancellation.Cancel();
-        Task[] refreshTasks = new Task[_refreshTasks.Count];
-        int refreshTaskCount = 0;
-        foreach ((_, Task refreshTask) in _refreshTasks)
-        {
-            if (refreshTaskCount == refreshTasks.Length)
-            {
-                Array.Resize(ref refreshTasks, refreshTaskCount + 1);
-            }
-
-            refreshTasks[refreshTaskCount++] = refreshTask;
-        }
-
-        if (refreshTaskCount == 0)
-        {
-            _refreshCancellation.Dispose();
-            return;
-        }
-
-        if (refreshTaskCount != refreshTasks.Length)
-        {
-            Array.Resize(ref refreshTasks, refreshTaskCount);
-        }
+        Task[] refreshTasks = CancelAndGetRefreshTasks();
+        if (refreshTasks.Length == 0) return;
 
         bool completed = false;
         try
@@ -187,6 +161,70 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
         {
             _refreshCancellation.Dispose();
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Task[] refreshTasks = CancelAndGetRefreshTasks();
+        if (refreshTasks.Length == 0) return;
+
+        bool completed = false;
+        try
+        {
+            await Task.WhenAll(refreshTasks).WaitAsync(_refreshPingTimeout + TimeSpan.FromMilliseconds(500));
+            completed = true;
+        }
+        catch (TimeoutException)
+        {
+        }
+        catch (OperationCanceledException)
+        {
+            completed = true;
+        }
+        catch (Exception e)
+        {
+            completed = true;
+            if (_logger.IsDebug) _logger.Debug($"Error while disposing node health tracker: {e}");
+        }
+
+        if (completed)
+        {
+            _refreshCancellation.Dispose();
+        }
+    }
+
+    private Task[] CancelAndGetRefreshTasks()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return [];
+        }
+
+        _refreshCancellation.Cancel();
+        Task[] refreshTasks = new Task[_refreshTasks.Count];
+        int refreshTaskCount = 0;
+        foreach ((_, Task refreshTask) in _refreshTasks)
+        {
+            if (refreshTaskCount == refreshTasks.Length)
+            {
+                Array.Resize(ref refreshTasks, refreshTaskCount + 1);
+            }
+
+            refreshTasks[refreshTaskCount++] = refreshTask;
+        }
+
+        if (refreshTaskCount == 0)
+        {
+            _refreshCancellation.Dispose();
+            return [];
+        }
+
+        if (refreshTaskCount != refreshTasks.Length)
+        {
+            Array.Resize(ref refreshTasks, refreshTaskCount);
+        }
+
+        return refreshTasks;
     }
 
     private static bool HasOnlyCancellationExceptions(AggregateException e)
