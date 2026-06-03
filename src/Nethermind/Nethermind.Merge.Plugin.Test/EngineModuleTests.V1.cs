@@ -34,6 +34,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -2055,51 +2056,51 @@ public partial class EngineModuleTests
 
     private static readonly string[] SszRestPathsParis =
     [
-        "POST /engine/v2/paris/payloads",
-        "GET /engine/v2/paris/payloads/{payload_id}",
-        "POST /engine/v2/paris/forkchoice",
-        "GET /engine/v2/capabilities",
-        "GET /engine/v2/identity",
+        SszRestPaths.PostV1Payloads,
+        SszRestPaths.GetV1Payloads,
+        SszRestPaths.PostV1Forkchoice,
+        SszRestPaths.PostV1Capabilities,
+        SszRestPaths.PostV1ClientVersion,
     ];
 
     private static readonly string[] SszRestPathsShanghai =
     [
-        "POST /engine/v2/shanghai/payloads",
-        "GET /engine/v2/shanghai/payloads/{payload_id}",
-        "POST /engine/v2/shanghai/forkchoice",
-        "POST /engine/v2/shanghai/bodies/hash",
-        "GET /engine/v2/shanghai/bodies",
+        SszRestPaths.PostV2Payloads,
+        SszRestPaths.GetV2Payloads,
+        SszRestPaths.PostV2Forkchoice,
+        SszRestPaths.PostV1PayloadBodiesByHash,
+        SszRestPaths.GetV1PayloadBodiesByRange,
     ];
 
     private static readonly string[] SszRestPathsCancun =
     [
-        "POST /engine/v2/cancun/payloads",
-        "GET /engine/v2/cancun/payloads/{payload_id}",
-        "POST /engine/v2/cancun/forkchoice",
-        "POST /engine/v2/blobs/v1",
+        SszRestPaths.PostV3Payloads,
+        SszRestPaths.GetV3Payloads,
+        SszRestPaths.PostV3Forkchoice,
+        SszRestPaths.PostV1Blobs,
     ];
 
     private static readonly string[] SszRestPathsPrague =
     [
-        "POST /engine/v2/prague/payloads",
-        "GET /engine/v2/prague/payloads/{payload_id}",
+        SszRestPaths.PostV4Payloads,
+        SszRestPaths.GetV4Payloads,
     ];
 
     private static readonly string[] SszRestPathsOsaka =
     [
-        "GET /engine/v2/osaka/payloads/{payload_id}",
-        "POST /engine/v2/blobs/v2",
-        "POST /engine/v2/blobs/v3",
-        "POST /engine/v2/blobs/v4",
+        SszRestPaths.GetV5Payloads,
+        SszRestPaths.PostV2Blobs,
+        SszRestPaths.PostV3Blobs,
+        SszRestPaths.PostV4Blobs,
     ];
 
     private static readonly string[] SszRestPathsAmsterdam =
     [
-        "POST /engine/v2/amsterdam/payloads",
-        "GET /engine/v2/amsterdam/payloads/{payload_id}",
-        "POST /engine/v2/amsterdam/forkchoice",
-        "POST /engine/v2/amsterdam/bodies/hash",
-        "GET /engine/v2/amsterdam/bodies",
+        SszRestPaths.PostV5Payloads,
+        SszRestPaths.GetV6Payloads,
+        SszRestPaths.PostV4Forkchoice,
+        SszRestPaths.PostV2PayloadBodiesByHash,
+        SszRestPaths.GetV2PayloadBodiesByRange,
     ];
 
     public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()

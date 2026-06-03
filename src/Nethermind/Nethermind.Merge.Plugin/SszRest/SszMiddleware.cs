@@ -419,62 +419,9 @@ public sealed class SszMiddleware
         return false;
     }
 
-    public static int? MapForkToVersion(string fork, string resource, string httpMethod)
-    {
-        fork = fork.ToLowerInvariant();
-        resource = resource.ToLowerInvariant();
+    public static int? MapForkToVersion(string fork, string resource, string httpMethod) =>
+        SszRestPaths.MapForkToVersion(fork, resource, httpMethod);
 
-        if (resource == "payloads")
-        {
-            if (httpMethod == "POST")
-            {
-                return fork switch
-                {
-                    "paris" => 1,
-                    "shanghai" => 2,
-                    "cancun" => 3,
-                    "prague" or "osaka" => 4,
-                    "amsterdam" => 5,
-                    _ => null
-                };
-            }
-            else if (httpMethod == "GET")
-            {
-                return fork switch
-                {
-                    "paris" => 1,
-                    "shanghai" => 2,
-                    "cancun" => 3,
-                    "prague" => 4,
-                    "osaka" => 5,
-                    "amsterdam" => 6,
-                    _ => null
-                };
-            }
-        }
-        else if (resource == "forkchoice")
-        {
-            return fork switch
-            {
-                "paris" => 1,
-                "shanghai" => 2,
-                "cancun" or "prague" or "osaka" => 3,
-                "amsterdam" => 4,
-                _ => null
-            };
-        }
-        else if (resource == "bodies/hash" || resource == "bodies")
-        {
-            return fork switch
-            {
-                "paris" or "shanghai" or "cancun" or "prague" or "osaka" => 1,
-                "amsterdam" => 2,
-                _ => null
-            };
-        }
-
-        return null;
-    }
 
     private static SszRequestKind ClassifySszRequest(HttpContext ctx)
     {

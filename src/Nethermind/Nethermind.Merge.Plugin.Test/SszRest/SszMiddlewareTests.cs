@@ -157,8 +157,8 @@ public class SszMiddlewareTests
         return w.WrittenSpan.ToArray();
     }
 
-    [TestCase(1, "/engine/v2/paris/payloads")]
-    [TestCase(2, "/engine/v2/shanghai/payloads")]
+    [TestCase(1, "/engine/v2/" + SszRestPaths.Paris + "/payloads")]
+    [TestCase(2, "/engine/v2/" + SszRestPaths.Shanghai + "/payloads")]
     public async Task NewPayload_routes_to_correct_engine_module_version(int version, string path)
     {
         PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
@@ -178,8 +178,8 @@ public class SszMiddlewareTests
         await _engineModule.Received(version == 2 ? 1 : 0).engine_newPayloadV2(Arg.Any<ExecutionPayload>());
     }
 
-    [TestCase(1, "/engine/v2/paris/payloads/0x0102030405060708")]
-    [TestCase(2, "/engine/v2/shanghai/payloads/0x0102030405060708")]
+    [TestCase(1, "/engine/v2/" + SszRestPaths.Paris + "/payloads/0x0102030405060708")]
+    [TestCase(2, "/engine/v2/" + SszRestPaths.Shanghai + "/payloads/0x0102030405060708")]
     public async Task GetPayload_routes_to_correct_handler_with_no_store_header(int version, string path)
     {
         _engineModule.engine_getPayloadV1(Arg.Any<byte[]>())
@@ -197,10 +197,10 @@ public class SszMiddlewareTests
         await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadV2(Arg.Any<byte[]>());
     }
 
-    [TestCase("/engine/v2/paris/forkchoice", 1)]
-    [TestCase("/engine/v2/shanghai/forkchoice", 2)]
-    [TestCase("/engine/v2/cancun/forkchoice", 3)]
-    [TestCase("/engine/v2/amsterdam/forkchoice", 4)]
+    [TestCase("/engine/v2/" + SszRestPaths.Paris + "/forkchoice", 1)]
+    [TestCase("/engine/v2/" + SszRestPaths.Shanghai + "/forkchoice", 2)]
+    [TestCase("/engine/v2/" + SszRestPaths.Cancun + "/forkchoice", 3)]
+    [TestCase("/engine/v2/" + SszRestPaths.Amsterdam + "/forkchoice", 4)]
     public async Task Forkchoice_calls_correct_engine_module_version(string path, int version)
     {
         ForkchoiceUpdatedV1Result fcuResult = new()
@@ -271,8 +271,8 @@ public class SszMiddlewareTests
         await _engineModule.Received(isV3 ? 1 : 0).engine_getBlobsV3(Arg.Any<byte[][]>());
     }
 
-    [TestCase(1, "/engine/v2/shanghai/bodies/hash")]
-    [TestCase(2, "/engine/v2/amsterdam/bodies/hash")]
+    [TestCase(1, "/engine/v2/" + SszRestPaths.Shanghai + "/bodies/hash")]
+    [TestCase(2, "/engine/v2/" + SszRestPaths.Amsterdam + "/bodies/hash")]
     public async Task GetPayloadBodiesByHash_routes_to_correct_engine_method(int version, string path)
     {
         _engineModule.engine_getPayloadBodiesByHashV1(Arg.Any<IReadOnlyList<Hash256>>())
@@ -292,8 +292,8 @@ public class SszMiddlewareTests
         await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadBodiesByHashV2(Arg.Any<IReadOnlyList<Hash256>>());
     }
 
-    [TestCase(1, "/engine/v2/shanghai/bodies")]
-    [TestCase(2, "/engine/v2/amsterdam/bodies")]
+    [TestCase(1, "/engine/v2/" + SszRestPaths.Shanghai + "/bodies")]
+    [TestCase(2, "/engine/v2/" + SszRestPaths.Amsterdam + "/bodies")]
     public async Task GetPayloadBodiesByRange_routes_to_correct_engine_method_with_correct_args(int version, string path)
     {
         const long expectedStart = 7;
@@ -392,7 +392,7 @@ public class SszMiddlewareTests
         _auth.Authenticate(Arg.Any<string>()).Returns(false);
 
         byte[] body = BuildMinimalV1NewPayloadRequest();
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads", body);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/payloads", body);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -403,7 +403,7 @@ public class SszMiddlewareTests
     [Test]
     public async Task Oversized_body_returns_413_without_calling_engine_module()
     {
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads", []);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/payloads", []);
         ctx.Request.ContentLength = SszMiddleware.MaxBodySize + 1;
         ctx.Request.Body = new MemoryStream(new byte[1]);
 
@@ -418,7 +418,7 @@ public class SszMiddlewareTests
     {
         bool nextInvoked = false;
         SszMiddleware mw = BuildMiddleware(_ => { nextInvoked = true; return Task.CompletedTask; });
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/unknown-resource", []);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/unknown-resource", []);
 
         await mw.InvokeAsync(ctx);
 
@@ -430,7 +430,7 @@ public class SszMiddlewareTests
     public async Task Post_payloads_with_unknown_extra_returns_404_not_500()
     {
         // Extra segments on a non-AcceptsPathExtra resource must be 404, not silently dispatched.
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads/foo/bar", []);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/payloads/foo/bar", []);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -443,7 +443,7 @@ public class SszMiddlewareTests
     {
         // TryRoute must reject runs of '/' so that //abc does not reach
         // the payload-id parser and produce a confusing parse error.
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads//abc", []);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/payloads//abc", []);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -457,7 +457,7 @@ public class SszMiddlewareTests
         byte[] garbage = new byte[64];
         new Random(42).NextBytes(garbage);
 
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads", garbage);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/payloads", garbage);
 
         Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
@@ -470,7 +470,7 @@ public class SszMiddlewareTests
     public async Task Truncated_body_with_overstated_content_length_returns_400()
     {
         byte[] body = new byte[16];
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads", body);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/payloads", body);
         // Declare more bytes than the stream will deliver — ReadAtLeastAsync returns short.
         ctx.Request.ContentLength = body.Length + 64;
 
@@ -516,7 +516,7 @@ public class SszMiddlewareTests
         _engineModule.engine_newPayloadV1(Arg.Any<ExecutionPayload>())
             .Returns<Task<ResultWrapper<PayloadStatusV1>>>(_ => throw new InvalidOperationException("simulated server error"));
 
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads", BuildMinimalV1NewPayloadRequest());
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/payloads", BuildMinimalV1NewPayloadRequest());
 
         // Simulate the encode-failure → ctx.Abort() effect by pre-cancelling RequestAborted.
         // DefaultHttpContext's Abort() is a no-op without a real lifetime feature, so we
@@ -544,7 +544,7 @@ public class SszMiddlewareTests
         SszMiddleware middleware = new(
             _ => Task.CompletedTask, _urlCollection, _auth, [handler], _processExitSource, LimboLogs.Instance);
 
-        DefaultHttpContext ctx = MakePostContext($"/engine/v2/paris/{ZeroLengthEncodeHandler.ResourceName}", []);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/{ZeroLengthEncodeHandler.ResourceName}", []);
 
         await middleware.InvokeAsync(ctx);
 
@@ -736,7 +736,7 @@ public class SszMiddlewareTests
         };
         byte[] body = ForkchoiceUpdatedV3RequestWire.Encode(request);
 
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/cancun/forkchoice", body);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Cancun}/forkchoice", body);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -767,7 +767,7 @@ public class SszMiddlewareTests
         };
         byte[] body = ForkchoiceUpdatedV3RequestWire.Encode(request);
 
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/cancun/forkchoice", body);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Cancun}/forkchoice", body);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -815,7 +815,7 @@ public class SszMiddlewareTests
     [Test]
     public async Task Trailing_slash_on_fork_scoped_path_returns_404()
     {
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/cancun/forkchoice/", []);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Cancun}/forkchoice/", []);
         await _middleware.InvokeAsync(ctx);
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
         string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
@@ -832,8 +832,8 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
     }
 
-    [TestCase("/engine/v2/cancun/forkchoice/whatever")]
-    [TestCase("/engine/v2/paris/payloads/foo/bar")]
+    [TestCase("/engine/v2/" + SszRestPaths.Cancun + "/forkchoice/whatever")]
+    [TestCase("/engine/v2/" + SszRestPaths.Paris + "/payloads/foo/bar")]
     public async Task Extra_path_segment_on_non_accepting_handler_returns_404(string path)
     {
         DefaultHttpContext ctx = MakePostContext(path, []);
@@ -868,7 +868,7 @@ public class SszMiddlewareTests
     [Test]
     public async Task Invalid_payload_id_in_path_returns_400()
     {
-        DefaultHttpContext ctx = MakeGetContext("/engine/v2/paris/payloads/0xZZZZZZZZZZZZZZZZ");
+        DefaultHttpContext ctx = MakeGetContext($"/engine/v2/{SszRestPaths.Paris}/payloads/0xZZZZZZZZZZZZZZZZ");
 
         await _middleware.InvokeAsync(ctx);
 
@@ -878,7 +878,7 @@ public class SszMiddlewareTests
     [Test]
     public async Task GetPayloadBodiesByRange_over_limit_returns_413_request_too_large()
     {
-        DefaultHttpContext ctx = MakeGetContext("/engine/v2/shanghai/bodies");
+        DefaultHttpContext ctx = MakeGetContext($"/engine/v2/{SszRestPaths.Shanghai}/bodies");
         ctx.Request.QueryString = new QueryString("?from=1&count=1000");
 
         await _middleware.InvokeAsync(ctx);
@@ -894,7 +894,7 @@ public class SszMiddlewareTests
         _engineModule.engine_getPayloadBodiesByRangeV1(Arg.Any<long>(), Arg.Any<long>())
             .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success([]));
 
-        DefaultHttpContext ctx = MakeGetContext("/engine/v2/shanghai/bodies");
+        DefaultHttpContext ctx = MakeGetContext($"/engine/v2/{SszRestPaths.Shanghai}/bodies");
         ctx.Request.QueryString = new QueryString("?from=0&count=1");
 
         await _middleware.InvokeAsync(ctx);
@@ -908,7 +908,7 @@ public class SszMiddlewareTests
     {
         byte[] garbage = new byte[64];
         new Random(42).NextBytes(garbage);
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads", garbage);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/payloads", garbage);
 
         await _middleware.InvokeAsync(ctx);
 
