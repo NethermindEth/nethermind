@@ -388,10 +388,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     {
         if (parallel && accountChanges?.TryGetStorageChange(storageCell.Index, out StorageChange? change) == true)
         {
-            // Copy the BE word into _scratchStorage so the returned span outlives this
+            // Store the 32-byte word straight into _scratchStorage; the returned span outlives this
             // frame without allocating a new byte[32] per SLOAD.
-            EvmWord value = change.Value.Value;
-            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref value), 32).CopyTo(_scratchStorage);
+            Unsafe.WriteUnaligned(ref MemoryMarshal.GetArrayDataReference(_scratchStorage), change.Value.Value);
             return _scratchStorage;
         }
 
