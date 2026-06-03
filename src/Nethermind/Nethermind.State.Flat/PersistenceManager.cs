@@ -485,10 +485,18 @@ public class PersistenceManager(
                         }
                     });
 
+                // Remove exactly the converted in-memory snapshots — not RemoveStatesUntil(end),
+                // which would also drop snapshots added concurrently within the block range. Must
+                // run before the channel handoff below: the compactor takes ownership of
+                // allStateIds and disposes it.
+                foreach (StateId state in allStateIds)
+                {
+                    _snapshotRepository.RemoveAndReleaseCompactedKnownState(state);
+                    _snapshotRepository.RemoveAndReleaseKnownState(state);
+                }
+
                 EnsureCompactorStarted();
                 _compactPersistedJobs.Writer.WriteAsync(allStateIds).AsTask().Wait();
-
-                _snapshotRepository.RemoveStatesUntil(end);
             }
             finally
             {

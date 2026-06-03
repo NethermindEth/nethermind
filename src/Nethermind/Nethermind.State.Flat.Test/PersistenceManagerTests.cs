@@ -295,6 +295,50 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void DoConvert_BoundaryCompacted_RemovesOnlyConvertedStates_PreservingOutsider()
+    {
+        // Branch A converts the in-memory bases spanning the boundary compacted's range, then must
+        // remove ONLY those gathered states from the in-memory tier. A state outside the gathered
+        // range (here one below `start`, standing in for a snapshot added concurrently mid-convert)
+        // must survive — the old bulk RemoveStatesUntil(end) would have wrongly swept it.
+        StateId compactedFrom = CreateStateId(2);
+        StateId compactedTo = CreateStateId(2 + _config.CompactSize); // span == CompactSize → Branch A
+        StateId baseA = CreateStateId(5);
+        StateId baseB = CreateStateId(10);
+        StateId outsider = CreateStateId(1); // below start (= compactedFrom.BlockNumber + 1)
+
+        // Conversion adds a persisted snapshot via the (substituted) persisted repo; hand back a
+        // disposable throwaway so DoConvert's pre-leased `.Dispose()` is safe.
+        _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(Arg.Any<Snapshot>())
+            .Returns(_ =>
+            {
+                using ArenaWriter writer = _memArena.CreateWriter(0);
+                (SnapshotLocation _, ArenaReservation res) = writer.Complete();
+                return new PersistedSnapshot(Block0, Block0, res, NullBlobArenaManager.Instance, PersistedSnapshotTier.Persisted);
+            });
+
+        // The converted/boundary snapshots are disposed by DoConvert (via RemoveAndRelease + the
+        // pre-leased candidate), so they are NOT wrapped in `using`. Only the survivor is.
+        CreateSnapshot(compactedFrom, compactedTo, compacted: true);
+        CreateSnapshot(compactedFrom, baseA, compacted: false);
+        CreateSnapshot(baseA, baseB, compacted: false);
+        using Snapshot outsiderSnap = CreateSnapshot(Block0, outsider, compacted: false);
+
+        Assert.That(_snapshotRepository.HasState(outsider), Is.True);
+
+        _snapshotRepository.TryLeaseCompactedState(compactedTo, out Snapshot? compactedForConvert);
+        InvokeDoConvert(new PersistenceManager.ConversionCandidate(compactedForConvert!, Base: null));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_snapshotRepository.HasState(outsider), Is.True, "state below `start` must survive");
+            Assert.That(_snapshotRepository.HasState(baseA), Is.False);
+            Assert.That(_snapshotRepository.HasState(baseB), Is.False);
+            Assert.That(_snapshotRepository.TryLeaseCompactedState(compactedTo, out _), Is.False, "boundary compacted removed");
+        });
+    }
+
+    [Test]
     public void AddToPersistence_InMemoryPersist_PrunesPersistedTier()
     {
         // Persisting an in-memory snapshot must trigger RemoveStatesUntil on both tier repos so
@@ -719,6 +763,16 @@ public class PersistenceManagerTests
             "TryFindSnapshotToConvert",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         return (PersistenceManager.ConversionCandidate?)method.Invoke(_persistenceManager, [currentPersistedState]);
+    }
+
+    private void InvokeDoConvert(PersistenceManager.ConversionCandidate candidate)
+    {
+        // DoConvert is private; reach it via reflection to unit-test the in-memory removal logic
+        // directly without driving the full DetermineSnapshotAction → AddToPersistence loop.
+        System.Reflection.MethodInfo method = typeof(PersistenceManager).GetMethod(
+            "DoConvert",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        method.Invoke(_persistenceManager, [candidate]);
     }
 
     private class TestFinalizedStateProvider : IFinalizedStateProvider
