@@ -313,6 +313,61 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
     }
 
     [TestCase]
+    public async Task Proof_call_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.GAS)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(32)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        long blockGasLimit = _blockTree.Head!.Header.GasLimit;
+        long gasCap = blockGasLimit * 10;
+        _container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
+
+        CallResultWithProof result = await TestCallWithCode(code);
+
+        Assert.That(result.Result.ToUInt256(), Is.GreaterThan((UInt256)blockGasLimit));
+    }
+
+    [TestCase]
+    public async Task Proof_call_with_zero_gas_keeps_literal_zero_gas_semantics()
+    {
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.GAS)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(32)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        long blockGasLimit = _blockTree.Head!.Header.GasLimit;
+        long gasCap = blockGasLimit * 10;
+        _container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
+
+        (IWorldState _, Hash256 root) = CreateInitialState(code);
+
+        Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
+        BlockTreeBuilder.AddBlock(_blockTree, block);
+        Block blockOnTop = Build.A.Block.WithParent(block).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
+        BlockTreeBuilder.AddBlock(_blockTree, blockOnTop);
+
+        TransactionForRpc tx = new LegacyTransactionForRpc
+        {
+            To = TestItem.AddressB,
+            Gas = 0,
+            GasPrice = useNonZeroGasPrice ? 10.GWei : 0
+        };
+
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, blockOnTop.Number);
+        Assert.That(response, Does.Contain("intrinsic gas too low"));
+    }
+
+    [TestCase]
     public async Task Can_call_with_block_hashes()
     {
         byte[] code = Prepare.EvmCode
