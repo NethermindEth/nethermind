@@ -1097,9 +1097,12 @@ public class TraceRpcModuleTests
         IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = TraceCallMany(context);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> omittedGasTraces = TraceCallMany(context);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> explicitGasCapTraces = TraceCallMany(context, gas: gasCap);
 
-        traces.Data.Single().Action!.Gas.Should().BeGreaterThan(blockGasLimit);
+        omittedGasTraces.Result.Error.Should().BeNull();
+        explicitGasCapTraces.Result.Error.Should().BeNull();
+        omittedGasTraces.Data.Single().Action!.Gas.Should().Be(explicitGasCapTraces.Data.Single().Action!.Gas);
     }
 
     [Test]
@@ -1118,7 +1121,6 @@ public class TraceRpcModuleTests
         omittedGasTraces.Result.Error.Should().BeNull();
         zeroGasTraces.Result.Error.Should().BeNull();
         zeroGasTraces.Data.Single().Action!.Gas.Should().Be(omittedGasTraces.Data.Single().Action!.Gas);
-        zeroGasTraces.Data.Single().Action!.Gas.Should().BeGreaterThan(blockGasLimit);
     }
 
     private static ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> TraceCallMany(Context context, long? gas = null) =>
