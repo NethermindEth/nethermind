@@ -1372,6 +1372,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Call depth does not change during dispatch; hoist outside the loop so a no-op
             // OnBeforeInstructionTrace doesn't force a per-instruction VmState.Env chase.
             int callDepth = VmState.Env.CallDepth;
+#if ZK_EVM
+            // Hoisted once per frame for the hot-opcode dispatch fast path below: PUSH0 is
+            // spec-gated (EIP-3855), so we only inline it when enabled; otherwise it falls
+            // through to the per-spec table (which maps it to BadInstruction).
+            bool push0Enabled = BlockExecutionContext.Spec.IncludePush0Instruction;
+#endif
             // Mirror programCounter in a plain (non-address-exposed) local so the
             // hot loop keeps it in a register. programCounter is only synced
             // around the opcode-handler call, which takes it by ref.
@@ -1405,6 +1411,36 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 #endif
                 programCounter = pc;
 
+#if ZK_EVM
+                // Hot-opcode dispatch fast path. The function-pointer table forces a `calli`
+                // (opaque indirect call) per opcode; a direct call lets the JIT inline these
+                // tiny handlers, removing the per-opcode call entirely. Ordered by measured
+                // frequency on precompile-call loops (PUSH0 37%, PUSH1 25%, GAS 12.5%, POP
+                // 12.5% — ~87% of executed opcodes), so the common case hits in <=4 compares;
+                // everything else (incl. the heavy STATICCALL) falls to the per-spec table.
+                // Behaviour-identical to the table dispatch: same handlers, same args/pc state.
+                if (push0Enabled && Instruction.PUSH0 == instruction)
+                {
+                    exceptionType = EvmInstructions.InstructionPush0<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                }
+                else if (Instruction.PUSH1 == instruction)
+                {
+                    exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                }
+                else if (Instruction.GAS == instruction)
+                {
+                    exceptionType = EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                }
+                else if (Instruction.POP == instruction)
+                {
+                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+                }
+                else
+                {
+                    delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType> opcodeMethod = opcodeMethods[(int)instruction];
+                    exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
+                }
+#else
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 if (Instruction.POP == instruction)
                 {
@@ -1418,6 +1454,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
                     exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
                 }
+#endif
                 // Resync: an opcode (JUMP/JUMPI) may have moved the counter.
                 pc = programCounter;
 
