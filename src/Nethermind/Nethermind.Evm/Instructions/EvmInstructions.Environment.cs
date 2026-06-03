@@ -545,7 +545,7 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct gas cost for balance operation as per specification.
-        TGasPolicy.Consume(ref gas, spec.GasCosts.BalanceCost);
+        TGasPolicy.Consume(ref gas, spec.GasCostsFast.BalanceCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
@@ -605,7 +605,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeHashCost);
+        TGasPolicy.Consume(ref gas, spec.GasCostsFast.ExtCodeHashCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
