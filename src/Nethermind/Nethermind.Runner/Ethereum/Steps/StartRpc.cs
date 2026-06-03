@@ -103,7 +103,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         }
         catch (Exception e) when (logger.IsError)
         {
-            logger.Error("Error during jsonRpc runner start", e);
+            if (logger.IsError) logger.Error("Error during jsonRpc runner start", e);
         }
 
         JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, api.ConfigProvider,
