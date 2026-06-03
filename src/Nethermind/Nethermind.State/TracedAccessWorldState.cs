@@ -235,14 +235,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     /// <summary>Records the account read (honoring SystemUser suppression) and returns its change entry in one probe.</summary>
     private AccountChangesAtIndex? RecordReadAndGetChanges(Address address)
-    {
         // Suppressed SystemUser reads must not be recorded: use a non-mutating lookup.
-        if (_systemAccountReadSuppressionDepth != 0 && address == Address.SystemUser)
-        {
-            return _generatingBlockAccessList.GetAccountChanges(address);
-        }
-        return _generatingBlockAccessList.RecordReadAndGet(address);
-    }
+        => _systemAccountReadSuppressionDepth != 0 && address == Address.SystemUser
+            ? _generatingBlockAccessList.GetAccountChanges(address)
+            : _generatingBlockAccessList.RecordReadAndGet(address);
 
     public void SetIndex(uint index)
         => _generatingBlockAccessList.Index = index;
@@ -390,13 +386,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     private ReadOnlySpan<byte> GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell)
     {
-        if (parallel && accountChanges is not null && accountChanges.TryGetStorageChange(storageCell.Index, out StorageChange? change))
+        if (parallel && accountChanges?.TryGetStorageChange(storageCell.Index, out StorageChange? change) == true)
         {
             // Copy the BE word into _scratchStorage so the returned span outlives this
             // frame without allocating a new byte[32] per SLOAD.
             EvmWord value = change.Value.Value;
-            MemoryMarshal.CreateReadOnlySpan(
-                ref Unsafe.As<EvmWord, byte>(ref value), 32).CopyTo(_scratchStorage);
+            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref value), 32).CopyTo(_scratchStorage);
             return _scratchStorage;
         }
 
