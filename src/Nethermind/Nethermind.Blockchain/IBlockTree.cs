@@ -146,10 +146,10 @@ namespace Nethermind.Blockchain
         /// </remarks>
         /// <param name="newHead">The block header that will become the new chain head.</param>
         /// <param name="wereProcessed">Whether the branch blocks have been processed (full sync) or not (fast sync).</param>
-        /// <param name="forceHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> regardless of <see cref="Block.TotalDifficulty"/>.</param>
+        /// <param name="forceUpdateHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> regardless of <see cref="Block.TotalDifficulty"/>.</param>
         /// <param name="preloadedBlocks">Optional blocks the caller already holds, used as a hash→block cache during the walk.</param>
         /// <returns><value>True</value> if the chain was updated; <value>False</value> if the branch could not be walked back to the main chain (a predecessor was missing) — in which case nothing is mutated.</returns>
-        bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null);
+        bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null);
 
         void MarkChainAsProcessed(IReadOnlyList<Block> blocks);
 

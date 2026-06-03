@@ -249,12 +249,12 @@ public class TestingRpcModuleTests
             .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.TryUpdateMainChain))
             .GetArguments();
         bool wereProcessed = (bool)updateMainChainArgs[1]!;
-        bool forceHeadBlock = (bool)updateMainChainArgs[2]!;
+        bool forceUpdateHeadBlock = (bool)updateMainChainArgs[2]!;
         IReadOnlyList<Block>? preloadedBlocks = (IReadOnlyList<Block>?)updateMainChainArgs[3];
         Assert.That(preloadedBlocks?.Count, Is.EqualTo(1), "the already-executed block is handed over as the preloaded cache, not re-read");
         Assert.That(wereProcessed, Is.True, "the producer already executed the block; the main chain must reflect that");
-        Assert.That(forceHeadBlock, Is.True,
-            "post-merge chains have TotalDifficulty=0; without forceHeadBlock MoveToMain skips UpdateHeadBlock and the next commit reads a stale head.");
+        Assert.That(forceUpdateHeadBlock, Is.True,
+            "post-merge chains have TotalDifficulty=0; without forceUpdateHeadBlock MoveToMain skips UpdateHeadBlock and the next commit reads a stale head.");
     }
 
     [Test]

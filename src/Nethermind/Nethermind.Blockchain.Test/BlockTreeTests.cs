@@ -74,7 +74,7 @@ public class BlockTreeTests
         BlockTree blockTree = BuildBlockTree();
         Block genesis = Build.A.Block.WithNumber(0).TestObject;
         blockTree.SuggestBlock(genesis);
-        blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, forceHeadBlock: forceUpdateHead, preloadedBlocks: new[] { genesis });
+        blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, forceUpdateHeadBlock: forceUpdateHead, preloadedBlocks: new[] { genesis });
         return (blockTree, genesis);
     }
 
@@ -297,7 +297,7 @@ public class BlockTreeTests
 
         // Reorg to b3 by header only - no preloaded blocks. TryUpdateMainChain must walk the branch and
         // pull each full block from the store itself.
-        bool updated = blockTree.TryUpdateMainChain(b3.Header, wereProcessed: true, forceHeadBlock: true);
+        bool updated = blockTree.TryUpdateMainChain(b3.Header, wereProcessed: true, forceUpdateHeadBlock: true);
 
         Assert.That(updated, Is.True);
         Assert.That(blockTree.Head!.Hash, Is.EqualTo(b3.Hash));
@@ -321,7 +321,7 @@ public class BlockTreeTests
         Block ghostParent = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject; // never added
         Block newHead = Build.A.Block.WithNumber(2).WithDifficulty(5).WithParent(ghostParent).TestObject;
 
-        bool updated = blockTree.TryUpdateMainChain(newHead.Header, wereProcessed: true, forceHeadBlock: true);
+        bool updated = blockTree.TryUpdateMainChain(newHead.Header, wereProcessed: true, forceUpdateHeadBlock: true);
 
         Assert.That(updated, Is.False);
         Assert.That(blockTree.Head!.Hash, Is.EqualTo(head1.Hash), "head unchanged after a failed reorg");
@@ -2467,7 +2467,7 @@ public class BlockTreeTests
         Block[] descendants = BuildAndSuggestChain(blockTree, headBlock, descendantCount);
 
         // FCU sets Head to headBlock at H=1
-        blockTree.TryUpdateMainChain(headBlock.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { headBlock });
+        blockTree.TryUpdateMainChain(headBlock.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { headBlock });
         Assert.That(blockTree.Head!.Hash, Is.EqualTo(headBlock.Hash!));
 
         // Beacon sync: mark descendants canonical without advancing Head
@@ -2493,7 +2493,7 @@ public class BlockTreeTests
         // FCU reorg to sibling at H=1
         Block sibling = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 0xBB }).TestObject;
         blockTree.SuggestBlock(sibling);
-        blockTree.TryUpdateMainChain(sibling.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { sibling });
+        blockTree.TryUpdateMainChain(sibling.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { sibling });
 
         Assert.That(blockTree.Head!.Hash, Is.EqualTo(sibling.Hash!));
         Assert.That(blockTree.IsMainChain(sibling.Header), Is.True, "sibling must be canonical");
@@ -2537,7 +2537,7 @@ public class BlockTreeTests
         Block[] chain = BuildAndSuggestChain(blockTree, genesis, 4);
 
         // FCU(b1): head = b1 at H=1.
-        blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { chain[0] });
+        blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { chain[0] });
 
         // Beacon sync: b2, b3, b4 marked canonical without updating Head.
         for (int i = 1; i < chain.Length; i++)
@@ -2551,7 +2551,7 @@ public class BlockTreeTests
         Assert.That(blockTree.FindBlock(chain[3].Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "precondition: b4 beacon-synced canonical");
 
         // ePBS FCU to ancestor: reorg back to genesis at H=0.
-        blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { genesis });
+        blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { genesis });
 
         Assert.That(blockTree.FindBlock(genesis.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "genesis must be canonical");
         foreach (Block b in chain)
@@ -2575,7 +2575,7 @@ public class BlockTreeTests
         Block[] descendants = BuildAndSuggestChain(blockTree, head, staleLevelCount);
 
         // FCU: head at H=1
-        blockTree.TryUpdateMainChain(head.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { head });
+        blockTree.TryUpdateMainChain(head.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { head });
 
         // Sync marks descendants canonical without updating Head
         foreach (Block d in descendants)
@@ -2602,7 +2602,7 @@ public class BlockTreeTests
 
         Block head = Build.A.Block.WithNumber(1).WithParent(genesis).TestObject;
         blockTree.SuggestBlock(head);
-        blockTree.TryUpdateMainChain(head.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { head });
+        blockTree.TryUpdateMainChain(head.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { head });
 
         const long strayHeight = 1_000_000L;
         ChainLevelInfoRepository repo = new(_blocksInfosDb);
@@ -2631,7 +2631,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(blockB);
 
         // Make A canonical first, then B (leaving B at index 0, A at index 1)
-        blockTree.TryUpdateMainChain(blockA.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { blockA });
+        blockTree.TryUpdateMainChain(blockA.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { blockA });
         blockTree.TryUpdateMainChain(blockB.Header, wereProcessed: false, preloadedBlocks: new[] { blockB }); // B wrongly becomes canonical
 
         Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(blockB.Hash!), "precondition: B is wrongly canonical");
@@ -2648,7 +2648,7 @@ public class BlockTreeTests
         (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis();
 
         Block[] chain = BuildAndSuggestChain(blockTree, genesis, 2);
-        blockTree.TryUpdateMainChain(chain[^1].Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: chain);
+        blockTree.TryUpdateMainChain(chain[^1].Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: chain);
 
         blockTree.HealCanonicalChain(chain[1].Hash!, maxBlockDepth: 10);
 
@@ -2688,7 +2688,7 @@ public class BlockTreeTests
         // FCU(A): A is canonical at H=1, B is known but not canonical.
         // Sync marks C canonical at H=2 without updating Head.
         // No FCU for B — the heal is told B is the correct head (e.g. via the CL reorg).
-        blockTree.TryUpdateMainChain(blockA.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { blockA });
+        blockTree.TryUpdateMainChain(blockA.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { blockA });
         blockTree.TryUpdateMainChain(blockC.Header, wereProcessed: false, preloadedBlocks: new[] { blockC }); // sync: C canonical at H=2, head stays A
 
         // Preconditions: A canonical at H=1, C stale-canonical at H=2, B suggested but not canonical
@@ -2719,8 +2719,8 @@ public class BlockTreeTests
         blockTree.SuggestBlock(b2);
 
         // b1Alt wrongly canonical at H=1, b2 canonical at H=2 (head)
-        blockTree.TryUpdateMainChain(b1.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { b1 });
-        blockTree.TryUpdateMainChain(b2.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { b2 });
+        blockTree.TryUpdateMainChain(b1.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { b1 });
+        blockTree.TryUpdateMainChain(b2.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { b2 });
         blockTree.TryUpdateMainChain(b1Alt.Header, wereProcessed: false, preloadedBlocks: new[] { b1Alt }); // breaks H=1
 
         Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(b1Alt.Hash!), "precondition: H=1 is broken");
@@ -2750,7 +2750,7 @@ public class BlockTreeTests
 
         Block head = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData([0xAA]).TestObject;
         blockTree.SuggestBlock(head);
-        blockTree.TryUpdateMainChain(head.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { head });
+        blockTree.TryUpdateMainChain(head.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { head });
 
         // Round 1 — beacon sync marks two descendants of head canonical
         Block[] desc1 = BuildAndSuggestChain(blockTree, head, 2);
@@ -2768,7 +2768,7 @@ public class BlockTreeTests
         // Round 1 FCU — reorg to sibling1 at H=1
         Block sibling1 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData([0xBB]).TestObject;
         blockTree.SuggestBlock(sibling1);
-        blockTree.TryUpdateMainChain(sibling1.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { sibling1 });
+        blockTree.TryUpdateMainChain(sibling1.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { sibling1 });
 
         Assert.That(blockTree.Head!.Hash, Is.EqualTo(sibling1.Hash!), "after round-1 FCU head must be sibling1");
         foreach (Block d in desc1)
@@ -2792,7 +2792,7 @@ public class BlockTreeTests
         // Round 2 FCU — reorg to sibling2 at H=1
         Block sibling2 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData([0xCC]).TestObject;
         blockTree.SuggestBlock(sibling2);
-        blockTree.TryUpdateMainChain(sibling2.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { sibling2 });
+        blockTree.TryUpdateMainChain(sibling2.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { sibling2 });
 
         Assert.That(blockTree.Head!.Hash, Is.EqualTo(sibling2.Hash!), "after round-2 FCU head must be sibling2");
         foreach (Block d in desc2)
@@ -2812,12 +2812,12 @@ public class BlockTreeTests
         (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis(forceUpdateHead: true);
 
         Block[] chain = BuildAndSuggestChain(blockTree, genesis, 4);
-        blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { chain[0] });
+        blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { chain[0] });
         for (int i = 1; i < chain.Length; i++)
             blockTree.TryUpdateMainChain(chain[i].Header, wereProcessed: false, preloadedBlocks: new[] { chain[i] });
 
         // Forward processing H=2 (forceUpdateHeadBlock: false) must not clear H=3, H=4
-        blockTree.TryUpdateMainChain(chain[1].Header, wereProcessed: true, forceHeadBlock: false, preloadedBlocks: new[] { chain[1] });
+        blockTree.TryUpdateMainChain(chain[1].Header, wereProcessed: true, forceUpdateHeadBlock: false, preloadedBlocks: new[] { chain[1] });
 
         Assert.That(blockTree.IsMainChain(chain[2].Header), Is.True, "H=3 marker must survive");
         Assert.That(blockTree.IsMainChain(chain[3].Header), Is.True, "H=4 marker must survive");
@@ -2829,7 +2829,7 @@ public class BlockTreeTests
         (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis(forceUpdateHead: true);
 
         Block[] chainA = BuildAndSuggestChain(blockTree, genesis, 4);
-        blockTree.TryUpdateMainChain(chainA[0].Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { chainA[0] });
+        blockTree.TryUpdateMainChain(chainA[0].Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { chainA[0] });
         for (int i = 1; i < chainA.Length; i++)
             blockTree.TryUpdateMainChain(chainA[i].Header, wereProcessed: false, preloadedBlocks: new[] { chainA[i] });
 
@@ -2840,7 +2840,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(b1);
         blockTree.SuggestBlock(b2);
         blockTree.SuggestBlock(b3);
-        blockTree.TryUpdateMainChain(b3.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { b1, b2, b3 });
+        blockTree.TryUpdateMainChain(b3.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { b1, b2, b3 });
 
         Assert.That(blockTree.IsMainChain(chainA[3].Header), Is.False, "A4 stale marker must be cleared");
     }

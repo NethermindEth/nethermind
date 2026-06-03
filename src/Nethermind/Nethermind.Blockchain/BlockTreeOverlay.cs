@@ -19,7 +19,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     // Cannot be called until blocktree is ready.
     public void ResetMainChain() =>
-        _overlayTree.TryUpdateMainChain(_baseTree.Head!.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { _baseTree.Head! });
+        _overlayTree.TryUpdateMainChain(_baseTree.Head!.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { _baseTree.Head! });
 
     public ulong NetworkId => _baseTree.NetworkId;
     public ulong ChainId => _baseTree.ChainId;
@@ -81,8 +81,8 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public bool WasProcessed(long number, Hash256 blockHash) => _overlayTree.WasProcessed(number, blockHash) || _baseTree.WasProcessed(number, blockHash);
 
-    public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null) =>
-        _overlayTree.TryUpdateMainChain(newHead, wereProcessed, forceHeadBlock, preloadedBlocks);
+    public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null) =>
+        _overlayTree.TryUpdateMainChain(newHead, wereProcessed, forceUpdateHeadBlock, preloadedBlocks);
 
     public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => _overlayTree.MarkChainAsProcessed(blocks);
 

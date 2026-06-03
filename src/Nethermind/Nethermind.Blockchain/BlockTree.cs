@@ -978,8 +978,15 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null)
+        public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null)
         {
+            // The head itself must have a body to be moved onto the main chain (the walk below checks every
+            // ancestor the same way). Fail fast here rather than throwing later when GetBlock can't load it.
+            if (!_blockStore.HasBlock(newHead.Number, newHead.Hash!))
+            {
+                return false;
+            }
+
             Dictionary<Hash256, Block> cache = BuildPreloadedCache(preloadedBlocks);
 
             // Walk back from the new head, collecting the branch of headers down to the current main chain.
@@ -1005,7 +1012,7 @@ namespace Nethermind.Blockchain
                 // move only the suffix above it (matching the pre-refactor behavior).
                 if (!_blockStore.HasBlock(parent.Number, parent.Hash!))
                 {
-                    if (forceHeadBlock) return false;
+                    if (forceUpdateHeadBlock) return false;
                     break;
                 }
 
@@ -1014,7 +1021,7 @@ namespace Nethermind.Blockchain
             }
 
             headers.Reverse(); // ascending order, from the branching point up to the new head
-            UpdateMainChainCore(headers, wereProcessed, forceHeadBlock, cache);
+            UpdateMainChainCore(headers, wereProcessed, forceUpdateHeadBlock, cache);
             return true;
         }
 
@@ -1027,7 +1034,7 @@ namespace Nethermind.Blockchain
         /// e.g. a disconnected fast-sync head, beacon blocks marked canonical above a stale head, or deliberately
         /// inconsistent level markers. This bypass moves exactly the given blocks; do not use it from production.
         /// </remarks>
-        internal void MarkBlocksCanonicalForTest(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false)
+        internal void MarkBlocksCanonicalForTest(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceUpdateHeadBlock = false)
         {
             if (blocks.Count == 0)
             {
@@ -1041,7 +1048,7 @@ namespace Nethermind.Blockchain
             else
                 for (int i = 0; i < blocks.Count; i++) headers.Add(blocks[i].Header);
 
-            UpdateMainChainCore(headers, wereProcessed, forceHeadBlock, BuildPreloadedCache(blocks));
+            UpdateMainChainCore(headers, wereProcessed, forceUpdateHeadBlock, BuildPreloadedCache(blocks));
         }
 
         /// <remarks>
@@ -1051,7 +1058,7 @@ namespace Nethermind.Blockchain
         /// memory stays bounded. Events are raised only after the chain-level batch is flushed, so
         /// subscribers always observe committed state.
         /// </remarks>
-        private void UpdateMainChainCore(IReadOnlyList<BlockHeader> headers, bool wereProcessed, bool forceHeadBlock, Dictionary<Hash256, Block> cache)
+        private void UpdateMainChainCore(IReadOnlyList<BlockHeader> headers, bool wereProcessed, bool forceUpdateHeadBlock, Dictionary<Hash256, Block> cache)
         {
             if (headers.Count == 0)
             {
@@ -1082,10 +1089,10 @@ namespace Nethermind.Blockchain
                 }
 
                 // Clear stale canonical markers above the new head left by beacon sync.
-                // Only needed on FCU reorgs (forceHeadBlock == true). During forward sync
+                // Only needed on FCU reorgs (forceUpdateHeadBlock == true). During forward sync
                 // (BlockDownloader) and forward processing (BlockchainProcessor), the markers above
                 // are either not yet set or belong to the same chain and must not be cleared.
-                if (forceHeadBlock)
+                if (forceUpdateHeadBlock)
                     ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
 
                 for (int i = 0; i < headers.Count; i++)
@@ -1099,7 +1106,7 @@ namespace Nethermind.Blockchain
                     Hash256? previousMainHash = MoveHeaderToMain(header, batch, wereProcessed);
 
                     // we only force update head block for the last header in the branch
-                    bool forceThisHead = forceHeadBlock && i == headers.Count - 1;
+                    bool forceThisHead = forceUpdateHeadBlock && i == headers.Count - 1;
                     bool isNewHead = wereProcessed && (forceThisHead || header.IsGenesis || HeadImprovementRequirementsSatisfied(header));
                     if (isNewHead)
                     {
@@ -1147,15 +1154,21 @@ namespace Nethermind.Blockchain
             OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(headers, wereProcessed));
         }
 
+        // Shared read-only empty cache for the no-preload path (e.g. FCU), to avoid a per-call allocation
+        // on a hot path. Never mutated.
+        private static readonly Dictionary<Hash256, Block> s_emptyBlockCache = [];
+
         private static Dictionary<Hash256, Block> BuildPreloadedCache(IReadOnlyList<Block>? preloadedBlocks)
         {
-            Dictionary<Hash256, Block> cache = new(preloadedBlocks?.Count ?? 0);
-            if (preloadedBlocks is not null)
+            if (preloadedBlocks is null || preloadedBlocks.Count == 0)
             {
-                foreach (Block block in preloadedBlocks)
-                {
-                    if (block.Hash is not null) cache[block.Hash] = block;
-                }
+                return s_emptyBlockCache;
+            }
+
+            Dictionary<Hash256, Block> cache = new(preloadedBlocks.Count);
+            foreach (Block block in preloadedBlocks)
+            {
+                if (block.Hash is not null) cache[block.Hash] = block;
             }
 
             return cache;

@@ -60,8 +60,8 @@ namespace Nethermind.Core.Test.Builders
         /// <see cref="IBlockTree.TryUpdateMainChain"/> performs, so tests can stage disconnected fast-sync heads,
         /// beacon blocks above a stale head, or inconsistent level markers.
         /// </summary>
-        public static void ForceMainChainForTest(this IBlockTree blockTree, IReadOnlyList<Block> blocks, bool wereProcessed = true, bool forceHeadBlock = false) =>
-            ((BlockTree)blockTree).MarkBlocksCanonicalForTest(blocks, wereProcessed, forceHeadBlock);
+        public static void ForceMainChainForTest(this IBlockTree blockTree, IReadOnlyList<Block> blocks, bool wereProcessed = true, bool forceUpdateHeadBlock = false) =>
+            ((BlockTree)blockTree).MarkBlocksCanonicalForTest(blocks, wereProcessed, forceUpdateHeadBlock);
 
         public static Task WaitForNewBlock(this IBlockTree blockTree, CancellationToken cancellation) => Wait.ForEventCondition<BlockReplacementEventArgs>(
                 cancellation,

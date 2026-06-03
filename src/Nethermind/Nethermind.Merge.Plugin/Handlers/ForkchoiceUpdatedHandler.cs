@@ -255,7 +255,7 @@ public class ForkchoiceUpdatedHandler(
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead;
         // TryUpdateMainChain walks back to the current main chain itself, loading blocks one at a time, and
         // returns false (without mutating) if a predecessor is missing - the same gate the old TryGetBranch gave.
-        if (shouldUpdateHead && !_blockTree.TryUpdateMainChain(newHeadHeader, wereProcessed: true, forceHeadBlock: true))
+        if (shouldUpdateHead && !_blockTree.TryUpdateMainChain(newHeadHeader, wereProcessed: true, forceUpdateHeadBlock: true))
         {
             string setHeadErrorMsg = $"Block's {newHeadHeader} main chain predecessor cannot be found and it will not be set as head.";
             if (_logger.IsWarn) _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}.");

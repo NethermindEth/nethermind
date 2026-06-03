@@ -500,7 +500,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
             // Pass the just-processed blocks as a cache; TryUpdateMainChain walks the rest of the branch
             // (any deeper blocks that already had state) on its own, loading them one at a time.
-            _blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, preloadedBlocks: processingBranch.Blocks);
+            if (!_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, preloadedBlocks: processingBranch.Blocks) && _logger.IsWarn)
+                _logger.Warn($"Failed to update main chain to {suggestedBlock.ToString(Block.Format.Short)}; a branch predecessor is missing.");
         }
 
         if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
@@ -737,12 +738,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // reprocessed - moving them onto the main chain (down to the real reorg boundary) is handled by
             // BlockTree.TryUpdateMainChain, which walks headers there cheaply. Hence MaxBranchSize now bounds
             // only the blocks-without-state we collect here, not the whole reorg depth.
-            bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
             bool hasState = toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header!);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
             branchingCondition = !hasState && notInForceProcessing;
 
-            if (isTrace) TraceBranchingConditions(branchingPoint, notFoundTheBranchingPointYet, hasState, notInForceProcessing);
+            // notFoundTheBranchingPointYet no longer gates the loop; compute the IsMainChain lookup only for the trace.
+            if (isTrace) TraceBranchingConditions(branchingPoint, !_blockTree.IsMainChain(branchingPoint.Hash!), hasState, notInForceProcessing);
 
         } while (branchingCondition);
 
