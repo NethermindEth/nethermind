@@ -21,12 +21,12 @@ public class ValueHash256Converter(bool strictHexFormat = false) : JsonConverter
         JsonSerializerOptions options)
     {
         Span<byte> bytes = stackalloc byte[ValueHash256.MemorySize];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat, requireEvenLength: true))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
         {
             return new ValueHash256(bytes);
         }
 
-        byte[] bytesArray = ByteArrayConverter.Convert(ref reader, _strictHexFormat, requireEvenLength: true)
+        byte[] bytesArray = ByteArrayConverter.ConvertData(ref reader, _strictHexFormat)
             ?? throw new JsonException($"Cannot deserialize null into non-nullable {nameof(ValueHash256)}.");
         if (bytesArray.Length != ValueHash256.MemorySize)
         {

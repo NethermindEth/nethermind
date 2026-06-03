@@ -24,12 +24,12 @@ public class AddressConverter(bool strictHexFormat = false) : JsonConverter<Addr
     internal static Address? ReadAddress(ref Utf8JsonReader reader, bool strictHexFormat = false)
     {
         Span<byte> bytes = stackalloc byte[Address.Size];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, strictHexFormat, requireEvenLength: true))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, strictHexFormat))
         {
             return new Address(bytes);
         }
 
-        byte[]? addressBytes = ByteArrayConverter.Convert(ref reader, strictHexFormat, requireEvenLength: true);
+        byte[]? addressBytes = ByteArrayConverter.ConvertData(ref reader, strictHexFormat);
         return addressBytes is null ? null : new Address(addressBytes);
     }
 
@@ -50,12 +50,12 @@ public class AddressConverter(bool strictHexFormat = false) : JsonConverter<Addr
     internal static Address ReadAddressPropertyName(ref Utf8JsonReader reader, bool strictHexFormat = false)
     {
         Span<byte> bytes = stackalloc byte[Address.Size];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, strictHexFormat, requireEvenLength: true))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, strictHexFormat))
         {
             return new Address(bytes);
         }
 
-        return new Address(ByteArrayConverter.Convert(ref reader, strictHexFormat, requireEvenLength: true) ?? throw new JsonException("Invalid address property name"));
+        return new Address(ByteArrayConverter.ConvertData(ref reader, strictHexFormat) ?? throw new JsonException("Invalid address property name"));
     }
 
     [SkipLocalsInit]
