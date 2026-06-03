@@ -995,7 +995,9 @@ namespace Nethermind.Blockchain
                     return false;
                 }
 
-                if (IsMainChain(parent)) break;
+                // Genesis is generated at init and is canonical on every chain, so stop at it without
+                // re-moving it (and without requiring it to carry a HasBlockOnMainChain marker).
+                if (parent.IsGenesis || IsMainChain(parent)) break;
 
                 // A header whose body is missing cannot be moved onto the main chain. For a forced (FCU)
                 // reorg that means the branch is incomplete and we cannot complete it; for forward

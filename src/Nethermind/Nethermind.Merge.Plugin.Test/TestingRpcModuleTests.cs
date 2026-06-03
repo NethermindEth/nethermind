@@ -246,12 +246,12 @@ public class TestingRpcModuleTests
             "ForceDontSetAsMain leaves the main-chain write to UpdateMainChain (single writer).");
 
         object?[] updateMainChainArgs = blockTree.ReceivedCalls()
-            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.UpdateMainChain))
+            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.TryUpdateMainChain))
             .GetArguments();
-        IReadOnlyList<Block> updatedBlocks = (IReadOnlyList<Block>)updateMainChainArgs[0]!;
         bool wereProcessed = (bool)updateMainChainArgs[1]!;
         bool forceHeadBlock = (bool)updateMainChainArgs[2]!;
-        Assert.That(updatedBlocks.Count, Is.EqualTo(1));
+        IReadOnlyList<Block>? preloadedBlocks = (IReadOnlyList<Block>?)updateMainChainArgs[3];
+        Assert.That(preloadedBlocks?.Count, Is.EqualTo(1), "the already-executed block is handed over as the preloaded cache, not re-read");
         Assert.That(wereProcessed, Is.True, "the producer already executed the block; the main chain must reflect that");
         Assert.That(forceHeadBlock, Is.True,
             "post-merge chains have TotalDifficulty=0; without forceHeadBlock MoveToMain skips UpdateHeadBlock and the next commit reads a stale head.");

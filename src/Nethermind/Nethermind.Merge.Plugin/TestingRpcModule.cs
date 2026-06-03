@@ -178,7 +178,7 @@ public class TestingRpcModule(
         // forceHeadBlock: true is required for post-merge chains where TotalDifficulty=0
         // and TTD != 0; without it MoveToMain skips UpdateHeadBlock and the next commit
         // reads a stale head.
-        blockTree.UpdateMainChain([processedBlock], wereProcessed: true, forceHeadBlock: true);
+        blockTree.TryUpdateMainChain(processedBlock.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: [processedBlock]);
 
         if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {processedBlock.Hash}");
         return ResultWrapper<Hash256>.Success(processedBlock.Hash);

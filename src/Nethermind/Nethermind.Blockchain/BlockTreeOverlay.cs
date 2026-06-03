@@ -19,7 +19,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     // Cannot be called until blocktree is ready.
     public void ResetMainChain() =>
-        _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true);
+        _overlayTree.TryUpdateMainChain(_baseTree.Head!.Header, wereProcessed: true, forceHeadBlock: true, preloadedBlocks: new[] { _baseTree.Head! });
 
     public ulong NetworkId => _baseTree.NetworkId;
     public ulong ChainId => _baseTree.ChainId;
