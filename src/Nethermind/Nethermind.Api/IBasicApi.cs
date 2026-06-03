@@ -55,8 +55,5 @@ namespace Nethermind.Api
             Plugins
                 .OfType<IConsensusPlugin>()
                 .SingleOrDefault();
-
-        public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
-            Plugins.OfType<IConsensusWrapperPlugin>().Where(static p => p.Enabled);
     }
 }

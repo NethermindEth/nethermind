@@ -11,10 +11,9 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-public class XdcSubnetPlugin(ChainSpec chainSpec) : IConsensusPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
+public class XdcSubnetPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
-    private INethermindApi _nethermindApi;
-    private XdcPlugin _xdcPlugin = new(chainSpec);
+    private readonly XdcPlugin _xdcPlugin = new(chainSpec);
 
     public const string XdcSubnet = "XdcSubnet";
     public string Author => "Nethermind";
@@ -24,19 +23,7 @@ public class XdcSubnetPlugin(ChainSpec chainSpec) : IConsensusPlugin, IBlockProd
     public string SealEngineType => XdcConstants.XDPoSSubnet;
     public IModule Module => new XdcSubnetModule();
 
-    public Task Init(INethermindApi nethermindApi)
-    {
-        _nethermindApi = nethermindApi;
-        return _xdcPlugin.Init(nethermindApi);
-    }
+    public Task Init(INethermindApi nethermindApi) => _xdcPlugin.Init(nethermindApi);
 
     public Task InitNetworkProtocol() => _xdcPlugin.InitNetworkProtocol();
-
-    // IConsensusPlugin
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => _xdcPlugin.InitBlockProducerRunner(blockProducer);
-    public IBlockProducer InitBlockProducer()
-    {
-        StartXdcSubnetBlockProducer start = _nethermindApi.Context.Resolve<StartXdcSubnetBlockProducer>();
-        return start.BuildProducer();
-    }
 }

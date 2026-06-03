@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus;
 using Nethermind.Core.ServiceStopper;
@@ -31,41 +30,16 @@ namespace Nethermind.Init.Steps
                 return Task.CompletedTask;
             }
 
-            IConsensusPlugin consensusPlugin = _api.GetConsensusPlugin()
+            IBlockProducerFactory blockProducerFactory = _api.Context.ResolveOptional<IBlockProducerFactory>()
                 ?? throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
-            IBlockProducerFactory blockProducerFactory = consensusPlugin as IBlockProducerFactory
+            IBlockProducerRunnerFactory blockProducerRunnerFactory = _api.Context.ResolveOptional<IBlockProducerRunnerFactory>()
                 ?? throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
-            IBlockProducerRunnerFactory blockProducerRunnerFactory = consensusPlugin as IBlockProducerRunnerFactory
-                ?? throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
-
-            foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins()
-                         .OrderBy(static (p) => p.Priority))
-            {
-                blockProducerFactory =
-                    new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);
-                blockProducerRunnerFactory =
-                    new ConsensusWrapperToBlockProducerRunnerFactoryAdapter(wrapperPlugin, blockProducerRunnerFactory);
-            }
 
             _api.BlockProducer = blockProducerFactory.InitBlockProducer();
             _api.BlockProducerRunner = blockProducerRunnerFactory.InitBlockProducerRunner(_api.BlockProducer);
             _serviceStopper.AddStoppable(_api.BlockProducerRunner);
 
             return Task.CompletedTask;
-        }
-
-        private class ConsensusWrapperToBlockProducerFactoryAdapter(
-            IConsensusWrapperPlugin consensusWrapperPlugin,
-            IBlockProducerFactory baseBlockProducerFactory) : IBlockProducerFactory
-        {
-            public IBlockProducer InitBlockProducer() => consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory);
-        }
-
-        private class ConsensusWrapperToBlockProducerRunnerFactoryAdapter(
-            IConsensusWrapperPlugin consensusWrapperPlugin,
-            IBlockProducerRunnerFactory baseBlockProducerRunnerFactory) : IBlockProducerRunnerFactory
-        {
-            public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => consensusWrapperPlugin.InitBlockProducerRunner(baseBlockProducerRunnerFactory, blockProducer);
         }
     }
 }
