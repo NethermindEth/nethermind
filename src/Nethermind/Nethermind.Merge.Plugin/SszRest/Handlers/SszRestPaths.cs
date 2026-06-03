@@ -50,41 +50,41 @@ public static class SszRestPaths
     public const string Blobs = "blobs";
 
     // Paris
-    public const string PostV1Payloads = "POST /engine/v2/" + Paris + "/payloads";
-    public const string GetV1Payloads = "GET /engine/v2/" + Paris + "/payloads/{payload_id}";
-    public const string PostV1Forkchoice = "POST /engine/v2/" + Paris + "/forkchoice";
-    public const string PostV1Capabilities = "GET /engine/v2/capabilities";
-    public const string PostV1ClientVersion = "GET /engine/v2/identity";
+    public const string PostV1Payloads = "POST /engine/" + Paris + "/payloads";
+    public const string GetV1Payloads = "GET /engine/" + Paris + "/payloads/{payload_id}";
+    public const string PostV1Forkchoice = "POST /engine/" + Paris + "/forkchoice";
+    public const string PostV1Capabilities = "GET /engine/capabilities";
+    public const string PostV1ClientVersion = "GET /engine/identity";
 
     // Shanghai
-    public const string PostV2Payloads = "POST /engine/v2/" + Shanghai + "/payloads";
-    public const string PostV2Forkchoice = "POST /engine/v2/" + Shanghai + "/forkchoice";
-    public const string GetV2Payloads = "GET /engine/v2/" + Shanghai + "/payloads/{payload_id}";
-    public const string PostV1PayloadBodiesByHash = "POST /engine/v2/" + Shanghai + "/bodies/hash";
-    public const string GetV1PayloadBodiesByRange = "GET /engine/v2/" + Shanghai + "/bodies";
+    public const string PostV2Payloads = "POST /engine/" + Shanghai + "/payloads";
+    public const string PostV2Forkchoice = "POST /engine/" + Shanghai + "/forkchoice";
+    public const string GetV2Payloads = "GET /engine/" + Shanghai + "/payloads/{payload_id}";
+    public const string PostV1PayloadBodiesByHash = "POST /engine/" + Shanghai + "/bodies/hash";
+    public const string GetV1PayloadBodiesByRange = "GET /engine/" + Shanghai + "/bodies";
 
     // Cancun
-    public const string PostV3Payloads = "POST /engine/v2/" + Cancun + "/payloads";
-    public const string PostV3Forkchoice = "POST /engine/v2/" + Cancun + "/forkchoice";
-    public const string GetV3Payloads = "GET /engine/v2/" + Cancun + "/payloads/{payload_id}";
-    public const string PostV1Blobs = "POST /engine/v2/blobs/v1";
+    public const string PostV3Payloads = "POST /engine/" + Cancun + "/payloads";
+    public const string PostV3Forkchoice = "POST /engine/" + Cancun + "/forkchoice";
+    public const string GetV3Payloads = "GET /engine/" + Cancun + "/payloads/{payload_id}";
+    public const string PostV1Blobs = "POST /engine/blobs/v1";
 
     // Prague
-    public const string PostV4Payloads = "POST /engine/v2/" + Prague + "/payloads";
-    public const string GetV4Payloads = "GET /engine/v2/" + Prague + "/payloads/{payload_id}";
+    public const string PostV4Payloads = "POST /engine/" + Prague + "/payloads";
+    public const string GetV4Payloads = "GET /engine/" + Prague + "/payloads/{payload_id}";
 
     // Osaka
-    public const string GetV5Payloads = "GET /engine/v2/" + Osaka + "/payloads/{payload_id}";
-    public const string PostV2Blobs = "POST /engine/v2/blobs/v2";
-    public const string PostV3Blobs = "POST /engine/v2/blobs/v3";
+    public const string GetV5Payloads = "GET /engine/" + Osaka + "/payloads/{payload_id}";
+    public const string PostV2Blobs = "POST /engine/blobs/v2";
+    public const string PostV3Blobs = "POST /engine/blobs/v3";
 
     // Amsterdam
-    public const string PostV5Payloads = "POST /engine/v2/" + Amsterdam + "/payloads";
-    public const string GetV6Payloads = "GET /engine/v2/" + Amsterdam + "/payloads/{payload_id}";
-    public const string PostV4Forkchoice = "POST /engine/v2/" + Amsterdam + "/forkchoice";
-    public const string PostV2PayloadBodiesByHash = "POST /engine/v2/" + Amsterdam + "/bodies/hash";
-    public const string GetV2PayloadBodiesByRange = "GET /engine/v2/" + Amsterdam + "/bodies";
-    public const string PostV4Blobs = "POST /engine/v2/blobs/v4";
+    public const string PostV5Payloads = "POST /engine/" + Amsterdam + "/payloads";
+    public const string GetV6Payloads = "GET /engine/" + Amsterdam + "/payloads/{payload_id}";
+    public const string PostV4Forkchoice = "POST /engine/" + Amsterdam + "/forkchoice";
+    public const string PostV2PayloadBodiesByHash = "POST /engine/" + Amsterdam + "/bodies/hash";
+    public const string GetV2PayloadBodiesByRange = "GET /engine/" + Amsterdam + "/bodies";
+    public const string PostV4Blobs = "POST /engine/blobs/v4";
 
     private static readonly FrozenDictionary<(string Fork, string Resource, string Method), int> s_forkVersionMap =
         new Dictionary<(string, string, string), int>

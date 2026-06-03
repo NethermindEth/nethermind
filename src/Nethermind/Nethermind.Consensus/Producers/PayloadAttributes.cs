@@ -30,7 +30,7 @@ public class PayloadAttributes
 
     public ulong? TargetGasLimit { get; set; }
 
-    public virtual long? GetGasLimit() => TargetGasLimit is { } limit ? (long)limit : null;
+    public virtual long? GetGasLimit() => (long?)TargetGasLimit;
 
     public override string ToString() => ToString(string.Empty);
 

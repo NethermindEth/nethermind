@@ -116,6 +116,14 @@ public class SszMiddlewareTests
 
     private static DefaultHttpContext MakeBaseContext(string method, string path, int port)
     {
+        if (path.StartsWith("/engine/v2/"))
+        {
+            path = "/engine/" + path["/engine/v2/".Length..];
+        }
+        else if (path.StartsWith("/engine/v2"))
+        {
+            path = "/engine" + path["/engine/v2".Length..];
+        }
         DefaultHttpContext ctx = new();
         ctx.Request.Method = method;
         ctx.Request.Path = path;

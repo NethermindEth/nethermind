@@ -33,8 +33,8 @@ public sealed class SszMiddleware
     private readonly ILogger _logger;
     private readonly CancellationToken _processExitToken;
 
-    // Path: /engine/v{N}/{resource}[/{extra}]
-    private const string EnginePrefix = "/engine/v";
+    // Path: /engine/{fork}/{resource}[/{extra}]
+    private const string EnginePrefix = "/engine/";
 
     /// <summary>
     /// Maximum allowed request body size in bytes (128 MiB).
@@ -179,7 +179,7 @@ public sealed class SszMiddleware
             // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
             // intermediate string; appending the span goes straight into the format buffer.
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}",
+                $"Unknown method: {ctx.Request.Method} /engine/{pathSegment.Span}",
                 SszRestErrorCodes.MethodNotFound);
         }
         else
@@ -192,8 +192,8 @@ public sealed class SszMiddleware
             if (_logger.IsTrace)
             {
                 _logger.Trace(extra.IsEmpty
-                    ? $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}"
-                    : $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}/{extra.Span}");
+                    ? $"SSZ-REST {ctx.Request.Method} /engine/{pathSegment.Span}"
+                    : $"SSZ-REST {ctx.Request.Method} /engine/{pathSegment.Span}/{extra.Span}");
             }
 
             // Read directly from PipeReader: the buffer is a ReadOnlySequence over Kestrel's
@@ -265,7 +265,7 @@ public sealed class SszMiddleware
     private static bool TryRoute(string path, out int version, out string? fork,
         out ReadOnlyMemory<char> pathSegment, out bool unsupportedFork)
     {
-        version = 2;
+        version = 1;
         fork = null;
         pathSegment = default;
         unsupportedFork = false;
@@ -279,15 +279,6 @@ public sealed class SszMiddleware
 
         int offset = EnginePrefix.Length;
         span = span[offset..];
-
-        int slashPos = span.IndexOf('/');
-        if (slashPos <= 0) return false;
-
-        if (!int.TryParse(span[..slashPos], out version) || version != 2)
-            return false;
-
-        offset += slashPos + 1;
-        span = span[(slashPos + 1)..];
         if (span.IsEmpty) return false;
 
         if (span.Equals("identity".AsSpan(), StringComparison.OrdinalIgnoreCase))
@@ -329,6 +320,11 @@ public sealed class SszMiddleware
         // SszRestPaths.SupportedForks is the single source of truth for recognised fork names.
         if (!SszRestPaths.SupportedForks.Contains(forkStr))
         {
+            if (forkStr.StartsWith("v") && forkStr.Length > 1 && int.TryParse(forkStr.AsSpan(1), out _))
+            {
+                return false;
+            }
+
             fork = forkStr;
             unsupportedFork = true;
             return false;
@@ -342,7 +338,7 @@ public sealed class SszMiddleware
         }
         else
         {
-            // Recognised fork but missing resource segment, e.g. /engine/v2/cancun — not
+            // Recognised fork but missing resource segment, e.g. /engine/cancun — not
             // a valid endpoint; leave unsupportedFork = false so the caller uses 404.
             return false;
         }
@@ -460,8 +456,8 @@ public sealed class SszMiddleware
     private static bool IsDiagnosticGetPath(string path)
     {
         ReadOnlySpan<char> span = path.AsSpan();
-        const string capabilitiesPath = "/engine/v2/capabilities";
-        const string identityPath = "/engine/v2/identity";
+        const string capabilitiesPath = "/engine/capabilities";
+        const string identityPath = "/engine/identity";
         return span.StartsWith(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase)
             || span.StartsWith(identityPath.AsSpan(), StringComparison.OrdinalIgnoreCase);
     }
