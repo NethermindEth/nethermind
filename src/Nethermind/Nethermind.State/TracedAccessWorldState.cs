@@ -46,16 +46,25 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     // the returned span is consumed by the EVM stack push before another GetInternal runs.
     private readonly byte[] _scratchStorage = new byte[32];
 
-    // Single-entry warm-read cache: short-circuits a repeated read of the most-recently-read storage
-    // slot (the dominant SLOAD pattern — tight loops re-reading one slot) so it skips the BAL recording
-    // and the layered inner-world-state lookups entirely. Holds the last value verbatim (max 32 bytes).
-    // Any state mutation, snapshot restore, or tx-index change invalidates it (see InvalidateWarmRead),
-    // so it can only ever return the slot's current committed-so-far value. The first (cold) read still
-    // records into the BAL, so cold-only recording keeps the generated BAL byte-identical.
-    private readonly byte[] _warmReadBuffer = new byte[32];
-    private Address? _warmReadAddress;
-    private UInt256 _warmReadIndex;
-    private int _warmReadLength = -1;
+    // Small N-entry warm-read cache: short-circuits a repeated read of any of the last N distinct storage
+    // slots (the dominant SLOAD pattern — loops re-reading the same handful of slots) so it skips both the
+    // BAL recording and the layered inner-world-state lookups. The first (cold) read still records into the
+    // BAL; storage_reads is a set, so re-recording on warm reads is a no-op per EIP-7928 and cold-only
+    // recording keeps the generated BAL byte-identical. The cache is linear-scanned (N is tiny, the arrays
+    // stay CPU-cache resident) and entirely invalidated on any value-changing or boundary operation
+    // (see InvalidateWarmRead), so an entry can only ever hold the slot's current committed-so-far value.
+    // A null Address marks an unused/invalidated slot. Values are kept verbatim in a fixed buffer (max
+    // 32 bytes each) so warm hits and cold inserts never allocate.
+    private const int WarmReadCacheSize = 8;
+    private struct WarmReadEntry
+    {
+        public Address? Address;
+        public UInt256 Index;
+        public int Length;
+    }
+    private readonly WarmReadEntry[] _warmReadCache = new WarmReadEntry[WarmReadCacheSize];
+    private readonly byte[] _warmReadValues = new byte[WarmReadCacheSize * 32];
+    private int _warmReadNext;
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
 
@@ -101,39 +110,52 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
-        // Fast path: a repeated read of the same slot, unchanged since it was last read. The cold read
-        // already recorded it in the BAL (set semantics make re-recording a no-op), so we can return the
-        // cached value without touching the BAL or the inner world-state layers.
-        if (_warmReadLength >= 0
-            && _warmReadIndex.Equals(storageCell.Index)
-            && storageCell.Address == _warmReadAddress)
+        // Fast path: a repeated read of a recently-read slot, unchanged since. The cold read already
+        // recorded it in the BAL (set semantics make re-recording a no-op), so we can return the cached
+        // value without touching the BAL or the inner world-state layers.
+        WarmReadEntry[] cache = _warmReadCache;
+        for (int i = 0; i < cache.Length; i++)
         {
-            return _warmReadBuffer.AsSpan(0, _warmReadLength);
+            ref WarmReadEntry entry = ref cache[i];
+            if (entry.Address is not null
+                && entry.Index.Equals(storageCell.Index)
+                && storageCell.Address == entry.Address)
+            {
+                return _warmReadValues.AsSpan(i * 32, entry.Length);
+            }
         }
 
         _generatingBlockAccessList.AddStorageRead(storageCell);
         ReadOnlySpan<byte> value = GetInternal(storageCell);
 
-        // Cache for the next repeated read. Storage values are at most a 32-byte word.
-        if (value.Length <= _warmReadBuffer.Length)
+        // Cache for the next repeated read. Storage values are at most a 32-byte word; anything larger is
+        // not cached (it cannot be a normal storage value).
+        if (value.Length <= 32)
         {
-            value.CopyTo(_warmReadBuffer);
-            _warmReadLength = value.Length;
-            _warmReadAddress = storageCell.Address;
-            _warmReadIndex = storageCell.Index;
-        }
-        else
-        {
-            _warmReadLength = -1;
+            int slot = _warmReadNext;
+            value.CopyTo(_warmReadValues.AsSpan(slot * 32, 32));
+            ref WarmReadEntry entry = ref cache[slot];
+            entry.Address = storageCell.Address;
+            entry.Index = storageCell.Index;
+            entry.Length = value.Length;
+            _warmReadNext = (slot + 1) % cache.Length;
         }
 
         return value;
     }
 
-    // Drops the single-entry warm-read cache. Called from every path that can change a slot's value
-    // (writes, storage/account clears, snapshot restore) or move the BAL tx index, so the cache never
-    // returns a stale value.
-    private void InvalidateWarmRead() => _warmReadLength = -1;
+    // Drops the warm-read cache. Called from every path that can change a slot's value (writes,
+    // storage/account clears, snapshot restore) or move the BAL tx index, so the cache never returns a
+    // stale value. Clearing the Address marks each slot unused; O(N) with N tiny and only on mutations.
+    private void InvalidateWarmRead()
+    {
+        WarmReadEntry[] cache = _warmReadCache;
+        for (int i = 0; i < cache.Length; i++)
+        {
+            cache[i].Address = null;
+        }
+        _warmReadNext = 0;
+    }
 
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         => _innerWorldState.GetOriginal(storageCell);
