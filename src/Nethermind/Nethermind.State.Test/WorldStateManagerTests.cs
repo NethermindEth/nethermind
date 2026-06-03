@@ -94,8 +94,6 @@ public class WorldStateManagerTests
                 .Build();
 
             IWorldState worldState = ctx.Resolve<IMainProcessingContext>().WorldState;
-            // Model production: the driver clears prewarmer caches between blocks; do the same here.
-            IPreBlockCaches preBlockCaches = worldState.ScopeProvider as IPreBlockCaches;
 
             Hash256 stateRoot;
 
@@ -114,7 +112,8 @@ public class WorldStateManagerTests
                     .WithNumber(i - 1)
                     .TestObject;
 
-                preBlockCaches?.Caches?.ClearCaches();
+                // Model production: the driver clears prewarmer caches between blocks; do the same here.
+                (worldState.ScopeProvider as IPreBlockCaches)?.Caches?.ClearCaches();
                 using (worldState.BeginScope(baseBlock))
                 {
                     worldState.IncrementNonce(TestItem.AddressA, 1);

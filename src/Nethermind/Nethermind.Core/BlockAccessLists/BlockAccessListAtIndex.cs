@@ -288,6 +288,8 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void Restore(int snapshot)
     {
+        // Intentionally does not reset _lastReadAddress/_lastReadChanges: Restore reverts entry values
+        // in place and never evicts an entry, so the cached reference stays valid. See class invariant.
         snapshot = int.Max(0, snapshot);
         Span<Change> span = CollectionsMarshal.AsSpan(_changes);
         int end = span.Length;

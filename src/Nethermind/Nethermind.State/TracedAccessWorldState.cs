@@ -255,6 +255,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         _generatingBlockAccessList.Clear();
         _systemAccountReadSuppressionDepth = 0;
         _hasLastReadCell = false;
+        _lastReadStorageChanges = null;
     }
 
     BlockAccessListAtIndex? IBlockAccessListSource.GeneratedBlockAccessList => _generatingBlockAccessList;
@@ -263,6 +264,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     {
         // A revert can un-record the last cell's slot, so drop the single-slot cache.
         _hasLastReadCell = false;
+        _lastReadStorageChanges = null;
         _generatingBlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
         _innerWorldState.Restore(snapshot);
     }
