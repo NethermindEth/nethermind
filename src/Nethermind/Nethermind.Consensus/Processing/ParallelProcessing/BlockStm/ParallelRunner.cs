@@ -27,34 +27,17 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     private readonly CancellationTokenSource _cts = new();
 
     /// <summary>
-    /// Runs the Block-STM-based processing
+    /// Runs the Block-STM worker pool until <see cref="ParallelScheduler{TLogger}.Done"/>.
     /// </summary>
     public async Task Run()
     {
-        // I previously tried single thread calling scheduler.NextTask()
-        // and only running fire & forget Task.Run with TryExecute and NeedsReexecution.
-        // But I think this approach ended with less parallelization
-        // TODO: revisit when integrated with block processing
-
         int concurrency = concurrencyLevel ?? Environment.ProcessorCount;
         using ArrayPoolList<Task> tasks = new(concurrency);
         for (int i = 0; i < concurrency; i++)
         {
             tasks.Add(Task.Run(Loop));
         }
-
-        // We need to wait only for the first task if one reads scheduler.Done, all other will too
-        try
-        {
-            await Task.WhenAll(tasks.AsSpan());
-        }
-        catch
-        {
-            throw;
-        }
-
-        // TODO: This seems to perform slightly better without async:
-        // ParallelUnbalancedWork.For(0, concurrency, Loop);
+        await Task.WhenAll(tasks.AsSpan());
     }
 
     private void Loop() => Loop(Interlocked.Increment(ref _threadIndex));

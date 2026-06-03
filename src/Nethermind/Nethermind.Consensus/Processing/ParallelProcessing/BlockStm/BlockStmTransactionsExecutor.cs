@@ -8,7 +8,9 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -25,10 +27,9 @@ public class BlockStmTransactionsExecutor(
     IBlockProcessor.IBlockTransactionsExecutor inner,
     ITransactionProcessorAdapter transactionProcessorAdapter,
     ParallelEnvFactory parallelEnvFactory,
-    PreBlockCaches preBlockCaches,
     IBlockFinder blockFinder,
     IWorldState stateProvider,
-    Nethermind.Config.IBlocksConfig blocksConfig,
+    IBlocksConfig blocksConfig,
     ILogManager logManager,
     BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
     : IBlockProcessor.IBlockTransactionsExecutor
@@ -45,7 +46,7 @@ public class BlockStmTransactionsExecutor(
     // 0 => use logical-processor count, otherwise the configured value.
     private readonly int _concurrencyLevel = blocksConfig.BlockStmConcurrency > 0
         ? blocksConfig.BlockStmConcurrency
-        : Math.Max(1, System.Environment.ProcessorCount);
+        : Math.Max(1, Environment.ProcessorCount);
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
     {
@@ -69,10 +70,10 @@ public class BlockStmTransactionsExecutor(
         // Block-level aggregate of every code-write performed by any tx's EVM. Per-tx
         // resettable scopes use a read-only codeDb so their InsertCode is dropped — we
         // accumulate writes here and replay onto the main state in PushChanges.
-        Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> blockCodeWrites = [];
+        Dictionary<ValueHash256, byte[]> blockCodeWrites = [];
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, feeAccumulator, preBlockCaches, receipts, results, blockCodeWrites, in _blockExecutionContext);
+        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, feeAccumulator, receipts, results, blockCodeWrites, in _blockExecutionContext);
         try
         {
             using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, _concurrencyLevel, blockMetrics);
@@ -128,7 +129,7 @@ public class BlockStmTransactionsExecutor(
         }
     }
 
-    private FeeRecipientWriteInfo PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, IReleaseSpec spec, int txCount, Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> blockCodeWrites)
+    private FeeRecipientWriteInfo PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, IReleaseSpec spec, int txCount, Dictionary<ValueHash256, byte[]> blockCodeWrites)
     {
         HashSet<Address> storageTouched = [];
         Address? gasBeneficiary = feeAccumulator.GasBeneficiary;
@@ -232,7 +233,7 @@ public class BlockStmTransactionsExecutor(
         Address address,
         Account? account,
         IReleaseSpec spec,
-        Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> blockCodeWrites)
+        Dictionary<ValueHash256, byte[]> blockCodeWrites)
     {
         if (account is null)
         {
@@ -255,12 +256,26 @@ public class BlockStmTransactionsExecutor(
         }
         worldState.SetNonce(address, account.Nonce);
 
-        ref readonly Nethermind.Core.Crypto.ValueHash256 oldCodeHash = ref worldState.GetCodeHash(address);
-        if (oldCodeHash != account.CodeHash.ValueHash256
-            && blockCodeWrites.TryGetValue(account.CodeHash.ValueHash256, out byte[]? code))
+        ref readonly ValueHash256 oldCodeHash = ref worldState.GetCodeHash(address);
+        ValueHash256 newCodeHash = account.CodeHash.ValueHash256;
+        if (oldCodeHash == newCodeHash) return;
+
+        if (blockCodeWrites.TryGetValue(newCodeHash, out byte[]? code))
         {
-            worldState.InsertCode(address, account.CodeHash.ValueHash256, code, spec);
+            worldState.InsertCode(address, newCodeHash, code, spec);
+            return;
         }
+        // Fall back to whatever's already in the main code DB (could be a prior block's
+        // code referenced by hash). If neither path has the bytes, fail loudly — silently
+        // skipping leaves the Account pointing at a hash with no code, which would cause
+        // wrong EVM behaviour on a later block.
+        byte[]? existing = worldState.GetCode(newCodeHash);
+        if (existing is null || existing.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"Block-STM: account {address} updated to CodeHash {newCodeHash} but code bytes are not in the per-block writes nor the shared codeDb.");
+        }
+        worldState.InsertCode(address, newCodeHash, existing, spec);
     }
 
     private static void ApplyAccumulatedFees(IWorldState worldState, FeeAccumulator feeAccumulator, IReleaseSpec spec, FeeRecipientWriteInfo feeRecipientWrites)
@@ -421,10 +436,9 @@ public class ParallelTransactionProcessor(
     ParallelEnvFactory parallelEnvFactory,
     MultiVersionMemory multiVersionMemory,
     FeeAccumulator feeAccumulator,
-    PreBlockCaches preBlockCaches,
     TxReceipt[] receipts,
     TransactionResult[] results,
-    Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> blockCodeWrites,
+    Dictionary<ValueHash256, byte[]> blockCodeWrites,
     in BlockExecutionContext blockExecutionContext) : IParallelTransactionProcessor<ParallelStateKey, object>
 {
     // BlockReceiptsTracer's ctor takes (parallel: true); needs a custom policy.
@@ -445,7 +459,7 @@ public class ParallelTransactionProcessor(
         Transaction transaction = block.Transactions[txIndex];
 
         feeAccumulator.ClearFee(txIndex);
-        using ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv env = parallelEnvFactory.Create(version, multiVersionMemory, feeAccumulator, preBlockCaches);
+        using ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv env = parallelEnvFactory.Create(version, multiVersionMemory, feeAccumulator, _blockExecutionContext.Spec);
         using IReadOnlyTxProcessingScope scope = env.Build(parentBlock);
         ITransactionProcessor transactionProcessor = scope.TransactionProcessor;
 
@@ -470,7 +484,7 @@ public class ParallelTransactionProcessor(
             {
                 lock (blockCodeWrites)
                 {
-                    foreach (KeyValuePair<Nethermind.Core.Crypto.ValueHash256, byte[]> kv in env.WorldStateScopeProvider.CodeWrites)
+                    foreach (KeyValuePair<ValueHash256, byte[]> kv in env.WorldStateScopeProvider.CodeWrites)
                     {
                         blockCodeWrites[kv.Key] = kv.Value;
                     }
@@ -478,8 +492,10 @@ public class ParallelTransactionProcessor(
             }
             wroteNewLocation = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
             // BlockReceiptsTracer resets CurrentIndex = 0 per borrow, so the receipt the
-            // tracer built has Index = 0. Stamp the real tx index here.
-            TxReceipt? receipt = !result ? null : tracer.LastReceipt;
+            // tracer built has Index = 0. Stamp the real tx index here. Guard against a
+            // success path that didn't produce a receipt (would be a TransactionProcessor
+            // contract violation, but throw on indexing should not be the failure mode).
+            TxReceipt? receipt = result && tracer.TxReceipts.Length > 0 ? tracer.LastReceipt : null;
             if (receipt is not null) receipt.Index = txIndex;
             receipts[txIndex] = receipt;
 

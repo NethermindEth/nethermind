@@ -63,7 +63,6 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// Mapping between TransactionIndex -> HashSet that will store reads by the last incarnation of the transaction.
     /// </summary>
     private readonly HashSet<Read<TLocation>>?[] _lastReads = new HashSet<Read<TLocation>>[txCount];
-    private static readonly HashSet<Read<TLocation>> EmptyReadSet = [];
 
     // Returns true if higher txs that already read this tx may need re-validation:
     // a key was added, removed, or re-written (the stored TxVersion advances even when
@@ -138,15 +137,6 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// </remarks>
     /// <param name="txIndex">Transaction index.</param>
     public Dictionary<TLocation, Value> GetFinalWriteSet(int txIndex) => _data[txIndex].Dictionary;
-
-    /// <summary>
-    /// Provides access to the final read-set for the latest incarnation of a transaction.
-    /// </summary>
-    /// <remarks>
-    /// This does not lock; only call after block processing completes.
-    /// </remarks>
-    /// <param name="txIndex">Transaction index.</param>
-    public HashSet<Read<TLocation>> GetFinalReadSet(int txIndex) => _lastReads[txIndex] ?? EmptyReadSet;
 
     /// <summary>
     /// Converts all transaction writes to estimates.
@@ -225,31 +215,6 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         value = default;
         if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.NotFound}.");
         return Status.NotFound;
-    }
-
-    /// <summary>
-    /// Grabs the final write-set of the whole block.
-    /// </summary>
-    /// <returns>Final write-set keyed by location.</returns>
-    public Dictionary<TLocation, TData> Snapshot()
-    {
-        Dictionary<TLocation, TData> result = [];
-        // need to iterate backwards, as the later transaction writes are the final written to the same location
-        for (int index = _data.Length - 1; index >= 0; index--)
-        {
-            foreach (KeyValuePair<TLocation, Value> location in GetFinalWriteSet(index))
-            {
-                if (location.Value.IsEstimate)
-                {
-                    continue;
-                }
-
-                // only add if previously not added
-                result.TryAdd(location.Key, location.Value.Data);
-            }
-        }
-
-        return result;
     }
 
     /// <summary>

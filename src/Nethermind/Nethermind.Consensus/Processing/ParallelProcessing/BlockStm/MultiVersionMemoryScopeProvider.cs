@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -29,7 +29,7 @@ public class MultiVersionMemoryScopeProvider(
     /// main world state via InsertCode so the Account on the main state can resolve its
     /// CodeHash.
     /// </summary>
-    public Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> CodeWrites { get; private set; } = null!;
+    public Dictionary<ValueHash256, byte[]> CodeWrites { get; private set; } = null!;
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
@@ -42,32 +42,6 @@ public class MultiVersionMemoryScopeProvider(
         return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, writeSetLock, CodeWrites);
     }
 
-    private static TResult Get<TStorage, TResult>(
-        ParallelStateKey location,
-        int txIndex,
-        MultiVersionMemory multiVersionMemory,
-        HashSet<Read<ParallelStateKey>> readSet,
-        TStorage storage,
-        Func<TStorage, ParallelStateKey, TResult> getFromStorage)
-    {
-        Status status = multiVersionMemory.TryRead(location, txIndex, out TxVersion version, out object? value);
-        TResult result = status switch
-        {
-            Status.ReadError => throw new AbortParallelExecutionException(in version),
-            Status.NotFound => getFromStorage(storage, location),
-            Status.Ok => (TResult)value,
-            _ => ThrowArgumentOutOfRangeException()
-        };
-
-        readSet.Add(new Read<ParallelStateKey>(location, version));
-        return result;
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        TResult ThrowArgumentOutOfRangeException() =>
-            throw new ArgumentOutOfRangeException(nameof(status), status, $"Unknown multi version memory read status: {status}");
-    }
-
     private class MultiVersionMemoryScope(
         TxVersion version,
         IWorldStateScopeProvider.IScope baseScope,
@@ -76,7 +50,7 @@ public class MultiVersionMemoryScopeProvider(
         HashSet<Read<ParallelStateKey>> readSet,
         Dictionary<ParallelStateKey, object> writeSet,
         object writeSetLock,
-        Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.IScope
+        Dictionary<ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.IScope
     {
         private readonly TrackingCodeDb _codeDb = new(baseScope.CodeDb, codeWrites);
 
@@ -125,9 +99,8 @@ public class MultiVersionMemoryScopeProvider(
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
         // STM has no shared cache of its own; forward to the underlying prewarmer.
-        public System.Threading.Tasks.Task HintBal(
-            Nethermind.Core.BlockAccessLists.ReadOnlyBlockAccessList bal,
-            IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => baseScope.HintBal(bal, sink);
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) =>
+            baseScope.HintBal(bal, sink);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
 
@@ -324,23 +297,23 @@ public class MultiVersionMemoryScopeProvider(
     // main state can't be resolved.
     private sealed class TrackingCodeDb(
         IWorldStateScopeProvider.ICodeDb inner,
-        Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.ICodeDb
+        Dictionary<ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.ICodeDb
     {
-        public byte[]? GetCode(in Nethermind.Core.Crypto.ValueHash256 codeHash) =>
+        public byte[]? GetCode(in ValueHash256 codeHash) =>
             codeWrites.TryGetValue(codeHash, out byte[]? captured) ? captured : inner.GetCode(in codeHash);
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new TrackingSetter(inner.BeginCodeWrite(), codeWrites);
 
-        public bool ContainsCode(in Nethermind.Core.Crypto.ValueHash256 codeHash) =>
+        public bool ContainsCode(in ValueHash256 codeHash) =>
             codeWrites.ContainsKey(codeHash) || inner.ContainsCode(in codeHash);
 
-        public void MarkCodePersisted(in Nethermind.Core.Crypto.ValueHash256 codeHash) => inner.MarkCodePersisted(in codeHash);
+        public void MarkCodePersisted(in ValueHash256 codeHash) => inner.MarkCodePersisted(in codeHash);
 
         private sealed class TrackingSetter(
             IWorldStateScopeProvider.ICodeSetter inner,
-            Dictionary<Nethermind.Core.Crypto.ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.ICodeSetter
+            Dictionary<ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.ICodeSetter
         {
-            public void Set(in Nethermind.Core.Crypto.ValueHash256 codeHash, System.ReadOnlySpan<byte> code)
+            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code)
             {
                 // Capture before forwarding so PushChanges can re-insert onto the main state.
                 codeWrites[codeHash] = code.ToArray();

@@ -19,10 +19,4 @@ public readonly record struct TxVersion(int TxIndex, int Incarnation)
     public static TxVersion Empty { get; } = new(-1, -1);
 
     public override string ToString() => IsEmpty ? "Empty" : $"Tx {TxIndex}, Incarnation {Incarnation}";
-
-    public void Deconstruct(out int txIndex, out int incarnation)
-    {
-        txIndex = TxIndex;
-        incarnation = Incarnation;
-    }
 }

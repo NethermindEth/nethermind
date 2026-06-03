@@ -10,9 +10,6 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 
 public static class Metrics
 {
-    private static ParallelBlockMetrics _lastBlock;
-    private static long LastBlockSnapshotSequence;
-
     [CounterMetric]
     [Description("Total number of re-execution attempts in parallel block processing.")]
     public static long Reexecutions;
@@ -51,8 +48,6 @@ public static class Metrics
 
     internal static void ReportBlock(in ParallelBlockMetrics snapshot)
     {
-        _lastBlock = snapshot;
-        Interlocked.Increment(ref LastBlockSnapshotSequence);
         LastBlockParallelizationPercent = snapshot.ParallelizationPercent;
         Interlocked.Add(ref TxCount, LastBlockTxCount = snapshot.TxCount);
         Interlocked.Add(ref Reexecutions, LastBlockReexecutions = snapshot.Reexecutions);
@@ -61,40 +56,21 @@ public static class Metrics
     }
 
     /// <summary>
-    /// Resets all global counters and the last-block snapshot to zero. Test-only helper —
-    /// production never calls this. Mirrors what fresh-process startup state looks like so
-    /// tests that assert on counter deltas don't bleed into each other.
+    /// Resets the cumulative counters to zero so tests asserting on counter deltas don't
+    /// bleed into each other. Production never calls this; tests assert on the per-instance
+    /// <see cref="BlockStmTransactionsExecutor.LastBlockSnapshot"/> for per-block data.
     /// </summary>
     public static void ResetForTests()
     {
-        _lastBlock = default;
-        Interlocked.Exchange(ref LastBlockSnapshotSequence, 0);
-        LastBlockParallelizationPercent = 0;
         Interlocked.Exchange(ref TxCount, 0);
-        Interlocked.Exchange(ref LastBlockTxCount, 0);
         Interlocked.Exchange(ref Reexecutions, 0);
-        Interlocked.Exchange(ref LastBlockReexecutions, 0);
         Interlocked.Exchange(ref Revalidations, 0);
-        Interlocked.Exchange(ref LastBlockRevalidations, 0);
         Interlocked.Exchange(ref BlockedReads, 0);
+        LastBlockParallelizationPercent = 0;
+        Interlocked.Exchange(ref LastBlockTxCount, 0);
+        Interlocked.Exchange(ref LastBlockReexecutions, 0);
+        Interlocked.Exchange(ref LastBlockRevalidations, 0);
         Interlocked.Exchange(ref LastBlockBlockedReads, 0);
-    }
-
-    /// <summary>
-    /// Gets the last block snapshot for the current execution context.
-    /// </summary>
-    /// <param name="snapshot">The snapshot if available.</param>
-    /// <returns>True when a snapshot is available for the current context.</returns>
-    public static bool TryGetLastBlockSnapshot(out ParallelBlockMetrics snapshot)
-    {
-        if (Interlocked.Read(ref LastBlockSnapshotSequence) == 0)
-        {
-            snapshot = default;
-            return false;
-        }
-
-        snapshot = _lastBlock;
-        return true;
     }
 
     /// <summary>
