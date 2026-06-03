@@ -162,6 +162,62 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
     }
 
+    // Called by trie warmer when several queued slot jobs for this tree are drained together.
+    public void WarmUpStorageTrieBatch(ReadOnlySpan<UInt256> indices, int sequenceId, int jobCount)
+    {
+        try
+        {
+            if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
+            {
+                return;
+            }
+
+            // Flat-native warmer: one coalesced read of the actual flat read path the EVM will hit at
+            // commit. Non-Flat variants have no batched form, so fall back to the per-index logic.
+            if (_config.SparseTrieWarmer == SparseTrieWarmerVariant.Flat)
+            {
+                _bundle.WarmSlotBatch(_address, indices, _selfDestructKnownStateIdx);
+            }
+            else
+            {
+                for (int i = 0; i < indices.Length; i++)
+                {
+                    WarmUpSingleNonFlat(indices[i]);
+                }
+            }
+        }
+        catch (TrieNodeException) { }
+        catch (NodeHashMismatchException) { }
+        catch (ObjectDisposedException) { }
+        catch (NullReferenceException) when (IsDisposed) { }
+        finally
+        {
+            for (int i = 0; i < jobCount; i++)
+            {
+                _scope.DecrementOutstandingWarmups();
+            }
+        }
+    }
+
+    // The non-Flat per-slot warm work, factored out of WarmUpStorageTrie so the batch path can reuse it
+    // for Legacy/SparseProof variants without re-checking sequence/pause or touching warmup accounting.
+    private void WarmUpSingleNonFlat(UInt256 index)
+    {
+        ValueHash256 key = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(index, ref key);
+
+        if (_config.SparseTrieWarmer == SparseTrieWarmerVariant.SparseProof
+            && _scope.SparseProofReader is not null && _tree.RootHash != Keccak.EmptyTreeHash)
+        {
+            _ = Nethermind.Trie.Sparse.MultiProofReader.ReadStorageProofs(
+                _scope.SparseProofReader, _addressHash, _tree.RootHash, [key.ToCommitment()]);
+        }
+        else if (_warmupStorageTree is not null)
+        {
+            _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+        }
+    }
+
     public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
     private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);

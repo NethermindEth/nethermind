@@ -69,6 +69,25 @@ namespace Nethermind.Core
         void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
         /// <summary>
+        /// Reads multiple keys in one call, writing each value into <paramref name="results" /> at the
+        /// matching index (<see langword="null" /> for a missing key).
+        /// </summary>
+        /// <remarks>
+        /// The default implementation simply loops over <see cref="Get(ReadOnlySpan{byte}, ReadFlags)" />;
+        /// backends that support a native batched read (e.g. RocksDB MultiGet) should override this to
+        /// coalesce the underlying I/O. <paramref name="keys" /> and <paramref name="results" /> must have
+        /// the same length. Results are read against the same view this store exposes for single
+        /// <see cref="Get(ReadOnlySpan{byte}, ReadFlags)" /> calls (e.g. a pinned snapshot for a reader).
+        /// </remarks>
+        void MultiGet(ReadOnlySpan<byte[]> keys, Span<byte[]?> results, ReadFlags flags = ReadFlags.None)
+        {
+            for (int i = 0; i < keys.Length; i++)
+            {
+                results[i] = Get(keys[i], flags);
+            }
+        }
+
+        /// <summary>
         /// Returns a MemoryManager wrapping the value for the given key.
         /// The MemoryManager must be disposed of when done to release any underlying resources.
         /// </summary>

@@ -252,6 +252,14 @@ public class TrieWarmerTests
             return true;
         }
 
+        public void WarmUpStorageTrieBatch(ReadOnlySpan<UInt256> indices, int sequenceId, int jobCount)
+        {
+            for (int i = 0; i < indices.Length; i++)
+            {
+                WarmUpStorageTrie(indices[i], sequenceId);
+            }
+        }
+
         public void Dispose()
         {
             _firstCall.Dispose();
@@ -267,6 +275,71 @@ public class TrieWarmerTests
                 if (currentConcurrency <= currentMax) return;
                 if (Interlocked.CompareExchange(ref _maxConcurrency, currentConcurrency, currentMax) == currentMax) return;
             }
+        }
+    }
+
+    [Test]
+    public async Task BatchedWarmer_warms_every_queued_slot_exactly_once_and_coalesces()
+    {
+        // Single worker + large batch so the drain deterministically coalesces the queued same-tree jobs.
+        FlatDbConfig config = new() { TrieWarmerWorkerCount = 2, TrieWarmerBatchSize = 16 };
+        TrieWarmer warmer = new(_logManager, config);
+
+        RecordingStorageWarmer treeA = new();
+        RecordingStorageWarmer treeB = new();
+
+        UInt256[] aIndices = [1, 2, 3, 4, 5];
+        UInt256[] bIndices = [100, 200, 300];
+
+        foreach (UInt256 i in aIndices) Assert.That(warmer.PushSlotJob(treeA, i, sequenceId: 7), Is.True);
+        foreach (UInt256 i in bIndices) Assert.That(warmer.PushSlotJob(treeB, i, sequenceId: 7), Is.True);
+
+        await Eventually.AssertAsync<AssertionException>(() =>
+        {
+            Assert.That(treeA.WarmedIndices, Is.EquivalentTo(aIndices), "tree A: every index warmed exactly once");
+            Assert.That(treeB.WarmedIndices, Is.EquivalentTo(bIndices), "tree B: every index warmed exactly once");
+        });
+
+        // No cross-contamination: a batch for one tree must never carry the other's indices (a tree only
+        // ever sees its own indices because grouping is by tree reference).
+        Assert.That(treeA.SawBatch || treeB.SawBatch, Is.True, "coalescing should have produced at least one multi-index batch");
+
+        await warmer.DisposeAsync();
+    }
+
+    [Test]
+    public async Task BatchedWarmer_disposes_cleanly_with_pending_batch()
+    {
+        FlatDbConfig config = new() { TrieWarmerWorkerCount = 2, TrieWarmerBatchSize = 8 };
+        TrieWarmer warmer = new(_logManager, config);
+        RecordingStorageWarmer tree = new();
+
+        for (int i = 0; i < 8; i++) warmer.PushSlotJob(tree, (UInt256)i, sequenceId: 1);
+
+        // Dispose must drain accepted jobs and complete (no OutstandingWarmups underflow/hang from per-job
+        // batch accounting). The warmer here has no scope, so DecrementOutstandingWarmups is on the tree fake.
+        await warmer.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(tree.WarmedIndices.Count, Is.EqualTo(8));
+    }
+
+    private sealed class RecordingStorageWarmer : ITrieWarmer.IStorageWarmer
+    {
+        private readonly System.Collections.Concurrent.ConcurrentBag<UInt256> _warmed = [];
+        private int _sawBatch;
+
+        public System.Collections.Generic.IReadOnlyCollection<UInt256> WarmedIndices => _warmed;
+        public bool SawBatch => Volatile.Read(ref _sawBatch) != 0;
+
+        public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
+        {
+            _warmed.Add(index);
+            return true;
+        }
+
+        public void WarmUpStorageTrieBatch(ReadOnlySpan<UInt256> indices, int sequenceId, int jobCount)
+        {
+            if (indices.Length > 1) Volatile.Write(ref _sawBatch, 1);
+            for (int i = 0; i < indices.Length; i++) _warmed.Add(indices[i]);
         }
     }
 

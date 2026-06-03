@@ -46,6 +46,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
+    [ConfigItem(Description = "Max number of queued same-contract trie-warmer slot jobs to coalesce into a single RocksDB MultiGet. 1 disables batching (one read per job).", DefaultValue = "1")]
+    int TrieWarmerBatchSize { get; set; }
+
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 

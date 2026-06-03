@@ -144,6 +144,91 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
     }
 
+    /// <summary>
+    /// Warm-only batched read for many slots of one <paramref name="address" />: mirrors
+    /// <see cref="GetSlot" />'s layered lookup (current write buffer → this bundle's snapshot chain →
+    /// read-only bundle → persistence) but coalesces the persistence reads into a single MultiGet.
+    /// Values are discarded — used by the TrieWarmer to prime caches for the path the EVM will hit.
+    /// </summary>
+    public void WarmSlotBatch(Address address, ReadOnlySpan<UInt256> indices, int selfDestructStateIdx)
+    {
+        GuardDispose();
+
+        int n = indices.Length;
+        // Keys/hashes for the read-only bundle, plus scratch for the coalesced persistence read.
+        HashedKey<(Address, UInt256)>[] keys = new HashedKey<(Address, UInt256)>[n];
+        ValueHash256[] slotHashes = new ValueHash256[n];
+        int roCount = 0;
+
+        int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
+
+        for (int j = 0; j < n; j++)
+        {
+            UInt256 index = indices[j];
+            HashedKey<(Address, UInt256)> key = new((address, index));
+
+            if (_changedSlots.ContainsKey(key))
+            {
+                continue;
+            }
+
+            // Self-destructed at the point of the latest change → no read needed.
+            if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
+            {
+                continue;
+            }
+
+            if (ResolveFromOwnSnapshots(key, currentBundleSelfDestructIdx))
+            {
+                continue;
+            }
+
+            // Misses this bundle → must be resolved by the read-only bundle / persistence.
+            keys[roCount] = key;
+            ValueHash256 slotHash = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(index, ref slotHash);
+            slotHashes[roCount] = slotHash;
+            roCount++;
+        }
+
+        if (roCount == 0)
+        {
+            return;
+        }
+
+        Span<ValueHash256> missScratch = new ValueHash256[roCount];
+        Span<SlotValue> valueScratch = new SlotValue[roCount];
+        Span<bool> foundScratch = new bool[roCount];
+
+        _readOnlySnapshotBundle.WarmSlotBatch(
+            address,
+            keys.AsSpan(0, roCount),
+            slotHashes.AsSpan(0, roCount),
+            selfDestructStateIdx,
+            missScratch,
+            valueScratch,
+            foundScratch);
+    }
+
+    /// <summary>True when this bundle's own snapshot chain resolves the slot (hit or self-destruct boundary).</summary>
+    private bool ResolveFromOwnSnapshots(HashedKey<(Address, UInt256)> key, int currentBundleSelfDestructIdx)
+    {
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStorage(key, out _))
+            {
+                return true;
+            }
+
+            if (i <= currentBundleSelfDestructIdx)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
         GuardDispose();

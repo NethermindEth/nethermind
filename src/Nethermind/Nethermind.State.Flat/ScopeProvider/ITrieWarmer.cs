@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -39,5 +40,13 @@ public interface ITrieWarmer
     public interface IStorageWarmer
     {
         bool WarmUpStorageTrie(UInt256 index, int sequenceId);
+
+        /// <summary>
+        /// Batched <see cref="WarmUpStorageTrie" /> for several slots of this storage tree, coalescing the
+        /// underlying reads into one MultiGet. <paramref name="jobCount" /> is the number of enqueued jobs
+        /// this batch represents (used to balance the outstanding-warmup accounting); it equals
+        /// <paramref name="indices" />.Length.
+        /// </summary>
+        void WarmUpStorageTrieBatch(ReadOnlySpan<UInt256> indices, int sequenceId, int jobCount);
     }
 }

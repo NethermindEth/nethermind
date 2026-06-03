@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -49,6 +51,9 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     private readonly Processor[] _processors;
     private TaskCompletionSource<bool>? _processorsStopped;
 
+    // >1 enables coalescing of already-queued same-tree slot jobs into one MultiGet. 1 = off.
+    private readonly int _batchSize;
+
     public TrieWarmer(ILogManager logManager, IFlatDbConfig flatDbConfig)
     {
         _logger = logManager.GetClassLogger<TrieWarmer>();
@@ -58,6 +63,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             ? Math.Max(Environment.ProcessorCount / 2, 1)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
+
+        _batchSize = Math.Max(1, Math.Min(flatDbConfig.TrieWarmerBatchSize, SlotBufferSize));
 
         _processors = new Processor[workerCount];
         for (int i = 0; i < _processors.Length; i++)
@@ -111,6 +118,11 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             while (true)
             {
+                if (_batchSize > 1)
+                {
+                    DrainSlotJobsBatched();
+                }
+
                 while (TryDequeue(out Job job))
                 {
                     HandleJob(in job);
@@ -132,6 +144,76 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         finally
         {
             OnProcessorStopped();
+        }
+    }
+
+    /// <summary>
+    /// Drains up to <see cref="_batchSize"/> already-queued slot jobs from the dedicated slot buffer,
+    /// groups them by (storage tree, sequenceId), and dispatches each group as a single coalesced
+    /// MultiGet via <see cref="ITrieWarmer.IStorageWarmer.WarmUpStorageTrieBatch"/>; groups of one fall
+    /// back to the single-read path. Never blocks/waits to fill a batch — it batches only what is
+    /// already present (preserving the warmer's low-latency-enqueue design). Multiple worker threads may
+    /// drain concurrently, so the drained set is NOT assumed contiguous-by-tree — hence the grouping.
+    /// </summary>
+    private void DrainSlotJobsBatched()
+    {
+        SlotJob[]? drained = null;
+        int count = 0;
+
+        while (count < _batchSize && _slotJobBuffer.TryDequeue(out SlotJob slotJob))
+        {
+            drained ??= ArrayPool<SlotJob>.Shared.Rent(_batchSize);
+            drained[count++] = slotJob;
+        }
+
+        if (drained is null)
+        {
+            return;
+        }
+
+        try
+        {
+            DispatchDrainedSlotJobs(drained, count);
+        }
+        finally
+        {
+            ArrayPool<SlotJob>.Shared.Return(drained, clearArray: true);
+        }
+    }
+
+    private void DispatchDrainedSlotJobs(SlotJob[] drained, int count)
+    {
+        Span<UInt256> indices = count <= 64 ? stackalloc UInt256[64] : new UInt256[count];
+
+        // Group by (tree, sequenceId) using a simple O(n^2) scan: n <= _batchSize (small), and only
+        // not-yet-dispatched entries are revisited. A processed entry is marked by nulling its tree.
+        for (int i = 0; i < count; i++)
+        {
+            ITrieWarmer.IStorageWarmer? tree = drained[i].storageTree;
+            if (tree is null) continue; // already grouped into an earlier batch
+
+            int seq = drained[i].sequenceId;
+            int groupCount = 0;
+            indices[groupCount++] = drained[i].index;
+            drained[i] = default; // mark consumed
+
+            for (int j = i + 1; j < count; j++)
+            {
+                if (ReferenceEquals(drained[j].storageTree, tree) && drained[j].sequenceId == seq)
+                {
+                    indices[groupCount++] = drained[j].index;
+                    drained[j] = default; // mark consumed
+                }
+            }
+
+            if (groupCount == 1)
+            {
+                tree.WarmUpStorageTrie(indices[0], seq);
+            }
+            else
+            {
+                tree.WarmUpStorageTrieBatch(indices[..groupCount], seq, groupCount);
+            }
         }
     }
 

@@ -888,6 +888,39 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    /// <summary>
+    /// Batched point read for a single column family, honoring the supplied <paramref name="readOptions" />
+    /// (e.g. a pinned snapshot) so the results match what per-key <see cref="Get(ReadOnlySpan{byte}, ColumnFamilyHandle, ReadOptions)" />
+    /// would return against the same view. Writes each value into <paramref name="results" /> (null for a missing key).
+    /// </summary>
+    internal void MultiGetWithColumnFamily(byte[][] keys, ColumnFamilyHandle? cf, ReadOptions readOptions, Span<byte[]?> results)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateReadMetrics();
+
+        try
+        {
+            ColumnFamilyHandle[]? columnFamilies = null;
+            if (cf is not null)
+            {
+                columnFamilies = new ColumnFamilyHandle[keys.Length];
+                Array.Fill(columnFamilies, cf);
+            }
+
+            KeyValuePair<byte[], byte[]?>[] pairs = _db.MultiGet(keys, columnFamilies, readOptions);
+            for (int i = 0; i < pairs.Length; i++)
+            {
+                results[i] = pairs[i].Value;
+            }
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
