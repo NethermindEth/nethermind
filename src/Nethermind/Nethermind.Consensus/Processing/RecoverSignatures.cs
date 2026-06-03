@@ -37,13 +37,10 @@ namespace Nethermind.Consensus.Processing
             if (txs.Length == 0)
                 return;
 
-            // Short-circuit only when both signature AND sender are present — RLP decode
-            // populates the signature but leaves SenderAddress null, so a freshly decoded
-            // batch (block txs on first call, IL txs from the decoder) still falls through
-            // to recovery. Once recovered, a re-entry on the same array naturally returns
-            // here because every entry has both fields.
             Transaction firstTx = txs[0];
             if (firstTx.IsSigned && firstTx.SenderAddress is not null)
+                // already recovered a sender for a signed tx in this block,
+                // so we assume the rest of txs in the block are already recovered
                 return;
 
             bool useSignatureChainId = !releaseSpec.ValidateChainId;
@@ -77,12 +74,6 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        /// <summary>
-        /// Recovers the sender address and any EIP-7702 authority addresses for a single
-        /// transaction. Designed for callers that already loop over transactions themselves —
-        /// e.g. <see cref="Decoders.InclusionListDecoder"/> which combines decode and recovery
-        /// into a single parallel pass.
-        /// </summary>
         public void RecoverOne(Transaction tx, IReleaseSpec releaseSpec)
         {
             bool useSignatureChainId = !releaseSpec.ValidateChainId;

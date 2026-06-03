@@ -11,11 +11,6 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Validators;
 
-/// <summary>
-/// EIP-7805 (FOCIL) IL satisfaction check. Validates against PARENT-block state plus the
-/// effects of any IL txs the block already includes; post-execution state would let a
-/// censoring builder defeat the IL with a same-nonce replacement tx.
-/// </summary>
 public static class InclusionListValidator
 {
     public static bool IsSatisfied(
@@ -42,16 +37,11 @@ public static class InclusionListValidator
         Transaction[] il = block.InclusionListTransactions;
         HashSet<Transaction> includedTxs = new(block.Transactions, ByHashTxComparer.Instance);
 
-        // Inline `Contains` once per IL tx into a bitmap so the second pass below doesn't hash
-        // again. The spec cap (Eip7805Constants.MaxTransactionsPerInclusionList = 256) is small
-        // enough to always stackalloc.
         Span<bool> included = il.Length <= Eip7805Constants.MaxTransactionsPerInclusionList
             ? stackalloc bool[il.Length]
             : new bool[il.Length];
 
-        // Accumulate per-sender deltas for the IL txs the block already includes — per spec the
-        // appendability check for the others runs against parent state plus those. Worst-case
-        // cost (gasLimit * maxFeePerGas + value) matches TransactionProcessor's pre-check.
+        // Accumulate per-sender deltas for the IL txs the block already includes .
         Dictionary<AddressAsKey, IlDelta> ilDeltas = new(il.Length);
         for (int i = 0; i < il.Length; i++)
         {

@@ -327,8 +327,6 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7918Enabled = (chainSpec.Parameters.Eip7918TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8024Enabled = (chainSpec.Parameters.Eip8024TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
-            releaseSpec.IsEip7805Enabled = (chainSpec.Parameters.Eip7805TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-
             bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock;
             bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? long.MaxValue) <= releaseStartTimestamp;
             releaseSpec.FeeCollector = (eip1559FeeCollector || eip4844FeeCollector) ? chainSpec.Parameters.FeeCollector : null;
@@ -348,6 +346,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7708Enabled = (chainSpec.Parameters.Eip7708TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsEip7954Enabled = (chainSpec.Parameters.Eip7954TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
+            releaseSpec.IsEip7805Enabled = (chainSpec.Parameters.Eip7805TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
             if (releaseSpec.IsEip7954Enabled)
             {
                 releaseSpec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;

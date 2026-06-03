@@ -259,10 +259,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                     _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
                     return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
                 }
-            case ValidationResult.InvalidInclusionList:
+            case ValidationResult.InclusionListUnsatisfied:
                 {
                     if (_logger.IsInfo) _logger.Info($"Invalid inclusion list. Result of {requestStr}.");
-                    return NewPayloadV1Result.InvalidInclusionList(block.Hash);
+                    return NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
                 }
             case ValidationResult.Valid:
                 {
@@ -468,7 +468,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             ProcessingResult.Success => ValidationResult.Valid,
             ProcessingResult.ProcessingError => ValidationResult.Invalid,
-            ProcessingResult.InvalidInclusionList => ValidationResult.InvalidInclusionList,
+            ProcessingResult.InclusionListUnsatisfied => ValidationResult.InclusionListUnsatisfied,
             _ => null
         };
 
@@ -553,6 +553,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Invalid,
         Valid,
         Syncing,
-        InvalidInclusionList
+        InclusionListUnsatisfied
     }
 }

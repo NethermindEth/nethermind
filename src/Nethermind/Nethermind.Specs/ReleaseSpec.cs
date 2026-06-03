@@ -101,7 +101,6 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7251Enabled { get; set; }
     public bool IsEip7825Enabled { get; set; }
     public bool IsEip7918Enabled { get; set; }
-    public bool IsEip7805Enabled { get; set; }
     public bool IsEip7934Enabled { get; set; }
     public int Eip7934MaxRlpBlockSize { get; set; }
     public ulong TargetBlobCount { get; set; }
@@ -174,6 +173,8 @@ public class ReleaseSpec : IReleaseSpec
 
     public bool IsEip7708Enabled { get; set; }
     public bool IsEip7954Enabled { get; set; }
+
+    public bool IsEip7805Enabled { get; set; }
 
     private ReleaseSpec? _systemSpec;
 

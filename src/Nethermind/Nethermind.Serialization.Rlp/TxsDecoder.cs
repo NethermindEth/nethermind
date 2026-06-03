@@ -9,9 +9,6 @@ namespace Nethermind.Serialization.Rlp;
 
 public static class TxsDecoder
 {
-    // Above this count, parallel decoding pays back its scheduling cost. Picked to match
-    // the threshold the RecoverSignatures pipeline uses for sender recovery; below it the
-    // serial path is faster and avoids touching the thread pool on hot RPC paths.
     private const int ParallelDecodeThreshold = 8;
 
     public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors)
@@ -31,10 +28,6 @@ public static class TxsDecoder
             try
             {
                 Rlp.ValueDecoderContext ctx = new(txData[i]);
-                // `transactions[added++] = decode(...)` post-increments BEFORE the decoder
-                // is called: if decoder throws under skipErrors, slot `added` was already
-                // advanced past a null entry, and the next successful decode writes past it.
-                // Stage into a local first, then commit only on success.
                 Transaction decoded = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
                 transactions[added++] = decoded;
             }

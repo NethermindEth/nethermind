@@ -15,10 +15,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-/// <summary>
-/// Unit-tests <see cref="InclusionListBuilder"/>'s byte and count caps so a future selection
-/// strategy can't silently break the MAX_BYTES_PER_INCLUSION_LIST contract.
-/// </summary>
 public class InclusionListBuilderTests
 {
     private static Transaction TxOfSize(int payloadBytes, int nonce = 0)
@@ -56,23 +52,20 @@ public class InclusionListBuilderTests
 
         int totalBytes = il.Sum(t => t.Length);
         Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
-        // Sanity: we returned at least one tx so the cap isn't a false positive on selection
         Assert.That(il, Is.Not.Empty);
     }
 
     [Test]
     public void Skips_txs_that_would_overflow_but_keeps_smaller_ones_that_fit()
     {
-        Transaction huge = TxOfSize(8000, 0);   // alone fits
-        Transaction tiny = TxOfSize(50, 1);     // slots in after huge
+        Transaction huge = TxOfSize(8000, 0);
+        Transaction tiny = TxOfSize(50, 1);
         ITxPool pool = Substitute.For<ITxPool>();
-        // Builder's internal shuffle picks the order; assert only the cap invariant below.
         pool.GetPendingTransactions().Returns([huge, tiny]);
         InclusionListBuilder builder = new(pool);
 
         List<byte[]> il = builder.GetInclusionList().ToList();
 
-        // Either both fit (sum below cap) or huge alone fits and tiny is skipped — both legal.
         int totalBytes = il.Sum(t => t.Length);
         Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
     }

@@ -19,12 +19,8 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    /// <summary>
-    /// Bogota end-to-end with an empty IL: FCUv5 → getPayloadV6 → newPayloadV6 → promote FCU.
-    /// Empty ILs are trivially satisfied so every step must return <see cref="PayloadStatus.Valid"/>.
-    /// </summary>
     [Test]
-    public async Task Should_process_block_as_expected_Bogota()
+    public async Task Should_process_block_as_expected_V7()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -64,12 +60,8 @@ public partial class EngineModuleTests
         Assert.That(finalFcu.Data.PayloadId, Is.Null);
     }
 
-    /// <summary>
-    /// FOCIL: an IL tx that's appendable against parent state but missing from the payload
-    /// must produce <see cref="PayloadStatus.InvalidInclusionList"/>.
-    /// </summary>
     [Test]
-    public async Task NewPayloadV6_should_return_invalid_for_unsatisfied_inclusion_list_Bogota()
+    public async Task NewPayloadV6_should_return_invalid_for_unsatisfied_inclusion_list()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -102,16 +94,12 @@ public partial class EngineModuleTests
             inclusionListTransactions: inclusionList);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InvalidInclusionList));
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied));
         Assert.That(result.Data.LatestValidHash, Is.EqualTo(emptyPayload.BlockHash));
     }
 
-    /// <summary>
-    /// FOCIL: IL txs supplied via PayloadAttributesV5 must end up in the next built payload —
-    /// the IL source is prepended ahead of the mempool by the producer-tx-source factory.
-    /// </summary>
     [Test]
-    public async Task Should_build_block_with_inclusion_list_transactions_Bogota()
+    public async Task Should_build_block_with_inclusion_list_transactions()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -152,12 +140,8 @@ public partial class EngineModuleTests
         Assert.That(verify.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
-    /// <summary>
-    /// engine_getInclusionListV1 returns encoded mempool txs, bounded by the spec's MAX_BYTES
-    /// and MAX_TXS constants. blockHash is spec-required but not consulted today.
-    /// </summary>
     [Test]
-    public async Task Can_get_inclusion_list_Bogota()
+    public async Task Can_get_inclusion_list()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -186,16 +170,15 @@ public partial class EngineModuleTests
         byte[] tx1Bytes = Rlp.Encode(tx1).Bytes;
         byte[] tx2Bytes = Rlp.Encode(tx2).Bytes;
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(inclusionList, Is.Not.Null);
-            Assert.That(inclusionList!.Count, Is.EqualTo(2));
+            Assert.That(inclusionList, Has.Count.EqualTo(2));
             Assert.That(inclusionList, Does.Contain(tx1Bytes));
             Assert.That(inclusionList, Does.Contain(tx2Bytes));
-        });
+        }
     }
 
-    /// <summary>Shared PayloadAttributesV5 template — slotNumber + IL required, rest mirrors Amsterdam.</summary>
     private PayloadAttributes BuildBogotaPayloadAttributes(byte[][] inclusionList) => new()
     {
         Timestamp = Timestamper.UnixTime.Seconds,

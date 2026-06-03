@@ -74,7 +74,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip7976Enabled { get; set; } = spec.IsEip7976Enabled;
         public bool IsEip7981Enabled { get; set; } = spec.IsEip7981Enabled;
         public bool IsEip7918Enabled { get; set; } = spec.IsEip7918Enabled;
-        public bool IsEip7805Enabled { get; set; } = spec.IsEip7805Enabled;
         public bool IsEip7883Enabled { get; set; } = spec.IsEip7883Enabled;
         public bool IsEip7934Enabled { get; set; } = spec.IsEip7934Enabled;
         public int Eip7934MaxRlpBlockSize { get; set; } = spec.Eip7934MaxRlpBlockSize;
@@ -129,6 +128,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7778Enabled { get; set; } = spec.IsEip7778Enabled;
         public bool IsEip7843Enabled => spec.IsEip7843Enabled;
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
+        public bool IsEip7805Enabled { get; set; } = spec.IsEip7805Enabled;
         public SpecGasCosts GasCosts => new(this);
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }

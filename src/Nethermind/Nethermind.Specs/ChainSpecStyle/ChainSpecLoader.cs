@@ -191,7 +191,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
             Eip7251TransitionTimestamp = chainSpecJson.Params.Eip7251TransitionTimestamp,
             Eip7251ContractAddress = chainSpecJson.Params.Eip7251ContractAddress ?? Eip7251Constants.ConsolidationRequestPredeployAddress,
-            Eip7805TransitionTimestamp = chainSpecJson.Params.Eip7805TransitionTimestamp,
             FeeCollector = chainSpecJson.Params.FeeCollector,
             Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
             Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
@@ -219,6 +218,8 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip8024TransitionTimestamp = chainSpecJson.Params.Eip8024TransitionTimestamp,
             Eip7843TransitionTimestamp = chainSpecJson.Params.Eip7843TransitionTimestamp,
             Eip7954TransitionTimestamp = chainSpecJson.Params.Eip7954TransitionTimestamp,
+
+            Eip7805TransitionTimestamp = chainSpecJson.Params.Eip7805TransitionTimestamp,
         };
 
         chainSpec.Parameters.ExpandAll(chainSpecJson.Params);

@@ -43,5 +43,5 @@ public enum ProcessingResult
     /// <summary>
     /// Invalid inclusion list
     /// </summary>
-    InvalidInclusionList
+    InclusionListUnsatisfied
 }

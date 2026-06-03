@@ -377,7 +377,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 }
                 else if (!blockRef.ProcessingOptions.ContainsFlag(ProcessingOptions.NoValidation) && block.InclusionListUnsatisfied)
                 {
-                    NotifyInvalidInclusionList(blockRef, block, error);
+                    NotifyInclusionListUnsatisfied(blockRef, block, error);
                 }
                 else
                 {
@@ -410,10 +410,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void NotifyInvalidInclusionList(BlockRef blockRef, Block block, string error)
+        void NotifyInclusionListUnsatisfied(BlockRef blockRef, Block block, string error)
         {
             if (_logger.IsTrace) _logger.Trace($"Invalid inclusion list for block {block.ToString(Block.Format.Full)}");
-            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InvalidInclusionList, error));
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InclusionListUnsatisfied, error));
         }
 
         [DoesNotReturn]

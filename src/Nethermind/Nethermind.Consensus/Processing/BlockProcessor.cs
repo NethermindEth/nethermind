@@ -82,24 +82,19 @@ public partial class BlockProcessor(
         if (_balManager.BatchReadEnabled && suggestedBlock.BlockAccessList is not null)
             _ = _stateProvider.HintBal(suggestedBlock.BlockAccessList);
 
-        // EIP-7805: snapshot each IL sender's parent-state nonce + balance BEFORE
-        // ProcessBlock mutates the worldstate, so the IL check below runs against parent
-        // state rather than post-execution state (where a same-nonce replacement tx could
-        // bump the sender's nonce and falsely make the IL look satisfied).
+        // snapshot each IL sender's parent-state nonce + balance so the IL check runs against parent
         bool runInclusionListValidation =
             spec.InclusionListsEnabled
             && !options.ContainsFlag(ProcessingOptions.NoValidation);
         IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState = runInclusionListValidation
             ? CaptureParentSenderState(suggestedBlock.InclusionListTransactions)
-            : (IReadOnlyDictionary<AddressAsKey, AccountSnapshot>)EmptyParentSenderState;
+            : EmptyParentSenderState;
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
 
-        // Cache the IL verdict on suggestedBlock; BlockchainProcessor reads it later, after
-        // the worldstate scope has closed.
         if (runInclusionListValidation)
         {
             block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;

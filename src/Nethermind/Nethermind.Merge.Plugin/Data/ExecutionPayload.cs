@@ -219,6 +219,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         {
             byte[][] txData = Transactions;
             Transaction[] transactions = new Transaction[txData.Length];
+
             for (i = 0; i < transactions.Length; i++)
             {
                 Rlp.ValueDecoderContext ctx = new(txData[i]);

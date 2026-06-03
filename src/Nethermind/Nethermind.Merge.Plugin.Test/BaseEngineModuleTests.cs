@@ -270,9 +270,6 @@ public abstract partial class BaseEngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            // The FOCIL tx source is composed into the producer's tx pipeline via
-            // InclusionListBlockProducerTxSourceFactory, registered in BaseMergePluginModule.
-            // Tests that need to inject IL bytes resolve the singleton off Container.
             InclusionListTxSource = Container.Resolve<InclusionListTxSource>();
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.CreatePersistent();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);

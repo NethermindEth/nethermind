@@ -1966,9 +1966,6 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_return_capabilities()
     {
-        // Use the latest fork that surfaces every engine method on IEngineRpcModule. Bogota
-        // (EIP-7805) adds engine_forkchoiceUpdatedV5 / engine_newPayloadV6 / engine_getInclusionListV1
-        // on top of Amsterdam, so a chain at any earlier fork would correctly hide those three.
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()

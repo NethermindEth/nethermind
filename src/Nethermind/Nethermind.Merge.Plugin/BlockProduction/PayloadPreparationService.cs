@@ -52,9 +52,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
 
-    // Per-payload improvement metadata: build count (exposed to tests via
-    // GetPayloadBuildCount) and the parent header / attributes / CTS retained across the
-    // improvement cycle.
     private readonly ConcurrentDictionary<string, RebuildSlot> _rebuildSlots = new();
 
     private sealed record RebuildSlot(
@@ -62,8 +59,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         PayloadAttributes PayloadAttributes,
         SharedCancellationTokenSource Cts)
     {
-        // Volatile to make the count visible across the producer thread and the test
-        // thread checking GetPayloadBuildCount without a lock.
         private int _buildCount;
         public uint BuildCount => (uint)Volatile.Read(ref _buildCount);
         public void IncrementBuildCount() => Interlocked.Increment(ref _buildCount);
@@ -137,12 +132,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         bool isTrace = _logger.IsTrace;
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
-        // EIP-7805 (FOCIL): when the CL supplies an inclusion list, the "empty" payload
-        // must still contain those IL transactions — otherwise the first
-        // engine_getPayloadV6 returns a payload that fails the IL constraint, and any
-        // newPayloadV6 with the same IL reports INCLUSION_LIST_UNSATISFIED. Suppress the
-        // EmptyBlock fast-path so the producer drains InclusionListTxSource on the first
-        // pass; the mempool source still returns nothing extra when the pool is empty.
         IBlockProducer.Flags flags = payloadAttributes.InclusionListTransactions is { Length: > 0 }
             ? IBlockProducer.Flags.DontSeal
             : IBlockProducer.Flags.PrepareEmptyBlock;
@@ -474,11 +463,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         // GetPayload cancels the request
         _ = GetPayload(payloadId);
 
-    /// <summary>
-    /// EIP-7805 (FOCIL): how many times ImproveBlock has been entered for this payloadId.
-    /// Exposed for tests; not part of the engine API surface. Increments on the initial
-    /// build plus every subsequent tx-pool-driven improvement.
-    /// </summary>
     internal uint? GetPayloadBuildCount(string payloadId) =>
         _rebuildSlots.TryGetValue(payloadId, out RebuildSlot? slot) ? slot.BuildCount : null;
 }

@@ -5,10 +5,6 @@ using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Consensus.Transactions;
 
-/// <summary>
-/// Prepends FOCIL (EIP-7805) IL transactions to the block-producer tx source so they drain
-/// before the mempool — a pool-first order could trivially satisfy the IL by gas exhaustion.
-/// </summary>
 public class InclusionListBlockProducerTxSourceFactory(
     IBlockProducerTxSourceFactory baseFactory,
     InclusionListTxSource inclusionListTxSource) : IBlockProducerTxSourceFactory

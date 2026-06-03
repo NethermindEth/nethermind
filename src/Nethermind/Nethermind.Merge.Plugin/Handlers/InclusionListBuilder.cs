@@ -29,7 +29,7 @@ public class InclusionListBuilder(ITxPool txPool)
         for (int i = 0; i < mempool.Length; i++)
         {
             Transaction tx = mempool[i];
-            // EIP-7805 §Generation: blob txs MUST NOT appear in the IL.
+            // blob txs MUST NOT appear in the IL.
             if (tx.Type == TxType.Blob) continue;
 
             if (seen < capacity)

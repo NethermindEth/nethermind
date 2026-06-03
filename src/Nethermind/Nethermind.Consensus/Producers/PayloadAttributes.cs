@@ -11,7 +11,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
-using System.Collections.Generic;
 
 namespace Nethermind.Consensus.Producers;
 
@@ -134,9 +133,6 @@ public class PayloadAttributes
 
         if (InclusionListTransactions is not null)
         {
-            // EIP-7805: distinct ILs MUST yield distinct payload ids. Without this, two FCUv5
-            // calls with the same parent/timestamp but different ILs collide on the cached
-            // payload and the second caller gets a block built for the first IL.
             ComputeInclusionListDigest(InclusionListTransactions).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }
@@ -146,9 +142,6 @@ public class PayloadAttributes
 
     private static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
     {
-        // Order-sensitive concatenation: two different IL orderings are different inputs. Stream
-        // each entry through the hasher so we never allocate a concat buffer (which would have
-        // been kBs for a full IL).
         KeccakHash hash = KeccakHash.Create();
         for (int i = 0; i < inclusionListTransactions.Length; i++)
         {
@@ -255,9 +248,6 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
-            // EIP-7805 (FOCIL): PayloadAttributesV5 introduces InclusionListTransactions; an
-            // empty list is still V5 because the field is mandatory on a FOCIL-enabled chain.
-            // We detect "not null" rather than non-empty length for that reason.
             { InclusionListTransactions: not null } => PayloadAttributesVersions.V5,
             { SlotNumber: not null } => PayloadAttributesVersions.V4,
             { ParentBeaconBlockRoot: not null } => PayloadAttributesVersions.V3,
@@ -282,5 +272,5 @@ public static class PayloadAttributesVersions
     public const int V2 = 2; // Shanghai
     public const int V3 = 3; // Cancun/Prague/Osaka
     public const int V4 = 4; // Amsterdam
-    public const int V5 = 5; // Bogota (EIP-7805 FOCIL — adds InclusionListTransactions)
+    public const int V5 = 5; // Bogota
 }

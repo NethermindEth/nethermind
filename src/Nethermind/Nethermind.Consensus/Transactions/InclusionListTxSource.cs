@@ -11,15 +11,6 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Consensus.Transactions;
 
-/// <summary>
-/// Holds the most recent EIP-7805 inclusion list (set by the CL via FCUv5) and exposes it
-/// to the block producer as an <see cref="ITxSource"/>. Overwritten on every FCUv5 — even
-/// with an empty list — so the previous slot's IL never leaks into the next cycle.
-/// </summary>
-/// <remarks>
-/// <see cref="Set"/> runs on the JSON-RPC thread, <see cref="GetTransactions"/> on the
-/// producer thread; the Volatile pair publishes updates across cores without a lock.
-/// </remarks>
 public class InclusionListTxSource(
     IEthereumEcdsa? ecdsa,
     ISpecProvider? specProvider,
@@ -27,7 +18,6 @@ public class InclusionListTxSource(
 {
     private IEnumerable<Transaction> _inclusionListTransactions = [];
 
-    // Lazy: unit-test fixtures construct with null ecdsa/specProvider; built on first Set().
     private InclusionListDecoder? _decoder;
     private InclusionListDecoder Decoder => _decoder ??= new InclusionListDecoder(ecdsa, specProvider, logManager);
 

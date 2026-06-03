@@ -18,7 +18,7 @@ public static class EngineApiVersions
         public const int V2 = 2; // Shanghai
         public const int V3 = 3; // Cancun/Prague/Osaka
         public const int V4 = 4; // Amsterdam
-        public const int V5 = 5; // Bogota (FOCIL, PayloadAttributesV5 with inclusionListTransactions)
+        public const int V5 = 5; // Bogota
         public const int Latest = V5;
     }
 
@@ -30,7 +30,7 @@ public static class EngineApiVersions
         public const int V3 = 3; // Cancun
         public const int V4 = 4; // Prague/Osaka
         public const int V5 = 5; // Amsterdam
-        public const int V6 = 6; // Bogota (FOCIL)
+        public const int V6 = 6; // Bogota
         public const int Latest = V6;
     }
 
