@@ -443,14 +443,9 @@ public class PersistenceManager(
     /// </summary>
     /// <remarks>
     /// The per-removal metric updates (count / memory / prunes) happen delta-wise inside the
-    /// repo's <c>PruneBefore</c>, so no metric recompute is needed here.
+    /// repo's <c>RemoveStatesUntil</c>, so no metric recompute is needed here.
     /// </remarks>
-    private void PrunePersistedTierBefore(StateId newPersisted)
-    {
-        int pruned = _repo.PruneBefore(newPersisted);
-        if (pruned > 0 && _logger.IsDebug)
-            _logger.Debug($"Pruned {pruned} persisted snapshots before block {newPersisted.BlockNumber}");
-    }
+    private void PrunePersistedTierBefore(StateId newPersisted) => _repo.RemoveStatesUntil(newPersisted.BlockNumber);
 
     private void DoConvert(ConversionCandidate candidate)
     {

@@ -29,7 +29,7 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
     public bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
     public bool TryLeaseCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
     public bool TryLeasePersistableCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
-    public int PruneBefore(StateId stateId) => 0;
+    public void RemoveStatesUntil(long blockNumber) { }
     public bool HasBaseSnapshot(in StateId stateId) => false;
     public void Dispose() { }
 }

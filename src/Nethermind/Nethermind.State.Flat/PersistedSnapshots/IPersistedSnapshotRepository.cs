@@ -26,7 +26,7 @@ public interface IPersistedSnapshotRepository : IDisposable
     // lease and MUST dispose it (the repository's own dict entry holds an independent
     // lease, so disposing the returned reference does not remove the snapshot from the
     // repo). Pre-leasing closes a use-after-free window between return and use when a
-    // concurrent PruneBefore may dispose the repo's dict entry.
+    // concurrent RemoveStatesUntil may dispose the repo's dict entry.
     PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot);
     PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false);
 
@@ -53,6 +53,6 @@ public interface IPersistedSnapshotRepository : IDisposable
     bool TryLeasePersistableCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
 
     // Lifecycle
-    int PruneBefore(StateId stateId);
+    void RemoveStatesUntil(long blockNumber);
     bool HasBaseSnapshot(in StateId stateId);
 }

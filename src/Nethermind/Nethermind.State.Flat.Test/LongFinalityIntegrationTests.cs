@@ -387,8 +387,7 @@ public class LongFinalityIntegrationTests
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(3));
 
-            int pruned = repo.PruneBefore(new StateId(3, Keccak.Compute("prune")));
-            Assert.That(pruned, Is.EqualTo(2)); // s1 and s2 removed
+            repo.RemoveStatesUntil(3); // s1 and s2 removed
             Assert.That(repo.SnapshotCount, Is.EqualTo(1));
         }
 

@@ -297,7 +297,7 @@ public class PersistenceManagerTests
     [Test]
     public void AddToPersistence_InMemoryPersist_PrunesPersistedTier()
     {
-        // Persisting an in-memory snapshot must trigger PruneBefore on both tier repos so
+        // Persisting an in-memory snapshot must trigger RemoveStatesUntil on both tier repos so
         // superseded tier entries get cleared — the toPersist branch must prune, not only the
         // persistedToPersist branch.
         StateId from = Block0;
@@ -314,9 +314,9 @@ public class PersistenceManagerTests
 
         _persistenceManager.AddToPersistence(latest);
 
-        // Both tier mocks (shared substitute) should have received a PruneBefore call with
+        // Both tier mocks (shared substitute) should have received a RemoveStatesUntil call with
         // the new persisted state — once for each repo (small + large).
-        _persistedSnapshotRepository.Received().PruneBefore(to);
+        _persistedSnapshotRepository.Received().RemoveStatesUntil(to.BlockNumber);
     }
 
     [Test]
@@ -324,7 +324,7 @@ public class PersistenceManagerTests
     {
         // Sibling of AddToPersistence_InMemoryPersist_PrunesPersistedTier for the
         // persistedToPersist branch at PersistenceManager line 426-432. Tier-source
-        // persists must also drive PruneBefore so the in-memory tier doesn't keep growing
+        // persists must also drive RemoveStatesUntil so the in-memory tier doesn't keep growing
         // with entries that RocksDB now supersedes.
         StateId target = CreateStateId(16);
         StateId latest = CreateStateId(100);
@@ -346,7 +346,7 @@ public class PersistenceManagerTests
 
         _persistenceManager.AddToPersistence(latest);
 
-        _persistedSnapshotRepository.Received().PruneBefore(target);
+        _persistedSnapshotRepository.Received().RemoveStatesUntil(target.BlockNumber);
     }
 
     [Test]

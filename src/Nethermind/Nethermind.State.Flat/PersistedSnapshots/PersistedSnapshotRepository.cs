@@ -79,7 +79,7 @@ public sealed class PersistedSnapshotRepository(
     // One block-ordered StateId set per bucket + the registration tip — all guarded by
     // `_catalogLock`. Lookups (TryLeaseSnapshotTo, TryLeaseCompactedSnapshotTo,
     // HasBaseSnapshot) stay on the concurrent dictionaries; the ordered sets expose a
-    // self-seed for backward walks (see TryGetSnapshotFrom) and let PruneBefore drop each
+    // self-seed for backward walks (see TryGetSnapshotFrom) and let RemoveStatesUntil drop each
     // bucket's block-ordered prefix without scanning the dictionaries end to end. A `To` can
     // live in more than one bucket (a base and a compacted snapshot can share it), so each
     // bucket keeps its own set.
@@ -326,7 +326,7 @@ public sealed class PersistedSnapshotRepository(
             Interlocked.Add(ref Metrics._persistedSnapshotMemory, persisted.Size);
             Interlocked.Increment(ref Metrics._persistedSnapshotCount);
             RegisterStateIdLocked(_baseStateIds, snapshot.To);
-            // Pre-acquire the caller's lease inside the lock so a racing PruneBefore can't
+            // Pre-acquire the caller's lease inside the lock so a racing RemoveStatesUntil can't
             // dispose the dict entry between the unlock and the caller seeing the return.
             persisted.AcquireLease();
         }
@@ -373,7 +373,7 @@ public sealed class PersistedSnapshotRepository(
             }
             Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
             Interlocked.Increment(ref Metrics._persistedSnapshotCount);
-            // Pre-acquire the caller's lease inside the lock so a racing PruneBefore on a
+            // Pre-acquire the caller's lease inside the lock so a racing RemoveStatesUntil on a
             // background compactor thread can't dispose the dict entry between unlock and
             // the caller seeing the return.
             snapshot.AcquireLease();
@@ -563,26 +563,25 @@ public sealed class PersistedSnapshotRepository(
     }
 
     /// <summary>
-    /// Prune snapshots with To.BlockNumber before the given state. Blob arenas referenced
+    /// Prune snapshots with To.BlockNumber before the given block number. Blob arenas referenced
     /// by surviving compacted snapshots stay alive automatically via the
     /// <see cref="IBlobArenaManager"/> refcount — no explicit "referenced base id"
     /// check is needed at this layer.
     /// </summary>
-    public int PruneBefore(StateId stateId)
+    public void RemoveStatesUntil(long blockNumber)
     {
         lock (_catalogLock)
         {
-            long beforeBlock = stateId.BlockNumber;
             int pruned =
                 PruneBucketBeforeLocked(_baseSnapshots, _baseStateIds,
                     ref _baseSnapshotMemoryBytes, ref _baseSnapshotCount,
-                    ref Metrics._persistedSnapshotMemory, beforeBlock)
+                    ref Metrics._persistedSnapshotMemory, blockNumber)
               + PruneBucketBeforeLocked(_compactedSnapshots, _compactedStateIds,
                     ref _compactedSnapshotMemoryBytes, ref _compactedSnapshotCount,
-                    ref Metrics._compactedPersistedSnapshotMemory, beforeBlock)
+                    ref Metrics._compactedPersistedSnapshotMemory, blockNumber)
               + PruneBucketBeforeLocked(_persistableCompactedSnapshots, _persistableStateIds,
                     ref _persistableSnapshotMemoryBytes, ref _persistableSnapshotCount,
-                    ref Metrics._compactedPersistedSnapshotMemory, beforeBlock);
+                    ref Metrics._compactedPersistedSnapshotMemory, blockNumber);
 
             if (pruned > 0)
             {
@@ -594,8 +593,7 @@ public sealed class PersistedSnapshotRepository(
                     _lastRegisteredState = ComputeLastRegisteredLocked();
             }
 
-            _bloomManager.PruneBefore(stateId);
-            return pruned;
+            _bloomManager.PruneBefore(blockNumber);
         }
     }
 
@@ -680,7 +678,7 @@ public sealed class PersistedSnapshotRepository(
 
         // Snapshot the base StateId graph once so the parentLookup closure (shared by
         // both the local skip simulation and Register inside the parallel section) is a
-        // cheap dict probe. Bases are usually contiguous by block number, but PruneBefore
+        // cheap dict probe. Bases are usually contiguous by block number, but RemoveStatesUntil
         // can leave gaps — missing predecessor blocks are surfaced as a default StateId,
         // which Register treats as "anchor the chain here" via its own boundary check.
         Dictionary<long, StateId> parentByBlock = new(_baseStateIds.Count);

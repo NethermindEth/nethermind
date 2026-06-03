@@ -232,7 +232,7 @@ public class PersistedSnapshotRepositoryTests
     }
 
     [Test]
-    public void PruneBefore_RemovesOldSnapshots()
+    public void RemoveStatesUntil_RemovesOldSnapshots()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted);
@@ -253,9 +253,8 @@ public class PersistedSnapshotRepositoryTests
         repo.ConvertSnapshotToPersistedSnapshot(snap3).Dispose();
         Assert.That(repo.SnapshotCount, Is.EqualTo(3));
 
-        // Prune before block 2 (removes snap1 with To=1)
-        int pruned = repo.PruneBefore(new StateId(2, Keccak.Compute("prune")));
-        Assert.That(pruned, Is.EqualTo(1));
+        // Remove states until block 2 (removes snap1 with To=1)
+        repo.RemoveStatesUntil(2);
         Assert.That(repo.SnapshotCount, Is.EqualTo(2));
     }
 
@@ -307,13 +306,13 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo.LastRegisteredState, Is.EqualTo(s2));
 
         // Pruning the tip rolls back to the next-highest remaining (s1).
-        int pruned = repo.PruneBefore(s2);
-        Assert.That(pruned, Is.EqualTo(1));
+        repo.RemoveStatesUntil(s2.BlockNumber);
+        Assert.That(repo.SnapshotCount, Is.EqualTo(1));
         Assert.That(repo.LastRegisteredState, Is.EqualTo(s2),
-            "PruneBefore(s2) only removes entries with To.BlockNumber < 2, so s2 itself survives");
+            "RemoveStatesUntil(2) only removes entries with To.BlockNumber < 2, so s2 itself survives");
 
-        pruned = repo.PruneBefore(new StateId(99, Keccak.EmptyTreeHash));
-        Assert.That(pruned, Is.EqualTo(1));
+        repo.RemoveStatesUntil(99);
+        Assert.That(repo.SnapshotCount, Is.EqualTo(0));
         Assert.That(repo.LastRegisteredState, Is.Null);
     }
 
@@ -427,8 +426,8 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(withBase!.From, Is.EqualTo(states[0]));
         withBase.Dispose();
 
-        // Prune base[s1] (To.BlockNumber < 2). Compacted survives (To=s8). Now no base has From==s0.
-        repo.PruneBefore(new StateId(2, Keccak.Compute("prune")));
+        // Remove base[s1] (To.BlockNumber < 2). Compacted survives (To=s8). Now no base has From==s0.
+        repo.RemoveStatesUntil(2);
         Assert.That(repo.TryGetSnapshotFrom(states[0], states[n]), Is.Null,
             "Only the compacted entry has From==s0; base-only contract means we return null");
     }

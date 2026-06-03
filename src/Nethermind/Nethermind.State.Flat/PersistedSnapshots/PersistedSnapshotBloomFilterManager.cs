@@ -156,16 +156,16 @@ public sealed class PersistedSnapshotBloomFilterManager : IDisposable
 
     /// <summary>
     /// Drop every slot whose <c>To.BlockNumber</c> is strictly less than
-    /// <paramref name="stateId"/>'s, releasing one lease per slot. Mirrors
-    /// <see cref="PersistedSnapshotRepository.PruneBefore"/>.
+    /// <paramref name="blockNumber"/>, releasing one lease per slot. Mirrors
+    /// <see cref="PersistedSnapshotRepository.RemoveStatesUntil"/>.
     /// </summary>
-    public int PruneBefore(StateId stateId)
+    public int PruneBefore(long blockNumber)
     {
         int pruned = 0;
         using ArrayPoolList<StateId> toRemove = new(0);
         foreach (KeyValuePair<StateId, BloomEntry> kv in _blooms)
         {
-            if (kv.Key.BlockNumber < stateId.BlockNumber) toRemove.Add(kv.Key);
+            if (kv.Key.BlockNumber < blockNumber) toRemove.Add(kv.Key);
         }
         foreach (StateId key in toRemove)
         {

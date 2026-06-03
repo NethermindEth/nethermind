@@ -97,8 +97,8 @@ public class PersistenceManagerPersistedTests
 
         Assert.That(repo.SnapshotCount, Is.EqualTo(3));
 
-        // Prune before block 5 (removes snapshots with To < 5, i.e., s1 and s3)
-        repo.PruneBefore(new StateId(5, Keccak.Compute("5")));
+        // Remove states until block 5 (removes snapshots with To < 5, i.e., s1 and s3)
+        repo.RemoveStatesUntil(5);
 
         Assert.That(repo.SnapshotCount, Is.EqualTo(1)); // Only s6 remains
     }
