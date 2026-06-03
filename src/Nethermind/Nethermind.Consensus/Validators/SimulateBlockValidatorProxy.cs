@@ -3,7 +3,9 @@
 
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -35,4 +37,7 @@ public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : I
 
     public bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState) =>
         baseBlockValidator.ValidateInclusionList(block, parentSenderState);
+
+    public InclusionListValidation BeginInclusionListValidation(Block suggestedBlock, IWorldState worldState, ProcessingOptions options) =>
+        baseBlockValidator.BeginInclusionListValidation(suggestedBlock, worldState, options);
 }

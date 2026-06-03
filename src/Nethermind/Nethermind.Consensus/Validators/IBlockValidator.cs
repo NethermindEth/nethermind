@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Consensus.Validators;
@@ -14,4 +16,5 @@ public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
     bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error);
     bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error);
     bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState);
+    InclusionListValidation BeginInclusionListValidation(Block suggestedBlock, IWorldState worldState, ProcessingOptions options);
 }

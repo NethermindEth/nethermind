@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -82,24 +80,14 @@ public partial class BlockProcessor(
         if (_balManager.BatchReadEnabled && suggestedBlock.BlockAccessList is not null)
             _ = _stateProvider.HintBal(suggestedBlock.BlockAccessList);
 
-        // snapshot each IL sender's parent-state nonce + balance so the IL check runs against parent
-        bool runInclusionListValidation =
-            spec.InclusionListsEnabled
-            && !options.ContainsFlag(ProcessingOptions.NoValidation);
-        IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState = runInclusionListValidation
-            ? CaptureParentSenderState(suggestedBlock.InclusionListTransactions)
-            : EmptyParentSenderState;
+        InclusionListValidation ilValidation = blockValidator.BeginInclusionListValidation(suggestedBlock, _stateProvider, options);
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
 
-        if (runInclusionListValidation)
-        {
-            block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
-            suggestedBlock.InclusionListUnsatisfied = !blockValidator.ValidateInclusionList(block, parentSenderState);
-        }
+        ilValidation.Commit(block, suggestedBlock);
 
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -124,37 +112,6 @@ public partial class BlockProcessor(
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
         suggestedBlock.GeneratedBlockAccessList = block.GeneratedBlockAccessList;
         suggestedBlock.EncodedBlockAccessList = block.EncodedBlockAccessList ?? suggestedBlock.EncodedBlockAccessList;
-    }
-
-    private static readonly Dictionary<AddressAsKey, AccountSnapshot> EmptyParentSenderState = [];
-
-    /// <summary>
-    /// Snapshots parent-state nonce + balance for each distinct IL sender. MUST be called
-    /// before ProcessBlock — afterwards the live worldstate is post-execution.
-    /// </summary>
-    private IReadOnlyDictionary<AddressAsKey, AccountSnapshot> CaptureParentSenderState(Transaction[]? inclusionListTransactions)
-    {
-        if (inclusionListTransactions is not { Length: > 0 })
-        {
-            return EmptyParentSenderState;
-        }
-
-        // Pre-size to IL length (distinct-sender count ≤ IL length). GetValueRefOrAddDefault
-        // probes the bucket once per sender; the first-seen branch does the worldstate read.
-        Dictionary<AddressAsKey, AccountSnapshot> snapshot = new(inclusionListTransactions.Length);
-        for (int i = 0; i < inclusionListTransactions.Length; i++)
-        {
-            Address? sender = inclusionListTransactions[i].SenderAddress;
-            if (sender is null) continue;
-
-            ref AccountSnapshot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(snapshot, sender, out bool existed);
-            if (!existed)
-            {
-                slot = new AccountSnapshot(_stateProvider.GetBalance(sender), _stateProvider.GetNonce(sender));
-            }
-        }
-
-        return snapshot;
     }
 
     protected bool ShouldComputeStateRoot(BlockHeader header) =>

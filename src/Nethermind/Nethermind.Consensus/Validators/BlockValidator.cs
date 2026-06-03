@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -13,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -158,6 +161,37 @@ public class BlockValidator(
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
     public bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState) =>
         InclusionListValidator.IsSatisfied(block, parentSenderState, _specProvider.GetSpec(block.Header));
+
+    public InclusionListValidation BeginInclusionListValidation(Block suggestedBlock, IWorldState worldState, ProcessingOptions options)
+    {
+        if (options.ContainsFlag(ProcessingOptions.NoValidation)
+            || !_specProvider.GetSpec(suggestedBlock.Header).InclusionListsEnabled)
+        {
+            return InclusionListValidation.NoOp;
+        }
+
+        Transaction[]? il = suggestedBlock.InclusionListTransactions;
+        if (il is not { Length: > 0 })
+        {
+            return new InclusionListValidation(this, EmptyParentSenderState);
+        }
+
+        Dictionary<AddressAsKey, AccountSnapshot> snapshot = new(il.Length);
+        for (int i = 0; i < il.Length; i++)
+        {
+            Address? sender = il[i].SenderAddress;
+            if (sender is null) continue;
+
+            ref AccountSnapshot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(snapshot, sender, out bool existed);
+            if (!existed)
+            {
+                slot = new AccountSnapshot(worldState.GetBalance(sender), worldState.GetNonce(sender));
+            }
+        }
+        return new InclusionListValidation(this, snapshot);
+    }
+
+    private static readonly Dictionary<AddressAsKey, AccountSnapshot> EmptyParentSenderState = [];
 
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
     {

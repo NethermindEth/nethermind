@@ -3,9 +3,11 @@
 
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 
 namespace Nethermind.BalRecorder;
 
@@ -31,6 +33,9 @@ public class BalRecordingBlockValidator(IBlockValidator inner, BalRecorderSpecSw
 
     public bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState) =>
         inner.ValidateInclusionList(block, parentSenderState);
+
+    public InclusionListValidation BeginInclusionListValidation(Block suggestedBlock, IWorldState worldState, ProcessingOptions options) =>
+        inner.BeginInclusionListValidation(suggestedBlock, worldState, options);
 
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
     {
