@@ -130,6 +130,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
+            RecordBadBlock(block);
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
 
@@ -160,6 +161,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"orphaned block is invalid: {error}"));
+                RecordBadBlock(block);
                 return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
             }
 
@@ -194,6 +196,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out string? error, validateHashes: false))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
+                RecordBadBlock(block);
                 return NewPayloadV1Result.Invalid(error);
             }
 
@@ -256,6 +259,29 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
         return NewPayloadV1Result.Valid(block.Hash);
+    }
+
+    /// <summary>Records a block rejected before <c>BranchProcessor</c> ever runs.</summary>
+    /// <remarks>
+    /// Mirrors the bookkeeping <see cref="Nethermind.Consensus.Processing.BlockchainProcessor"/> does
+    /// when it catches an <c>InvalidBlockException</c>: bumps the bad-block metrics, marks the chain
+    /// as invalid in <see cref="IInvalidChainTracker"/>, and forwards the block to the
+    /// <c>BadBlockStore</c> so it surfaces in <c>debug_getBadBlocks</c>.
+    /// Pre-process rejection sites (hash mismatch, failed orphan validation, failed suggested-block
+    /// validation) previously skipped all three.
+    /// </remarks>
+    private void RecordBadBlock(Block block)
+    {
+        if (block.Hash is null) return;
+
+        Nethermind.Blockchain.Metrics.BadBlocks++;
+        if (block.IsByNethermindNode())
+        {
+            Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
+        }
+
+        _invalidChainTracker.OnInvalidBlock(block.Hash, block.ParentHash);
+        _blockTree.ReportBadBlock(block);
     }
 
     /// <summary>
