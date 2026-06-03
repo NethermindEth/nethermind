@@ -400,13 +400,13 @@ namespace Nethermind.Core.Test.Encoding
 
             yield return TestCase("Missing storage keys array in access list",
                 Convert.FromHexString("01e3010101825208808080d6d5940000000000000000000000000000000000000001010101"),
-                "storage keys"
+                error: "storage keys"
             );
 
             yield return TestCase(
                 "Signed legacy tx prefixed with 0-byte (simulating 'legacy' type)",
                 [0, .. _txDecoder.Encode(Build.A.Transaction.SignedAndResolved().TestObject).Bytes],
-                "legacy"
+                error: "legacy"
             );
 
             yield return TestCase(
