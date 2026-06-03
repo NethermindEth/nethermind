@@ -45,15 +45,16 @@ public partial class BlockAccessListManager(
     IWithdrawalProcessorFactory withdrawalProcessorFactory,
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
-    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
+    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
+    bool witnessMode = false)
     : IBlockAccessListManager, IDisposable
 {
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, witnessMode));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, witnessMode));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
@@ -83,6 +84,7 @@ public partial class BlockAccessListManager(
     // can't see (no lane data on either side). Forces the validator's fallback walk so the
     // same "missing account changes" error fires as on the sequential path.
     private bool _hasGeneratedRequiredReadAccountMismatch;
+    private bool _witnessMode = witnessMode;
 
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(

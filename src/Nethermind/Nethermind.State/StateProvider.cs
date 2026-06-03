@@ -11,7 +11,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -27,19 +26,25 @@ using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State;
 
-internal class StateProvider(ILogManager logManager) : IJournal<int>
+internal class StateProvider(ILogManager logManager, bool witnessMode = false) : IJournal<int>
 {
+    // When true (stateless-witness generation), the cross-block persisted-code filter is bypassed
+    // on InsertCode so that an already-persisted code redeployed in-block still enters the code
+    // batch; reads of it are then served from the batch and excluded from the witness (the verifier
+    // reconstructs it), rather than falling through to the DB and being captured.
+    private readonly bool _witnessMode = witnessMode;
+
     private static readonly UInt256 _zero = UInt256.Zero;
 
     private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = [];
     private readonly HashSet<AddressAsKey> _committedThisRound = [];
     private readonly HashSet<AddressAsKey> _nullAccountReads = [];
-    // Only guarding against hot duplicates within the current block; the cross-block
-    // "already persisted" hint now lives on ICodeDb itself (see ICodeDb.ContainsCode).
-    // This is intentional: the lifetime of "is this code durably persisted" must match
-    // the lifetime of the durable storage, not the StateProvider — otherwise a transient
-    // (overlay) codeDb could poison the hint with non-durable entries.
-    private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
+    // Ordered log of code-batch inserts made during this block: (codeHash, change index at insert).
+    // It stays sorted ascending by index (inserts occur at monotonically increasing _changes.Count,
+    // and Restore only ever removes a suffix), so Restore can tail-pop the entries belonging to a
+    // reverted frame in O(removed) and drop them from the batch. The batch itself (_codeBatchAlternate)
+    // is the exact, rollback-aware dedup source — replacing the previous lossy block-level filter.
+    private readonly List<(ValueHash256 Hash, int Index)> _codeInsertLog = [];
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
     private readonly List<Change> _keptInCache = [];
@@ -113,8 +118,13 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
         // Don't reinsert if already inserted. This can be the case when the same
         // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
-        // or people copy and pasting popular contracts
-        if (!_blockCodeInsertFilter.Get(codeHash) && !(_codeDb?.ContainsCode(codeHash) == true))
+        // or people copy and pasting popular contracts.
+        // Dedup against the batch itself (exact, and rollback-aware via _codeInsertLog) so that an
+        // insert reverted earlier this block is correctly re-insertable. The persisted (cross-block)
+        // filter is skipped in witness mode — see _witnessMode.
+        // TODO: check here because latest master now uses !_blockCodeInsertFilter.Get(codeHash) as a condition instead of _codeBatchAlternate
+        bool alreadyPending = _codeBatch is not null && _codeBatchAlternate.ContainsKey(codeHash);
+        if (!alreadyPending && (_witnessMode || !(_codeDb?.ContainsCode(codeHash) == true)))
         {
             if (_codeBatch is null)
             {
@@ -133,7 +143,9 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                 _codeBatchAlternate[codeHash] = code.ToArray();
             }
 
-            _blockCodeInsertFilter.Set(codeHash);
+            // _changes.Count here is the index the upcoming PushUpdate will occupy, so a Restore
+            // to a point before it removes this entry in lockstep with its account code-hash change.
+            _codeInsertLog.Add((codeHash, _changes.Count));
             inserted = true;
 
             EvmMetrics.IncrementCodeWrites();
@@ -359,6 +371,18 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         if (_logger.IsTrace) Trace(snapshot);
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
+
+        // Invalidate code-batch inserts that belong to the reverted frame(s). The log is ordered by
+        // change index, so the entries to drop form a suffix — tail-pop while the index is beyond the
+        // restore point. Removing from the batch makes a subsequent read of such a code fall through
+        // to the DB (and so be captured into the witness), matching a verifier that lost it on revert.
+        int logCount = _codeInsertLog.Count;
+        while (logCount > 0 && _codeInsertLog[logCount - 1].Index > snapshot)
+        {
+            _codeBatchAlternate.Remove(_codeInsertLog[logCount - 1].Hash);
+            logCount--;
+        }
+        CollectionsMarshal.SetCount(_codeInsertLog, logCount);
 
         int stepsBack = lastIndex - snapshot;
         // Reserve capacity up‐front (avoid grows)
@@ -625,6 +649,10 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                 return Task.CompletedTask;
 
             _codeBatchAlternate = default;
+            // The batch is being flushed and these inserts become persisted; their rollback log is
+            // no longer needed (and Restore would otherwise reference a detached batch). Runs on the
+            // main thread synchronously here, before the async PersistCodeBatch.
+            _codeInsertLog.Clear();
 
             void PersistCodeBatch()
             {
@@ -847,7 +875,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         if (_logger.IsTrace) Trace();
         if (resetBlockChanges)
         {
-            _blockCodeInsertFilter.Clear();
+            _codeInsertLog.Clear();
             _blockChanges.Clear();
             _codeBatch?.Clear();
         }

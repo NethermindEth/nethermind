@@ -47,6 +47,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         if (vmSpec.IsPrecompile(codeSource))
         {
             _worldState.AddAccountRead(codeSource);
+            _worldState.RecordAccountAccess(codeSource);
             return _localPrecompiles[codeSource];
         }
 
@@ -78,6 +79,11 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
+        // Signal to any witness-generating decorator that this address's code is logically read
+        // here. No-op default on IWorldState; only WitnessGeneratingWorldState records it. This
+        // is the single chokepoint where the EVM resolves code with both `address` and `codeHash`
+        // in scope, so the witness layer relies on this call to attribute reads back to addresses.
+        worldState.RecordBytecodeAccess(address);
         // When executing in parallel must get by address
         byte[]? code = worldState.GetCode(in codeHash) ?? worldState.GetCode(address);
         if (code is null)

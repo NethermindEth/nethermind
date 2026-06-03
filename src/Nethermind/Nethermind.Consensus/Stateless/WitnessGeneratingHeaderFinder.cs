@@ -27,11 +27,22 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
 
     public IOwnedReadOnlyList<byte[]> GetWitnessHeaders(Hash256 parentHash)
     {
-        ArrayPoolList<byte[]> headers = new(capacity: 16);
-
         Hash256 currentHash = parentHash;
         BlockHeader childHeader = inner.Get(currentHash) ?? throw new ArgumentException($"Parent {currentHash} is not found");
-        headers.Add(_decoder.Encode(childHeader).Bytes);
+
+        // Headers are emitted in ascending block-number order (oldest first and the recorded block's
+        // parent last) so they form a contiguous chain, matching the stateless verifier's expectation.
+        //
+        // Only the parent is captured unless ancestor headers were requested during processing
+        // (e.g. BLOCKHASH reaching further back), tracked by _lowestRequestedHeader.
+        long ancestorCount = _lowestRequestedHeader < long.MaxValue
+            ? childHeader.Number - _lowestRequestedHeader
+            : 0;
+        int count = (int)ancestorCount + 1;
+        ArrayPoolList<byte[]> headers = new(capacity: count, count);
+
+        int index = count - 1;
+        headers[index--] = _decoder.Encode(childHeader).Bytes;
 
         if (_lowestRequestedHeader < long.MaxValue)
         {
@@ -39,7 +50,7 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
             {
                 currentHash = childHeader.ParentHash!;
                 childHeader = inner.Get(currentHash, i) ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
-                headers.Add(_decoder.Encode(childHeader).Bytes);
+                headers[index--] = _decoder.Encode(childHeader).Bytes;
             }
         }
 

@@ -48,10 +48,11 @@ namespace Nethermind.State
 
         public WorldState(
             IWorldStateScopeProvider scopeProvider,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            bool witnessMode = false)
         {
             ScopeProvider = scopeProvider;
-            _stateProvider = new StateProvider(logManager);
+            _stateProvider = new StateProvider(logManager, witnessMode);
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
