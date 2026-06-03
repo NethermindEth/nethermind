@@ -93,6 +93,7 @@ public class SszMiddlewareTests
             new GetBlobsV1SszHandler(_engineModule),
             new GetBlobsV2SszHandler<GetBlobsDescriptorV2>(_engineModule),
             new GetBlobsV2SszHandler<GetBlobsDescriptorV3>(_engineModule),
+            new GetBlobsV4SszHandler(_engineModule),
 
             new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule),
             new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule),

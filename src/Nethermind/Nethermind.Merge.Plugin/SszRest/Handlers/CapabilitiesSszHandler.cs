@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 
@@ -18,13 +19,16 @@ public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
     public override string Resource => SszRestPaths.Capabilities;
     public override int? Version => null;
 
+    private static readonly string _supportedForksJson =
+        JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered);
+
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         ctx.Response.ContentType = "application/json";
         ctx.Response.StatusCode = StatusCodes.Status200OK;
-        await ctx.Response.WriteAsync("""
+        await ctx.Response.WriteAsync($$"""
             {
-              "supported_forks": ["paris", "shanghai", "cancun", "prague", "osaka", "amsterdam"],
+              "supported_forks": {{_supportedForksJson}},
               "fork_scoped_endpoints": ["payloads", "forkchoice", "bodies"],
               "independently_versioned": {
                 "blobs": ["v1", "v2", "v3", "v4"]
@@ -33,7 +37,7 @@ public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
               "limits": {
                 "bodies.max_count": 32,
                 "blobs.max_versioned_hashes": 128,
-                "payload.max_bytes": 134217728
+                "payload.max_bytes": {{SszMiddleware.MaxBodySize}}
               }
             }
             """, ctx.RequestAborted);

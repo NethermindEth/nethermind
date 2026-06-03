@@ -1,10 +1,22 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Frozen;
+using System.Collections.Generic;
+
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 public static class SszRestPaths
 {
+    public static readonly FrozenSet<string> SupportedForks =
+        new HashSet<string>(System.StringComparer.OrdinalIgnoreCase)
+        {
+            "paris", "shanghai", "cancun", "prague", "osaka", "amsterdam"
+        }.ToFrozenSet(System.StringComparer.OrdinalIgnoreCase);
+
+    public static readonly IReadOnlyList<string> SupportedForksOrdered =
+        ["paris", "shanghai", "cancun", "prague", "osaka", "amsterdam"];
+
     public const string Payloads = "payloads";
 
     public const string Forkchoice = "forkchoice";

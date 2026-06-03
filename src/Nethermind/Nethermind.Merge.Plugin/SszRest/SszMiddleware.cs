@@ -51,6 +51,9 @@ public sealed class SszMiddleware
     private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _postPrefixRoutes;
     private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _getPrefixRoutes;
 
+    private static readonly System.Text.Json.JsonSerializerOptions _headerJsonOptions =
+        new() { PropertyNameCaseInsensitive = true };
+
     private enum SszRequestKind { NotEngine, EngineWrongMediaType, EngineOk }
 
     public SszMiddleware(
@@ -154,12 +157,12 @@ public sealed class SszMiddleware
             {
                 try
                 {
-                    ClientVersionV1 clVer = System.Text.Json.JsonSerializer.Deserialize<ClientVersionV1>(headerVal, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    ClientVersionV1 clVer = System.Text.Json.JsonSerializer.Deserialize<ClientVersionV1>(headerVal, _headerJsonOptions);
                     ctx.Items["X-Engine-Client-Version"] = clVer;
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Ignore malformed header values
+                    if (_logger.IsTrace) _logger.Trace($"SSZ-REST: ignoring malformed X-Engine-Client-Version header: {ex.Message}");
                 }
             }
         }
@@ -245,7 +248,7 @@ public sealed class SszMiddleware
                 Metrics.SszRestRequestsClientErrorTotal++;
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
             }
-            catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or EndOfStreamException)
+            catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException)
             {
                 // Per execution-apis #764 (Engine API SSZ Transport spec, "HTTP status codes" section):
                 // malformed SSZ encoding is 400 Bad Request with type=ssz-decode-error: canned error,
@@ -337,7 +340,8 @@ public sealed class SszMiddleware
 
         ReadOnlySpan<char> forkSpan = span[..nextSlash];
         string forkStr = forkSpan.ToString().ToLowerInvariant();
-        if (forkStr is not ("paris" or "shanghai" or "cancun" or "prague" or "osaka" or "amsterdam"))
+        // SszRestPaths.SupportedForks is the single source of truth for recognised fork names.
+        if (!SszRestPaths.SupportedForks.Contains(forkStr))
         {
             fork = forkStr;
             unsupportedFork = true;

@@ -34,7 +34,7 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
         {
             if (ctx.Items.TryGetValue("SszRouteFork", out object? forkObj) && forkObj is string urlFork)
             {
-                IReleaseSpec timestampSpec = specProvider.GetSpec(new ForkActivation(long.MaxValue - 1, timestamp.Value));
+                IReleaseSpec timestampSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(timestamp.Value));
                 if (!timestampSpec.Name.Equals(urlFork, StringComparison.OrdinalIgnoreCase))
                 {
                     await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, "Unsupported fork", MergeErrorCodes.UnsupportedFork);

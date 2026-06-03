@@ -107,7 +107,7 @@ public class Startup : IStartup
                 int port = (listenOptions.EndPoint as System.Net.IPEndPoint)?.Port ?? 0;
                 if (engineApiPorts.Contains(port))
                 {
-                    listenOptions.Protocols = HttpProtocols.Http2;
+                    listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
                 }
                 else
                 {

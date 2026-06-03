@@ -18,6 +18,9 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule) : Ssz
 {
     private readonly IEngineRpcModule _engineModule = engineModule;
 
+    private static readonly System.Text.Json.JsonSerializerOptions _jsonOptions =
+        new() { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+
     public override string HttpMethod => "GET";
     public override string Resource => SszRestPaths.ClientVersion;
     public override int? Version => null;
@@ -31,10 +34,7 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule) : Ssz
 
         ctx.Response.ContentType = "application/json";
         ctx.Response.StatusCode = StatusCodes.Status200OK;
-        string json = System.Text.Json.JsonSerializer.Serialize(result.Data, new System.Text.Json.JsonSerializerOptions
-        {
-            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
-        });
+        string json = System.Text.Json.JsonSerializer.Serialize(result.Data, _jsonOptions);
         await ctx.Response.WriteAsync(json, ctx.RequestAborted);
     }
 }

@@ -41,11 +41,11 @@ public static class SszCodec
             if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
             if (hex.Length != 16)
                 throw new InvalidOperationException($"Invalid payload id '{resp.PayloadId}': expected 16 hex chars, got {hex.Length}");
-            byte[] idBytes = new byte[8];
-            Bytes.FromHexString(hex, idBytes);
+            Span<byte> idSpan = stackalloc byte[8];
+            Bytes.FromHexString(hex, idSpan);
             // ByteVector[8]: transmitted as-is (no LE flip — the bytes are already the
             // opaque token; the spec says treat payload_id as opaque bytes, not a uint64).
-            pidList = [new SszPayloadId { Bytes = idBytes }];
+            pidList = [new SszPayloadId { Bytes = idSpan.ToArray() }];
         }
 
         return EncodeToWriter(new ForkchoiceUpdatedResponseWire
@@ -368,8 +368,12 @@ public static class SszCodec
     {
         Result<Transaction[]> decoded = payload.TryGetTransactions();
         if (decoded.IsError) return [];
-        List<Hash256> list = [];
-        foreach (Transaction tx in decoded.Data)
+        Transaction[] txs = decoded.Data;
+        int totalHashes = 0;
+        foreach (Transaction tx in txs)
+            if (tx.BlobVersionedHashes is { } h) totalHashes += h.Length;
+        List<Hash256> list = new(totalHashes);
+        foreach (Transaction tx in txs)
         {
             byte[]?[]? hashes = tx.BlobVersionedHashes;
             if (hashes is null) continue;
