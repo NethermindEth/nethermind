@@ -12,8 +12,6 @@ public class XdcBeaconSyncStrategy(ISyncConfig syncConfig) : IBeaconSyncStrategy
 {
     private readonly ISyncConfig _syncConfig = syncConfig;
 
-    public void AllowBeaconHeaderSync() { }
-
     public bool ShouldBeInBeaconHeaders() => false;
 
     public bool ShouldBeInBeaconModeControl() => false;
