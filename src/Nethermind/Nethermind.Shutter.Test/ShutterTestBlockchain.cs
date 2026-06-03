@@ -31,10 +31,6 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
 
             // ShutterApiSimulator add receipts to block with empty transaction. Crash with full receipt storage.
             .AddSingleton<IReceiptStorage, InMemoryReceiptStorage>()
-
-            // It seems that it does not work with bloom.
-            // This or use a separate bloom storage for LogFinder and BlockTree.
-            .AddSingleton<IBloomStorage>(NullBloomStorage.Instance)
             ;
 
         if (eventSimulator is not null)

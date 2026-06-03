@@ -11,7 +11,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -21,7 +20,6 @@ namespace Nethermind.Facade.Find
         IBlockFinder? blockFinder,
         IReceiptFinder? receiptFinder,
         IReceiptStorage? receiptStorage,
-        IBloomStorage? bloomStorage,
         ILogManager? logManager,
         IReceiptsRecovery? receiptsRecovery,
         int maxBlockDepth = 1000)
@@ -32,7 +30,7 @@ namespace Nethermind.Facade.Find
 
         private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-        private readonly IBloomStorage _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
+
         private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
         private readonly int _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -74,36 +72,7 @@ namespace Nethermind.Facade.Find
                 throw new ResourceNotFoundException($"Receipt not available for To block {toBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
-
-            bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
-            bool canUseBloom = CanUseBloomDatabase(toBlock, fromBlock);
-            bool useBloom = shouldUseBloom && canUseBloom;
-            return useBloom
-                ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock, cancellationToken)
-                : FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
-        }
-
-        private static bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
-        {
-            long blocksToSearch = toBlock.Number - fromBlock.Number + 1;
-            return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
-        }
-
-        private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
-        {
-            IEnumerable<long> EnumerateBlockNumbers(LogFilter f, long from, long to)
-            {
-                IBloomEnumeration enumeration = _bloomStorage.GetBlooms(from, to);
-                foreach (Bloom bloom in enumeration)
-                {
-                    if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out long blockNumber))
-                    {
-                        yield return blockNumber;
-                    }
-                }
-            }
-
-            return FilterLogsInBlocksParallel(filter, EnumerateBlockNumbers(filter, fromBlock.Number, toBlock.Number), cancellationToken);
+            return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
         protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<long> blockNumbers, CancellationToken cancellationToken)
@@ -150,31 +119,6 @@ namespace Nethermind.Facade.Find
 
             return filterBlocks
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindHeaderOrLogError(blockNumber, cancellationToken), cancellationToken));
-        }
-
-        private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)
-        {
-            // method is designed for convenient debugging
-
-            bool containsRange = _bloomStorage.ContainsRange(fromBlock.Number, toBlock.Number);
-            if (!containsRange)
-            {
-                return false;
-            }
-
-            bool toIsOnMainChain = _blockFinder.IsMainChain(toBlock);
-            if (!toIsOnMainChain)
-            {
-                return false;
-            }
-
-            bool fromIsOnMainChain = _blockFinder.IsMainChain(fromBlock);
-            if (!fromIsOnMainChain)
-            {
-                return false;
-            }
-
-            return true;
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)

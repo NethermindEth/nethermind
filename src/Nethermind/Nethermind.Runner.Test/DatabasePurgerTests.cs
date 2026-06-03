@@ -52,7 +52,6 @@ public class DatabasePurgerTests
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Metadata)), Is.False, "metadata should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Flat)), Is.False, "flat should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Code)), Is.False, "code should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Bloom)), Is.False, "bloom should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BadBlocks)), Is.False, "badBlocks should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlobTransactions)), Is.False, "blobTransactions should be deleted");
     }
@@ -106,7 +105,6 @@ public class DatabasePurgerTests
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.Metadata));
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.Flat));
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.Code));
-        Directory.CreateDirectory(Path.Combine(basePath, DbNames.Bloom));
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.BadBlocks));
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.BlobTransactions));
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.BlockAccessLists));
