@@ -90,6 +90,10 @@ public class PruningTrieStoreModule(IInitConfig initConfig) : Module
             .AddSingleton<PruningTrieStateFactory>()
             .AddSingleton<PruningTrieStateFactoryOutput>()
 
+            // IStateBoundaryWriter is trie-specific (flat tracks state via PersistenceManager directly).
+            // Mapped from the trie factory output so it stays unresolved when flat is active.
+            .Map<IStateBoundaryWriter, PruningTrieStateFactoryOutput>((o) => (IStateBoundaryWriter)o.WorldStateManager)
+
             // Sync components backed by the patricia trie store
             .AddSingleton<FullStateFinder>()
             .AddSingleton<PatriciaSnapTrieFactory>()

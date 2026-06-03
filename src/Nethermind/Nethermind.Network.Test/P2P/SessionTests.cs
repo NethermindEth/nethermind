@@ -626,12 +626,9 @@ public class SessionTests
         Assert.That(message.WasDisposed, Is.True);
     }
 
-    [Test, Retry(3)]
-    [Parallelizable(ParallelScope.None)] // It touches global metrics
+    [Test]
     public void Can_receive_messages()
     {
-        Metrics.P2PBytesReceived = 0;
-
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
@@ -659,7 +656,7 @@ public class SessionTests
 
         session.ReceiveMessage(new Packet("---", 100, data));
 
-        Assert.That(Metrics.P2PBytesReceived, Is.EqualTo(data.Length * 5));
+        Assert.That(session.BytesReceived, Is.EqualTo(data.Length * 5));
     }
 
     [Test]

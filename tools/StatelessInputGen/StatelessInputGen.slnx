@@ -15,7 +15,6 @@
     <Project Path="../../src/Nethermind/Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Logging/Nethermind.Logging.csproj" />
-    <Project Path="../../src/Nethermind/Nethermind.Merkleization/Nethermind.Merkleization.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />

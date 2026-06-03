@@ -22,7 +22,6 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,7 +31,7 @@ using Nethermind.Core.Test.Modules;
 
 namespace Nethermind.Clique.Test;
 
-[Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.Self)]
 public class CliqueBlockProducerTests
 {
     private class On : IDisposable
@@ -395,15 +394,26 @@ public class CliqueBlockProducerTests
         private void WaitForNumber(PrivateKey nodeKey, long number)
         {
             if (_logger.IsInfo) _logger.Info($"WAITING ON {nodeKey.Address} FOR BLOCK {number}");
-            SpinWait spinWait = new();
-            long startTime = Stopwatch.GetTimestamp();
-            while (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds < _timeout)
+            IBlockTree tree = _blockTrees[nodeKey];
+            if (tree.Head?.Number >= number) return;
+
+            TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            EventHandler<BlockEventArgs> handler = (_, args) =>
             {
-                spinWait.SpinOnce();
-                if (_blockTrees[nodeKey].Head.Number >= number)
+                if (args.Block.Number >= number) tcs.TrySetResult();
+            };
+            tree.NewHeadBlock += handler;
+            try
+            {
+                if (tree.Head?.Number >= number) return;
+                if (!tcs.Task.Wait(_timeout))
                 {
-                    break;
+                    Assert.Fail($"Timed out after {_timeout}ms waiting for block {number} on {nodeKey.Address}. Head is at {tree.Head?.Number}.");
                 }
+            }
+            finally
+            {
+                tree.NewHeadBlock -= handler;
             }
         }
 
@@ -545,7 +555,6 @@ public class CliqueBlockProducerTests
     private static readonly int _timeout = 5000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
 
     [Test]
-    [Retry(3)]
     public async Task Can_produce_block_with_transactions() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
@@ -674,7 +683,7 @@ public class CliqueBlockProducerTests
         await goerli.StopNode(TestItem.PrivateKeyC);
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_vote_a_validator_out()
     {
         On goerli = On.FastGoerli;
@@ -755,7 +764,6 @@ public class CliqueBlockProducerTests
             .StopNode(TestItem.PrivateKeyA);
 
     [Test]
-    [Retry(3)]
     public async Task Can_reorganize_when_receiving_in_turn_blocks()
     {
         On goerli = On.FastGoerli;
@@ -815,7 +823,6 @@ public class CliqueBlockProducerTests
     }
 
     [Test]
-    [Retry(3)]
     public async Task Creates_blocks_without_signals_from_block_tree()
     {
         await On.Goerli
@@ -843,7 +850,7 @@ public class CliqueBlockProducerTests
         await goerli.StopNode(TestItem.PrivateKeyA);
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Many_validators_can_process_blocks()
     {
         PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(static pk => pk.Address, GenericComparer.GetOptimized<Address>()).ToArray();

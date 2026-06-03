@@ -985,7 +985,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private CallResult RunPrecompile(VmState<TGasPolicy> state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
-        UInt256 transferValue = state.Env.TransferValue;
+        ref readonly UInt256 transferValue = ref state.ExecutionType.GetBalanceCredit(in state.Env.Value);
         TGasPolicy gas = state.Gas;
 
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
@@ -1208,7 +1208,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             IReleaseSpec spec = BlockExecutionContext.Spec;
             // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, vmState.ExecutionType, in env.Value, spec);
 
             // For contract creation calls, increment the nonce if the specification requires it.
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)

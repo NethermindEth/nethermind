@@ -5,18 +5,20 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime)
+public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, ILifetimeScope parentLifetime)
 {
     public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches)
     {
         PrewarmerScopeProvider worldState = new(
             worldStateManager.CreateResettableWorldState(),
             preBlockCaches,
-            populatePreBlockCache: true
+            logManager,
+            isPrewarmer: true
         );
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
