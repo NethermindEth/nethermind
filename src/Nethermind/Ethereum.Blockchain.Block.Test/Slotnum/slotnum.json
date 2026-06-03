@@ -1,0 +1,51 @@
+{
+  "slotnum_default_when_env_omits_slot": {
+    "_info": {
+      "comment": "EIP-7843 SLOTNUM (0x4b) with an env that omits the slot number. On Amsterdam the opcode must execute and push 0 (matching geth and other clients), not abort with BadInstruction. Regression for the state-test harness defaulting SlotNumber to 0 when EIP-7843 is active. Code: SLOTNUM PUSH1 0 SSTORE -> stores the slot number (0) at slot 0, a no-op, so storage stays empty."
+    },
+    "env": {
+      "currentCoinbase": "b94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+      "currentDifficulty": "0x200000",
+      "currentRandom": "0x0000000000000000000000000000000000000000000000000000000000200000",
+      "currentGasLimit": "0x26e1f476fe1e22",
+      "currentNumber": "0x1",
+      "currentTimestamp": "0x3e8",
+      "previousHash": "0x044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d",
+      "currentBaseFee": "0x10"
+    },
+    "pre": {
+      "0x0000000000000000000000707690000000008024": {
+        "code": "0x4b600055",
+        "storage": {},
+        "balance": "0x3b9aca00",
+        "nonce": "0x0"
+      },
+      "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b": {
+        "code": "0x",
+        "storage": {},
+        "balance": "0xffffffffff",
+        "nonce": "0x0"
+      }
+    },
+    "transaction": {
+      "gasPrice": "0x10",
+      "nonce": "0x0",
+      "to": "0x0000000000000000000000707690000000008024",
+      "data": ["0x"],
+      "gasLimit": ["0x100000"],
+      "value": ["0x0"],
+      "secretKey": "0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8",
+      "sender": "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b"
+    },
+    "out": "0x",
+    "post": {
+      "Amsterdam": [
+        {
+          "hash": "0x7b8e9fcbf409db592f7263787cb6440e5a0b534efd3dd92e9b287dda0a84c080",
+          "logs": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+          "indexes": { "data": 0, "gas": 0, "value": 0 }
+        }
+      ]
+    }
+  }
+}
