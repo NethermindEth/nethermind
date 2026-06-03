@@ -186,16 +186,11 @@ public class PluginLoaderTests
     }
 
 
-    private class AnotherAura() : IConsensusPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
+    private class AnotherAura() : IConsensusPlugin
     {
         public string Name => "TestPlugin2";
         public string Description => "TestPlugin2";
         public string Author => "TestPlugin2";
         public bool Enabled => true;
-
-        public IBlockProducer InitBlockProducer() => throw new NotImplementedException();
-
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) =>
-            throw new NotImplementedException();
     }
 }
