@@ -256,7 +256,7 @@ public class Era1ModuleTests
             }
             blocks.Add(Build.A.Block.WithUncles(Build.A.Block.TestObject)
                 .WithBaseFeePerGas(1)
-                .WithWithdrawals(16)
+                .WithWithdrawals(100)
                 .WithTotalDifficulty(1000000L + blocks[i].Difficulty)
                 .WithTransactions(transactions)
                 .WithParent(blocks[i])
