@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -58,9 +59,10 @@ public partial class EngineRpcModule : IEngineRpcModule
                 ResultWrapper<ForkchoiceUpdatedV1Result> result =
                     await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes, version);
 
-                // Apply custody-column update independently — spec requires errors here to NOT affect
-                // the payload_status already captured above.
-                if (custodyColumns is not null)
+                bool fcuSucceeded = result.Result.ResultType == ResultType.Success
+                    && result.Data?.PayloadStatus?.Status == PayloadStatus.Valid;
+
+                if (custodyColumns is not null && fcuSucceeded)
                 {
                     try
                     {
@@ -89,7 +91,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    partial void ApplyCustodyColumns(BitArray custodyColumns);
+    protected virtual void ApplyCustodyColumns(BitArray custodyColumns) { }
 
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {

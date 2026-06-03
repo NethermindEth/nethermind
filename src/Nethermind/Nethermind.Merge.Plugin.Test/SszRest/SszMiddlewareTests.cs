@@ -102,7 +102,7 @@ public class SszMiddlewareTests
             new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule),
 
             new ClientVersionSszHandler(_engineModule),
-            new CapabilitiesSszHandler(),
+            new CapabilitiesSszHandler(_specProvider),
         ];
 
         return new SszMiddleware(
@@ -326,12 +326,48 @@ public class SszMiddlewareTests
     [Test]
     public async Task Capabilities_returns_intersection_of_supported_methods()
     {
+        _specProvider.TransitionActivations.Returns([]);
+
         DefaultHttpContext ctx = MakeGetContext("/engine/v2/capabilities");
 
         await _middleware.InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+    }
+
+    [Test]
+    public async Task Capabilities_supported_forks_are_gated_by_spec_provider()
+    {
+        // Two distinct spec objects for Shanghai and Cancun, identified purely by reference
+        // equality — no Name property is involved.
+        IReleaseSpec shanghaiSpec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec cancunSpec = Substitute.For<IReleaseSpec>();
+
+        ForkActivation[] transitions =
+        [
+            ForkActivation.TimestampOnly(1_000UL),
+            ForkActivation.TimestampOnly(2_000UL),
+        ];
+        _specProvider.TransitionActivations.Returns(transitions);
+        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 1_000UL)).Returns(shanghaiSpec);
+        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 2_000UL)).Returns(cancunSpec);
+
+        // Rebuild middleware so it picks up the now-configured spec provider.
+        SszMiddleware mw = BuildMiddleware();
+        DefaultHttpContext ctx = MakeGetContext("/engine/v2/capabilities");
+        await mw.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+
+        Assert.That(body, Does.Contain("\"paris\""));
+        Assert.That(body, Does.Contain("\"shanghai\""));
+        Assert.That(body, Does.Contain("\"cancun\""));
+
+        Assert.That(body, Does.Not.Contain("\"prague\""));
+        Assert.That(body, Does.Not.Contain("\"osaka\""));
+        Assert.That(body, Does.Not.Contain("\"amsterdam\""));
     }
 
     [Test]
@@ -356,7 +392,7 @@ public class SszMiddlewareTests
         _auth.Authenticate(Arg.Any<string>()).Returns(false);
 
         byte[] body = BuildMinimalV1NewPayloadRequest();
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", body);
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads", body);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -382,7 +418,7 @@ public class SszMiddlewareTests
     {
         bool nextInvoked = false;
         SszMiddleware mw = BuildMiddleware(_ => { nextInvoked = true; return Task.CompletedTask; });
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/unknown-resource", []);
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/unknown-resource", []);
 
         await mw.InvokeAsync(ctx);
 
@@ -393,7 +429,8 @@ public class SszMiddlewareTests
     [Test]
     public async Task Post_payloads_with_unknown_extra_returns_404_not_500()
     {
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads/foo/bar", []);
+        // Extra segments on a non-AcceptsPathExtra resource must be 404, not silently dispatched.
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads/foo/bar", []);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -406,7 +443,7 @@ public class SszMiddlewareTests
     {
         // TryRoute must reject runs of '/' so that //abc does not reach
         // the payload-id parser and produce a confusing parse error.
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads//abc", []);
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads//abc", []);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -425,7 +462,7 @@ public class SszMiddlewareTests
         Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
         Assert.That(async () => await act(), Throws.Nothing);
-        // Per execution-apis #764: malformed SSZ encoding maps to 400 Bad Request.
+        // Per execution-apis #793: malformed SSZ encoding maps to 400 Bad Request.
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
     }
 
@@ -663,9 +700,22 @@ public class SszMiddlewareTests
     [Test]
     public async Task Forkchoice_unsupported_fork_returns_400()
     {
-        IReleaseSpec mockSpec = Substitute.For<IReleaseSpec>();
-        mockSpec.Name.Returns("Shanghai");
-        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(mockSpec);
+        IReleaseSpec shanghaiSpec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec cancunSpec = Substitute.For<IReleaseSpec>();
+
+        const ulong shanghaiTs = 1_000UL;
+        const ulong cancunTs = 2_000UL;
+        const ulong payloadTs = 1_500UL;
+
+        ForkActivation[] transitions =
+        [
+            ForkActivation.TimestampOnly(shanghaiTs),
+            ForkActivation.TimestampOnly(cancunTs),
+        ];
+        _specProvider.TransitionActivations.Returns(transitions);
+        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == shanghaiTs)).Returns(shanghaiSpec);
+        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == cancunTs)).Returns(cancunSpec);
+        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == payloadTs)).Returns(shanghaiSpec);
 
         ForkchoiceUpdatedV3RequestWire request = new()
         {
@@ -677,7 +727,7 @@ public class SszMiddlewareTests
             },
             PayloadAttributes = [new PayloadAttributesV3Wire
             {
-                Timestamp = 12345,
+                Timestamp = payloadTs,
                 SuggestedFeeRecipient = TestItem.AddressA,
                 PrevRandao = Keccak.Zero,
                 Withdrawals = [],
@@ -693,5 +743,195 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
         string respBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         Assert.That(respBody, Does.Contain("unsupported-fork"));
+    }
+
+    [Test]
+    public async Task Forkchoice_stale_fork_url_without_attributes_is_allowed()
+    {
+        ForkchoiceUpdatedV1Result fcuResult = new()
+        {
+            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
+        };
+        _engineModule.engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
+
+        ForkchoiceUpdatedV3RequestWire request = new()
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = Keccak.Zero
+            },
+            PayloadAttributes = []
+        };
+        byte[] body = ForkchoiceUpdatedV3RequestWire.Encode(request);
+
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/cancun/forkchoice", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        await _engineModule.Received(1).engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
+        // ISpecProvider must NOT have been consulted — no timestamp to validate.
+        _specProvider.DidNotReceive().GetSpec(Arg.Any<ForkActivation>());
+    }
+
+    [TestCase("application/json")]
+    [TestCase("*/*")]
+    [TestCase("text/html, application/json;q=0.9, */*;q=0.8")]
+    public async Task Capabilities_returns_200_json_regardless_of_Accept_header(string accept)
+    {
+        DefaultHttpContext ctx = MakeBaseContext("GET", "/engine/v2/capabilities", AuthenticatedPort);
+        ctx.Request.Headers.Accept = accept;
+        ctx.Request.Body = Stream.Null;
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        Assert.That(body, Does.Contain("supported_forks"));
+    }
+
+    [TestCase("application/json")]
+    [TestCase("*/*")]
+    public async Task Identity_returns_200_json_regardless_of_Accept_header(string accept)
+    {
+        ClientVersionV1[] response = [new ClientVersionV1()];
+        _engineModule.engine_getClientVersionV1(default)
+            .ReturnsForAnyArgs(ResultWrapper<ClientVersionV1[]>.Success(response));
+
+        DefaultHttpContext ctx = MakeBaseContext("GET", "/engine/v2/identity", AuthenticatedPort);
+        ctx.Request.Headers.Accept = accept;
+        ctx.Request.Body = Stream.Null;
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+    }
+
+    [Test]
+    public async Task Trailing_slash_on_fork_scoped_path_returns_404()
+    {
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/cancun/forkchoice/", []);
+        await _middleware.InvokeAsync(ctx);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        Assert.That(body, Does.Contain("method-not-found"));
+    }
+
+    [Test]
+    public async Task Trailing_slash_on_get_path_returns_404()
+    {
+        DefaultHttpContext ctx = MakeBaseContext("GET", "/engine/v2/capabilities/", AuthenticatedPort);
+        ctx.Request.Headers.Accept = "application/json";
+        ctx.Request.Body = Stream.Null;
+        await _middleware.InvokeAsync(ctx);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+    }
+
+    [TestCase("/engine/v2/cancun/forkchoice/whatever")]
+    [TestCase("/engine/v2/paris/payloads/foo/bar")]
+    public async Task Extra_path_segment_on_non_accepting_handler_returns_404(string path)
+    {
+        DefaultHttpContext ctx = MakePostContext(path, []);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+    }
+
+    [Test]
+    public async Task Unknown_fork_in_path_returns_400_unsupported_fork()
+    {
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/atlantis/payloads", []);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        Assert.That(body, Does.Contain("unsupported-fork"));
+    }
+
+    [Test]
+    public async Task Unknown_blob_version_returns_404()
+    {
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/blobs/v99", []);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+    }
+
+    [Test]
+    public async Task Invalid_payload_id_in_path_returns_400()
+    {
+        DefaultHttpContext ctx = MakeGetContext("/engine/v2/paris/payloads/0xZZZZZZZZZZZZZZZZ");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+    }
+
+    [Test]
+    public async Task GetPayloadBodiesByRange_over_limit_returns_413_request_too_large()
+    {
+        DefaultHttpContext ctx = MakeGetContext("/engine/v2/shanghai/bodies");
+        ctx.Request.QueryString = new QueryString("?from=1&count=1000");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
+        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        Assert.That(body, Does.Contain("request-too-large"));
+    }
+
+    [Test]
+    public async Task GetPayloadBodiesByRange_from_zero_is_valid()
+    {
+        _engineModule.engine_getPayloadBodiesByRangeV1(Arg.Any<long>(), Arg.Any<long>())
+            .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success([]));
+
+        DefaultHttpContext ctx = MakeGetContext("/engine/v2/shanghai/bodies");
+        ctx.Request.QueryString = new QueryString("?from=0&count=1");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status400BadRequest),
+            "from=0 (genesis block) must be accepted");
+    }
+
+    [Test]
+    public async Task Error_response_has_correct_RFC7807_shape_type_only_for_canned_errors()
+    {
+        byte[] garbage = new byte[64];
+        new Random(42).NextBytes(garbage);
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/paris/payloads", garbage);
+
+        await _middleware.InvokeAsync(ctx);
+
+        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(body);
+        System.Text.Json.JsonElement root = doc.RootElement;
+        Assert.That(root.TryGetProperty("type", out _), Is.True, "RFC 7807 body must contain 'type'");
+        Assert.That(root.TryGetProperty("detail", out _), Is.False, "ssz-decode-error must NOT include 'detail'");
+        Assert.That(root.EnumerateObject().Count(), Is.EqualTo(1), "ssz-decode-error body must have exactly one key");
+    }
+
+    [Test]
+    public async Task Error_response_has_correct_RFC7807_shape_with_detail_for_non_canned_errors()
+    {
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/atlantis/payloads", []);
+
+        await _middleware.InvokeAsync(ctx);
+
+        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(body);
+        System.Text.Json.JsonElement root = doc.RootElement;
+        Assert.That(root.TryGetProperty("type", out _), Is.True);
+        Assert.That(root.TryGetProperty("detail", out _), Is.True, "unsupported-fork must include 'detail'");
+        Assert.That(root.EnumerateObject().Count(), Is.EqualTo(2), "error body must have exactly two keys: type + detail");
     }
 }

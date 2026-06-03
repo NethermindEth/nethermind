@@ -199,10 +199,22 @@ public class PayloadAttributes
         [NotNullWhen(false)] out string? error)
     {
         int actualVersion = this.GetVersion();
+        int timestampVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion();
+
+        if (actualVersion < timestampVersion && !IsSupportedFcuForkCombination(fcuVersion, actualVersion))
+        {
+            string? fieldError = ValidateFields(timestampVersion);
+            if (fieldError is not null)
+            {
+                error = fieldError;
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
+        }
+
         PayloadAttributesValidationResult result = ValidateVersion(
             fcuVersion,
             actualVersion,
-            timestampVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion(),
+            timestampVersion,
             "PayloadAttributesV",
             out error);
 

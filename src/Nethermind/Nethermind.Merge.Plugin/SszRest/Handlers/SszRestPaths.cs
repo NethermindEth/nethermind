@@ -17,6 +17,16 @@ public static class SszRestPaths
     public static readonly IReadOnlyList<string> SupportedForksOrdered =
         ["paris", "shanghai", "cancun", "prague", "osaka", "amsterdam"];
 
+    public static int ForkOrdinal(string forkUrl)
+    {
+        for (int i = 0; i < SupportedForksOrdered.Count; i++)
+        {
+            if (string.Equals(SupportedForksOrdered[i], forkUrl, System.StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+        return -1;
+    }
+
     public const string Payloads = "payloads";
 
     public const string Forkchoice = "forkchoice";

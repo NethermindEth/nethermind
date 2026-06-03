@@ -30,10 +30,10 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         // body is empty for GET; parameters come from the query string.
-        if (!long.TryParse(ctx.Request.Query["from"], out long start) || start <= 0)
+        if (!long.TryParse(ctx.Request.Query["from"], out long start) || start < 0)
         {
             await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                "Missing or invalid 'from' query parameter: must be a positive integer block number",
+                "Missing or invalid 'from' query parameter: must be a non-negative integer block number",
                 SszRestErrorCodes.InvalidRequest);
             return;
         }
@@ -46,9 +46,9 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
         }
         if (count > MaxPayloadBodiesRequest)
         {
-            await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+            await WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge,
                 $"count {count} exceeds the limit of {MaxPayloadBodiesRequest}",
-                SszRestErrorCodes.InvalidRequest);
+                MergeErrorCodes.TooLargeRequest);
             return;
         }
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, start, count);

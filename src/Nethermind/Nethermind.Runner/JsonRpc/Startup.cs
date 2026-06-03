@@ -107,6 +107,8 @@ public class Startup : IStartup
                 int port = (listenOptions.EndPoint as System.Net.IPEndPoint)?.Port ?? 0;
                 if (engineApiPorts.Contains(port))
                 {
+                    // Keep HTTP/1.1 + HTTP/2 on the engine port: SSZ-REST uses HTTP/2, while legacy
+                    // Engine API JSON-RPC still relies on HTTP/1.1 and shares the same listener.
                     listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
                 }
                 else

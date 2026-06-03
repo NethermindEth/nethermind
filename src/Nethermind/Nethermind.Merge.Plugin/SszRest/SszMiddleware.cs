@@ -39,7 +39,7 @@ public sealed class SszMiddleware
     /// <summary>
     /// Maximum allowed request body size in bytes (128 MiB).
     /// Matches <c>MAX_REQUEST_BODY_SIZE</c> in the Engine API SSZ-REST spec
-    /// (see https://github.com/ethereum/execution-apis/pull/764).
+    /// (see https://github.com/ethereum/execution-apis/pull/793).
     /// </summary>
     public const int MaxBodySize = 0x8000000;
 
@@ -47,9 +47,6 @@ public sealed class SszMiddleware
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _getRoutes;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _postLookup;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _getLookup;
-
-    private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _postPrefixRoutes;
-    private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _getPrefixRoutes;
 
     private static readonly System.Text.Json.JsonSerializerOptions _headerJsonOptions =
         new() { PropertyNameCaseInsensitive = true };
@@ -69,15 +66,13 @@ public sealed class SszMiddleware
         _auth = auth;
         _logger = logManager.GetClassLogger<SszMiddleware>();
         _processExitToken = processExitSource.Token;
-        (_postRoutes, _getRoutes, _postPrefixRoutes, _getPrefixRoutes) = BuildRoutes(handlers);
+        (_postRoutes, _getRoutes) = BuildRoutes(handlers);
         _postLookup = _postRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
         _getLookup = _getRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
     }
 
     private static (FrozenDictionary<string, List<ISszEndpointHandler>> post,
-                    FrozenDictionary<string, List<ISszEndpointHandler>> get,
-                    (string, List<ISszEndpointHandler>)[] postPrefix,
-                    (string, List<ISszEndpointHandler>)[] getPrefix)
+                    FrozenDictionary<string, List<ISszEndpointHandler>> get)
         BuildRoutes(IEnumerable<ISszEndpointHandler> handlers)
     {
         Dictionary<string, List<ISszEndpointHandler>> postDict = [];
@@ -100,19 +95,7 @@ public sealed class SszMiddleware
         FrozenDictionary<string, List<ISszEndpointHandler>> post = postDict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
         FrozenDictionary<string, List<ISszEndpointHandler>> get = getDict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-        return (post, get, BuildPrefix(postDict), BuildPrefix(getDict));
-
-        static (string Resource, List<ISszEndpointHandler> Handlers)[] BuildPrefix(
-            Dictionary<string, List<ISszEndpointHandler>> source)
-        {
-            List<(string, List<ISszEndpointHandler>)> prefix = [];
-            foreach ((string r, List<ISszEndpointHandler> list) in source)
-            {
-                List<ISszEndpointHandler> accepting = list.FindAll(static c => c.AcceptsPathExtra);
-                if (accepting.Count > 0) prefix.Add((r, accepting));
-            }
-            return prefix.ToArray();
-        }
+        return (post, get);
     }
 
     public Task InvokeAsync(HttpContext ctx)
@@ -250,7 +233,7 @@ public sealed class SszMiddleware
             }
             catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException)
             {
-                // Per execution-apis #764 (Engine API SSZ Transport spec, "HTTP status codes" section):
+                // Per execution-apis #793 (Engine API SSZ Transport spec, "HTTP status codes" section):
                 // malformed SSZ encoding is 400 Bad Request with type=ssz-decode-error: canned error,
                 // no detail (spec verbatim).  422 Unprocessable Entity is reserved for
                 // "Invalid payload attributes" and is emitted by the handler chain via
@@ -289,6 +272,9 @@ public sealed class SszMiddleware
 
         ReadOnlySpan<char> span = path.AsSpan();
         if (!span.StartsWith(EnginePrefix.AsSpan(), StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (span.EndsWith("/"))
             return false;
 
         int offset = EnginePrefix.Length;
@@ -409,6 +395,9 @@ public sealed class SszMiddleware
                 {
                     if (candidate.Version == version)
                     {
+                        if (!string.IsNullOrEmpty(extraStr) && !candidate.AcceptsPathExtra)
+                            return false;
+
                         handler = candidate;
                         extra = extraStr.AsMemory();
                         return true;
@@ -417,6 +406,9 @@ public sealed class SszMiddleware
                 }
                 if (fallback is not null)
                 {
+                    if (!string.IsNullOrEmpty(extraStr) && !fallback.AcceptsPathExtra)
+                        return false;
+
                     handler = fallback;
                     extra = extraStr.AsMemory();
                     return true;
@@ -500,6 +492,10 @@ public sealed class SszMiddleware
                     : SszRequestKind.EngineWrongMediaType;
 
             case "GET":
+                if (IsDiagnosticGetPath(path))
+                    return SszRequestKind.EngineOk;
+
+                // Hot-path SSZ GET endpoints require Accept: application/octet-stream.
                 foreach (string? v in ctx.Request.Headers.Accept)
                 {
                     if (v is not null && v.Contains(
@@ -512,6 +508,15 @@ public sealed class SszMiddleware
             default:
                 return SszRequestKind.NotEngine;
         }
+    }
+
+    private static bool IsDiagnosticGetPath(string path)
+    {
+        ReadOnlySpan<char> span = path.AsSpan();
+        const string capabilitiesPath = "/engine/v2/capabilities";
+        const string identityPath = "/engine/v2/identity";
+        return span.StartsWith(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase)
+            || span.StartsWith(identityPath.AsSpan(), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
