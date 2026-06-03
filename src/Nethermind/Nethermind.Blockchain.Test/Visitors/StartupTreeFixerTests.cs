@@ -132,8 +132,8 @@ public class StartupTreeFixerTests
         await testRpc.RestartBlockchainProcessor();
 
         // we create a new empty db for stateDb so we shouldn't suggest new blocks
-        using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance, 5);
-        BlockVisitOutcome result = await ((IBlockTreeVisitor)fixer).VisitBlock(tree.Head!, CancellationToken.None);
+        using IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance, 5);
+        BlockVisitOutcome result = await fixer.VisitBlock(tree.Head!, CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
     }
@@ -149,8 +149,8 @@ public class StartupTreeFixerTests
 
         await testRpc.RestartBlockchainProcessor();
 
-        using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.StateReader, NoErrorLimboLogs.Instance, 5);
-        BlockVisitOutcome result = await ((IBlockTreeVisitor)fixer).VisitBlock(null!, CancellationToken.None);
+        using IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.StateReader, NoErrorLimboLogs.Instance, 5);
+        BlockVisitOutcome result = await fixer.VisitBlock(null!, CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
     }

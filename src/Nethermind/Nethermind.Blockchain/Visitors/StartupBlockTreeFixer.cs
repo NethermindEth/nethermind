@@ -15,7 +15,7 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Visitors
 {
-    public class StartupBlockTreeFixer : IBlockTreeVisitor, IDisposable
+    public class StartupBlockTreeFixer : IBlockTreeVisitor
     {
         public const int DefaultBatchSize = 4000;
         private readonly IBlockTree _blockTree;

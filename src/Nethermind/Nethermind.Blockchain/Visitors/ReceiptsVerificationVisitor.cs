@@ -12,7 +12,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Visitors
 {
-    public class ReceiptsVerificationVisitor : IBlockTreeVisitor, IDisposable
+    public class ReceiptsVerificationVisitor : IBlockTreeVisitor
     {
         private readonly IReceiptStorage _receiptStorage;
         protected readonly ILogger _logger;

@@ -11,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Visitors
 {
-    public class DbBlocksLoader : IBlockTreeVisitor, IDisposable
+    public class DbBlocksLoader : IBlockTreeVisitor
     {
         public const int DefaultBatchSize = 4000;
 
