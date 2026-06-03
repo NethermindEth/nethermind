@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
-using Timer = System.Timers.Timer;
 
 namespace Nethermind.Init.Steps.Migrations;
 
@@ -21,7 +20,7 @@ public class TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelIn
     private readonly ISyncConfig _syncConfig = syncConfig;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
     private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-    private readonly ProgressLogger _progressLogger = new("TD Fix", logManager);
+    private readonly ILogManager _logManager = logManager;
 
     public Task Run(CancellationToken cancellationToken)
     {
@@ -47,52 +46,40 @@ public class TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelIn
 
         if (_logger.IsInfo) _logger.Info($"Starting TotalDifficultyFixMigration. From block {startingBlock} to block {lastBlock}");
 
-        _progressLogger.Reset(0, lastBlock.Value - startingBlock + 1);
+        using ProgressReporter reporter = new("TD Fix", _logManager, lastBlock.Value - startingBlock + 1);
 
-        using Timer timer = new(1000);
-        timer.Elapsed += (_, _) => _progressLogger.LogProgress();
-        timer.Enabled = true;
-
-        try
+        for (long blockNumber = startingBlock; blockNumber <= lastBlock; ++blockNumber)
         {
-            for (long blockNumber = startingBlock; blockNumber <= lastBlock; ++blockNumber)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            ChainLevelInfo currentLevel = _chainLevelInfoRepository.LoadLevel(blockNumber)!;
+
+            bool shouldPersist = false;
+            foreach (BlockInfo blockInfo in currentLevel.BlockInfos)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash)!;
+                UInt256? parentTd = FindParentTd(header, blockNumber);
 
-                ChainLevelInfo currentLevel = _chainLevelInfoRepository.LoadLevel(blockNumber)!;
+                if (parentTd is null) continue;
 
-                bool shouldPersist = false;
-                foreach (BlockInfo blockInfo in currentLevel.BlockInfos)
+                UInt256 expectedTd = parentTd.Value + header.Difficulty;
+                UInt256 actualTd = blockInfo.TotalDifficulty;
+                if (actualTd != expectedTd)
                 {
-                    BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash)!;
-                    UInt256? parentTd = FindParentTd(header, blockNumber);
-
-                    if (parentTd is null) continue;
-
-                    UInt256 expectedTd = parentTd.Value + header.Difficulty;
-                    UInt256 actualTd = blockInfo.TotalDifficulty;
-                    if (actualTd != expectedTd)
-                    {
-                        if (_logger.IsWarn)
-                            _logger.Warn(
-                                $"Found discrepancy in block {header.ToString(BlockHeader.Format.Short)} total difficulty: should be {expectedTd}, was {actualTd}. Fixing.");
-                        blockInfo.TotalDifficulty = expectedTd;
-                        shouldPersist = true;
-                    }
+                    if (_logger.IsWarn)
+                        _logger.Warn(
+                            $"Found discrepancy in block {header.ToString(BlockHeader.Format.Short)} total difficulty: should be {expectedTd}, was {actualTd}. Fixing.");
+                    blockInfo.TotalDifficulty = expectedTd;
+                    shouldPersist = true;
                 }
-
-                if (shouldPersist)
-                {
-                    _chainLevelInfoRepository.PersistLevel(blockNumber, currentLevel);
-                }
-
-                _progressLogger.Update(blockNumber - startingBlock + 1);
             }
-        }
-        finally
-        {
-            _progressLogger.MarkEnd();
-            timer.Stop();
+
+            if (shouldPersist)
+            {
+                _chainLevelInfoRepository.PersistLevel(blockNumber, currentLevel);
+            }
+
+            reporter.Update(blockNumber - startingBlock + 1);
         }
 
         if (_logger.IsInfo) _logger.Info("Ended TotalDifficultyFixMigration.");

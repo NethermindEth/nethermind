@@ -61,7 +61,7 @@ public class DbBlocksLoaderTests
                 .WithSpecProvider(OlympicSpecProvider.Instance)
                 .TestObject;
 
-            DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
+            DbBlocksLoader loader = new(blockTree, LimboLogs.Instance);
             await blockTree.Accept(loader, CancellationToken.None);
 
             Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
@@ -106,7 +106,7 @@ public class DbBlocksLoaderTests
                 .WithSpecProvider(OlympicSpecProvider.Instance)
                 .TestObject;
 
-            DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
+            DbBlocksLoader loader = new(blockTree, LimboLogs.Instance);
             await blockTree.Accept(loader, CancellationToken.None);
 
             Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
@@ -167,7 +167,7 @@ public class DbBlocksLoaderTests
             }
         };
 
-        DbBlocksLoader loader = new(tree2, LimboNoErrorLogger.Instance, null, 1);
+        DbBlocksLoader loader = new(tree2, LimboLogs.Instance, null, 1);
         await tree2.Accept(loader, tokenSource.Token);
 
         Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
@@ -227,7 +227,7 @@ public class DbBlocksLoaderTests
             }
         };
 
-        DbBlocksLoader loader = new(tree2, LimboNoErrorLogger.Instance, null, 1);
+        DbBlocksLoader loader = new(tree2, LimboLogs.Instance, null, 1);
         await tree2.Accept(loader, tokenSource.Token);
 
         /* note the block tree historically loads one less block than it could */
