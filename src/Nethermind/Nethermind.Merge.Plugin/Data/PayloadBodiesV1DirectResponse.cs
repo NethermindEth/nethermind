@@ -43,17 +43,23 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
             ? StreamableResultWriter.WriteArrayAsync(writer, payloadBodies.Length, new RawItemWriter(payloadBodies), cancellationToken)
             : StreamableResultWriter.WriteArrayAsync(writer, _items!.Length, new ItemWriter(_items!), cancellationToken);
 
-    public IEnumerator<ExecutionPayloadBodyV1Result?> GetEnumerator()
-    {
-        for (int i = 0, count = Count; i < count; i++)
-        {
-            yield return this[i];
-        }
-    }
+    public Enumerator GetEnumerator() => new(this);
 
+    IEnumerator<ExecutionPayloadBodyV1Result?> IEnumerable<ExecutionPayloadBodyV1Result?>.GetEnumerator() => GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     internal static PayloadBody CreatePayloadBody(byte[] blockRlp) => new(blockRlp);
+
+    public struct Enumerator(PayloadBodiesV1DirectResponse response) : IEnumerator<ExecutionPayloadBodyV1Result?>
+    {
+        private int _index = -1;
+
+        public bool MoveNext() => ++_index < response.Count;
+        public void Reset() => _index = -1;
+        public readonly ExecutionPayloadBodyV1Result? Current => response[_index];
+        readonly object? IEnumerator.Current => Current;
+        public readonly void Dispose() { }
+    }
 
     private readonly struct ItemWriter(ExecutionPayloadBodyV1Result?[] items) : IJsonArrayItemWriter
     {

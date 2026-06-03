@@ -9,6 +9,7 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -67,7 +68,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
         catch
         {
-            (blockAccessList as IDisposable)?.Dispose();
+            blockAccessList?.TryDispose();
             throw;
         }
     }
@@ -82,7 +83,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
         catch
         {
-            (blockAccessList as IDisposable)?.Dispose();
+            blockAccessList?.TryDispose();
             throw;
         }
     }
@@ -160,6 +161,6 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
             return new ExecutionPayloadBodyV2Result(_transactions!, _withdrawals, _blockAccessList?.Memory.ToArray());
         }
 
-        public void Dispose() => (_blockAccessList as IDisposable)?.Dispose();
+        public void Dispose() => _blockAccessList?.TryDispose();
     }
 }
