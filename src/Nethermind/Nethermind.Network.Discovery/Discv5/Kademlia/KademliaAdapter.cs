@@ -48,8 +48,8 @@ public class KademliaAdapter(
     private readonly TimeSpan _findNodeTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
     private readonly IKademliaDistance<Hash256> _distance = distance;
     private readonly ILogger _logger = logManager.GetClassLogger<KademliaAdapter>();
-    private readonly LruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions");
-    private readonly LruCache<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges, "discv5 sent challenges");
+    private readonly LruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions", static session => session.Dispose());
+    private readonly LruCache<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges, "discv5 sent challenges", static sentChallenge => sentChallenge.Dispose());
     private readonly Queue<SentChallengeExpiry> _sentChallengeExpiries = new();
     private readonly object _sentChallengeExpiriesLock = new();
     private long _lastSentChallengeTrimMilliseconds;
@@ -219,27 +219,35 @@ public class KademliaAdapter(
         SessionKey sessionKey = new(receiver.Id.Hash, receiver.Address);
         if (TryGetSession(sessionKey, out Session? session))
         {
-            Span<byte> sessionNonce = stackalloc byte[PacketCodec.NonceSize];
-            session.WriteNextNonce(cryptoRandom, sessionNonce);
-            PendingNonceKey sessionPendingNonceKey = new(receiver.Address, NonceKey.From(sessionNonce));
-            _pendingByNonce.Set(sessionPendingNonceKey, new PendingRequest(receiver, message));
-            byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, session.WriteKey, message, sessionNonce);
-            try
+            Span<byte> writeKey = stackalloc byte[Session.KeySize];
+            if (!session.TryCopyWriteKey(writeKey))
             {
-                if (_logger.IsTrace) _logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} with existing session, bytes: {packet.Length}.");
-                await discoveryHandler.SendAsync(packet, receiver.Address);
-                return sessionPendingNonceKey;
+                _sessions.TryRemove(sessionKey, out _);
             }
-            catch
+            else
             {
-                _pendingByNonce.TryRemove(sessionPendingNonceKey, out _);
-                throw;
+                Span<byte> sessionNonce = stackalloc byte[PacketCodec.NonceSize];
+                session.WriteNextNonce(cryptoRandom, sessionNonce);
+                PendingNonceKey sessionPendingNonceKey = new(receiver.Address, NonceKey.From(sessionNonce));
+                _pendingByNonce.Set(sessionPendingNonceKey, new PendingRequest(receiver, message));
+                byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, writeKey, message, sessionNonce);
+                try
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} with existing session, bytes: {packet.Length}.");
+                    await discoveryHandler.SendAsync(packet, receiver.Address);
+                    return sessionPendingNonceKey;
+                }
+                catch
+                {
+                    _pendingByNonce.TryRemove(sessionPendingNonceKey, out _);
+                    throw;
+                }
             }
         }
 
         Span<byte> nonce = stackalloc byte[PacketCodec.NonceSize];
         cryptoRandom.GenerateRandomBytes(nonce);
-        Span<byte> encryptionKey = stackalloc byte[16];
+        Span<byte> encryptionKey = stackalloc byte[Session.KeySize];
         cryptoRandom.GenerateRandomBytes(encryptionKey);
         PendingRequest pendingRequest = new(receiver, message);
         PendingNonceKey pendingNonceKey = new(receiver.Address, NonceKey.From(nonce));
@@ -267,9 +275,16 @@ public class KademliaAdapter(
             return;
         }
 
+        Span<byte> writeKey = stackalloc byte[Session.KeySize];
+        if (!session.TryCopyWriteKey(writeKey))
+        {
+            _sessions.TryRemove(sessionKey, out _);
+            return;
+        }
+
         Span<byte> nonce = stackalloc byte[PacketCodec.NonceSize];
         session.WriteNextNonce(cryptoRandom, nonce);
-        byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, session.WriteKey, message, nonce);
+        byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, writeKey, message, nonce);
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 response {message.MessageType} {message.RequestId} to {receiver:s}, bytes: {packet.Length}.");
         await discoveryHandler.SendAsync(packet, receiver.Address);
     }
@@ -335,8 +350,10 @@ public class KademliaAdapter(
         }
 
         SessionKey sessionKey = new(nodeId, endpoint);
+        Span<byte> readKey = stackalloc byte[Session.KeySize];
         if (!TryGetSession(sessionKey, out Session? session) ||
-            !packetCodec.TryDecryptMessage(packet, session.ReadKey, out Discv5Message message))
+            !session.TryCopyReadKey(readKey) ||
+            !packetCodec.TryDecryptMessage(packet, readKey, out Discv5Message message))
         {
             if (_logger.IsTrace) _logger.Trace($"Discv5 ordinary packet from {endpoint} could not be decrypted with an existing session; sending WHOAREYOU.");
             await SendWhoAreYou(endpoint, packet, nodeId);
@@ -363,45 +380,58 @@ public class KademliaAdapter(
         }
 
         ChallengeKey challengeKey = new(nodeId, endpoint);
-        if (!_sentChallenges.TryRemove(challengeKey, out SentChallenge sentChallenge) ||
-            IsExpired(sentChallenge, Environment.TickCount64))
+        if (!_sentChallenges.TryRemove(challengeKey, out SentChallenge sentChallenge))
         {
-            if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake packet from {endpoint}; matching challenge missing or expired.");
+            if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake packet from {endpoint}; matching challenge missing.");
             return;
         }
 
-        TryGetKnownRecord(nodeId, out NodeRecord? knownRecord);
-        if (!packetCodec.TryDecryptHandshake(packet, sentChallenge.Challenge, knownRecord, out Session session, out Discv5Message message, out NodeRecord? nodeRecord))
+        if (IsExpired(sentChallenge, Environment.TickCount64))
         {
-            if (_logger.IsTrace) _logger.Trace($"Unable to decrypt discv5 handshake packet from {endpoint}.");
+            sentChallenge.Dispose();
+            if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake packet from {endpoint}; matching challenge expired.");
             return;
         }
 
         try
         {
-            NodeRecord? messageRecord = knownRecord;
-            if (nodeRecord is not null)
+            TryGetKnownRecord(nodeId, out NodeRecord? knownRecord);
+            if (!packetCodec.TryDecryptHandshake(packet, sentChallenge.Challenge, knownRecord, out Session session, out Discv5Message message, out NodeRecord? nodeRecord))
             {
-                if (!HasExpectedNodeId(nodeRecord, nodeId))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake ENR from {endpoint}; ENR node id does not match packet source.");
-                    return;
-                }
-
-                if (IsAcceptableNodeRecord(nodeRecord, nodeId, IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(endpoint.Address)))
-                {
-                    SetKnownRecord(nodeId, nodeRecord);
-                    messageRecord = nodeRecord;
-                }
+                if (_logger.IsTrace) _logger.Trace($"Unable to decrypt discv5 handshake packet from {endpoint}.");
+                return;
             }
 
-            SetSession(new SessionKey(nodeId, endpoint), session);
-            if (_logger.IsTrace) _logger.Trace($"Received discv5 handshake message {message.MessageType} {message.RequestId} from {endpoint}, ENR included: {nodeRecord is not null}.");
-            await HandleMessage(session.RemotePublicKey, endpoint, message, token, messageRecord);
+            try
+            {
+                NodeRecord? messageRecord = knownRecord;
+                if (nodeRecord is not null)
+                {
+                    if (!HasExpectedNodeId(nodeRecord, nodeId))
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake ENR from {endpoint}; ENR node id does not match packet source.");
+                        return;
+                    }
+
+                    if (IsAcceptableNodeRecord(nodeRecord, nodeId, IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(endpoint.Address)))
+                    {
+                        SetKnownRecord(nodeId, nodeRecord);
+                        messageRecord = nodeRecord;
+                    }
+                }
+
+                SetSession(new SessionKey(nodeId, endpoint), session);
+                if (_logger.IsTrace) _logger.Trace($"Received discv5 handshake message {message.MessageType} {message.RequestId} from {endpoint}, ENR included: {nodeRecord is not null}.");
+                await HandleMessage(session.RemotePublicKey, endpoint, message, token, messageRecord);
+            }
+            finally
+            {
+                message.Dispose();
+            }
         }
         finally
         {
-            message.Dispose();
+            sentChallenge.Dispose();
         }
     }
 
@@ -709,7 +739,10 @@ public class KademliaAdapter(
                 if (_sentChallenges.TryGet(expiry.Key, out SentChallenge challenge) &&
                     challenge.CreatedAtMilliseconds == expiry.CreatedAtMilliseconds)
                 {
-                    _sentChallenges.TryRemove(expiry.Key, out _);
+                    if (_sentChallenges.TryRemove(expiry.Key, out SentChallenge removed))
+                    {
+                        removed.Dispose();
+                    }
                 }
             }
         }

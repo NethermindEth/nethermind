@@ -258,11 +258,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
         {
             while (_values.Count > capacity)
             {
-                LinkedListNode<TKadKey>? oldest = _order.First;
-                if (oldest is null)
-                {
-                    return;
-                }
+                LinkedListNode<TKadKey> oldest = _order.First!;
 
                 _order.RemoveFirst();
                 _values.Remove(oldest.Value);

@@ -16,21 +16,23 @@ namespace Nethermind.Core.Caching
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly McsLock _lock = new();
         private readonly string _name;
+        private readonly Action<TValue>? _onEvict;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
-        public LruCache(int maxCapacity, int startCapacity, string name)
+        public LruCache(int maxCapacity, int startCapacity, string name, Action<TValue>? onEvict = null)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
 
             _name = name;
             _maxCapacity = maxCapacity;
+            _onEvict = onEvict;
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
                 : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
         }
 
-        public LruCache(int maxCapacity, string name)
-            : this(maxCapacity, 0, name)
+        public LruCache(int maxCapacity, string name, Action<TValue>? onEvict = null)
+            : this(maxCapacity, 0, name, onEvict)
         {
         }
 
@@ -38,6 +40,7 @@ namespace Nethermind.Core.Caching
         {
             using McsLock.Disposable lockRelease = _lock.Acquire();
 
+            NotifyEvictedValues();
             _leastRecentlyUsed = null;
             _cacheMap.Clear();
         }
@@ -123,6 +126,7 @@ namespace Nethermind.Core.Caching
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
+                NotifyEvicted(node.Value.Value);
                 node.Value.Value = val;
                 LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
                 return false;
@@ -159,7 +163,7 @@ namespace Nethermind.Core.Caching
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 value = node.Value.Value;
-                RemoveNoLock(key, node);
+                RemoveNoLock(key, node, notifyEviction: false);
                 return true;
             }
 
@@ -171,15 +175,20 @@ namespace Nethermind.Core.Caching
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
-                RemoveNoLock(key, node);
+                RemoveNoLock(key, node, notifyEviction: true);
                 return true;
             }
 
             return false;
         }
 
-        private void RemoveNoLock(TKey key, LinkedListNode<LruCacheItem> node)
+        private void RemoveNoLock(TKey key, LinkedListNode<LruCacheItem> node, bool notifyEviction)
         {
+            if (notifyEviction)
+            {
+                NotifyEvicted(node.Value.Value);
+            }
+
             LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
             _cacheMap.Remove(key);
         }
@@ -228,15 +237,38 @@ namespace Nethermind.Core.Caching
                 ThrowInvalidOperationException();
             }
 
-            _cacheMap.Remove(node!.Value.Key);
+            TValue evictedValue = node!.Value.Value;
+            _cacheMap.Remove(node.Value.Key);
 
             node.Value = new(key, value);
             LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
             _cacheMap.Add(key, node);
+            NotifyEvicted(evictedValue);
 
             [DoesNotReturn]
             static void ThrowInvalidOperationException() => throw new InvalidOperationException(
                     $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
+        }
+
+        private void NotifyEvictedValues()
+        {
+            if (_onEvict is null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+            {
+                _onEvict(kvp.Value.Value.Value);
+            }
+        }
+
+        private void NotifyEvicted(TValue value)
+        {
+            if (_onEvict is not null && value is not null)
+            {
+                _onEvict(value);
+            }
         }
 
         private struct LruCacheItem(TKey k, TValue v)

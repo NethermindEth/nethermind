@@ -248,6 +248,45 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
+        public void Eviction_callback_is_called_when_capacity_replaces_oldest()
+        {
+            int evicted = 0;
+            LruCache<int, int> cache = new(2, "test", value => evicted = value);
+
+            cache.Set(1, 10);
+            cache.Set(2, 20);
+            cache.Set(3, 30);
+
+            Assert.That(evicted, Is.EqualTo(10));
+        }
+
+        [Test]
+        public void Eviction_callback_is_called_when_existing_value_is_replaced()
+        {
+            int evicted = 0;
+            LruCache<int, int> cache = new(2, "test", value => evicted = value);
+
+            cache.Set(1, 10);
+            cache.Set(1, 11);
+
+            Assert.That(evicted, Is.EqualTo(10));
+            Assert.That(cache.Get(1), Is.EqualTo(11));
+        }
+
+        [Test]
+        public void TryRemove_returns_value_without_calling_eviction_callback()
+        {
+            int evicted = 0;
+            LruCache<int, int> cache = new(2, "test", value => evicted = value);
+            cache.Set(1, 10);
+
+            Assert.That(cache.TryRemove(1, out int removed), Is.True);
+
+            Assert.That(removed, Is.EqualTo(10));
+            Assert.That(evicted, Is.Zero);
+        }
+
+        [Test]
         public void Clear_should_free_all_capacity()
         {
             ICache<Address, Account> cache = Create();

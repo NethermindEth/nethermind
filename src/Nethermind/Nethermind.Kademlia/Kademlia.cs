@@ -75,20 +75,24 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
 
     private bool SameAsSelf(TNode node) => EqualityComparer<TKadKey>.Default.Equals(_keyOperator.GetNodeHash(node), _currentNodeIdAsHash);
 
-    public Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null) => _lookupAlgo.Lookup(
-            _keyOperator.GetKeyHash(key),
+    public Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null)
+    {
+        TKadKey keyHash = _keyOperator.GetKeyHash(key);
+        return _lookupAlgo.Lookup(
+            keyHash,
             k ?? _kSize,
             async (nextNode, token) =>
             {
                 if (SameAsSelf(nextNode))
                 {
-                    TKadKey keyHash = _keyOperator.GetKeyHash(key);
                     return _routingTable.GetKNearestNeighbour(keyHash);
                 }
+
                 return await _kademliaMessageSender.FindNeighbours(nextNode, key, token);
             },
             token
         );
+    }
 
     public async Task Run(CancellationToken token)
     {
@@ -148,15 +152,19 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
 
         token.ThrowIfCancellationRequested();
 
-        // Refresh stale non-empty buckets one by one. A refresh means to do a k-nearest node lookup for a random hash
-        // for that particular bucket.
+        // Refresh stale non-empty buckets one by one. Protocols whose wire lookup target cannot be synthesized from a
+        // bucket prefix may return a best-effort random lookup key here; discv4 public keys are one example.
+        HashSet<TKadKey> activeBucketPrefixes = [];
         foreach ((TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket) in _routingTable.IterateBuckets())
         {
+            activeBucketPrefixes.Add(Prefix);
             if (!ShouldRefreshBucket(Prefix, Bucket)) continue;
 
             TKey? keyToLookup = _keyOperator.CreateRandomKeyAtDistance(Prefix, Distance);
             await LookupNodesClosest(keyToLookup, token);
         }
+
+        PruneLastBucketRefreshTicks(activeBucketPrefixes);
 
         if (_logger.IsDebug)
         {
@@ -180,6 +188,37 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
 
             _lastBucketRefreshTicks[prefix] = nowTicks;
             return true;
+        }
+    }
+
+    private void PruneLastBucketRefreshTicks(HashSet<TKadKey> activeBucketPrefixes)
+    {
+        lock (_lastBucketRefreshLock)
+        {
+            if (_lastBucketRefreshTicks.Count <= activeBucketPrefixes.Count)
+            {
+                return;
+            }
+
+            List<TKadKey>? stalePrefixes = null;
+            foreach (TKadKey prefix in _lastBucketRefreshTicks.Keys)
+            {
+                if (!activeBucketPrefixes.Contains(prefix))
+                {
+                    stalePrefixes ??= [];
+                    stalePrefixes.Add(prefix);
+                }
+            }
+
+            if (stalePrefixes is null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < stalePrefixes.Count; i++)
+            {
+                _lastBucketRefreshTicks.Remove(stalePrefixes[i]);
+            }
         }
     }
 
