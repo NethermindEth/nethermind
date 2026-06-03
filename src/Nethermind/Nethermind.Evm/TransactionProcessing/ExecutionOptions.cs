@@ -47,5 +47,4 @@ public enum ExecutionOptions
     /// Commit and later restore state also skip validation, use for CallAndRestore
     /// </summary>
     CommitAndRestore = Commit | Restore | SkipValidation,
-
 }

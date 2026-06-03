@@ -17,6 +17,10 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private readonly bool _isAura;
+    /// <summary>
+    /// Hacky flag to execution options, to pass information how original validate should behave.
+    /// Needed to decide if we need to subtract transaction value.
+    /// </summary>
     private const ExecutionOptions OriginalValidate = (ExecutionOptions)(1 << 30);
 
     /// <summary>
