@@ -206,6 +206,7 @@ public static class ZkGasTestSchedules
             [Address.FromNumber(0x11)] = 365,
             [Address.FromNumber(0x12)] = 246,
             [Address.FromNumber(0x13)] = 208,
+            [Address.FromNumber(0x100)] = 163,
         };
         return d.ToFrozenDictionary();
     }

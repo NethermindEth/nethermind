@@ -44,6 +44,8 @@ public class ZkGasMeterTests
         Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x05), Is.EqualTo((ushort)923)); // modexp
         Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x01), Is.EqualTo((ushort)47));  // ecrecover
         Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x04), Is.EqualTo((ushort)6));   // identity
+        Assert.That(ZkGasTestSchedules.PrecompileMultipliers[Address.FromNumber(0x100)], Is.EqualTo((ushort)163), // p256verify (RIP-7212)
+            "p256verify lives at 0x100 — outside the canonical 0x..XX range");
         Assert.That(ZkGasTestSchedules.PrecompileMultipliers.ContainsKey(Address.FromNumber(0x14)), Is.False,
             "0x14 is not listed — meter charges fail-safe");
     }
@@ -116,6 +118,32 @@ public class ZkGasMeterTests
 
         Assert.That(ecrecoverCharge, Is.EqualTo(47UL));
         Assert.That(l1SloadCharge, Is.EqualTo(200UL));
+    }
+
+    [Test]
+    public void P256Verify_charged_on_default_schedule_failsafe_when_frozen()
+    {
+        // RIP-7212 / p256verify lives at 0x100 and is active wherever Unzen extends Osaka.
+        // The default Alethia schedule lists it at 163; a frozen schedule (e.g. Masaya) that
+        // pre-dates this entry must keep charging the fail-safe so its finalized blocks stay
+        // consensus-valid against their committed ZK-gas totals.
+        Address p256Verify = Address.FromNumber(0x100);
+        const ulong gasUsed = 6_900; // SecP256r1Precompile.BaseGasCost under EIP-7951
+
+        ZkGasMeter defaultMeter = MeterWithAlethiaTables();
+        defaultMeter.ChargePrecompile(p256Verify, gasUsed);
+        Assert.That(defaultMeter.TxZkGasUsed, Is.EqualTo(gasUsed * 163UL),
+            "default Alethia schedule charges 163 × gas_used for p256verify");
+
+        FrozenDictionary<AddressAsKey, ushort> frozenPrecompiles =
+            new System.Collections.Generic.Dictionary<AddressAsKey, ushort>
+            {
+                [Address.FromNumber(0x01)] = 81, // pre-recalibration ecrecover, sanity entry
+            }.ToFrozenDictionary();
+        ZkGasMeter frozenMeter = new(precompileMultipliers: frozenPrecompiles);
+        frozenMeter.ChargePrecompile(p256Verify, 1);
+        Assert.That(frozenMeter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.FailsafeMultiplier),
+            "schedule lacking a 0x100 row charges fail-safe — keeps existing Masaya blocks valid");
     }
 
     [Test]
