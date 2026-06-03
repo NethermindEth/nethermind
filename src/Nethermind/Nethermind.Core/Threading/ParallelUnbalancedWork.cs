@@ -185,10 +185,6 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// </summary>
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
 
-        // One-shot "all workers done" signal. ManualResetEventSlim spins before parking, so the
-        // common case (work completes quickly) never touches a kernel/monitor lock — unlike
-        // SemaphoreSlim, whose Wait/Release take an internal Monitor lock on every call and showed
-        // up as Monitor.Enter_Slowpath contention under the per-tx/per-account prewarmer fan-out.
         public ManualResetEventSlim Event { get; } = new(initialState: false);
         private int _activeThreads = threads;
         private int _faulted;
