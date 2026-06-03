@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 
@@ -25,13 +26,13 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<Hash256>
     /// <inheritdoc/>
     public int CalculateLogDistance(Hash256 left, Hash256 right)
     {
-        ReadOnlySpan<byte> leftBytes = left.Bytes;
-        ReadOnlySpan<byte> rightBytes = right.Bytes;
+        Span<byte> xorDistance = stackalloc byte[Hash256.Size];
+        XorDistance(left.Bytes, right.Bytes, xorDistance);
         int zeros = 0;
 
         for (int i = 0; i < Hash256.Size; i++)
         {
-            byte xor = (byte)(leftBytes[i] ^ rightBytes[i]);
+            byte xor = xorDistance[i];
             if (xor == 0)
             {
                 zeros += 8;
@@ -54,22 +55,13 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<Hash256>
     /// <inheritdoc/>
     public int Compare(Hash256 left, Hash256 right, Hash256 target)
     {
-        ReadOnlySpan<byte> leftBytes = left.Bytes;
-        ReadOnlySpan<byte> rightBytes = right.Bytes;
+        Span<byte> leftDistance = stackalloc byte[Hash256.Size];
+        Span<byte> rightDistance = stackalloc byte[Hash256.Size];
         ReadOnlySpan<byte> targetBytes = target.Bytes;
+        XorDistance(left.Bytes, targetBytes, leftDistance);
+        XorDistance(right.Bytes, targetBytes, rightDistance);
 
-        for (int i = 0; i < Hash256.Size; i++)
-        {
-            byte leftDistance = (byte)(leftBytes[i] ^ targetBytes[i]);
-            byte rightDistance = (byte)(rightBytes[i] ^ targetBytes[i]);
-            int compared = leftDistance.CompareTo(rightDistance);
-            if (compared != 0)
-            {
-                return compared;
-            }
-        }
-
-        return 0;
+        return leftDistance.SequenceCompareTo(rightDistance);
     }
 
     /// <inheritdoc/>
@@ -83,7 +75,8 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<Hash256>
     /// <inheritdoc/>
     public Hash256 SetBit(Hash256 key, int index)
     {
-        byte[] bytes = key.Bytes.ToArray();
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        key.Bytes.CopyTo(bytes);
         bytes[index / 8] |= (byte)(1 << (7 - (index % 8)));
         return new Hash256(bytes);
     }
@@ -136,5 +129,19 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<Hash256>
         }
 
         return new Hash256(randomizedHash);
+    }
+
+    private static void XorDistance(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> destination)
+    {
+        int i = 0;
+        for (; i <= destination.Length - Vector<byte>.Count; i += Vector<byte>.Count)
+        {
+            (new Vector<byte>(left[i..]) ^ new Vector<byte>(right[i..])).CopyTo(destination[i..]);
+        }
+
+        for (; i < destination.Length; i++)
+        {
+            destination[i] = (byte)(left[i] ^ right[i]);
+        }
     }
 }
