@@ -129,65 +129,51 @@ required (all applied in the compile-fix commit):
   `HintBal` (forwarded to base).
 - IDE0028 (`new()` → `[]`) and IDE0290 (primary ctor) style errors fixed.
 
-## Outstanding integration work
+## Remaining known issues from the deep review
 
-1. **`IFeeRecorder` integration in `TransactionProcessor.PayFees`.** The codex branch made the
-   following pattern across `TransactionProcessor`, `SystemTransactionProcessor`,
-   `OptimismTransactionProcessor`, `TaikoTransactionProcessor`:
-   ```csharp
-   if (FeeRecorder is not null) FeeRecorder.RecordFee(...); else WorldState.AddToBalance(...);
-   ```
-   `IFeeRecorder.cs` is ported here but the integration in `TransactionProcessor.PayFees`
-   is not yet applied to master. Apply it carefully against master's pipeline-v1 reshape.
+Ordered by severity. The four critical bugs flagged at the top of this README and the
+selfdestruct / code-propagation issues have been fixed; what's left:
 
-2. **Optimism and Taiko `PayFees` must also route through `IFeeRecorder`.** The codex
-   branch only wired `TransactionProcessor`'s base path; Optimism's `L1FeeReceiver` /
-   `OperatorFeeRecipient` and Taiko's treasury credit still write directly to `WorldState`,
-   eliminating any parallel benefit on those L2s.
+- **EIP-8037 + SELFDESTRUCT-of-coinbase** (critical when EIP-8037 activates on mainnet).
+  Under EIP-8037 the fee is always paid to the coinbase then burned in the destroy-list
+  finalization. The current FeeRecorder accumulates the fee into `_gasBeneficiaryFees`
+  even when the destroying tx targets the coinbase, so PushChanges double-credits the
+  destroying tx's own fee. Fix: when `coinbase ∈ substate.DestroyList && spec.IsEip8037Enabled`,
+  bypass the recorder for that tx and write the burn directly to the per-tx writeSet.
+  Reproducer: contract-as-coinbase that calls SELFDESTRUCT(self) under Cancun/Prague.
+- **CREATE2-into-storage-only address pre-EIP-7610** (latent on chains that haven't enabled
+  EIP-7610). `PushChanges` skips a redundant `ClearStorage` when `storageTouched.Contains(addr)`,
+  which is the right behavior for SELFDESTRUCT but wrong for a CREATE2 collision that wipes
+  pre-existing storage. Need to distinguish "clear from SELFDESTRUCT" from "clear from
+  init-time wipe" at the writeSet level.
+- **Dep-set ownership during AbortExecution race** (latent fragility). `AbortExecution`
+  locks the dep-set after `GetDependencySet` returns it, but `FinishExecution` can claim
+  the set via `Interlocked.Exchange` and return it to the pool. Today the re-check inside
+  the lock makes the path safe (Abort returns false and modifies nothing), but the lock no
+  longer pins the set to the original blocker. Future code added between the re-check and
+  the if/else would break — re-confirm the slot identity inside the lock.
+- **Autofac child-scope leak on per-tx env**. `ParallelEnvFactory.Create` builds a child
+  scope per execution attempt and relies on `AutoReadOnlyTxProcessingEnv.Dispose` cleaning
+  it. Verify that the base class actually disposes the lifetime scope — high-abort blocks
+  could leak per-tx scopes otherwise.
+- **`MarkCommitted` + `Record` fire even when `Execute` failed** (defensive). If the
+  TransactionProcessor returns `!result`, we skip `scope.WorldState.Commit` but still run
+  `EnsureFeeKeys`, `MarkCommitted`, and `multiVersionMemory.Record`. Downstream txs that
+  read the fee keys treat them as committed; they're cleaned up only when
+  `ThrowIfInvalidResults` fails the whole block. Skip these on failure for clarity.
+- **`blockCodeWrites` accumulates code from aborted incarnations**. Append-only, by design
+  benign (content-addressed; collisions are idempotent), but means rolled-back code is
+  technically reachable until end-of-block. Filter to codeHashes referenced by the final
+  writeSet before InsertCode, or attach code-writes to per-tx incarnation and merge only
+  on successful Record.
+- **`FindNonceDependencies` only chains the most recent predecessor**. STM corrects this
+  via re-execution, but multi-sender / multi-7702-auth blocks pay O(n²) reschedules.
+  Either chain all predecessors or rely entirely on STM (current is half-measure).
+- **`MultiVersionMemoryScope.Get` of a fee recipient triggers `AddFeeReadDependencies`
+  for every prior tx** even on prewarmer touches. Should fire only on real BALANCE/SLOAD
+  reads — otherwise blocks where any tx reads coinbase produce O(n²) re-execution attempts.
 
-3. **Add DI wiring (`BlockStmModule`).** A small Autofac module that registers the executor
-   as `IBlockProcessor.IBlockTransactionsExecutor` only when
-   `IBlocksConfig.BlockStmEnabled == true` (new config) and master's BAL parallel path is
-   not active. Replace the hard-coded `4` worker count with `IBlocksConfig.BlockStmConcurrency`.
-
-4. **Tests:**
-   - Port `ParallelBlockValidationTransactionsExecutorTests.cs` and `ParallelRunnerTests.cs`,
-     adjusting to master's `DualBlockchain` shape.
-   - Add bug-1 regression test (MVMemory.Record with removed/re-written keys).
-   - Add bug-4 regression test (`SSTORE → SELFDESTRUCT → re-create + balance transfer`
-     across three txs).
-   - Add Cancun-spec EIP-6780 selfdestruct test.
-   - Add a `beneficiary == self` selfdestruct test.
-
-## Remaining known issues (not yet fixed in this commit)
-
-From the audit, ordered by severity:
-
-- **Storage `clearKey` sometimes omitted from read-set.** `MultiVersionMemoryStorageTree.GetStorageValue`
-  only adds the clear-key dependency when `valueStatus == Ok || (NotFound && !baseIsZero)`.
-  The omitted branch (`NotFound && baseIsZero && clearStatus == NotFound`) can miss a later
-  selfdestruct invalidation. Always-add fix is one line.
-- **`SelfDestructMonit` aliases a real storage slot.** The clear marker is keyed at
-  `StorageCell(address, Keccak.EmptyTreeHash)`. A contract that SSTOREs at exactly that
-  index collides. Fix: add `ParallelStateKeyKind.StorageClear` keyed by address only.
-- **`Get(Address)` does not consult the clear-key.** Pairs OK with selfdestruct (which
-  always writes both account-null + clear), but breaks for CREATE revival paths that clear
-  storage without nulling the account.
-- **Optimism / Taiko `PayFees` bypasses `IFeeRecorder`.** See item 4 above.
-- **System txs and Optimism deposit txs flow through the scheduler with no fence.** They
-  assume sequential pre-hash bookkeeping; add an `if (tx.IsSystem) sequential` fork.
-- **EIP-7702 nonce dependency uses `AuthorizationTuple.Authority` before signature
-  recovery.** `FindNonceDependencies` runs pre-execution so `Authority` may be null;
-  cross-tx 7702 deps are silently missed. Either recover signatures upfront or fall back to
-  a conservative all-pairs dependency for blocks containing 7702 txs.
-- **`BlockReceiptsTracer.Index` is always 0 under parallel.** Per-tx tracers reset
-  `CurrentIndex` and never see the real index. Set it explicitly after harvesting.
-- **Code reads bypass MVCC.** `MultiVersionMemoryScopeProvider.CodeDb => baseScope.CodeDb`
-  is fine for committed code (content-addressed) but breaks for code inserted earlier in the
-  same block: the inserts live in the per-tx scope's `_codeBatch` which is disposed before
-  PushChanges runs.
-- **Hardcoded concurrency = 4.** `BlockStmTransactionsExecutor.cs:54`. Add a config knob.
-- **Static `Metrics` state.** Forces tests `[NonParallelizable]`. Move to scoped DI.
-
-See the audit notes in the parent PR thread for the full list with file:line references and
-reproduction scenarios.
+For the broader simplifications (drop `<TLogger>` and `<TLocation,TData>` generics, split
+oversized files, replace TrackingCodeDb with a concurrent dict at executor level) see the
+review comments threaded into the PR — they're deletion-only changes worth ~150 net lines
+once we're ready to do another pass.
