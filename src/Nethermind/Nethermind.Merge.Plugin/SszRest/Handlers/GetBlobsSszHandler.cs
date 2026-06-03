@@ -41,3 +41,17 @@ public sealed class GetBlobsV2SszHandler<TVersion>(IEngineRpcModule engineModule
         await WriteSszResultAsync(ctx, result, static (d, w) => TVersion.Encode(d!, w));
     }
 }
+
+public sealed class GetBlobsV4SszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
+{
+    public override string HttpMethod => "POST";
+    public override string Resource => SszRestPaths.Blobs;
+    public override int? Version => EngineApiVersions.GetBlobs.V4;
+
+    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
+    {
+        (byte[][] hashes, System.Collections.BitArray indices) = SszCodec.DecodeGetBlobsV4Request(body);
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await engineModule.engine_getBlobsV4(hashes, indices);
+        await WriteSszResultAsync(ctx, result, static (d, w) => SszCodec.EncodeGetBlobsV4Response(d!, w));
+    }
+}

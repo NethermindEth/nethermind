@@ -9,19 +9,33 @@ using Microsoft.AspNetCore.Http;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>POST /engine/v{N}/capabilities</c>, the SSZ-REST equivalent of
+/// Handles <c>GET /engine/v2/capabilities</c>, the HTTP/REST equivalent of
 /// <c>engine_exchangeCapabilities</c>.
 /// </summary>
-public sealed class CapabilitiesSszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
+public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
 {
-    public override string HttpMethod => "POST";
+    public override string HttpMethod => "GET";
     public override string Resource => SszRestPaths.Capabilities;
-    public override int? Version => 1;
+    public override int? Version => null;
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        string[] caps = SszCodec.DecodeCapabilitiesRequest(body);
-        await WriteSszResultAsync(ctx, engineModule.engine_exchangeCapabilities(caps),
-            SszCodec.EncodeCapabilitiesResponse);
+        ctx.Response.ContentType = "application/json";
+        ctx.Response.StatusCode = StatusCodes.Status200OK;
+        await ctx.Response.WriteAsync("""
+            {
+              "supported_forks": ["paris", "shanghai", "cancun", "prague", "osaka", "amsterdam"],
+              "fork_scoped_endpoints": ["payloads", "forkchoice", "bodies"],
+              "independently_versioned": {
+                "blobs": ["v1", "v2", "v3", "v4"]
+              },
+              "unscoped_endpoints": ["capabilities", "identity"],
+              "limits": {
+                "bodies.max_count": 32,
+                "blobs.max_versioned_hashes": 128,
+                "payload.max_bytes": 134217728
+              }
+            }
+            """, ctx.RequestAborted);
     }
 }

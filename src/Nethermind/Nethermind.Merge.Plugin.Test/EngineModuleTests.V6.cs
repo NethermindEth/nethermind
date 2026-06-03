@@ -42,7 +42,7 @@ public partial class EngineModuleTests
         SurplusReads,
     }
 
-    [TestCase("0xb54389c226c76c61de0a8ebea2fe74cb0119295d34b8c01d0897901867c41c63", "0x14c38ed94cf91d5323eb3aaa7ff6c64c4c059a0a898658fcbc37f9723c25e6b3", "0x8a792f3d13211724decede460a451cdac669b5aaae37a01c2110d9f3114bc8a2", "0xfe420b1626a1f16d")]
+    [TestCase("0xb54389c226c76c61de0a8ebea2fe74cb0119295d34b8c01d0897901867c41c63", "0x14c38ed94cf91d5323eb3aaa7ff6c64c4c059a0a898658fcbc37f9723c25e6b3", "0x8a792f3d13211724decede460a451cdac669b5aaae37a01c2110d9f3114bc8a2", "0x2dc87ccb57a65b07")]
     public virtual async Task Should_process_block_as_expected_V6(
         string latestValidHash,
         string blockHash,
@@ -72,6 +72,7 @@ public partial class EngineModuleTests
             withdrawals,
             parentBeaconBLockRoot = Keccak.Zero,
             slotNumber = slotNumber.ToHexString(true),
+            targetGasLimit = chain.BlockTree.Head!.GasLimit.ToHexString(true),
         };
         object?[] parameters = [chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)];
 
@@ -367,7 +368,8 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = Address.Zero,
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = [],
-            SlotNumber = 1
+            SlotNumber = 1,
+            TargetGasLimit = (ulong)genesis.Header.GasLimit
         };
 
         Transaction tx = Build.A.Transaction
@@ -510,7 +512,8 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = [],
             ParentBeaconBlockRoot = TestItem.KeccakE,
-            SlotNumber = chain.BlockTree.Head!.SlotNumber + 1
+            SlotNumber = chain.BlockTree.Head!.SlotNumber + 1,
+            TargetGasLimit = (ulong)chain.BlockTree.Head!.GasLimit
         };
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
@@ -849,7 +852,8 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = TestItem.AddressE,
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = [withdrawal],
-            SlotNumber = slotNumber
+            SlotNumber = slotNumber,
+            TargetGasLimit = (ulong)chain.BlockTree.Head!.GasLimit
         };
 
         ForkchoiceStateV1 fcuState = new(parentHash, parentHash, parentHash);

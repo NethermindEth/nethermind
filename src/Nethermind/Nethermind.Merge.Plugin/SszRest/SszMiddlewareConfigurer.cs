@@ -10,6 +10,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Logging;
+using Nethermind.Core.Specs;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -40,6 +41,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<ILogManager>(ctx);
         services.Bridge<IRpcAuthentication>(ctx);
         services.Bridge<IEngineRpcModule>(ctx);
+        services.Bridge<ISpecProvider>(ctx);
         services.Bridge<IProcessExitSource>(ctx);
 
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>>();
@@ -64,6 +66,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
 
         services.AddSingleton<ISszEndpointHandler, GetBlobsV2SszHandler<GetBlobsDescriptorV2>>();
         services.AddSingleton<ISszEndpointHandler, GetBlobsV2SszHandler<GetBlobsDescriptorV3>>();
+        services.AddSingleton<ISszEndpointHandler, GetBlobsV4SszHandler>();
 
         services.AddSingleton<ISszEndpointHandler,
             GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>>();

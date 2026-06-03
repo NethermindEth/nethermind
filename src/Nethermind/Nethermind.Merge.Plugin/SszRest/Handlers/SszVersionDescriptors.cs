@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
@@ -46,7 +47,7 @@ public readonly struct NewPayloadDescriptorV3 : INewPayloadVersion<NewPayloadV3R
     public static Task<ResultWrapper<PayloadStatusV1>> Call(IEngineRpcModule engine, in NewPayloadV3RequestWire wire)
         => engine.engine_newPayloadV3(
             wire.ExecutionPayload.AsExecutionPayload(),
-            wire.ExpectedBlobVersionedHashes ?? [],
+            SszCodec.GetBlobVersionedHashes(wire.ExecutionPayload.AsExecutionPayload()),
             wire.ParentBeaconBlockRoot);
 }
 
@@ -56,7 +57,7 @@ public readonly struct NewPayloadDescriptorV4 : INewPayloadVersion<NewPayloadV4R
     public static Task<ResultWrapper<PayloadStatusV1>> Call(IEngineRpcModule engine, in NewPayloadV4RequestWire wire)
         => engine.engine_newPayloadV4(
             wire.ExecutionPayload.AsExecutionPayload(),
-            wire.ExpectedBlobVersionedHashes ?? [],
+            SszCodec.GetBlobVersionedHashes(wire.ExecutionPayload.AsExecutionPayload()),
             wire.ParentBeaconBlockRoot,
             wire.ExecutionRequests.ToExecutionRequests());
 }
@@ -67,7 +68,7 @@ public readonly struct NewPayloadDescriptorV5 : INewPayloadVersion<NewPayloadV5R
     public static Task<ResultWrapper<PayloadStatusV1>> Call(IEngineRpcModule engine, in NewPayloadV5RequestWire wire)
         => engine.engine_newPayloadV5(
             wire.ExecutionPayload.AsExecutionPayload(),
-            wire.ExpectedBlobVersionedHashes ?? [],
+            SszCodec.GetBlobVersionedHashes(wire.ExecutionPayload.AsExecutionPayload()),
             wire.ParentBeaconBlockRoot,
             wire.ExecutionRequests.ToExecutionRequests());
 }
@@ -76,6 +77,7 @@ public interface IForkchoiceUpdatedVersion<TWire> where TWire : struct, ISszCode
 {
     static abstract int VersionNumber { get; }
     static abstract Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Call(IEngineRpcModule engine, in TWire wire);
+    static abstract ulong? GetTimestamp(in TWire wire);
 }
 
 public readonly struct ForkchoiceUpdatedDescriptorV1 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV1RequestWire>
@@ -87,6 +89,8 @@ public readonly struct ForkchoiceUpdatedDescriptorV1 : IForkchoiceUpdatedVersion
         PayloadAttributes? attrs = wire.PayloadAttributes is { Length: > 0 } a ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
         return engine.engine_forkchoiceUpdatedV1(state, attrs);
     }
+    public static ulong? GetTimestamp(in ForkchoiceUpdatedV1RequestWire wire) =>
+        wire.PayloadAttributes is { Length: > 0 } a ? a[0].Timestamp : null;
 }
 
 public readonly struct ForkchoiceUpdatedDescriptorV2 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV2RequestWire>
@@ -98,6 +102,8 @@ public readonly struct ForkchoiceUpdatedDescriptorV2 : IForkchoiceUpdatedVersion
         PayloadAttributes? attrs = wire.PayloadAttributes is { Length: > 0 } a ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
         return engine.engine_forkchoiceUpdatedV2(state, attrs);
     }
+    public static ulong? GetTimestamp(in ForkchoiceUpdatedV2RequestWire wire) =>
+        wire.PayloadAttributes is { Length: > 0 } a ? a[0].Timestamp : null;
 }
 
 public readonly struct ForkchoiceUpdatedDescriptorV3 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV3RequestWire>
@@ -109,6 +115,8 @@ public readonly struct ForkchoiceUpdatedDescriptorV3 : IForkchoiceUpdatedVersion
         PayloadAttributes? attrs = wire.PayloadAttributes is { Length: > 0 } a ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
         return engine.engine_forkchoiceUpdatedV3(state, attrs);
     }
+    public static ulong? GetTimestamp(in ForkchoiceUpdatedV3RequestWire wire) =>
+        wire.PayloadAttributes is { Length: > 0 } a ? a[0].Timestamp : null;
 }
 
 public readonly struct ForkchoiceUpdatedDescriptorV4 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedRequestWire>
@@ -118,8 +126,11 @@ public readonly struct ForkchoiceUpdatedDescriptorV4 : IForkchoiceUpdatedVersion
     {
         ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(wire.ForkchoiceState);
         PayloadAttributes? attrs = wire.PayloadAttributes is { Length: > 0 } a ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
-        return engine.engine_forkchoiceUpdatedV4(state, attrs);
+        BitArray? custody = wire.CustodyColumns is { Length: > 0 } c ? c[0].Bits : null;
+        return engine.engine_forkchoiceUpdatedV4(state, attrs, custody);
     }
+    public static ulong? GetTimestamp(in ForkchoiceUpdatedRequestWire wire) =>
+        wire.PayloadAttributes is { Length: > 0 } a ? a[0].Timestamp : null;
 }
 
 public readonly struct GetPayloadDescriptorV1 : IGetPayloadVersion<ExecutionPayload>
@@ -249,4 +260,20 @@ public readonly struct GetBlobsDescriptorV3 : IGetBlobsV2Version
         => engine.engine_getBlobsV3(hashes);
     public static int Encode(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
         => SszCodec.EncodeGetBlobsV3Response(blobs, writer);
+}
+
+public interface IGetBlobsV4Version
+{
+    static abstract int VersionNumber { get; }
+    static abstract Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> Call(IEngineRpcModule engine, byte[][] hashes, System.Collections.BitArray indicesBitarray);
+    static abstract int Encode(IReadOnlyList<BlobCellsAndProofs?> blobs, IBufferWriter<byte> writer);
+}
+
+public readonly struct GetBlobsDescriptorV4 : IGetBlobsV4Version
+{
+    public static int VersionNumber => EngineApiVersions.GetBlobs.V4;
+    public static Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> Call(IEngineRpcModule engine, byte[][] hashes, System.Collections.BitArray indicesBitarray)
+        => engine.engine_getBlobsV4(hashes, indicesBitarray);
+    public static int Encode(IReadOnlyList<BlobCellsAndProofs?> blobs, IBufferWriter<byte> writer)
+        => SszCodec.EncodeGetBlobsV4Response(blobs, writer);
 }

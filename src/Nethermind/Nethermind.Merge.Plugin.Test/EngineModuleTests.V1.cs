@@ -1882,7 +1882,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        ResultWrapper<ClientVersionV1[]> result = rpcModule.engine_getClientVersionV1(new ClientVersionV1());
+        ResultWrapper<ClientVersionV1[]> result = rpcModule.engine_getClientVersionV1(default);
         Assert.That(result.Data, Is.EqualTo([new ClientVersionV1()]));
     }
 
@@ -1940,7 +1940,8 @@ public partial class EngineModuleTests
 
             nameof(IEngineRpcModule.engine_getPayloadV5),
             nameof(IEngineRpcModule.engine_getBlobsV2),
-            nameof(IEngineRpcModule.engine_getBlobsV3)
+            nameof(IEngineRpcModule.engine_getBlobsV3),
+            nameof(IEngineRpcModule.engine_getBlobsV4)
         ];
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }
@@ -1977,50 +1978,51 @@ public partial class EngineModuleTests
 
     private static readonly string[] SszRestPathsParis =
     [
-        "POST /engine/v1/payloads",
-        "GET /engine/v1/payloads/{payload_id}",
-        "POST /engine/v1/forkchoice",
-        "POST /engine/v1/capabilities",
-        "POST /engine/v1/client/version",
+        "POST /engine/v2/paris/payloads",
+        "GET /engine/v2/paris/payloads/{payload_id}",
+        "POST /engine/v2/paris/forkchoice",
+        "GET /engine/v2/capabilities",
+        "GET /engine/v2/identity",
     ];
 
     private static readonly string[] SszRestPathsShanghai =
     [
-        "POST /engine/v2/payloads",
-        "GET /engine/v2/payloads/{payload_id}",
-        "POST /engine/v2/forkchoice",
-        "POST /engine/v1/payloads/bodies/by-hash",
-        "POST /engine/v1/payloads/bodies/by-range",
+        "POST /engine/v2/shanghai/payloads",
+        "GET /engine/v2/shanghai/payloads/{payload_id}",
+        "POST /engine/v2/shanghai/forkchoice",
+        "POST /engine/v2/shanghai/bodies/hash",
+        "GET /engine/v2/shanghai/bodies",
     ];
 
     private static readonly string[] SszRestPathsCancun =
     [
-        "POST /engine/v3/payloads",
-        "GET /engine/v3/payloads/{payload_id}",
-        "POST /engine/v3/forkchoice",
-        "POST /engine/v1/blobs",
+        "POST /engine/v2/cancun/payloads",
+        "GET /engine/v2/cancun/payloads/{payload_id}",
+        "POST /engine/v2/cancun/forkchoice",
+        "POST /engine/v2/blobs/v1",
     ];
 
     private static readonly string[] SszRestPathsPrague =
     [
-        "POST /engine/v4/payloads",
-        "GET /engine/v4/payloads/{payload_id}",
+        "POST /engine/v2/prague/payloads",
+        "GET /engine/v2/prague/payloads/{payload_id}",
     ];
 
     private static readonly string[] SszRestPathsOsaka =
     [
-        "GET /engine/v5/payloads/{payload_id}",
-        "POST /engine/v2/blobs",
-        "POST /engine/v3/blobs",
+        "GET /engine/v2/osaka/payloads/{payload_id}",
+        "POST /engine/v2/blobs/v2",
+        "POST /engine/v2/blobs/v3",
+        "POST /engine/v2/blobs/v4",
     ];
 
     private static readonly string[] SszRestPathsAmsterdam =
     [
-        "POST /engine/v5/payloads",
-        "GET /engine/v6/payloads/{payload_id}",
-        "POST /engine/v4/forkchoice",
-        "POST /engine/v2/payloads/bodies/by-hash",
-        "POST /engine/v2/payloads/bodies/by-range",
+        "POST /engine/v2/amsterdam/payloads",
+        "GET /engine/v2/amsterdam/payloads/{payload_id}",
+        "POST /engine/v2/amsterdam/forkchoice",
+        "POST /engine/v2/amsterdam/bodies/hash",
+        "GET /engine/v2/amsterdam/bodies",
     ];
 
     public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()

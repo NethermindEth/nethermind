@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -176,12 +175,9 @@ public class SszCodecTests
     }
 
     private static void AssertCommonNewPayloadFields(
-        byte[]?[] hashes, Hash256[] expectedHashes,
         Hash256? parentBeaconBlockRoot, Hash256 expectedParentRoot,
         byte[][]? requests, byte[] expectedRequest)
     {
-        Assert.That(hashes, Is.EqualTo(expectedHashes.Select(static hash => hash.Bytes.ToArray()).ToArray()));
-
         Assert.That(parentBeaconBlockRoot, Is.Not.Null);
         Assert.That(parentBeaconBlockRoot, Is.EqualTo(expectedParentRoot));
 
@@ -197,7 +193,6 @@ public class SszCodecTests
         NewPayloadV4RequestWire wire = new()
         {
             ExecutionPayload = new SszExecutionPayloadV3(SszTestData.MakeV3Payload()),
-            ExpectedBlobVersionedHashes = [TestItem.KeccakA, TestItem.KeccakB],
             ParentBeaconBlockRoot = TestItem.KeccakC,
             ExecutionRequests = [new SszTransaction { Bytes = executionRequest }]
         };
@@ -206,7 +201,6 @@ public class SszCodecTests
 
         NewPayloadV4RequestWire.Decode(encoded, out NewPayloadV4RequestWire decoded);
         ExecutionPayloadV3 payload = decoded.ExecutionPayload.AsExecutionPayload();
-        byte[]?[] hashes = decoded.ExpectedBlobVersionedHashes.ToBytesArrays();
         byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
 
         Assert.That(payload.BlockNumber, Is.EqualTo(100));
@@ -217,7 +211,6 @@ public class SszCodecTests
         Assert.That(payload.ExcessBlobGas, Is.EqualTo(0x40000UL));
 
         AssertCommonNewPayloadFields(
-            hashes, [TestItem.KeccakA, TestItem.KeccakB],
             decoded.ParentBeaconBlockRoot, TestItem.KeccakC,
             requests, executionRequest);
     }
@@ -232,7 +225,6 @@ public class SszCodecTests
         NewPayloadV5RequestWire wire = new()
         {
             ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList, slotNumber)),
-            ExpectedBlobVersionedHashes = [TestItem.KeccakA],
             ParentBeaconBlockRoot = TestItem.KeccakD,
             ExecutionRequests = [new SszTransaction { Bytes = executionRequest }]
         };
@@ -241,7 +233,6 @@ public class SszCodecTests
 
         NewPayloadV5RequestWire.Decode(encoded, out NewPayloadV5RequestWire decoded);
         ExecutionPayloadV4 payload = decoded.ExecutionPayload.AsExecutionPayload();
-        byte[]?[] hashes = decoded.ExpectedBlobVersionedHashes.ToBytesArrays();
         byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
 
         Assert.That(payload.BlockNumber, Is.EqualTo(100));
@@ -255,7 +246,6 @@ public class SszCodecTests
         Assert.That(payload.ExcessBlobGas, Is.EqualTo(0x40000UL));
 
         AssertCommonNewPayloadFields(
-            hashes, [TestItem.KeccakA],
             decoded.ParentBeaconBlockRoot, TestItem.KeccakD,
             requests, executionRequest);
     }

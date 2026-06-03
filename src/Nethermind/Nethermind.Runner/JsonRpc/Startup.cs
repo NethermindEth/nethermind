@@ -86,14 +86,34 @@ public class Startup : IStartup
         IConfigProvider? configProvider = sp.GetService<IConfigProvider>() ?? throw new ApplicationException($"{nameof(IConfigProvider)} could not be resolved");
         IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
 
+        IJsonRpcUrlCollection? urlCollection = sp.GetService<IJsonRpcUrlCollection>();
+        HashSet<int> engineApiPorts = urlCollection is null
+            ? []
+            : urlCollection.Values
+                .Where(static u => u.IsAuthenticated)
+                .Select(static u => u.Port)
+                .ToHashSet();
+
         services.Configure<KestrelServerOptions>(options =>
         {
             options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
             options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
+
+            options.Limits.Http2.InitialConnectionWindowSize = 1 * 1024 * 1024;
+            options.Limits.Http2.InitialStreamWindowSize = 1 * 1024 * 1024;
+
             options.ConfigureEndpointDefaults(listenOptions =>
             {
-                listenOptions.Protocols = HttpProtocols.Http1;
-                listenOptions.DisableAltSvcHeader = true;
+                int port = (listenOptions.EndPoint as System.Net.IPEndPoint)?.Port ?? 0;
+                if (engineApiPorts.Contains(port))
+                {
+                    listenOptions.Protocols = HttpProtocols.Http2;
+                }
+                else
+                {
+                    listenOptions.Protocols = HttpProtocols.Http1;
+                    listenOptions.DisableAltSvcHeader = true;
+                }
             });
         });
         Bootstrap.Instance.RegisterJsonRpcServices(services);

@@ -95,7 +95,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadV2), SszRestPaths.GetV2Payloads, Gate(spec.WithdrawalsEnabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadV2), SszRestPaths.PostV2Payloads, Gate(spec.WithdrawalsEnabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1), SszRestPaths.PostV1PayloadBodiesByHash, Gate(spec.WithdrawalsEnabled));
-        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1), SszRestPaths.PostV1PayloadBodiesByRange, Gate(spec.WithdrawalsEnabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1), SszRestPaths.GetV1PayloadBodiesByRange, Gate(spec.WithdrawalsEnabled));
 
         // Cancun
         Configure(nameof(IEngineRpcModule.engine_getPayloadV3), SszRestPaths.GetV3Payloads, GateWithWarn(spec.IsEip4844Enabled));
@@ -117,7 +117,8 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_newPayloadV5), SszRestPaths.PostV5Payloads, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), SszRestPaths.PostV4Forkchoice, GateWithWarn(spec.IsEip7843Enabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostV2PayloadBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
-        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.PostV2PayloadBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetV2PayloadBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getBlobsV4), SszRestPaths.PostV4Blobs, Gate(spec.IsEip7594Enabled));
 
         json = jsonLocal;
         ssz = sszLocal;

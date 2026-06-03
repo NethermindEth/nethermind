@@ -11,21 +11,30 @@ using Nethermind.Merge.Plugin.Data;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>POST /engine/v{N}/client/version</c>, the SSZ-REST equivalent of
+/// Handles <c>GET /engine/v2/identity</c>, the HTTP/REST equivalent of
 /// <c>engine_getClientVersionV1</c>.
 /// </summary>
 public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
 {
     private readonly IEngineRpcModule _engineModule = engineModule;
 
-    public override string HttpMethod => "POST";
+    public override string HttpMethod => "GET";
     public override string Resource => SszRestPaths.ClientVersion;
-    public override int? Version => 1;
+    public override int? Version => null;
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        ClientVersionV1 caller = SszCodec.DecodeClientVersionRequest(body);
-        ResultWrapper<ClientVersionV1[]> result = _engineModule.engine_getClientVersionV1(caller);
-        await WriteSszResultAsync(ctx, result, SszCodec.EncodeClientVersionResponse);
+        ClientVersionV1 clientVersion = ctx.Items.TryGetValue("X-Engine-Client-Version", out object? clvObj) && clvObj is ClientVersionV1 clv
+            ? clv
+            : default;
+        ResultWrapper<ClientVersionV1[]> result = _engineModule.engine_getClientVersionV1(clientVersion);
+
+        ctx.Response.ContentType = "application/json";
+        ctx.Response.StatusCode = StatusCodes.Status200OK;
+        string json = System.Text.Json.JsonSerializer.Serialize(result.Data, new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+        });
+        await ctx.Response.WriteAsync(json, ctx.RequestAborted);
     }
 }

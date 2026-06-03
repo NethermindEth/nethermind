@@ -326,6 +326,7 @@ public class BaseMergePluginModule : Module
                     .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
                 .AddSingleton<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>, GetBlobsHandler>()
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>, GetBlobsHandlerV2>()
+                .AddSingleton<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>, GetBlobsHandlerV4>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
 

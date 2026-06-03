@@ -17,6 +17,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
+using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
@@ -36,11 +37,11 @@ public sealed class SszMiddleware
     private const string EnginePrefix = "/engine/v";
 
     /// <summary>
-    /// Maximum allowed request body size in bytes (16 MiB).
-    /// Corresponds to <c>MAX_REQUEST_BODY_SIZE</c> defined in the Engine API SSZ-REST spec
-    /// (see https://github.com/ethereum/execution-apis/pull/764)
+    /// Maximum allowed request body size in bytes (128 MiB).
+    /// Matches <c>MAX_REQUEST_BODY_SIZE</c> in the Engine API SSZ-REST spec
+    /// (see https://github.com/ethereum/execution-apis/pull/764).
     /// </summary>
-    public const int MaxBodySize = 0x1000000;
+    public const int MaxBodySize = 0x8000000;
 
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _postRoutes;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _getRoutes;
@@ -49,6 +50,8 @@ public sealed class SszMiddleware
 
     private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _postPrefixRoutes;
     private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _getPrefixRoutes;
+
+    private enum SszRequestKind { NotEngine, EngineWrongMediaType, EngineOk }
 
     public SszMiddleware(
         RequestDelegate next,
@@ -111,10 +114,10 @@ public sealed class SszMiddleware
 
     public Task InvokeAsync(HttpContext ctx)
     {
-        if (!IsSszRequest(ctx))
-        {
+        SszRequestKind kind = ClassifySszRequest(ctx);
+
+        if (kind == SszRequestKind.NotEngine)
             return _next(ctx);
-        }
 
         if (_processExitToken.IsCancellationRequested)
         {
@@ -127,12 +130,40 @@ public sealed class SszMiddleware
             return _next(ctx);
         }
 
+        if (kind == SszRequestKind.EngineWrongMediaType)
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            return SszEndpointHandlerBase.WriteErrorAsync(
+                ctx,
+                StatusCodes.Status415UnsupportedMediaType,
+                "Engine API hot-path endpoints require Content-Type: application/octet-stream (POST) " +
+                "or Accept: application/octet-stream (GET)",
+                SszRestErrorCodes.UnsupportedMediaType);
+        }
+
         Metrics.SszRestRequestsTotal++;
         return ProcessSszRequestAsync(ctx);
     }
 
     private async Task ProcessSszRequestAsync(HttpContext ctx)
     {
+        if (ctx.Request.Headers.TryGetValue("X-Engine-Client-Version", out Microsoft.Extensions.Primitives.StringValues headerValues) && headerValues.Count > 0)
+        {
+            string? headerVal = headerValues[0];
+            if (!string.IsNullOrWhiteSpace(headerVal))
+            {
+                try
+                {
+                    ClientVersionV1 clVer = System.Text.Json.JsonSerializer.Deserialize<ClientVersionV1>(headerVal, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    ctx.Items["X-Engine-Client-Version"] = clVer;
+                }
+                catch
+                {
+                    // Ignore malformed header values
+                }
+            }
+        }
+
         string? authHeader = ctx.Request.Headers.Authorization;
         if (authHeader is null || !await _auth.Authenticate(authHeader))
         {
@@ -140,22 +171,38 @@ public sealed class SszMiddleware
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized,
                 "Authentication error");
         }
-        else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out ReadOnlyMemory<char> pathSegment))
+        else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out string? fork,
+                     out ReadOnlyMemory<char> pathSegment, out bool unsupportedFork))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
-            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                "Unknown SSZ endpoint");
+            if (unsupportedFork)
+            {
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+                    $"Fork '{fork}' is not supported by this EL",
+                    MergeErrorCodes.UnsupportedFork);
+            }
+            else
+            {
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
+                    "Unknown SSZ endpoint", SszRestErrorCodes.MethodNotFound);
+            }
         }
-        else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
+        else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, fork, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
             // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
             // intermediate string; appending the span goes straight into the format buffer.
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}");
+                $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}",
+                SszRestErrorCodes.MethodNotFound);
         }
         else
         {
+            if (fork is not null)
+            {
+                ctx.Items["SszRouteFork"] = fork;
+            }
+
             if (_logger.IsTrace)
             {
                 _logger.Trace(extra.IsEmpty
@@ -201,13 +248,15 @@ public sealed class SszMiddleware
             catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or EndOfStreamException)
             {
                 // Per execution-apis #764 (Engine API SSZ Transport spec, "HTTP status codes" section):
-                // malformed SSZ encoding is 400 Bad Request. 422 Unprocessable Entity is reserved
-                // for "Invalid payload attributes" and is emitted by the handler chain via
+                // malformed SSZ encoding is 400 Bad Request with type=ssz-decode-error: canned error,
+                // no detail (spec verbatim).  422 Unprocessable Entity is reserved for
+                // "Invalid payload attributes" and is emitted by the handler chain via
                 // ErrorCodeToHttpStatus when the engine module returns InvalidPayloadAttributes.
                 Metrics.SszRestDecodeFailuresTotal++;
                 Metrics.SszRestRequestsClientErrorTotal++;
                 if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
-                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, "Malformed SSZ body");
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+                    string.Empty, SszRestErrorCodes.SszDecodeError);
             }
             catch (Exception ex)
             {
@@ -227,10 +276,13 @@ public sealed class SszMiddleware
         }
     }
 
-    private static bool TryRoute(string path, out int version, out ReadOnlyMemory<char> pathSegment)
+    private static bool TryRoute(string path, out int version, out string? fork,
+        out ReadOnlyMemory<char> pathSegment, out bool unsupportedFork)
     {
-        version = 0;
+        version = 2;
+        fork = null;
         pathSegment = default;
+        unsupportedFork = false;
 
         ReadOnlySpan<char> span = path.AsSpan();
         if (!span.StartsWith(EnginePrefix.AsSpan(), StringComparison.OrdinalIgnoreCase))
@@ -242,37 +294,72 @@ public sealed class SszMiddleware
         int slashPos = span.IndexOf('/');
         if (slashPos <= 0) return false;
 
-        if (!int.TryParse(span[..slashPos], out version))
+        if (!int.TryParse(span[..slashPos], out version) || version != 2)
             return false;
 
         offset += slashPos + 1;
         span = span[(slashPos + 1)..];
         if (span.IsEmpty) return false;
 
-        // Allowed path-segment chars: ASCII alphanumeric, '-' (kebab-case resources),
-        // and '/' (between resource and extra). Reject runs of '/' in the same pass —
-        // saves an extra scan and gives one rejection point for both validations.
-        bool prevSlash = false;
-        foreach (char c in span)
+        if (span.Equals("identity".AsSpan(), StringComparison.OrdinalIgnoreCase))
         {
-            if (c == '/')
-            {
-                if (prevSlash) return false;
-                prevSlash = true;
-                continue;
-            }
-            if (!char.IsAsciiLetterOrDigit(c) && c != '-')
-                return false;
-            prevSlash = false;
+            pathSegment = path.AsMemory(offset);
+            return true;
+        }
+        if (span.Equals("capabilities".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        {
+            pathSegment = path.AsMemory(offset);
+            return true;
         }
 
-        // Slice into the original path string — zero-allocation; the memory stays valid
-        // for the lifetime of the request because Path.Value is held by ctx.Request.
-        pathSegment = path.AsMemory(offset);
+        if (span.StartsWith("blobs/".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        {
+            ReadOnlySpan<char> sub = span["blobs/".Length..];
+            if (sub.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+            {
+                if (int.TryParse(sub[1..], out int blobVer))
+                {
+                    version = blobVer;
+                    pathSegment = path.AsMemory(offset, "blobs".Length);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Everything remaining should be a fork-scoped path: /{fork}/{resource}[/{extra}]
+        int nextSlash = span.IndexOf('/');
+        if (nextSlash <= 0)
+        {
+            // E.g. bodies query or payloads query without extra path segment
+            nextSlash = span.Length;
+        }
+
+        ReadOnlySpan<char> forkSpan = span[..nextSlash];
+        string forkStr = forkSpan.ToString().ToLowerInvariant();
+        if (forkStr is not ("paris" or "shanghai" or "cancun" or "prague" or "osaka" or "amsterdam"))
+        {
+            fork = forkStr;
+            unsupportedFork = true;
+            return false;
+        }
+
+        fork = forkStr;
+        if (nextSlash < span.Length)
+        {
+            offset += nextSlash + 1;
+            pathSegment = path.AsMemory(offset);
+        }
+        else
+        {
+            // Recognised fork but missing resource segment, e.g. /engine/v2/cancun — not
+            // a valid endpoint; leave unsupportedFork = false so the caller uses 404.
+            return false;
+        }
         return true;
     }
 
-    private bool TryResolveHandler(string method, ReadOnlyMemory<char> pathSegment, int version,
+    private bool TryResolveHandler(string method, ReadOnlyMemory<char> pathSegment, int version, string? fork,
         out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra)
     {
         handler = null;
@@ -281,6 +368,29 @@ public sealed class SszMiddleware
         bool isPost = HttpMethods.IsPost(method);
         bool isGet = !isPost && HttpMethods.IsGet(method);
 
+        string resourceStr = pathSegment.ToString();
+        string extraStr = string.Empty;
+
+        int firstSlash = resourceStr.IndexOf('/');
+        if (firstSlash > 0)
+        {
+            extraStr = resourceStr[(firstSlash + 1)..];
+            resourceStr = resourceStr[..firstSlash];
+        }
+
+        if (resourceStr.Equals("bodies", StringComparison.OrdinalIgnoreCase) && extraStr.Equals("hash", StringComparison.OrdinalIgnoreCase))
+        {
+            resourceStr = "bodies/hash";
+            extraStr = string.Empty;
+        }
+
+        if (fork is not null)
+        {
+            int? mappedVersion = MapForkToVersion(fork, resourceStr, method);
+            if (mappedVersion is null) return false;
+            version = mappedVersion.Value;
+        }
+
         FrozenDictionary<string, List<ISszEndpointHandler>>? exactDict = isPost ? _postRoutes : isGet ? _getRoutes : null;
 
         if (exactDict is not null)
@@ -288,85 +398,115 @@ public sealed class SszMiddleware
             FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
                 lookup = isPost ? _postLookup : _getLookup;
 
-            if (lookup.TryGetValue(pathSegment.Span, out List<ISszEndpointHandler>? exactList))
+            if (lookup.TryGetValue(resourceStr.AsSpan(), out List<ISszEndpointHandler>? exactList))
             {
                 ISszEndpointHandler? fallback = null;
                 foreach (ISszEndpointHandler candidate in exactList)
                 {
-                    if (candidate.Version == version) { handler = candidate; extra = default; return true; }
+                    if (candidate.Version == version)
+                    {
+                        handler = candidate;
+                        extra = extraStr.AsMemory();
+                        return true;
+                    }
                     if (candidate.Version is null) fallback = candidate;
                 }
-                if (fallback is not null) { handler = fallback; extra = default; return true; }
-            }
-        }
-
-        ISszEndpointHandler? prefixFallback = null;
-        ReadOnlyMemory<char> prefixFallbackExtra = default;
-
-        (string Resource, List<ISszEndpointHandler> Handlers)[] prefixRoutes =
-            isPost ? _postPrefixRoutes : isGet ? _getPrefixRoutes : [];
-
-        ReadOnlySpan<char> pathSpan = pathSegment.Span;
-        foreach ((string routeResource, List<ISszEndpointHandler> candidates) in prefixRoutes)
-        {
-            ReadOnlySpan<char> resourceSpan = routeResource.AsSpan();
-
-            if (pathSpan.Length <= resourceSpan.Length || pathSpan[resourceSpan.Length] != '/')
-                continue;
-            if (!pathSpan.StartsWith(resourceSpan, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            ReadOnlyMemory<char> tail = pathSegment[(resourceSpan.Length + 1)..];
-
-            foreach (ISszEndpointHandler candidate in candidates)
-            {
-                if (candidate.Version == version)
+                if (fallback is not null)
                 {
-                    handler = candidate;
-                    extra = tail;
+                    handler = fallback;
+                    extra = extraStr.AsMemory();
                     return true;
                 }
-
-                if (candidate.Version is null)
-                {
-                    prefixFallback = candidate;
-                    prefixFallbackExtra = tail;
-                }
             }
-        }
-
-        if (prefixFallback is not null)
-        {
-            handler = prefixFallback;
-            extra = prefixFallbackExtra;
-            return true;
         }
 
         return false;
     }
 
-    private static bool IsSszRequest(HttpContext ctx)
+    public static int? MapForkToVersion(string fork, string resource, string httpMethod)
+    {
+        fork = fork.ToLowerInvariant();
+        resource = resource.ToLowerInvariant();
+
+        if (resource == "payloads")
+        {
+            if (httpMethod == "POST")
+            {
+                return fork switch
+                {
+                    "paris" => 1,
+                    "shanghai" => 2,
+                    "cancun" => 3,
+                    "prague" or "osaka" => 4,
+                    "amsterdam" => 5,
+                    _ => null
+                };
+            }
+            else if (httpMethod == "GET")
+            {
+                return fork switch
+                {
+                    "paris" => 1,
+                    "shanghai" => 2,
+                    "cancun" => 3,
+                    "prague" => 4,
+                    "osaka" => 5,
+                    "amsterdam" => 6,
+                    _ => null
+                };
+            }
+        }
+        else if (resource == "forkchoice")
+        {
+            return fork switch
+            {
+                "paris" => 1,
+                "shanghai" => 2,
+                "cancun" or "prague" or "osaka" => 3,
+                "amsterdam" => 4,
+                _ => null
+            };
+        }
+        else if (resource == "bodies/hash" || resource == "bodies")
+        {
+            return fork switch
+            {
+                "paris" or "shanghai" or "cancun" or "prague" or "osaka" => 1,
+                "amsterdam" => 2,
+                _ => null
+            };
+        }
+
+        return null;
+    }
+
+    private static SszRequestKind ClassifySszRequest(HttpContext ctx)
     {
         string path = ctx.Request.Path.Value ?? string.Empty;
-        if (!path.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase))
-            return false;
+
+        if (!path.StartsWith(EnginePrefix, StringComparison.OrdinalIgnoreCase))
+            return SszRequestKind.NotEngine;
 
         switch (ctx.Request.Method)
         {
             case "POST":
-                return ctx.Request.ContentType?.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase) == true;
-            case "GET":
-                {
-                    foreach (string? v in ctx.Request.Headers.Accept)
-                    {
-                        if (v is not null && v.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
-                            return true;
-                    }
+                return ctx.Request.ContentType?.Contains(
+                    MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase) == true
+                    ? SszRequestKind.EngineOk
+                    : SszRequestKind.EngineWrongMediaType;
 
-                    return false;
+            case "GET":
+                foreach (string? v in ctx.Request.Headers.Accept)
+                {
+                    if (v is not null && v.Contains(
+                        MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
+                        return SszRequestKind.EngineOk;
                 }
+
+                return SszRequestKind.NotEngine;
+
             default:
-                return false;
+                return SszRequestKind.NotEngine;
         }
     }
 
