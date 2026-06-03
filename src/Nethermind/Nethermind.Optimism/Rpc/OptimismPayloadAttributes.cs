@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,6 +16,7 @@ namespace Nethermind.Optimism.Rpc;
 
 public class OptimismPayloadAttributes : PayloadAttributes
 {
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     private byte[][]? _encodedTransactions;
 
     public byte[][]? Transactions
@@ -49,7 +50,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         {
             try
             {
-                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping);
+                return TxRlpDecoder.DecodeCompleteNotNull(t, RlpBehaviors.SkipTypedWrapping);
             }
             catch (RlpException e)
             {

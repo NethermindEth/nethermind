@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#pragma warning disable IDE0130 // Generated code expects these attributes under Nethermind.Serialization.Ssz
 namespace Nethermind.Serialization.Ssz;
+#pragma warning restore IDE0130
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
 public class SszContainerAttribute(bool isCollectionItself = false) : Attribute

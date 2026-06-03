@@ -54,9 +54,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public void ResetOverrides()
     {
         _codeDbOverlay.ClearTempChanges();
-        foreach (Snapshot snapshot in _snapshots.Values)
+        foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
-            snapshot.Dispose();
+            kvp.Value.Dispose();
         }
 
         _snapshots.Clear();
@@ -114,9 +114,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
-        foreach (Snapshot snapshot in _snapshots.Values)
+        foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
-            snapshot.Dispose();
+            kvp.Value.Dispose();
         }
         _snapshots.Clear();
     }
@@ -174,7 +174,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         public byte[]? GetCode(in ValueHash256 codeHash)
             => codeHash == ValueKeccak.OfAnEmptyString ? [] : overridableWorldScope._codeDbOverlay[codeHash.Bytes];
 
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
         {
             StateId stateId = new(baseBlock);
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
@@ -183,7 +183,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle, concurrency);
 
             PatriciaTree patriciaTree = new(trieStoreAdapter, LimboLogs.Instance);
-            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions);
+            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
         }
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);

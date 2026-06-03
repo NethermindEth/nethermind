@@ -46,7 +46,7 @@ public sealed class SimulateTxTracer : TxTracer
         IsTracingReceipt = true;
         IsTracingLogs = true;
         IsTracingActions = true;
-        _logs = new();
+        _logs = [];
     }
 
     public int LogCount => _logs.Count;

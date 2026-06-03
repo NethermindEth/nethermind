@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -68,6 +68,9 @@ namespace Nethermind.Config
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
 
+        public bool ParallelExecution { get; set; } = true;
+        public bool ParallelExecutionBatchRead { get; set; } = true;
+
         public string ExtraData
         {
             get
@@ -100,5 +103,9 @@ namespace Nethermind.Config
         public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
 
         public int? BlockProductionBlobLimit { get; set; }
+
+        public long SlowBlockThresholdMs { get; set; } = -1;
+
+        public long SlowBlockPerTxThresholdMs { get; set; } = -1;
     }
 }

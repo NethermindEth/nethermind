@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
@@ -112,8 +113,9 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.AccessList, """{"accessList":[]}""", Istanbul.Instance);
             yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""", Istanbul.Instance);
 
-            // gasPrice → Legacy, not defaulted
+            // gasPrice → Legacy: defaulted, but downgrade is a no-op so result is Legacy on any spec
             yield return Make(TxType.Legacy, """{"gasPrice":"0x1"}""", London.Instance);
+            yield return Make(TxType.Legacy, """{"gasPrice":"0x1"}""", Istanbul.Instance);
 
             // No spec (null) → keeps defaulted EIP1559
             yield return Make(TxType.EIP1559, """{}""", null);
@@ -147,5 +149,19 @@ public class TransactionForRpcDeserializationTests
                 .SetName("Post-London spec resolves to EIP1559 with AccessList")
                 .Returns(TxType.EIP1559);
         }
+    }
+
+    [Test]
+    public void Test_BlobTransaction_WithTooManyBlobHashes_ReturnsBlobGasLimitError_WhenUserInputValidated()
+    {
+        TransactionForRpc rpc = _serializer.Deserialize<TransactionForRpc>(
+            """{"type":"0x3","to":"0x0000000000000000000000000000000000000001","maxFeePerBlobGas":"0x1","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000","0x0100000000000000000000000000000000000000000000000000000000000001","0x0100000000000000000000000000000000000000000000000000000000000002","0x0100000000000000000000000000000000000000000000000000000000000003","0x0100000000000000000000000000000000000000000000000000000000000004","0x0100000000000000000000000000000000000000000000000000000000000005","0x0100000000000000000000000000000000000000000000000000000000000006"]}""");
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, spec: Cancun.Instance);
+
+        Assert.That(result.IsError, Is.True);
+        Assert.That(
+            result.Error,
+            Is.EqualTo(BlockErrorMessages.BlobGasUsedAboveBlockLimit(Cancun.Instance.GasCosts.MaxBlobGasPerBlock, 7, 7 * Eip4844Constants.GasPerBlob)));
     }
 }

@@ -14,10 +14,13 @@ namespace Nethermind.Evm.Precompiles
         bool SupportsCaching => true;
 
         /// <summary>
-        /// Returns the canonical portion of <paramref name="inputData"/> that uniquely determines the precompile result, used as the cache key.
+        /// Returns the normalized input version, that produces the same <see cref="Run"/> output.
         /// </summary>
-        /// <remarks>Precompiles that silently ignore trailing bytes should override this.</remarks>
-        ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) => inputData;
+        /// <remarks>
+        /// Used to minimize caching memory usage by grouping same-result inputs under the same key.
+        /// Should be much faster than executing <see cref="Run"/> itself and not allocate.
+        /// </remarks>
+        ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) => inputData;
 
         long BaseGasCost(IReleaseSpec releaseSpec);
         long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.EraE.Test;
@@ -53,8 +52,8 @@ public class EraFileFormatComplianceTests
     {
         List<EntryRecord> entries = ReadAllEntries(_preMergeFile.FilePath);
 
-        entries[0].Type.Should().Be(TypeVersion, "Version must be the first entry per spec");
-        entries[0].Length.Should().Be(0, "Version entry carries no data");
+        Assert.That(entries[0].Type, Is.EqualTo(TypeVersion), "Version must be the first entry per spec");
+        Assert.That(entries[0].Length, Is.EqualTo(0), "Version entry carries no data");
     }
 
     [Test]
@@ -62,7 +61,7 @@ public class EraFileFormatComplianceTests
     {
         List<EntryRecord> entries = ReadAllEntries(_preMergeFile.FilePath);
 
-        entries[^1].Type.Should().Be(TypeComponentIndex, "ComponentIndex must be the last entry per spec");
+        Assert.That(entries[^1].Type, Is.EqualTo(TypeComponentIndex), "ComponentIndex must be the last entry per spec");
     }
 
     [Test]
@@ -70,7 +69,7 @@ public class EraFileFormatComplianceTests
     {
         List<EntryRecord> entries = ReadAllEntries(_postMergeFile.FilePath);
 
-        entries[^1].Type.Should().Be(TypeComponentIndex);
+        Assert.That(entries[^1].Type, Is.EqualTo(TypeComponentIndex));
     }
 
     [Test]
@@ -84,7 +83,7 @@ public class EraFileFormatComplianceTests
             ushort reserved = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan((int)pos + 6, 2));
             uint length = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan((int)pos + 2, 4));
 
-            reserved.Should().Be(0, $"reserved bytes at offset {pos} must be 0x0000 per TLV spec");
+            Assert.That(reserved, Is.EqualTo(0), $"reserved bytes at offset {pos} must be 0x0000 per TLV spec");
             pos += EntryHeaderSize + length;
         }
     }
@@ -95,24 +94,19 @@ public class EraFileFormatComplianceTests
         List<ushort> types = ReadAllEntries(_preMergeFile.FilePath).Select(e => e.Type).ToList();
 
         // Section ordering: all headers before any body
-        types.LastIndexOf(TypeCompressedHeader).Should().BeLessThan(
-            types.IndexOf(TypeCompressedBody), "all headers must precede any body per spec");
+        Assert.That(types.LastIndexOf(TypeCompressedHeader), Is.LessThan(types.IndexOf(TypeCompressedBody)), "all headers must precede any body per spec");
 
         // All bodies before any receipts
-        types.LastIndexOf(TypeCompressedBody).Should().BeLessThan(
-            types.IndexOf(TypeCompressedSlimReceipts), "all bodies must precede any receipts per spec");
+        Assert.That(types.LastIndexOf(TypeCompressedBody), Is.LessThan(types.IndexOf(TypeCompressedSlimReceipts)), "all bodies must precede any receipts per spec");
 
         // Receipts before TotalDifficulty
-        types.LastIndexOf(TypeCompressedSlimReceipts).Should().BeLessThan(
-            types.IndexOf(TypeTotalDifficulty), "all receipts must precede TotalDifficulty per spec");
+        Assert.That(types.LastIndexOf(TypeCompressedSlimReceipts), Is.LessThan(types.IndexOf(TypeTotalDifficulty)), "all receipts must precede TotalDifficulty per spec");
 
         // TotalDifficulty before AccumulatorRoot
-        types.LastIndexOf(TypeTotalDifficulty).Should().BeLessThan(
-            types.IndexOf(TypeAccumulatorRoot), "TotalDifficulty must precede AccumulatorRoot per spec");
+        Assert.That(types.LastIndexOf(TypeTotalDifficulty), Is.LessThan(types.IndexOf(TypeAccumulatorRoot)), "TotalDifficulty must precede AccumulatorRoot per spec");
 
         // AccumulatorRoot before ComponentIndex
-        types.IndexOf(TypeAccumulatorRoot).Should().BeLessThan(
-            types.LastIndexOf(TypeComponentIndex), "AccumulatorRoot must precede ComponentIndex per spec");
+        Assert.That(types.IndexOf(TypeAccumulatorRoot), Is.LessThan(types.LastIndexOf(TypeComponentIndex)), "AccumulatorRoot must precede ComponentIndex per spec");
     }
 
     [Test]
@@ -120,8 +114,8 @@ public class EraFileFormatComplianceTests
     {
         List<ushort> types = ReadAllEntries(_postMergeFile.FilePath).Select(e => e.Type).ToList();
 
-        types.Should().NotContain(TypeTotalDifficulty, "post-merge epochs have no TotalDifficulty entries");
-        types.Should().NotContain(TypeAccumulatorRoot, "post-merge epochs have no AccumulatorRoot entry");
+        Assert.That(types, Does.Not.Contain(TypeTotalDifficulty), "post-merge epochs have no TotalDifficulty entries");
+        Assert.That(types, Does.Not.Contain(TypeAccumulatorRoot), "post-merge epochs have no AccumulatorRoot entry");
     }
 
     [Test]
@@ -129,12 +123,12 @@ public class EraFileFormatComplianceTests
     {
         List<ushort> types = ReadAllEntries(_preMergeFile.FilePath).Select(e => e.Type).ToList();
 
-        types.Count(t => t == TypeCompressedHeader).Should().Be(SharedBlockCount);
-        types.Count(t => t == TypeCompressedBody).Should().Be(SharedBlockCount);
-        types.Count(t => t == TypeCompressedSlimReceipts).Should().Be(SharedBlockCount);
-        types.Count(t => t == TypeTotalDifficulty).Should().Be(SharedBlockCount);
-        types.Count(t => t == TypeAccumulatorRoot).Should().Be(1);
-        types.Count(t => t == TypeComponentIndex).Should().Be(1);
+        Assert.That(types.Count(t => t == TypeCompressedHeader), Is.EqualTo(SharedBlockCount));
+        Assert.That(types.Count(t => t == TypeCompressedBody), Is.EqualTo(SharedBlockCount));
+        Assert.That(types.Count(t => t == TypeCompressedSlimReceipts), Is.EqualTo(SharedBlockCount));
+        Assert.That(types.Count(t => t == TypeTotalDifficulty), Is.EqualTo(SharedBlockCount));
+        Assert.That(types.Count(t => t == TypeAccumulatorRoot), Is.EqualTo(1));
+        Assert.That(types.Count(t => t == TypeComponentIndex), Is.EqualTo(1));
     }
 
     [Test]
@@ -142,9 +136,9 @@ public class EraFileFormatComplianceTests
     {
         List<ushort> types = ReadAllEntries(_postMergeFile.FilePath).Select(e => e.Type).ToList();
 
-        types.Count(t => t == TypeCompressedHeader).Should().Be(SharedBlockCount);
-        types.Count(t => t == TypeCompressedBody).Should().Be(SharedBlockCount);
-        types.Count(t => t == TypeCompressedSlimReceipts).Should().Be(SharedBlockCount);
+        Assert.That(types.Count(t => t == TypeCompressedHeader), Is.EqualTo(SharedBlockCount));
+        Assert.That(types.Count(t => t == TypeCompressedBody), Is.EqualTo(SharedBlockCount));
+        Assert.That(types.Count(t => t == TypeCompressedSlimReceipts), Is.EqualTo(SharedBlockCount));
     }
 
     [Test]
@@ -152,7 +146,7 @@ public class EraFileFormatComplianceTests
     {
         EntryRecord accEntry = ReadAllEntries(_preMergeFile.FilePath).Single(e => e.Type == TypeAccumulatorRoot);
 
-        accEntry.Length.Should().Be(32, "AccumulatorRoot entry must be exactly 32 bytes (Bytes32)");
+        Assert.That(accEntry.Length, Is.EqualTo(32), "AccumulatorRoot entry must be exactly 32 bytes (Bytes32)");
     }
 
     [Test]
@@ -162,8 +156,10 @@ public class EraFileFormatComplianceTests
             .Where(e => e.Type == TypeTotalDifficulty)
             .ToList();
 
-        tdEntries.Should().AllSatisfy(e =>
-            e.Length.Should().Be(32, "TotalDifficulty entry must be 32-byte LE uint256"));
+        foreach (EntryRecord entry in tdEntries)
+        {
+            Assert.That(entry.Length, Is.EqualTo(32), "TotalDifficulty entry must be 32-byte LE uint256");
+        }
     }
 
     internal static List<EntryRecord> ReadAllEntries(string filePath)

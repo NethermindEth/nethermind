@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -20,11 +20,14 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Runner.Test.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
 using NSubstitute;
 
@@ -37,10 +40,28 @@ public class MergePluginTests
         public int Value { get; set; }
     }
 
+    private sealed class PriorityProbe
+    {
+        public int Value { get; set; }
+    }
+
     private sealed class ThrowingProbeResolver : IJsonTypeInfoResolver
     {
         public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
             type == typeof(SourceGenProbe) ? throw new InvalidOperationException("probe resolver was used") : null;
+    }
+
+    private sealed class RecordingProbeResolver(string name, List<string> calls) : IJsonTypeInfoResolver
+    {
+        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options)
+        {
+            if (type == typeof(PriorityProbe))
+            {
+                calls.Add(name);
+            }
+
+            return null;
+        }
     }
 
     private ChainSpec _chainSpec = null!;
@@ -65,8 +86,12 @@ public class MergePluginTests
         _consensusPlugin = new(_chainSpec);
     }
 
-    private IContainer BuildContainer(IConfigProvider? configProvider = null) =>
-        new ContainerBuilder()
+    private IContainer BuildContainer(IConfigProvider? configProvider = null, Action<ContainerBuilder>? configure = null)
+    {
+        // HealthCheckPluginModule first: mirrors PluginConfig.PluginOrder (HealthChecks < Merge).
+        // BaseMergePluginModule must not override the real ClHealthRequestsTracker binding.
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new HealthCheckPluginModule())
             .AddModule(new NethermindRunnerModule(
                 new EthereumJsonSerializer(),
                 _chainSpec,
@@ -75,7 +100,6 @@ public class MergePluginTests
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
             .AddSingleton(Substitute.For<IRpcModuleProvider>())
-            .AddModule(new HealthCheckPluginModule()) // The merge RPC require it.
             .AddSingleton(Substitute.For<IBlockProcessingQueue>())
             .OnBuild(ctx =>
             {
@@ -83,8 +107,20 @@ public class MergePluginTests
                 Build.MockOutNethermindApi((NethermindApi)api);
 
                 api.BlockProcessingQueue.IsEmpty.Returns(true);
-            })
-            .Build();
+            });
+
+        configure?.Invoke(builder);
+
+        return builder.Build();
+    }
+
+    [Test]
+    public void EngineRequestsTracker_resolves_to_ClHealthRequestsTracker_when_HealthChecks_loaded_first()
+    {
+        using IContainer container = BuildContainer();
+
+        Assert.That(container.Resolve<IEngineRequestsTracker>(), Is.TypeOf<ClHealthRequestsTracker>());
+    }
 
     [Test]
     public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()
@@ -124,6 +160,29 @@ public class MergePluginTests
     }
 
     [Test]
+    public void AddTypeInfoResolver_orders_resolvers_by_priority_then_registration_order()
+    {
+        List<string> calls = [];
+
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("external", calls));
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("json-rpc-response", calls), JsonTypeInfoResolverPriority.JsonRpcResponse);
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("engine-api", calls), JsonTypeInfoResolverPriority.EngineApi);
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("facade-first", calls), JsonTypeInfoResolverPriority.Facade);
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("facade-second", calls), JsonTypeInfoResolverPriority.Facade);
+
+        _ = EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(PriorityProbe));
+
+        Assert.That(calls, Is.EqualTo(new[]
+        {
+            "engine-api",
+            "facade-first",
+            "facade-second",
+            "json-rpc-response",
+            "external"
+        }));
+    }
+
+    [Test]
     public async Task Initializes_correctly()
     {
         await using IContainer container = BuildContainer();
@@ -136,6 +195,48 @@ public class MergePluginTests
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
         _plugin.InitBlockProducer(_consensusPlugin!);
         Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
+    }
+
+    [Test]
+    public async Task InitNetworkProtocol_adds_post_merge_eth_capabilities_when_transition_finished()
+    {
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.TransitionFinished.Returns(true);
+
+        await using IContainer container = BuildContainer(configure: builder => builder
+            .RegisterInstance(poSSwitcher)
+            .As<IPoSSwitcher>());
+        INethermindApi api = container.Resolve<INethermindApi>();
+        await _consensusPlugin!.Init(api);
+        await _plugin.Init(api);
+
+        api.ProtocolsManager!.ClearReceivedCalls();
+        await _plugin.InitNetworkProtocol();
+
+        AssertPostMergeEthCapabilitiesAdded(api);
+    }
+
+    [Test]
+    public async Task InitNetworkProtocol_delays_post_merge_eth_capabilities_until_terminal_block()
+    {
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.TransitionFinished.Returns(false);
+
+        await using IContainer container = BuildContainer(configure: builder => builder
+            .RegisterInstance(poSSwitcher)
+            .As<IPoSSwitcher>());
+        INethermindApi api = container.Resolve<INethermindApi>();
+        await _consensusPlugin!.Init(api);
+        await _plugin.Init(api);
+
+        api.ProtocolsManager!.ClearReceivedCalls();
+        await _plugin.InitNetworkProtocol();
+
+        api.ProtocolsManager!.DidNotReceive().AddSupportedCapability(Arg.Any<Capability>());
+
+        poSSwitcher.TerminalBlockReached += Raise.Event();
+
+        AssertPostMergeEthCapabilitiesAdded(api);
     }
 
     [Test]
@@ -174,9 +275,7 @@ public class MergePluginTests
 
         using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
         INethermindApi api = container.Resolve<INethermindApi>();
-        await _plugin.Invoking((plugin) => plugin.Init(api))
-            .Should()
-            .ThrowAsync<InvalidConfigurationException>();
+        Assert.That(async () => await _plugin.Init(api), Throws.TypeOf<InvalidConfigurationException>());
     }
 
     [Test]
@@ -197,33 +296,17 @@ public class MergePluginTests
         INethermindApi api = container.Resolve<INethermindApi>();
         await _plugin.Init(api);
 
-        jsonRpcConfig.Enabled.Should().BeTrue();
-        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo();
-        jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo("http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client");
+        Assert.That(jsonRpcConfig.Enabled, Is.True);
+        Assert.That(jsonRpcConfig.EnabledModules, Is.Empty);
+        Assert.That(jsonRpcConfig.AdditionalRpcUrls, Is.EqualTo(new[] { "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client" }));
     }
 
-    [TestCase(true, true, true)]
-    [TestCase(true, false, false)]
-    [TestCase(false, true, false)]
-    public async Task InitThrowExceptionIfBodiesAndReceiptIsDisabled(bool downloadBody, bool downloadReceipt, bool shouldPass)
+    private static void AssertPostMergeEthCapabilitiesAdded(INethermindApi api)
     {
-        ISyncConfig syncConfig = new SyncConfig()
-        {
-            FastSync = true,
-            DownloadBodiesInFastSync = downloadBody,
-            DownloadReceiptsInFastSync = downloadReceipt
-        };
+        IProtocolsManager protocolsManager = api.ProtocolsManager!;
 
-        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, _jsonRpcConfig, syncConfig));
-        INethermindApi api = container.Resolve<INethermindApi>();
-        Func<Task>? invocation = _plugin.Invoking((plugin) => plugin.Init(api));
-        if (shouldPass)
-        {
-            await invocation.Should().NotThrowAsync();
-        }
-        else
-        {
-            await invocation.Should().ThrowAsync<InvalidConfigurationException>();
-        }
+        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 69));
+        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 70));
+        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 71));
     }
 }

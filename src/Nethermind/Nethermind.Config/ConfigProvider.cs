@@ -55,7 +55,7 @@ public class ConfigProvider : IConfigProvider
             Type type = typeof(IConfig);
             IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(static x => x.IsInterface);
             IList<(Type ConfigType, Type DirectImplementation)> types =
-                new List<(Type ConfigType, Type DirectImplementation)>();
+                [];
 
             foreach (Type @interface in interfaces)
             {
@@ -157,10 +157,10 @@ public class ConfigProvider : IConfigProvider
             Initialize();
         }
 
-        HashSet<string> propertySet = _instances.Values
-            .SelectMany(i => i.GetType()
+        HashSet<string> propertySet = _instances
+            .SelectMany(static kvp => kvp.Value.GetType()
                 .GetProperties()
-                .Select(p => GetKey(i.GetType().Name, p.Name)))
+                .Select(p => GetKey(kvp.Value.GetType().Name, p.Name)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         List<(IConfigSource Source, string? Category, string Name)> incorrectSettings = [];

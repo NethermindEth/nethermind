@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -792,18 +793,29 @@ namespace Nethermind.Blockchain
             return FindBlock(hash, options, blockNumber: blockNumber);
         }
 
+        public void ReportBadBlock(Block badBlock)
+        {
+            if (badBlock.Hash is null)
+            {
+                if (Logger.IsWarn) Logger.Warn($"{nameof(ReportBadBlock)} call has been made for a block with a null hash.");
+                return;
+            }
+
+            _invalidBlocks.Set(badBlock.Hash, badBlock);
+            _badBlockStore.Insert(badBlock);
+        }
+
         public void DeleteInvalidBlock(Block invalidBlock)
         {
             if (invalidBlock.Hash is null)
             {
-                if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteInvalidBlock)} call has been made for a block without a null hash.");
+                if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteInvalidBlock)} call has been made for a block with a null hash.");
                 return;
             }
 
             if (Logger.IsDebug) Logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
-            _invalidBlocks.Set(invalidBlock.Hash, invalidBlock);
-            _badBlockStore.Insert(invalidBlock);
+            ReportBadBlock(invalidBlock);
 
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
@@ -1002,50 +1014,68 @@ namespace Nethermind.Blockchain
 
             long lastNumber = ascendingOrder ? blocks[^1].Number : blocks[0].Number;
             long previousHeadNumber = Head?.Number ?? 0L;
-            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
-            if (previousHeadNumber > lastNumber)
-            {
-                for (long i = 0; i < previousHeadNumber - lastNumber; i++)
-                {
-                    long levelNumber = previousHeadNumber - i;
 
-                    ChainLevelInfo? level = LoadLevel(levelNumber);
-                    if (level is not null)
+            using ArrayPoolListRef<DeferredMainChainEvent> pendingEvents = new(blocks.Count);
+
+            using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
+            {
+                if (previousHeadNumber > lastNumber)
+                {
+                    for (long i = 0; i < previousHeadNumber - lastNumber; i++)
                     {
-                        level.HasBlockOnMainChain = false;
-                        _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                        long levelNumber = previousHeadNumber - i;
+
+                        ChainLevelInfo? level = LoadLevel(levelNumber);
+                        if (level is not null)
+                        {
+                            level.HasBlockOnMainChain = false;
+                            _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                        }
                     }
                 }
-            }
 
-            // Clear stale canonical markers above the new head left by beacon sync.
-            // Only needed on FCU reorgs (forceUpdateHeadBlock == true). During forward sync
-            // (BlockDownloader) and forward processing (BlockchainProcessor), the markers above
-            // are either not yet set or belong to the same chain and must not be cleared.
-            if (forceUpdateHeadBlock)
-                ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
+                // Clear stale canonical markers above the new head left by beacon sync.
+                // Only needed on FCU reorgs (forceUpdateHeadBlock == true). During forward sync
+                // (BlockDownloader) and forward processing (BlockchainProcessor), the markers above
+                // are either not yet set or belong to the same chain and must not be cleared.
+                if (forceUpdateHeadBlock)
+                    ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
 
-            for (int i = 0; i < blocks.Count; i++)
-            {
-                Block block = blocks[i];
-                if (ShouldCache(block.Number))
+                for (int i = 0; i < blocks.Count; i++)
                 {
-                    _blockStore.Cache(block);
-                    _headerStore.Cache(block.Header);
+                    Block block = blocks[i];
+                    _balStore.InsertFromBlock(block);
+
+                    if (ShouldCache(block.Number))
+                    {
+                        _blockStore.Cache(block);
+                        _headerStore.Cache(block.Header);
+                    }
+
+                    // we only force update head block for last block in processed blocks
+                    bool lastProcessedBlock = i == blocks.Count - 1;
+
+                    // Where head is set if wereProcessed is true
+                    DeferredMainChainEvent deferred = MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
+                    pendingEvents.Add(deferred);
                 }
-
-                // we only force update head block for last block in processed blocks
-                bool lastProcessedBlock = i == blocks.Count - 1;
-
-                // Where head is set if wereProcessed is true
-                MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
             }
 
             TryUpdateSyncPivot();
 
+            foreach (DeferredMainChainEvent deferred in pendingEvents.AsSpan())
+            {
+                if (deferred.NewHead is not null)
+                {
+                    NewHeadBlock?.Invoke(this, deferred.NewHead);
+                }
+                BlockAddedToMain?.Invoke(this, deferred.BlockAdded);
+            }
+
             OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
         }
 
+        private readonly record struct DeferredMainChainEvent(BlockReplacementEventArgs BlockAdded, BlockEventArgs? NewHead);
 
         private void TryUpdateSyncPivot()
         {
@@ -1159,7 +1189,7 @@ namespace Nethermind.Blockchain
         /// <param name="forceUpdateHeadBlock">Force updating <see cref="Head"/> to this block, even when <see cref="Block.TotalDifficulty"/> is not higher than previous head.</param>
         /// <exception cref="InvalidOperationException">Invalid block</exception>
         [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
-        private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed, bool forceUpdateHeadBlock)
+        private DeferredMainChainEvent MoveToMain(Block block, BatchWrite batch, bool wasProcessed, bool forceUpdateHeadBlock)
         {
             if (Logger.IsTrace) Logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
             if (block.Hash is null)
@@ -1191,6 +1221,7 @@ namespace Nethermind.Blockchain
                 ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block.Number)
                 : null;
 
+            BlockEventArgs? newHeadArgs = null;
             if (forceUpdateHeadBlock || block.IsGenesis || HeadImprovementRequirementsSatisfied(block.Header))
             {
                 if (block.Number == _genesisBlockNumber)
@@ -1205,15 +1236,17 @@ namespace Nethermind.Blockchain
 
                 if (wasProcessed)
                 {
-                    UpdateHeadBlock(block);
+                    newHeadArgs = SetHeadBlock(block);
                 }
             }
 
             if (Logger.IsTrace) Logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
 
-            BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
+            BlockReplacementEventArgs blockAddedArgs = new(block, previous);
 
             if (Logger.IsTrace) Logger.Trace($"Block {block.ToString(Block.Format.Short)}, TD: {block.TotalDifficulty} added to main chain");
+
+            return new DeferredMainChainEvent(blockAddedArgs, newHeadArgs);
         }
 
         protected virtual bool HeadImprovementRequirementsSatisfied(BlockHeader header)
@@ -1308,6 +1341,15 @@ namespace Nethermind.Blockchain
 
         private void UpdateHeadBlock(Block block)
         {
+            BlockEventArgs args = SetHeadBlock(block);
+            NewHeadBlock?.Invoke(this, args);
+        }
+
+        // Mutates Head and writes the head hash without raising NewHeadBlock.
+        // UpdateMainChain raises the event itself after the ChainLevelInfoRepository write batch
+        // has been disposed (and therefore flushed) so subscribers always observe committed state.
+        private BlockEventArgs SetHeadBlock(Block block)
+        {
             if (block.Hash is null)
             {
                 throw new InvalidOperationException("Block suggested as the new head block has no hash set.");
@@ -1320,7 +1362,7 @@ namespace Nethermind.Blockchain
 
             Head = block;
             _blockInfoDb.Set(HeadAddressInDb, block.Hash.Bytes);
-            NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
+            return new BlockEventArgs(block);
         }
 
         private ChainLevelInfo UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
@@ -1361,6 +1403,7 @@ namespace Nethermind.Blockchain
 
             // Yes, this is measurably faster
             using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(blockNumbers);
+            ReadOnlySpan<ChainLevelInfo?> levelsSpan = levels.AsSpan();
 
             for (int i = 0; i < blockInfos.Count; i++)
             {
@@ -1371,7 +1414,7 @@ namespace Nethermind.Blockchain
                     BestKnownNumber = number;
                 }
 
-                ChainLevelInfo? level = levels[i];
+                ChainLevelInfo? level = levelsSpan[i];
 
                 if (level is not null)
                 {
@@ -1683,7 +1726,7 @@ namespace Nethermind.Blockchain
                         _blockInfoDb.Delete(blockHash);
                         _blockStore.Delete(i, blockHash);
                         _headerStore.Delete(blockHash);
-                        _balStore.Delete(blockHash);
+                        _balStore.Delete(i, blockHash);
                     }
                 }
             }
@@ -1700,7 +1743,7 @@ namespace Nethermind.Blockchain
         {
             if (CanAcceptNewBlocks)
             {
-                Interlocked.CompareExchange(ref _taskCompletionSource, new TaskCompletionSource(), null);
+                Interlocked.CompareExchange(ref _taskCompletionSource, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously), null);
             }
 
             Interlocked.Increment(ref _canAcceptNewBlocksCounter);

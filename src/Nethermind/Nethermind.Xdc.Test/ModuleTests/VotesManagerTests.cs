@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -8,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -16,8 +18,9 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Xdc.Test.Helpers;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
 [Parallelizable(ParallelScope.All)]
 public class VotesManagerTests
@@ -28,6 +31,7 @@ public class VotesManagerTests
         PrivateKey[] keysForMasternodes = keys.Take(20).ToArray();
         PrivateKey[] extraKeys = keys.Skip(20).ToArray();
         Address[] masternodes = keysForMasternodes.Select(k => k.Address).ToArray();
+        int quorumCount = (int)Math.Ceiling(keysForMasternodes.Length * 0.667);
 
         ulong currentRound = 1;
         XdcBlockHeader header = Build.A.XdcBlockHeader()
@@ -36,19 +40,29 @@ public class VotesManagerTests
         BlockRoundInfo info = new(header.Hash!, currentRound, header.Number);
 
         // Base case
-        yield return new TestCaseData(masternodes, header, currentRound, keysForMasternodes.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray(), info, 1);
+        yield return new TestCaseData(masternodes, header, currentRound, keysForMasternodes.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray(), info, 1)
+            .SetName("BaseCase");
 
         // Not enough valid signers
         Vote[] votes = keysForMasternodes.Take(12).Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
         Vote[] extraVotes = extraKeys.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
-        yield return new TestCaseData(masternodes, header, currentRound, votes.Concat(extraVotes).ToArray(), info, 0);
+        yield return new TestCaseData(masternodes, header, currentRound, votes.Concat(extraVotes).ToArray(), info, 0)
+            .SetName("NotEnoughValidSigners");
 
         // Wrong gap number generates different keys for the vote pool
         PrivateKey[] keysForVotes = keysForMasternodes.Take(14).ToArray();
         List<Vote> votesWithDiffGap = new(capacity: keysForVotes.Length);
         for (int i = 0; i < keysForVotes.Length - 3; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 450, keysForVotes[i]));
         for (int i = keysForVotes.Length - 3; i < keysForVotes.Length; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 451, keysForVotes[i]));
-        yield return new TestCaseData(masternodes, header, currentRound, votesWithDiffGap.ToArray(), info, 0);
+        yield return new TestCaseData(masternodes, header, currentRound, votesWithDiffGap.ToArray(), info, 0)
+            .SetName("WrongGapNumber");
+
+        //N byte-distinct votes but only N-1 unique addresses (keys[0] signs twice via ECDSA malleability)
+        Vote[] legitimateVotes = [.. keysForMasternodes.Take(quorumCount - 1).Select(k => XdcTestHelper.BuildSignedVote(info, 450, k))];
+        Signature malleableSig = XdcTestHelper.CreateMalleableSignature(legitimateVotes[0].Signature!);
+        Vote malleableVote = new(info, 450) { Signature = malleableSig, Signer = legitimateVotes[0].Signer };
+        yield return new TestCaseData(masternodes, header, currentRound, (Vote[])[.. legitimateVotes, malleableVote], info, 0)
+            .SetName("MalleableDuplicateSigner");
     }
 
     [TestCaseSource(nameof(HandleVoteCases))]
@@ -76,7 +90,7 @@ public class VotesManagerTests
         IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
 
         VotesManager voteManager = new(context, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
-            specProvider, signer, forensicsProcessor);
+            specProvider, signer, forensicsProcessor, NullLogManager.Instance);
 
         foreach (Vote v in votes)
             await voteManager.HandleVote(v);
@@ -115,7 +129,7 @@ public class VotesManagerTests
         IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
 
         VotesManager voteManager = new(context, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
-            specProvider, signer, forensicsProcessor);
+            specProvider, signer, forensicsProcessor, NullLogManager.Instance);
 
         for (int i = 0; i < keys.Length - 1; i++)
             await voteManager.HandleVote(XdcTestHelper.BuildSignedVote(info, gap: 450, keys[i]));
@@ -155,16 +169,20 @@ public class VotesManagerTests
 
         // Disqualified as the round does not match
         Vote vote = new(blockInfo, 450);
-        yield return new TestCaseData(15UL, masternodes, vote, false);
+        yield return new TestCaseData(15UL, masternodes, vote, false)
+            .SetName("RoundDoesNotMatch");
 
         // Invalid signature
-        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.Last()), false);
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.Last()), false)
+            .SetName("InvalidSignature");
 
         // Valid message
-        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.First()), true);
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.First()), true)
+            .SetName("ValidMessage");
 
         // If snapshot missing should return false
-        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 1350, keys.First()), false);
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 1350, keys.First()), false)
+            .SetName("SnapshotMissing");
 
     }
 
@@ -190,7 +208,7 @@ public class VotesManagerTests
         IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
 
         VotesManager voteManager = new(context, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
-            specProvider, signer, forensicsProcessor);
+            specProvider, signer, forensicsProcessor, NullLogManager.Instance);
 
         Assert.That(voteManager.FilterVote(vote), Is.EqualTo(expected));
     }
@@ -258,10 +276,12 @@ public class VotesManagerTests
         BlockRoundInfo blockInfo = new(headers[2].Hash!, 5, headers[2].Number);
 
         QuorumCertificate ancestorQc = new(new BlockRoundInfo(headers[0].Hash!, 3, headers[0].Number), null, 0);
-        yield return new TestCaseData(blockTree, ancestorQc, blockInfo, true);
+        yield return new TestCaseData(blockTree, ancestorQc, blockInfo, true)
+            .SetName("AncestorQc");
 
         QuorumCertificate nonRelatedQc = new(new BlockRoundInfo(nonRelatedHeader.Hash, 3, nonRelatedHeader.Number), null, 0);
-        yield return new TestCaseData(blockTree, nonRelatedQc, blockInfo, false);
+        yield return new TestCaseData(blockTree, nonRelatedQc, blockInfo, false)
+            .SetName("NonRelatedQc");
     }
 
     [TestCaseSource(nameof(ExtendingFromAncestorCases))]
@@ -297,10 +317,12 @@ public class VotesManagerTests
         });
         ISigner signer = Substitute.For<ISigner>();
         signer.Address.Returns(TestItem.AddressA);
+        signer.TrySign(in Arg.Any<ValueHash256>(), out Arg.Any<Signature>())
+            .Returns(call => { call[1] = new Signature(new byte[65]); return true; });
         IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
 
         return new VotesManager(ctx, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
-            specProvider, signer, forensicsProcessor);
+            specProvider, signer, forensicsProcessor, NullLogManager.Instance);
     }
 
     private static XdcBlockHeader[] GenerateBlockHeaders(int n, long blockNumber)

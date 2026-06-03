@@ -62,7 +62,11 @@ public class PayloadAttributes
 
     private string? _payloadId;
 
-    public string GetPayloadId(BlockHeader parentHeader) => _payloadId ??= ComputePayloadId(parentHeader);
+    /// <remarks>
+    /// Should not be called with different <paramref name="parentHeader"/> parameter
+    /// on a single <see cref="PayloadAttributes"/> instance - result is cached once.
+    /// </remarks>
+    public virtual string GetPayloadId(BlockHeader parentHeader) => _payloadId ??= ComputePayloadId(parentHeader);
 
     private string ComputePayloadId(BlockHeader parentHeader)
     {

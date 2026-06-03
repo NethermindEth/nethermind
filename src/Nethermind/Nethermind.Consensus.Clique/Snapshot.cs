@@ -20,20 +20,20 @@ namespace Nethermind.Consensus.Clique
         {
             Number = number;
             Hash = hash;
-            Signers = new SortedList<Address, long>(signers, AddressComparer.Instance);
-            Votes = new List<Vote>();
+            Signers = new SortedList<Address, long>(signers, GenericComparer.GetOptimized<Address>());
+            Votes = [];
             Tally = tally;
         }
 
         internal Snapshot(long number, Hash256 hash, SortedList<Address, long> signers)
-            : this(number, hash, signers, new Dictionary<Address, Tally>())
+            : this(number, hash, signers, [])
         {
         }
 
         public object Clone() =>
             new Snapshot(Number,
                 Hash,
-                new SortedList<Address, long>(Signers, AddressComparer.Instance),
+                new SortedList<Address, long>(Signers, GenericComparer.GetOptimized<Address>()),
                 new Dictionary<Address, Tally>(Tally))
             {
                 Votes = [.. Votes]

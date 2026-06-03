@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -34,13 +35,11 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public Task InitNetworkProtocol()
     {
-        // Remove default ETH 68 capability (XDC uses 62-65 and 100)
+        // Remove default ETH 68 capability (XDC uses 62-63 and 100)
         _nethermindApi.ProtocolsManager!.RemoveSupportedCapability(new(Protocol.Eth, 68));
 
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 62));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 63));
-        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 64));
-        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 65));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 100));
         return Task.CompletedTask;
     }
@@ -53,12 +52,10 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
             blockProducer,
             _nethermindApi.Context.Resolve<IEpochSwitchManager>(),
             _nethermindApi.Context.Resolve<IMasternodesCalculator>(),
-            _nethermindApi.Context.Resolve<IQuorumCertificateManager>(),
             _nethermindApi.Context.Resolve<IVotesManager>(),
             _nethermindApi.Context.Resolve<ISigner>(),
             _nethermindApi.Context.Resolve<ITimeoutTimer>(),
-            _nethermindApi.ProcessExit,
-            _nethermindApi.Context.Resolve<ISignTransactionManager>(),
+            _nethermindApi.Context.Resolve<ITimestamper>(),
             _nethermindApi.Context.Resolve<ILogManager>()
             );
     public IBlockProducer InitBlockProducer()

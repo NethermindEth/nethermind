@@ -3,11 +3,10 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Db;
-using Nethermind.Xdc.Contracts;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -18,15 +17,14 @@ public class XdcSubnetModule : XdcModule
         base.Load(builder);
         builder
             .Add<StartXdcSubnetBlockProducer>()
+            .AddSingleton(new BlockDecoder(new XdcSubnetHeaderDecoder()))
             .AddSingleton<IEpochSwitchManager, SubnetEpochSwitchManager>()
             .AddSingleton<ISubnetMasternodesCalculator, SubnetMasternodesCalculator>()
             .Bind<IMasternodesCalculator, ISubnetMasternodesCalculator>()
-            .AddSingleton<ISubnetSnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider, IPenaltyHandler>(CreateSnapshotManager)
+            .AddSingleton<ISealValidator, XdcSubnetSealValidator>()
             .Bind<ISnapshotManager, ISubnetSnapshotManager>()
             .AddSingleton<IPenaltyHandler, SubnetPenaltyHandler>();
 
+        builder.RegisterType<SubnetSnapshotManager>().As<ISubnetSnapshotManager>().WithAttributeFiltering().SingleInstance();
     }
-
-    private ISubnetSnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider, IPenaltyHandler penaltyHandler) =>
-        new SubnetSnapshotManager(db, blockTree, votingContract, specProvider, penaltyHandler);
 }

@@ -24,5 +24,9 @@ public partial class SecP256r1Precompile : IPrecompile<SecP256r1Precompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
 
+    // should produce empty valid output for all invalid-length inputs
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
+        inputData.Length == 160 ? inputData : ReadOnlyMemory<byte>.Empty;
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 }

@@ -21,8 +21,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         ILogManager logManager,
         UInt256? minGasPrice = null) : IGasPriceOracle
     {
-        private static readonly IComparer<UInt256> UInt256Comparer = Comparer<UInt256>.Default;
-
         protected readonly IBlockFinder _blockFinder = blockFinder;
         protected readonly ILogger _logger = logManager.GetClassLogger<GasPriceOracle>();
         protected readonly UInt256 _minGasPrice = minGasPrice ?? new BlocksConfig().MinGasPrice;
@@ -180,7 +178,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
                 // Deterministic pivot for stable perf/repro (median-of-range).
                 int pivotIndex = left + ((right - left) >> 1);
-                pivotIndex = Partition(list, left, right, pivotIndex, UInt256Comparer);
+                pivotIndex = Partition(list, left, right, pivotIndex, GenericComparer<UInt256>.Default);
 
                 if (k == pivotIndex)
                 {

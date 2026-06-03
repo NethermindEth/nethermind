@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.Test.Runner
 
         public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
         {
-            List<EthereumTestResult> testResults = new();
+            List<EthereumTestResult> testResults = [];
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
             IEnumerable<BlockchainTest> tests = _testsSource.LoadTests<BlockchainTest>();
             foreach (BlockchainTest test in tests)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -29,15 +30,15 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
-    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData)
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData)
     {
         const int headerLen = 96;
         if (inputData.Length <= headerLen) return inputData;
 
         ReadOnlySpan<byte> span = inputData.Span;
-        int baseLen = SafeCast(span[..32].ToUnsignedBigInteger());
-        int expLen = SafeCast(span.Slice(32, 32).ToUnsignedBigInteger());
-        int modLen = SafeCast(span.Slice(64, 32).ToUnsignedBigInteger());
+        int baseLen = ReadCappedLength32(span[..32]);
+        int expLen = ReadCappedLength32(span.Slice(32, 32));
+        int modLen = ReadCappedLength32(span.Slice(64, 32));
 
         // Header alone determines the output when any length saturated or base/mod short-circuit to empty.
         if (baseLen == int.MaxValue || expLen == int.MaxValue || modLen == int.MaxValue || (baseLen == 0 && modLen == 0))
@@ -45,6 +46,15 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
 
         long end = headerLen + (long)baseLen + expLen + modLen;
         return end < inputData.Length ? inputData[..(int)end] : inputData;
+    }
+
+    // Reads a 32-byte big-endian length field, saturating to int.MaxValue if the value exceeds it.
+    private static int ReadCappedLength32(ReadOnlySpan<byte> span)
+    {
+        // If any of the upper 28 bytes are set the value cannot fit in a non-negative int.
+        if (span[..28].IndexOfAnyExcept((byte)0) >= 0) return int.MaxValue;
+        uint low = BinaryPrimitives.ReadUInt32BigEndian(span[28..]);
+        return low > int.MaxValue ? int.MaxValue : (int)low;
     }
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

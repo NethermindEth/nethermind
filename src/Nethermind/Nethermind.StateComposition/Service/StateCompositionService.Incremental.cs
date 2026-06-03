@@ -18,7 +18,17 @@ internal sealed partial class StateCompositionService
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
         Hash256 lastRoot = _stateHolder.LastProcessedStateRoot;
-        if (lastRoot == Hash256.Zero) return;
+        if (lastRoot == Hash256.Zero)
+        {
+            // Plugin's startup bootstrap couldn't run (head was null at init); fire it now.
+            BlockHeader? header = e.Block.Header;
+            if (header?.StateRoot is null) return;
+            FireAndForget.Run(
+                () => AnalyzeAsync(header, CancellationToken.None),
+                _logger,
+                "StateComposition: deferred bootstrap scan failed");
+            return;
+        }
 
         Hash256? newRoot = e.Block.Header.StateRoot;
         if (newRoot is null || newRoot == lastRoot) return;
@@ -113,25 +123,16 @@ internal sealed partial class StateCompositionService
         BlockHeader? header = head?.Header ?? _blockTree.Head?.Header;
         if (header is null) return;
 
-        _ = Task.Run(async () =>
-        {
-            try
+        FireAndForget.Run(
+            async () =>
             {
                 Result<StateCompositionStats> result =
                     await AnalyzeAsync(header, CancellationToken.None).ConfigureAwait(false);
-
                 if (!result.IsSuccess && _logger.IsWarn)
                     _logger.Warn($"StateComposition: auto-rescan skipped: {result.Error}");
-            }
-            catch (Exception ex)
-            {
-                // Guard the log call itself, not the catch: a `when (IsError)`
-                // filter would let the exception escape into the unobserved-task
-                // pipeline whenever Error logging is off.
-                if (_logger.IsError)
-                    _logger.Error("StateComposition: auto-rescan failed", ex);
-            }
-        });
+            },
+            _logger,
+            "StateComposition: auto-rescan failed");
     }
 
 }

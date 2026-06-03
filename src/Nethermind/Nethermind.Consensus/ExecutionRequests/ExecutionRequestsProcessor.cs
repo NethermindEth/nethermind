@@ -5,6 +5,7 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
@@ -23,7 +24,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
-    private const long GasLimit = 30_000_000L;
+    private const long GasLimit = Eip8037Constants.SystemCallGasLimit;
 
     private readonly ITransactionProcessor _transactionProcessor;
 

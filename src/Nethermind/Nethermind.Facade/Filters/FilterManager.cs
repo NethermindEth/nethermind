@@ -11,11 +11,10 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Facade.Filters
 {
     public sealed class FilterManager
     {

@@ -4,7 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
@@ -16,29 +19,42 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     where TPrecompile : IPrecompile<TPrecompile>
     where TTests : PrecompileTests<TPrecompile, TTests>, IPrecompileTests
 {
-    public record TestCase(byte[] Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError)
+    [method: JsonConstructor]
+    public record TestCase(ReadOnlyMemory<byte> Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError)
     {
-        public TestCase(string input, string output, bool status) : this(
+        public IReleaseSpec Spec { get; internal set; } = DefaultSpec;
+
+        public TestCase(string input, string output, bool status, IReleaseSpec? spec = null) : this(
             Convert.FromHexString(input), Convert.FromHexString(output),
             Name: input, Gas: null, ExpectedError: status ? null : "<error>"
-        )
-        { }
+        ) => Spec = spec ?? DefaultSpec;
+
+        public TestCase(byte[] Input, byte[]? Expected, bool status, IReleaseSpec? spec = null) : this(
+            Input, Expected,
+            Name: Convert.ToHexString(Input), Gas: null, ExpectedError: status ? null : "<error>"
+        ) => Spec = spec ?? DefaultSpec;
     }
     private const string TestFilesDirectory = "PrecompileVectors";
 
+    private static readonly IReleaseSpec DefaultSpec = Prague.Instance;
     protected static readonly TPrecompile Instance = TPrecompile.Instance;
     protected static readonly IEqualityComparer<Result<byte[]>> ResultComparer = new ResultEqComparer();
 
     private static IEnumerable<TestCaseData> TestSource()
     {
         EthereumJsonSerializer serializer = new();
-        foreach (string file in TTests.TestFiles())
+
+        foreach ((string file, IReleaseSpec spec) in Enumerable.Union(
+                     TTests.TestFiles().Select(static f => (f, (IReleaseSpec)null)),
+                     TTests.TestFilesWithSpec()
+                 ))
         {
             string path = Path.Combine(TestFilesDirectory, file);
             string json = File.ReadAllText(path);
             foreach (TestCase test in serializer.Deserialize<TestCase[]>(json))
             {
-                yield return new(test) { TestName = EnsureSafeName(test.Name) };
+                test.Spec = spec ?? DefaultSpec;
+                yield return new(test) { TestName = ComposeName(test.Name, spec) };
             }
         }
     }
@@ -46,49 +62,75 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     [TestCaseSource(nameof(TestSource))]
     public void TestVectors(TestCase testCase)
     {
-        if (this is not TTests) throw new InvalidOperationException($"Misconfigured tests! Type {GetType()} must be {typeof(TTests)}");
+        if (this is not TTests)
+            throw new InvalidOperationException($"Misconfigured tests! Type {GetType()} must be {typeof(TTests)}");
 
-        IPrecompile precompile = Instance;
-        long gas = precompile.BaseGasCost(Prague.Instance) + precompile.DataGasCost(testCase.Input, Prague.Instance);
-        Result<byte[]> result = precompile.Run(testCase.Input, Prague.Instance);
-        (byte[]? output, bool success) = result;
+        RunTest(testCase);
+    }
+
+    protected void RunTest(TestCase testCase)
+    {
+        RunTestCore(testCase);
+
+        ReadOnlyMemory<byte> normalized = Instance.NormalizeInput(testCase.Input);
+        if (!normalized.Span.SequenceEqual(testCase.Input.Span))
+            RunTestCore(testCase with { Input = normalized }, "normalized input should produce same output");
+    }
+
+    protected void RunTest(string input, string output, bool status, IReleaseSpec? spec = null) =>
+        RunTest(new TestCase(Convert.FromHexString(input), Convert.FromHexString(output), status, spec));
+
+    private static void RunTestCore(TestCase testCase, string? reason = null)
+    {
+        long gas = Instance.BaseGasCost(testCase.Spec) + Instance.DataGasCost(testCase.Input, testCase.Spec);
+
+        Result<byte[]> result = Instance.Run(testCase.Input, testCase.Spec);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(success, Is.EqualTo(testCase.ExpectedError is null));
-            Assert.That(output, Is.EquivalentTo(testCase.Expected ?? []));
+            Assert.That(result.IsSuccess, Is.EqualTo(testCase.ExpectedError is null), reason);
+            Assert.That(result.Data, Is.EqualTo(testCase.Expected ?? []), reason);
 
             if (testCase.Gas is not null)
             {
-                Assert.That(gas, Is.EqualTo(testCase.Gas));
+                Assert.That(gas, Is.EqualTo(testCase.Gas), reason);
             }
         }
     }
 
-    protected void RunTest(string input, string output, bool status)
-    {
-        byte[] inputData = Convert.FromHexString(input);
-        (byte[] outputData, bool outcome) = Instance.Run(inputData, Prague.Instance);
+    protected static void RunEffectiveInputTest(string input, string? trailing = null, IReleaseSpec? spec = null) =>
+        RunEffectiveInputTest(Instance, input, trailing, spec);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(outcome, Is.EqualTo(status));
-            Assert.That(outputData, Is.EqualTo(Convert.FromHexString(output)));
-        }
+    protected static void RunEffectiveInputTest(IPrecompile precompile, string input, string? trailing = null, IReleaseSpec? spec = null)
+    {
+        spec ??= DefaultSpec;
+        ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input + trailing);
+        ReadOnlyMemory<byte> effInput = precompile.NormalizeInput(fullInput);
+
+        Assert.That(effInput.Span.SequenceEqual(fullInput.Span), Is.False);
+        Assert.That(
+            precompile.Run(effInput, spec),
+            Is.EqualTo(precompile.Run(fullInput, spec)).Using(ResultComparer)
+        );
     }
 
-    private static string EnsureSafeName(string name) =>
-        name.Replace('(', '[')
+    private static string ComposeName(string name, IReleaseSpec? spec)
+    {
+        name = name.Replace('(', '[')
             .Replace(')', ']')
             .Replace("!=", "_not_eq_")
             .Replace("=", "_eq_")
             .Replace(" ", string.Empty);
+
+        return spec is null ? name : $"{name} @ {spec.Name}";
+    }
 
     private class ResultEqComparer : IEqualityComparer<Result<byte[]>>
     {
         public bool Equals(Result<byte[]> x, Result<byte[]> y)
         {
             if (x.ResultType != y.ResultType) return false;
+            if (x.Error != y.Error) return false;
             if (x.Data is null && y.Data is null) return true;
             if (x.Data is null || y.Data is null) return false;
             return x.Data.AsSpan().SequenceEqual(y.Data);
@@ -98,6 +140,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         {
             HashCode hash = new();
             hash.Add(obj.ResultType);
+            hash.Add(obj.Error);
             if (obj.Data is not null)
                 hash.AddBytes(obj.Data);
             return hash.ToHashCode();

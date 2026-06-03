@@ -64,18 +64,24 @@ public class ForkchoiceUpdatedHandler(
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
     }
 
-    protected virtual bool IsOnMainChainBehindHead(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
-       [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
+    /// <summary>
+    /// MAY-skip clause from
+    /// <see href="https://github.com/ethereum/execution-apis/pull/786">execution-apis#786</see>:
+    /// returns Valid when <paramref name="newHeadHeader"/> is a canonical ancestor of the latest
+    /// known finalized block, so the FCU is answered without performing a reorg.
+    /// </summary>
+    protected virtual bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
+        [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)
     {
-        if (_blockTree.IsOnMainChainBehindHead(newHeadHeader))
+        if (_blockTree.IsOnMainChainBehindFinalized(newHeadHeader))
         {
-            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain.");
-            errorResult = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
-            return false;
+            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated skipped - head is a valid ancestor of the latest known finalized block.");
+            result = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            return true;
         }
 
-        errorResult = null;
-        return true;
+        result = null;
+        return false;
     }
 
     // Rejects a finalized/safe entry that fails the request-local numeric bounds
@@ -160,7 +166,7 @@ public class ForkchoiceUpdatedHandler(
 
         if (!blockInfo.WasProcessed)
         {
-            if (!IsOnMainChainBehindHead(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
+            if (IsOnMainChainBehindFinalized(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
             {
                 return errorResult;
             }
@@ -232,6 +238,14 @@ public class ForkchoiceUpdatedHandler(
             return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero);
         }
 
+        // Spec ordering within a single FCU: finalized <= safe <= head. Ancestry must be
+        // re-validated on every FCU - the binding is (head, finalized, safe), so a repeated
+        // finalized/safe hash paired with a new head on a sibling branch is still a spec violation.
+        long finalizedNumber = finalizedHeader?.Number ?? 0;
+
+        if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
+        if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
+
         IReadOnlyList<Block>? blocks = EnsureNewHead(newHeadHeader, out string? setHeadErrorMsg);
         if (setHeadErrorMsg is not null)
         {
@@ -239,7 +253,7 @@ public class ForkchoiceUpdatedHandler(
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        if (!IsOnMainChainBehindHead(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
+        if (IsOnMainChainBehindFinalized(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
         {
             return result;
         }
@@ -250,14 +264,6 @@ public class ForkchoiceUpdatedHandler(
         {
             _blockTree.UpdateMainChain(blocks!, true, true);
         }
-
-        // Spec ordering within a single FCU: finalized <= safe <= head. Ancestry must be
-        // re-validated on every FCU - the binding is (head, finalized, safe), so a repeated
-        // finalized/safe hash paired with a new head on a sibling branch is still a spec violation.
-        long finalizedNumber = finalizedHeader?.Number ?? 0;
-
-        if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
-        if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
 
         bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
@@ -338,13 +344,13 @@ public class ForkchoiceUpdatedHandler(
 
     private void StartNewBeaconHeaderSync(ForkchoiceStateV1 forkchoiceState, BlockHeader blockHeader, string requestStr)
     {
-        bool isSyncInitialized = mergeSyncController.TryInitBeaconHeaderSync(blockHeader);
+        mergeSyncController.InitBeaconHeaderSync(blockHeader);
         beaconPivot.ProcessDestination = blockHeader;
         peerRefresher.RefreshPeers(blockHeader.Hash!, blockHeader.ParentHash!, forkchoiceState.FinalizedBlockHash);
         blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
         blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
 
-        if (isSyncInitialized && _logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
+        if (_logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }
 
     // Validates that candidateHeader is an ancestor of newHeadHeader per the Engine API spec
@@ -355,17 +361,19 @@ public class ForkchoiceUpdatedHandler(
         if (candidateHeader is null) return false;
         if (candidateHeader.Number > newHeadHeader.Number) return true;
 
+        bool headIsMain = _blockTree.IsMainChain(newHeadHeader);
         bool candidateIsMain = _blockTree.IsMainChain(candidateHeader);
-        if (_blockTree.IsMainChain(newHeadHeader)) return !candidateIsMain;
+        if (headIsMain && candidateIsMain) return false;
 
-        // newHead is not main; walk parents. Depth bounded by (newHead.Number - candidate.Number).
+        // Walk parents to validate ancestry (newHead is not main or outdated main-chain markers).
+        // Depth bounded by (newHead.Number - candidate.Number).
         BlockHeader cursor = newHeadHeader;
         while (cursor.Number > candidateHeader.Number)
         {
             if (_blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not { } parent) return true;
 
             // Candidate on main chain: any main-chain ancestor proves ancestry. Checked after the
-            // parent step so we don't re-probe newHeadHeader itself (already known non-main above).
+            // parent step so we don't re-probe newHeadHeader itself.
             if (candidateIsMain && _blockTree.IsMainChain(parent)) return false;
             cursor = parent;
         }

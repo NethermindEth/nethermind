@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -33,7 +32,7 @@ public class InvalidChainTrackerTest
 
     private List<Hash256> MakeChain(int n, bool connectInReverse = false)
     {
-        List<Hash256> hashList = new();
+        List<Hash256> hashList = [];
         for (int i = 0; i < n; i++)
         {
             Hash256 newHash = Keccak.Compute(Random.Shared.NextInt64().ToString());
@@ -181,7 +180,7 @@ public class InvalidChainTrackerTest
         Hash256 invalidBlock = Keccak.Compute("A");
         BlockHeader parentBlockHeader = new BlockHeaderBuilder().TestObject;
 
-        blockCacheService.BlockCache[parentBlockHeader.GetOrCalculateHash()] = new Block(parentBlockHeader);
+        blockCacheService.TryAddBlock(new Block(parentBlockHeader));
 
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.IsPostMerge(parentBlockHeader).Returns(false);
@@ -203,8 +202,8 @@ public class InvalidChainTrackerTest
         BlockHeader blockHeader = new BlockHeaderBuilder()
             .WithParentHash(parentBlockHeader.GetOrCalculateHash()).TestObject;
 
-        blockCacheService.BlockCache[blockHeader.GetOrCalculateHash()] = new Block(blockHeader);
-        blockCacheService.BlockCache[parentBlockHeader.GetOrCalculateHash()] = new Block(parentBlockHeader);
+        blockCacheService.TryAddBlock(new Block(blockHeader));
+        blockCacheService.TryAddBlock(new Block(parentBlockHeader));
 
         IPoSSwitcher alwaysPos = Substitute.For<IPoSSwitcher>();
         alwaysPos.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
@@ -216,14 +215,14 @@ public class InvalidChainTrackerTest
     }
 
     private void AssertValid(Hash256 hash) =>
-        _tracker.IsOnKnownInvalidChain(hash, out _).Should().BeFalse();
+        Assert.That(_tracker.IsOnKnownInvalidChain(hash, out _), Is.False);
 
     private void AssertInvalid(Hash256 hash, Hash256? expectedLsatValidHash = null)
     {
-        _tracker.IsOnKnownInvalidChain(hash, out Hash256? lastValidHash).Should().BeTrue();
+        Assert.That(_tracker.IsOnKnownInvalidChain(hash, out Hash256? lastValidHash), Is.True);
         if (expectedLsatValidHash is not null)
         {
-            lastValidHash.Should().BeEquivalentTo(expectedLsatValidHash);
+            Assert.That(lastValidHash, Is.EqualTo(expectedLsatValidHash));
         }
     }
 }

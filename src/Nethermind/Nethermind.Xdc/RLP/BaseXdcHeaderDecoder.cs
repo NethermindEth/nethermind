@@ -7,9 +7,9 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using System;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RLP;
 
-public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBlockHeader
+public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeaderDecoder where TH : XdcBlockHeader
 {
     private const int NonceLength = 8;
 
@@ -30,7 +30,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
     protected abstract void EncodeHeaderSpecificFields(RlpStream rlpStream, TH header, RlpBehaviors rlpBehaviors);
     protected abstract int GetHeaderSpecificContentLength(TH header, RlpBehaviors rlpBehaviors);
 
-    public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockHeader? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -81,7 +81,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
         return header;
     }
 
-    public void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
@@ -114,7 +114,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
         EncodeHeaderSpecificFields(rlpStream, h, rlpBehaviors);
     }
 
-    public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -129,7 +129,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
     {
         if (item is not TH header)
             throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(item));

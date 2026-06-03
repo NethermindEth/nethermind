@@ -402,7 +402,7 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
-            if (spec.IsEip7928Enabled)
+            if (spec.BlockLevelAccessListsEnabled)
             {
                 if (header.BlockAccessListHash is null)
                 {

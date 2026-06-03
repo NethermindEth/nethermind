@@ -12,14 +12,28 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    public class SecP256r1PrecompileTests : PrecompileTests<SecP256r1Precompile, SecP256r1PrecompileTests>
+    public class SecP256r1PrecompileTests : PrecompileTests<SecP256r1Precompile, SecP256r1PrecompileTests>, IPrecompileTests
     {
         private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
 
-        public static IEnumerable<string> TestFiles()
+        static IEnumerable<string> IPrecompileTests.TestFiles()
         {
             yield return "p256Verify.json";
         }
+
+        [TestCase(
+            "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "11",
+            TestName = "Valid input + 1 trailing byte")]
+        [TestCase(
+            "",
+            "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            TestName = "159-byte invalid input")]
+        [TestCase(
+            "",
+            "0011",
+            TestName = "2-byte invalid input")]
+        public void NormalizedInput_SameOutput(string input, string trailing) => RunEffectiveInputTest(input, trailing);
 
         [Test]
         [TestCase(
@@ -39,7 +53,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);
-                Assert.That(output.ToArray(), Is.EquivalentTo(Array.Empty<byte>()));
+                Assert.That(output.ToArray(), Is.EqualTo(Array.Empty<byte>()));
             }
         }
 
@@ -50,7 +64,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);
-                Assert.That(output.ToArray(), Is.EquivalentTo(ValidResult));
+                Assert.That(output.ToArray(), Is.EqualTo(ValidResult));
             }
         }
 

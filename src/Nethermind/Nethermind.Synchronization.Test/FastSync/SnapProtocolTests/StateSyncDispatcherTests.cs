@@ -9,7 +9,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.StateSync;
 using NSubstitute;
@@ -17,8 +16,6 @@ using NUnit.Framework;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using System.Net;
-using FluentAssertions;
-using Nethermind.Consensus;
 using Nethermind.Core.Test;
 using Nethermind.Trie;
 using Nethermind.Core.Collections;
@@ -52,11 +49,8 @@ public class StateSyncDispatcherTests
         _pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
         _pool.Start();
 
-        ISyncFeed<StateSyncBatch>? feed = Substitute.For<ISyncFeed<StateSyncBatch>>();
-        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
-        poSSwitcher.TransitionFinished.Returns(false);
         _dispatcher =
-            new StateSyncDispatcherTester(feed, new StateSyncDownloader(_logManager), _pool, new StateSyncAllocationStrategyFactory(), _logManager);
+            new StateSyncDispatcherTester(new StateSyncDownloader(_logManager), _pool);
     }
 
     [TearDown]
@@ -119,13 +113,13 @@ public class StateSyncDispatcherTests
 
         await _dispatcher.ExecuteDispatch(batch, 1);
 
-        batch.RequestedNodes.Should().NotBeNull();
-        batch.RequestedNodes!.Count.Should().Be(6);
-        batch.RequestedNodes[0].Should().Be(item01);
-        batch.RequestedNodes[1].Should().Be(item03);
-        batch.RequestedNodes[2].Should().Be(item02);
-        batch.RequestedNodes[3].Should().Be(item05);
-        batch.RequestedNodes[4].Should().Be(item04);
-        batch.RequestedNodes[5].Should().Be(item06);
+        Assert.That(batch.RequestedNodes, Is.Not.Null);
+        Assert.That(batch.RequestedNodes!.Count, Is.EqualTo(6));
+        Assert.That(batch.RequestedNodes[0], Is.EqualTo(item01));
+        Assert.That(batch.RequestedNodes[1], Is.EqualTo(item03));
+        Assert.That(batch.RequestedNodes[2], Is.EqualTo(item02));
+        Assert.That(batch.RequestedNodes[3], Is.EqualTo(item05));
+        Assert.That(batch.RequestedNodes[4], Is.EqualTo(item04));
+        Assert.That(batch.RequestedNodes[5], Is.EqualTo(item06));
     }
 }

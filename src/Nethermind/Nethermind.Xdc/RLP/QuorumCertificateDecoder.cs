@@ -3,15 +3,13 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 using System;
-using System.Linq;
 using BlockRoundInfo = Nethermind.Xdc.Types.BlockRoundInfo;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RLP;
 
-internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertificate>
+internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
 {
     private readonly XdcBlockInfoDecoder _blockInfoDecoder = new();
     protected override QuorumCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -23,9 +21,7 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
 
         BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
 
-        byte[][]? signatureBytes = decoderContext.DecodeByteArrays();
-        if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
-            throw new RlpException("One or more invalid signature lengths in quorum certificate.");
+        byte[][]? signatureBytes = decoderContext.DecodeByteArrays(innerSize: Signature.Size);
         Signature[]? signatures = null;
         if (signatureBytes is not null)
         {
@@ -44,7 +40,7 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;

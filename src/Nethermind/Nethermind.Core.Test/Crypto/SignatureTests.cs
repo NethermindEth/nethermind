@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
+using System.Text.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -26,6 +26,31 @@ public class SignatureTests
         Assert.That(signature.ChainId, Is.EqualTo(chainId));
     }
 
+    [TestCase(27ul, TestName = "EthSignV27")]
+    [TestCase(28ul, TestName = "EthSignV28")]
+    [TestCase(0ul, TestName = "ZeroV")]
+    [TestCase(0x100ul, TestName = "OddDigitV_NeedsLeadingZero")]
+    [TestCase(0xFFul, TestName = "TwoDigitV")]
+    [TestCase(ulong.MaxValue, TestName = "MaxV_SixteenDigits")]
+    [TestCase(35ul + 2 * 314158, TestName = "ChainIdEncodedV")]
+    public void SignatureConverter_WriteMatchesToString(ulong v)
+    {
+        Span<byte> rs = stackalloc byte[64];
+        for (int i = 0; i < rs.Length; i++) rs[i] = (byte)(i * 7 + 3);
+        Signature signature = new(rs, recoveryId: 0)
+        {
+            V = v
+        };
+
+        JsonSerializerOptions options = new();
+        options.Converters.Add(new SignatureConverter());
+
+        string fromConverter = JsonSerializer.Serialize(signature, options);
+        string fromToString = $"\"{signature}\"";
+
+        Assert.That(fromConverter, Is.EqualTo(fromToString), "the converter must produce the same wire format as Signature.ToString()");
+    }
+
     [Test]
     public void can_recover_from_message()
     {
@@ -42,6 +67,6 @@ public class SignatureTests
         Hash256 keccak = Keccak.Compute(Bytes.Concat(messageType, data));
         Span<byte> publicKey = stackalloc byte[65];
         bool result = SecP256k1.RecoverKeyFromCompact(publicKey, keccak.Bytes, signatureObject.Bytes, signatureObject.RecoveryId, false);
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 }

@@ -1,11 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -95,7 +94,7 @@ namespace Nethermind.AuRa.Test.Validators
                 }
             }
 
-            store.GetValidators(blockNumber).Should().BeEquivalentTo(expectedValidators);
+            Assert.That(store.GetValidators(blockNumber), Is.EqualTo(expectedValidators));
         }
 
         public static IEnumerable PendingValidatorsTests
@@ -128,9 +127,18 @@ namespace Nethermind.AuRa.Test.Validators
                 store.PendingValidators = validators;
             }
 
-            store.PendingValidators.Should().BeEquivalentTo(expectedValidators);
+            Assert.That(store.PendingValidators, Is.EqualTo(expectedValidators).UsingPropertiesComparer());
         }
 
+        // regression test - was throwing NRE before
+        [Test]
+        public void GetValidators_throws_when_validator_info_missing_from_db()
+        {
+            MemDb db = new();
+            db.Set(ValidatorStore.LatestFinalizedValidatorsBlockNumberKey, 10L.ToBigEndianByteArrayWithoutLeadingZeros());
+            ValidatorStore store = new(db);
+            Assert.Throws<InvalidOperationException>(() => store.GetValidators());
+        }
 
         private static MemDb CreateMemDbWithValidators(IEnumerable<(long FinalizingBlock, Address[] Validators)> validators = null)
         {
