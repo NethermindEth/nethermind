@@ -200,6 +200,28 @@ public partial class DebugRpcModuleTests
             $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
     }
 
+    [Test]
+    public async Task Debug_traceCall_with_zero_gas_keeps_literal_zero_gas_semantics()
+    {
+        using Context ctx = await Context.Create();
+        long gasCap = 50_000;
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = "0xc200000000000000000000000000000000000000", gas = "0x0" },
+            null,
+            new { stateOverrides = stateOverride }
+        );
+
+        JToken json = JToken.Parse(response);
+        Assert.That(json["result"]?["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
+        Assert.That(json["result"]?["gas"]?.Value<long>(), Is.EqualTo(0));
+    }
+
     private static byte[] ParseReturnValue(string responseJson)
     {
         JToken result = JToken.Parse(responseJson)["result"]!;
