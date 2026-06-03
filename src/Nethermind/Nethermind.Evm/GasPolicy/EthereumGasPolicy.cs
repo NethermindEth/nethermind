@@ -199,14 +199,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        Address? delegated,
-        bool chargeForWarm = true)
+        Address? delegated)
     {
         if (!spec.UseHotAndColdStorage)
             return true;
 
-        bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm);
-        return notOutOfGas && (delegated is null || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated, chargeForWarm));
+        bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address);
+        return notOutOfGas && (delegated is null || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated));
     }
 
     public static bool ConsumeAccountAccessGas(ref EthereumGasPolicy gas,
@@ -214,27 +213,23 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        bool chargeForWarm = true)
+        AccountAccessKind kind = AccountAccessKind.Default)
     {
-        bool result = true;
-        if (spec.UseHotAndColdStorage)
+        if (!spec.UseHotAndColdStorage) return true;
+        if (isTracingAccess)
         {
-            if (isTracingAccess)
-            {
-                accessTracker.WarmUp(address);
-            }
-
-            if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
-            {
-                result = UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
-            }
-            else if (chargeForWarm)
-            {
-                result = UpdateGas(ref gas, GasCostOf.WarmStateRead);
-            }
+            // Ensure that tracing simulates access-list behavior.
+            accessTracker.WarmUp(address);
         }
 
-        return result;
+        // WarmUp first so the warm path skips IsPrecompile; charged gas matches (!IsPrecompile && WarmUp).
+        // Precompiles are pre-warmed at tx start, so WarmUp(precompile) is already-warm and the reorder is moot.
+        return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
+        {
+            true => UpdateGas(ref gas, GasCostOf.ColdAccountAccess),
+            false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
+            false => UpdateGas(ref gas, GasCostOf.WarmStateRead)
+        };
     }
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
@@ -319,10 +314,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         long refundableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
         long appliedRefund = Math.Min(amount, refundableStateGas);
-        long unrefundedSpill = GetUnrefundedStateGasSpill(in gas);
         if (trackSpillRefund)
         {
-            gas.StateGasSpillRefunded += Math.Min(appliedRefund, unrefundedSpill);
+            TrackStateGasSpillRefund(ref gas, appliedRefund);
         }
 
         gas.StateReservoir += appliedRefund;
@@ -330,10 +324,48 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
+    public static long DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor, bool trackSpillRefund)
     {
         long discardableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
-        gas.StateGasUsed -= Math.Min(amount, discardableStateGas);
+        long appliedRefund = Math.Min(amount, discardableStateGas);
+        if (trackSpillRefund)
+        {
+            TrackStateGasSpillRefund(ref gas, appliedRefund);
+        }
+
+        gas.StateGasUsed -= appliedRefund;
+        return amount - appliedRefund;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AddStateGasRefundToReservoir(ref EthereumGasPolicy gas, long amount, bool trackSpillRefund)
+    {
+        if (trackSpillRefund)
+        {
+            TrackStateGasSpillRefund(ref gas, amount);
+        }
+
+        gas.StateReservoir += amount;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void RemoveStateGasRefundFromReservoir(ref EthereumGasPolicy gas, long amount)
+    {
+        long fromReservoir = Math.Min(amount, gas.StateReservoir);
+        gas.StateReservoir -= fromReservoir;
+        amount -= fromReservoir;
+
+        if (amount > 0)
+        {
+            gas.StateGasUsed -= Math.Min(amount, gas.StateGasUsed);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void TrackStateGasSpillRefund(ref EthereumGasPolicy gas, long amount)
+    {
+        long unrefundedSpill = GetUnrefundedStateGasSpill(in gas);
+        gas.StateGasSpillRefunded += Math.Min(amount, unrefundedSpill);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

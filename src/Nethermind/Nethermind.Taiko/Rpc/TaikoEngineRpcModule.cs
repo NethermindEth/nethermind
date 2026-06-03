@@ -59,7 +59,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ITxPool txPool,
         IBlockFinder blockFinder,
         IShareableTxProcessorSource txProcessorSource,
-        IRlpStreamEncoder<Transaction> txDecoder,
+        IRlpDecoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore,
         ISurgeConfig surgeConfig) :
             EngineRpcModule(getPayloadHandlerV1,
@@ -156,7 +156,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) => base.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) => base.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
 
     public ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
          ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists) =>
@@ -323,7 +323,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return [.. Batches];
     }
 
-    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpStreamEncoder<Transaction> txDecoder) : IDisposable
+    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpDecoder<Transaction> txDecoder) : IDisposable
     {
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;

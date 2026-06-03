@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Frozen;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -18,10 +20,14 @@ public sealed class ZkGasBlockTracer : IBlockTracer
     private readonly IBlockTracer _inner;
     private readonly ZkGasMeter _meter;
 
-    public ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null, ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit)
+    public ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null,
+        ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
+        ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas,
+        ReadOnlyMemory<ushort> opcodeMultipliers = default,
+        FrozenDictionary<AddressAsKey, ushort>? precompileMultipliers = null)
     {
         _inner = inner;
-        _meter = new ZkGasMeter(blockZkGasLimit);
+        _meter = new ZkGasMeter(blockZkGasLimit, txIntrinsicZkGas, opcodeMultipliers, precompileMultipliers);
         // Publish once: the meter reference is stable across blocks (we Reset it in
         // StartNewBlockTrace rather than reallocating), so the holder never needs
         // re-pointing for the lifetime of this tracer.
@@ -48,13 +54,10 @@ public sealed class ZkGasBlockTracer : IBlockTracer
         _inner.StartNewBlockTrace(block);
     }
 
-    /// <summary>
-    /// Resets in-flight transaction gas, obtains the inner per-tx tracer,
-    /// creates a <see cref="ZkGasTxTracer"/>, and returns a composite of both.
-    /// </summary>
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         _meter.ResetTransaction();
+        _ = _meter.ChargeTxIntrinsic();
         ITxTracer innerTxTracer = _inner.StartNewTxTrace(tx);
         ZkGasTxTracer zkTracer = new(_meter);
         return new CompositeTxTracer(innerTxTracer, zkTracer);

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Security;
 using Nethermind.Core;
@@ -20,7 +21,7 @@ namespace Nethermind.Wallet
         private readonly IKeyStore _keyStore;
         private readonly ILogger _logger;
 
-        private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = new();
+        private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = [];
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
@@ -77,38 +78,19 @@ namespace Nethermind.Wallet
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.ContainsKey(address);
 
-        public Signature Sign(Hash256 message, Address address, SecureString passphrase)
+        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature)
         {
-            PrivateKey key;
-            if (_unlockedAccounts.TryGetValue(address, out PrivateKey value))
+            if (!_unlockedAccounts.TryGetValue(address, out PrivateKey key))
             {
-                key = value;
-            }
-            else
-            {
-                if (passphrase is null) throw new SecurityException("Passphrase missing when trying to sign a message");
-
-                key = _keyStore.GetKey(address, passphrase).PrivateKey;
+                signature = null;
+                return false;
             }
 
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
-            return new Signature(rs, v);
+            signature = WalletSigner.Sign(in message, key);
+            return true;
         }
 
-        public Signature Sign(Hash256 message, Address address)
-        {
-            PrivateKey key;
-            if (_unlockedAccounts.TryGetValue(address, out PrivateKey value))
-            {
-                key = value;
-            }
-            else
-            {
-                throw new SecurityException("Can only sign without passphrase when account is unlocked.");
-            }
-
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
-            return new Signature(rs, v);
-        }
+        public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature) =>
+            WalletSigner.TrySignWithPassphrase(_keyStore, in message, address, passphrase, out signature);
     }
 }

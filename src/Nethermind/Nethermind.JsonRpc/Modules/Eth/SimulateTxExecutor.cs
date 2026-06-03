@@ -95,8 +95,8 @@ public class SimulateTxExecutor<TTrace>(
         Dictionary<Address, AccountOverride>? stateOverride = null,
         SearchResult<BlockHeader>? searchResult = null)
     {
-        if (call.BlockStateCalls is null)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
+        if (call.BlockStateCalls is null || call.BlockStateCalls.Count == 0)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.EmptyBlockStateCalls, ErrorCodes.InvalidParams);
 
         if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
@@ -134,7 +134,7 @@ public class SimulateTxExecutor<TTrace>(
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
 
                 if (givenNumber <= (ulong)lastBlockNumber)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.BlockNumberNotIncreasing, ErrorCodes.InvalidInputBlocksOutOfOrder);
 
                 // if the no. of filler blocks are greater than maximum simulate blocks cap
                 if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
@@ -314,4 +314,17 @@ internal static class SimulateErrorMessages
     /// (error code <see cref="ErrorCodes.InsufficientFunds"/>).
     /// </summary>
     public const string InsufficientFunds = "Insufficient funds to pay for gas fees and value for a transaction";
+
+    /// <summary>
+    /// Returned when a simulated block number is not strictly greater than the previous one
+    /// (error code <see cref="ErrorCodes.InvalidInputBlocksOutOfOrder"/>). Mandated verbatim by
+    /// the execution-apis spec.
+    /// </summary>
+    public const string BlockNumberNotIncreasing = "Block number in sequence did not increase";
+
+    /// <summary>
+    /// Returned when <c>blockStateCalls</c> is an empty array
+    /// (error code <see cref="ErrorCodes.InvalidParams"/>).
+    /// </summary>
+    public const string EmptyBlockStateCalls = "empty input";
 }

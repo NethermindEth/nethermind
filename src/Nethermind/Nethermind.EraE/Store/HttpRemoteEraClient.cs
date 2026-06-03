@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.Logging;
 
 namespace Nethermind.EraE.Store;
@@ -40,7 +40,7 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
         await using Stream stream = await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
         using StreamReader reader = new(stream);
 
-        Dictionary<int, RemoteEraEntry> manifest = new();
+        Dictionary<int, RemoteEraEntry> manifest = [];
 
         while (await reader.ReadLineAsync(cancellation).ConfigureAwait(false) is { } line)
         {
@@ -53,6 +53,7 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
             string hashHex = line[..separatorIdx].Trim();
             string filename = line[(separatorIdx + 2)..].Trim();
 
+            if (!IsPlainFilename(filename)) continue;
             if (!TryParseEpoch(filename, out int epoch)) continue;
             if (!TryParseHex(hashHex, out byte[] sha256)) continue;
 
@@ -98,6 +99,11 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
 
         File.Move(tmpPath, destinationPath, overwrite: true);
     }
+
+    // Manifest filenames must be plain names — no directory separators and not rooted —
+    // so that joining them onto the download directory cannot escape it (path traversal).
+    private static bool IsPlainFilename(string filename) =>
+        filename == Path.GetFileName(filename) && !Path.IsPathRooted(filename);
 
     private static bool TryParseEpoch(string filename, out int epoch)
     {

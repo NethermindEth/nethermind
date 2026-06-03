@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -184,18 +183,18 @@ public class AddressTests
     public void Parse_variable_length(string addressHex, bool allowOverflow)
     {
         bool result = Address.TryParseVariableLength(addressHex, out Address? address, allowOverflow);
-        result.Should().Be(addressHex.Length <= Address.SystemUserHex.Length || allowOverflow);
+        Assert.That(result, Is.EqualTo(addressHex.Length <= Address.SystemUserHex.Length || allowOverflow));
         if (result)
         {
-            address.Should().Be(Address.SystemUser);
+            Assert.That(address, Is.EqualTo(Address.SystemUser));
         }
     }
 
     [Test]
     public void Parse_variable_length_too_short()
     {
-        Address.TryParseVariableLength("1", out Address? address).Should().Be(true);
-        address.Should().Be(new Address("0000000000000000000000000000000000000001"));
+        Assert.That(Address.TryParseVariableLength("1", out Address? address), Is.EqualTo(true));
+        Assert.That(address, Is.EqualTo(new Address("0000000000000000000000000000000000000001")));
     }
 
     [Test]
@@ -217,7 +216,7 @@ public class AddressTests
             addressBytes.CopyTo(expectedHashBytes[(Hash256.Size - Address.Size)..]);
             ValueHash256 expectedHash = new(expectedHashBytes);
 
-            address.ToHash().Should().BeEquivalentTo(expectedHash);
+            Assert.That(address.ToHash(), Is.EqualTo(expectedHash));
         }
     }
 

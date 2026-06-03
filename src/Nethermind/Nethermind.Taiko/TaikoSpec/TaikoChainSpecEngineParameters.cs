@@ -15,6 +15,18 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
     public long? PacayaTransition { get; set; }
     public ulong? ShastaTimestamp { get; set; }
     public ulong? UnzenTimestamp { get; set; }
+    public ulong? UnzenBlockZkGasLimit { get; set; }
+    public ulong? UnzenTxIntrinsicZkGas { get; set; }
+
+    /// <summary>
+    /// Ordered list of Unzen ZK gas multiplier schedules, each pinned to its activation timestamp.
+    /// The chainspec is the only source of truth for these tables — no defaults live in code. The
+    /// schedule with the largest <see cref="TaikoUnzenZkGasSchedule.Timestamp"/> not exceeding the
+    /// active block timestamp is the one in effect, with the earliest-timestamp entry acting as a
+    /// floor so a meter always has a table.
+    /// </summary>
+    public List<TaikoUnzenZkGasSchedule>? UnzenZkGasSchedules { get; set; }
+
     public bool? UseSurgeGasPriceOracle { get; set; }
     public ulong? Rip7728TransitionTimestamp { get; set; }
     public ulong? L1StaticCallTransitionTimestamp { get; set; }
@@ -57,6 +69,21 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
         if (UnzenTimestamp is { } u && u > 0)
         {
             timestamps.Add(u);
+        }
+
+        // Each schedule's activation timestamp is itself a consensus change, so it must be folded
+        // into the EIP-2124 fork-id walk. The SortedSet dedups a schedule that activates exactly at
+        // UnzenTimestamp. The MaxValue-1 placeholder used to register a default schedule that has
+        // no scheduled real-world activation is filtered out the same way Shasta=0 / Unzen=0 are.
+        if (UnzenZkGasSchedules is not null)
+        {
+            foreach (TaikoUnzenZkGasSchedule schedule in UnzenZkGasSchedules)
+            {
+                if (schedule.Timestamp > 0 && schedule.Timestamp < ulong.MaxValue - 1)
+                {
+                    timestamps.Add(schedule.Timestamp);
+                }
+            }
         }
     }
 }

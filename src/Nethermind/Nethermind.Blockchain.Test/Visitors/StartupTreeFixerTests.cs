@@ -3,10 +3,10 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -78,13 +78,12 @@ public class StartupTreeFixerTests
         Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        tree.Head!.Header.Should().BeEquivalentTo(block2.Header);
-        tree.BestSuggestedHeader.Should().BeEquivalentTo(block2.Header);
-        tree.BestSuggestedBody?.Body.Should().BeEquivalentTo(block2.Body);
-        tree.BestKnownNumber.Should().Be(2);
+        Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body).UsingBlockBodyComparer());
+        Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
     }
 
-    [Retry(30)]
     [MaxTime(Timeout.MaxTestTime * 4)]
     [TestCase(0)]
     [TestCase(1)]
@@ -102,19 +101,17 @@ public class StartupTreeFixerTests
 
         SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
 
-        await testRpc.RestartBlockchainProcessor();
-
         Task waitTask = suggestedBlocksAmount != 0
             ? testRpc.WaitForNewHeadWhere(b => b.Number == startingBlockNumber + suggestedBlocksAmount)
             : Task.CompletedTask;
-        // fixing after restart
+
+        await testRpc.RestartBlockchainProcessor();
+
         StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
         await tree.Accept(fixer, CancellationToken.None);
 
-        // waiting for N new heads
         await waitTask;
 
-        // add a new block at the end
         await testRpc.AddBlock();
         Assert.That(tree.Head!.Number, Is.EqualTo(startingBlockNumber + suggestedBlocksAmount + 1));
     }
@@ -207,7 +204,7 @@ public class StartupTreeFixerTests
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
         Assert.That(tree.BestKnownNumber, Is.EqualTo(2L), "best known");
-        Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header), "head");
-        Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block2.Hash), "suggested");
+        Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
     }
 }

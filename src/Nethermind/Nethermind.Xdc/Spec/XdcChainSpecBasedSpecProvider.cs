@@ -85,7 +85,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.IsTipUpgradePenaltyEnabled = (chainSpecEngineParameters.TipUpgradePenalty ?? long.MaxValue) <= releaseStartBlock;
 
         releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;
-        releaseSpec.BlackListedAddresses = new(chainSpecEngineParameters.BlackListedAddresses ?? []);
+        releaseSpec.BlackListedAddresses = [.. chainSpecEngineParameters.BlackListedAddresses ?? []];
 
         releaseSpec.RandomizeSMCBinary = chainSpecEngineParameters.RandomizeSMCBinary;
 

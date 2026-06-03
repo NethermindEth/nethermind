@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -33,7 +34,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IHeaderStore, HeaderStore>()
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockStore, BlockStore>()
-            .AddSingleton<IReceiptStorage, PersistentReceiptStorage>()
+            .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
+            .Bind<IReceiptStorage, IReceiptMigrationStore>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
@@ -71,7 +73,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
 
         if (!receiptConfig.StoreReceipts)
         {
-            builder.AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance);
+            builder.AddSingleton<IReceiptMigrationStore>(NullReceiptStorage.Instance);
         }
     }
 

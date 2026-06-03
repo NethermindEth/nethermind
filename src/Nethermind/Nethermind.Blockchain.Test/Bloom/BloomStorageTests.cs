@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -29,7 +28,7 @@ public class BloomStorageTests
     public void Empty_storage_does_not_contain_blocks(long from, long to)
     {
         BloomStorage storage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
-        storage.ContainsRange(from, to).Should().BeFalse();
+        Assert.That(storage.ContainsRange(from, to), Is.False);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -75,12 +74,18 @@ public class BloomStorageTests
             int bucketItems = new BloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } }, new MemDb(), new InMemoryDictionaryFileStoreFactory()).MaxBucketSize;
             int count = bucketItems * Buckets;
             int maxIndex = count - 1;
-            yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets);
-            yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket);
-            yield return new TestCaseData(5, 49, true, GetRange(45, 5), 4 + 45); // 4 lookups at level one (16), 45 lookups at bottom level (49-5+1)
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier), searchesPerBucket - 1); // skips highest level
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 2 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 2), (searchesPerBucket - 1) * 2); // skips highest level
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 3 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 3), searchesPerBucket * 3); // doesn't skip highest level
+            yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets)
+                .SetName("Returns_no_blocks_when_blooms_do_not_match");
+            yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket)
+                .SetName("Returns_all_blocks_when_all_blooms_match");
+            yield return new TestCaseData(5, 49, true, GetRange(45, 5), 4 + 45)
+                .SetName("Returns_range_after_level_one_lookup");
+            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier), searchesPerBucket - 1)
+                .SetName("Returns_single_bucket_without_highest_level_lookup");
+            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 2 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 2), (searchesPerBucket - 1) * 2)
+                .SetName("Returns_two_buckets_without_highest_level_lookup");
+            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 3 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 3), searchesPerBucket * 3)
+                .SetName("Returns_three_buckets_with_highest_level_lookup");
         }
     }
 
@@ -91,7 +96,7 @@ public class BloomStorageTests
         long bloomsChecked = 0;
 
         IBloomEnumeration bloomEnumeration = storage.GetBlooms(from, to);
-        IList<long> ranges = new List<long>();
+        IList<long> ranges = [];
         foreach (Core.Bloom unused in bloomEnumeration)
         {
             bloomsChecked++;
@@ -101,8 +106,8 @@ public class BloomStorageTests
             }
         }
 
-        ranges.Should().BeEquivalentTo(expectedBlocks);
-        bloomsChecked.Should().Be(expectedBloomsChecked);
+        Assert.That(ranges, Is.EqualTo(expectedBlocks));
+        Assert.That(bloomsChecked, Is.EqualTo(expectedBloomsChecked));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -142,7 +147,7 @@ public class BloomStorageTests
 
         long[] expectedFoundBlocks = blocksSet.Where(b => b >= from && b <= to).ToArray();
         TestContext.Out.WriteLine($"Expected found blocks: {string.Join(", ", expectedFoundBlocks)}");
-        foundBlocks.Should().BeEquivalentTo(expectedFoundBlocks);
+        Assert.That(foundBlocks, Is.EqualTo(expectedFoundBlocks));
     }
 
     private const int Buckets = 3;
@@ -223,7 +228,7 @@ public class BloomStorageTests
                     expectedBloom.Set(i);
                 }
 
-                bloom.Should().Be(expectedBloom, $"blocks <{FromBlock}, {ToBlock}>");
+                Assert.That(bloom, Is.EqualTo(expectedBloom), $"blocks <{FromBlock}, {ToBlock}>");
                 blooms.TryGetBlockNumber(out _);
             }
 

@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
@@ -91,39 +90,35 @@ public static class BlobTransactionForRpcTests
 
     public static void ValidateSchema(JsonElement json)
     {
-        json.GetProperty("type").GetString().Should().MatchRegex("^0x3$");
-        json.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("to").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-        json.GetProperty("gas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("value").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("input").GetString().Should().MatchRegex("^0x[0-9a-f]*$");
-        json.GetProperty("maxPriorityFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("maxFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("maxFeePerBlobGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        Assert.That(json.GetProperty("type").GetString(), Does.Match("^0x3$"));
+        Assert.That(json.GetProperty("nonce").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("to").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{40}$"));
+        Assert.That(json.GetProperty("gas").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("value").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("input").GetString(), Does.Match("^0x[0-9a-f]*$"));
+        Assert.That(json.GetProperty("maxPriorityFeePerGas").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("maxFeePerGas").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("maxFeePerBlobGas").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         JsonElement.ArrayEnumerator accessList = json.GetProperty("accessList").EnumerateArray();
-        if (accessList.Any())
+        foreach (JsonElement item in accessList)
         {
-            accessList.Should().AllSatisfy(static item =>
+            Assert.That(item.GetProperty("address").GetString(), Does.Match("^0x[0-9a-fA-F]{40}$"));
+            foreach (JsonElement key in item.GetProperty("storageKeys").EnumerateArray())
             {
-                item.GetProperty("address").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-                item.GetProperty("storageKeys").EnumerateArray().Should().AllSatisfy(static key =>
-                    key.GetString().Should().MatchRegex("^0x[0-9a-f]{64}$")
-                );
-            });
+                Assert.That(key.GetString(), Does.Match("^0x[0-9a-f]{64}$"));
+            }
         }
         JsonElement.ArrayEnumerator blobVersionedHashes = json.GetProperty("blobVersionedHashes").EnumerateArray();
-        if (blobVersionedHashes.Any())
+        foreach (JsonElement hash in blobVersionedHashes)
         {
-            blobVersionedHashes.Should().AllSatisfy(static hash =>
-                hash.GetString().Should().MatchRegex("^0x[0-9a-f]{64}$")
-            );
+            Assert.That(hash.GetString(), Does.Match("^0x[0-9a-f]{64}$"));
         }
-        json.GetProperty("chainId").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("yParity").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        Assert.That(json.GetProperty("chainId").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("yParity").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("r").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("s").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
 
         // Assert deserialization-only are not serialized
-        json.TryGetProperty("blobs", out _).Should().BeFalse();
+        Assert.That(json.TryGetProperty("blobs", out _), Is.False);
     }
 }
