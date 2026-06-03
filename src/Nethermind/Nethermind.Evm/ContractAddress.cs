@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -15,14 +17,29 @@ namespace Nethermind.Evm
         public static Address From(Address? deployingAddress, in UInt256 nonce)
         {
             int contentLength = Rlp.LengthOf(deployingAddress) + Rlp.LengthOf(nonce);
-            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-            stream.StartSequence(contentLength);
-            stream.Encode(deployingAddress);
-            stream.Encode(nonce);
+            int totalLength = Rlp.LengthOfSequence(contentLength);
 
-            ValueHash256 contractAddressKeccak = ValueKeccak.Compute(stream.Data.AsSpan());
+            // RLP of [address, nonce] is tiny (<=31 bytes), so rent a scratch buffer instead of
+            // allocating a fresh byte[] per CREATE. The exact encoder is reused unchanged (the
+            // derived address is consensus-critical) — only the backing buffer changes. The
+            // CappedArray caps the (possibly oversized) rented array to the bytes actually written
+            // so the hash sees exactly the encoded RLP.
+            byte[] rented = ArrayPool<byte>.Shared.Rent(totalLength);
+            try
+            {
+                RlpStream stream = new(new CappedArray<byte>(rented, totalLength));
+                stream.StartSequence(contentLength);
+                stream.Encode(deployingAddress);
+                stream.Encode(nonce);
 
-            return new(in contractAddressKeccak);
+                ValueHash256 contractAddressKeccak = ValueKeccak.Compute(stream.Data.AsSpan());
+
+                return new(in contractAddressKeccak);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
         }
 
         [SkipLocalsInit]
