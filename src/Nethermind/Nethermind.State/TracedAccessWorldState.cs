@@ -45,6 +45,17 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     // Scratch buffer for intra-tx SLOAD on the parallel path (see GetInternal). Per-worker —
     // the returned span is consumed by the EVM stack push before another GetInternal runs.
     private readonly byte[] _scratchStorage = new byte[32];
+
+    // Single-entry warm-read cache: short-circuits a repeated read of the most-recently-read storage
+    // slot (the dominant SLOAD pattern — tight loops re-reading one slot) so it skips the BAL recording
+    // and the layered inner-world-state lookups entirely. Holds the last value verbatim (max 32 bytes).
+    // Any state mutation, snapshot restore, or tx-index change invalidates it (see InvalidateWarmRead),
+    // so it can only ever return the slot's current committed-so-far value. The first (cold) read still
+    // records into the BAL, so cold-only recording keeps the generated BAL byte-identical.
+    private readonly byte[] _warmReadBuffer = new byte[32];
+    private Address? _warmReadAddress;
+    private UInt256 _warmReadIndex;
+    private int _warmReadLength = -1;
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
 
@@ -90,9 +101,39 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
+        // Fast path: a repeated read of the same slot, unchanged since it was last read. The cold read
+        // already recorded it in the BAL (set semantics make re-recording a no-op), so we can return the
+        // cached value without touching the BAL or the inner world-state layers.
+        if (_warmReadLength >= 0
+            && _warmReadIndex.Equals(storageCell.Index)
+            && storageCell.Address == _warmReadAddress)
+        {
+            return _warmReadBuffer.AsSpan(0, _warmReadLength);
+        }
+
         _generatingBlockAccessList.AddStorageRead(storageCell);
-        return GetInternal(storageCell);
+        ReadOnlySpan<byte> value = GetInternal(storageCell);
+
+        // Cache for the next repeated read. Storage values are at most a 32-byte word.
+        if (value.Length <= _warmReadBuffer.Length)
+        {
+            value.CopyTo(_warmReadBuffer);
+            _warmReadLength = value.Length;
+            _warmReadAddress = storageCell.Address;
+            _warmReadIndex = storageCell.Index;
+        }
+        else
+        {
+            _warmReadLength = -1;
+        }
+
+        return value;
     }
+
+    // Drops the single-entry warm-read cache. Called from every path that can change a slot's value
+    // (writes, storage/account clears, snapshot restore) or move the BAL tx index, so the cache never
+    // returns a stale value.
+    private void InvalidateWarmRead() => _warmReadLength = -1;
 
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         => _innerWorldState.GetOriginal(storageCell);
@@ -123,6 +164,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         ReadOnlySpan<byte> oldValue = GetInternal(storageCell);
         _generatingBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
         _innerWorldState.Set(storageCell, newValue);
+        InvalidateWarmRead();
     }
 
     public ref readonly UInt256 GetBalance(Address address)
@@ -185,18 +227,21 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     {
         _generatingBlockAccessList.DeleteAccount(address, GetBalanceInternal(address));
         _innerWorldState.DeleteAccount(address);
+        InvalidateWarmRead();
     }
 
     public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
         _innerWorldState.CreateAccount(address, balance, nonce);
+        InvalidateWarmRead();
     }
 
     public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
         _innerWorldState.CreateAccountIfNotExists(address, balance, nonce);
+        InvalidateWarmRead();
     }
 
     public bool TryGetAccount(Address address, out AccountStruct account)
@@ -219,15 +264,22 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     }
 
     public void SetIndex(uint index)
-        => _generatingBlockAccessList.Index = index;
+    {
+        _generatingBlockAccessList.Index = index;
+        InvalidateWarmRead();
+    }
 
     public void IncrementIndex()
-        => _generatingBlockAccessList.Index++;
+    {
+        _generatingBlockAccessList.Index++;
+        InvalidateWarmRead();
+    }
 
     public void Clear()
     {
         _generatingBlockAccessList.Clear();
         _systemAccountReadSuppressionDepth = 0;
+        InvalidateWarmRead();
     }
 
     public void MergeGeneratingBal(GeneratedBlockAccessList target)
@@ -239,6 +291,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     {
         _generatingBlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
         _innerWorldState.Restore(snapshot);
+        InvalidateWarmRead();
     }
 
     public Snapshot TakeSnapshot(bool newTransactionStart = false)
@@ -280,6 +333,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     {
         AddAccountRead(address);
         _innerWorldState.ClearStorage(address);
+        InvalidateWarmRead();
     }
 
     public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
@@ -304,7 +358,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         => _innerWorldState.RecalculateStateRoot();
 
     public void Reset(bool resetBlockChanges = true)
-        => _innerWorldState.Reset(resetBlockChanges);
+    {
+        _innerWorldState.Reset(resetBlockChanges);
+        InvalidateWarmRead();
+    }
 
     public void ResetTransient()
         => _innerWorldState.ResetTransient();
