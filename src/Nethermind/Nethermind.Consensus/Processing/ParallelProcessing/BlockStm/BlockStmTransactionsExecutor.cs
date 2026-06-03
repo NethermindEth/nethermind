@@ -27,7 +27,7 @@ public class BlockStmTransactionsExecutor(
     IBlockFinder blockFinder,
     IWorldState stateProvider,
     ILogManager logManager,
-    ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
+    BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly ObjectPool<HashSet<int>> _setPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>());
@@ -55,10 +55,11 @@ public class BlockStmTransactionsExecutor(
             parallelRunner.Run().GetAwaiter().GetResult();
             ThrowIfInvalidResults(block, transactions, results);
             FinalizeGasUsed(block, receipts);
-            FeeRecipientWriteInfo feeRecipientWrites = PushChanges(stateProvider, multiVersionMemory, feeAccumulator, txCount);
-            ApplyAccumulatedFees(stateProvider, feeAccumulator, _blockExecutionContext.Spec, feeRecipientWrites);
+            IReleaseSpec spec = _blockExecutionContext.Spec;
+            FeeRecipientWriteInfo feeRecipientWrites = PushChanges(stateProvider, multiVersionMemory, feeAccumulator, spec, txCount);
+            ApplyAccumulatedFees(stateProvider, feeAccumulator, spec, feeRecipientWrites);
             RaiseTransactionProcessedEvents(block, transactions, receipts);
-            BlockReceiptsTracer.AccumulateBlockBloom(block, receipts);
+            AccumulateBlockBloom(block, receipts);
             processedSuccessfully = true;
             return receipts;
         }
@@ -100,9 +101,9 @@ public class BlockStmTransactionsExecutor(
         }
     }
 
-    private FeeRecipientWriteInfo PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, int txCount)
+    private FeeRecipientWriteInfo PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, IReleaseSpec spec, int txCount)
     {
-        HashSet<Address> storageTouched = new();
+        HashSet<Address> storageTouched = [];
         Address? gasBeneficiary = feeAccumulator.GasBeneficiary;
         Address? feeCollector = feeAccumulator.FeeCollector;
         int gasBeneficiaryLastWrite = -1;
@@ -121,34 +122,33 @@ public class BlockStmTransactionsExecutor(
                 }
 
                 ParallelStateKey key = write.Key;
-                if (key.Kind != ParallelStateKeyKind.Storage)
-                {
-                    continue;
-                }
+                object? value = write.Value.Data;
 
-                StorageCell cell = key.StorageCell;
-                object value = write.Value.Data;
-                if (ReferenceEquals(value, MultiVersionMemory.SelfDestructMonit))
+                switch (key.Kind)
                 {
-                    (storageClears ??= new HashSet<Address>()).Add(cell.Address);
-                    continue;
-                }
+                    case ParallelStateKeyKind.Account:
+                        // Account writes can be either a non-null Account (set/create) or null
+                        // (SELFDESTRUCT / DeleteAccount). Both paths must propagate to
+                        // worldState; distinguishing happens below at apply time.
+                        (accountUpdates ??= [])[key.Address] = value as Account;
+                        break;
 
-                if (value is byte[] bytes)
-                {
-                    (storageWrites ??= new List<(StorageCell Cell, byte[] Value)>()).Add((cell, bytes));
-                    continue;
-                }
+                    case ParallelStateKeyKind.StorageClear:
+                        (storageClears ??= []).Add(key.Address);
+                        break;
 
-                if (value is Account account)
-                {
-                    (accountUpdates ??= new Dictionary<Address, Account?>())[cell.Address] = account;
-                    continue;
-                }
+                    case ParallelStateKeyKind.Storage:
+                        if (value is byte[] bytes)
+                        {
+                            (storageWrites ??= []).Add((key.StorageCell, bytes));
+                        }
+                        break;
 
-                if (value is null)
-                {
-                    (accountUpdates ??= new Dictionary<Address, Account?>())[cell.Address] = null;
+                    // Fee writes are tracked separately via FeeAccumulator; no direct world-state
+                    // mutation here.
+                    case ParallelStateKeyKind.FeeGasBeneficiary:
+                    case ParallelStateKeyKind.FeeCollector:
+                        break;
                 }
             }
 
@@ -156,20 +156,13 @@ public class BlockStmTransactionsExecutor(
             {
                 foreach (Address address in storageClears)
                 {
-                    // Was this tx a *real* SELFDESTRUCT (account written as null), or just a
-                    // CREATE-into-existing or revival clear paired with a non-null SetAccount?
-                    // The original code used `TryGetValue(..., out _) ?? false` which returned
-                    // true for ANY account update at this address — including non-null
-                    // re-creations — so a recreate-followed-by-clear in the same tx would
-                    // wipe previously-applied storage writes from earlier txs. Test against
-                    // the actual stored value: only treat as a true delete when the account
-                    // entry is present *and* null.
+                    // Only treat the clear as a SELFDESTRUCT when this tx also nulled the
+                    // account entry. A clear paired with a non-null account update is a
+                    // CREATE-into-existing or revival; force-clearing in that case would wipe
+                    // earlier txs' storage writes for the same address (audit bug B-PushChanges).
                     bool accountDeletedToNull = accountUpdates is not null
                         && accountUpdates.TryGetValue(address, out Account? deletedAccount)
                         && deletedAccount is null;
-                    // Keep the original guard semantics for non-delete clears: skip a redundant
-                    // ClearStorage when an earlier tx already touched (cleared/wrote) this
-                    // address's storage in the current PushChanges pass.
                     if (accountDeletedToNull || !storageTouched.Contains(address))
                     {
                         worldState.ClearStorage(address);
@@ -191,7 +184,8 @@ public class BlockStmTransactionsExecutor(
             {
                 foreach (KeyValuePair<Address, Account?> accountUpdate in accountUpdates)
                 {
-                    worldState.SetAccount(accountUpdate.Key, accountUpdate.Value);
+                    ApplyAccountUpdate(worldState, accountUpdate.Key, accountUpdate.Value, spec);
+
                     if (gasBeneficiary is not null && accountUpdate.Key == gasBeneficiary)
                     {
                         gasBeneficiaryLastWrite = txIndex;
@@ -208,6 +202,49 @@ public class BlockStmTransactionsExecutor(
         return new FeeRecipientWriteInfo(gasBeneficiaryLastWrite, feeCollectorLastWrite);
     }
 
+    /// <summary>
+    /// Translates a final-account-state write (a <see cref="Account"/> snapshot or <c>null</c>
+    /// for deletion) into the typed <see cref="IWorldState"/> primitives.
+    /// </summary>
+    /// <remarks>
+    /// The original codex implementation used <c>worldState.SetAccount(addr, account)</c> which
+    /// no longer exists on master (replaced by per-field primitives). We replicate the same
+    /// final state via <see cref="IWorldState.DeleteAccount"/> for null, and via
+    /// <see cref="IWorldState.CreateAccountIfNotExists"/> +
+    /// <see cref="IWorldState.AddToBalance"/>/<see cref="IWorldState.SubtractFromBalance"/> +
+    /// <see cref="IWorldState.SetNonce"/> for non-null. Code propagation
+    /// (<see cref="Account.CodeHash"/>) is NOT yet handled here — code bytes inserted by an
+    /// in-tx CREATE live in the per-tx scope's CodeDb which is disposed before this point.
+    /// That is documented as an outstanding audit issue in BlockStm/README.md.
+    /// </remarks>
+    private static void ApplyAccountUpdate(IWorldState worldState, Address address, Account? account, IReleaseSpec spec)
+    {
+        if (account is null)
+        {
+            if (worldState.AccountExists(address))
+            {
+                worldState.DeleteAccount(address);
+            }
+            return;
+        }
+
+        worldState.CreateAccountIfNotExists(address, 0, 0);
+        UInt256 oldBalance = worldState.GetBalance(address);
+        if (account.Balance > oldBalance)
+        {
+            worldState.AddToBalance(address, account.Balance - oldBalance, spec, out _);
+        }
+        else if (account.Balance < oldBalance)
+        {
+            worldState.SubtractFromBalance(address, oldBalance - account.Balance, spec, out _);
+        }
+        worldState.SetNonce(address, account.Nonce);
+        // TODO: code propagation. Inserting code requires the bytes (not just CodeHash); they
+        // live in the per-tx scope's CodeDb. The parallel-scope CodeDb passthrough currently
+        // discards them on per-tx scope dispose — fix this by tracking code inserts in the
+        // executor's WriteSet or by piggy-backing on the worldState's shared codeDb.
+    }
+
     private static void ApplyAccumulatedFees(IWorldState worldState, FeeAccumulator feeAccumulator, IReleaseSpec spec, FeeRecipientWriteInfo feeRecipientWrites)
     {
         Address? gasBeneficiary = feeAccumulator.GasBeneficiary;
@@ -220,7 +257,7 @@ public class BlockStmTransactionsExecutor(
             UInt256 delta = total - applied;
             if (!delta.IsZero || feeRecipientWrites.GasBeneficiaryLastWrite < 0)
             {
-                worldState.AddToBalanceAndCreateIfNotExists(gasBeneficiary, delta, spec);
+                worldState.AddToBalanceAndCreateIfNotExists(gasBeneficiary, delta, spec, out _);
             }
         }
 
@@ -235,7 +272,7 @@ public class BlockStmTransactionsExecutor(
                 UInt256 delta = total - applied;
                 if (!delta.IsZero)
                 {
-                    worldState.AddToBalanceAndCreateIfNotExists(feeCollector, delta, spec);
+                    worldState.AddToBalanceAndCreateIfNotExists(feeCollector, delta, spec, out _);
                 }
             }
         }
@@ -255,7 +292,7 @@ public class BlockStmTransactionsExecutor(
             long remainingGas = gasLimit - gasUsed;
             if (transaction.GasLimit > remainingGas)
             {
-                InvalidTransactionException.ThrowInvalidTransactionException(
+                BlockProcessor.BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(
                     TransactionResult.BlockGasLimitExceeded,
                     block.Header,
                     transaction,
@@ -276,7 +313,7 @@ public class BlockStmTransactionsExecutor(
             TransactionResult result = results[i];
             if (!result)
             {
-                InvalidTransactionException.ThrowInvalidTransactionException(result, block.Header, transactions[i], i);
+                BlockProcessor.BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, transactions[i], i);
             }
         }
     }
@@ -332,6 +369,30 @@ public class BlockStmTransactionsExecutor(
 
         _logger.Info($"Parallel block {block.Number,10} | txs {snapshot.TxCount,6} | gas {block.Header.GasUsed,10:N0} | reexec {snapshot.Reexecutions,5} | reval {snapshot.Revalidations,5} | blocked {snapshot.BlockedReads,5} | parallel {snapshot.ParallelizationPercent,3}% | {status}");
     }
+
+    /// <summary>
+    /// Accumulates each receipt's bloom into the block header's bloom.
+    /// </summary>
+    /// <remarks>
+    /// The original codex code called <c>BlockReceiptsTracer.AccumulateBlockBloom</c>, a static
+    /// helper that no longer exists on master (logic moved into the tracer's
+    /// <c>EndBlockTrace</c>). The outer tracer's <c>EndBlockTrace</c> path doesn't fire under
+    /// parallel execution (per-worker tracer instances each see exactly one tx), so we compute
+    /// the block bloom here from the receipts the executor produced. Pattern mirrors master's
+    /// BAL executor in <c>BlockProcessor.ParallelBlockValidationTransactionsExecutor.CombineReceipts</c>.
+    /// </remarks>
+    private static void AccumulateBlockBloom(Block block, TxReceipt[] receipts)
+    {
+        Bloom blockBloom = new();
+        foreach (TxReceipt receipt in receipts)
+        {
+            if (receipt?.Bloom is not null)
+            {
+                blockBloom.Accumulate(receipt.Bloom);
+            }
+        }
+        block.Header.Bloom = blockBloom;
+    }
 }
 
 public class ParallelTransactionProcessor(
@@ -345,7 +406,16 @@ public class ParallelTransactionProcessor(
     TransactionResult[] results,
     in BlockExecutionContext blockExecutionContext) : IParallelTransactionProcessor<ParallelStateKey, object>
 {
-    private readonly ObjectPool<BlockReceiptsTracer> _tracers = new DefaultObjectPool<BlockReceiptsTracer>(new DefaultPooledObjectPolicy<BlockReceiptsTracer>());
+    // BlockReceiptsTracer's ctor takes a bool (parallel: true) — no parameterless ctor — so we
+    // need a custom pool policy. `parallel: true` matches master's BAL executor pattern: it
+    // disables shared mutable state inside the tracer.
+    private readonly ObjectPool<BlockReceiptsTracer> _tracers = new DefaultObjectPool<BlockReceiptsTracer>(new ParallelBlockReceiptsTracerPolicy());
+
+    private sealed class ParallelBlockReceiptsTracerPolicy : PooledObjectPolicy<BlockReceiptsTracer>
+    {
+        public override BlockReceiptsTracer Create() => new(parallel: true);
+        public override bool Return(BlockReceiptsTracer obj) => true;
+    }
     private readonly BlockExecutionContext _blockExecutionContext = blockExecutionContext;
 
     public Status TryExecute(TxVersion version, out int? blockingTx, out bool wroteNewLocation)

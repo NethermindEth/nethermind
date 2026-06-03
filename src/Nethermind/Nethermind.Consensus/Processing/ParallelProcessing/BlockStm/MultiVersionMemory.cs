@@ -63,7 +63,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// Mapping between TransactionIndex -> HashSet that will store reads by the last incarnation of the transaction.
     /// </summary>
     private readonly HashSet<Read<TLocation>>?[] _lastReads = new HashSet<Read<TLocation>>[txCount];
-    private static readonly HashSet<Read<TLocation>> EmptyReadSet = new();
+    private static readonly HashSet<Read<TLocation>> EmptyReadSet = [];
 
     // Applies a tx incarnation's writes into _data and updates _lastWrittenLocations.
     // Returns true when the published write-set differs from the previous incarnation's in a
@@ -80,7 +80,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         (int txIndex, int incarnation) = version;
         DataDictionary<TLocation, Value> txData = _data[txIndex];
         ref HashSet<TLocation>? lastWritten = ref _lastWrittenLocations[txIndex];
-        lastWritten ??= new HashSet<TLocation>();
+        lastWritten ??= [];
 
         bool writeSetChanged = false;
 
@@ -246,7 +246,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// <returns>Final write-set keyed by location.</returns>
     public Dictionary<TLocation, TData> Snapshot()
     {
-        Dictionary<TLocation, TData> result = new();
+        Dictionary<TLocation, TData> result = [];
         // need to iterate backwards, as the later transaction writes are the final written to the same location
         for (int index = _data.Length - 1; index >= 0; index--)
         {
@@ -308,7 +308,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
 
     private readonly struct DataDictionary<TKey, TValue>()
     {
-        public readonly Dictionary<TKey, TValue> Dictionary = new();
+        public readonly Dictionary<TKey, TValue> Dictionary = [];
         public readonly ReaderWriterLockSlim Lock = new();
     }
 

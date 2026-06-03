@@ -8,22 +8,11 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 /// <summary>
 /// Captures per-transaction execution events to build actual parallel block metrics.
 /// </summary>
-public sealed class ParallelBlockMetricsCollector
+public sealed class ParallelBlockMetricsCollector(int txCount)
 {
-    private readonly int[] _executionAttempts;
-    private readonly int[] _blockedReads;
-    private readonly int[] _validationFailures;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ParallelBlockMetricsCollector"/> class.
-    /// </summary>
-    /// <param name="txCount">Number of transactions in the block.</param>
-    public ParallelBlockMetricsCollector(int txCount)
-    {
-        _executionAttempts = new int[txCount];
-        _blockedReads = new int[txCount];
-        _validationFailures = new int[txCount];
-    }
+    private readonly int[] _executionAttempts = new int[txCount];
+    private readonly int[] _blockedReads = new int[txCount];
+    private readonly int[] _validationFailures = new int[txCount];
 
     /// <summary>
     /// Records a transaction execution attempt.

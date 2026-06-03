@@ -5,18 +5,24 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 
-public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime)
+public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime, ILogManager logManager)
 {
     public ParallelAutoReadOnlyTxProcessingEnv Create(TxVersion version, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, PreBlockCaches preBlockCaches)
     {
+        // CreateResettableWorldState now returns IWorldStateScopeProvider directly (master
+        // moved from IWorldState to scope-provider-typed factories). PrewarmerScopeProvider
+        // gained an ILogManager parameter for its detailed-metrics logging path.
         MultiVersionMemoryScopeProvider worldState = new(
             version,
-            new PrewarmerScopeProvider(worldStateManager.CreateResettableWorldState(),
+            new PrewarmerScopeProvider(
+                worldStateManager.CreateResettableWorldState(),
                 preBlockCaches,
+                logManager,
                 populatePreBlockCache: true),
             multiVersionMemory,
             feeAccumulator

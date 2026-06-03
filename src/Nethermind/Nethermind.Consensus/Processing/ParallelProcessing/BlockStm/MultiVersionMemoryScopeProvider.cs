@@ -28,8 +28,8 @@ public class MultiVersionMemoryScopeProvider(
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
-        ReadSet = new(); //TODO: object poolling?
-        WriteSet = new();
+        ReadSet = []; //TODO: object pooling?
+        WriteSet = [];
         object writeSetLock = new();
         return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, writeSetLock);
     }
@@ -78,7 +78,7 @@ public class MultiVersionMemoryScopeProvider(
         public Account? Get(Address address)
         {
             int txIndex = version.TxIndex;
-            ParallelStateKey location = ParallelStateKey.ForStorage(new StorageCell(address));
+            ParallelStateKey location = ParallelStateKey.ForAccount(address);
 
             Status status = multiVersionMemory.TryRead(location, txIndex, out TxVersion readVersion, out object? value);
             Account? result = status switch
@@ -141,7 +141,7 @@ public class MultiVersionMemoryScopeProvider(
             {
                 lock (writeSetLock)
                 {
-                    writeSet[ParallelStateKey.ForStorage(new StorageCell(key))] = account;
+                    writeSet[ParallelStateKey.ForAccount(key)] = account!;
                 }
                 OnAccountUpdated?.Invoke(this, new IWorldStateScopeProvider.AccountUpdated(key, account));
             }
@@ -167,7 +167,7 @@ public class MultiVersionMemoryScopeProvider(
 
                     _localWrites = estimatedEntries > 0
                         ? new Dictionary<ParallelStateKey, object>(estimatedEntries)
-                        : new Dictionary<ParallelStateKey, object>();
+                        : [];
 
                     return _localWrites;
                 }
@@ -176,7 +176,7 @@ public class MultiVersionMemoryScopeProvider(
                     GetLocalWrites()[ParallelStateKey.ForStorage(new StorageCell(address, index))] = value;
 
                 public void Clear() =>
-                    GetLocalWrites()[ParallelStateKey.ForStorage(new StorageCell(address, Keccak.EmptyTreeHash.ValueHash256))] = MultiVersionMemory.SelfDestructMonit;
+                    GetLocalWrites()[ParallelStateKey.ForStorageClear(address)] = MultiVersionMemory.SelfDestructMonit;
 
                 public void Dispose()
                 {
@@ -225,7 +225,7 @@ public class MultiVersionMemoryScopeProvider(
                 ParallelStateKey location,
                 Func<IWorldStateScopeProvider.IStorageTree, ParallelStateKey, byte[]> getFromStorage)
             {
-                ParallelStateKey clearKey = ParallelStateKey.ForStorage(new StorageCell(address, Keccak.EmptyTreeHash.ValueHash256));
+                ParallelStateKey clearKey = ParallelStateKey.ForStorageClear(address);
 
                 Status valueStatus = TryRead(location, out TxVersion valueVersion, out object? value);
                 Status clearStatus = TryRead(clearKey, out TxVersion clearVersion, out object? clearValue);
@@ -234,24 +234,24 @@ public class MultiVersionMemoryScopeProvider(
 
                 bool hasClear = clearStatus == Status.Ok && ReferenceEquals(clearValue, MultiVersionMemory.SelfDestructMonit);
 
+                // Always record the clearKey dependency — even on a base-zero / not-found path
+                // — so a later concurrent SELFDESTRUCT-then-write to this slot is guaranteed to
+                // re-trigger validation. The original code only added the clearKey when the
+                // base value was non-zero, which audit B4 flagged as a stale-read window for
+                // base-zero slots that a later writer might fill before a clear.
+                readSet.Add(new Read<ParallelStateKey>(clearKey, clearVersion));
+
                 if (valueStatus == Status.Ok)
                 {
-                    readSet.Add(new Read<ParallelStateKey>(clearKey, clearVersion));
                     if (hasClear && IsLater(clearVersion, valueVersion))
                     {
                         return VirtualMachineStatics.BytesZero;
                     }
 
-                    return (byte[])value;
+                    return (byte[])value!;
                 }
 
                 byte[] baseValue = getFromStorage(baseStorageTree, location);
-                bool baseIsZero = baseValue.IsZero();
-
-                if (!baseIsZero)
-                {
-                    readSet.Add(new Read<ParallelStateKey>(clearKey, clearVersion));
-                }
 
                 return hasClear ? VirtualMachineStatics.BytesZero : baseValue;
             }
