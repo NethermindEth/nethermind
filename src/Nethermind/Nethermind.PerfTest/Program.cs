@@ -129,7 +129,7 @@ namespace Nethermind.PerfTest
 
             public bool IsKnownBlock(long number, Keccak blockHash) => _blockTree.IsKnownBlock(number, blockHash);
 
-            public void UpdateMainChain(Block[] blocks, bool wereProcessed) => _blockTree.UpdateMainChain(blocks, wereProcessed);
+            public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null) => _blockTree.TryUpdateMainChain(newHead, wereProcessed, forceHeadBlock, preloadedBlocks);
 
             public bool WasProcessed(long number, Keccak blockHash) => false;
 

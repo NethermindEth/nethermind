@@ -128,9 +128,6 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null)
         => throw new NotSupportedException();
 
-    public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false)
-        => throw new NotSupportedException();
-
     public void MarkChainAsProcessed(IReadOnlyList<Block> blocks)
         => throw new NotSupportedException();
 

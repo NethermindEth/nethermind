@@ -371,10 +371,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                     manualResetEvent.Set();
             }));
 
-            blockTree.UpdateMainChain(new Block[] { block1, block2, block3 }, true);
+            blockTree.TryUpdateMainChain(block3.Header, true, preloadedBlocks: new Block[] { block1, block2, block3 });
             manualResetEvent.WaitOne();
             manualResetEvent.Reset();
-            blockTree.UpdateMainChain(new Block[] { block1B, block2B }, true);
+            blockTree.TryUpdateMainChain(block2B.Header, true, preloadedBlocks: new Block[] { block1B, block2B });
             manualResetEvent.WaitOne();
 
             Assert.That(jsonRpcResult.Count, Is.EqualTo(5));
@@ -424,7 +424,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }
             }));
 
-            blockTree.UpdateMainChain(blocks, true);
+            // The list includes genesis and the test expects a notification per block (21). The walk stops at
+            // genesis without moving it, so move exactly the supplied blocks to fire all 21 events.
+            blockTree.ForceMainChainForTest(blocks);
 
             manualResetEvent.WaitOne();
 

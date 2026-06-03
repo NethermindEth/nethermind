@@ -127,7 +127,7 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
-    public async Task Invoke_UpdateMainChain_Once()
+    public async Task Invoke_TryUpdateMainChain_Once()
     {
         long headNumber = 100;
         int fastSyncLag = 10;

@@ -1416,7 +1416,7 @@ public partial class EngineModuleTests
     private static void FlipCanonicalMarkerTo(MergeTestBlockchain chain, ExecutionPayload target)
     {
         Block targetBlock = chain.BlockTree.FindBlock(target.BlockHash, BlockTreeLookupOptions.None)!;
-        chain.BlockTree.UpdateMainChain(new[] { targetBlock }, wereProcessed: false);
+        chain.BlockTree.TryUpdateMainChain(targetBlock.Header, wereProcessed: false, preloadedBlocks: new[] { targetBlock });
     }
 
     // Y-shape: block1 -> {block2A (sibling), block2B -> block3B}, with head advanced to block1 via FCU.
@@ -1563,8 +1563,10 @@ public partial class EngineModuleTests
         Block blockCInTree = chain.BlockTree.FindBlock(blockC.BlockHash, BlockTreeLookupOptions.None)!;
 
         // Deliberately create stale canonical markers: level N -> A, level N+1 -> C.
-        chain.BlockTree.UpdateMainChain(new[] { blockAInTree }, wereProcessed: true);
-        chain.BlockTree.UpdateMainChain(new[] { blockCInTree }, wereProcessed: true);
+        // ForceMainChainForTest moves exactly the given block (no connectivity walk), which is required to
+        // stage this inconsistency - TryUpdateMainChain would walk C back through B and repair the marker.
+        chain.BlockTree.ForceMainChainForTest(new[] { blockAInTree }, wereProcessed: true);
+        chain.BlockTree.ForceMainChainForTest(new[] { blockCInTree }, wereProcessed: true);
 
         Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blockC.BlockHash));
         Assert.That(chain.BlockTree.IsMainChain(blockC.BlockHash), Is.True, "precondition: head level marker points at C");

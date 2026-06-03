@@ -407,7 +407,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         {
             Block genesis = _genesisBlock;
             BlockTree.SuggestBlock(genesis);
-            BlockTree.UpdateMainChain(genesis);
+            BlockTree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: new[] { genesis });
             return this;
         }
 

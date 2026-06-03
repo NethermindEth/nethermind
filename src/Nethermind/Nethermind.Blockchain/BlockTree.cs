@@ -1018,15 +1018,22 @@ namespace Nethermind.Blockchain
             return true;
         }
 
-        public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceUpdateHeadBlock = false)
+        /// <summary>
+        /// Test-only: marks exactly the supplied blocks canonical without walking to the current main chain.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="TryUpdateMainChain"/> deliberately validates connectivity (it walks back to a main-chain
+        /// ancestor and refuses if a predecessor is missing). Some tests need to stage states that violate that —
+        /// e.g. a disconnected fast-sync head, beacon blocks marked canonical above a stale head, or deliberately
+        /// inconsistent level markers. This bypass moves exactly the given blocks; do not use it from production.
+        /// </remarks>
+        internal void MarkBlocksCanonicalForTest(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false)
         {
             if (blocks.Count == 0)
             {
                 return;
             }
 
-            // Move exactly the supplied blocks (the caller already decided the extent); the blocks
-            // double as the preloaded cache so no block is re-read from the store.
             bool descending = blocks.Count > 1 && blocks[^1].Number < blocks[0].Number;
             using ArrayPoolList<BlockHeader> headers = new(blocks.Count);
             if (descending)
@@ -1034,7 +1041,7 @@ namespace Nethermind.Blockchain
             else
                 for (int i = 0; i < blocks.Count; i++) headers.Add(blocks[i].Header);
 
-            UpdateMainChainCore(headers, wereProcessed, forceUpdateHeadBlock, BuildPreloadedCache(blocks));
+            UpdateMainChainCore(headers, wereProcessed, forceHeadBlock, BuildPreloadedCache(blocks));
         }
 
         /// <remarks>
@@ -1410,7 +1417,7 @@ namespace Nethermind.Blockchain
         }
 
         // Mutates Head and writes the head hash without raising NewHeadBlock.
-        // UpdateMainChain raises the event itself after the ChainLevelInfoRepository write batch
+        // TryUpdateMainChain raises the event itself after the ChainLevelInfoRepository write batch
         // has been disposed (and therefore flushed) so subscribers always observe committed state.
         private BlockEventArgs SetHeadBlock(Block block)
         {

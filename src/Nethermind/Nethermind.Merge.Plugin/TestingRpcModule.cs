@@ -161,7 +161,7 @@ public class TestingRpcModule(
 
     /// <summary>
     /// Advance the canonical head to an already-processed block via
-    /// <see cref="IBlockTree.UpdateMainChain"/>, bypassing the main BlockchainProcessor.
+    /// <see cref="IBlockTree.TryUpdateMainChain"/>, bypassing the main BlockchainProcessor.
     /// </summary>
     private ResultWrapper<Hash256> CommitAsMainChain(Block processedBlock)
     {

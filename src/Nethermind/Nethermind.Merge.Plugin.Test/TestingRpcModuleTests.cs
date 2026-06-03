@@ -243,7 +243,7 @@ public class TestingRpcModuleTests
             .GetArguments()[1]!;
         Assert.That(suggestOptions, Is.EqualTo(BlockTreeSuggestOptions.ForceDontSetAsMain),
             "ShouldProcess would force the main BlockchainProcessor to re-execute every tx; " +
-            "ForceDontSetAsMain leaves the main-chain write to UpdateMainChain (single writer).");
+            "ForceDontSetAsMain leaves the main-chain write to TryUpdateMainChain (single writer).");
 
         object?[] updateMainChainArgs = blockTree.ReceivedCalls()
             .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.TryUpdateMainChain))

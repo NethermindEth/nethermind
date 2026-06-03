@@ -151,14 +151,6 @@ namespace Nethermind.Blockchain
         /// <returns><value>True</value> if the chain was updated; <value>False</value> if the branch could not be walked back to the main chain (a predecessor was missing) — in which case nothing is mutated.</returns>
         bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null);
 
-        /// <summary>
-        /// Marks all <paramref name="blocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>
-        /// </summary>
-        /// <param name="blocks">Blocks that will now be at the top of the chain</param>
-        /// <param name="wereProcessed"></param>
-        /// <param name="forceHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> block regardless of <see cref="Block.TotalDifficulty"/></param>
-        void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false);
-
         void MarkChainAsProcessed(IReadOnlyList<Block> blocks);
 
         bool CanAcceptNewBlocks { get; }
