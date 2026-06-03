@@ -65,16 +65,9 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     private readonly HashSet<Read<TLocation>>?[] _lastReads = new HashSet<Read<TLocation>>[txCount];
     private static readonly HashSet<Read<TLocation>> EmptyReadSet = [];
 
-    // Applies a tx incarnation's writes into _data and updates _lastWrittenLocations.
-    // Returns true when the published write-set differs from the previous incarnation's in a
-    // way that may invalidate higher txs that already read this tx — i.e. any of:
-    //   (a) a new location is written that wasn't written previously,
-    //   (b) a location written by the previous incarnation is no longer in the write-set,
-    //   (c) a location is re-written (the stored TxVersion advances to the new incarnation —
-    //       higher txs' read-sets captured the old incarnation and now mismatch on validate).
-    // The original implementation only signalled case (a), so re-executions that changed
-    // values or removed writes could silently leave higher txs validated against a stale
-    // snapshot and let PushChanges commit inconsistent state.
+    // Returns true if higher txs that already read this tx may need re-validation:
+    // a key was added, removed, or re-written (the stored TxVersion advances even when
+    // the value is unchanged).
     private bool ApplyWriteSet(TxVersion version, Dictionary<TLocation, TData> writeSet)
     {
         (int txIndex, int incarnation) = version;
@@ -90,7 +83,6 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
             txData.Dictionary[write.Key] = new(incarnation, write.Value);
         }
 
-        // Detect removed locations: previously-written keys that the new incarnation no longer writes.
         if (lastWritten.Count != 0)
         {
             using ArrayPoolListRef<TLocation> toRemove = new(lastWritten.Count);
@@ -114,13 +106,8 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         }
         txData.Lock.ExitWriteLock();
 
-        // Any write to a location already in lastWritten — i.e. previously written by this tx
-        // — advances the stored TxVersion to the new incarnation. Higher txs that read the
-        // prior incarnation must re-validate. Any new location also invalidates higher reads.
         foreach (TLocation key in writeSet.Keys)
         {
-            // lastWritten.Add returns true for genuinely new keys, false for repeats; either
-            // case is a publish-time change that downstream readers must re-check.
             lastWritten.Add(key);
             writeSetChanged = true;
         }

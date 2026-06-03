@@ -23,18 +23,11 @@ public enum ParallelStateKeyKind : byte
 }
 
 /// <summary>
-/// Tagged key for the multi-version memory. Discriminates between per-account state, per-slot
-/// storage, the selfdestruct/clear marker, and the per-tx fee buckets.
+/// Tagged key for the multi-version memory: per-account state, per-slot storage, the
+/// selfdestruct clear marker, and the per-tx fee buckets. Account and clear keys are
+/// address-keyed (not <see cref="StorageCell"/>) so the clear marker can't alias a real
+/// slot at <see cref="Nethermind.Core.Crypto.Keccak.EmptyTreeHash"/>.
 /// </summary>
-/// <remarks>
-/// <para>The original implementation overloaded a "<see cref="StorageCell"/> with a magic slot
-/// index" to encode both the account-level key and the storage-clear sentinel. The former
-/// relied on a single-arg <c>new StorageCell(addr)</c> ctor that no longer exists on master,
-/// and the latter aliased <see cref="Nethermind.Core.Crypto.Keccak.EmptyTreeHash"/> as a slot
-/// index — colliding with any real <c>SSTORE</c> at that index (audit bug B2). The current
-/// shape uses explicit kinds, keyed by <see cref="Address"/> for account / clear and by
-/// <see cref="StorageCell"/> for slot; fees remain keyed by <c>(kind, txIndex)</c>.</para>
-/// </remarks>
 public readonly struct ParallelStateKey : IEquatable<ParallelStateKey>
 {
     private readonly StorageCell _storageCell;

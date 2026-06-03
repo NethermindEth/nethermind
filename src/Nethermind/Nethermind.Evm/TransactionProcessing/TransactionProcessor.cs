@@ -88,11 +88,9 @@ namespace Nethermind.Evm.TransactionProcessing
         private long _blockCumulativeStateGas;
 
         /// <summary>
-        /// When non-null, intercepts gas-beneficiary / fee-collector credits in
-        /// <see cref="PayFees"/> and routes them through this recorder instead of writing
-        /// directly to <see cref="WorldState"/>. Block-STM sets this via
-        /// <c>ParallelFeeRecorder</c> to break the otherwise-universal write-after-write
-        /// dependency on coinbase and the fee collector. Null in non-parallel paths.
+        /// When non-null, <see cref="PayFees"/> diverts gas-beneficiary / fee-collector
+        /// credits through this recorder instead of writing to <see cref="WorldState"/>.
+        /// Set by block-STM to break the coinbase write-after-write dependency.
         /// </summary>
         protected IFeeRecorder? FeeRecorder { get; }
 
@@ -1510,12 +1508,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (FeeRecorder is not null)
             {
-                // Block-STM path: divert the gas beneficiary and fee collector credits into
-                // the recorder (FeeAccumulator behind the scenes). This breaks the W-A-W
-                // dependency every tx would otherwise create on those addresses. The eventual
-                // crediting to WorldState happens once at PushChanges time via
-                // ApplyAccumulatedFees, summing per-tx deltas and applying them outside the
-                // parallel critical section.
                 if (header.GasBeneficiary is not null)
                 {
                     UInt256 payableFees = payBeneficiary ? fees : UInt256.Zero;

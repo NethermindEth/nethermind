@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -21,11 +22,13 @@ using Nethermind.State;
 namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 
 public class BlockStmTransactionsExecutor(
+    IBlockProcessor.IBlockTransactionsExecutor inner,
     ITransactionProcessorAdapter transactionProcessorAdapter,
     ParallelEnvFactory parallelEnvFactory,
     PreBlockCaches preBlockCaches,
     IBlockFinder blockFinder,
     IWorldState stateProvider,
+    Nethermind.Config.IBlocksConfig blocksConfig,
     ILogManager logManager,
     BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
     : IBlockProcessor.IBlockTransactionsExecutor
@@ -33,9 +36,20 @@ public class BlockStmTransactionsExecutor(
     private readonly ObjectPool<HashSet<int>> _setPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>());
     private BlockExecutionContext _blockExecutionContext;
     private readonly ILogger _logger = logManager.GetClassLogger<BlockStmTransactionsExecutor>();
+    // 0 => use logical-processor count, otherwise the configured value.
+    private readonly int _concurrencyLevel = blocksConfig.BlockStmConcurrency > 0
+        ? blocksConfig.BlockStmConcurrency
+        : Math.Max(1, System.Environment.ProcessorCount);
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
     {
+        // Genesis, system txs, and Optimism deposit txs need strict ordering; fall back
+        // to the wrapped sequential executor.
+        if (block.IsGenesis || ContainsSequentialOnlyTxs(block.Transactions))
+        {
+            return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+        }
+
         Transaction[] transactions = block.Transactions;
         int txCount = transactions.Length;
         TxReceipt[] receipts = new TxReceipt[txCount];
@@ -51,7 +65,7 @@ public class BlockStmTransactionsExecutor(
         ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, feeAccumulator, preBlockCaches, receipts, results, in _blockExecutionContext);
         try
         {
-            using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, 4, blockMetrics);
+            using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, _concurrencyLevel, blockMetrics);
             parallelRunner.Run().GetAwaiter().GetResult();
             ThrowIfInvalidResults(block, transactions, results);
             FinalizeGasUsed(block, receipts);
@@ -87,10 +101,12 @@ public class BlockStmTransactionsExecutor(
 
                 if (prevTx.HasAuthorizationList)
                 {
+                    // tuple.Authority is populated by RecoverSignatures before processing;
+                    // null means signature recovery failed and the auth is dropped at exec,
+                    // creating no nonce dependency here.
                     foreach (AuthorizationTuple tuple in prevTx.AuthorizationList)
                     {
-                        // how to handle wrong authorizations?
-                        if (tuple.Authority == sender)
+                        if (tuple.Authority is not null && tuple.Authority == sender)
                         {
                             scheduler.AbortExecution(txIndex, i, false);
                             return;
@@ -127,25 +143,19 @@ public class BlockStmTransactionsExecutor(
                 switch (key.Kind)
                 {
                     case ParallelStateKeyKind.Account:
-                        // Account writes can be either a non-null Account (set/create) or null
-                        // (SELFDESTRUCT / DeleteAccount). Both paths must propagate to
-                        // worldState; distinguishing happens below at apply time.
+                        // null = SELFDESTRUCT/DeleteAccount; non-null = set/create.
                         (accountUpdates ??= [])[key.Address] = value as Account;
                         break;
-
                     case ParallelStateKeyKind.StorageClear:
                         (storageClears ??= []).Add(key.Address);
                         break;
-
                     case ParallelStateKeyKind.Storage:
                         if (value is byte[] bytes)
                         {
                             (storageWrites ??= []).Add((key.StorageCell, bytes));
                         }
                         break;
-
-                    // Fee writes are tracked separately via FeeAccumulator; no direct world-state
-                    // mutation here.
+                    // Fees flow through FeeAccumulator, applied separately.
                     case ParallelStateKeyKind.FeeGasBeneficiary:
                     case ParallelStateKeyKind.FeeCollector:
                         break;
@@ -202,21 +212,9 @@ public class BlockStmTransactionsExecutor(
         return new FeeRecipientWriteInfo(gasBeneficiaryLastWrite, feeCollectorLastWrite);
     }
 
-    /// <summary>
-    /// Translates a final-account-state write (a <see cref="Account"/> snapshot or <c>null</c>
-    /// for deletion) into the typed <see cref="IWorldState"/> primitives.
-    /// </summary>
-    /// <remarks>
-    /// The original codex implementation used <c>worldState.SetAccount(addr, account)</c> which
-    /// no longer exists on master (replaced by per-field primitives). We replicate the same
-    /// final state via <see cref="IWorldState.DeleteAccount"/> for null, and via
-    /// <see cref="IWorldState.CreateAccountIfNotExists"/> +
-    /// <see cref="IWorldState.AddToBalance"/>/<see cref="IWorldState.SubtractFromBalance"/> +
-    /// <see cref="IWorldState.SetNonce"/> for non-null. Code propagation
-    /// (<see cref="Account.CodeHash"/>) is NOT yet handled here — code bytes inserted by an
-    /// in-tx CREATE live in the per-tx scope's CodeDb which is disposed before this point.
-    /// That is documented as an outstanding audit issue in BlockStm/README.md.
-    /// </remarks>
+    // Applies a captured final Account state via the typed IWorldState primitives.
+    // TODO(audit): CodeHash bytes inserted by an in-tx CREATE live in the per-tx scope's
+    // CodeDb and are discarded on scope dispose — not yet propagated to the outer state.
     private static void ApplyAccountUpdate(IWorldState worldState, Address address, Account? account, IReleaseSpec spec)
     {
         if (account is null)
@@ -239,10 +237,6 @@ public class BlockStmTransactionsExecutor(
             worldState.SubtractFromBalance(address, oldBalance - account.Balance, spec, out _);
         }
         worldState.SetNonce(address, account.Nonce);
-        // TODO: code propagation. Inserting code requires the bytes (not just CodeHash); they
-        // live in the per-tx scope's CodeDb. The parallel-scope CodeDb passthrough currently
-        // discards them on per-tx scope dispose — fix this by tracking code inserts in the
-        // executor's WriteSet or by piggy-backing on the worldState's shared codeDb.
     }
 
     private static void ApplyAccumulatedFees(IWorldState worldState, FeeAccumulator feeAccumulator, IReleaseSpec spec, FeeRecipientWriteInfo feeRecipientWrites)
@@ -333,6 +327,17 @@ public class BlockStmTransactionsExecutor(
     {
         transactionProcessorAdapter.SetBlockExecutionContext(blockExecutionContext);
         _blockExecutionContext = blockExecutionContext;
+        inner.SetBlockExecutionContext(blockExecutionContext);
+    }
+
+    private static bool ContainsSequentialOnlyTxs(Transaction[] transactions)
+    {
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            Transaction tx = transactions[i];
+            if (tx.IsSystem() || tx.Type == TxType.DepositTx) return true;
+        }
+        return false;
     }
 
     private void LogParallelBlockReport(Block block, in ParallelBlockMetrics snapshot, TransactionResult[] results, bool processedSuccessfully)
@@ -370,17 +375,8 @@ public class BlockStmTransactionsExecutor(
         _logger.Info($"Parallel block {block.Number,10} | txs {snapshot.TxCount,6} | gas {block.Header.GasUsed,10:N0} | reexec {snapshot.Reexecutions,5} | reval {snapshot.Revalidations,5} | blocked {snapshot.BlockedReads,5} | parallel {snapshot.ParallelizationPercent,3}% | {status}");
     }
 
-    /// <summary>
-    /// Accumulates each receipt's bloom into the block header's bloom.
-    /// </summary>
-    /// <remarks>
-    /// The original codex code called <c>BlockReceiptsTracer.AccumulateBlockBloom</c>, a static
-    /// helper that no longer exists on master (logic moved into the tracer's
-    /// <c>EndBlockTrace</c>). The outer tracer's <c>EndBlockTrace</c> path doesn't fire under
-    /// parallel execution (per-worker tracer instances each see exactly one tx), so we compute
-    /// the block bloom here from the receipts the executor produced. Pattern mirrors master's
-    /// BAL executor in <c>BlockProcessor.ParallelBlockValidationTransactionsExecutor.CombineReceipts</c>.
-    /// </remarks>
+    // Per-worker tracers each see one tx, so the outer tracer's EndBlockTrace can't
+    // build the block bloom on its own — compute it here from the receipts.
     private static void AccumulateBlockBloom(Block block, TxReceipt[] receipts)
     {
         Bloom blockBloom = new();
@@ -406,9 +402,7 @@ public class ParallelTransactionProcessor(
     TransactionResult[] results,
     in BlockExecutionContext blockExecutionContext) : IParallelTransactionProcessor<ParallelStateKey, object>
 {
-    // BlockReceiptsTracer's ctor takes a bool (parallel: true) — no parameterless ctor — so we
-    // need a custom pool policy. `parallel: true` matches master's BAL executor pattern: it
-    // disables shared mutable state inside the tracer.
+    // BlockReceiptsTracer's ctor takes (parallel: true); needs a custom policy.
     private readonly ObjectPool<BlockReceiptsTracer> _tracers = new DefaultObjectPool<BlockReceiptsTracer>(new ParallelBlockReceiptsTracerPolicy());
 
     private sealed class ParallelBlockReceiptsTracerPolicy : PooledObjectPolicy<BlockReceiptsTracer>

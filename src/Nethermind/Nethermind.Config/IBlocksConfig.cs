@@ -71,6 +71,19 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "true")]
     bool ParallelExecutionBatchRead { get; set; }
 
+    [ConfigItem(
+        Description = "Enable block-STM (software transactional memory) parallel transaction execution. " +
+                      "Used as the parallel-execution fallback when Block Access Lists are not present " +
+                      "(BAL execution is preferred when available). Experimental.",
+        DefaultValue = "false")]
+    bool BlockStmEnabled { get; set; }
+
+    [ConfigItem(
+        Description = "Worker concurrency for block-STM parallel execution. Default `0` means logical-processor-count.",
+        DefaultValue = "0",
+        HiddenFromDocs = true)]
+    int BlockStmConcurrency { get; set; }
+
     byte[] GetExtraDataBytes();
 
     [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]

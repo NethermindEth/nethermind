@@ -197,20 +197,14 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
         if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Adding dependency for tx {txIndex} on {blockingTxIndex}, Tx {blockingTxIndex} status is {TxStatus.GetName(blockingTxStatus)}");
         ref TxState txState = ref _txStates[txIndex];
 
-        // Race window: the blocker can transition to Executed and have its dependency set
-        // claimed by FinishExecution while we are mid-Add. To serialize correctly, we hold
-        // the dependency-set lock for the entire add+re-check sequence; FinishExecution
-        // acquires the same lock when draining. The lock guarantees that either (a) we add
-        // before drain and the drain picks us up, or (b) we observe Executed under the lock
-        // and abandon the add (returning false → caller re-executes immediately).
+        // Hold the dependency-set lock across the add + re-check so FinishExecution's
+        // drain either observes our add or we observe Executed and abandon (returning
+        // false). Calling ResumeDependencies here would race the drain and could
+        // double-return the set to the pool.
         HashSet<int> set = GetDependencySet(blockingTxIndex);
         bool added;
         lock (set)
         {
-            // Re-check under the lock: FinishExecution marks Executed before it tries to
-            // drain (and acquire this lock), so observing != Executed here means the drain
-            // (if any) has not yet started, hence our Add is guaranteed to be visible to
-            // whichever thread eventually drains.
             if (Volatile.Read(ref blockingTxState.Status) == TxStatus.Executed)
             {
                 added = false;
@@ -225,10 +219,6 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
 
         if (!added)
         {
-            // Blocker already executed. Caller will re-execute this tx — we did not park.
-            // Do NOT call ResumeDependencies here: that would race FinishExecution's claim
-            // and could double-return the set to the pool. The caller handles the false
-            // return by scheduling an immediate re-execute.
             if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Blocker {blockingTxIndex} already executed; skipping dependency-add for tx {txIndex}");
             return false;
         }
@@ -263,17 +253,11 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
     /// waking every parked dependent and pushing the execution index back so they re-run.
     /// </summary>
     /// <remarks>
-    /// Only the thread that wins the <c>Interlocked.Exchange</c> claim drains and returns the
-    /// set to the pool. Concurrent callers see the slot already nulled and exit. This is the
-    /// single ownership point for the set's lifecycle — prior to this fix, both
-    /// <see cref="AbortExecution"/> (post-add race-detect path) and <see cref="FinishExecution"/>
-    /// could see the same set and both return it to the pool, corrupting subsequent borrowers.
-    /// AbortExecution no longer calls this method; it short-circuits to "re-execute" on the
-    /// blocker-already-Executed race instead.
+    /// Only the thread that wins the <c>Interlocked.Exchange</c> claim drains and returns
+    /// the set to the pool — single ownership prevents the prior double-return race.
     /// </remarks>
     private void ResumeDependencies(int blockingTxIndex)
     {
-        // Atomic single-owner claim. Only one thread per (blocker, set instance) wins.
         HashSet<int>? dependentTxs = Interlocked.Exchange(ref _txDependencies[blockingTxIndex], null);
         if (dependentTxs is null)
         {
@@ -282,8 +266,7 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
 
         int min = int.MaxValue;
 
-        // Lock for memory ordering vs AbortExecution's add — the contract is that any Add()
-        // performed under this lock by a still-in-flight Abort is observed here.
+        // Lock provides memory ordering against AbortExecution's still-in-flight Add.
         lock (dependentTxs)
         {
             foreach (int tx in dependentTxs)
@@ -296,9 +279,6 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
             dependentTxs.Clear();
         }
 
-        // Return to pool AFTER releasing the lock. Pool entries must be returned exactly once;
-        // the Interlocked.Exchange above ensures exactly one ResumeDependencies call observes
-        // a non-null set per (blocker, set instance) pair.
         setPool.Return(dependentTxs);
 
         if (min != int.MaxValue)
@@ -308,28 +288,16 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
     }
 
     /// <summary>
-    /// Resets transaction state in <see cref="_txStates"/> to <see cref="TxStatus.Ready"/> and
-    /// increments its <see cref="TxState.Incarnation"/> in a single atomic step.
+    /// Atomically sets Status=Ready and increments Incarnation in one packed CAS, matching
+    /// <see cref="TryValidationAbort"/>'s pattern. A plain Status-write + Incarnation++ is
+    /// observably torn on weak memory models (ARM): a worker can see Ready before the bump
+    /// publishes, execute at the old incarnation, and become un-abortable.
     /// </summary>
-    /// <remarks>
-    /// The previous implementation did <c>Interlocked.Exchange(Status, Ready)</c> followed by a
-    /// plain <c>state.Incarnation++</c> — a torn (Status, Incarnation) write. A worker could
-    /// observe <c>Ready</c> after the Status publish but before the Incarnation increment is
-    /// visible, claim the tx via CAS, and execute under the OLD incarnation. A subsequent
-    /// <see cref="TryValidationAbort"/> then fails to match the now-incremented Incarnation in
-    /// the live state and the tx becomes silently un-abortable. On ARM/AArch64 (weaker memory
-    /// model) this is observable; on x86 TSO masks it. We use the same packed-CAS pattern as
-    /// <see cref="TryValidationAbort"/>: write Status+Incarnation as a single 64-bit value.
-    /// </remarks>
-    /// <param name="txIndex">Transaction index whose state to advance.</param>
     private void SetReady(int txIndex)
     {
         ref TxState state = ref _txStates[txIndex];
         ref long stateInt = ref Unsafe.As<TxState, long>(ref state);
 
-        // Loop in case another thread races (precondition is Aborting, but a CAS loop also
-        // tolerates concurrent Status writes from a stale path). Cost on uncontended paths is
-        // one CAS — same as Interlocked.Exchange.
         while (true)
         {
             long current = Volatile.Read(ref stateInt);
@@ -358,11 +326,8 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
         int txIndex = version.TxIndex;
         ref TxState state = ref _txStates[txIndex];
 
-        // Mark Executed BEFORE claiming dependencies, so any concurrent AbortExecution that
-        // started before this point and observes Executed under the dependency-set lock will
-        // short-circuit (return false) instead of racing us for the set ownership. The mark
-        // is the ordering point: AbortExecution adds to the set only when its in-lock
-        // re-check observes != Executed; we observe such adds when we drain below.
+        // Mark Executed BEFORE claiming dependencies — AbortExecution's in-lock re-check
+        // then short-circuits instead of racing us for set ownership.
         Interlocked.Exchange(ref state.Status, TxStatus.Executed);
         if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Set Tx {txIndex} status to Executed");
 

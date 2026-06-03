@@ -14,9 +14,6 @@ public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeS
 {
     public ParallelAutoReadOnlyTxProcessingEnv Create(TxVersion version, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, PreBlockCaches preBlockCaches)
     {
-        // CreateResettableWorldState now returns IWorldStateScopeProvider directly (master
-        // moved from IWorldState to scope-provider-typed factories). PrewarmerScopeProvider
-        // gained an ILogManager parameter for its detailed-metrics logging path.
         MultiVersionMemoryScopeProvider worldState = new(
             version,
             new PrewarmerScopeProvider(

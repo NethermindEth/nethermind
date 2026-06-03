@@ -113,9 +113,7 @@ public class MultiVersionMemoryScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        // STM scope owns no per-block BAL prefetch state of its own; forward the hint to the
-        // underlying prewarmer (which seeds shared caches) and ignore the sink — the STM has
-        // nothing to populate. Returning the base task lets callers still await completion.
+        // STM has no shared cache of its own; forward to the underlying prewarmer.
         public System.Threading.Tasks.Task HintBal(
             Nethermind.Core.BlockAccessLists.ReadOnlyBlockAccessList bal,
             IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => baseScope.HintBal(bal, sink);
@@ -185,7 +183,7 @@ public class MultiVersionMemoryScopeProvider(
                         return;
                     }
 
-                    // Storage batches are processed in parallel; merge writes into the shared set under a lock.
+                    // Merge under lock — storage batches Dispose from parallel workers.
                     lock (writeSetLock)
                     {
                         foreach (KeyValuePair<ParallelStateKey, object> write in _localWrites)
@@ -234,11 +232,8 @@ public class MultiVersionMemoryScopeProvider(
 
                 bool hasClear = clearStatus == Status.Ok && ReferenceEquals(clearValue, MultiVersionMemory.SelfDestructMonit);
 
-                // Always record the clearKey dependency — even on a base-zero / not-found path
-                // — so a later concurrent SELFDESTRUCT-then-write to this slot is guaranteed to
-                // re-trigger validation. The original code only added the clearKey when the
-                // base value was non-zero, which audit B4 flagged as a stale-read window for
-                // base-zero slots that a later writer might fill before a clear.
+                // Always record the clearKey dependency so a later concurrent SELFDESTRUCT
+                // re-triggers validation, even on base-zero / not-found paths.
                 readSet.Add(new Read<ParallelStateKey>(clearKey, clearVersion));
 
                 if (valueStatus == Status.Ok)
