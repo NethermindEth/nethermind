@@ -259,7 +259,7 @@ public class BlockTreeTests
         blockTree.OnUpdateMainChain += (_, e) =>
         {
             ChainLevelInfoRepository freshRepo = new(_blocksInfosDb);
-            ChainLevelInfo? level = freshRepo.LoadLevel(e.Blocks[^1].Number);
+            ChainLevelInfo? level = freshRepo.LoadLevel(e.Headers[^1].Number);
             onUpdateDbObserved = level?.HasBlockOnMainChain == true;
         };
 
@@ -268,6 +268,63 @@ public class BlockTreeTests
         Assert.That(blockAddedDbObservations, Is.EqualTo(new[] { true, true }));
         Assert.That(newHeadDbObserved, Is.True);
         Assert.That(onUpdateDbObserved, Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_reorgs_to_header_loading_branch_blocks_from_store_without_preloading()
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        AddToMain(blockTree, block0);
+
+        // Branch A becomes canonical first.
+        Block a1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Block a2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(a1).TestObject;
+        foreach (Block block in new[] { a1, a2 })
+        {
+            blockTree.SuggestBlock(block);
+            blockTree.UpdateMainChain(new[] { block }, wereProcessed: true);
+        }
+
+        // Branch B is only suggested (present in the store, not on the main chain).
+        Block b1 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;
+        Block b2 = Build.A.Block.WithNumber(2).WithDifficulty(5).WithParent(b1).TestObject;
+        Block b3 = Build.A.Block.WithNumber(3).WithDifficulty(7).WithParent(b2).TestObject;
+        foreach (Block block in new[] { b1, b2, b3 }) blockTree.SuggestBlock(block);
+
+        List<long> addedToMain = [];
+        blockTree.BlockAddedToMain += (_, e) => addedToMain.Add(e.Block.Number);
+
+        // Reorg to b3 by header only - no preloaded blocks. TryUpdateMainChain must walk the branch and
+        // pull each full block from the store itself.
+        bool updated = blockTree.TryUpdateMainChain(b3.Header, wereProcessed: true, forceHeadBlock: true);
+
+        Assert.That(updated, Is.True);
+        Assert.That(blockTree.Head!.Hash, Is.EqualTo(b3.Hash));
+        Assert.That(blockTree.IsMainChain(b1.Header) && blockTree.IsMainChain(b2.Header) && blockTree.IsMainChain(b3.Header), Is.True, "branch B canonical");
+        Assert.That(blockTree.IsMainChain(a1.Header) || blockTree.IsMainChain(a2.Header), Is.False, "branch A no longer canonical");
+        Assert.That(addedToMain, Is.EqualTo(new long[] { 1, 2, 3 }), "BlockAddedToMain fired for each reorged block in order");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_returns_false_without_mutating_when_a_predecessor_is_missing()
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        AddToMain(blockTree, block0);
+        Block head1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        blockTree.SuggestBlock(head1);
+        blockTree.UpdateMainChain(new[] { head1 }, wereProcessed: true);
+
+        // A head whose ancestry is not present in the tree cannot be reorged to: the walk back to the main
+        // chain hits a missing predecessor and must bail out without mutating anything.
+        Block ghostParent = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject; // never added
+        Block newHead = Build.A.Block.WithNumber(2).WithDifficulty(5).WithParent(ghostParent).TestObject;
+
+        bool updated = blockTree.TryUpdateMainChain(newHead.Header, wereProcessed: true, forceHeadBlock: true);
+
+        Assert.That(updated, Is.False);
+        Assert.That(blockTree.Head!.Hash, Is.EqualTo(head1.Hash), "head unchanged after a failed reorg");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

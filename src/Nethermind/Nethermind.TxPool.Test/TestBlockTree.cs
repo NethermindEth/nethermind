@@ -85,6 +85,7 @@ internal class TestBlockTree : IBlockTree
     public bool IsKnownBlock(long number, Hash256 blockHash) => false;
     public bool IsKnownBeaconBlock(long number, Hash256 blockHash) => false;
     public bool WasProcessed(long number, Hash256 blockHash) => false;
+    public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null) => true;
     public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) { }
     public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) { }
     public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken) => Task.CompletedTask;

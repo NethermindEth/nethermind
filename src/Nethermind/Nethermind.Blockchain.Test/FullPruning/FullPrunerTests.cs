@@ -216,7 +216,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             INodeStorage.KeyScheme currentKeyScheme = INodeStorage.KeyScheme.HalfPath,
             INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current)
         {
-            BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
+            BlockTree.OnUpdateMainChain += (_, e) => _head = e.Headers[^1].Number;
             _clearPrunedDb = clearPrunedDb;
             TrieDb = new TestMemDb();
             CopyDb = new TestMemDb();
@@ -309,7 +309,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 Block head = Build.A.Block.WithStateRoot(_stateRoot).WithNumber(number).TestObject;
                 BlockTree.Head.Returns(head);
                 BlockTree.FindHeader(number).Returns(head.Header);
-                BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() { head }, true));
+                BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<BlockHeader>() { head.Header }, true));
                 Thread.Sleep(1); // Need to add a little sleep as the wait for event in full pruner is async.
             }
         }
