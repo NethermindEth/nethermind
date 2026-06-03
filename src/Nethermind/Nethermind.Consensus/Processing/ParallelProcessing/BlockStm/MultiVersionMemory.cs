@@ -77,38 +77,46 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         bool writeSetChanged = false;
 
         txData.Lock.EnterWriteLock();
-        foreach (KeyValuePair<TLocation, TData> write in writeSet)
+        try
         {
-            txData.Dictionary[write.Key] = new(incarnation, write.Value);
-        }
-
-        if (lastWritten.Count != 0)
-        {
-            using ArrayPoolListRef<TLocation> toRemove = new(lastWritten.Count);
-            foreach (TLocation id in lastWritten)
+            foreach (KeyValuePair<TLocation, TData> write in writeSet)
             {
-                if (!writeSet.ContainsKey(id))
+                txData.Dictionary[write.Key] = new(incarnation, write.Value);
+            }
+
+            if (lastWritten.Count != 0)
+            {
+                using ArrayPoolListRef<TLocation> toRemove = new(lastWritten.Count);
+                foreach (TLocation id in lastWritten)
                 {
-                    toRemove.Add(id);
+                    if (!writeSet.ContainsKey(id))
+                    {
+                        toRemove.Add(id);
+                    }
+                }
+
+                if (toRemove.Count > 0)
+                {
+                    writeSetChanged = true;
+                    foreach (TLocation id in toRemove)
+                    {
+                        lastWritten.Remove(id);
+                        txData.Dictionary.Remove(id, out _);
+                    }
                 }
             }
 
-            if (toRemove.Count > 0)
+            // Mutate lastWritten inside the write lock so concurrent enumerators (e.g. a
+            // ConvertWritesToEstimates that beats the status fence) don't see a torn HashSet.
+            foreach (TLocation key in writeSet.Keys)
             {
+                lastWritten.Add(key);
                 writeSetChanged = true;
-                foreach (TLocation id in toRemove)
-                {
-                    lastWritten.Remove(id);
-                    txData.Dictionary.Remove(id, out _);
-                }
             }
         }
-        txData.Lock.ExitWriteLock();
-
-        foreach (TLocation key in writeSet.Keys)
+        finally
         {
-            lastWritten.Add(key);
-            writeSetChanged = true;
+            txData.Lock.ExitWriteLock();
         }
 
         return writeSetChanged;

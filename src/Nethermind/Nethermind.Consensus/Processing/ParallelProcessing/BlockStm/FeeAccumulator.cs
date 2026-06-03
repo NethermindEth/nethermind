@@ -133,13 +133,18 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
     /// <summary>
     /// Clears the fee for a transaction. Used when a transaction is re-executed.
     /// </summary>
+    /// <remarks>
+    /// The committed flag is cleared FIRST so concurrent <see cref="GetAccumulatedFees"/>
+    /// readers — which gate their non-atomic UInt256 read on <see cref="IsCommitted"/> —
+    /// cannot observe a torn read of the half-zeroed fee slot.
+    /// </remarks>
     /// <param name="txIndex">Transaction index</param>
     public void ClearFee(int txIndex)
     {
-        _gasBeneficiaryFees[txIndex] = UInt256.Zero;
-        _feeCollectorFees[txIndex] = UInt256.Zero;
         Interlocked.Exchange(ref _committed[txIndex], false);
         Volatile.Write(ref _gasBeneficiaryCreates[txIndex], false);
+        _gasBeneficiaryFees[txIndex] = UInt256.Zero;
+        _feeCollectorFees[txIndex] = UInt256.Zero;
     }
 
     public FeeRecipientKind GetFeeKind(Address recipient) =>
