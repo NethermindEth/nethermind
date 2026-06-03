@@ -110,8 +110,6 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             api.LogManager, api.JsonRpcLocalStats!, api.EthereumJsonSerializer, api.FileSystem);
         jsonIpcRunner.Start(cancellationToken);
 
-        // LIFO dispose: push after the stores so Kestrel drains in-flight requests
-        // before DBs/world state are torn down (#6597).
         api.DisposeStack.Push(jsonRpcRunner);
         api.DisposeStack.Push(jsonIpcRunner);
     }
