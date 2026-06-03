@@ -11,19 +11,11 @@ namespace Nethermind.Core;
 
 /// <summary>
 /// Wraps a <see cref="ProgressLogger"/> with a periodic timer that drives <see cref="ProgressLogger.LogProgress"/>
-/// on a wall-clock interval and guarantees <see cref="ProgressLogger.MarkEnd"/> on disposal.
+/// and ends the logger on disposal.
 /// </summary>
 /// <remarks>
-/// Replaces the recurring <c>Reset</c> → <c>new Timer(...)</c> → <c>try/finally MarkEnd</c> pattern at long-running
-/// operation callsites. Update <see cref="ProgressLogger.CurrentValue"/> via <see cref="Update"/> from the work loop;
-/// the timer reads it on each tick. Access the underlying <see cref="ProgressLogger"/> via <see cref="Logger"/> for
-/// custom formatting (<see cref="ProgressLogger.SetFormat"/>) or skipped/queued counters.
-///
-/// All calls into the wrapped <see cref="ProgressLogger"/> are serialised via an internal lock so that
-/// <see cref="Update"/> on the work thread and timer-fired <see cref="ProgressLogger.LogProgress"/> on a
-/// thread-pool thread do not race on its (non-thread-safe) internal fields. The same lock guarantees that
-/// any in-flight timer callback completes before <see cref="Dispose"/> emits the final "done" line, which
-/// <see cref="Timer.Stop"/> alone does not — queued callbacks can land after <c>Stop</c> returns.
+/// All access to the inner <see cref="ProgressLogger"/> is locked: <see cref="Update"/> from the work thread races
+/// timer-fired <see cref="ProgressLogger.LogProgress"/>, and <see cref="Timer.Stop"/> doesn't drain in-flight ticks.
 /// </remarks>
 public sealed class ProgressReporter : IDisposable
 {
@@ -59,9 +51,6 @@ public sealed class ProgressReporter : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _timer.Stop();
         _timer.Dispose();
-        // Any in-flight Elapsed callback may still be running on a thread-pool thread; acquiring the
-        // lock blocks until it returns. Late callbacks that fire after this point will dedup against
-        // the terminal _lastReportState we're about to set.
         lock (_progressLogger)
         {
             _progressLogger.MarkEnd();
