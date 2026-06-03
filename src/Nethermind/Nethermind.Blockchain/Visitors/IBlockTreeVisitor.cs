@@ -13,7 +13,6 @@ namespace Nethermind.Blockchain.Visitors
     {
         void IDisposable.Dispose() { }
 
-
         /// <summary>
         /// Gives a hint to block tree that accepting new blocks should be halted for the length of the visit.
         /// </summary>

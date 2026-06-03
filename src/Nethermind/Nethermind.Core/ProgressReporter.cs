@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Timers;
 using Nethermind.Logging;
 using Timer = System.Timers.Timer;
 
@@ -17,6 +18,12 @@ namespace Nethermind.Core;
 /// operation callsites. Update <see cref="ProgressLogger.CurrentValue"/> via <see cref="Update"/> from the work loop;
 /// the timer reads it on each tick. Access the underlying <see cref="ProgressLogger"/> via <see cref="Logger"/> for
 /// custom formatting (<see cref="ProgressLogger.SetFormat"/>) or skipped/queued counters.
+///
+/// All calls into the wrapped <see cref="ProgressLogger"/> are serialised via an internal lock so that
+/// <see cref="Update"/> on the work thread and timer-fired <see cref="ProgressLogger.LogProgress"/> on a
+/// thread-pool thread do not race on its (non-thread-safe) internal fields. The same lock guarantees that
+/// any in-flight timer callback completes before <see cref="Dispose"/> emits the final "done" line, which
+/// <see cref="Timer.Stop"/> alone does not — queued callbacks can land after <c>Stop</c> returns.
 /// </remarks>
 public sealed class ProgressReporter : IDisposable
 {
@@ -31,20 +38,34 @@ public sealed class ProgressReporter : IDisposable
         _progressLogger = new ProgressLogger(prefix, logManager);
         _progressLogger.Reset(0, total);
         _timer = new Timer((interval ?? DefaultInterval).TotalMilliseconds);
-        _timer.Elapsed += (_, _) => _progressLogger.LogProgress();
+        _timer.Elapsed += OnElapsed;
         _timer.Enabled = true;
     }
 
     public ProgressLogger Logger => _progressLogger;
 
-    public void Update(long value) => _progressLogger.Update(value);
+    public void Update(long value)
+    {
+        lock (_progressLogger) _progressLogger.Update(value);
+    }
+
+    private void OnElapsed(object? sender, ElapsedEventArgs e)
+    {
+        lock (_progressLogger) _progressLogger.LogProgress();
+    }
 
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _timer.Stop();
         _timer.Dispose();
-        _progressLogger.MarkEnd();
-        _progressLogger.LogProgress();
+        // Any in-flight Elapsed callback may still be running on a thread-pool thread; acquiring the
+        // lock blocks until it returns. Late callbacks that fire after this point will dedup against
+        // the terminal _lastReportState we're about to set.
+        lock (_progressLogger)
+        {
+            _progressLogger.MarkEnd();
+            _progressLogger.LogProgress();
+        }
     }
 }
