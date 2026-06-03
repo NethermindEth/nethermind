@@ -9,76 +9,32 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
-/// <summary>
-/// Regression tests for the JSON-RPC shutdown ordering bug (#6597) where
-/// <c>trace_replayBlockTransactions</c> could throw <see cref="ObjectDisposedException"/> because the
-/// underlying database was disposed while an in-flight request was still reading from it.
-/// </summary>
-/// <remarks>
-/// The fix pushes the JSON-RPC server (an <see cref="IAsyncDisposable"/>) onto the dispose stack instead
-/// of a fire-and-forget <see cref="IDisposable"/> wrapper, so the disposer awaits the request drain to
-/// completion before the stores registered earlier are disposed. These tests pin that contract against
-/// the real Autofac disposer that <see cref="AutofacDisposableStack"/> wraps.
-/// </remarks>
+// Regression for #6597: trace_replayBlockTransactions could observe a disposed DB during shutdown because the
+// JSON-RPC server teardown was fire-and-forget. The fix pushes the server (IAsyncDisposable) onto the dispose
+// stack so the disposer awaits the request drain before the stores registered earlier are disposed.
 [Parallelizable(ParallelScope.Self)]
 public class DisposableStackShutdownOrderingTests
 {
     [Test]
-    public async Task AsyncTeardown_pushed_after_store_completes_before_store_is_disposed()
-    {
-        await using ILifetimeScope scope = new ContainerBuilder().Build();
-        AutofacDisposableStack disposeStack = new(scope);
-
-        TaskCompletionSource drainEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource releaseDrain = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        bool storeDisposed = false;
-        bool drainFinishedBeforeStoreDisposed = false;
-
-        // Mimics a DB / store: registered first, so it disposes last (LIFO).
-        disposeStack.Push(new Reactive.AnonymousDisposable(() => storeDisposed = true));
-
-        // Mimics the JSON-RPC server graceful drain: registered last, so it disposes first.
-        disposeStack.Push(new AsyncDisposableAction(async () =>
-        {
-            drainEntered.SetResult();
-            await releaseDrain.Task;
-            drainFinishedBeforeStoreDisposed = !storeDisposed;
-        }));
-
-        ValueTask disposeTask = scope.DisposeAsync();
-
-        // Wait until the drain is actually running before asserting. Otherwise the test would pass even
-        // under a hypothetical disposer that hadn't started the async teardown yet.
-        await drainEntered.Task;
-        Assert.That(storeDisposed, Is.False, "the store must stay alive until the in-flight request drain finishes");
-
-        releaseDrain.SetResult();
-        await disposeTask;
-
-        Assert.That(drainFinishedBeforeStoreDisposed, Is.True);
-        Assert.That(storeDisposed, Is.True);
-    }
-
-    [Test]
-    public async Task InFlight_reader_does_not_observe_store_disposed_during_async_teardown()
+    public async Task In_flight_reader_does_not_observe_store_disposed_during_async_teardown()
     {
         await using ILifetimeScope scope = new ContainerBuilder().Build();
         AutofacDisposableStack disposeStack = new(scope);
 
         FakeStore store = new();
         TaskCompletionSource readerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        using ManualResetEventSlim releaseReader = new();
+        TaskCompletionSource releaseReader = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Exception? readerError = null;
 
         disposeStack.Push(store);
 
-        // The server teardown drains the in-flight reader before returning, just like Kestrel's graceful stop.
+        // The server teardown drains the in-flight reader before returning, like Kestrel's graceful stop.
         disposeStack.Push(new AsyncDisposableAction(async () =>
         {
-            Task reader = Task.Run(() =>
+            Task reader = Task.Run(async () =>
             {
                 readerStarted.SetResult();
-                releaseReader.Wait();
+                await releaseReader.Task;
                 try
                 {
                     store.Read();
@@ -90,11 +46,11 @@ public class DisposableStackShutdownOrderingTests
             });
 
             await readerStarted.Task;
-            releaseReader.Set();
+            releaseReader.SetResult();
             await reader;
         }));
 
-        await scope.DisposeAsync();
+        await scope.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.That(readerError, Is.Null, "the store must not be disposed while a request is still reading from it");
         Assert.That(store.Disposed, Is.True);

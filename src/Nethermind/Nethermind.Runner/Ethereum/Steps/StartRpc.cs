@@ -82,7 +82,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         Bootstrap.Instance.JsonRpcLocalStats = api.JsonRpcLocalStats!;
         Bootstrap.Instance.JsonRpcAuthentication = auth;
 
-        JsonRpcRunner? jsonRpcRunner = new(
+        JsonRpcRunner jsonRpcRunner = new(
             jsonRpcProcessor,
             jsonRpcUrlCollection,
             webSocketsManager!,
@@ -97,21 +97,21 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             api.SyncPeerPool,
             api.MainProcessingContext);
 
-        await jsonRpcRunner.Start(cancellationToken).ContinueWith(x =>
+        try
         {
-            if (x.IsFaulted && logger.IsError)
-                logger.Error("Error during jsonRpc runner start", x.Exception);
-        }, cancellationToken);
+            await jsonRpcRunner.Start(cancellationToken);
+        }
+        catch (Exception e) when (logger.IsError)
+        {
+            logger.Error("Error during jsonRpc runner start", e);
+        }
 
         JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, api.ConfigProvider,
             api.LogManager, api.JsonRpcLocalStats!, api.EthereumJsonSerializer, api.FileSystem);
         jsonIpcRunner.Start(cancellationToken);
 
-        // Drain in-flight JSON-RPC requests before the rest of the dispose stack (DBs, block tree, world state)
-        // is torn down. The disposer runs registered disposables in LIFO order and awaits each async one, so
-        // pushing this after the stores were registered guarantees Kestrel's graceful shutdown completes before
-        // those stores are closed - otherwise a long-running request (e.g. trace_replayBlockTransactions) can read
-        // an already-disposed database and throw ObjectDisposedException.
+        // LIFO dispose: push after the stores so Kestrel drains in-flight requests
+        // before DBs/world state are torn down (#6597).
         api.DisposeStack.Push(jsonRpcRunner);
         api.DisposeStack.Push(jsonIpcRunner);
     }

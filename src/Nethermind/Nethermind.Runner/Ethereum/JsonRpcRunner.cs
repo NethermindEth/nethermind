@@ -61,9 +61,12 @@ namespace Nethermind.Runner.Ethereum
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ISyncPeerPool _syncPeerPool = syncPeerPool;
         private readonly IMainProcessingContext _mainProcessingContext = mainProcessingContext;
+        private int _disposed;
 
         public async Task Start(CancellationToken cancellationToken)
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
+
             if (_logger.IsDebug) _logger.Debug("Initializing JSON RPC");
             string[] urls = _jsonRpcUrlCollection.Urls;
             WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions
@@ -133,14 +136,18 @@ namespace Nethermind.Runner.Ethereum
 
         public async ValueTask DisposeAsync()
         {
+            if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+
+            // WebHost.DisposeAsync awaits StopAsync (which has its own 60 s graceful-drain cap, see WebHost.cs)
+            // and then disposes the Kestrel service provider. StopAsync alone would leak the service provider.
             try
             {
-                await (_webApp?.StopAsync() ?? Task.CompletedTask);
+                if (_webApp is not null) await _webApp.DisposeAsync();
                 if (_logger.IsInfo) _logger.Info("JSON RPC service stopped");
             }
             catch (Exception e)
             {
-                if (_logger.IsInfo) _logger.Info($"Error when stopping JSON RPC service: {e}");
+                if (_logger.IsError) _logger.Error("Error when stopping JSON RPC service", e);
             }
         }
     }
