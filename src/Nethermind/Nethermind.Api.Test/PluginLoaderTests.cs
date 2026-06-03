@@ -186,7 +186,7 @@ public class PluginLoaderTests
     }
 
 
-    private class AnotherAura() : IConsensusPlugin
+    private class AnotherAura() : IConsensusPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
     {
         public string Name => "TestPlugin2";
         public string Description => "TestPlugin2";

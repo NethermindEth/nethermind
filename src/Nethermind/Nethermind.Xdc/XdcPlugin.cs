@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
+public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
 {
     private INethermindApi _nethermindApi;
     public const string Xdc = "Xdc";

@@ -40,7 +40,7 @@ using Nethermind.Optimism.CL.Derivation;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
+public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
 {
     public string Author => "Nethermind";
     public string Name => "Optimism";

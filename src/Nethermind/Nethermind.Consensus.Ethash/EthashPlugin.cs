@@ -12,7 +12,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashPlugin(ChainSpec chainSpec, IMiningConfig miningConfig) : IConsensusPlugin
+    public class EthashPlugin(ChainSpec chainSpec, IMiningConfig miningConfig) : IConsensusPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
     {
         private INethermindApi _nethermindApi;
 

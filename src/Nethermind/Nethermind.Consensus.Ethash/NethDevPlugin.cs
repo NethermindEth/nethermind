@@ -15,7 +15,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class NethDevPlugin(ChainSpec chainSpec) : IConsensusPlugin
+    public class NethDevPlugin(ChainSpec chainSpec) : IConsensusPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
     {
         public const string NethDev = "NethDev";
         private INethermindApi? _nethermindApi;

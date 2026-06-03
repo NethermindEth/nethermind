@@ -17,7 +17,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliquePlugin(ChainSpec chainSpec) : IConsensusPlugin
+    public class CliquePlugin(ChainSpec chainSpec) : IConsensusPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
     {
         public string Name => SealEngineType;
 

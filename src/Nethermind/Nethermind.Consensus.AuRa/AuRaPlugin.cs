@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa
     /// <summary>
     /// Consensus plugin for AuRa setup.
     /// </summary>
-    public class AuRaPlugin(ChainSpec chainSpec) : IConsensusPlugin
+    public class AuRaPlugin(ChainSpec chainSpec) : IConsensusPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
     {
         private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;

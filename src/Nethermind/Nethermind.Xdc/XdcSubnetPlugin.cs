@@ -11,10 +11,10 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-public class XdcSubnetPlugin(ChainSpec chainSpec) : IConsensusPlugin
+public class XdcSubnetPlugin(ChainSpec chainSpec) : IConsensusPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
 {
     private INethermindApi _nethermindApi;
-    private IConsensusPlugin _xdcPlugin = new XdcPlugin(chainSpec);
+    private XdcPlugin _xdcPlugin = new(chainSpec);
 
     public const string XdcSubnet = "XdcSubnet";
     public string Author => "Nethermind";

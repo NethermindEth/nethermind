@@ -45,7 +45,7 @@ using Nethermind.Taiko.ZkGas;
 
 namespace Nethermind.Taiko;
 
-public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
+public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
 {
     public const string Taiko = "Taiko";
     public string Author => "Nethermind";

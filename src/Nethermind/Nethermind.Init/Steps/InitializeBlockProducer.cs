@@ -33,8 +33,10 @@ namespace Nethermind.Init.Steps
 
             IConsensusPlugin consensusPlugin = _api.GetConsensusPlugin()
                 ?? throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
-            IBlockProducerFactory blockProducerFactory = consensusPlugin;
-            IBlockProducerRunnerFactory blockProducerRunnerFactory = consensusPlugin;
+            IBlockProducerFactory blockProducerFactory = consensusPlugin as IBlockProducerFactory
+                ?? throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
+            IBlockProducerRunnerFactory blockProducerRunnerFactory = consensusPlugin as IBlockProducerRunnerFactory
+                ?? throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
 
             foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins()
                          .OrderBy(static (p) => p.Priority))
