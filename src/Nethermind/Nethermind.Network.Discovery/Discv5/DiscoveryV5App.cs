@@ -281,19 +281,19 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
                     continue;
                 }
 
-                if (enrs.Count is 0)
+                PublicKey? publicKey = GetPublicKeyFromEnr(enr);
+                if (publicKey is null)
                 {
-                    migrateBatch = _discoveryDb.StartWriteBatch();
-                    deleteBatch = _legacyDiscoveryDb.StartWriteBatch();
+                    deleteBatch ??= _legacyDiscoveryDb.StartWriteBatch();
+                    deleteBatch[kv.Key] = null;
+                    continue;
                 }
 
+                migrateBatch ??= _discoveryDb.StartWriteBatch();
+                deleteBatch ??= _legacyDiscoveryDb.StartWriteBatch();
                 enrs.Add(enr);
-                PublicKey? publicKey = GetPublicKeyFromEnr(enr);
-                if (publicKey is not null)
-                {
-                    migrateBatch![publicKey.Hash.Bytes] = kv.Value;
-                    deleteBatch![kv.Key] = null;
-                }
+                migrateBatch[publicKey.Hash.Bytes] = kv.Value;
+                deleteBatch[kv.Key] = null;
             }
         }
         finally

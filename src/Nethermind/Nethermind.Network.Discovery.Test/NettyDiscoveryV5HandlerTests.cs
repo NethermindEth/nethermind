@@ -70,8 +70,15 @@ namespace Nethermind.Network.Discovery.Test
             Assert.That(await readTask, Is.True);
             PooledUdpReceiveResult forwardedPacket = enumerator.Current;
 
-            Assert.That(forwardedPacket.Buffer.ToArray(), Is.EqualTo(data));
-            Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(from));
+            try
+            {
+                Assert.That(forwardedPacket.Buffer.ToArray(), Is.EqualTo(data));
+                Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(from));
+            }
+            finally
+            {
+                forwardedPacket.Dispose();
+            }
         }
 
         [Test]
@@ -95,8 +102,15 @@ namespace Nethermind.Network.Discovery.Test
             Assert.That(await readTask, Is.True);
             PooledUdpReceiveResult forwardedPacket = enumerator.Current;
 
-            Assert.That(forwardedPacket.Buffer.ToArray(), Is.EqualTo(data));
-            Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(expectedFrom));
+            try
+            {
+                Assert.That(forwardedPacket.Buffer.ToArray(), Is.EqualTo(data));
+                Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(expectedFrom));
+            }
+            finally
+            {
+                forwardedPacket.Dispose();
+            }
         }
 
         [TestCase(0)]
@@ -122,7 +136,16 @@ namespace Nethermind.Network.Discovery.Test
             _handler.Close();
 
             Assert.That(await readTask, Is.True);
-            Assert.That(enumerator.Current.Buffer.ToArray(), Is.EqualTo(data));
+            PooledUdpReceiveResult forwardedPacket = enumerator.Current;
+            try
+            {
+                Assert.That(forwardedPacket.Buffer.ToArray(), Is.EqualTo(data));
+            }
+            finally
+            {
+                forwardedPacket.Dispose();
+            }
+
             Assert.That(await enumerator.MoveNextAsync(), Is.False);
         }
 

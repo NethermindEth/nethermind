@@ -37,6 +37,7 @@ public class KademliaAdapter(
     private const int MaxResponseHandlers = 1_024;
     private const int MaxKnownRecords = 16_384;
     private const int MaxEndpointChecks = 4_096;
+    private const int PacketWorkerCount = 4;
     private const long SentChallengeTtlMilliseconds = 60_000;
     private const long EndpointCheckTtlMilliseconds = 60_000;
     private static readonly TimeSpan ChallengeRateLimitWindow = TimeSpan.FromMilliseconds(100);
@@ -140,11 +141,29 @@ public class KademliaAdapter(
 
     public async Task RunAsync(CancellationToken token)
     {
+        Task[] workers = new Task[PacketWorkerCount];
+        for (int i = 0; i < workers.Length; i++)
+        {
+            workers[i] = RunPacketWorkerAsync(token);
+        }
+
+        await Task.WhenAll(workers);
+    }
+
+    private async Task RunPacketWorkerAsync(CancellationToken token)
+    {
         try
         {
             await foreach (PooledUdpReceiveResult result in discoveryHandler.ReadMessagesAsync(token))
             {
-                await HandlePacket(result, token);
+                try
+                {
+                    await HandlePacket(result, token);
+                }
+                finally
+                {
+                    result.Dispose();
+                }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)

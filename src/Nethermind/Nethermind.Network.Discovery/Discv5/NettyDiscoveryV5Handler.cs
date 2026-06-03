@@ -69,29 +69,22 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel? channe
         {
             await foreach (DatagramPacket packet in _inboundQueue.Reader.ReadAllAsync(token))
             {
-                PooledUdpReceiveResult receiveResult = default;
-                bool hasReceiveResult = false;
                 try
                 {
-                    receiveResult = CreateReceiveResult(packet);
-                    hasReceiveResult = true;
-                    yield return receiveResult;
+                    yield return CreateReceiveResult(packet);
                 }
                 finally
                 {
-                    if (hasReceiveResult)
-                    {
-                        receiveResult.Dispose();
-                    }
-
                     ReferenceCountUtil.Release(packet);
                 }
             }
         }
         finally
         {
-            Interlocked.Decrement(ref _activeReaders);
-            ReleaseQueuedPackets();
+            if (Interlocked.Decrement(ref _activeReaders) == 0)
+            {
+                ReleaseQueuedPackets();
+            }
         }
     }
 
