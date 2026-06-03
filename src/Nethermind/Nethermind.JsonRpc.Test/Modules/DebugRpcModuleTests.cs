@@ -186,18 +186,23 @@ public partial class DebugRpcModuleTests
         object? stateOverride = JsonSerializer.Deserialize<object>(
             """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
 
-        // No gas field — should default to gasCap, not blockGasLimit
-        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+        string omittedGasResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { to = "0xc200000000000000000000000000000000000000" },
             null,
             new { stateOverrides = stateOverride }
         );
 
-        UInt256 gasAvailable = ParseReturnValue(response).ToUInt256();
-        Assert.That(
-            gasAvailable > (UInt256)blockGasLimit,
-            Is.True,
-            $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+        string explicitGasCapResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = "0xc200000000000000000000000000000000000000", gas = $"0x{gasCap:x}" },
+            null,
+            new { stateOverrides = stateOverride }
+        );
+
+        UInt256 omittedGasAvailable = ParseReturnValue(omittedGasResponse).ToUInt256();
+        UInt256 explicitGasCapAvailable = ParseReturnValue(explicitGasCapResponse).ToUInt256();
+
+        Assert.That(omittedGasAvailable, Is.EqualTo(explicitGasCapAvailable));
+        Assert.That(omittedGasAvailable > (UInt256)blockGasLimit, Is.True);
     }
 
     [Test]
