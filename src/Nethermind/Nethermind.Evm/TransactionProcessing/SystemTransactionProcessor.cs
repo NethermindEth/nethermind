@@ -31,6 +31,9 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
+        // System txs are never routed through the parallel STM path, so the base class's
+        // FeeRecorder seam is intentionally left null here — system fee transfers must hit
+        // the real WorldState immediately.
         : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager) => _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)

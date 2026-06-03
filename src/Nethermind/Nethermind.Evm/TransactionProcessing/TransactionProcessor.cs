@@ -32,8 +32,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager,
-        bool parallel = false)
-        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
+        bool parallel = false,
+        IFeeRecorder? feeRecorder = null)
+        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel, feeRecorder)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options, in IntrinsicGas<TGasPolicy> intrinsicGas)
@@ -49,8 +50,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager)
-        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+        ILogManager? logManager,
+        IFeeRecorder? feeRecorder = null)
+        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, feeRecorder);
 
     public class BlobBaseFeeCalculator : ITransactionProcessor.IBlobBaseFeeCalculator
     {
@@ -85,6 +87,15 @@ namespace Nethermind.Evm.TransactionProcessing
         private long _blockCumulativeRegularGas;
         private long _blockCumulativeStateGas;
 
+        /// <summary>
+        /// When non-null, intercepts gas-beneficiary / fee-collector credits in
+        /// <see cref="PayFees"/> and routes them through this recorder instead of writing
+        /// directly to <see cref="WorldState"/>. Block-STM sets this via
+        /// <c>ParallelFeeRecorder</c> to break the otherwise-universal write-after-write
+        /// dependency on coinbase and the fee collector. Null in non-parallel paths.
+        /// </summary>
+        protected IFeeRecorder? FeeRecorder { get; }
+
         protected TransactionProcessorBase(
             ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
             ISpecProvider? specProvider,
@@ -92,7 +103,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IVirtualMachine<TGasPolicy>? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
             ILogManager? logManager,
-            bool parallel = false)
+            bool parallel = false,
+            IFeeRecorder? feeRecorder = null)
         {
             ArgumentNullException.ThrowIfNull(logManager);
             ArgumentNullException.ThrowIfNull(specProvider);
@@ -112,6 +124,7 @@ namespace Nethermind.Evm.TransactionProcessing
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
             _parallel = parallel;
+            FeeRecorder = feeRecorder;
         }
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -1485,10 +1498,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // n.b. destroyed accounts already set to zero balance
             // EIP-8037: always pay coinbase — deferred finalization will burn the balance
             bool gasBeneficiaryNotDestroyed = !substate.DestroyListContains(header.GasBeneficiary);
-            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed || spec.IsEip8037Enabled)
-            {
-                WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
-            }
+            bool payBeneficiary = statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed || spec.IsEip8037Enabled;
 
             UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
             UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
@@ -1498,9 +1508,36 @@ namespace Nethermind.Evm.TransactionProcessing
                 collectedFees += blobBaseFee;
             }
 
-            if (spec.FeeCollector is not null && !collectedFees.IsZero)
+            if (FeeRecorder is not null)
             {
-                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+                // Block-STM path: divert the gas beneficiary and fee collector credits into
+                // the recorder (FeeAccumulator behind the scenes). This breaks the W-A-W
+                // dependency every tx would otherwise create on those addresses. The eventual
+                // crediting to WorldState happens once at PushChanges time via
+                // ApplyAccumulatedFees, summing per-tx deltas and applying them outside the
+                // parallel critical section.
+                if (header.GasBeneficiary is not null)
+                {
+                    UInt256 payableFees = payBeneficiary ? fees : UInt256.Zero;
+                    FeeRecorder.RecordFee(header.GasBeneficiary, in payableFees, payBeneficiary);
+                }
+
+                if (spec.FeeCollector is not null)
+                {
+                    FeeRecorder.RecordFee(spec.FeeCollector, in collectedFees, !collectedFees.IsZero);
+                }
+            }
+            else
+            {
+                if (payBeneficiary)
+                {
+                    WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+                }
+
+                if (spec.FeeCollector is not null && !collectedFees.IsZero)
+                {
+                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+                }
             }
 
             if (tracer.IsTracingFees)
@@ -1703,8 +1740,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager)
-        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+        ILogManager? logManager,
+        IFeeRecorder? feeRecorder = null)
+        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel: false, feeRecorder);
 
     public readonly struct TransactionResult : IEquatable<TransactionResult>
     {
