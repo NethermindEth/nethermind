@@ -328,9 +328,31 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         long gasCap = blockGasLimit * 10;
         _container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
-        CallResultWithProof result = await TestCallWithCode(code);
+        (IWorldState _, Hash256 root) = CreateInitialState(code);
 
-        Assert.That(result.Result.ToUInt256(), Is.GreaterThan((UInt256)blockGasLimit));
+        Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
+        BlockTreeBuilder.AddBlock(_blockTree, block);
+        Block blockOnTop = Build.A.Block.WithParent(block).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
+        BlockTreeBuilder.AddBlock(_blockTree, blockOnTop);
+
+        TransactionForRpc txWithoutGas = new LegacyTransactionForRpc
+        {
+            To = TestItem.AddressB,
+            GasPrice = useNonZeroGasPrice ? 10.GWei : 0
+        };
+
+        TransactionForRpc txWithExplicitGasCap = new LegacyTransactionForRpc
+        {
+            To = TestItem.AddressB,
+            Gas = gasCap,
+            GasPrice = useNonZeroGasPrice ? 10.GWei : 0
+        };
+
+        CallResultWithProof omittedGasResult = _proofRpcModule.proof_call(txWithoutGas, new BlockParameter(blockOnTop.Number)).Data;
+        CallResultWithProof explicitGasCapResult = _proofRpcModule.proof_call(txWithExplicitGasCap, new BlockParameter(blockOnTop.Number)).Data;
+
+        Assert.That(omittedGasResult.Result, Is.EqualTo(explicitGasCapResult.Result));
+        Assert.That(omittedGasResult.Result.ToUInt256(), Is.GreaterThan((UInt256)blockGasLimit));
     }
 
     [TestCase]
