@@ -80,14 +80,11 @@ public partial class BlockProcessor(
         if (_balManager.BatchReadEnabled && suggestedBlock.BlockAccessList is not null)
             _ = _stateProvider.HintBal(suggestedBlock.BlockAccessList);
 
-        InclusionListValidation ilValidation = blockValidator.BeginInclusionListValidation(suggestedBlock, _stateProvider, options);
-
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
-
-        ilValidation.Commit(block, suggestedBlock);
+        blockValidator.CheckInclusionList(block, suggestedBlock, _stateProvider, options);
 
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {

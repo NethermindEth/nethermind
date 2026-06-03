@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.State;
@@ -15,9 +14,8 @@ public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
     bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true);
     bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error);
     bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error);
-    bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState);
 
-    /// <summary>Snapshots IL-sender parent state before block processing; the returned token
-    /// runs the EIP-7805 check on <c>Commit</c> after processing.</summary>
-    InclusionListValidation BeginInclusionListValidation(Block suggestedBlock, IWorldState worldState, ProcessingOptions options);
+    /// <summary>Runs the EIP-7805 IL satisfaction check post-execution and stamps the verdict
+    /// on <paramref name="suggestedBlock"/>; no-op when IL is gated off.</summary>
+    void CheckInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options);
 }

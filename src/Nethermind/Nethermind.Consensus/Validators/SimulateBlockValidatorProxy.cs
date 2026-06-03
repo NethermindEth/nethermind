@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -35,9 +34,6 @@ public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : I
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
         baseBlockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out error);
 
-    public bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState) =>
-        baseBlockValidator.ValidateInclusionList(block, parentSenderState);
-
-    public InclusionListValidation BeginInclusionListValidation(Block suggestedBlock, IWorldState worldState, ProcessingOptions options) =>
-        baseBlockValidator.BeginInclusionListValidation(suggestedBlock, worldState, options);
+    public void CheckInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options) =>
+        baseBlockValidator.CheckInclusionList(processedBlock, suggestedBlock, worldState, options);
 }

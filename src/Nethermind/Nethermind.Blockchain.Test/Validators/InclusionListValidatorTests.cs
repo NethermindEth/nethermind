@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -10,14 +9,14 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
 public class InclusionListValidatorTests
 {
-    private readonly Dictionary<AddressAsKey, AccountSnapshot> ParentSenderState = new() { [TestItem.AddressA] = new AccountSnapshot(10.Ether, 0) };
-
+    private IAccountStateProvider _state = null!;
     private ISpecProvider _specProvider = null!;
     private Transaction _validTx = null!;
 
@@ -25,6 +24,7 @@ public class InclusionListValidatorTests
     public void Setup()
     {
         _specProvider = new CustomSpecProvider(((ForkActivation)0, Bogota.Instance));
+        _state = StateWith(TestItem.AddressA, 10.Ether, (UInt256)0);
 
         _validTx = Build.A.Transaction
             .WithGasLimit(100_000)
@@ -45,7 +45,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -58,7 +58,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -70,7 +70,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.False);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.False);
     }
 
     [Test]
@@ -81,7 +81,7 @@ public class InclusionListValidatorTests
             .WithGasUsed(1_000_000)
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, new Dictionary<AddressAsKey, AccountSnapshot>(), _specProvider.GetSpec(block.Header)), Is.False);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.False);
     }
 
     [Test]
@@ -95,7 +95,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, preBogotaSpec), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, preBogotaSpec), Is.True);
     }
 
     [Test]
@@ -116,7 +116,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([expensiveTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -137,7 +137,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([futureNonceTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -159,7 +159,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([lowGasPriceTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -180,7 +180,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([wideTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -204,7 +204,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx, invalidTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -216,15 +216,16 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, new Dictionary<AddressAsKey, AccountSnapshot>(), _specProvider.GetSpec(block.Header)), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     /// <summary>
-    /// Censorship regression: a same-nonce non-IL replacement tx must NOT make the IL look
-    /// satisfied (which would happen under post-execution-state validation).
+    /// Spec semantics: the IL satisfaction rule is evaluated against post-execution state.
+    /// A same-nonce non-IL tx that lands first consumes the nonce, so the IL tx is no
+    /// longer appendable and the block is accepted.
     /// </summary>
     [Test]
-    public void Same_nonce_replacement_tx_does_not_let_builder_skip_il_tx()
+    public void Same_nonce_replacement_tx_advances_nonce_and_satisfies_il()
     {
         // Replacement: same sender + nonce as `_validTx` but different recipient.
         Transaction replacement = Build.A.Transaction
@@ -243,7 +244,9 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.False);
+        // Post-execution: AddressA's nonce moved to 1, so _validTx (nonce 0) is no longer appendable.
+        IAccountStateProvider postExec = StateWith(TestItem.AddressA, 10.Ether, (UInt256)1);
+        Assert.That(InclusionListValidator.IsSatisfied(block, postExec, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     /// <summary>
@@ -271,6 +274,17 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([eip1559Tx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, ParentSenderState, _specProvider.GetSpec(block.Header)), Is.False);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.False);
+    }
+
+    private static IAccountStateProvider StateWith(Address sender, UInt256 balance, UInt256 nonce)
+    {
+        IAccountStateProvider state = Substitute.For<IAccountStateProvider>();
+        state.TryGetAccount(sender, out Arg.Any<AccountStruct>()).Returns(call =>
+        {
+            call[1] = new AccountStruct(nonce, balance);
+            return true;
+        });
+        return state;
     }
 }

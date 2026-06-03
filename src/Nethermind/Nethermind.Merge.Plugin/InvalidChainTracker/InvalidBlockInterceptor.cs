@@ -6,7 +6,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -21,11 +20,8 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => blockValidator.ValidateOrphanedBlock(block, out error);
 
-    public bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState) =>
-        blockValidator.ValidateInclusionList(block, parentSenderState);
-
-    public InclusionListValidation BeginInclusionListValidation(Block suggestedBlock, IWorldState worldState, ProcessingOptions options) =>
-        blockValidator.BeginInclusionListValidation(suggestedBlock, worldState, options);
+    public void CheckInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options) =>
+        blockValidator.CheckInclusionList(processedBlock, suggestedBlock, worldState, options);
 
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {

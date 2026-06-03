@@ -23,8 +23,7 @@ public class TestBlockValidator(bool suggestedValidationResult = true) : IBlockV
     public bool ValidateWithdrawals(Block block, out string? error) => Validate(out error);
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => Validate(out error);
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) => Validate(out error);
-    public bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState) => Validate(out _);
-    public InclusionListValidation BeginInclusionListValidation(Block suggestedBlock, IWorldState worldState, ProcessingOptions options) => InclusionListValidation.NoOp;
+    public void CheckInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options) { }
     private bool Validate(out string? error)
     {
         bool result = _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();

@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
@@ -150,6 +148,19 @@ public class BlockValidator(
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock) =>
         ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
 
+    /// <inheritdoc/>
+    public void CheckInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options)
+    {
+        if (options.ContainsFlag(ProcessingOptions.NoValidation)) return;
+        IReleaseSpec spec = _specProvider.GetSpec(processedBlock.Header);
+        if (!spec.InclusionListsEnabled) return;
+
+        // The IL is attached to the engine-API payload (suggestedBlock); the post-execution
+        // state lives on the processed copy. Mirror so the spec rule sees both together.
+        processedBlock.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
+        suggestedBlock.InclusionListUnsatisfied = !InclusionListValidator.IsSatisfied(processedBlock, worldState, spec);
+    }
+
     /// <summary>
     /// Processed block validation is comparing the block hashes (which include all other results).
     /// We only make exact checks on what is invalid if the hash is different.
@@ -159,40 +170,6 @@ public class BlockValidator(
     /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
     /// <param name="error">Detailed error message if validation fails otherwise <value>null</value>.</param>
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
-    public bool ValidateInclusionList(Block block, IReadOnlyDictionary<AddressAsKey, AccountSnapshot> parentSenderState) =>
-        InclusionListValidator.IsSatisfied(block, parentSenderState, _specProvider.GetSpec(block.Header));
-
-    public InclusionListValidation BeginInclusionListValidation(Block suggestedBlock, IWorldState worldState, ProcessingOptions options)
-    {
-        if (options.ContainsFlag(ProcessingOptions.NoValidation)
-            || !_specProvider.GetSpec(suggestedBlock.Header).InclusionListsEnabled)
-        {
-            return InclusionListValidation.NoOp;
-        }
-
-        Transaction[]? il = suggestedBlock.InclusionListTransactions;
-        if (il is not { Length: > 0 })
-        {
-            return new InclusionListValidation(this, EmptyParentSenderState);
-        }
-
-        Dictionary<AddressAsKey, AccountSnapshot> snapshot = new(il.Length);
-        for (int i = 0; i < il.Length; i++)
-        {
-            Address? sender = il[i].SenderAddress;
-            if (sender is null) continue;
-
-            ref AccountSnapshot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(snapshot, sender, out bool existed);
-            if (!existed)
-            {
-                slot = new AccountSnapshot(worldState.GetBalance(sender), worldState.GetNonce(sender));
-            }
-        }
-        return new InclusionListValidation(this, snapshot);
-    }
-
-    private static readonly Dictionary<AddressAsKey, AccountSnapshot> EmptyParentSenderState = [];
-
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
     {
         // EIP-7928: enforce the BAL item gas-limit floor against the BAL produced during
