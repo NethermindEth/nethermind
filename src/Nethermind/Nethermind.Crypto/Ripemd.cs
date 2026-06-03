@@ -11,9 +11,14 @@ public static class Ripemd
 {
     const int HashOutputLength = 32;
 
+    // The BouncyCastle digest is stateful but cheap to reuse: DoFinal resets it for the next hash.
+    // One instance per thread avoids allocating the digest plus its internal buffers on every call.
+    [ThreadStatic]
+    private static RipeMD160Digest? _digest;
+
     public static byte[] Compute(ReadOnlySpan<byte> input)
     {
-        RipeMD160Digest digest = new();
+        RipeMD160Digest digest = _digest ??= new();
         digest.BlockUpdate(input);
         byte[] result = new byte[HashOutputLength];
         int length = digest.GetDigestSize();
