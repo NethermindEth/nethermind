@@ -21,6 +21,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
+using Nethermind.Core;
 using Nethermind.Merge.Plugin;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -345,8 +346,15 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IBlocksConfig, long?>(configWildcard, static c => c.TargetBlockGasLimit, targetBlockGasLimit);
         Test<IBlocksConfig, ulong>(configWildcard, static c => c.SecondsPerSlot, secondsPerSlot);
         Test<IBlocksConfig, int>(configWildcard, static c => c.BlockProductionTimeoutMs, blockProductionTimeout);
-
     }
+
+    [Test]
+    public void TargetBlockGasLimit_does_not_exceed_MaxBlockGasLimit() =>
+        Test<IBlocksConfig, long?>("*", static c => c.TargetBlockGasLimit, (configFile, value) =>
+        {
+            if (value is not null)
+                Assert.That(value.Value, Is.LessThanOrEqualTo(SupportedChainLimits.MaxBlockGas), configFile);
+        });
 
     [Test]
     public void No_additional_commas_in_config_files()
