@@ -31,29 +31,83 @@ public static class IReleaseSpecExtensions
         _precompileMaskP256 = p256;
         _precompileMaskSpec = spec;
     }
+
+    // "Dynamic GDV" for the release spec: the hot extension getters below are read
+    // per-opcode / per-storage-account-access (UseHotAndColdStorage = EIP-2929 cold/
+    // warm, the gas-metering flags, ...). Each `spec.IsEipXxxEnabled` is an IReleaseSpec
+    // interface dispatch (RhpInterfaceDispatch1, ~3.45% of zkVM steps). The spec is
+    // fork-fixed and monomorphic per block, so resolve the hot flags ONCE per spec into
+    // static slots (single entry: the ZisK guest validates one block = one spec) and let
+    // the getters read a cached bool (reference-compare + field load, no dispatch). Same
+    // values as the dispatching versions; fork-agnostic (rebuilds if the spec changes).
+    private static IReleaseSpec? _flagsSpec;
+    private static bool _f_clearEmptyAccountWhenTouched;
+    private static bool _f_useHotAndColdStorage;
+    private static bool _f_chargeForTopLevelCreate;
+    private static bool _f_failOnOutOfGasCodeDeposit;
+    private static bool _f_useShanghaiDDosProtection;
+    private static bool _f_useConstantinopleNetGasMetering;
+    private static bool _f_useIstanbulNetGasMetering;
+
+    private static void BuildSpecFlags(IReleaseSpec spec)
+    {
+        _f_clearEmptyAccountWhenTouched = spec.IsEip158Enabled;
+        _f_useHotAndColdStorage = spec.IsEip2929Enabled;
+        _f_chargeForTopLevelCreate = spec.IsEip2Enabled;
+        _f_failOnOutOfGasCodeDeposit = spec.IsEip2Enabled;
+        _f_useShanghaiDDosProtection = spec.IsEip150Enabled;
+        _f_useConstantinopleNetGasMetering = spec.IsEip1283Enabled;
+        _f_useIstanbulNetGasMetering = spec.IsEip2200Enabled;
+        _flagsSpec = spec;
+    }
+
+    private static void EnsureSpecFlags(IReleaseSpec spec)
+    {
+        if (!ReferenceEquals(_flagsSpec, spec)) BuildSpecFlags(spec);
+    }
 #endif
 
     extension(IReleaseSpec spec)
     {
+        // GasCostsFast == spec.GasCosts passthrough (proven-good 655M form). A cached value-static
+        // variant (GasCostsView over per-field statics) was tried but bflat's riscv64 codegen
+        // miscompiles it (crash PC=0x80034cd4), and a GC-static SpecGasCosts cache crashes too
+        // (PC=0xBEC8xxxx). The trivial getter inlines, so `spec.GasCostsFast.X` == `spec.GasCosts.X`.
+        public SpecGasCosts GasCostsFast => spec.GasCosts;
+
         //EIP-3860: Limit and meter initcode
         public long MaxInitCodeSize => 2 * spec.MaxCodeSize;
         public bool DepositsEnabled => spec.IsEip6110Enabled;
         public bool WithdrawalRequestsEnabled => spec.IsEip7002Enabled;
         public bool ConsolidationRequestsEnabled => spec.IsEip7251Enabled;
         // STATE related
+#if ZK_EVM
+        public bool ClearEmptyAccountWhenTouched { get { EnsureSpecFlags(spec); return _f_clearEmptyAccountWhenTouched; } }
+#else
         public bool ClearEmptyAccountWhenTouched => spec.IsEip158Enabled;
+#endif
         // VM
         public bool LimitCodeSize => spec.IsEip170Enabled;
+#if ZK_EVM
+        public bool UseHotAndColdStorage { get { EnsureSpecFlags(spec); return _f_useHotAndColdStorage; } }
+#else
         public bool UseHotAndColdStorage => spec.IsEip2929Enabled;
+#endif
         public bool UseTxAccessLists => spec.IsEip2930Enabled;
         public bool AddCoinbaseToTxAccessList => spec.IsEip3651Enabled;
         public bool ModExpEnabled => spec.IsEip198Enabled;
         public bool BN254Enabled => spec.IsEip196Enabled && spec.IsEip197Enabled;
         public bool BlakeEnabled => spec.IsEip152Enabled;
         public bool Bls12381Enabled => spec.IsEip2537Enabled;
+#if ZK_EVM
+        public bool ChargeForTopLevelCreate { get { EnsureSpecFlags(spec); return _f_chargeForTopLevelCreate; } }
+        public bool FailOnOutOfGasCodeDeposit { get { EnsureSpecFlags(spec); return _f_failOnOutOfGasCodeDeposit; } }
+        public bool UseShanghaiDDosProtection { get { EnsureSpecFlags(spec); return _f_useShanghaiDDosProtection; } }
+#else
         public bool ChargeForTopLevelCreate => spec.IsEip2Enabled;
         public bool FailOnOutOfGasCodeDeposit => spec.IsEip2Enabled;
         public bool UseShanghaiDDosProtection => spec.IsEip150Enabled;
+#endif
         public bool UseExpDDosProtection => spec.IsEip160Enabled;
         public bool UseLargeStateDDosProtection => spec.IsEip1884Enabled;
         public bool ReturnDataOpcodesEnabled => spec.IsEip211Enabled;
@@ -65,11 +119,19 @@ public static class IReleaseSpecExtensions
         public bool RevertOpcodeEnabled => spec.IsEip140Enabled;
         public bool ExtCodeHashOpcodeEnabled => spec.IsEip1052Enabled;
         public bool SelfBalanceOpcodeEnabled => spec.IsEip1884Enabled;
+#if ZK_EVM
+        public bool UseConstantinopleNetGasMetering { get { EnsureSpecFlags(spec); return _f_useConstantinopleNetGasMetering; } }
+        public bool UseIstanbulNetGasMetering { get { EnsureSpecFlags(spec); return _f_useIstanbulNetGasMetering; } }
+        public bool UseNetGasMetering { get { EnsureSpecFlags(spec); return _f_useConstantinopleNetGasMetering || _f_useIstanbulNetGasMetering; } }
+        public bool UseNetGasMeteringWithAStipendFix { get { EnsureSpecFlags(spec); return _f_useIstanbulNetGasMetering; } }
+        public bool Use63Over64Rule { get { EnsureSpecFlags(spec); return _f_useShanghaiDDosProtection; } }
+#else
         public bool UseConstantinopleNetGasMetering => spec.IsEip1283Enabled;
         public bool UseIstanbulNetGasMetering => spec.IsEip2200Enabled;
         public bool UseNetGasMetering => spec.UseConstantinopleNetGasMetering || spec.UseIstanbulNetGasMetering;
         public bool UseNetGasMeteringWithAStipendFix => spec.UseIstanbulNetGasMetering;
         public bool Use63Over64Rule => spec.UseShanghaiDDosProtection;
+#endif
         public bool BaseFeeEnabled => spec.IsEip3198Enabled;
         // EVM Related
         public bool IncludePush0Instruction => spec.IsEip3855Enabled;
