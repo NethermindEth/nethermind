@@ -4,12 +4,29 @@ This directory contains a Block-STM (Software Transactional Memory) parallel tra
 executor for Nethermind, derived from the work in PR #9803 and follow-up branch
 `feature/block-stm-integration-codex`.
 
-## Status: WORK IN PROGRESS — does not yet compile against current master
+## Status: WORK IN PROGRESS — compiles, not yet wired
 
 This is a rebase port of the codex branch on top of current master, with four critical
-correctness bugs fixed in this initial commit. Master moved substantially since the codex
-branch (BAL parallel executor, world-state pipeline v1, prewarmer rewrite); finishing the
-port requires further work outside this directory — see "Outstanding work" below.
+correctness bugs fixed and a refactored `ParallelStateKey` that also closes audit bug B2.
+The full solution (including `Nethermind.Runner`) builds clean against current master.
+
+What's still missing before the path can actually execute blocks:
+
+- **`IFeeRecorder` integration** in `TransactionProcessor.PayFees`. Without this, fees in
+  parallel mode would be written directly to the coinbase address, creating a chain-wide
+  write-after-write dependency that defeats every parallel benefit.
+- **Optimism / Taiko `PayFees`** must also route through `IFeeRecorder` for L1FeeReceiver /
+  OperatorFeeRecipient / treasury. Otherwise running block-STM on OP Stack or Taiko
+  fully serializes via those addresses.
+- **DI wiring** — a `BlockStmModule` that registers `BlockStmTransactionsExecutor` as
+  `IBlockProcessor.IBlockTransactionsExecutor` only when `IBlocksConfig.BlockStmEnabled`
+  is true and master's BAL parallel path is inactive.
+- **Code-bytes propagation across the parallel boundary** (audit issue). New contracts
+  created by an in-tx CREATE have their code in the per-tx scope's CodeDb which is
+  disposed before `PushChanges` runs. The `ApplyAccountUpdate` helper currently leaves
+  this as a TODO — see `BlockStmTransactionsExecutor.cs:ApplyAccountUpdate`.
+- Remaining audit items (system-tx fence, 7702 authority recovery, BlockReceiptsTracer.Index,
+  hardcoded concurrency, static `Metrics`).
 
 ## Where it fits
 
@@ -89,19 +106,32 @@ tx2 re-create + balance transfer) the storage of tx0's writes could be wiped bec
 non-null account update was being misread as a delete. Fix: test the value — only treat as
 delete when the entry is *present and null*.
 
-## Outstanding work to make this build and run
+## Adaptations made for master
 
 The port lives in a new `ParallelProcessing.BlockStm` sub-namespace to coexist with master's
-BAL parallel executor. To finish:
+BAL parallel executor. Master moved enough that the following interface adaptations were
+required (all applied in the compile-fix commit):
 
-1. **`PrewarmerScopeProvider` ctor changed on master.** It now takes `ILogManager` and a
-   `IWorldStateScopeProvider` rather than `IWorldState`. `ParallelEnvFactory.Create` must be
-   updated.
+- `IWorldState.SetAccount` was removed. `PushChanges` now uses the typed primitives
+  (`DeleteAccount` for null; `CreateAccountIfNotExists` + `AddToBalance` /
+  `SubtractFromBalance` + `SetNonce` for non-null) via a new `ApplyAccountUpdate` helper.
+- `AddToBalanceAndCreateIfNotExists` now requires `out UInt256 oldBalance`.
+- `ThrowInvalidTransactionException` moved to
+  `BlockProcessor.BlockValidationTransactionsExecutor.ThrowInvalidTransactionException`.
+- `BlockReceiptsTracer.AccumulateBlockBloom` was removed; the inline `AccumulateBlockBloom`
+  helper at the bottom of `BlockStmTransactionsExecutor.cs` mirrors master's BAL pattern.
+- `BlockReceiptsTracer` now requires `bool parallel` ctor; the pool uses a typed
+  `PooledObjectPolicy`.
+- `PrewarmerScopeProvider` ctor gained `ILogManager`; threaded through `ParallelEnvFactory`.
+- `worldStateManager.CreateResettableWorldState()` now returns `IWorldStateScopeProvider`
+  directly.
+- `IStorageTree.HintGet` renamed to `HintSet`; `IWorldStateScopeProvider.IScope` gained
+  `HintBal` (forwarded to base).
+- IDE0028 (`new()` → `[]`) and IDE0290 (primary ctor) style errors fixed.
 
-2. **`worldStateManager.CreateResettableWorldState()` return type may have changed.**
-   Confirm whether it still produces an `IWorldStateScopeProvider`-equivalent.
+## Outstanding integration work
 
-3. **`IFeeRecorder` integration in `TransactionProcessor`.** The codex branch made the
+1. **`IFeeRecorder` integration in `TransactionProcessor.PayFees`.** The codex branch made the
    following pattern across `TransactionProcessor`, `SystemTransactionProcessor`,
    `OptimismTransactionProcessor`, `TaikoTransactionProcessor`:
    ```csharp
@@ -110,17 +140,17 @@ BAL parallel executor. To finish:
    `IFeeRecorder.cs` is ported here but the integration in `TransactionProcessor.PayFees`
    is not yet applied to master. Apply it carefully against master's pipeline-v1 reshape.
 
-4. **Optimism and Taiko `PayFees` must also route through `IFeeRecorder`.** The codex
+2. **Optimism and Taiko `PayFees` must also route through `IFeeRecorder`.** The codex
    branch only wired `TransactionProcessor`'s base path; Optimism's `L1FeeReceiver` /
    `OperatorFeeRecipient` and Taiko's treasury credit still write directly to `WorldState`,
    eliminating any parallel benefit on those L2s.
 
-5. **Add DI wiring (`BlockStmModule`).** A small Autofac module that registers the executor
+3. **Add DI wiring (`BlockStmModule`).** A small Autofac module that registers the executor
    as `IBlockProcessor.IBlockTransactionsExecutor` only when
    `IBlocksConfig.BlockStmEnabled == true` (new config) and master's BAL parallel path is
    not active. Replace the hard-coded `4` worker count with `IBlocksConfig.BlockStmConcurrency`.
 
-6. **Tests:**
+4. **Tests:**
    - Port `ParallelBlockValidationTransactionsExecutorTests.cs` and `ParallelRunnerTests.cs`,
      adjusting to master's `DualBlockchain` shape.
    - Add bug-1 regression test (MVMemory.Record with removed/re-written keys).
