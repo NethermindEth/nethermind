@@ -1361,7 +1361,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
+#if !ZK_EVM
+            // Diagnostic opcode counter (Metrics.IncrementOpCodes). Skipped on the ZisK guest:
+            // metrics are not part of the proof output, so this per-opcode increment is pure cost.
             int opCodeCount = 0;
+#endif
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             ref Instruction code = ref Unsafe.As<byte, Instruction>(ref stack.Code);
             uint codeLength = (uint)stack.CodeLength;
@@ -1396,7 +1400,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                 // Advance the program counter to point to the next instruction.
                 pc++;
+#if !ZK_EVM
                 opCodeCount++;
+#endif
                 programCounter = pc;
 
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
@@ -1418,7 +1424,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (TGasPolicy.GetRemainingGas(in gas) < 0)
                 {
+#if !ZK_EVM
                     OpCodeCount += opCodeCount;
+#endif
                     goto OutOfGas;
                 }
 
@@ -1438,7 +1446,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     break;
             }
 
+#if !ZK_EVM
             OpCodeCount += opCodeCount;
+#endif
         }
 
         // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
