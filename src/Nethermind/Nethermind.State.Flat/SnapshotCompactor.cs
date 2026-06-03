@@ -14,18 +14,32 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
-public class SnapshotCompactor(
-    IFlatDbConfig config,
-    ICompactionSchedule schedule,
-    IResourcePool resourcePool,
-    ISnapshotRepository snapshotRepository,
-    ILogManager logManager) : ISnapshotCompactor
+public class SnapshotCompactor : ISnapshotCompactor
 {
-    private readonly int _compactSize = config.CompactSize;
-    private readonly ICompactionSchedule _schedule = schedule;
-    private readonly ILogger _logger = logManager.GetClassLogger<SnapshotCompactor>();
-    private readonly IResourcePool _resourcePool = resourcePool;
-    private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
+    private readonly int _compactSize;
+    private readonly int _minCompactSize;
+    private readonly ILogger _logger;
+    private readonly IResourcePool _resourcePool;
+    private readonly ISnapshotRepository _snapshotRepository;
+
+    public SnapshotCompactor(IFlatDbConfig config,
+        IResourcePool resourcePool,
+        ISnapshotRepository snapshotRepository,
+        ILogManager logManager)
+    {
+        if (config.CompactSize > 1 && (config.CompactSize & (config.CompactSize - 1)) != 0)
+            throw new ArgumentException("Compact size must be a power of 2");
+        if (config.MinCompactSize > 1 && (config.MinCompactSize & (config.MinCompactSize - 1)) != 0)
+            throw new ArgumentException("Min compact size must be a power of 2");
+        if (config.MinCompactSize > config.CompactSize)
+            throw new ArgumentException("Min compact size must be <= compact size");
+
+        _resourcePool = resourcePool;
+        _snapshotRepository = snapshotRepository;
+        _compactSize = config.CompactSize;
+        _minCompactSize = Math.Max(config.MinCompactSize, 2);
+        _logger = logManager.GetClassLogger<SnapshotCompactor>();
+    }
 
     public bool DoCompactSnapshot(in StateId stateId)
     {
@@ -60,9 +74,12 @@ public class SnapshotCompactor(
 
     public SnapshotPooledList GetSnapshotsToCompact(Snapshot snapshot)
     {
+        if (_compactSize <= 1) return SnapshotPooledList.Empty(); // Disabled
         long blockNumber = snapshot.To.BlockNumber;
-        int compactSize = _schedule.GetCompactSize(blockNumber);
-        if (compactSize <= 1) return SnapshotPooledList.Empty();
+        if (blockNumber == 0) return SnapshotPooledList.Empty();
+
+        int compactSize = (int)Math.Min(blockNumber & -blockNumber, _compactSize);
+        if (compactSize < _minCompactSize) return SnapshotPooledList.Empty();
         bool isFullCompaction = compactSize == _compactSize;
 
         if (!isFullCompaction)
@@ -76,7 +93,7 @@ public class SnapshotCompactor(
             }
         }
 
-        long startingBlockNumber = blockNumber - compactSize;
+        long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
         SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, compactSize);
 
         bool snapshotsOk = false;
@@ -117,7 +134,7 @@ public class SnapshotCompactor(
         StateId to = snapshots[^1].To;
         StateId from = snapshots[0].From;
 
-        int compactSize = _schedule.GetCompactSize(to.BlockNumber);
+        int compactSize = (int)Math.Min(to.BlockNumber & -to.BlockNumber, _compactSize);
         ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
