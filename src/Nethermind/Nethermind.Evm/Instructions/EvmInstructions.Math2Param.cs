@@ -4,6 +4,7 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -283,7 +284,7 @@ public static partial class EvmInstructions
 
         int expSize = 32 - leadingZeros;
         // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-        TGasPolicy.Consume(ref gas, vm.Spec.GasCosts.ExpByteCost * expSize);
+        TGasPolicy.Consume(ref gas, vm.Spec.GasCostsFast.ExpByteCost * expSize);
 
         if (a.IsZero)
         {
