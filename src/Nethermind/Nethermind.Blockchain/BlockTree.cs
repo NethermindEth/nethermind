@@ -996,21 +996,25 @@ namespace Nethermind.Blockchain
             BlockHeader current = newHead;
             while (!current.IsGenesis)
             {
-                BlockHeader? parent = this.FindParentHeader(current, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+                // Prefer the preloaded cache (a full block the caller already holds) over a store lookup.
+                bool fromCache = cache.TryGetValue(current.ParentHash!, out Block? cachedParent);
+                BlockHeader? parent = fromCache
+                    ? cachedParent!.Header
+                    : this.FindParentHeader(current, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                 if (parent is null)
                 {
                     return false;
                 }
 
-                // Genesis is generated at init and is canonical on every chain, so stop at it without
-                // re-moving it (and without requiring it to carry a HasBlockOnMainChain marker).
+                // Genesis is loaded and canonicalized at init (standard GenesisLoader, and TaikoGenesisBuilder
+                // for Taiko), so it is always on the main chain before any reorg; stop at it without re-moving.
                 if (parent.IsGenesis || IsMainChain(parent)) break;
 
-                // A header whose body is missing cannot be moved onto the main chain. For a forced (FCU)
-                // reorg that means the branch is incomplete and we cannot complete it; for forward
-                // processing it is a header-only beacon gap below the processed block, so we stop here and
-                // move only the suffix above it (matching the pre-refactor behavior).
-                if (!_blockStore.HasBlock(parent.Number, parent.Hash!))
+                // A header whose body is missing cannot be moved onto the main chain. Preloaded blocks
+                // already carry their body, so only store-fetched parents need the check. For a forced (FCU)
+                // reorg a missing body means the branch is incomplete; for forward processing it is a
+                // header-only beacon gap below the processed block, so we stop and move only the suffix above.
+                if (!fromCache && !_blockStore.HasBlock(parent.Number, parent.Hash!))
                 {
                     if (forceUpdateHeadBlock) return false;
                     break;

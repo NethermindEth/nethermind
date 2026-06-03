@@ -1544,10 +1544,10 @@ public class BlockTreeTests
                 tree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBodyMetadata);
             }
         }
-        // Mark the whole chain (incl. the beacon-bodied blocks above 50) canonical one block at a time;
-        // each is a forward append onto the already-canonical parent.
-        foreach (Block block in blocks)
-            tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
+        // Blocks above 50 are beacon-inserted (already on the beacon main chain), so a single walk from the
+        // tip short-circuits at the first beacon parent. Move exactly the supplied blocks so the whole
+        // pre-state is canonical, then assert the reload caps the head at the best persisted state.
+        tree.ForceMainChainForTest(blocks);
         tree.BestPersistedState = 50;
 
         BlockTree loadedTree = Build.A.BlockTree()

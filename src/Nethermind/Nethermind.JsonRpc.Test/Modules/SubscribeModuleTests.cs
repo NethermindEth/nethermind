@@ -425,7 +425,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             // The list includes genesis and the test expects a notification per block (21). The walk stops at
-            // genesis without moving it, so move exactly the supplied blocks to fire all 21 events.
+            // genesis without re-moving it, so move exactly the supplied blocks to fire all 21 events.
             blockTree.ForceMainChainForTest(blocks);
 
             manualResetEvent.WaitOne();
