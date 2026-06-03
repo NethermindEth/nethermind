@@ -12,7 +12,9 @@ namespace Nethermind.Consensus.Validators
 {
     public class UnclesValidator(IBlockTree? blockTree, IHeaderValidator? headerValidator, ILogManager? logManager) : IUnclesValidator
     {
+        // Yellow Paper §11.1: an uncle must share an ancestor with the block within 6 generations.
         private const int RelationshipLevel = 6;
+        // Yellow Paper §11.1: an uncle is invalid if it was already included by one of the 5 direct ancestors.
         private const int MaxAncestorLevelsToCheckForDuplicates = 5;
         private const int MaxAncestorsDepth = RelationshipLevel;
 
