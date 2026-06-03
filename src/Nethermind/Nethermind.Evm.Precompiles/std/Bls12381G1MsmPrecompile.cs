@@ -54,8 +54,10 @@ public partial class Bls12381G1MsmPrecompile
 
     private Result<byte[]> Msm(ReadOnlyMemory<byte> inputData, int nItems)
     {
-        using ArrayPoolList<long> rawPoints = new(nItems * G1.Sz, nItems * G1.Sz);
-        using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);
+        // Scratch buffers: every slot read by MultiMult (the first npoints, packed contiguously) is
+        // fully written by Zero()+Decode() during point decoding, so the pool's zero-clear is wasted.
+        using ArrayPoolList<long> rawPoints = ArrayPoolList<long>.RentUninitialized(nItems * G1.Sz);
+        using ArrayPoolList<byte> rawScalars = ArrayPoolList<byte>.RentUninitialized(nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
         // calculate where in rawPoints buffer decoded points should go
@@ -90,10 +92,11 @@ public partial class Bls12381G1MsmPrecompile
         }
         else
         {
-            Parallel.ForEach(pointDestinations, (dest, state, i) =>
+            Memory<long> rawPointsMemory = rawPoints.AsMemory();
+            Memory<byte> rawScalarsMemory = rawScalars.AsMemory();
+            Parallel.For(0, pointDestinations.Count, (index, state) =>
             {
-                int index = (int)i;
-                Result local = Eip2537.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index);
+                Result local = Eip2537.TryDecodeG1ToBuffer(inputData, rawPointsMemory, rawScalarsMemory, pointDestinations[index], index);
                 if (!local)
                 {
                     result = local;
