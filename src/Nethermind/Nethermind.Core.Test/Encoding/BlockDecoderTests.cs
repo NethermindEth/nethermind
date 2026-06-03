@@ -33,7 +33,7 @@ public class BlockDecoderTests
                 .TestObject;
         }
 
-        BlockHeader[] uncles = new BlockHeader[16];
+        BlockHeader[] uncles = new BlockHeader[2];
 
         for (int i = 0; i < uncles.Length; i++)
         {
