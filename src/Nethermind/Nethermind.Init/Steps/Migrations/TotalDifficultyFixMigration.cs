@@ -49,8 +49,9 @@ public class TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelIn
 
         _progressLogger.Reset(0, lastBlock.Value - startingBlock + 1);
 
-        using Timer timer = new(1000) { Enabled = true };
+        using Timer timer = new(1000);
         timer.Elapsed += (_, _) => _progressLogger.LogProgress();
+        timer.Enabled = true;
 
         try
         {
@@ -91,6 +92,7 @@ public class TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelIn
         finally
         {
             _progressLogger.MarkEnd();
+            timer.Stop();
         }
 
         if (_logger.IsInfo) _logger.Info("Ended TotalDifficultyFixMigration.");
