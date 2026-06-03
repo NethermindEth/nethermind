@@ -2,23 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
-using Nethermind.Core;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager logManager, IBlockAccessListStore balStore)
+public sealed class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager logManager, IBlockAccessListStore balStore, IBlockStore blockStore)
     : IGetPayloadBodiesByRangeV2Handler
 {
-    private const int MaxCount = 1024;
-
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeV2Handler));
 
     public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> Handle(long start, long count)
@@ -30,9 +27,9 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
             return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>.Fail(error, ErrorCodes.InvalidParams);
         }
 
-        if (count > MaxCount)
+        if (count > PayloadBodiesHandlerHelper.MaxCount)
         {
-            string error = $"The number of requested bodies must not exceed {MaxCount}";
+            string error = $"The number of requested bodies must not exceed {PayloadBodiesHandlerHelper.MaxCount}";
             if (_logger.IsError) _logger.Error($"{GetType().Name}: {error}");
             return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
@@ -51,14 +48,10 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
         {
             for (long i = start; i <= end; i++)
             {
-                Block? block = blockTree.FindBlock(i);
-                if (block is null)
-                {
-                    continue;
-                }
-
-                MemoryManager<byte>? blockAccessList = block.Hash is null ? null : balStore.GetRlp(block.Number, block.Hash);
-                results[i - start] = PayloadBodiesV2DirectResponse.CreatePayloadBody(block.Transactions, block.Withdrawals, blockAccessList);
+                results[i - start] = PayloadBodiesHandlerHelper.CreatePayloadBodyV2(
+                    blockStore,
+                    balStore,
+                    blockTree.FindHeader(i, PayloadBodiesHandlerHelper.RangeLookupOptions));
             }
         }
         catch
