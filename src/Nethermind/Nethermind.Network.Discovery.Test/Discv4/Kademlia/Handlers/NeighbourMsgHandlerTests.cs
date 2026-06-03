@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -30,13 +31,17 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
             _expirationTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 60; // 60 seconds in the future
         }
 
-        [Test]
-        public async Task When_TotalNodesLessThanK_ThenDontFinish_UntilTimeout()
+        [TestCaseSource(nameof(TimeoutCases))]
+        public async Task When_TotalNodesDoNotCompleteImmediately_ThenCompleteAfterTimeout(int nodeCount, bool[] expectedHandleResults)
         {
-            ArraySegment<Node> nodes = CreateNodes(5);
+            ArraySegment<Node> nodes = CreateNodes(nodeCount);
             NeighborsMsg msg = new(_farAddress, _expirationTime, nodes);
 
-            Assert.That(_handler.Handle(msg), Is.True);
+            for (int i = 0; i < expectedHandleResults.Length; i++)
+            {
+                Assert.That(_handler.Handle(msg), Is.EqualTo(expectedHandleResults[i]));
+            }
+
             Assert.That(_handler.TaskCompletionSource.Task.IsCompleted, Is.False);
 
             await _handler.TaskCompletionSource.Task;
@@ -54,16 +59,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
             Assert.That(_handler.TaskCompletionSource.Task.IsCompleted, Is.True);
         }
 
-        [Test]
-        public async Task When_TotalNodesDoesNotAddUp_DontTakeMessage()
+        private static IEnumerable<TestCaseData> TimeoutCases()
         {
-            ArraySegment<Node> nodes = CreateNodes(10);
-            NeighborsMsg msg = new(_farAddress, _expirationTime, nodes);
-
-            Assert.That(_handler.Handle(msg), Is.True);
-            Assert.That(_handler.Handle(msg), Is.False);
-            Assert.That(_handler.TaskCompletionSource.Task.IsCompleted, Is.False);
-            await _handler.TaskCompletionSource.Task;
+            yield return new TestCaseData(5, new[] { true }).SetName("FewerThanK");
+            yield return new TestCaseData(10, new[] { true, false }).SetName("SecondMessageWouldOverflowK");
         }
 
         private ArraySegment<Node> CreateNodes(int count, int startIndex = 0)

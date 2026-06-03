@@ -13,20 +13,10 @@ public class KBucketTests
     [Test]
     public void TryAddOrRefresh_ShouldLimitToK()
     {
-        KBucket<ValueHash256, Hash256> bucket = new(5);
-
-        ValueHash256[] toAdd = Enumerable.Range(0, 10).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
-
-        foreach (ValueHash256 valueHash256 in toAdd)
-        {
-            bucket.TryAddOrRefresh(ToHash(valueHash256), valueHash256, out _);
-        }
+        (KBucket<ValueHash256, Hash256> bucket, ValueHash256[] toAdd) = BuildFullBucket();
 
         // Again
-        foreach (ValueHash256 valueHash256 in toAdd)
-        {
-            bucket.TryAddOrRefresh(ToHash(valueHash256), valueHash256, out _);
-        }
+        AddNodes(bucket, toAdd);
 
         Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(toAdd[..5].ToHashSet()));
         Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(toAdd[..5].Select(static it => (ToHash(it), it)).ToHashSet()));
@@ -41,21 +31,11 @@ public class KBucketTests
     [Test]
     public void TryAddOrRefresh_ShouldKeepSameCachedArray_WhenAddingSameNode()
     {
-        KBucket<ValueHash256, Hash256> bucket = new(5);
-
-        ValueHash256[] toAdd = Enumerable.Range(0, 10).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
-
-        foreach (ValueHash256 valueHash256 in toAdd)
-        {
-            bucket.TryAddOrRefresh(ToHash(valueHash256), valueHash256, out _);
-        }
+        (KBucket<ValueHash256, Hash256> bucket, ValueHash256[] toAdd) = BuildFullBucket();
 
         ValueHash256[] nodes = bucket.GetAll();
 
-        foreach (ValueHash256 valueHash256 in toAdd)
-        {
-            bucket.TryAddOrRefresh(ToHash(valueHash256), valueHash256, out _);
-        }
+        AddNodes(bucket, toAdd);
 
         Assert.That(bucket.GetAll(), Is.SameAs(nodes));
     }
@@ -77,14 +57,7 @@ public class KBucketTests
     [Test]
     public void RemoveAndReplace_ShouldReplaceNodeWithLatestInReplacementCache()
     {
-        KBucket<ValueHash256, Hash256> bucket = new(5);
-
-        ValueHash256[] toAdd = Enumerable.Range(0, 10).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
-
-        foreach (ValueHash256 valueHash256 in toAdd)
-        {
-            bucket.TryAddOrRefresh(ToHash(valueHash256), valueHash256, out _);
-        }
+        (KBucket<ValueHash256, Hash256> bucket, ValueHash256[] toAdd) = BuildFullBucket();
 
         bucket.RemoveAndReplace(ToHash(toAdd[0]));
 
@@ -94,4 +67,20 @@ public class KBucketTests
     }
 
     private static Hash256 ToHash(ValueHash256 hash) => hash.ToHash256();
+
+    private static (KBucket<ValueHash256, Hash256> Bucket, ValueHash256[] Nodes) BuildFullBucket()
+    {
+        KBucket<ValueHash256, Hash256> bucket = new(5);
+        ValueHash256[] nodes = Enumerable.Range(0, 10).Select(static k => ValueKeccak.Compute(k.ToString())).ToArray();
+        AddNodes(bucket, nodes);
+        return (bucket, nodes);
+    }
+
+    private static void AddNodes(KBucket<ValueHash256, Hash256> bucket, ValueHash256[] nodes)
+    {
+        foreach (ValueHash256 node in nodes)
+        {
+            bucket.TryAddOrRefresh(ToHash(node), node, out _);
+        }
+    }
 }
