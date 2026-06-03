@@ -13,6 +13,7 @@ using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using System;
 using System.Net;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network.Discovery.Test.Discv5;
 
@@ -64,10 +65,7 @@ public class CodecTests
     [Test]
     public void PacketCodec_Decodes_PingPacket_Devp2p_Vector()
     {
-        byte[] packetBytes = Bytes.FromHexString(
-            "0x00000000000000000000000000000000088b3d4342774649325f313964a39e55" +
-            "ea96c005ad52be8c7560413a7008f16c9e6d2f43bbea8814a546b7409ce783d3" +
-            "4c4f53245d08dab84102ed931f66d1492acb308fa1c6715b9d139b81acbdcc");
+        byte[] packetBytes = CreateDevp2pPingPacketBytes();
 
         bool decoded = PacketCodec.TryDecode(packetBytes, NodeBId, out Packet packet);
         using (packet)
@@ -87,6 +85,24 @@ public class CodecTests
     }
 
     [Test]
+    public void PacketCodec_Decodes_Packets_Concurrently()
+    {
+        byte[] packetBytes = CreateDevp2pPingPacketBytes();
+        using PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
+
+        Parallel.For(0, 128, (int _) =>
+        {
+            bool decoded = codec.TryDecode(packetBytes, out Packet packet);
+            using (packet)
+            {
+                Assert.That(decoded, Is.True);
+                Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Ordinary));
+                Assert.That(packet.AuthData.ToArray(), Is.EqualTo(NodeAId));
+            }
+        });
+    }
+
+    [Test]
     public void PacketCodec_Decodes_WhoAreYou_GoEthereum_Vector()
     {
         byte[] packetBytes = Bytes.FromHexString(
@@ -97,7 +113,7 @@ public class CodecTests
         bool decoded = PacketCodec.TryDecode(packetBytes, NodeBId, out Packet packet);
         using (packet)
         {
-            PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
+            using PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
             Challenge challenge = codec.DecodeWhoAreYou(packet);
 
             Assert.That(decoded, Is.True);
@@ -150,7 +166,7 @@ public class CodecTests
             Bytes.FromHexString("0x0102030405060708090a0b0c0d0e0f10"),
             challengeEnrSequence,
             Bytes.FromHexString(challengeDataHex));
-        PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
+        using PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
         NodeRecord? knownRecord = includesRecord ? null : CreateNodeRecord(new PrivateKey(GethNodeAPrivateKey));
 
         bool decoded = PacketCodec.TryDecode(packetBytes, NodeBId, out Packet packet);
@@ -289,6 +305,12 @@ public class CodecTests
             new TestNodeRecordProvider(privateKey),
             new CryptoRandom(),
             new EthereumEcdsa(0));
+
+    private static byte[] CreateDevp2pPingPacketBytes()
+        => Bytes.FromHexString(
+            "0x00000000000000000000000000000000088b3d4342774649325f313964a39e55" +
+            "ea96c005ad52be8c7560413a7008f16c9e6d2f43bbea8814a546b7409ce783d3" +
+            "4c4f53245d08dab84102ed931f66d1492acb308fa1c6715b9d139b81acbdcc");
 
     private static NodeRecord CreateNodeRecord(PrivateKey privateKey)
     {

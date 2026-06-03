@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using Autofac.Features.AttributeFilters;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -34,6 +35,7 @@ public sealed class PacketCodec(
     private const int EphemeralPublicKeySize = 33;
     private const int HandshakeAuthDataHeadSize = NodeIdSize + 2;
     private const int MaxStackPacketBufferSize = 512;
+    private const int MaxRetainedDecodeMaskingAes = 32;
 
     private static ReadOnlySpan<byte> ProtocolId => "discv5"u8;
     private static ReadOnlySpan<byte> KeyAgreementInfoPrefix => "discovery v5 key agreement"u8;
@@ -45,12 +47,11 @@ public sealed class PacketCodec(
     private readonly INodeRecordProvider _nodeRecordProvider = nodeRecordProvider;
     private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
     private readonly IEcdsa _ecdsa = ecdsa;
-    private readonly Aes _decodeMaskingAes = CreateMaskingAes(nodeKey.PublicKey.Hash.Bytes[..AesKeySize]);
-    private readonly object _decodeMaskingAesLock = new();
+    private readonly ObjectPool<Aes> _decodeMaskingAesPool = CreateDecodeMaskingAesPool(nodeKey.PublicKey.Hash.Bytes[..AesKeySize]);
 
     public void Dispose()
     {
-        _decodeMaskingAes.Dispose();
+        (_decodeMaskingAesPool as IDisposable)?.Dispose();
         _privateKey.Dispose();
     }
 
@@ -116,10 +117,20 @@ public sealed class PacketCodec(
     }
 
     internal bool TryDecode(byte[] packet, out Packet decoded)
-        => TryDecode(packet.AsMemory(), _decodeMaskingAes, _decodeMaskingAesLock, out decoded);
+        => TryDecode(packet.AsMemory(), out decoded);
 
     internal bool TryDecode(ReadOnlyMemory<byte> packet, out Packet decoded)
-        => TryDecode(packet, _decodeMaskingAes, _decodeMaskingAesLock, out decoded);
+    {
+        Aes localNodeMaskingAes = _decodeMaskingAesPool.Get();
+        try
+        {
+            return TryDecode(packet, localNodeMaskingAes, out decoded);
+        }
+        finally
+        {
+            _decodeMaskingAesPool.Return(localNodeMaskingAes);
+        }
+    }
 
     internal static bool TryDecode(byte[] packet, ReadOnlySpan<byte> localNodeId, out Packet decoded)
         => TryDecode(packet.AsMemory(), localNodeId, out decoded);
@@ -127,10 +138,10 @@ public sealed class PacketCodec(
     internal static bool TryDecode(ReadOnlyMemory<byte> packetMemory, ReadOnlySpan<byte> localNodeId, out Packet decoded)
     {
         using Aes localNodeMaskingAes = CreateMaskingAes(localNodeId[..AesKeySize]);
-        return TryDecode(packetMemory, localNodeMaskingAes, null, out decoded);
+        return TryDecode(packetMemory, localNodeMaskingAes, out decoded);
     }
 
-    private static bool TryDecode(ReadOnlyMemory<byte> packetMemory, Aes localNodeMaskingAes, object? aesLock, out Packet decoded)
+    private static bool TryDecode(ReadOnlyMemory<byte> packetMemory, Aes localNodeMaskingAes, out Packet decoded)
     {
         decoded = default;
         ReadOnlySpan<byte> packet = packetMemory.Span;
@@ -141,7 +152,7 @@ public sealed class PacketCodec(
 
         ReadOnlySpan<byte> maskingIv = packet[..MaskingIvSize];
         Span<byte> staticHeader = stackalloc byte[StaticHeaderSize];
-        AesCtrTransform(localNodeMaskingAes, aesLock, maskingIv, packet.Slice(MaskingIvSize, StaticHeaderSize), staticHeader);
+        AesCtrTransform(localNodeMaskingAes, maskingIv, packet.Slice(MaskingIvSize, StaticHeaderSize), staticHeader);
         ReadOnlySpan<byte> protocolId = ProtocolId;
         if (!staticHeader[..protocolId.Length].SequenceEqual(protocolId))
         {
@@ -163,7 +174,7 @@ public sealed class PacketCodec(
 
         try
         {
-            AesCtrTransform(localNodeMaskingAes, aesLock, maskingIv, packet.Slice(MaskingIvSize, headerSize), header);
+            AesCtrTransform(localNodeMaskingAes, maskingIv, packet.Slice(MaskingIvSize, headerSize), header);
             if (!header[..protocolId.Length].SequenceEqual(protocolId))
             {
                 SafeArrayPool<byte>.Shared.Return(messageAdBuffer);
@@ -444,21 +455,7 @@ public sealed class PacketCodec(
     private static void AesCtrTransform(ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv, ReadOnlySpan<byte> input, Span<byte> output)
     {
         using Aes aes = CreateMaskingAes(key);
-        AesCtrTransform(aes, null, iv, input, output);
-    }
-
-    private static void AesCtrTransform(Aes aes, object? aesLock, ReadOnlySpan<byte> iv, ReadOnlySpan<byte> input, Span<byte> output)
-    {
-        if (aesLock is null)
-        {
-            AesCtrTransform(aes, iv, input, output);
-            return;
-        }
-
-        lock (aesLock)
-        {
-            AesCtrTransform(aes, iv, input, output);
-        }
+        AesCtrTransform(aes, iv, input, output);
     }
 
     private static void AesCtrTransform(Aes aes, ReadOnlySpan<byte> iv, ReadOnlySpan<byte> input, Span<byte> output)
@@ -495,6 +492,27 @@ public sealed class PacketCodec(
         aes.Padding = PaddingMode.None;
         aes.SetKey(key);
         return aes;
+    }
+
+    private static ObjectPool<Aes> CreateDecodeMaskingAesPool(ReadOnlySpan<byte> key)
+    {
+        DefaultObjectPoolProvider provider = new()
+        {
+            MaximumRetained = Math.Min(Environment.ProcessorCount, MaxRetainedDecodeMaskingAes)
+        };
+
+        return provider.Create(new DecodeMaskingAesPolicy(key));
+    }
+
+    private sealed class DecodeMaskingAesPolicy : IPooledObjectPolicy<Aes>
+    {
+        private readonly byte[] _key;
+
+        public DecodeMaskingAesPolicy(ReadOnlySpan<byte> key) => _key = key.ToArray();
+
+        public Aes Create() => CreateMaskingAes(_key);
+
+        public bool Return(Aes obj) => true;
     }
 
     private static void IncrementCounter(Span<byte> counter)

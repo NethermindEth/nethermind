@@ -3,16 +3,19 @@
 
 using System;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
-using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
+using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -176,6 +179,60 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await cts.CancelAsync();
 
             Assert.That(_discoveryDb.Count, Is.EqualTo(nodes.Length));
+        }
+
+        [Test]
+        public async Task RunDiscoveryPersistenceCommit_Should_Preserve_Enr_In_Common_Storage()
+        {
+            NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), 30303, 30304);
+            Node node = new(TestItem.PrivateKeyA.PublicKey, "8.8.8.8", 30304)
+            {
+                Enr = enr.EnrString
+            };
+
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+
+            _kademlia.IterateNodes().Returns([node]);
+
+            _ = _persistenceManager.RunDiscoveryPersistenceCommit(cts.Token);
+
+            while (_discoveryDb.Count == 0)
+            {
+                cts.Token.ThrowIfCancellationRequested();
+                await Task.Delay(10, cts.Token);
+            }
+
+            await cts.CancelAsync();
+
+            NetworkStorage reloadedStorage = new(_discoveryDb, LimboLogs.Instance);
+            NetworkNode[] persistedNodes = reloadedStorage.GetPersistedNodes();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedNodes, Has.Length.EqualTo(1));
+                NetworkNode persistedNode = persistedNodes[0];
+                NodeRecord? persistedEnr = persistedNode.Enr;
+                Assert.That(persistedNode.IsEnr, Is.True);
+                Assert.That(persistedEnr, Is.Not.Null);
+                Assert.That(persistedEnr!.EnrString, Is.EqualTo(enr.EnrString));
+                Assert.That(persistedNode.NodeId, Is.EqualTo(TestItem.PrivateKeyA.PublicKey));
+                Assert.That(persistedNode.Host, Is.EqualTo("8.8.8.8"));
+                Assert.That(persistedNode.Port, Is.EqualTo(30304));
+            }
+        }
+
+        private static NodeRecord CreateTestEnr(PrivateKey privateKey, IPAddress ipAddress, int tcpPort, int udpPort)
+        {
+            NodeRecord enr = new();
+            enr.SetEntry(IdEntry.Instance);
+            enr.SetEntry(new IpEntry(ipAddress));
+            enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+            enr.SetEntry(new TcpEntry(tcpPort));
+            enr.SetEntry(new UdpEntry(udpPort));
+            enr.EnrSequence = 1;
+            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
+
+            return enr;
         }
     }
 }

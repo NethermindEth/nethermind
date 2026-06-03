@@ -14,8 +14,7 @@ internal static class DatabasePurger
     private static readonly HashSet<string> NetworkDbNames = new(StringComparer.OrdinalIgnoreCase)
     {
         DbNames.PeersDb,
-        DbNames.DiscoveryNodes,
-        DbNames.DiscoveryV5Nodes
+        DbNames.DiscoveryNodes
     };
 
     /// <summary>

@@ -49,7 +49,8 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
         for (int i = 0; i < nodes.Records.Count && _nodes.Count < MaxNodesResponseRecords; i++)
         {
             NodeRecord record = nodes.Records[i];
-            if (!NodeRecordConverter.TryGetNodeFromEnr(record, _allowNonRoutableRelays, out Node? node) ||
+            if (!Node.TryFromEnr(record, out Node? node) ||
+                !DiscoveryV5App.IsDiscoveryAddressAcceptable(node.Address.Address, _allowNonRoutableRelays) ||
                 !_seenNodeIds.Add(node.Id.Hash) ||
                 !MatchesRequestedDistance(node, requestedDistances))
             {

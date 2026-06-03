@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
 using FastEnumUtility;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Enr;
 
 namespace Nethermind.Stats.Model
 {
@@ -81,6 +83,35 @@ namespace Nethermind.Stats.Model
         public Node(NetworkNode networkNode, bool isStatic = false)
             : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)
         {
+            if (networkNode.IsEnr)
+            {
+                Enr = networkNode.Enr.EnrString;
+            }
+        }
+
+        /// <summary>
+        /// Tries to create a node from an Ethereum Node Record with a secp256k1 key and discovery endpoint.
+        /// </summary>
+        /// <param name="enr">The Ethereum Node Record to read.</param>
+        /// <param name="node">The node created from the record when the record contains a usable discovery endpoint.</param>
+        /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
+        public static bool TryFromEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
+        {
+            node = null;
+
+            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+            IPAddress ip = enr.DiscoveryIp;
+            int? discoveryPort = enr.DiscoveryPort;
+            if (key is null || ip is null || discoveryPort is null || discoveryPort.Value == 0 || (uint)discoveryPort.Value > ushort.MaxValue)
+            {
+                return false;
+            }
+
+            node = new Node(key, new IPEndPoint(ip, discoveryPort.Value))
+            {
+                Enr = enr.EnrString
+            };
+            return true;
         }
 
         public Node(PublicKey id, string host, int port, bool isStatic = false)

@@ -7,11 +7,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery.Discv4;
+namespace Nethermind.Network.Discovery.Kademlia;
 
 /// <summary>
 /// Manages persistence operations for the discovery process, including loading nodes from storage
@@ -22,21 +21,22 @@ namespace Nethermind.Network.Discovery.Discv4;
 /// </remarks>
 /// <param name="discoveryStorage">The network storage for persisting discovery nodes.</param>
 /// <param name="nodeStatsManager">Manager for node statistics.</param>
-/// <param name="discv4Adapter">Adapter for Discv4 protocol communication.</param>
+/// <param name="messageSender">Protocol-specific Kademlia message sender.</param>
+/// <param name="kademlia">Kademlia table whose live nodes should be persisted.</param>
 /// <param name="discoveryConfig">Configuration for the discovery process.</param>
 /// <param name="logManager">Log manager for logging events.</param>
 /// <exception cref="ArgumentNullException">Thrown if any required parameter is null.</exception>
 public class DiscoveryPersistenceManager(
     [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage discoveryStorage,
     INodeStatsManager nodeStatsManager,
-    IKademliaAdapter discv4Adapter,
+    IKademliaMessageSender<PublicKey, Node> messageSender,
     IKademlia<PublicKey, Node> kademlia,
     IDiscoveryConfig discoveryConfig,
     ILogManager logManager)
 {
     private readonly INetworkStorage _discoveryStorage = discoveryStorage;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager;
-    private readonly IKademliaAdapter _discv4Adapter = discv4Adapter;
+    private readonly IKademliaMessageSender<PublicKey, Node> _messageSender = messageSender;
     private readonly IKademlia<PublicKey, Node> _kademlia = kademlia;
     private readonly ILogger _logger = logManager.GetClassLogger<DiscoveryPersistenceManager>();
     private readonly int _persistenceInterval = discoveryConfig.DiscoveryPersistenceInterval;
@@ -56,11 +56,11 @@ public class DiscoveryPersistenceManager(
             Node node;
             try
             {
-                node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
+                node = new Node(networkNode);
             }
             catch (Exception e)
             {
-                _logger.DebugError($"Peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}. {e}");
+                _logger.DebugError($"Peer could not be loaded for persisted node {networkNode}. {e}");
 
                 continue;
             }
@@ -69,7 +69,7 @@ public class DiscoveryPersistenceManager(
             {
                 // Reputation must be set before Ping so the routing table has the correct reputation when the Pong is received.
                 _nodeStatsManager.GetOrAdd(node).CurrentPersistedNodeReputation = networkNode.Reputation;
-                if (!await _discv4Adapter.Ping(node, cancellationToken))
+                if (!await _messageSender.Ping(node, cancellationToken))
                 {
                     continue;
                 }
@@ -107,12 +107,15 @@ public class DiscoveryPersistenceManager(
         {
             try
             {
+                List<NetworkNode> nodes = [];
+                foreach (Node node in _kademlia.IterateNodes())
+                {
+                    long reputation = _nodeStatsManager.GetNewPersistedReputation(node);
+                    nodes.Add(CreatePersistedNode(node, reputation));
+                }
+
                 _discoveryStorage.StartBatch();
-
-                _discoveryStorage.UpdateNodes(_kademlia
-                    .IterateNodes()
-                    .Select(x => new NetworkNode(x.Id, x.Host, x.Port, _nodeStatsManager.GetNewPersistedReputation(x))));
-
+                _discoveryStorage.UpdateNodes(nodes);
                 _discoveryStorage.Commit();
             }
             catch (Exception ex)
@@ -120,5 +123,15 @@ public class DiscoveryPersistenceManager(
                 _logger.Error($"Error during discovery commit: {ex}");
             }
         }
+    }
+
+    private static NetworkNode CreatePersistedNode(Node node, long reputation)
+    {
+        if (!string.IsNullOrEmpty(node.Enr))
+        {
+            return new NetworkNode(node.Enr) { Reputation = reputation };
+        }
+
+        return new NetworkNode(node.Id, node.Host, node.Port, reputation);
     }
 }

@@ -699,8 +699,9 @@ public class KademliaAdapter(
         => _knownRecords.Set(nodeId, record);
 
     internal static bool IsAcceptableNodeRecord(NodeRecord record, Hash256 expectedNodeId, bool allowNonRoutable)
-        => NodeRecordConverter.TryGetNodeFromEnr(record, allowNonRoutable, out Node? node) &&
-            node.Id.Hash.Equals(expectedNodeId);
+        => Node.TryFromEnr(record, out Node? node) &&
+            node.Id.Hash.Equals(expectedNodeId) &&
+            DiscoveryV5App.IsDiscoveryAddressAcceptable(node.Address.Address, allowNonRoutable);
 
     internal static bool HasExpectedNodeId(NodeRecord record, Hash256 expectedNodeId)
         => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash.Equals(expectedNodeId) == true;

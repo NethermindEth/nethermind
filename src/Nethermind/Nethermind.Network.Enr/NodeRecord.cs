@@ -5,6 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using System.Net;
 using Convert = System.Convert;
 
 namespace Nethermind.Network.Enr;
@@ -109,6 +110,50 @@ public class NodeRecord
     public bool Snap { get; set; }
 
     public NodeRecord() => SetEntry(IdEntry.Instance);
+
+    /// <summary>
+    /// Gets the IP address advertised for discovery traffic.
+    /// </summary>
+    /// <remarks>
+    /// IPv4 is preferred when both <c>ip</c> and <c>udp</c> are present. Otherwise IPv6 is returned when <c>ip6</c>
+    /// is present.
+    /// </remarks>
+    public IPAddress? DiscoveryIp
+    {
+        get
+        {
+            IPAddress? ip = GetObj<IPAddress>(EnrContentKey.Ip);
+            if (ip is not null && GetValue<int>(EnrContentKey.Udp) is not null)
+            {
+                return ip;
+            }
+
+            return GetObj<IPAddress>(EnrContentKey.Ip6);
+        }
+    }
+
+    /// <summary>
+    /// Gets the UDP port advertised for discovery traffic.
+    /// </summary>
+    /// <remarks>
+    /// For IPv6, <c>udp6</c> is preferred and <c>udp</c> is used as the EIP-778 fallback.
+    /// </remarks>
+    public int? DiscoveryPort
+    {
+        get
+        {
+            IPAddress? ip = GetObj<IPAddress>(EnrContentKey.Ip);
+            int? udp = GetValue<int>(EnrContentKey.Udp);
+            if (ip is not null && udp is not null)
+            {
+                return udp;
+            }
+
+            return GetObj<IPAddress>(EnrContentKey.Ip6) is not null
+                ? GetValue<int>(EnrContentKey.Udp6) ?? udp
+                : null;
+        }
+    }
 
     public static NodeRecord FromEnrString(string enrString)
     {

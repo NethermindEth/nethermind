@@ -19,6 +19,7 @@ public abstract class DiscoveryKademliaModuleBase(PublicKey masterNode, IReadOnl
             .AddModule(new KademliaModule<PublicKey, Node, Hash256>())
             .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
             .AddSingleton<IKeyOperator<PublicKey, Node, Hash256>, PublicKeyKeyOperator>()
+            .AddSingleton<DiscoveryPersistenceManager>()
             .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => DiscoveryKademliaConfigFactory.Create(masterNode, bootNodes, discoveryConfig));
     }
 

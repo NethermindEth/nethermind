@@ -1014,7 +1014,8 @@
           "Nethermind.Config": "[1.39.0-unstable, )",
           "Nethermind.Core": "[1.39.0-unstable, )",
           "Nethermind.Logging": "[1.39.0-unstable, )",
-          "Nethermind.Network.Contract": "[1.39.0-unstable, )"
+          "Nethermind.Network.Contract": "[1.39.0-unstable, )",
+          "Nethermind.Network.Enr": "[1.39.0-unstable, )"
         }
       },
       "nethermind.opcodetracing.plugin": {
