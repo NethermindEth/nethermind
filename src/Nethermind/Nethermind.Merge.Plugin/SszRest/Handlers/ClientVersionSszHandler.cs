@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 
@@ -31,6 +32,12 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule) : Ssz
             ? clv
             : default;
         ResultWrapper<ClientVersionV1[]> result = _engineModule.engine_getClientVersionV1(clientVersion);
+
+        if (result.Result.ResultType != ResultType.Success)
+        {
+            await WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, result.Result.Error ?? "engine_getClientVersionV1 failed");
+            return;
+        }
 
         ctx.Response.ContentType = "application/json";
         ctx.Response.StatusCode = StatusCodes.Status200OK;

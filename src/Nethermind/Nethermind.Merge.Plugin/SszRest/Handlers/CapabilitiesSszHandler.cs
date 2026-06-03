@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -26,11 +25,21 @@ public sealed class CapabilitiesSszHandler(ISpecProvider specProvider) : SszEndp
     {
         int timestampForkCount = ComputeTimestampForkCount(specProvider);
 
-        IEnumerable<string> supportedForks = timestampForkCount == 0
-            ? SszRestPaths.SupportedForksOrdered
-            : SszRestPaths.SupportedForksOrdered.Take(timestampForkCount + 1);
-
-        string supportedForksJson = JsonSerializer.Serialize(supportedForks);
+        string supportedForksJson;
+        if (timestampForkCount == 0)
+        {
+            supportedForksJson = JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered);
+        }
+        else
+        {
+            int limit = Math.Min(timestampForkCount + 1, SszRestPaths.SupportedForksOrdered.Count);
+            List<string> forkSlice = new(limit);
+            for (int i = 0; i < limit; i++)
+            {
+                forkSlice.Add(SszRestPaths.SupportedForksOrdered[i]);
+            }
+            supportedForksJson = JsonSerializer.Serialize(forkSlice);
+        }
 
         ctx.Response.ContentType = "application/json";
         ctx.Response.StatusCode = StatusCodes.Status200OK;

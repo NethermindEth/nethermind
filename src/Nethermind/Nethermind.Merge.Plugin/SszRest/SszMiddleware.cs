@@ -458,8 +458,11 @@ public sealed class SszMiddleware
         ReadOnlySpan<char> span = path.AsSpan();
         const string capabilitiesPath = "/engine/capabilities";
         const string identityPath = "/engine/identity";
-        return span.StartsWith(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase)
-            || span.StartsWith(identityPath.AsSpan(), StringComparison.OrdinalIgnoreCase);
+        
+        return span.Equals(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase)
+            || (span.StartsWith(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase) && span.Length > capabilitiesPath.Length && span[capabilitiesPath.Length] == '/')
+            || span.Equals(identityPath.AsSpan(), StringComparison.OrdinalIgnoreCase)
+            || (span.StartsWith(identityPath.AsSpan(), StringComparison.OrdinalIgnoreCase) && span.Length > identityPath.Length && span[identityPath.Length] == '/');
     }
 
     /// <summary>

@@ -279,6 +279,26 @@ public class SszMiddlewareTests
         await _engineModule.Received(isV3 ? 1 : 0).engine_getBlobsV3(Arg.Any<byte[][]>());
     }
 
+    [Test]
+    public async Task GetBlobsV4_routes_to_engine_getBlobsV4()
+    {
+        _engineModule.engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>())
+            .Returns(ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(null));
+
+        GetBlobsV4RequestWire request = new()
+        {
+            BlobVersionedHashes = [],
+            IndicesBitarray = new System.Collections.BitArray(128)
+        };
+        byte[] body = GetBlobsV4RequestWire.Encode(request);
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/blobs/v4", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
+        await _engineModule.Received(1).engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>());
+    }
+
     [TestCase(1, "/engine/v2/" + SszRestPaths.Shanghai + "/bodies/hash")]
     [TestCase(2, "/engine/v2/" + SszRestPaths.Amsterdam + "/bodies/hash")]
     public async Task GetPayloadBodiesByHash_routes_to_correct_engine_method(int version, string path)
