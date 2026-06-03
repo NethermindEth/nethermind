@@ -15,6 +15,8 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     );
 
     private static readonly RlpLimit UnclesCountLimit = RlpLimit.For<BlockBody>(2, nameof(BlockBody.Uncles));
+
+    // MAX_WITHDRAWALS_PER_PAYLOAD at https://github.com/ethereum/consensus-specs/blob/master/specs/capella/beacon-chain.md
     private static readonly RlpLimit WithdrawalsCountLimit = RlpLimit.For<BlockBody>(16, nameof(BlockBody.Withdrawals));
 
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
