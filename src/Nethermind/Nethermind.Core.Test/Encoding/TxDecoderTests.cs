@@ -411,7 +411,7 @@ namespace Nethermind.Core.Test.Encoding
 
             yield return TestCase(
                 "SetCode auth list count over limit",
-                BuildSetCodeTxBytes(300_000),
+                BuildSetCodeTxBytes(70_000),
                 exceptionType: typeof(RlpLimitException)
             );
 
