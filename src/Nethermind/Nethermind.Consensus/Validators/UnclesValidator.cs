@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -11,9 +12,19 @@ namespace Nethermind.Consensus.Validators
 {
     public class UnclesValidator(IBlockTree? blockTree, IHeaderValidator? headerValidator, ILogManager? logManager) : IUnclesValidator
     {
+        private const int RelationshipLevel = 6;
+        private const int MaxAncestorLevelsToCheckForDuplicates = 5;
+        private const int MaxAncestorsDepth = RelationshipLevel;
+
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         private readonly IHeaderValidator _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         private readonly ILogger _logger = logManager?.GetClassLogger<UnclesValidator>() ?? throw new ArgumentNullException(nameof(logManager));
+
+        [InlineArray(MaxAncestorsDepth)]
+        private struct AncestorsBuffer
+        {
+            private BlockHeader _element0;
+        }
 
         public bool Validate(BlockHeader header, BlockHeader[] uncles)
         {
@@ -23,21 +34,23 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
+            if (uncles.Length == 0)
+            {
+                return true;
+            }
+
             if (uncles.Length == 2 && uncles[0].Hash == uncles[1].Hash)
             {
                 _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - duplicated uncle");
                 return false;
             }
 
-            const int relationshipLevel = 6;
-            const int maxAncestorLevelsToCheckForDuplicates = 5;
-            const int maxAncestorsDepth = relationshipLevel;
-
-            BlockHeader[] ancestors = new BlockHeader[maxAncestorsDepth];
+            AncestorsBuffer buffer = default;
+            Span<BlockHeader> ancestors = buffer;
             int ancestorsCount = 0;
 
             BlockHeader currentHeader = header;
-            while (ancestorsCount < maxAncestorsDepth)
+            while (ancestorsCount < ancestors.Length)
             {
                 BlockHeader? parentHeader = _blockTree.FindParentHeader(currentHeader, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (parentHeader is null)
@@ -59,13 +72,13 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
 
-                if (!IsKin(header, uncle, relationshipLevel, ancestors, ancestorsCount))
+                if (!IsKin(header, uncle, RelationshipLevel, ancestors, ancestorsCount))
                 {
                     _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle just pretending to be uncle");
                     return false;
                 }
 
-                for (int ancestorLevel = 0; ancestorLevel < ancestorsCount && ancestorLevel < maxAncestorLevelsToCheckForDuplicates; ancestorLevel++)
+                for (int ancestorLevel = 0; ancestorLevel < ancestorsCount && ancestorLevel < MaxAncestorLevelsToCheckForDuplicates; ancestorLevel++)
                 {
                     BlockHeader includedByAncestorHeader = ancestors[ancestorLevel];
                     Block? includedByAncestor = _blockTree.FindBlock(includedByAncestorHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -88,7 +101,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private static bool IsKin(BlockHeader header, BlockHeader uncle, int relationshipLevel, BlockHeader[] ancestors, int ancestorsCount)
+        private static bool IsKin(BlockHeader header, BlockHeader uncle, int relationshipLevel, ReadOnlySpan<BlockHeader> ancestors, int ancestorsCount)
         {
             int maxDepth = Math.Min(Math.Min(ancestorsCount, relationshipLevel), (int)header.Number);
 
