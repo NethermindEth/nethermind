@@ -210,6 +210,79 @@ public sealed class SnapshotBundle : IDisposable
             foundScratch);
     }
 
+    /// <summary>
+    /// Value-returning batched read for many slots of one <paramref name="address" />: mirrors
+    /// <see cref="GetSlot" />'s layered lookup (current write buffer → this bundle's snapshot chain →
+    /// read-only bundle → persistence) but coalesces the persistence reads into a single MultiGet.
+    /// Each resolved EVM value is written into <paramref name="results" /> at the matching input index.
+    /// </summary>
+    /// <remarks>
+    /// Used by the BAL-driven pre-warm sink to populate the pre-block cache in one coalesced read per
+    /// account, so the main execution thread serves those slots from memory rather than issuing one
+    /// RocksDB read per slot. Mirrors <see cref="WarmSlotBatch" /> but returns the values.
+    /// </remarks>
+    public void GetSlotBatch(Address address, ReadOnlySpan<UInt256> indices, int selfDestructStateIdx, Span<byte[]?> results)
+    {
+        GuardDispose();
+
+        int n = indices.Length;
+        HashedKey<(Address, UInt256)>[] keys = new HashedKey<(Address, UInt256)>[n];
+        ValueHash256[] slotHashes = new ValueHash256[n];
+        // Indices into the input arrays for slots that miss this bundle and defer to the read-only bundle.
+        int[] roIndices = new int[n];
+        int roCount = 0;
+
+        int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
+        bool wholeBundleSelfDestructed = selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount;
+
+        for (int j = 0; j < n; j++)
+        {
+            UInt256 index = indices[j];
+            HashedKey<(Address, UInt256)> key = new((address, index));
+
+            if (_changedSlots.TryGetValue(key, out SlotValue? changed))
+            {
+                results[j] = changed?.ToEvmBytes();
+                continue;
+            }
+
+            if (wholeBundleSelfDestructed)
+            {
+                results[j] = null;
+                continue;
+            }
+
+            if (TryResolveFromOwnSnapshots(key, currentBundleSelfDestructIdx, out byte[]? value))
+            {
+                results[j] = value;
+                continue;
+            }
+
+            keys[roCount] = key;
+            ValueHash256 slotHash = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(index, ref slotHash);
+            slotHashes[roCount] = slotHash;
+            roIndices[roCount] = j;
+            roCount++;
+        }
+
+        if (roCount == 0) return;
+
+        // byte[] is a managed reference type, so the buffer cannot be stack-allocated.
+        Span<byte[]?> roResults = new byte[]?[roCount];
+        _readOnlySnapshotBundle.GetSlotBatch(
+            address,
+            keys.AsSpan(0, roCount),
+            slotHashes.AsSpan(0, roCount),
+            selfDestructStateIdx,
+            roResults);
+
+        for (int m = 0; m < roCount; m++)
+        {
+            results[roIndices[m]] = roResults[m];
+        }
+    }
+
     /// <summary>True when this bundle's own snapshot chain resolves the slot (hit or self-destruct boundary).</summary>
     private bool ResolveFromOwnSnapshots(HashedKey<(Address, UInt256)> key, int currentBundleSelfDestructIdx)
     {
@@ -226,6 +299,31 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
+        return false;
+    }
+
+    /// <summary>
+    /// Value-returning variant of <see cref="ResolveFromOwnSnapshots" />: on a hit returns the slot's EVM
+    /// value, and at a self-destruct boundary returns <c>null</c>.
+    /// </summary>
+    private bool TryResolveFromOwnSnapshots(HashedKey<(Address, UInt256)> key, int currentBundleSelfDestructIdx, out byte[]? value)
+    {
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
+            {
+                value = slotValue?.ToEvmBytes();
+                return true;
+            }
+
+            if (i <= currentBundleSelfDestructIdx)
+            {
+                value = null;
+                return true;
+            }
+        }
+
+        value = null;
         return false;
     }
 

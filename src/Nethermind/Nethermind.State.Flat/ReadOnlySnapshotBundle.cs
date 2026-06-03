@@ -153,6 +153,82 @@ public sealed class ReadOnlySnapshotBundle(
     }
 
     /// <summary>
+    /// Value-returning batched read for many slots of one <paramref name="address" />: mirrors
+    /// <see cref="GetSlot(int, HashedKey{ValueTuple{Address, UInt256}})" />'s layered lookup but coalesces
+    /// the persistence misses into a single MultiGet. Each resolved EVM value is written into
+    /// <paramref name="results" /> at the matching input index; persistence misses yield <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="WarmSlotBatch" /> (which discards values and only primes the RocksDB block cache),
+    /// this returns the values so the caller can populate the higher-level pre-block cache, letting the
+    /// main execution thread serve repeated reads from memory instead of paying a per-slot RocksDB read.
+    /// </remarks>
+    public void GetSlotBatch(
+        Address address,
+        ReadOnlySpan<HashedKey<(Address, UInt256)>> keys,
+        ReadOnlySpan<ValueHash256> slotHashes,
+        int selfDestructStateIdx,
+        Span<byte[]?> results)
+    {
+        GuardDispose();
+
+        int n = keys.Length;
+        // Indices into the input arrays for slots that miss the snapshot chain and need a persistence read.
+        Span<int> missIndices = n <= 256 ? stackalloc int[n] : new int[n];
+        Span<ValueHash256> missHashes = n <= 256 ? stackalloc ValueHash256[n] : new ValueHash256[n];
+        int missCount = 0;
+
+        for (int k = 0; k < n; k++)
+        {
+            if (TryResolveSlotFromSnapshotChain(keys[k], selfDestructStateIdx, out byte[]? value))
+            {
+                results[k] = value;
+                continue;
+            }
+
+            missIndices[missCount] = k;
+            missHashes[missCount] = slotHashes[k];
+            missCount++;
+        }
+
+        if (missCount == 0) return;
+
+        Span<SlotValue> valueScratch = missCount <= 256 ? stackalloc SlotValue[missCount] : new SlotValue[missCount];
+        Span<bool> foundScratch = missCount <= 256 ? stackalloc bool[missCount] : new bool[missCount];
+        persistenceReader.TryGetStorageBatchRaw(address.ToAccountPath, missHashes[..missCount], valueScratch, foundScratch);
+
+        for (int m = 0; m < missCount; m++)
+        {
+            results[missIndices[m]] = foundScratch[m] ? valueScratch[m].ToEvmBytes() : null;
+        }
+    }
+
+    /// <summary>
+    /// Resolves <paramref name="key" /> against the snapshot chain, mirroring <see cref="ResolveFromSnapshotChain" />
+    /// but returning the slot's EVM value (or <c>null</c> at a self-destruct boundary) on a hit.
+    /// </summary>
+    private bool TryResolveSlotFromSnapshotChain(HashedKey<(Address, UInt256)> key, int selfDestructStateIdx, out byte[]? value)
+    {
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
+            {
+                value = slotValue?.ToEvmBytes();
+                return true;
+            }
+
+            if (i <= selfDestructStateIdx)
+            {
+                value = null;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    /// <summary>
     /// True when the slot is resolved by the in-memory snapshot chain (a hit or a self-destruct
     /// boundary), meaning it does not need a persistence read.
     /// </summary>

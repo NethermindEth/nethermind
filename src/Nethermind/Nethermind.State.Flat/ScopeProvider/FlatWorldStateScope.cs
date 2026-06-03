@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -477,51 +478,65 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }, token);
     }
 
+    // Parallel across accounts; each account's slots resolve in a single coalesced MultiGet that also feeds
+    // the sink, so the main execution thread serves those slots from the pre-block cache instead of issuing
+    // one RocksDB read per slot.
     private void RunSinkSlotReads(
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
         Account?[] accounts,
         int[] selfDestructIdxs,
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
-        ParallelOptions parallelOptions)
-    {
-        int totalSlots = 0;
-        for (int i = 0; i < accountChanges.Count; i++)
-        {
-            if (accounts[i] is null) continue;
-            totalSlots += accountChanges[i].StorageChanges.Length
-                       + accountChanges[i].StorageReads.Length;
-        }
-
-        if (totalSlots == 0) return;
-
-        using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
-        int idx = 0;
-        for (int i = 0; i < accountChanges.Count; i++)
-        {
-            if (accounts[i] is null) continue;
-            ReadOnlyAccountChanges ac = accountChanges[i];
-            Address address = ac.Address;
-            int selfDestructIdx = selfDestructIdxs[i];
-            foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
-                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
-            foreach (UInt256 readKey in ac.StorageReads)
-                jobs[idx++] = (address, selfDestructIdx, readKey);
-        }
-
-        Parallel.For(0, idx, parallelOptions, (j) =>
+        ParallelOptions parallelOptions) =>
+        Parallel.For(0, accountChanges.Count, parallelOptions, (i) =>
         {
             if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
-        });
-    }
+            if (accounts[i] is null) return;
 
-    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
+            ReadOnlyAccountChanges ac = accountChanges[i];
+            int slotCount = ac.StorageChanges.Length + ac.StorageReads.Length;
+            if (slotCount == 0) return;
+
+            ReadSlotsToSinkBatched(sink, ac, selfDestructIdxs[i], slotCount);
+        });
+
+    private void ReadSlotsToSinkBatched(IWorldStateScopeProvider.IAsyncBalReaderSink sink, ReadOnlyAccountChanges ac, int selfDestructIdx, int slotCount)
     {
-        StorageCell cell = new(address, in slot);
-        if (!sink.StillNeeded(in cell)) return;
-        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
-        sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
+        Address address = ac.Address;
+
+        UInt256[] slots = ArrayPool<UInt256>.Shared.Rent(slotCount);
+        byte[]?[] values = ArrayPool<byte[]?>.Shared.Rent(slotCount);
+        try
+        {
+            int n = 0;
+            foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
+            {
+                StorageCell cell = new(address, slotChanges.Key);
+                if (sink.StillNeeded(in cell)) slots[n++] = slotChanges.Key;
+            }
+            foreach (UInt256 readKey in ac.StorageReads)
+            {
+                StorageCell cell = new(address, readKey);
+                if (sink.StillNeeded(in cell)) slots[n++] = readKey;
+            }
+
+            if (n == 0) return;
+
+            Span<byte[]?> valueSpan = values.AsSpan(0, n);
+            valueSpan.Clear();
+            _snapshotBundle.GetSlotBatch(address, slots.AsSpan(0, n), selfDestructIdx, valueSpan);
+
+            for (int s = 0; s < n; s++)
+            {
+                StorageCell cell = new(address, slots[s]);
+                byte[]? raw = valueSpan[s];
+                sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
+            }
+        }
+        finally
+        {
+            ArrayPool<UInt256>.Shared.Return(slots);
+            ArrayPool<byte[]?>.Shared.Return(values, clearArray: true);
+        }
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
