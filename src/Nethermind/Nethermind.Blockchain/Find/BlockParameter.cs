@@ -264,6 +264,20 @@ namespace Nethermind.JsonRpc.Data
                     return new BlockParameter(new Hash256(bytes));
                 }
 
+                if (EthereumJsonSerializer.StrictHexFormat)
+                {
+                    // EIP-1474 quantity: the empty "0x" is not a valid block number.
+                    if (span.Length == 0)
+                    {
+                        throw new BlockParameterParseException($"hex string \"{Bytes.EmptyHexValue}\"");
+                    }
+                    // EIP-1474 quantity: no leading-zero digits (only "0x0" represents zero).
+                    if (span.Length > 1 && span[0] == (byte)'0')
+                    {
+                        throw new BlockParameterParseException("hex number with leading zero digits");
+                    }
+                }
+
                 // Parse as block number
                 long value = ParseHexNumber(span);
                 return new BlockParameter(value);
