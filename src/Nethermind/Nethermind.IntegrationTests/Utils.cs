@@ -10,8 +10,10 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Images;
+using DotNet.Testcontainers.Networks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -24,6 +26,23 @@ public static class Utils
 {
     private const string DefaultLocalImageTag = "nethermind:integration-tests";
     private const string DefaultProxyImageTag = "engine-api-proxy:integration-tests";
+
+    // Public, pinned images used by the live-CL devnet tests. Unlike the Nethermind and proxy
+    // images (built from the repo's Dockerfiles), these are pulled from registries and can be
+    // overridden via the matching environment variable for air-gapped/mirror setups.
+    private const string DefaultLighthouseImage = "sigp/lighthouse:v7.0.1";
+    private const string DefaultGenesisGeneratorImage = "ethpandaops/ethereum-genesis-generator:4.0.0";
+    private const string DefaultValidatorKeysImage = "protolambda/eth2-val-tools:latest";
+
+    /// <summary>
+    /// The 24-word mnemonic baked into the genesis generator's <c>defaults.env</c>. The same
+    /// mnemonic is reused to derive the Lighthouse validator keystores so the validator keys
+    /// match the validators embedded in <c>genesis.ssz</c>.
+    /// </summary>
+    public const string DevnetMnemonic = "sleep moment list remain like wall lake industry canvas wonder ecology elite duck salad naive syrup frame brass utility club odor country obey pudding";
+
+    /// <summary>Chain ID for the generated single-node devnet (anything outside the known networks).</summary>
+    public const int DevnetChainId = 1337;
 
     private static readonly SemaphoreSlim s_imageBuildLock = new(1, 1);
     private static readonly SemaphoreSlim s_proxyImageBuildLock = new(1, 1);
@@ -435,5 +454,232 @@ public static class Utils
             JsonNode fcuResult2 = await SendEngineRequestAsync(httpClient, $"engine_forkchoiceUpdatedV{fcuVersion}", finalForkchoiceState);
             Assert.That(fcuResult2["payloadStatus"]["status"].GetValue<string>(), Is.AnyOf("VALID", "SYNCING", "ACCEPTED"));
         }
+    }
+
+    private static string ResolveImage(string overrideEnvVar, string defaultImage)
+    {
+        string overrideImage = Environment.GetEnvironmentVariable(overrideEnvVar);
+        return string.IsNullOrWhiteSpace(overrideImage) ? defaultImage : overrideImage;
+    }
+
+    /// <summary>Lighthouse beacon/validator image (override with <c>LIGHTHOUSE_IMAGE</c>).</summary>
+    public static string GetLighthouseImage() => ResolveImage("LIGHTHOUSE_IMAGE", DefaultLighthouseImage);
+
+    /// <summary>Genesis generator image (override with <c>GENESIS_GENERATOR_IMAGE</c>).</summary>
+    public static string GetGenesisGeneratorImage() => ResolveImage("GENESIS_GENERATOR_IMAGE", DefaultGenesisGeneratorImage);
+
+    /// <summary>Validator keystore generator image (override with <c>VALIDATOR_KEYS_IMAGE</c>).</summary>
+    public static string GetValidatorKeysImage() => ResolveImage("VALIDATOR_KEYS_IMAGE", DefaultValidatorKeysImage);
+
+    /// <summary>
+    /// Host paths to a freshly generated single-node post-merge devnet: the patched Nethermind
+    /// chainspec, the shared JWT secret, the Lighthouse <c>--testnet-dir</c> (CL <c>config.yaml</c>
+    /// + <c>genesis.ssz</c>), and the validator keystores/secrets derived from <see cref="DevnetMnemonic"/>.
+    /// </summary>
+    public sealed record DevnetGenesis(
+        string RootDir,
+        string ChainspecHostPath,
+        string JwtHostPath,
+        string TestnetDirHostPath,
+        string ValidatorKeysHostPath,
+        string ValidatorSecretsHostPath);
+
+    /// <summary>
+    /// Bootstraps a single-node devnet whose EL and CL share a genesis, with genesis time anchored
+    /// to "now" so Lighthouse starts proposing almost immediately rather than replaying history.
+    /// </summary>
+    /// <remarks>
+    /// Runs two short-lived containers against a shared bind-mounted data directory:
+    /// <list type="number">
+    /// <item><c>ethereum-genesis-generator</c> mints the EL <c>chainspec.json</c>, CL
+    /// <c>genesis.ssz</c>/<c>config.yaml</c>, and JWT from <see cref="DevnetMnemonic"/>. It is driven
+    /// entirely by environment variables (its <c>defaults.env</c> uses <c>${VAR:-default}</c>).
+    /// Capella+Deneb activate at genesis and Electra is disabled, yielding a Cancun-equivalent devnet
+    /// whose payloads are V3 — matching the proxy's configured getPayload/newPayload methods.</item>
+    /// <item><c>eth2-val-tools</c> derives Lighthouse-format <c>keys/</c>+<c>secrets/</c> keystores
+    /// from the same mnemonic so they match the validators embedded in <c>genesis.ssz</c>.</item>
+    /// </list>
+    /// The generated chainspec's <c>params.blobSchedule</c> is then converted from the generator's
+    /// fork-keyed object form to the array form Nethermind expects (see
+    /// <see cref="PatchChainspecBlobSchedule"/>).
+    /// </remarks>
+    public static async Task<DevnetGenesis> GenerateDevnetGenesisAsync(
+        int validatorCount = 4,
+        int genesisDelaySeconds = 12,
+        int secondsPerSlot = 12)
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"nethermind-lh-{Guid.NewGuid():N}");
+        string dataDir = Path.Combine(root, "data");
+        Directory.CreateDirectory(dataDir);
+
+        long genesisTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        const string genesisDoneMarker = "NETHERMIND_GENESIS_DONE";
+        IContainer generator = new ContainerBuilder()
+            .WithImage(GetGenesisGeneratorImage())
+            .WithEnvironment("PRESET_BASE", "mainnet")
+            .WithEnvironment("CHAIN_ID", DevnetChainId.ToString())
+            .WithEnvironment("NUMBER_OF_VALIDATORS", validatorCount.ToString())
+            .WithEnvironment("GENESIS_TIMESTAMP", genesisTimestamp.ToString())
+            .WithEnvironment("GENESIS_DELAY", genesisDelaySeconds.ToString())
+            .WithEnvironment("SLOT_DURATION_IN_SECONDS", secondsPerSlot.ToString())
+            .WithEnvironment("CAPELLA_FORK_EPOCH", "0")
+            .WithEnvironment("DENEB_FORK_EPOCH", "0")
+            // Electra disabled -> single (cancun) blobSchedule entry, simplest V3 devnet.
+            .WithEnvironment("ELECTRA_FORK_EPOCH", "18446744073709551615")
+            .WithEnvironment("EL_AND_CL_MNEMONIC", DevnetMnemonic)
+            .WithBindMount(dataDir, "/data", AccessMode.ReadWrite)
+            // Wrap the image entrypoint so we can emit an unambiguous completion marker the wait
+            // strategy can latch onto even though the container exits as soon as generation finishes.
+            .WithEntrypoint("/bin/bash", "-c")
+            .WithCommand($"/work/entrypoint.sh all && echo {genesisDoneMarker}")
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(genesisDoneMarker))
+            .Build();
+        await generator.StartAsync();
+        await generator.DisposeAsync();
+
+        const string keysDoneMarker = "NETHERMIND_KEYS_DONE";
+        IContainer keygen = new ContainerBuilder()
+            .WithImage(GetValidatorKeysImage())
+            .WithBindMount(dataDir, "/data", AccessMode.ReadWrite)
+            .WithEntrypoint("/bin/sh", "-c")
+            .WithCommand($"/app/eth2-val-tools keystores --source-mnemonic '{DevnetMnemonic}' --source-min 0 --source-max {validatorCount} --out-loc /data/validators && echo {keysDoneMarker}")
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(keysDoneMarker))
+            .Build();
+        await keygen.StartAsync();
+        await keygen.DisposeAsync();
+
+        string metadataDir = Path.Combine(dataDir, "metadata");
+        string patchedChainspec = Path.Combine(root, "chainspec.json");
+        PatchChainspecBlobSchedule(Path.Combine(metadataDir, "chainspec.json"), patchedChainspec);
+
+        return new DevnetGenesis(
+            RootDir: root,
+            ChainspecHostPath: patchedChainspec,
+            JwtHostPath: Path.Combine(dataDir, "jwt", "jwtsecret"),
+            TestnetDirHostPath: metadataDir,
+            ValidatorKeysHostPath: Path.Combine(dataDir, "validators", "keys"),
+            ValidatorSecretsHostPath: Path.Combine(dataDir, "validators", "secrets"));
+    }
+
+    /// <summary>
+    /// Rewrites <c>params.blobSchedule</c> from the generator's fork-keyed object
+    /// (<c>{ "cancun": { target, max, baseFeeUpdateFraction } }</c>) into the array of
+    /// <c>{ timestamp, target, max, baseFeeUpdateFraction }</c> entries Nethermind's chainspec
+    /// loader expects. All forks activate at genesis, so each entry is stamped at timestamp 0.
+    /// </summary>
+    private static void PatchChainspecBlobSchedule(string sourcePath, string destPath)
+    {
+        JsonNode root = JsonNode.Parse(File.ReadAllText(sourcePath))
+            ?? throw new InvalidOperationException($"Could not parse generated chainspec at {sourcePath}");
+
+        if (root["params"] is JsonObject paramsObj && paramsObj["blobSchedule"] is JsonObject schedule)
+        {
+            JsonArray converted = [];
+            foreach (KeyValuePair<string, JsonNode> entry in schedule)
+            {
+                if (entry.Value is not JsonObject settings)
+                {
+                    continue;
+                }
+
+                JsonObject clone = (JsonObject)settings.DeepClone();
+                clone["timestamp"] = "0x0";
+                converted.Add(clone);
+            }
+
+            paramsObj["blobSchedule"] = converted;
+        }
+
+        File.WriteAllText(destPath, root.ToJsonString());
+    }
+
+    /// <summary>
+    /// Builds a Lighthouse beacon node configured to drive the given execution endpoint (the proxy).
+    /// <c>--always-prepare-payload</c> makes every FCU carry payload attributes, which is what the
+    /// proxy's Lighthouse mode intercepts. Single-node devnet flags disable peer discovery/scoring.
+    /// </summary>
+    public static ContainerBuilder BuildLighthouseBeaconContainer(
+        DevnetGenesis genesis,
+        INetwork network,
+        string networkAlias,
+        string executionEndpoint,
+        string feeRecipient) =>
+        new ContainerBuilder()
+            .WithImage(GetLighthouseImage())
+            .WithNetwork(network)
+            .WithNetworkAliases(networkAlias)
+            .WithBindMount(genesis.TestnetDirHostPath, "/testnet", AccessMode.ReadOnly)
+            .WithBindMount(genesis.JwtHostPath, "/jwt.hex", AccessMode.ReadOnly)
+            .WithCommand(
+                "lighthouse", "bn",
+                "--testnet-dir", "/testnet",
+                "--execution-endpoint", executionEndpoint,
+                "--execution-jwt", "/jwt.hex",
+                "--always-prepare-payload",
+                "--http", "--http-address", "0.0.0.0",
+                "--suggested-fee-recipient", feeRecipient,
+                "--disable-peer-scoring",
+                "--enable-private-discovery",
+                "--disable-packet-filter",
+                "--target-peers", "0",
+                "--allow-insecure-genesis-sync")
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("HTTP API started"));
+
+    /// <summary>
+    /// Builds a Lighthouse validator client for the devnet's genesis validators. The keystores
+    /// directory is mounted read-write because Lighthouse writes <c>validator_definitions.yml</c>
+    /// into it on startup.
+    /// </summary>
+    public static ContainerBuilder BuildLighthouseValidatorContainer(
+        DevnetGenesis genesis,
+        INetwork network,
+        string beaconNodeUrl,
+        string feeRecipient) =>
+        new ContainerBuilder()
+            .WithImage(GetLighthouseImage())
+            .WithNetwork(network)
+            .WithBindMount(genesis.TestnetDirHostPath, "/testnet", AccessMode.ReadOnly)
+            .WithBindMount(genesis.ValidatorKeysHostPath, "/keys", AccessMode.ReadWrite)
+            .WithBindMount(genesis.ValidatorSecretsHostPath, "/secrets", AccessMode.ReadOnly)
+            .WithCommand(
+                "lighthouse", "vc",
+                "--testnet-dir", "/testnet",
+                "--validators-dir", "/keys",
+                "--secrets-dir", "/secrets",
+                "--beacon-nodes", beaconNodeUrl,
+                "--init-slashing-protection",
+                "--suggested-fee-recipient", feeRecipient)
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Validator exists in beacon chain"));
+
+    /// <summary>
+    /// Polls <c>eth_blockNumber</c> until the head reaches <paramref name="minBlockNumber"/> or
+    /// <paramref name="timeout"/> elapses. Returns the last observed block number (which may be
+    /// below the target on timeout, letting the caller produce a useful assertion message).
+    /// </summary>
+    public static async Task<long> WaitForElBlockNumberAsync(HttpClient client, long minBlockNumber, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+        long last = 0;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                JsonNode result = await SendJsonRpcRequestAsync(client, "eth_blockNumber");
+                last = Convert.ToInt64(result.GetValue<string>()[2..], 16);
+                if (last >= minBlockNumber)
+                {
+                    return last;
+                }
+            }
+            catch
+            {
+                // EL JSON-RPC may not be reachable yet during startup; keep polling until the deadline.
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+
+        return last;
     }
 }
