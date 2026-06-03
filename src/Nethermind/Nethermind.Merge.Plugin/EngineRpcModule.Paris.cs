@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -80,7 +80,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
         if (validationResult != ValidationResult.Success)
         {
-            if (_logger.IsWarn) _logger.Warn(error);
+            if (_logger.IsWarn) _logger.Warn(error!);
             return validationResult == ValidationResult.Fail
                 ? ResultWrapper<PayloadStatusV1>.Fail(error!, ErrorCodes.InvalidParams)
                 : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, error));
@@ -103,7 +103,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             catch (BlockchainException exception)
             {
-                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR engine_newPayloadV{version} failed: {exception}");
+                _logger.DebugError($"engine_newPayloadV{version} failed: {exception}");
                 return ResultWrapper<PayloadStatusV1>.Fail(exception.Message, ErrorCodes.UnknownBlockError);
             }
             catch (Exception exception)

@@ -63,7 +63,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     private int AssignDiscoveryIp() => Interlocked.Increment(ref _discoveryIp);
 
     [Test]
-    [Retry(3)]
+    [Category("Flaky"), Retry(3)]
     [Parallelizable(ParallelScope.None)]
     public async Task TestDiscovery()
     {
@@ -89,10 +89,10 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         foreach (IContainer node in nodes)
         {
             IPeerPool pool = node.Resolve<IPeerPool>();
-            HashSet<PublicKey> expectedKeys = new(nodeKeys);
+            HashSet<PublicKey> expectedKeys = [.. nodeKeys];
             expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
 
-            Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(),
+            Assert.That(() => pool.Peers.Select(static kvp => kvp.Value.Node.Id).ToHashSet(),
                 Is.EquivalentTo(expectedKeys).After(15000, 100));
         }
     }

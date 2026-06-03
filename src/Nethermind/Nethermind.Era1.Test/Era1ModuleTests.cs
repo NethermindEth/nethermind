@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using Autofac;
-using FluentAssertions;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -16,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
@@ -66,11 +66,11 @@ public class Era1ModuleTests
         (Block importedBlock1, TxReceipt[] ImportedReceipts1) = enumerator.Current;
         await enumerator.DisposeAsync();
 
-        importedBlock0.Should().BeEquivalentTo(block0);
-        importedBlock1.Should().BeEquivalentTo(block1);
+        AssertBlockEquivalent(importedBlock0, block0);
+        AssertBlockEquivalent(importedBlock1, block1);
 
-        ImportedReceipts0.Should().BeEquivalentTo(ImportedReceipts0);
-        ImportedReceipts1.Should().BeEquivalentTo(ImportedReceipts1);
+        AssertReceiptMessagesEquivalent(ImportedReceipts0, [receipt0]);
+        AssertReceiptMessagesEquivalent(ImportedReceipts1, [receipt1]);
 
         Assert.That(importedBlock0.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
         Assert.That(importedBlock1.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
@@ -92,7 +92,7 @@ public class Era1ModuleTests
 
         foreach (string era in eraFiles)
         {
-            List<(Block b, TxReceipt[] r)> readFromFile = new();
+            List<(Block b, TxReceipt[] r)> readFromFile = [];
 
             using TempPath tmpFile = TempPath.GetTempFile();
             {
@@ -112,8 +112,8 @@ public class Era1ModuleTests
             await foreach ((Block b, TxReceipt[] r) in exportedToImported)
             {
                 Assert.That(i, Is.LessThan(readFromFile.Count), "Exceeded the block count read from the file.");
-                b.ToString(Block.Format.Full).Should().BeEquivalentTo(readFromFile[i].b.ToString(Block.Format.Full));
-                r.Should().BeEquivalentTo(readFromFile[i].r);
+                Assert.That(b.ToString(Block.Format.Full), Is.EqualTo(readFromFile[i].b.ToString(Block.Format.Full)));
+                AssertReceiptMessagesEquivalent(r, readFromFile[i].r);
                 i++;
             }
         }
@@ -175,7 +175,7 @@ public class Era1ModuleTests
         using EraReader eraReader = new(tmpFile.Path);
 
         Func<Task> verifyTask = () => eraReader.VerifyContent(testBlockchain.SpecProvider, Always.Valid, default);
-        await verifyTask.Should().NotThrowAsync();
+        Assert.That(async () => await verifyTask(), Throws.Nothing);
     }
 
     [Test]
@@ -183,7 +183,7 @@ public class Era1ModuleTests
     {
         BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using TempPath tmpFile = TempPath.GetTempFile();
-        List<(Block, TxReceipt[])> toAddBlocks = new();
+        List<(Block, TxReceipt[])> toAddBlocks = [];
         testBlockchain.BranchProcessor.BlockProcessed += (sender, blockArgs) =>
         {
             toAddBlocks.Add((blockArgs.Block, blockArgs.TxReceipts));
@@ -238,10 +238,10 @@ public class Era1ModuleTests
         int numOfBlocks = 16;
         int numOfTx = 1000;
         UInt256 nonce = 0;
-        List<Block> blocks = new()
-        {
+        List<Block> blocks =
+        [
             genesis
-        };
+        ];
         for (int i = 0; i < numOfBlocks; i++)
         {
             Transaction[] transactions = new Transaction[numOfTx];
@@ -270,7 +270,11 @@ public class Era1ModuleTests
             foreach (Block block in blocks)
             {
                 foreach (Transaction item in block.Transactions)
+                {
                     item.SenderAddress = null;
+                    item.SpentGas = 0;
+                    item.BlockGasUsed = 0;
+                }
                 await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
             }
 
@@ -289,8 +293,8 @@ public class Era1ModuleTests
 
             TxReceipt[] expectedReceipts = testBlockchain.ReceiptStorage.Get(expectedBlock);
 
-            b.Should().BeEquivalentTo(expectedBlock);
-            r.Should().BeEquivalentTo(expectedReceipts);
+            AssertBlockEquivalent(b, expectedBlock);
+            AssertReceiptMessagesEquivalent(r, expectedReceipts);
         }
     }
 
@@ -351,5 +355,39 @@ public class Era1ModuleTests
 
         Assert.That(minSuggestedNumber, Is.EqualTo(expectedMinSuggestedBlock));
         Assert.That(maxSuggestedBlock, Is.EqualTo(expectedMaxSuggestedBlock));
+    }
+
+    private static void AssertBlockEquivalent(Block actual, Block expected) =>
+        Assert.That(actual.ToString(Block.Format.Full), Is.EqualTo(expected.ToString(Block.Format.Full)));
+
+    private static void AssertReceiptMessagesEquivalent(TxReceipt[] actual, TxReceipt[] expected)
+    {
+        Assert.That(actual, Has.Length.EqualTo(expected.Length));
+
+        for (int i = 0; i < expected.Length; i++)
+        {
+            AssertReceiptMessageEquivalent(actual[i], expected[i]);
+        }
+    }
+
+    private static void AssertReceiptMessageEquivalent(TxReceipt actual, TxReceipt expected)
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(actual.TxType, Is.EqualTo(expected.TxType));
+            Assert.That(actual.GasUsedTotal, Is.EqualTo(expected.GasUsedTotal));
+            Assert.That(actual.Bloom, Is.EqualTo(expected.Bloom));
+        });
+
+        if (expected.PostTransactionState is null)
+        {
+            Assert.That(actual.StatusCode, Is.EqualTo(expected.StatusCode));
+        }
+        else
+        {
+            Assert.That(actual.PostTransactionState, Is.EqualTo(expected.PostTransactionState));
+        }
+
+        actual.Logs.AssertEquivalentTo(expected.Logs);
     }
 }

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Security;
 using Nethermind.Core;
@@ -19,9 +20,9 @@ namespace Nethermind.Wallet
         private const string AnyPassword = "#DEV_ACCOUNT_NETHERMIND_ANY_PASSWORD#";
         private static readonly byte[] _keySeed = new byte[32];
         private readonly ILogger _logger;
-        private readonly Dictionary<Address, bool> _isUnlocked = new();
-        private readonly Dictionary<Address, PrivateKey> _keys = new();
-        private readonly Dictionary<Address, string> _passwords = new();
+        private readonly Dictionary<Address, bool> _isUnlocked = [];
+        private readonly Dictionary<Address, PrivateKey> _keys = [];
+        private readonly Dictionary<Address, string> _passwords = [];
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
@@ -93,23 +94,33 @@ namespace Nethermind.Wallet
 
             return true;
         }
-        public Signature Sign(Hash256 message, Address address, SecureString passphrase)
-        {
-            if (!_isUnlocked.TryGetValue(address, out bool value)) throw new SecurityException("Account does not exist.");
-
-            if (!value && !CheckPassword(address, passphrase)) throw new SecurityException("Cannot sign without password or unlocked account.");
-
-            return Sign(message, address);
-        }
-
         public bool IsUnlocked(Address address) => _isUnlocked.TryGetValue(address, out bool unlocked) && unlocked;
 
         private bool CheckPassword(Address address, SecureString passphrase) => _passwords[address] == AnyPassword || passphrase?.Unsecure() == _passwords[address];
 
-        public Signature Sign(Hash256 message, Address address)
+        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature)
         {
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
-            return new Signature(rs, v);
+            if (!_isUnlocked.TryGetValue(address, out bool unlocked) || !unlocked || !_keys.TryGetValue(address, out PrivateKey key))
+            {
+                signature = null;
+                return false;
+            }
+
+            signature = WalletSigner.Sign(in message, key);
+            return true;
+        }
+
+        public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
+        {
+            // Dev accounts created with AnyPassword accept any passphrase here (see CheckPassword) — dev-only behavior.
+            if (!_passwords.ContainsKey(address) || !CheckPassword(address, passphrase) || !_keys.TryGetValue(address, out PrivateKey key))
+            {
+                signature = null;
+                return false;
+            }
+
+            signature = WalletSigner.Sign(in message, key);
+            return true;
         }
     }
 }

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Find;
@@ -20,7 +20,8 @@ internal class XdcTxPoolTxSourceFactory(
 {
     public virtual ITxSource Create()
     {
-        ITxFilterPipeline txSourceFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, blocksConfig);
+        ITxFilterPipeline txSourceFilterPipeline = new XdcTxFilterPipeline(
+            TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, blocksConfig));
         return new TxPoolTxSource(txPool, specProvider, new XdcTransactionComparerProvider(specProvider, blockFinder), logManager, txSourceFilterPipeline, blocksConfig);
     }
 }

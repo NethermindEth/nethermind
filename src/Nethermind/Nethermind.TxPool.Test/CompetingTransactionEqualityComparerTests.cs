@@ -18,37 +18,13 @@ namespace Nethermind.TxPool.Test
             {
                 Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject;
 
-                yield return new TestCaseData(null, null) { ExpectedResult = true };
-
-                yield return new TestCaseData(transaction, null)
-                {
-                    ExpectedResult = false
-                };
-
-                yield return new TestCaseData(null, transaction)
-                {
-                    ExpectedResult = false
-                };
-
-                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(2).TestObject)
-                {
-                    ExpectedResult = false
-                };
-
-                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(4).TestObject)
-                {
-                    ExpectedResult = false
-                };
-
-                yield return new TestCaseData(transaction, transaction)
-                {
-                    ExpectedResult = true
-                };
-
-                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject)
-                {
-                    ExpectedResult = true
-                };
+                yield return new TestCaseData(null, null).Returns(true).SetArgDisplayNames("Both_null");
+                yield return new TestCaseData(transaction, null).Returns(false).SetArgDisplayNames("Left_transaction_right_null");
+                yield return new TestCaseData(null, transaction).Returns(false).SetArgDisplayNames("Left_null_right_transaction");
+                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(2).TestObject).Returns(false).SetArgDisplayNames("Different_sender");
+                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(4).TestObject).Returns(false).SetArgDisplayNames("Different_nonce");
+                yield return new TestCaseData(transaction, transaction).Returns(true).SetArgDisplayNames("Same_instance");
+                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject).Returns(true).SetArgDisplayNames("Same_sender_and_nonce");
             }
         }
 

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -149,13 +148,8 @@ public class ForkInfoTests
     [TestCase(111735000, GnosisSpecProvider.OsakaTimestamp - 1, "0xd00284ad", GnosisSpecProvider.OsakaTimestamp, "Future Balancer timestamp")]
     [TestCase(121735000, GnosisSpecProvider.OsakaTimestamp, "0xcfca387c", 0ul, "First Osaka timestamp")]
     [TestCase(121735000, GnosisSpecProvider.OsakaTimestamp + 100, "0xcfca387c", 0ul, "Future Osaka timestamp")]
-    public void Fork_id_and_hash_as_expected_on_gnosis(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
-    {
-        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
-        ChainSpec spec = loader.LoadEmbeddedOrFromFile("../../../../Chains/gnosis.json");
-        ChainSpecBasedSpecProvider provider = new(spec);
-        Test(head, headTimestamp, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
-    }
+    public void Fork_id_and_hash_as_expected_on_gnosis(long head, ulong headTimestamp, string forkHashHex, ulong next, string description) =>
+        Test(head, headTimestamp, KnownHashes.GnosisGenesis, forkHashHex, next, description, GnosisSpecProvider.Instance, "gnosis.json");
 
     [TestCase(0L, 0UL, "0x50d39d7b", ChiadoSpecProvider.ShanghaiTimestamp, "Chiado genesis")]
     [TestCase(3945317, ChiadoSpecProvider.ShanghaiTimestamp, "0xa15a4252", ChiadoSpecProvider.CancunTimestamp, "First Shanghai timestamp")]
@@ -165,13 +159,8 @@ public class ForkInfoTests
     [TestCase(5_000_000, ChiadoSpecProvider.OsakaTimestamp - 1, "0x8ba51786", ChiadoSpecProvider.OsakaTimestamp, "Future Prague timestamp")]
     [TestCase(5_000_000, ChiadoSpecProvider.OsakaTimestamp, "0x71c457cd", 0ul, "First Osaka timestamp")]
     [TestCase(5_000_000, ChiadoSpecProvider.OsakaTimestamp + 100, "0x71c457cd", 0ul, "Future Osaka timestamp")]
-    public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
-    {
-        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
-        ChainSpec spec = loader.LoadEmbeddedOrFromFile("../../../../Chains/chiado.json");
-        ChainSpecBasedSpecProvider provider = new(spec);
-        Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
-    }
+    public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description) =>
+        Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, ChiadoSpecProvider.Instance, "chiado.json");
 
     [TestCase(0L, HoodiSpecProvider.CancunTimestamp, "0xbef71d30", HoodiSpecProvider.PragueTimestamp, "First Cancun timestamp")]
     [TestCase(5_000_000, HoodiSpecProvider.PragueTimestamp - 1, "0xbef71d30", HoodiSpecProvider.PragueTimestamp, "Future Cancun timestamp")]
@@ -341,7 +330,7 @@ public class ForkInfoTests
         syncServer.Genesis.Returns(Build.A.BlockHeader.WithHash(KnownHashes.MainnetGenesis).TestObject);
         ForkInfo forkInfo = new(specProvider, syncServer);
 
-        forkInfo.ValidateForkId(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next), head.Header).Should().Be(result);
+        Assert.That(forkInfo.ValidateForkId(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next), head.Header), Is.EqualTo(result));
     }
 
 
@@ -358,10 +347,10 @@ public class ForkInfoTests
         ChainSpec spec = loader.Load(memoryStream);
         ChainSpecBasedSpecProvider provider = new(spec);
 
-        spec.ChainId.Should().Be(expectedChainId);
-        spec.NetworkId.Should().Be(expectedNetworkId);
-        provider.ChainId.Should().Be(expectedChainId);
-        provider.NetworkId.Should().Be(expectedNetworkId);
+        Assert.That(spec.ChainId, Is.EqualTo(expectedChainId));
+        Assert.That(spec.NetworkId, Is.EqualTo(expectedNetworkId));
+        Assert.That(provider.ChainId, Is.EqualTo(expectedChainId));
+        Assert.That(provider.NetworkId, Is.EqualTo(expectedNetworkId));
     }
 
     public static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
@@ -388,20 +377,20 @@ public class ForkInfoTests
         ForkInfo forkInfo = new(specProvider, syncServer);
         ForkId forkId = forkInfo.GetForkId(head, headTimestamp);
 
-        forkId.Next.Should().Be(next);
-        forkId.ForkHash.Should().Be(expectedForkHash);
+        Assert.That(forkId.Next, Is.EqualTo(next));
+        Assert.That(forkId.ForkHash, Is.EqualTo(expectedForkHash));
 
         // Validate fork info summary
         BlockHeader header = Build.A.BlockHeader.WithNumber(head).WithTimestamp(headTimestamp).TestObject;
         ForkActivationsSummary forkActivationsSummary = forkInfo.GetForkActivationsSummary(header);
 
-        forkActivationsSummary.Current.Id.ForkHash.Should().Be(expectedForkHash);
-        forkActivationsSummary.Current.Id.Next.Should().Be(next);
+        Assert.That(forkActivationsSummary.Current.Id.ForkHash, Is.EqualTo(expectedForkHash));
+        Assert.That(forkActivationsSummary.Current.Id.Next, Is.EqualTo(next));
 
         if (next is 0)
         {
-            forkActivationsSummary.Next.Should().BeNull();
-            forkActivationsSummary.Last.Should().BeNull();
+            Assert.That(forkActivationsSummary.Next, Is.Null);
+            Assert.That(forkActivationsSummary.Last, Is.Null);
             return;
         }
 
@@ -409,11 +398,11 @@ public class ForkInfoTests
 
         if (nextActivation.Timestamp is not null)
         {
-            nextActivation.Timestamp.Should().Be(next);
+            Assert.That(nextActivation.Timestamp, Is.EqualTo(next));
         }
         else
         {
-            nextActivation.BlockNumber.Should().Be((long)next);
+            Assert.That(nextActivation.BlockNumber, Is.EqualTo((long)next));
         }
     }
 

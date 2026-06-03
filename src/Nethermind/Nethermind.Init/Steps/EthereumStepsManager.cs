@@ -104,7 +104,7 @@ namespace Nethermind.Init.Steps
             }
 
             if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(stepInfoMap)}");
-            List<Task> allRequiredSteps = new();
+            List<Task> allRequiredSteps = [];
             foreach (StepWrapper stepWrapper in stepInfoMap.Values)
             {
                 StepInfo stepInfo = stepWrapper.StepInfo;
@@ -208,7 +208,7 @@ namespace Nethermind.Init.Steps
             // Kahn's algorithm to compute topological order
             Dictionary<string, int> inDegree = depsMap.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
             Queue<string> queue = new(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy((c) => dependentsMap[c].Count));
-            List<string> sorted = new();
+            List<string> sorted = [];
             Dictionary<string, int> degree = new(inDegree);
             while (queue.Count > 0)
             {
@@ -225,8 +225,8 @@ namespace Nethermind.Init.Steps
                 sorted = depsMap.Keys.OrderBy(n => n).ToList();
 
             // Compute max dependency depth for indentation
-            Dictionary<string, int> depth = new();
-            Dictionary<string, HashSet<string>> allCombinedDeps = new();
+            Dictionary<string, int> depth = [];
+            Dictionary<string, HashSet<string>> allCombinedDeps = [];
             foreach (string node in sorted)
             {
                 List<string> deps = depsMap[node];
@@ -238,7 +238,7 @@ namespace Nethermind.Init.Steps
                 allCombinedDeps[node].AddRange(depsMap[node]);
             }
 
-            Dictionary<string, List<string>> deduplicatedDependency = new();
+            Dictionary<string, List<string>> deduplicatedDependency = [];
             foreach (string node in sorted)
             {
                 HashSet<string> childOnlyAllCombinedDeps = depsMap[node].SelectMany(d => allCombinedDeps[d]).ToHashSet();
@@ -269,7 +269,7 @@ namespace Nethermind.Init.Steps
             private Task StepTask => _taskCompletedSource.Task;
             public readonly List<Type> Dependencies = [.. stepInfo.Dependencies];
 
-            private readonly TaskCompletionSource _taskCompletedSource = new();
+            private readonly TaskCompletionSource _taskCompletedSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             public async Task StartExecute(IEnumerable<StepWrapper> dependentSteps, CancellationToken cancellationToken)
             {

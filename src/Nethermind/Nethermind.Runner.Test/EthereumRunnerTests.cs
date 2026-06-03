@@ -15,7 +15,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Autofac.Core.Lifetime;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
@@ -101,7 +100,7 @@ public class EthereumRunnerTests
         });
 
         // Sort so that is is consistent so that its easy to run via Rider.
-        List<(string, ConfigProvider)> result = new(resultQueue);
+        List<(string, ConfigProvider)> result = [.. resultQueue];
         result.Sort();
 
         {
@@ -230,7 +229,7 @@ public class EthereumRunnerTests
             }
 
             // Many components are not part of the step constructor param, so we have resolve them manually here
-            foreach (PropertyInfo? propertyInfo in api.GetType().Properties())
+            foreach (PropertyInfo? propertyInfo in api.GetType().GetProperties())
             {
                 // Property with `SkipServiceCollection` make property from container.
                 if (propertyInfo.GetCustomAttribute<SkipServiceCollectionAttribute>() is not null)
@@ -305,6 +304,8 @@ public class EthereumRunnerTests
                 typeof(IProtectedPrivateKey),
                 typeof(PublicKey),
                 typeof(IPrivateKeyGenerator),
+                typeof(INetworkStorage),
+                typeof(NetworkStorage),
                 typeof(ITracer), // Completely different construction on every case
                 typeof(IReadOnlyStateProvider), // For which block? Use IChainHeadInfoProvider, or preferably, IStateReader instead
                 typeof(string),

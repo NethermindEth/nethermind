@@ -14,6 +14,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual long MaxCodeSize => spec.MaxCodeSize;
     public virtual long MinGasLimit => spec.MinGasLimit;
     public virtual long MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
+    public virtual long MinBalRetentionEpochs => spec.MinBalRetentionEpochs;
     public virtual long GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
     public virtual UInt256 BlockReward => spec.BlockReward;
     public virtual long DifficultyBombDelay => spec.DifficultyBombDelay;
@@ -93,6 +94,8 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
     public virtual bool IsOpJovianEnabled => spec.IsOpJovianEnabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
+    public virtual bool IsEip7976Enabled => spec.IsEip7976Enabled;
+    public virtual bool IsEip7981Enabled => spec.IsEip7981Enabled;
     public virtual bool ValidateChainId => spec.ValidateChainId;
     public virtual ulong TargetBlobCount => spec.TargetBlobCount;
     public virtual ulong MaxBlobCount => spec.MaxBlobCount;

@@ -7,7 +7,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Filters.Topics
+namespace Nethermind.Facade.Filters.Topics
 {
     public class OrExpression(params TopicExpression[] subexpressions) : TopicExpression, IEquatable<OrExpression>
     {

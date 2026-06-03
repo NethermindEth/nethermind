@@ -9,7 +9,7 @@ namespace Evm.T8n;
 
 public class StorageTxTracer : TxTracer, IBlockTracer
 {
-    private readonly Dictionary<Address, Dictionary<UInt256, byte[]>> _storages = new();
+    private readonly Dictionary<Address, Dictionary<UInt256, byte[]>> _storages = [];
     public bool IsTracingRewards => false;
     public override bool IsTracingOpLevelStorage => true;
 

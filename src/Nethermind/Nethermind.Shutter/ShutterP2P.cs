@@ -7,7 +7,6 @@ using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
-using Nethermind.Network.Discovery;
 using System;
 using System.Threading.Tasks;
 using System.Threading;
@@ -24,6 +23,7 @@ using System.Net;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using System.Collections.Generic;
+using Nethermind.Network.Discovery.Discv5;
 
 namespace Nethermind.Shutter;
 
@@ -194,7 +194,7 @@ public class ShutterP2P : IShutterP2P
         }
         catch (InvalidProtocolBufferException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not parse Shutter decryption keys: {e}");
+            _logger.DebugWarn($"Could not parse Shutter decryption keys: {e}");
         }
     }
 }

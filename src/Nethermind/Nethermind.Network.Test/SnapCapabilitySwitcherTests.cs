@@ -21,7 +21,7 @@ public class SnapCapabilitySwitcherTests
 
         snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         snapCapabilitySwitcher.Dispose();
-        syncModeSelector.Changed += Raise.EventWith(this, new SyncModeChangedEventArgs(SyncMode.SnapSync, SyncMode.Full));
+        syncModeSelector.Changed += Raise.EventWith(this, new SyncModeChangedEventArgs(SyncMode.StateNodes, SyncMode.Full));
 
         protocolsManager.Received(1).RemoveSupportedCapability(new Capability(Protocol.Snap, 1));
     }

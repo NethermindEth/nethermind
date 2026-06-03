@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Test
 
         public long Refund { get; private set; }
 
-        public List<EvmExceptionType> ReportedActionErrors { get; set; } = new();
+        public List<EvmExceptionType> ReportedActionErrors { get; set; } = [];
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {

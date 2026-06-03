@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 public class TangerineWhistle() : NamedReleaseSpec<TangerineWhistle>(Dao.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Tangerine Whistle";
         spec.IsEip150Enabled = true;

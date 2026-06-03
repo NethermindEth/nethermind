@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Facade.Simulate;
@@ -16,8 +18,8 @@ namespace Nethermind.Facade.Simulate;
 /// <param name="readonlyBaseHeaderStore"></param>
 public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore) : IHeaderStore
 {
-    private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = new();
-    private readonly Dictionary<Hash256AsKey, long> _blockNumberDict = new();
+    private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = [];
+    private readonly Dictionary<Hash256AsKey, long> _blockNumberDict = [];
 
     public void Insert(BlockHeader header)
     {
@@ -62,6 +64,23 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
 
     public long? GetBlockNumber(Hash256 blockHash) =>
         _blockNumberDict.TryGetValue(blockHash, out long blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
+
+    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count)
+    {
+        BlockHeader? cursor = Get(endBlockHash, shouldCache: false, blockNumber: endBlockNumber);
+        if (cursor is null) return ArrayPoolList<BlockHeader>.Empty();
+
+        ArrayPoolList<BlockHeader> result = new(count) { cursor };
+        while (result.Count < count && cursor.ParentHash is not null)
+        {
+            cursor = Get(cursor.ParentHash, shouldCache: false, blockNumber: cursor.Number - 1);
+            if (cursor is null) break;
+            result.Add(cursor);
+        }
+
+        result.AsSpan().Reverse();
+        return result;
+    }
 
     public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null) => Get(blockHash, true, blockNumber);
 }

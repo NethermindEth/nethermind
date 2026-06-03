@@ -16,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using NUnit.Framework;
@@ -25,8 +24,6 @@ namespace Nethermind.Evm.Test;
 
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
-    protected override IEvmMemory CreateEvmMemory() => new EvmPooledMemory();
-
     [TestCase(32, 1)]
     [TestCase(0, 0)]
     [TestCase(33, 2)]
@@ -129,6 +126,26 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         result = memory.CalculateMemoryCost(0, in overLimitSize, out outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true), "Size over limit should return out of gas");
         Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_MaxAllowedSize_ShouldReturnExpectedCostForBothLengthOverloads()
+    {
+        decimal maxWords = EvmPooledMemory.MaxMemoryWords;
+        long expectedCost = decimal.ToInt64(
+            maxWords * GasCostOf.Memory +
+            decimal.Floor((maxWords * maxWords) / 512m));
+
+        EvmPooledMemory ulongMemory = new();
+        long ulongResult = ulongMemory.CalculateMemoryCost(0, EvmPooledMemory.MaxMemorySize, out bool ulongOutOfGas);
+        Assert.That(ulongOutOfGas, Is.EqualTo(false));
+        Assert.That(ulongResult, Is.EqualTo(expectedCost));
+
+        EvmPooledMemory uint256Memory = new();
+        UInt256 maxAllowedSize = (UInt256)EvmPooledMemory.MaxMemorySize;
+        long uint256Result = uint256Memory.CalculateMemoryCost(0, in maxAllowedSize, out bool uint256OutOfGas);
+        Assert.That(uint256OutOfGas, Is.EqualTo(false));
+        Assert.That(uint256Result, Is.EqualTo(expectedCost));
     }
 
     [Test]
@@ -271,7 +288,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         memory.CalculateMemoryCost(0, 32, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false));
-        memory.GetTrace().ToHexWordList().Should().BeEquivalentTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" });
+        Assert.That(memory.GetTrace().ToHexWordList(), Is.EqualTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" }));
     }
 
     [Test]

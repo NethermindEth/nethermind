@@ -23,12 +23,9 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
         // We always return Unknown even if baseStore return unknown, like archive node.
         baseStore.FindCachedOrUnknown(address, in path, hash);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
-    {
-        byte[]? rlp = TryLoadRlp(address, in path, hash, flags);
-        if (rlp is null) throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
-        return rlp;
-    }
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        TryLoadRlp(address, in path, hash, flags)
+        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _nodeStorage.Get(address, in path, hash, flags) ?? baseStore.TryLoadRlp(address, in path, hash, flags);
 

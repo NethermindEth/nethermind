@@ -102,11 +102,11 @@ public class Importer(
 
             if (address is null)
             {
-                writeBatch.SetStateTrieNode(path, node);
+                writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
             }
             else
             {
-                writeBatch.SetStorageTrieNode(address, path, node);
+                writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
             }
 
             if (node.IsLeaf)
@@ -114,7 +114,8 @@ public class Importer(
                 ValueHash256 fullPath = path.Append(node.Key).Path;
                 if (address is null)
                 {
-                    Account acc = _accountDecoder.Decode(node.Value.AsSpan())!;
+                    Rlp.ValueDecoderContext accountContext = node.Value.AsSpan().AsRlpValueContext();
+                    Account acc = _accountDecoder.Decode(ref accountContext)!;
                     writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
                 }
                 else

@@ -98,7 +98,7 @@ public static class Metrics
     public static double StateMerkleizationTime { get; set; }
 
     [DetailedMetric]
-    [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.2, Count = 30)]
+    [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.2, Count = 35)]
     [Description("Histogram of block MGas per second")]
     public static IMetricObserver BlockMGasPerSec { get; set; } = new NoopMetricObserver();
 

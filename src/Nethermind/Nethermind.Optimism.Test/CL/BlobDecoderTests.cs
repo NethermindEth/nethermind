@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Optimism.CL.Decoding;
 using NUnit.Framework;
@@ -63,12 +62,12 @@ public class BlobDecoderTests
         byte[] expected = Bytes.FromHexString(hexExpected);
 
         byte[] decoded = DecodeBlob(hexEncoded);
-        decoded.Should().BeEquivalentTo(expected);
+        Assert.That(decoded, Is.EqualTo(expected));
     }
 
     private static IEnumerable<TestCaseData> InvalidEncodedBlobs()
     {
-        byte[] ValidEncodedBlob()
+        static byte[] ValidEncodedBlob()
         {
             string hexBlob = "0x2c000000277468697320697320612074657374206f6620696e76616c69642062106f62206465636f64696e67" + new string('0', 262056);
             return Bytes.FromHexString(hexBlob);
@@ -107,7 +106,7 @@ public class BlobDecoderTests
     public void DecodeBlob_InvalidEncodedBlob(byte[] encoded)
     {
         Func<byte[]> tryDecode = () => DecodeBlob(encoded);
-        tryDecode.Should().Throw<FormatException>();
+        Assert.That(tryDecode, Throws.TypeOf<FormatException>());
     }
 
     /// <remarks>

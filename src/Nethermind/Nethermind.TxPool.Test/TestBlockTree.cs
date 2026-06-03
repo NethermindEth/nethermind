@@ -95,11 +95,12 @@ internal class TestBlockTree : IBlockTree
     public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
         => new ArrayPoolList<BlockHeader>(0);
     public void DeleteInvalidBlock(Block invalidBlock) { }
+    public void ReportBadBlock(Block badBlock) { }
     public void DeleteOldBlock(long blockNumber, Hash256 blockHash) { }
     public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) { }
     public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) => 0;
     public bool IsBetterThanHead(BlockHeader? header) => false;
-    public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) { }
+    public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint) { }
     public void RecalculateTreeLevels() { }
     public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth) { }
 }

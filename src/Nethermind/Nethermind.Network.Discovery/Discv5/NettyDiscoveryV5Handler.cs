@@ -12,7 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Network.Discovery;
+namespace Nethermind.Network.Discovery.Discv5;
 
 /// <summary>
 /// Adapter, integrating DotNetty externally-managed <see cref="IChannel"/> with Lantern.Discv5
@@ -50,7 +50,7 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
         }
         catch (SocketException exception)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error sending data", exception);
+            _logger.DebugError("Error sending data", exception);
             throw;
         }
     }

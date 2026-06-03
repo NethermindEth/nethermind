@@ -1,12 +1,12 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -66,6 +66,7 @@ public class Eth69ProtocolHandlerTests
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
+        _syncManager.FindHeader(Arg.Any<Hash256>()).Returns(_genesisBlock.Header);
         _syncManager.LowestBlock.Returns(0);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
@@ -104,14 +105,14 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        _handler.ProtocolCode.Should().Be("eth");
-        _handler.Name.Should().Be("eth69");
-        _handler.ProtocolVersion.Should().Be(69);
-        _handler.MessageIdSpaceSize.Should().Be(18);
-        _handler.IncludeInTxPool.Should().BeTrue();
-        _handler.ClientId.Should().Be(_session.Node?.ClientId);
-        _handler.HeadHash.Should().BeNull();
-        _handler.HeadNumber.Should().Be(0);
+        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+        Assert.That(_handler.Name, Is.EqualTo("eth69"));
+        Assert.That(_handler.ProtocolVersion, Is.EqualTo(69));
+        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
+        Assert.That(_handler.IncludeInTxPool, Is.True);
+        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+        Assert.That(_handler.HeadHash, Is.Null);
+        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
     }
 
     [Test]
@@ -119,7 +120,7 @@ public class Eth69ProtocolHandlerTests
     {
         HandleIncomingStatusMessage();
 
-        _handler.TotalDifficulty.Should().Be(null);
+        Assert.That(_handler.TotalDifficulty, Is.Null);
     }
 
     [Test] // From Eth62ProtocolHandlerTests
@@ -134,12 +135,14 @@ public class Eth69ProtocolHandlerTests
     {
         const int count = 512;
         using GetReceiptsMessage66 msg = new(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
-        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, count).ToArray());
+        TxReceipt[] receipts = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, count).ToArray();
+        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, count);
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth63MessageCode.GetReceipts);
 
-        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == 13));
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == expectedCount));
     }
 
     [Test]
@@ -168,7 +171,7 @@ public class Eth69ProtocolHandlerTests
 
         IOwnedReadOnlyList<TxReceipt[]>? response = await getReceiptsTask;
 
-        response.Should().HaveCount(count);
+        Assert.That(response.Count, Is.EqualTo(count));
     }
 
     [Test]
@@ -182,13 +185,55 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_throw_when_receiving_GetReceipts_before_status()
+    {
+        using GetReceiptsMessage66 msg66 = new(1111, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
+
+        Action action = () => HandleZeroMessage(msg66, Eth69MessageCode.GetReceipts);
+
+        Assert.That(action, Throws.TypeOf<SubprotocolException>());
+        _session.DidNotReceive().DeliverMessage(Arg.Any<ReceiptsMessage69>());
+    }
+
+    [Test]
+    public void Should_stop_receipts_response_at_first_unknown_block_hash()
+    {
+        TxReceipt[] blockReceipts =
+        [
+            Build.A.Receipt.WithAllFieldsFilled.TestObject
+        ];
+
+        _syncManager.GetReceipts(Keccak.Zero).Returns(blockReceipts);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns((TxReceipt[]?)null);
+        _syncManager.GetReceipts(TestItem.KeccakB).Returns(
+        [
+            Build.A.Receipt.WithAllFieldsFilled.TestObject
+        ]);
+
+        IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
+
+        Assert.That(response, Has.Count.EqualTo(1));
+        Assert.That(response[0], Is.SameAs(blockReceipts));
+    }
+
+    [Test]
+    public void Should_return_empty_receipts_response_when_first_hash_is_unknown()
+    {
+        _syncManager.GetReceipts(Keccak.Zero).Returns((TxReceipt[]?)null);
+
+        IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
+
+        Assert.That(response, Is.Empty);
+    }
+
+    [Test]
     public void Should_throw_when_receiving_unrequested_receipts()
     {
         using ReceiptsMessage msg66 = new(1111, new(ArrayPoolList<TxReceipt[]>.Empty()));
 
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
-        action.Should().Throw<SubprotocolException>();
+        Assert.That(action, Throws.TypeOf<SubprotocolException>());
     }
 
     [Test]
@@ -232,36 +277,34 @@ public class Eth69ProtocolHandlerTests
         }
     }
 
-    [Test]
-    public void Should_disconnect_on_invalid_BlockRangeUpdate()
+    private static IEnumerable<TestCaseData> InvalidBlockRangeUpdates()
     {
-        using BlockRangeUpdateMessage msg = new()
-        {
-            EarliestBlock = 2,
-            LatestBlock = 1,
-            LatestBlockHash = Keccak.Compute("2")
-        };
-
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(msg, Eth69MessageCode.BlockRangeUpdate);
-
-        _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+        yield return new TestCaseData(2L, 1L, Keccak.Compute("2")).SetName("earliest_after_latest");
+        yield return new TestCaseData(1L, 2L, Keccak.Zero).SetName("empty_hash");
     }
 
-    [Test]
-    public void Should_disconnect_on_invalid_BlockRangeUpdate_empty_hash()
+    [TestCaseSource(nameof(InvalidBlockRangeUpdates))]
+    public void Should_disconnect_on_invalid_BlockRangeUpdate(long earliestBlock, long latestBlock, Hash256 latestBlockHash)
     {
+        HandleIncomingStatusMessage();
+        long headNumber = _handler.HeadNumber;
+        Hash256? headHash = _handler.HeadHash;
+
         using BlockRangeUpdateMessage msg = new()
         {
-            EarliestBlock = 1,
-            LatestBlock = 2,
-            LatestBlockHash = Keccak.Zero
+            EarliestBlock = earliestBlock,
+            LatestBlock = latestBlock,
+            LatestBlockHash = latestBlockHash
         };
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth69MessageCode.BlockRangeUpdate);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+        using (Assert.EnterMultipleScope())
+        {
+            _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+            Assert.That(_handler.HeadNumber, Is.EqualTo(headNumber));
+            Assert.That(_handler.HeadHash, Is.EqualTo(headHash));
+        }
     }
 
     [Test]
@@ -288,5 +331,19 @@ public class Eth69ProtocolHandlerTests
         using DisposableByteBuffer uOpsPacket = _svc!.ZeroSerialize(msg).AsDisposable();
         uOpsPacket.ReadByte();
         _handler!.HandleMessage(new ZeroPacket(uOpsPacket) { PacketType = (byte)messageCode });
+    }
+
+    private IOwnedReadOnlyList<TxReceipt[]?> RequestReceipts(params Hash256[] hashes)
+    {
+        using GetReceiptsMessage66 msg66 = new(1111, new(hashes.ToPooledList()));
+        ReceiptsMessage69? response = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
+            .Do(call => response = (ReceiptsMessage69)call[0]);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
+
+        Assert.That(response, Is.Not.Null);
+        return response!.EthMessage.TxReceipts;
     }
 }

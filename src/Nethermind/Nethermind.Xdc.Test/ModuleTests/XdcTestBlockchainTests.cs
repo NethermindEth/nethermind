@@ -8,7 +8,7 @@ using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
 using System.Threading.Tasks;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
 internal class XdcTestBlockchainTests
 {
@@ -40,8 +40,7 @@ internal class XdcTestBlockchainTests
         {
             Block? block = _blockchain.BlockTree.FindBlock(i);
             Assert.That(block, Is.Not.Null);
-            string? error;
-            Assert.That(headerValidator.Validate(block!.Header, parent, false, out error), Is.True, "Header validation failed: " + error);
+            Assert.That(headerValidator.Validate(block!.Header, parent, false, out string? error), Is.True, "Header validation failed: " + error);
             parent = block.Header;
         }
     }

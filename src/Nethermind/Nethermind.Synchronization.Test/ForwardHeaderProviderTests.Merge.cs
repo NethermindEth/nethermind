@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -55,13 +54,13 @@ public partial class ForwardHeaderProviderTests
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         ctx.ConfigureBestPeer(syncPeer);
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        headers?[0]?.Number.Should().Be(expectedFirstBlock);
-        headers?[^1]?.Number.Should().Be(expectedLastBlock);
+        Assert.That(headers?[0]?.Number, Is.EqualTo(expectedFirstBlock));
+        Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedLastBlock));
     }
 
-    [TestCase(32L, DownloaderOptions.Insert, 16, false, 16)]
-    [TestCase(32L, DownloaderOptions.Insert, 16, true, 3)] // No beacon header, so it does not sync
-    public async Task IfNoBeaconPivot_thenStopAtPoS(long headNumber, int options, int ttdBlock, bool withBeaconPivot, int expectedBestKnownNumber)
+    [TestCase(32L, DownloaderOptions.Insert, 16, false, 16L)]
+    [TestCase(32L, DownloaderOptions.Insert, 16, true, null)] // No beacon header, so it does not sync
+    public async Task IfNoBeaconPivot_thenStopAtPoS(long headNumber, int options, int ttdBlock, bool withBeaconPivot, long? expectedBestKnownNumber)
     {
         UInt256 ttd = 10_000_000;
         int negativeTd = BlockHeaderBuilder.DefaultDifficulty.ToInt32(null);
@@ -91,7 +90,7 @@ public partial class ForwardHeaderProviderTests
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         ctx.ConfigureBestPeer(syncPeer);
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        headers?[^1]?.Number.Should().Be(expectedBestKnownNumber);
+        Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedBestKnownNumber));
 
 
     }
@@ -121,7 +120,7 @@ public partial class ForwardHeaderProviderTests
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         ctx.ConfigureBestPeer(peerInfo);
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(blocksToIgnore, 128, CancellationToken.None);
-        headers?[^1]?.Number.Should().Be(expectedBestKnownNumber);
+        Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedBestKnownNumber));
     }
 
     private IContainer CreateMergeNode(Action<ContainerBuilder>? configurer = null, params IConfig[] configs)

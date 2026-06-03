@@ -86,6 +86,7 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+build/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
@@ -441,8 +442,8 @@ FodyWeavers.xsd
 
 # AI
 .claude/*
+!.claude/CLAUDE.md
 !.claude/skills
-!.claude/skills/**
 .gemini/
 
 # Worktrees

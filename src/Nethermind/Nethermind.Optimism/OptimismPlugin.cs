@@ -237,6 +237,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
             .AddScoped<IBlockProcessor, OptimismBlockProcessor>()
             .AddScoped<IWithdrawalProcessor, OptimismWithdrawalProcessor>()
+            .AddSingleton<IWithdrawalProcessorFactory, OptimismWithdrawalProcessorFactory>()
             .AddScoped<Create2DeployerContractRewriter>()
             .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
                 new OptimismBlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))

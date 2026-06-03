@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
@@ -20,21 +22,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_NoSlotsNoProofs()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
+                RequestId = 2,
                 Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
                 Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
             };
             StorageRangesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.TestZero(serializer, msg, "c302c0c0");
         }
 
         [Test]
         public void Roundtrip_OneProof()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
@@ -52,7 +54,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_OneSlot()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
@@ -73,7 +75,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_Many()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(2) {
@@ -115,6 +117,32 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             byte[] serialized = serializer.Serialize(msg);
 
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
+        }
+
+        [TestCase(SnapMessageLimits.MaxProofs, false)]
+        [TestCase(SnapMessageLimits.MaxProofs + 1, true)]
+        public void Deserialize_EnforcesProofsCountLimit(int proofCount, bool shouldThrow)
+        {
+            ArrayPoolList<byte[]> proofs = new(proofCount, Enumerable.Repeat(new byte[] { 0x42 }, proofCount));
+            using StorageRangeMessage msg = new()
+            {
+                RequestId = 1,
+                Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
+                Proofs = new ByteArrayListAdapter(proofs)
+            };
+
+            StorageRangesMessageSerializer serializer = new();
+            byte[] serialized = serializer.Serialize(msg);
+
+            if (shouldThrow)
+            {
+                Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
+            }
+            else
+            {
+                using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
+                Assert.That(deserialized.Proofs.Count, Is.EqualTo(proofCount));
+            }
         }
 
         private static StorageRangeMessage CreateMessageWithSingleSlotValue(byte[] slotRlpValue) => new()

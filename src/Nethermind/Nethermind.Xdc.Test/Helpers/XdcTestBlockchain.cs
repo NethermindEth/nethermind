@@ -30,6 +30,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
@@ -118,6 +119,10 @@ public class XdcTestBlockchain : TestBlockchain
 
         Container = builder.Build();
 
+        if (!_useHotStuffModule)
+            // HotStuff is not running; unsubscribe SignTransactionManager so sign txs are not auto-submitted.
+            ((IDisposable)Container.Resolve<ISignTransactionManager>()).Dispose();
+
         RandomSigner = new TestRandomSigner(MasterNodeCandidates, Container.Resolve<IBlockTree>(), Container.Resolve<IEpochSwitchManager>());
 
         _fromXdcContainer = Container.Resolve<FromXdcContainer>();
@@ -166,6 +171,7 @@ public class XdcTestBlockchain : TestBlockchain
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
             .AddSingleton<IRewardCalculator, ZeroRewardCalculator>()
+            .AddSingleton<ITimestamper>((_) => Timestamper)
             .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
 
             .AddSingleton<ITxPool>((ctx) =>
@@ -176,9 +182,9 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ITxPoolConfig>(),
                     ctx.Resolve<ITxValidator>(),
                     ctx.Resolve<ILogManager>(),
-                    new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
+                    new XdcTransactionComparerProvider(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockTree>()).GetDefaultComparer(),
                     ctx.Resolve<ITxGossipPolicy>(),
-                    new SignTransactionFilter(SnapshotManager, BlockTree, SpecProvider),
+                    new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>()),
                     ctx.Resolve<ITxValidator>()
                 );
 
@@ -214,9 +220,9 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.Gap = 450;
         xdcSpec.SwitchEpoch = 0;
         xdcSpec.SwitchBlock = 0;
-        xdcSpec.MasternodeReward = 2.0;   // 2 Ether per masternode
-        xdcSpec.ProtectorReward = 1.0;    // 1 Ether per protector
-        xdcSpec.ObserverReward = 0.5;     // 0.5 Ether per observer
+        xdcSpec.MasternodeReward = (UInt256)2 * Unit.Ether; // 2 Ether in Wei per masternode
+        xdcSpec.ProtectorReward = Unit.Ether;               // 1 Ether in Wei per protector
+        xdcSpec.ObserverReward = Unit.Ether / 2;            // 0.5 Ether in Wei per observer
         xdcSpec.MinimumMinerBlockPerEpoch = 1;
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024;
@@ -453,7 +459,7 @@ public class XdcTestBlockchain : TestBlockchain
 
     public override async Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
     {
-        Block b = await base.AddBlockFromParent(parent, transactions);
+        Block b = await _fromContainer.TestBlockchainUtil.AddBlock(parent, TestBlockchainUtil.AddBlockFlags.DoNotWaitForHead | TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, CreateCancellationSource().Token, transactions);
         CreateAndCommitQC((XdcBlockHeader)b.Header);
 
         return b;
@@ -461,7 +467,7 @@ public class XdcTestBlockchain : TestBlockchain
 
     public async Task<Block> AddBlockWithoutCommitQc(params Transaction[] txs)
     {
-        await base.AddBlock(txs);
+        await base.AddBlockMayHaveExtraTx(txs);
         return BlockTree.Head!;
     }
 
@@ -521,7 +527,9 @@ public class XdcTestBlockchain : TestBlockchain
         {
             KeccakRlpStream stream = new();
             voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-            vote.Signature = RandomSigner!.Sign(stream.GetValueHash());
+            ValueHash256 hash = stream.GetValueHash();
+            RandomSigner!.TrySign(in hash, out Signature signature);
+            vote.Signature = signature;
             vote.Signer = RandomSigner.Address;
         }
     }
@@ -541,6 +549,8 @@ public class XdcTestBlockchain : TestBlockchain
             //by setting the correct signer the block producer runner should trigger trying to propose a block
             Address leader = ConsensusModule.GetLeaderAddress(head, XdcContext.CurrentRound, spec);
             Signer.SetSigner(MasterNodeCandidates.First(k => k.Address == leader));
+            Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + (ulong)spec.MinePeriod)).UtcDateTime);
+            ConsensusModule.StartRoundTask(head, XdcContext.CurrentRound);
 
             Task waitingForHead = await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
             if (waitingForHead != newHeadWaitHandle.Task)
