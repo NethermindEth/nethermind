@@ -14,6 +14,10 @@ public static class SupportedChainLimits
     /// <summary> Highest genesis <c>gasLimit</c> across all chain specs (atm: JOC, rounded up). </summary>
     public const int MaxGenesisBlockGasLimit = 480_000_000;
 
+    /// <summary>
+    /// The effective maximum block gas limit across all supported chains -
+    /// the larger of <see cref="MaxTargetBlockGasLimit"/> and <see cref="MaxGenesisBlockGasLimit"/>.
+    /// </summary>
     public const int MaxBlockGasLimit = MaxTargetBlockGasLimit > MaxGenesisBlockGasLimit
         ? MaxTargetBlockGasLimit
         : MaxGenesisBlockGasLimit;
