@@ -45,5 +45,6 @@ public sealed class ProgressReporter : IDisposable
         _timer.Stop();
         _timer.Dispose();
         _progressLogger.MarkEnd();
+        _progressLogger.LogProgress();
     }
 }
