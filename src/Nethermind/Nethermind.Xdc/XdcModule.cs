@@ -35,6 +35,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Discovery;
 using Nethermind.Xdc.RLP;
+using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Xdc;
 
