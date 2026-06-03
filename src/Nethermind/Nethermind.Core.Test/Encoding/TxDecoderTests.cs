@@ -266,16 +266,13 @@ namespace Nethermind.Core.Test.Encoding
 
 
         [TestCaseSource(nameof(InvalidEncodingTestCases))]
-        public void Rejects_invalid_tx_encoding(byte[] invalidTxBytes, string? error, Type? exceptionType = null)
+        public void Rejects_invalid_tx_encoding(byte[] invalidTxBytes, string error, Type exceptionType)
         {
             void DecodeStream()
             {
                 Rlp.ValueDecoderContext ctx = new(invalidTxBytes);
                 _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
-
-            error ??= "";
-            exceptionType ??= typeof(RlpException);
 
             Assert.That(DecodeStream, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
 
@@ -396,7 +393,7 @@ namespace Nethermind.Core.Test.Encoding
         private static IEnumerable<TestCaseData> InvalidEncodingTestCases()
         {
             static TestCaseData TestCase(string testName, byte[] invalidTxBytes, string? error = null, Type? exceptionType = null) =>
-                new(invalidTxBytes, error, exceptionType) { TestName = testName };
+                new(invalidTxBytes, error ?? "", exceptionType ?? typeof(RlpException)) { TestName = testName };
 
             yield return TestCase("Missing storage keys array in access list",
                 Convert.FromHexString("01e3010101825208808080d6d5940000000000000000000000000000000000000001010101"),
@@ -411,7 +408,7 @@ namespace Nethermind.Core.Test.Encoding
 
             yield return TestCase(
                 "SetCode auth list count over limit",
-                BuildSetCodeTxBytes(70_000),
+                BuildSetCodeTxBytes(100_000),
                 exceptionType: typeof(RlpLimitException)
             );
 

@@ -95,7 +95,7 @@ public class BlockAccessListDecoderTests
 
         Assert.That(
             () => Rlp.Decode<ReadOnlyAccountChanges>(encoded),
-            Throws.TypeOf<RlpException>());
+            Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
     }
 
     [Test]
