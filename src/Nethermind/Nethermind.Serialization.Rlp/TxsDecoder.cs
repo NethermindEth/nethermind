@@ -4,12 +4,14 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
 
 public static class TxsDecoder
 {
-    private const int ParallelDecodeThreshold = 8;
+    // Parallel infra has ~50μs startup; only worthwhile when the workload amortises that.
+    private const int ParallelDecodeThreshold = 16;
 
     public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors)
     {
@@ -53,7 +55,7 @@ public static class TxsDecoder
 
     private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
     {
-        Transaction?[] slots = new Transaction?[txData.Length];
+        using ArrayPoolList<Transaction?> slots = new(txData.Length, txData.Length);
         string? error = null;
         int firstError = int.MaxValue;
         object errorGate = new();
@@ -87,19 +89,18 @@ public static class TxsDecoder
             return new TransactionDecodingResult(error);
         }
 
-        // Compact the array — Parallel.For doesn't preserve a single contiguous prefix when
-        // skipErrors leaves nulls scattered. Order is preserved.
+        // Compact — Parallel.For doesn't preserve a contiguous prefix when skipErrors leaves nulls.
         Transaction[] result;
         if (skipErrors)
         {
             int count = 0;
-            for (int i = 0; i < slots.Length; i++)
+            for (int i = 0; i < slots.Count; i++)
             {
                 if (slots[i] is not null) count++;
             }
             result = new Transaction[count];
             int j = 0;
-            for (int i = 0; i < slots.Length; i++)
+            for (int i = 0; i < slots.Count; i++)
             {
                 if (slots[i] is { } tx)
                 {
@@ -109,8 +110,8 @@ public static class TxsDecoder
         }
         else
         {
-            result = new Transaction[slots.Length];
-            for (int i = 0; i < slots.Length; i++)
+            result = new Transaction[slots.Count];
+            for (int i = 0; i < slots.Count; i++)
             {
                 result[i] = slots[i]!;
             }

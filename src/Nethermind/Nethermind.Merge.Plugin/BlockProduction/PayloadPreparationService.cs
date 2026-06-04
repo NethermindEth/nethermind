@@ -52,18 +52,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
 
-    private readonly ConcurrentDictionary<string, RebuildSlot> _rebuildSlots = new();
-
-    private sealed record RebuildSlot(
-        BlockHeader ParentHeader,
-        PayloadAttributes PayloadAttributes,
-        SharedCancellationTokenSource Cts)
-    {
-        private int _buildCount;
-        public uint BuildCount => (uint)Volatile.Read(ref _buildCount);
-        public void IncrementBuildCount() => Interlocked.Increment(ref _buildCount);
-    }
-
     public PayloadPreparationService(
         IBlockProducer blockProducer,
         ITxPool txPool,
@@ -150,13 +138,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
-    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
-    {
-        RebuildSlot slot = _rebuildSlots.AddOrUpdate(payloadId,
-            _ => new RebuildSlot(parentHeader, payloadAttributes, cts),
-            (_, existing) => existing with { Cts = cts });
-        slot.IncrementBuildCount();
-
+    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
         _payloadStorage.AddOrUpdate(payloadId,
             id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
             (id, currentContext) =>
@@ -186,7 +168,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     return currentContext;
                 }
             });
-    }
 
 
     private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
@@ -348,7 +329,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
                     {
                         context.DisposeAndCancelOngoingImprovements();
-                        _rebuildSlots.TryRemove(payload.Key, out _);
                         if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
                     }
                 }
@@ -456,13 +436,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 context.DisposeAndCancelOngoingImprovements();
             }
         }
-        _rebuildSlots.Clear();
     }
 
     public void CancelBlockProduction(string payloadId) =>
         // GetPayload cancels the request
         _ = GetPayload(payloadId);
-
-    internal uint? GetPayloadBuildCount(string payloadId) =>
-        _rebuildSlots.TryGetValue(payloadId, out RebuildSlot? slot) ? slot.BuildCount : null;
 }

@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -28,7 +29,8 @@ public class InclusionListDecoder(
     private readonly RecoverSignatures _recoverSignatures = new(ecdsa, specProvider, logManager);
     private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<InclusionListDecoder>();
 
-    private const int ParallelThreshold = 4;
+    // Parallel infra has ~50μs startup; only worthwhile when the workload amortises that.
+    private const int ParallelThreshold = 16;
 
     public Transaction[] DecodeAndRecover(byte[][] txBytes, IReleaseSpec spec)
     {
@@ -43,7 +45,7 @@ public class InclusionListDecoder(
             return [];
         }
 
-        Transaction?[] slots = new Transaction?[txBytes.Length];
+        using ArrayPoolList<Transaction?> slots = new(txBytes.Length, txBytes.Length);
 
         if (txBytes.Length >= ParallelThreshold)
         {
@@ -66,7 +68,7 @@ public class InclusionListDecoder(
             }
         }
 
-        return CompactSlots(slots);
+        return Compact(slots);
     }
 
     private static Transaction? TryDecodeAndRecover(
@@ -102,25 +104,17 @@ public class InclusionListDecoder(
         return tx;
     }
 
-    private static Transaction[] CompactSlots(Transaction?[] slots)
+    private static Transaction[] Compact(ArrayPoolList<Transaction?> slots)
     {
         int count = 0;
-        for (int i = 0; i < slots.Length; i++)
+        for (int i = 0; i < slots.Count; i++)
         {
             if (slots[i] is not null) count++;
         }
 
-        // Fast path: no failed decodes → slots is already dense, skip the compaction pass.
-        if (count == slots.Length)
-        {
-            Transaction[] dense = new Transaction[slots.Length];
-            for (int i = 0; i < slots.Length; i++) dense[i] = slots[i]!;
-            return dense;
-        }
-
         Transaction[] result = new Transaction[count];
         int j = 0;
-        for (int i = 0; i < slots.Length; i++)
+        for (int i = 0; i < slots.Count; i++)
         {
             if (slots[i] is { } tx) result[j++] = tx;
         }

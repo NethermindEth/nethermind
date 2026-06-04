@@ -285,13 +285,3 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual bool ValidateFork(ISpecProvider specProvider) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }
-
-public readonly struct BlockDecodingResult
-{
-    public readonly string? Error;
-    public readonly Block? Block;
-
-    public BlockDecodingResult(Block block) => Block = block;
-
-    public BlockDecodingResult(string error) => Error = error;
-}

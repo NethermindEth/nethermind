@@ -370,11 +370,6 @@ public class TestBlockchain : IDisposable
                 genesisBlockBuilder.WithEmptyRequestsHash();
             }
 
-            if (specProvider.GenesisSpec.InclusionListsEnabled)
-            {
-                genesisBlockBuilder.WithInclusionListTransactions([]);
-            }
-
             if (specProvider.GenesisSpec.BlockLevelAccessListsEnabled)
             {
                 genesisBlockBuilder.WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp);

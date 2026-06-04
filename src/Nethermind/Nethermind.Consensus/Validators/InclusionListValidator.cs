@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -14,15 +13,33 @@ public static class InclusionListValidator
     public static bool IsSatisfied(Block block, IAccountStateProvider state, IReleaseSpec spec)
     {
         if (!spec.InclusionListsEnabled) return true;
-        if (block.InclusionListTransactions is null) return false;
+        Transaction[]? il = block.InclusionListTransactions;
+        if (il is null) return false;
 
         // FOCIL is conditional: no gas left for a base-cost transfer → nothing is appendable.
         if (block.GasUsed + Transaction.BaseTxGasCost > block.GasLimit) return true;
 
-        HashSet<Transaction> includedTxs = new(block.Transactions, ByHashTxComparer.Instance);
-        foreach (Transaction tx in block.InclusionListTransactions)
+        // Mark IL entries already present in the block via linear scan. IL is spec-capped at
+        // Eip7805Constants.MaxTransactionsPerInclusionList, so the stack-allocated bitmap is bounded.
+        Span<bool> included = il.Length <= Eip7805Constants.MaxTransactionsPerInclusionList
+            ? stackalloc bool[il.Length]
+            : new bool[il.Length];
+
+        foreach (Transaction blockTx in block.Transactions)
         {
-            if (!includedTxs.Contains(tx) && CouldIncludeTx(tx, block, state)) return false;
+            for (int i = 0; i < il.Length; i++)
+            {
+                if (!included[i] && blockTx.Hash == il[i].Hash)
+                {
+                    included[i] = true;
+                    break;
+                }
+            }
+        }
+
+        for (int i = 0; i < il.Length; i++)
+        {
+            if (!included[i] && CouldIncludeTx(il[i], block, state)) return false;
         }
         return true;
     }
