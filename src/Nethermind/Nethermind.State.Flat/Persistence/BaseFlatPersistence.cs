@@ -261,14 +261,17 @@ public static class BaseFlatPersistence
 
         public void SetStorageEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
         {
+            // The input is the trie leaf value, i.e. RLP(stripped), which is byte-identical to our on-disk format
+            // only when wrapping is on. In raw mode there is no verbatim shortcut, so this path is unsupported.
+            if (!rlpWrapSlots) throw new NotSupportedException("Encoded slot writes require RLP slot wrapping");
+
             ReadOnlySpan<byte> theKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], addrHash, slotHash);
 
-            // The input is the trie leaf value, i.e. RLP(stripped). When wrapping is on that is byte-identical
-            // to our on-disk format, so the bytes are stored verbatim — no decode + re-encode round-trip.
-            // The single DecodeByteArraySpan call validates canonical form and bounds the item exactly.
+            // The bytes are stored verbatim — no decode + re-encode round-trip. The single DecodeByteArraySpan
+            // call validates canonical form and bounds the item exactly (trimming any trailing bytes).
             Rlp.ValueDecoderContext ctx = new(rlpValue);
-            ReadOnlySpan<byte> stripped = ctx.DecodeByteArraySpan();
-            storage.PutSpan(theKey, rlpWrapSlots ? rlpValue[..ctx.Position] : stripped, flags);
+            ctx.DecodeByteArraySpan();
+            storage.PutSpan(theKey, rlpValue[..ctx.Position], flags);
         }
 
         public void SetAccount(in ValueHash256 addrHash, ReadOnlySpan<byte> account)

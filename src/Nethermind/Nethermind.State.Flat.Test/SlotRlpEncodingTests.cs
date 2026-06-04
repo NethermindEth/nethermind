@@ -86,15 +86,14 @@ public class SlotRlpEncodingTests
     }
 
     // The sync path feeds the trie-leaf RLP value (RLP(stripped)) directly via SetStorageRawEncoded.
-    [TestCase(true, "05")]
-    [TestCase(false, "05")]
-    [TestCase(true, "0102")]
-    [TestCase(false, "0102")]
-    [TestCase(true, "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
-    public void SetStorageRawEncoded_round_trips_and_stores_verbatim_when_wrapping(bool rlpWrap, string strippedHex)
+    // It is only valid with wrapping on, where the leaf bytes are stored verbatim (no decode + re-encode).
+    [TestCase("05")]
+    [TestCase("0102")]
+    [TestCase("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
+    public void SetStorageRawEncoded_round_trips_and_stores_verbatim_when_wrapping(string strippedHex)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        RocksDbPersistence persistence = CreatePersistence(db, rlpWrap);
+        RocksDbPersistence persistence = CreatePersistence(db, rlpWrap: true);
 
         byte[] stripped = Bytes.FromHexString(strippedHex);
         byte[] rlpLeaf = Rlp.Encode((ReadOnlySpan<byte>)stripped).Bytes; // trie leaf value == RLP(stripped)
@@ -105,8 +104,18 @@ public class SlotRlpEncodingTests
         Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
         Assert.That(read.ToEvmBytes(), Is.EqualTo(stripped));
 
-        // Wrapping stores the leaf RLP verbatim (no re-encode); raw mode stores the unwrapped stripped bytes.
-        Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(rlpWrap ? rlpLeaf : stripped));
+        // The leaf RLP is stored verbatim — byte-identical to our on-disk format.
+        Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(rlpLeaf));
+    }
+
+    [Test]
+    public void SetStorageRawEncoded_is_unsupported_in_raw_mode()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        RocksDbPersistence persistence = CreatePersistence(db, rlpWrap: false);
+
+        byte[] rlpLeaf = Rlp.Encode((ReadOnlySpan<byte>)Bytes.FromHexString("0102")).Bytes;
+        Assert.That(() => WriteSlotEncoded(persistence, rlpLeaf), Throws.InstanceOf<NotSupportedException>());
     }
 
     [Test]
