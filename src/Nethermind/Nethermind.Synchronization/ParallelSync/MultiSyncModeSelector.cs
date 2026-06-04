@@ -448,6 +448,11 @@ namespace Nethermind.Synchronization.ParallelSync
                           notInBeaconModes &&
                           desiredPeerKnown;
 
+            Console.WriteLine(
+                $"[XDC-DBG][SyncModeArchive] result={result} processed={best.Processed} block={best.Block} header={best.Header} " +
+                $"peerBlock={best.Peer.Block} peerTd={best.Peer.TotalDifficulty} chainDifficulty={best.ChainDifficulty} " +
+                $"target={best.TargetBlock} desiredPeerKnown={desiredPeerKnown} notInBeaconModes={notInBeaconModes}");
+
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("FULL",

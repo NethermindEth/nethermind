@@ -149,10 +149,12 @@ public class PowForwardHeaderProvider(
             int headersToRequest = (int)Math.Min(blocksLeft + 1, maxHeaders);
             if (headersToRequest <= 1)
             {
+                Console.WriteLine($"[XDC-DBG][FullSyncHeaders] no-request current={_currentNumber} upper={upperDownloadBoundary} peerHead={bestPeer.HeadNumber}");
                 return null;
             }
 
             headersToRequest = Math.Min(headersToRequest, bestPeer.MaxHeadersPerRequest());
+            Console.WriteLine($"[XDC-DBG][FullSyncHeaders] request start={_currentNumber} count={headersToRequest} peer={bestPeer} peerHead={bestPeer.HeadNumber} localBest={blockTree.BestKnownNumber}");
             if (_logger.IsTrace) _logger.Trace($"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
 
             cancellation.ThrowIfCancellationRequested();
@@ -163,6 +165,7 @@ public class PowForwardHeaderProvider(
 
                 {
                     ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
+                    Console.WriteLine($"[XDC-DBG][FullSyncHeaders] response count={headersSpan.Length} first={headersSpan[0]?.Number} last={headersSpan[^1]?.Number}");
                     if (headersSpan.Length < 2)
                     {
                         // Peer doesn't have a new header
@@ -178,19 +181,27 @@ public class PowForwardHeaderProvider(
             }
             catch (TimeoutException)
             {
+                Console.WriteLine($"[XDC-DBG][FullSyncHeaders] timeout peer={bestPeer} start={_currentNumber} requested={headersToRequest}");
                 syncPeerPool.ReportWeakPeer(bestPeer, AllocationContexts.ForwardHeader);
                 return null;
             }
             catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
             {
                 // Request was cancelled due to timeout in protocol handler, not because the sync was cancelled
+                Console.WriteLine($"[XDC-DBG][FullSyncHeaders] protocol-cancel peer={bestPeer} start={_currentNumber} requested={headersToRequest}");
                 syncPeerPool.ReportWeakPeer(bestPeer, AllocationContexts.ForwardHeader);
                 return null;
             }
             catch (EthSyncException e)
             {
+                Console.WriteLine($"[XDC-DBG][FullSyncHeaders] eth-sync-exception peer={bestPeer} start={_currentNumber} requested={headersToRequest} error={e.Message}");
                 if (_logger.IsDebug) _logger.Debug($"Failed to download forward header from {bestPeer}, {e}");
                 syncPeerPool.ReportBreachOfProtocol(bestPeer, DisconnectReason.ForwardSyncFailed, e.Message);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[XDC-DBG][FullSyncHeaders] exception peer={bestPeer} start={_currentNumber} requested={headersToRequest} exception={e}");
+                throw;
             }
 
             return null;

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 
@@ -17,5 +19,6 @@ public interface ISnapshotManager : IDisposable
     }
     Snapshot? GetSnapshotByGapNumber(long gapNumber);
     Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec);
+    Snapshot CreateInitialSnapshot(long number, Hash256 hash, Address[] genesisMasterNodes);
     void StoreSnapshot(Snapshot snapshot);
 }

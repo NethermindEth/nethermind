@@ -1,0 +1,24 @@
+{
+  "Init": {
+    "ChainSpecPath": "/nethermind/custom/chainspec-xdc-subnet-local.json",
+    "BaseDbPath": "/nethermind/nethermind_db/xdc-subnet",
+    "LogFileName": "xdc-subnet-joiner.log"
+  },
+  "Network": {
+    "Bootnodes": "",
+    "StaticPeers": "",
+    "OnlyStaticPeers": false,
+    "FilterDiscoveryNodesByRecentIp": false,
+    "EnableEnrDiscovery": false
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V4"
+  },
+  "Sync": {
+    "FastSync": false,
+    "SnapSync": false
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

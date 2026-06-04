@@ -116,6 +116,25 @@ internal class SnapshotManagerTests
     }
 
     [Test]
+    public void GetSnapshotByGapNumber_StoredSnapshotWithCompetingHeader_ReturnsStoredSnapshot()
+    {
+        const int gapBlock = 450;
+        XdcBlockHeader storedHeader = Build.A.XdcBlockHeader()
+            .WithGeneratedExtraConsensusData(1)
+            .WithNumber(gapBlock).TestObject;
+        XdcBlockHeader competingHeader = Build.A.XdcBlockHeader()
+            .WithGeneratedExtraConsensusData(2)
+            .WithNumber(gapBlock).TestObject;
+        Snapshot snapshot = new(gapBlock, storedHeader.Hash!, [Address.FromNumber(1)]);
+        _snapshotManager.StoreSnapshot(snapshot);
+        _blockTree.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns(competingHeader);
+
+        Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
+
+        Assert.That(result, Is.EqualTo(snapshot).UsingXdcProperties());
+    }
+
+    [Test]
     public void GetSnapshot_ShouldReturnSnapshotIfExists()
     {
         // setup a snapshot and store it
@@ -189,7 +208,7 @@ internal class SnapshotManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(450).TestObject;
-        _blockTree.FindHeader(450).Returns(header);
+        _blockTree.FindHeader(450, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
         _stateReader.HasStateForBlock(header).Returns(true);
         _blockTree.WasProcessed(450, header.Hash!).Returns(true);
 
@@ -205,7 +224,7 @@ internal class SnapshotManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(450).TestObject;
-        _blockTree.FindHeader(450).Returns(header);
+        _blockTree.FindHeader(450, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
         _blockTree.WasProcessed(450, header.Hash!).Returns(true);
         _stateReader.HasStateForBlock(header).Returns(false);
 
@@ -220,7 +239,7 @@ internal class SnapshotManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(450).TestObject;
-        _blockTree.FindHeader(450).Returns(header);
+        _blockTree.FindHeader(450, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
         _stateReader.HasStateForBlock(header).Returns(true);
         _blockTree.WasProcessed(450, header.Hash!).Returns(false);
 
@@ -235,7 +254,7 @@ internal class SnapshotManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(450).TestObject;
-        _blockTree.FindHeader(450).Returns(header);
+        _blockTree.FindHeader(450, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
         _stateReader.HasStateForBlock(header).Returns(true);
         _blockTree.WasProcessed(450, header.Hash!).Returns(true);
         _votingContract.GetCandidatesByStake(header).Throws(new Exception("contract failure"));
@@ -250,7 +269,7 @@ internal class SnapshotManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(100).TestObject;
-        _blockTree.FindHeader(100).Returns(header);
+        _blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
 
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(100);
 

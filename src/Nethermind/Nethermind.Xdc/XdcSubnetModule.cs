@@ -3,8 +3,11 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Network;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 
@@ -17,7 +20,10 @@ public class XdcSubnetModule : XdcModule
         base.Load(builder);
         builder
             .Add<StartXdcSubnetBlockProducer>()
+            .AddSingleton<IHeaderDecoder, XdcSubnetHeaderDecoder>()
             .AddSingleton(new BlockDecoder(new XdcSubnetHeaderDecoder()))
+            .AddSingleton<IZeroMessageSerializer<BlockHeadersMessage>>(new BlockHeadersMessageSerializer(new XdcSubnetHeaderDecoder()))
+            .AddSingleton(new SerializerInfo(typeof(BlockHeadersMessage), new BlockHeadersMessageSerializer(new XdcSubnetHeaderDecoder())))
             .AddSingleton<IEpochSwitchManager, SubnetEpochSwitchManager>()
             .AddSingleton<ISubnetMasternodesCalculator, SubnetMasternodesCalculator>()
             .Bind<IMasternodesCalculator, ISubnetMasternodesCalculator>()

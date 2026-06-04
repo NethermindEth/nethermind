@@ -10,6 +10,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -63,6 +64,9 @@ internal class XdcProtocolHandler(
 
         switch (packetType)
         {
+            case Eth62MessageCode.BlockHeaders:
+                Console.WriteLine($"[XDC-DBG][XdcPacket] BlockHeaders packet size={size} peer={Session.Node}");
+                return base.HandleMessageCore(message);
             case XdcMessageCode.VoteMsg:
                 {
                     using VoteMsg voteMsg = Deserialize<VoteMsg>(message.Content);

@@ -127,6 +127,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else
         {
+            Console.WriteLine($"[XDC-DBG][NettyException] peer={GetClientId(_session)} exception={exception}");
             base.ExceptionCaught(context, exception);
         }
     }

@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using System;
@@ -14,9 +15,13 @@ namespace Nethermind.Xdc;
 
 public class SigningTxCache : ISigningTxCache
 {
+    private const BlockTreeLookupOptions SigningTxLookupOptions =
+        BlockTreeLookupOptions.TotalDifficultyNotNeeded;
+
     private readonly IBlockTree _blockTree;
     private readonly ISpecProvider _specProvider;
     private readonly LruCache<Hash256, Transaction[]> _signingTxsCache = new(XdcConstants.BlockSignersCacheLimit, "XDC Signing Txs Cache");
+    private readonly LruCache<Hash256, XdcBlockHeader> _headersCache = new(XdcConstants.BlockSignersCacheLimit, "XDC Signing Headers Cache");
 
     public SigningTxCache(IBlockTree blockTree, ISpecProvider specProvider)
     {
@@ -30,20 +35,28 @@ public class SigningTxCache : ISigningTxCache
         if (_signingTxsCache.TryGet(blockHash, out Transaction[] signingTxs))
             return signingTxs;
 
-        Block block = _blockTree.FindBlock(blockHash, blockNumber)
+        Block block = _blockTree.FindBlock(blockHash, SigningTxLookupOptions, blockNumber)
             ?? throw new InvalidOperationException($"Expected block {blockHash} at number {blockNumber} to exist in block tree.");
         return CacheSigningTransactions(blockHash, block, spec);
     }
 
     public void SetSigningTransactions(Hash256 blockHash, Transaction[] transactions) => _signingTxsCache.Set(blockHash, transactions);
 
+    public bool TryGetHeader(Hash256 blockHash, out XdcBlockHeader? header) => _headersCache.TryGet(blockHash, out header);
+
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+        => CacheSigningTransactions(e.Block);
+
+    public void CacheSigningTransactions(Block block)
     {
-        if (e.Block.Header is not XdcBlockHeader xdcHeader)
+        if (block.Header is not XdcBlockHeader xdcHeader)
             return;
 
+        Hash256 calculatedHash = xdcHeader.CalculateHash().ToHash256();
+        Hash256 blockHash = block.Hash ?? calculatedHash;
+        _headersCache.Set(blockHash, xdcHeader);
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader);
-        _ = CacheSigningTransactions(e.Block.Hash!, e.Block, spec!);
+        _ = CacheSigningTransactions(blockHash, block, spec!);
     }
 
     private Transaction[] CacheSigningTransactions(Hash256 blockHash, Block block, IXdcReleaseSpec spec)

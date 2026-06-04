@@ -45,6 +45,22 @@ internal class SubnetPenaltyTests
         Assert.That(penalties, Is.Empty);
     }
 
+    [Test]
+    public void HandlePenalties_FirstGap_ReturnsNoPenalties()
+    {
+        MockedSubnetPenaltyContext ctx = CreateMockedContext(
+            chainLength: Gap + 1,
+            validatorSelector: (validators, i) => validators[i % ValidatorCount]
+        );
+
+        Address[] penalties = ctx.Handler.HandlePenalties(
+            Gap,
+            ctx.Headers[Gap - 1].Hash!,
+            []);
+
+        Assert.That(penalties, Is.Empty);
+    }
+
 
     [TestCase(2, TestName = "CurrentEpoch")]
     [TestCase(1, TestName = "PreviousEpoch")]

@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -31,6 +32,90 @@ namespace Nethermind.Xdc.Test.ModuleTests;
 [NonParallelizable]
 public class RewardTests
 {
+    [Test]
+    public void SigningTxCache_CacheSigningTransactions_CachesSigningTransactions()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
+        specProvider.GetSpec(Arg.Any<long>(), null).Returns(spec);
+        SigningTxCache signingTxCache = new(blockTree, specProvider);
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithNumber(1)
+            .WithGeneratedExtraConsensusData(1)
+            .TestObject;
+        Block block = new(header);
+
+        signingTxCache.CacheSigningTransactions(block);
+        Transaction[] signingTransactions = signingTxCache.GetSigningTransactions(block.Hash!, block.Number, spec);
+
+        Assert.That(signingTransactions, Is.Empty);
+        blockTree.DidNotReceiveWithAnyArgs().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<long?>());
+    }
+
+    [Test]
+    public void SigningTxCache_CacheSigningTransactions_CachesHeader()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
+        specProvider.GetSpec(Arg.Any<long>(), null).Returns(spec);
+        SigningTxCache signingTxCache = new(blockTree, specProvider);
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithNumber(1)
+            .WithGeneratedExtraConsensusData(1)
+            .TestObject;
+        Block block = new(header);
+
+        signingTxCache.CacheSigningTransactions(block);
+
+        Assert.That(signingTxCache.TryGetHeader(block.Hash!, out XdcBlockHeader? cachedHeader), Is.True);
+        Assert.That(cachedHeader, Is.SameAs(header));
+    }
+
+    [Test]
+    public void SigningTxCache_CacheSigningTransactions_HeaderHashMissing_CachesByCalculatedHash()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
+        specProvider.GetSpec(Arg.Any<long>(), null).Returns(spec);
+        SigningTxCache signingTxCache = new(blockTree, specProvider);
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithNumber(1)
+            .WithGeneratedExtraConsensusData(1)
+            .TestObject;
+        Hash256 blockHash = header.CalculateHash().ToHash256();
+        header.Hash = null;
+        Block block = new(header);
+
+        signingTxCache.CacheSigningTransactions(block);
+        Transaction[] signingTransactions = signingTxCache.GetSigningTransactions(blockHash, block.Number, spec);
+
+        Assert.That(signingTransactions, Is.Empty);
+        blockTree.DidNotReceiveWithAnyArgs().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<long?>());
+    }
+
+    [Test]
+    public void SigningTxCache_GetSigningTransactions_CacheMiss_AllowsBlockTreeLevelRecovery()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
+        SigningTxCache signingTxCache = new(blockTree, specProvider);
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithNumber(1)
+            .WithGeneratedExtraConsensusData(1)
+            .TestObject;
+        Block block = new(header);
+        blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number).Returns(block);
+
+        Transaction[] signingTransactions = signingTxCache.GetSigningTransactions(block.Hash!, block.Number, spec);
+
+        Assert.That(signingTransactions, Is.Empty);
+        blockTree.Received(1).FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number);
+    }
+
     // Test ported from XDC reward_test :
     // https://github.com/XinFinOrg/XDPoSChain/blob/af4178b2c7f9d668d8ba1f3a0244606a20ce303d/consensus/tests/engine_v2_tests/reward_test.go#L18
     [Test]
@@ -365,8 +450,8 @@ public class RewardTests
 
         tree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
             .Returns(ci => blockHeaders[(int)(long)ci.Args()[1]]);
-        tree.FindBlock(Arg.Any<Hash256>(), Arg.Any<long>())
-            .Returns(ci => blocks[(int)(long)ci.Args()[1]]);
+        tree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<long>())
+            .Returns(ci => blocks[(int)(long)ci.Args()[2]]);
 
         IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
         votingContract.GetCandidateOwner(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>())
@@ -482,8 +567,8 @@ public class RewardTests
 
         tree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
             .Returns(ci => blockHeaders[(int)(long)ci.Args()[1]]);
-        tree.FindBlock(Arg.Any<Hash256>(), Arg.Any<long>())
-            .Returns(ci => blocks[(int)(long)ci.Args()[1]]);
+        tree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<long>())
+            .Returns(ci => blocks[(int)(long)ci.Args()[2]]);
 
         IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
         votingContract.GetCandidateOwner(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>())
@@ -576,12 +661,44 @@ public class RewardTests
         UInt256 expectedAmountFoundationWallet = UInt256.Parse(("5699999999999999998"));
         bool ok = Address.TryParse("0x68d1e2F85e4583BeCc610b47Dd1b857850a4025A", out Address? signer);
         Assert.That(ok, Is.True);
+        Address foundationWalletAddr = Address.FromNumber(0x68);
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         masternodeVotingContract.GetCandidateOwner(Arg.Any<ITransactionProcessor>(), header, signer!).Returns(signer!);
-        (BlockReward holderReward, UInt256 foundationWalletReward) = rewardCalculator.DistributeRewards(signer!, expectedReward, header);
+        (BlockReward holderReward, UInt256 foundationWalletReward) = rewardCalculator.DistributeRewards(signer!, expectedReward, header, foundationWalletAddr);
 
         Assert.That(holderReward.Value, Is.EqualTo(expectedAmountOwner));
         Assert.That(foundationWalletReward, Is.EqualTo(expectedAmountFoundationWallet));
+    }
+
+    [Test]
+    public void RewardCalculator_DistributeRewards_WhenOwnerIsFoundation_MatchesGoOverwriteBehavior()
+    {
+        IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        ISigningTxCache signingTxCache = new SigningTxCache(blockTree, specProvider);
+        XdcRewardCalculator rewardCalculator = new(
+            Substitute.For<IEpochSwitchManager>(),
+            specProvider,
+            blockTree,
+            masternodeVotingContract,
+            Substitute.For<IMintedRecordContract>(),
+            signingTxCache,
+            Substitute.For<ITransactionProcessor>()
+            );
+
+        Address signer = new("0x80b329b66ddfe2180904d6ae737283a3f1860b83");
+        Address foundationWalletAddr = new("0x5cb041be27deb4a506ad63d082c6043b4a5c6898");
+        UInt256 reward = UInt256.Parse("666666666666666633");
+        UInt256 expectedFoundationReward = UInt256.Parse("66666666666666663");
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        masternodeVotingContract.GetCandidateOwner(Arg.Any<ITransactionProcessor>(), header, signer).Returns(foundationWalletAddr);
+
+        (BlockReward holderReward, UInt256 foundationWalletReward) = rewardCalculator.DistributeRewards(signer, reward, header, foundationWalletAddr);
+
+        Assert.That(holderReward.Address, Is.EqualTo(foundationWalletAddr));
+        Assert.That(holderReward.Value, Is.EqualTo(expectedFoundationReward));
+        Assert.That(foundationWalletReward, Is.EqualTo(UInt256.Zero));
     }
 
     private static Transaction BuildSigningTx(IXdcReleaseSpec spec, long blockNumber, Hash256 blockHash, PrivateKey signer, long nonce = 0)

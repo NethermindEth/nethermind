@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -21,6 +22,11 @@ namespace Nethermind.Xdc;
 internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     where TSnapshot : Snapshot
 {
+    private const BlockTreeLookupOptions SnapshotLookupOptions =
+        BlockTreeLookupOptions.RequireCanonical |
+        BlockTreeLookupOptions.TotalDifficultyNotNeeded |
+        BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+
     private readonly LruCache<Hash256, TSnapshot> _snapshotCache;
     private readonly BaseSnapshotDecoder<TSnapshot> _snapshotDecoder;
     private readonly IDb _snapshotDb;
@@ -58,6 +64,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     Snapshot? ISnapshotManager.GetSnapshotByGapNumber(long gapNumber) => GetSnapshotByGapNumber(gapNumber);
 
     Snapshot? ISnapshotManager.GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec) => GetSnapshotByBlockNumber(blockNumber, spec);
+    public abstract Snapshot CreateInitialSnapshot(long number, Hash256 hash, Address[] genesisMasterNodes);
 
     void ISnapshotManager.StoreSnapshot(Snapshot snapshot)
     {
@@ -73,9 +80,13 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
 
     public TSnapshot? GetSnapshotByGapNumber(long gapNumber)
     {
-        if (_blockTree.FindHeader(gapNumber) is not XdcBlockHeader gapBlockHeader)
+        TSnapshot? snapshot = GetSnapshotByStoredGapNumber(gapNumber);
+        if (snapshot is not null)
+            return snapshot;
+
+        if (_blockTree.FindHeader(gapNumber, SnapshotLookupOptions) is not XdcBlockHeader gapBlockHeader)
             return null;
-        TSnapshot? snapshot = GetSnapshot(gapBlockHeader.Hash);
+        snapshot = GetSnapshot(gapBlockHeader.Hash);
         snapshot ??= TryRecoverSnapshot(gapBlockHeader);
 
         return snapshot;
@@ -114,13 +125,46 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         Span<byte> key = snapshot.HeaderHash.Bytes;
 
         if (_snapshotDb.KeyExists(key))
+        {
+            StoreSnapshotNumber(snapshot);
             return;
+        }
 
         Rlp rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot);
 
         _snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
         _snapshotCache.Set(snapshot.HeaderHash, snapshot);
+        StoreSnapshotNumber(snapshot);
     }
+
+    private TSnapshot? GetSnapshotByStoredGapNumber(long gapNumber)
+    {
+        byte[] key = GetSnapshotNumberKey(gapNumber);
+        if (!_snapshotDb.KeyExists(key))
+            return null;
+
+        Span<byte> value = _snapshotDb.Get(key);
+        if (value.Length != Hash256.Size)
+            return null;
+
+        return GetSnapshot(new Hash256(value));
+    }
+
+    private void StoreSnapshotNumber(TSnapshot snapshot)
+    {
+        byte[] key = GetSnapshotNumberKey(snapshot.BlockNumber);
+        _snapshotDb.Set(key, snapshot.HeaderHash.Bytes.ToArray());
+    }
+
+    private static byte[] GetSnapshotNumberKey(long gapNumber)
+    {
+        byte[] key = new byte[SnapshotNumberPrefix.Length + sizeof(long)];
+        SnapshotNumberPrefix.CopyTo(key.AsSpan());
+        BinaryPrimitives.WriteInt64BigEndian(key.AsSpan(SnapshotNumberPrefix.Length), gapNumber);
+        return key;
+    }
+
+    private static ReadOnlySpan<byte> SnapshotNumberPrefix => "XdcSnapshotGap:"u8;
 
     private void OnUpdateMainChain(object? sender, OnUpdateMainChainArgs e)
     {

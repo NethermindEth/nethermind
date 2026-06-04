@@ -11,12 +11,19 @@ using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
-internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, ISigningTxCache signingTxCache) : IPenaltyHandler
+internal class SubnetPenaltyHandler(
+    IBlockTree tree,
+    ISpecProvider specProvider,
+    Lazy<IEpochSwitchManager> epochSwitchManager,
+    ISigningTxCache signingTxCache) : IPenaltyHandler
 {
+    private const BlockTreeLookupOptions PenaltyLookupOptions =
+        BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+
     public Address[] HandlePenalties(long number, Hash256 parentHash, Address[] candidates)
     {
         // Triggered only at gap blocks
-        XdcSubnetBlockHeader header = tree.FindHeader(parentHash, number - 1) as XdcSubnetBlockHeader
+        XdcBlockHeader header = tree.FindHeader(parentHash, PenaltyLookupOptions, number - 1) as XdcBlockHeader
             ?? throw new InvalidOperationException($"Header not found for block {number - 1}");
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header);
 
@@ -30,14 +37,16 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
 
 
         long parentNumber = number - 1;
-        long minBlockNumber = Math.Max(1, number - currentSpec.EpochLength);
+        long stopNumber = parentNumber + 1 <= currentSpec.EpochLength
+            ? 1
+            : parentNumber + 1 - currentSpec.EpochLength;
 
         while (true)
         {
-            XdcSubnetBlockHeader parentHeader = tree.FindHeader(parentHash, parentNumber) as XdcSubnetBlockHeader
+            XdcBlockHeader parentHeader = tree.FindHeader(parentHash, PenaltyLookupOptions, parentNumber) as XdcBlockHeader
                 ?? throw new InvalidOperationException($"Header not found for block {parentNumber}");
 
-            if (parentNumber == minBlockNumber + 1)
+            if (parentNumber == stopNumber + 1)
             {
                 foreach (Address penalty in parentHeader.PenaltiesAddress)
                 {
@@ -51,11 +60,12 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             Address miner = parentHeader.Beneficiary;
             minerStatistics[miner!] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
 
-            bool isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
+            // Lazy avoids constructor-time cycle: SnapshotManager -> PenaltyHandler -> EpochSwitchManager -> SnapshotManager
+            bool isEpochSwitch = epochSwitchManager.Value.IsEpochSwitchAtBlock(parentHeader);
 
-            if (isEpochSwitch || parentNumber <= minBlockNumber)
+            if (isEpochSwitch || parentNumber <= stopNumber)
             {
-                Address[] masternodes = epochSwitchManager.GetEpochSwitchInfo(parentHeader)?.Masternodes ?? [];
+                Address[] masternodes = epochSwitchManager.Value.GetEpochSwitchInfo(parentHeader)?.Masternodes ?? [];
                 foreach (Address masternode in masternodes)
                 {
                     if (minerStatistics.GetValueOrDefault(masternode, 0) < XdcConstants.MinimumMinerBlockPerEpoch)
@@ -63,7 +73,7 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
                 }
                 minerStatistics.Clear();
 
-                if (parentNumber <= minBlockNumber)
+                if (parentNumber <= stopNumber)
                     break;
             }
 

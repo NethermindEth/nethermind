@@ -34,6 +34,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Discovery;
 using Nethermind.Xdc.RLP;
+using System.Linq;
 
 namespace Nethermind.Xdc;
 
@@ -50,7 +51,9 @@ public class XdcModule : Module
             .Intercept<ChainSpec>(XdcChainSpecLoader.ProcessChainSpec)
             .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
-                chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>())
+                chainSpec.EngineChainSpecParametersProvider.AllChainSpecParameters
+                    .OfType<XdcChainSpecEngineParameters>()
+                    .First())
 
             .AddDecorator<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
