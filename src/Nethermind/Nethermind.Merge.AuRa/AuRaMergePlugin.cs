@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Api.Steps;
