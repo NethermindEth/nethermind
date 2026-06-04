@@ -95,10 +95,8 @@ namespace Nethermind.Store.Test.Proofs
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressA));
-            Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
-            Assert.That(proof.CodeHash, Is.EqualTo(ValueKeccak.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(ValueKeccak.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
             Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
             Assert.That(proof.StorageProofs?[0].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
             Assert.That(proof.StorageProofs?[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
@@ -121,8 +119,8 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Proof, Has.Length.EqualTo(1));
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
-            Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
             Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
             Assert.That(proof.StorageProofs?[0].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
             Assert.That(proof.StorageProofs?[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
@@ -143,8 +141,8 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Proof, Has.Length.EqualTo(1));
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
-            Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
             Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
             Assert.That(proof.StorageProofs?[0].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
             Assert.That(proof.StorageProofs?[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
