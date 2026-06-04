@@ -126,6 +126,26 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
+    // Synchronously resolve the storage-trie path for a written slot into the shared node graph
+    // (_warmupStorageTree shares _tree.RootRef), so a subsequent BulkSet commit finds the path
+    // already resolved instead of cold-reading it from RocksDB. Read-only: warming cannot change
+    // the committed root, only populate the in-memory node graph. Best-effort: concurrent-resolution
+    // and disposal races are swallowed exactly as the async trie warmer does, falling back to the
+    // cold path inside BulkSet on any failure.
+    internal void WarmUpSlotPathForCommit(in UInt256 index)
+    {
+        try
+        {
+            ValueHash256 key = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(index, ref key);
+            _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+        }
+        catch (TrieNodeException) { }
+        catch (NodeHashMismatchException) { }
+        catch (ObjectDisposedException) { }
+        catch (NullReferenceException) when (IsDisposed) { }
+    }
+
     private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
 
     public void SelfDestruct()
@@ -156,18 +176,48 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
+        // Below this many writes the serial BulkSet resolves quickly; the parallel pre-resolve
+        // setup isn't worth it. Above it (the bloated-contract case) the commit would otherwise
+        // cold-read each modified slot's full trie path serially.
+        private const int ParallelPreResolveThreshold = 16;
+
+        private List<UInt256>? _writtenSlots;
+
         public void Set(in UInt256 index, byte[] value)
         {
             storageTreeBulkWriteBatch.Set(in index, value);
             storageTree.Set(index, value);
+            (_writtenSlots ??= new List<UInt256>(64)).Add(index);
         }
 
         public void Clear()
         {
             storageTreeBulkWriteBatch.Clear();
             storageTree.SelfDestruct();
+            _writtenSlots?.Clear();
         }
 
-        public void Dispose() => storageTreeBulkWriteBatch.Dispose();
+        public void Dispose()
+        {
+            // Pre-resolve the write-set's trie paths in parallel before the serial BulkSet commit.
+            // The async prewarmer is cancelled at StartWriteBatch, so on a large existing storage
+            // trie the commit would cold-read most node paths one at a time. Warming is read-only
+            // (cannot change the committed root); any failure falls through to the cold BulkSet path.
+            List<UInt256>? slots = _writtenSlots;
+            if (slots is { Count: >= ParallelPreResolveThreshold })
+            {
+                try
+                {
+                    ParallelOptions options = new() { MaxDegreeOfParallelism = Environment.ProcessorCount };
+                    Parallel.For(0, slots.Count, options, i => storageTree.WarmUpSlotPathForCommit(slots[i]));
+                }
+                catch
+                {
+                    // Best-effort warming; the BulkSet below is authoritative and correct regardless.
+                }
+            }
+
+            storageTreeBulkWriteBatch.Dispose();
+        }
     }
 }
