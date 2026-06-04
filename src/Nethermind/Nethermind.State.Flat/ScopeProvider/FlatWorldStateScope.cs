@@ -181,12 +181,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             ParallelOptions parallelOptions = new() { CancellationToken = token };
 
-            // Always allocated: the post-phase-1 slot pass warms read-only slots (flat-storage block
-            // cache) for the sink-less production path too, not just the sink case. Read-heavy blocks
-            // (e.g. an account SLOAD-ed thousands of times) would otherwise do every cold flat read
-            // serially on the execution thread; warming them in parallel here lets execution hit cache.
-            Account?[] accounts = new Account?[accountCount];
-            int[] selfDestructIdxs = new int[accountCount];
+            Account?[]? accounts = sink is null ? null : new Account?[accountCount];
+            int[]? selfDestructIdxs = sink is null ? null : new int[accountCount];
 
             try
             {
@@ -205,11 +201,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
-                    int storageReadCount = ac.StorageReads.Length;
 
-                    // Fetch the account when it has any storage activity (reads or writes) or a sink
-                    // is attached; the slot-warming pass below needs the account + self-destruct idx.
-                    Account? account = storageChangeCount == 0 && storageReadCount == 0 && sink is null
+                    Account? account = sink is null && storageChangeCount == 0
                         ? null
                         : _snapshotBundle.GetAccount(address);
 
@@ -241,11 +234,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         }
                     }
 
-                    accounts[i] = account;
-                    selfDestructIdxs[i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+                    if (accounts is not null)
+                    {
+                        accounts[i] = account;
+                        selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+                    }
                 });
 
-                RunSlotReads(accountChanges, accounts, selfDestructIdxs, sink, parallelOptions);
+                if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
             }
             catch (OperationCanceledException) { }
             finally
@@ -255,11 +251,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }, token);
     }
 
-    private void RunSlotReads(
+    private void RunSinkSlotReads(
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
         Account?[] accounts,
         int[] selfDestructIdxs,
-        IWorldStateScopeProvider.IAsyncBalReaderSink? sink,
+        IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
         int totalSlots = 0;
@@ -290,20 +286,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             if (_pausePrewarmer) return;
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-            WarmOrReadSlot(sink, address, in slot, selfDestructIdx);
+            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         });
     }
 
-    private void WarmOrReadSlot(IWorldStateScopeProvider.IAsyncBalReaderSink? sink, Address address, in UInt256 slot, int selfDestructIdx)
+    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
     {
-        if (sink is null)
-        {
-            // Sink-less production path: warm the flat-storage block cache so the synchronous
-            // execution SLOAD hits cache instead of doing a cold read. Result intentionally discarded.
-            _ = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
-            return;
-        }
-
         StorageCell cell = new(address, in slot);
         if (!sink.StillNeeded(in cell)) return;
         byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
