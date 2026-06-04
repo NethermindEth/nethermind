@@ -1,0 +1,125 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence;
+using NUnit.Framework;
+
+namespace Nethermind.State.Flat.Test;
+
+[TestFixture]
+public class SlotRlpEncodingTests
+{
+    private static readonly Address Addr = TestItem.AddressA;
+    private static readonly UInt256 Slot = 7;
+
+    private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
+    private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
+
+    private static RocksDbPersistence CreatePersistence(IColumnsDb<FlatDbColumns> db, bool rlpWrap = true) =>
+        new(db, new FlatDbConfig { RlpWrapStorageSlots = rlpWrap }, LimboLogs.Instance);
+
+    private static void WriteSlot(IPersistence persistence, in SlotValue value)
+    {
+        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        batch.SetStorage(Addr, Slot, value);
+    }
+
+    private static void WriteRawSlotToDb(IColumnsDb<FlatDbColumns> db, byte[] strippedValue)
+    {
+        IDb storageDb = db.GetColumnDb(FlatDbColumns.Storage);
+        ValueHash256 addrHash = ValueKeccak.Compute(Addr.Bytes);
+        Span<byte> slotBytes = stackalloc byte[32];
+        Slot.ToBigEndian(slotBytes);
+        ValueHash256 slotHash = ValueKeccak.Compute(slotBytes);
+
+        byte[] storageKey = new byte[52];
+        addrHash.Bytes[..4].CopyTo(storageKey.AsSpan()[..4]);
+        slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
+        addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan()[36..52]);
+        storageDb.Set(storageKey, strippedValue);
+    }
+
+    // Stripped (significant) bytes covering: single byte < 0x80, single byte >= 0x80, two bytes, full 32 bytes.
+    [TestCase(true, "05")]
+    [TestCase(false, "05")]
+    [TestCase(true, "80")]
+    [TestCase(true, "ff")]
+    [TestCase(true, "0102")]
+    [TestCase(true, "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
+    [TestCase(false, "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
+    public void Slot_value_round_trips(bool rlpWrap, string strippedHex)
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        RocksDbPersistence persistence = CreatePersistence(db, rlpWrap);
+        SlotValue value = SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString(strippedHex));
+
+        WriteSlot(persistence, value);
+
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        SlotValue read = default;
+        Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
+        Assert.That(read.AsReadOnlySpan.ToArray(), Is.EqualTo(value.AsReadOnlySpan.ToArray()));
+    }
+
+    [Test]
+    public void Fresh_db_defaults_to_rlp_and_records_version()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        RocksDbPersistence persistence = CreatePersistence(db, rlpWrap: true);
+
+        WriteSlot(persistence, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0102")));
+
+        Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey),
+            Is.EqualTo(new[] { BasePersistence.SlotEncodingRlp }));
+
+        // The stored blob is RLP(0x0102) = 0x82 0x01 0x02, not the raw stripped bytes.
+        Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("820102")));
+    }
+
+    [Test]
+    public void Pre_feature_db_falls_back_to_raw_and_reads_legacy_values()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        // Simulate a DB synced before this feature: Layout recorded, SlotEncoding absent, raw slot bytes.
+        db.GetColumnDb(FlatDbColumns.Metadata).Set(LayoutKey, new[] { (byte)FlatLayout.Flat });
+        WriteRawSlotToDb(db, Bytes.FromHexString("0102"));
+
+        RocksDbPersistence persistence = CreatePersistence(db, rlpWrap: true); // config asks for RLP, DB wins
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        SlotValue read = default;
+        Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
+        Assert.That(read.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("0102")));
+    }
+
+    [Test]
+    public void Unknown_slot_encoding_version_throws()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        db.GetColumnDb(FlatDbColumns.Metadata).Set(SlotEncodingKey, new byte[] { 2 });
+
+        Assert.That(() => CreatePersistence(db), Throws.TypeOf<InvalidConfigurationException>());
+    }
+
+    private static byte[] ReadStoredSlotBytes(IColumnsDb<FlatDbColumns> db)
+    {
+        ValueHash256 addrHash = ValueKeccak.Compute(Addr.Bytes);
+        Span<byte> slotBytes = stackalloc byte[32];
+        Slot.ToBigEndian(slotBytes);
+        ValueHash256 slotHash = ValueKeccak.Compute(slotBytes);
+
+        byte[] storageKey = new byte[52];
+        addrHash.Bytes[..4].CopyTo(storageKey.AsSpan()[..4]);
+        slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
+        addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan()[36..52]);
+        return db.GetColumnDb(FlatDbColumns.Storage).Get(storageKey)!;
+    }
+}

@@ -3,13 +3,16 @@
 
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
+public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, IFlatDbConfig flatDbConfig, ILogManager logManager) : IPersistence
 {
     private readonly WriteBufferAdjuster _adjuster = new(db);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
+    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, flatDbConfig, logManager.GetClassLogger<RocksDbPersistence>());
+    private int _slotEncodingPersisted = 0;
 
     public void Flush() => db.Flush();
 
@@ -34,7 +37,8 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                     new BaseFlatPersistence.Reader(
                         (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Account),
                         (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage),
-                        isPreimageMode: false
+                        isPreimageMode: false,
+                        rlpWrapSlots: _rlpWrapSlots
                     )
                 ),
                 trieReader,
@@ -92,7 +96,8 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                     (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
                     accountBatch,
                     storageBatch,
-                    flags
+                    flags,
+                    rlpWrapSlots: _rlpWrapSlots
                 )
             ),
             trieWriteBatch,
@@ -101,6 +106,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                     BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
+                BasePersistence.RecordSlotEncodingOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _slotEncodingPersisted, _rlpWrapSlots);
                 batch.Dispose();
                 dbSnap.Dispose();
                 _adjuster.OnBatchDisposed();

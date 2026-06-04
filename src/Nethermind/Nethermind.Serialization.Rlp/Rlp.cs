@@ -461,6 +461,45 @@ namespace Nethermind.Serialization.Rlp
 
         public static Rlp Encode(byte[]? input) => input is null or [] ? OfEmptyByteArray : Encode(input.AsSpan());
 
+        /// <summary>
+        /// Allocation-free byte-string RLP encoding: writes the encoding of <paramref name="input"/> into
+        /// <paramref name="output"/> and returns the number of bytes written.
+        /// </summary>
+        /// <remarks>
+        /// Mirrors <see cref="Encode(ReadOnlySpan{byte})"/> but targets a caller-provided buffer instead of
+        /// allocating a new array. The caller must size <paramref name="output"/> to at least
+        /// <see cref="LengthOf(ReadOnlySpan{byte})"/> bytes.
+        /// </remarks>
+        [SkipLocalsInit]
+        public static int Encode(ReadOnlySpan<byte> input, Span<byte> output)
+        {
+            int length = input.Length;
+            if (length == 0)
+            {
+                output[0] = EmptyByteArrayByte;
+                return 1;
+            }
+
+            if (length == 1 && input[0] < 128)
+            {
+                output[0] = input[0];
+                return 1;
+            }
+
+            if (length < RlpHelpers.SmallPrefixBarrier)
+            {
+                output[0] = (byte)(0x80 + length);
+                input.CopyTo(output[1..]);
+                return 1 + length;
+            }
+
+            int lengthOfLength = LengthOfLength(length);
+            output[0] = (byte)(0xb7 + lengthOfLength);
+            SerializeLength(length, output.Slice(1, lengthOfLength));
+            input.CopyTo(output[(1 + lengthOfLength)..]);
+            return 1 + lengthOfLength + length;
+        }
+
         private static int SerializeLength(int value, Span<byte> destination)
         {
             // We assume 0 <= value <= int.MaxValue

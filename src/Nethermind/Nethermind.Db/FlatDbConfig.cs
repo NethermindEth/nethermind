@@ -12,6 +12,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
+    public bool RlpWrapStorageSlots { get; set; } = true;
     public bool VerifyWithTrie { get; set; } = false;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public int CompactSize { get; set; } = 32;

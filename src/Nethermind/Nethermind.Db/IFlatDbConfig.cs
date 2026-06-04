@@ -40,6 +40,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
 
+    [ConfigItem(Description = "RLP-wrap storage slot values in the flat DB. Only applies to brand-new DBs; an existing DB keeps the encoding it was synced with.", DefaultValue = "true")]
+    bool RlpWrapStorageSlots { get; set; }
+
     [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
     long TrieCacheMemoryBudget { get; set; }
 

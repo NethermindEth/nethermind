@@ -39,7 +39,7 @@ public class FlatSnapServerTests
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb);
+        _persistence = new RocksDbPersistence(_columnsDb, new FlatDbConfig(), LimboLogs.Instance);
         _codeDb = new MemDb();
 
         byte[] rootRlp = BuildRootRlp(out _rootHash);

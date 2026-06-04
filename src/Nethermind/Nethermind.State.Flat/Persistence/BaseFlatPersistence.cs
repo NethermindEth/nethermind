@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -43,6 +44,9 @@ public static class BaseFlatPersistence
     private const int StoragePostfixPortion = 16;
     private const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
 
+    // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32 bytes.
+    private const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
+
     private static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
     {
         address.Bytes[..AccountKeyLength].CopyTo(buffer);
@@ -65,7 +69,8 @@ public static class BaseFlatPersistence
     public readonly struct Reader(
         ISortedKeyValueStore state,
         ISortedKeyValueStore storage,
-        bool isPreimageMode = false
+        bool isPreimageMode = false,
+        bool rlpWrapSlots = false
     ) : BasePersistence.IHashedFlatReader
     {
         public bool IsPreimageMode => isPreimageMode;
@@ -84,7 +89,12 @@ public static class BaseFlatPersistence
             int resultSize = GetStorageBuffer(storageKey, buffer);
             if (resultSize == 0) return false;
 
-            Span<byte> value = buffer[..resultSize];
+            ReadOnlySpan<byte> value = buffer[..resultSize];
+            if (rlpWrapSlots)
+            {
+                Rlp.ValueDecoderContext ctx = new(value);
+                value = ctx.DecodeByteArraySpan();
+            }
 
             // Bypass bounds check on the slice - the length is already validated by the if guard above.
             // This writes the variable-length DB value into the end of the 32-byte struct.
@@ -138,7 +148,8 @@ public static class BaseFlatPersistence
 
             return new StorageIterator(
                 storage.GetViewBetween(firstKey, lastKey),
-                accountKey.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)].ToArray());
+                accountKey.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)].ToArray(),
+                rlpWrapSlots);
         }
     }
 
@@ -167,7 +178,7 @@ public static class BaseFlatPersistence
         public void Dispose() => view.Dispose();
     }
 
-    public struct StorageIterator(ISortedView view, byte[] addressSuffix) : IPersistence.IFlatIterator
+    public struct StorageIterator(ISortedView view, byte[] addressSuffix, bool rlpWrapSlots) : IPersistence.IFlatIterator
     {
         // 16-byte suffix to match
         private ValueHash256 _currentKey = default;
@@ -186,7 +197,8 @@ public static class BaseFlatPersistence
 
                 // Extract the 32-byte slot hash from the middle of the key
                 _currentKey = new ValueHash256(view.CurrentKey.Slice(StoragePrefixPortion, StorageSlotKeySize));
-                _currentValue = view.CurrentValue.ToArray();
+                ReadOnlySpan<byte> rawValue = view.CurrentValue;
+                _currentValue = rlpWrapSlots ? rawValue.AsRlpValueContext().DecodeByteArraySpan().ToArray() : rawValue.ToArray();
                 return true;
             }
             return false;
@@ -203,7 +215,8 @@ public static class BaseFlatPersistence
         ISortedKeyValueStore storageSnap,
         IWriteBatch state,
         IWriteBatch storage,
-        WriteFlags flags
+        WriteFlags flags,
+        bool rlpWrapSlots = false
     ) : BasePersistence.IHashedFlatWriteBatch
     {
         [SkipLocalsInit]
@@ -229,7 +242,16 @@ public static class BaseFlatPersistence
             if (slot.HasValue)
             {
                 ReadOnlySpan<byte> withoutLeadingZeros = slot.Value.AsSpan.WithoutLeadingZeros();
-                storage.PutSpan(theKey, withoutLeadingZeros, flags);
+                if (rlpWrapSlots)
+                {
+                    Span<byte> rlpBuffer = stackalloc byte[RlpSlotValueBufferSize];
+                    int written = Rlp.Encode(withoutLeadingZeros, rlpBuffer);
+                    storage.PutSpan(theKey, rlpBuffer[..written], flags);
+                }
+                else
+                {
+                    storage.PutSpan(theKey, withoutLeadingZeros, flags);
+                }
             }
             else
             {

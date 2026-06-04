@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -10,10 +11,12 @@ namespace Nethermind.State.Flat.Persistence;
 /// Persistence implementation that stores flat state data in the trie node columns (StateNodes/StorageNodes)
 /// instead of separate Account/Storage columns.
 /// </summary>
-public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
+public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, IFlatDbConfig flatDbConfig, ILogManager logManager) : IPersistence
 {
     private readonly WriteBufferAdjuster _adjuster = new(db);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.FlatInTrie);
+    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, flatDbConfig, logManager.GetClassLogger<FlatInTriePersistence>());
+    private int _slotEncodingPersisted = 0;
 
     public void Flush() => db.Flush();
 
@@ -38,7 +41,8 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                     new BaseFlatPersistence.Reader(
                         (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.StateNodes),
                         (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.StorageNodes),
-                        isPreimageMode: false
+                        isPreimageMode: false,
+                        rlpWrapSlots: _rlpWrapSlots
                     )
                 ),
                 trieReader,
@@ -93,7 +97,8 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                     (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
                     stateNodesBatch,
                     storageNodesBatch,
-                    flags
+                    flags,
+                    rlpWrapSlots: _rlpWrapSlots
                 )
             ),
             trieWriteBatch,
@@ -102,6 +107,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                     BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.FlatInTrie);
+                BasePersistence.RecordSlotEncodingOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _slotEncodingPersisted, _rlpWrapSlots);
                 batch.Dispose();
                 dbSnap.Dispose();
                 _adjuster.OnBatchDisposed();

@@ -26,7 +26,8 @@ public class FlatTreeSyncStoreTests
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb);
+        // WriteStorageDirectToDb seeds the Storage column with raw (un-wrapped) bytes, so read in raw mode.
+        _persistence = new RocksDbPersistence(_columnsDb, new FlatDbConfig { RlpWrapStorageSlots = false }, LimboLogs.Instance);
     }
 
     [TearDown]

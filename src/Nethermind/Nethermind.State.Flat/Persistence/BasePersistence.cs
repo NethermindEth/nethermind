@@ -8,6 +8,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -31,6 +32,16 @@ public static class BasePersistence
 
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
+    private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
+
+    /// <summary>Raw storage slot encoding: the stripped value bytes are stored verbatim. Legacy, deprecated.</summary>
+    internal const byte SlotEncodingRaw = 0;
+
+    /// <summary>RLP storage slot encoding: the stripped value is stored as an RLP byte string.</summary>
+    internal const byte SlotEncodingRlp = 1;
+
+    private const string RawSlotDeprecationMessage =
+        "Flat DB uses the legacy raw storage slot encoding, which is deprecated and will be removed in a future release. Please resync to adopt the RLP slot encoding.";
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
@@ -105,6 +116,67 @@ public static class BasePersistence
         if (Interlocked.CompareExchange(ref flag, 1, 0) == 0)
         {
             SetLayout(metadataBatch, layout);
+        }
+    }
+
+    private static byte? ReadSlotEncoding(IReadOnlyKeyValueStore kv)
+    {
+        byte[]? bytes = kv.Get(SlotEncodingKey);
+        return bytes is null || bytes.Length == 0 ? null : bytes[0];
+    }
+
+    private static void SetSlotEncoding(IWriteOnlyKeyValueStore kv, byte version)
+    {
+        Span<byte> bytes = stackalloc byte[1];
+        bytes[0] = version;
+        kv.PutSpan(SlotEncodingKey, bytes);
+    }
+
+    /// <summary>
+    /// Decides whether storage slot values should be RLP-wrapped for this DB. The recorded version of an
+    /// existing DB always wins; the config flag only chooses the format for a brand-new DB.
+    /// </summary>
+    /// <remarks>
+    /// An absent <see cref="SlotEncodingKey"/> is ambiguous: a brand-new DB and a DB synced before this
+    /// feature existed both lack it. They are distinguished via the <see cref="LayoutKey"/>, which any
+    /// previously-synced DB will already have recorded — its presence means raw legacy data, so wrapping is
+    /// disabled (with a deprecation warning) to avoid misreading raw values as RLP.
+    /// </remarks>
+    internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogger logger)
+    {
+        IReadOnlyKeyValueStore meta = db.GetColumnDb(FlatDbColumns.Metadata);
+        byte? stored = ReadSlotEncoding(meta);
+        if (stored is not null)
+        {
+            switch (stored.Value)
+            {
+                case SlotEncodingRlp:
+                    return true;
+                case SlotEncodingRaw:
+                    if (logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
+                    return false;
+                default:
+                    throw new InvalidConfigurationException(
+                        $"Flat DB metadata contains an unrecognized slot encoding version '{stored.Value}'. The DB may be corrupt or was written by a newer version.",
+                        -1);
+            }
+        }
+
+        bool preExisting = ReadLayout(meta) is not null;
+        if (preExisting)
+        {
+            if (logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
+            return false;
+        }
+
+        return config.RlpWrapStorageSlots;
+    }
+
+    internal static void RecordSlotEncodingOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, bool rlpWrap)
+    {
+        if (Interlocked.CompareExchange(ref flag, 1, 0) == 0)
+        {
+            SetSlotEncoding(metadataBatch, rlpWrap ? SlotEncodingRlp : SlotEncodingRaw);
         }
     }
 
