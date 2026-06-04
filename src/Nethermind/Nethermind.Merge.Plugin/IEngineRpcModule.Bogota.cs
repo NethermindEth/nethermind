@@ -14,19 +14,19 @@ namespace Nethermind.Merge.Plugin;
 public partial interface IEngineRpcModule : IRpcModule
 {
     [JsonRpcMethod(
-        Description = "EIP-7805 (FOCIL): returns the local mempool inclusion list for the given block hash.",
+        Description = "Builds an inclusion list from the local mempool.",
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<ArrayPoolList<byte[]>>> engine_getInclusionListV1(Hash256 blockHash);
 
     [JsonRpcMethod(
-        Description = "EIP-7805 (FOCIL): verifies the payload plus its inclusion list against the chain state. Returns INCLUSION_LIST_UNSATISFIED if any valid IL tx is missing.",
+        Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions);
 
     [JsonRpcMethod(
-        Description = "EIP-7805 (FOCIL) + EIP-7805/PeerDAS: forkchoice update with PayloadAttributesV5 (carries inclusionListTransactions) plus a 16-byte custodyColumns bitarray.",
+        Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV5(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, byte[]? custodyColumns = null);
