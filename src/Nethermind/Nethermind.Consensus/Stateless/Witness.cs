@@ -80,7 +80,7 @@ public static class WitnessExtensions
                 decodedHeaders[i] = _decoder.Decode(ref stream)
                     ?? throw new InvalidOperationException($"No header decoded at index {i}");
 
-                if (i > 0 && decodedHeaders[i].ParentHash?.ValueHash256 != previousHeaderHash)
+                if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))
                 {
                     decodedHeaders.Dispose();
                     throw new InvalidOperationException("Witness headers are not contiguous");
