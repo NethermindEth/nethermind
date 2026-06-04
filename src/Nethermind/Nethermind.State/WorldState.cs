@@ -107,6 +107,13 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _persistentStorageProvider.Get(storageCell);
         }
+
+        public bool TryGetPureReadStorage(in StorageCell cell, out ReadOnlySpan<byte> value)
+        {
+            DebugGuardInScope();
+            value = _persistentStorageProvider.GetPureRead(cell);
+            return true;
+        }
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
             DebugGuardInScope();

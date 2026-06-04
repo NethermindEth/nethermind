@@ -111,12 +111,12 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
                     .WithoutLeadingZeros();
             }
 
-            // Pure declared read (slotChanges is null) in a large block: serve the prefetched value
-            // from the ordinal destination (byte-identical to parentReader.Get; zero/absent is empty).
-            // A not-yet-loaded slot or small block falls through to the parent reader unchanged.
-            if (slotChanges is null && TryGetPrefetchedRead(in storageCell, out ReadOnlySpan<byte> prefetched))
+            // Pure declared read (slotChanges is null): a slot the BAL proves is read-only this block,
+            // so original == current == pre-state. Serve it from the prefetched ordinal destination or
+            // the parent's registry-bypassing read; both are byte-identical to parentReader.Get.
+            if (slotChanges is null && TryReadDeclaredPureRead(in storageCell, out ReadOnlySpan<byte> value))
             {
-                return prefetched;
+                return value;
             }
 
             return parentReader.Get(storageCell);
@@ -126,7 +126,13 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         return default;
     }
 
-    private bool TryGetPrefetchedRead(in StorageCell storageCell, out ReadOnlySpan<byte> value)
+    /// <remarks>
+    /// For a BAL-declared read the value never changes in-block, so the same lookup answers both
+    /// <see cref="Get"/> and <see cref="GetOriginal"/> and never needs the parent's change registry -
+    /// which is what lets <see cref="GetOriginal"/> avoid <c>parentReader.GetOriginal</c> (it would
+    /// throw without a prior registered read). Returns false to fall back to the normal parent path.
+    /// </remarks>
+    private bool TryReadDeclaredPureRead(in StorageCell storageCell, out ReadOnlySpan<byte> value)
     {
         if (preBlockCaches?.StorageValueDestination is { } destination
             && preBlockCaches.StorageReadPlan is { } readPlan
@@ -135,6 +141,11 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         {
             value = prefetched; // already stripped of leading zeros; null/empty => empty span (zero slot)
             return true;
+        }
+
+        if (_parentReader is not null)
+        {
+            return _parentReader.TryGetPureReadStorage(in storageCell, out value);
         }
 
         value = default;
@@ -152,6 +163,13 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
                 _originalScratch = storageChange.Value;
                 return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref _originalScratch), 32)
                     .WithoutLeadingZeros();
+            }
+
+            // Declared read: original == pre-state, so use the same pure read as Get rather than
+            // parentReader.GetOriginal (which throws without a prior registered read).
+            if (slotChanges is null && TryReadDeclaredPureRead(in storageCell, out ReadOnlySpan<byte> value))
+            {
+                return value;
             }
 
             return parentReader.GetOriginal(storageCell);

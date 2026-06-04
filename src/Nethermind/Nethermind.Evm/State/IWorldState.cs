@@ -48,6 +48,22 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     ReadOnlySpan<byte> Get(in StorageCell storageCell);
 
     /// <summary>
+    /// Reads a slot bypassing the change journal (no original-value / revert / cache entry the way
+    /// <see cref="Get"/> records). The value equals <see cref="Get"/>.
+    /// </summary>
+    /// <remarks>
+    /// Only safe for a slot that is never written or queried via <see cref="GetOriginal"/> this block,
+    /// since the skipped journal is what those rely on. The default returns <c>false</c> ("I keep the
+    /// journal - use the normal path"); a backing store that can read without journaling overrides it.
+    /// </remarks>
+    /// <returns><c>true</c> with the value when served without journaling; otherwise <c>false</c>.</returns>
+    bool TryGetPureReadStorage(in StorageCell cell, out ReadOnlySpan<byte> value)
+    {
+        value = default;
+        return false;
+    }
+
+    /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>

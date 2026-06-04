@@ -109,6 +109,35 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void GetOriginal_DeclaredRead_ReturnsPreStateViaPureRead_WithoutPriorGet()
+    {
+        // A BAL-declared read is read-only this block (original == current == pre-state), so the
+        // pure-read path serves GetOriginal directly. The old path (parentReader.GetOriginal) would
+        // throw "only after get" here, so a non-throwing pre-state value pins the pure read.
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads(5)
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 0,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 100);
+                ws.Set(new StorageCell(TestItem.AddressA, 5), [4, 2]);
+            });
+        using (scope)
+        {
+            StorageCell cell = new(TestItem.AddressA, 5);
+            Assert.That(bws.GetOriginal(cell).ToArray(), Is.EqualTo(new byte[] { 4, 2 }));
+            Assert.That(bws.Get(cell).ToArray(), Is.EqualTo(new byte[] { 4, 2 }));
+        }
+    }
+
+    [Test]
     public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
