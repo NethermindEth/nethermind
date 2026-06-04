@@ -78,7 +78,12 @@ public class KademliaAdapter(
             Node[] nodes = kademlia.Value.GetAllAtDistance(distance);
             for (int i = 0; i < nodes.Length; i++)
             {
-                Node node = nodes[i];
+                Node? node = nodes[i];
+                if (node is null)
+                {
+                    continue;
+                }
+
                 if (excludedHash is not null && node.IdHash.Equals(excludedHash))
                 {
                     continue;
@@ -130,13 +135,21 @@ public class KademliaAdapter(
         }
 
         Node[] nodes = responseHandler.GetNodes();
-        if (_logger.IsTrace) _logger.Trace($"Discv5 FINDNODE {findNode.RequestId} to {receiver:s} returned {nodes.Length} nodes.");
+        int validCount = 0;
         for (int i = 0; i < nodes.Length; i++)
         {
-            kademlia.Value.AddOrRefresh(nodes[i]);
+            Node? node = nodes[i];
+            if (node is null)
+            {
+                continue;
+            }
+
+            kademlia.Value.AddOrRefresh(node);
+            nodes[validCount++] = node;
         }
 
-        return nodes;
+        if (_logger.IsTrace) _logger.Trace($"Discv5 FINDNODE {findNode.RequestId} to {receiver:s} returned {validCount} nodes.");
+        return validCount == nodes.Length ? nodes : nodes[..validCount];
     }
 
     public async Task RunAsync(CancellationToken token)
@@ -579,7 +592,12 @@ public class KademliaAdapter(
         Hash256 requesterHash = requester.IdHash;
         for (int i = 0; i < nodes.Length && result.Count < MaxFindNodeRecords; i++)
         {
-            Node node = nodes[i];
+            Node? node = nodes[i];
+            if (node is null)
+            {
+                continue;
+            }
+
             if (node.IdHash.Equals(requesterHash) || string.IsNullOrEmpty(node.Enr) || !seen.Add(node.Id.Hash))
             {
                 continue;

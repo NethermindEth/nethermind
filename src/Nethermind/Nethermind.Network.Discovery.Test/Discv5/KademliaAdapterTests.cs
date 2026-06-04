@@ -59,6 +59,20 @@ public class KademliaAdapterTests
         Assert.That(result, Is.EqualTo(new[] { returned }));
     }
 
+    [Test]
+    public void GetNodesAtDistances_ShouldIgnoreRuntimeNullEntries()
+    {
+        Node returned = CreateNode(TestItem.PublicKeyB, 2);
+
+        _kademlia.GetAllAtDistance(10).Returns([null!, returned]);
+
+        KademliaAdapter adapter = CreateAdapter();
+
+        Node[] result = adapter.GetNodesAtDistances([10]);
+
+        Assert.That(result, Is.EqualTo(new[] { returned }));
+    }
+
     [TestCase(-1)]
     [TestCase(257)]
     public void GetNodesAtDistances_ShouldRejectInvalidDistance(int distance)

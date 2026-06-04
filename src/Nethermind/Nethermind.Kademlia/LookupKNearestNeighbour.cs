@@ -61,6 +61,11 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
 
         foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash))
         {
+            if (node is null)
+            {
+                continue;
+            }
+
             TKadKey nodeHash = nodeHashProvider.GetHash(node);
             seen.TryAdd(nodeHash, node);
             bestSeen.Enqueue((nodeHash, node), nodeHash);
@@ -200,6 +205,11 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
 
                 foreach (TNode neighbour in neighbours)
                 {
+                    if (neighbour is null)
+                    {
+                        continue;
+                    }
+
                     TKadKey neighbourHash = nodeHashProvider.GetHash(neighbour);
 
                     // Already queried, we ignore
