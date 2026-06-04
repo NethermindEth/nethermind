@@ -133,7 +133,7 @@ public class WitnessGeneratingWorldState(IWorldState state, IStateReader stateRe
 
     public override byte[]? GetCode(in ValueHash256 codeHash)
     {
-        byte[] code = base.GetCode(in codeHash);
+        byte[]? code = base.GetCode(in codeHash);
         RecordBytecode(code);
         return code;
     }
