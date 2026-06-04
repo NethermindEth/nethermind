@@ -114,6 +114,13 @@ namespace Nethermind.State
             value = _persistentStorageProvider.GetPureRead(cell);
             return true;
         }
+
+        public bool TryGetPureReadAccount(Address address, out Account? account)
+        {
+            DebugGuardInScope();
+            account = _stateProvider.GetPureRead(address);
+            return true;
+        }
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
             DebugGuardInScope();

@@ -138,6 +138,38 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void AccountGetters_DeclaredRead_ServedFromParentViaPureRead()
+    {
+        // A declared account with no balance/nonce/code change before the index resolves every field
+        // through the parent account pure-read; guards the field extraction (incl. codehash
+        // Hash256->ValueHash256 and code-by-hash) matches the normal getters.
+        byte[] code = [0x60, 0x00]; // PUSH1 0
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 0,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, balance: 123, nonce: 7);
+                ws.InsertCode(TestItem.AddressA, codeHash, code, Spec);
+            });
+        using (scope)
+        {
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
+            Assert.That(bws.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)7));
+            Assert.That(bws.GetCodeHash(TestItem.AddressA), Is.EqualTo(codeHash));
+            Assert.That(bws.GetCode(TestItem.AddressA), Is.EqualTo(code));
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+            Assert.That(bws.IsContract(TestItem.AddressA), Is.True);
+        }
+    }
+
+    [Test]
     public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList

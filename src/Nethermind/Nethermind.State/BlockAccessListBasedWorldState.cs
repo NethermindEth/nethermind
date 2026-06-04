@@ -197,6 +197,11 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
             _scratchBalance = balanceChange.Value;
             return ref _scratchBalance;
         }
+        if (parentReader.TryGetPureReadAccount(address, out Account? account))
+        {
+            _scratchBalance = account?.Balance ?? default;
+            return ref _scratchBalance;
+        }
         return ref parentReader.GetBalance(address);
     }
 
@@ -204,8 +209,12 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
-        return accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonceChange)
-            ? nonceChange.Value
+        if (accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonceChange))
+        {
+            return nonceChange.Value;
+        }
+        return parentReader.TryGetPureReadAccount(address, out Account? account)
+            ? account?.Nonce ?? UInt256.Zero
             : parentReader.GetNonce(address);
     }
 
@@ -218,6 +227,11 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
             _scratchCodeHash = codeChange.CodeHash;
             return ref _scratchCodeHash;
         }
+        if (parentReader.TryGetPureReadAccount(address, out Account? account))
+        {
+            _scratchCodeHash = account is not null ? account.CodeHash.ValueHash256 : Keccak.OfAnEmptyString.ValueHash256;
+            return ref _scratchCodeHash;
+        }
         return ref parentReader.GetCodeHash(address);
     }
 
@@ -225,8 +239,13 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
-        return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
-            ? codeChange.Code
+        if (accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange))
+        {
+            return codeChange.Code;
+        }
+        // Pure-read the account for its code hash, then fetch code by hash (no account-journal entry).
+        return parentReader.TryGetPureReadAccount(address, out Account? account)
+            ? account is null ? [] : parentReader.GetCode(account.CodeHash.ValueHash256)
             : parentReader.GetCode(address);
     }
 
@@ -295,7 +314,10 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
-        if (parentReader.AccountExists(address))
+        bool parentHasAccount = parentReader.TryGetPureReadAccount(address, out Account? account)
+            ? account is not null
+            : parentReader.AccountExists(address);
+        if (parentHasAccount)
         {
             return true;
         }

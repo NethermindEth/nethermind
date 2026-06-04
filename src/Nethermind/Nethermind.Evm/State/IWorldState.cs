@@ -64,6 +64,19 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     }
 
     /// <summary>
+    /// Reads an account bypassing the change journal (the account analogue of
+    /// <see cref="TryGetPureReadStorage"/>). <paramref name="account"/> is <c>null</c> when the
+    /// account does not exist. Same value as the normal getters; safe only for a state never written
+    /// this block. The default returns <c>false</c> ("I keep the journal - use the normal path").
+    /// </summary>
+    /// <returns><c>true</c> with the account when served without journaling; otherwise <c>false</c>.</returns>
+    bool TryGetPureReadAccount(Address address, out Account? account)
+    {
+        account = null;
+        return false;
+    }
+
+    /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
