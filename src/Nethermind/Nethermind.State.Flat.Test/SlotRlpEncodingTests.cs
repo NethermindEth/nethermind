@@ -52,8 +52,11 @@ public class SlotRlpEncodingTests
     [TestCase(true, "05")]
     [TestCase(false, "05")]
     [TestCase(true, "80")]
+    [TestCase(false, "80")]
     [TestCase(true, "ff")]
+    [TestCase(false, "ff")]
     [TestCase(true, "0102")]
+    [TestCase(false, "0102")]
     [TestCase(true, "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
     [TestCase(false, "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
     public void Slot_value_round_trips(bool rlpWrap, string strippedHex)
@@ -94,10 +97,25 @@ public class SlotRlpEncodingTests
         WriteRawSlotToDb(db, Bytes.FromHexString("0102"));
 
         RocksDbPersistence persistence = CreatePersistence(db, rlpWrap: true); // config asks for RLP, DB wins
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        SlotValue read = default;
-        Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
-        Assert.That(read.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("0102")));
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
+        {
+            SlotValue read = default;
+            Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
+            Assert.That(read.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("0102")));
+        }
+
+        // A write batch on the legacy DB stays raw and pins SlotEncoding = 0.
+        WriteSlot(persistence, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("abcd")));
+        Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey),
+            Is.EqualTo(new[] { BasePersistence.SlotEncodingRaw }));
+        Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("abcd"))); // raw, not RLP(0x82abcd)
+
+        // Re-opening resolves via the recorded SlotEncoding = 0 (not the Layout heuristic) and still reads raw.
+        RocksDbPersistence reopened = CreatePersistence(db, rlpWrap: true);
+        using IPersistence.IPersistenceReader reader2 = reopened.CreateReader();
+        SlotValue read2 = default;
+        Assert.That(reader2.TryGetSlot(Addr, Slot, ref read2), Is.True);
+        Assert.That(read2.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("abcd")));
     }
 
     [Test]

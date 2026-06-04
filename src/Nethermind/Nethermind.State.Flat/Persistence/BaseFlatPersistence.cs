@@ -85,7 +85,7 @@ public static class BaseFlatPersistence
         {
             ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], address, slot);
 
-            Span<byte> buffer = stackalloc byte[40];
+            Span<byte> buffer = stackalloc byte[RlpSlotValueBufferSize];
             int resultSize = GetStorageBuffer(storageKey, buffer);
             if (resultSize == 0) return false;
 
