@@ -126,7 +126,7 @@ public class WitnessGeneratingWorldState(IWorldState state, IStateReader stateRe
     public override byte[]? GetCode(Address address)
     {
         RecordEmptySlots(address);
-        byte[] code = base.GetCode(address);
+        byte[]? code = base.GetCode(address);
         RecordBytecode(code);
         return code;
     }
