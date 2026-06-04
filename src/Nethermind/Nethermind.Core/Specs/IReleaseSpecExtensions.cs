@@ -7,6 +7,14 @@ namespace Nethermind.Core.Specs;
 /// Extension members for <see cref="IReleaseSpec"/> providing computed properties
 /// and helper methods based on EIP enablement flags.
 /// </summary>
+/// <remarks>
+/// Under <c>ZK_EVM</c> this type caches the per-block-monomorphic spec data (EIP flags,
+/// precompile-set bitmask, gas costs) in plain static fields keyed by the spec reference.
+/// The writes in <see cref="BuildSpecFlags"/>/<c>BuildPrecompileMask</c> are NOT atomic, so
+/// this is sound ONLY because the ZisK guest is single-threaded and validates one block
+/// (one spec) per run. Do not introduce concurrent EVM execution on the ZK target without
+/// reworking these caches.
+/// </remarks>
 public static class IReleaseSpecExtensions
 {
 #if ZK_EVM
@@ -26,6 +34,12 @@ public static class IReleaseSpecExtensions
             int idx = ((Address)p).PrecompileIndexOrNegative();
             if ((uint)idx < 64) low |= 1UL << idx;
             else if (idx == 0x100) p256 = true;
+            // Every entry of spec.Precompiles is a precompile, so an index outside the
+            // representable set is a new precompile the mask cannot hold -> IsPrecompile would
+            // wrongly return false (cold-access gas + executing it as bytecode). Enforce the
+            // assumption; if it ever fires, extend the mask (and IsPrecompile) accordingly.
+            else System.Diagnostics.Debug.Assert(false,
+                $"Precompile index 0x{idx:X} is outside the ZK precompile-mask range [0,64) or 0x100; extend BuildPrecompileMask and IsPrecompile.");
         }
         _precompileMaskLow = low;
         _precompileMaskP256 = p256;
@@ -69,7 +83,7 @@ public static class IReleaseSpecExtensions
 
     extension(IReleaseSpec spec)
     {
-        // GasCostsFast == spec.GasCosts passthrough (proven-good 655M form). A cached value-static
+        // GasCostsFast is an ALIAS for spec.GasCosts (NOT a cache, despite the name). A cached value-static
         // variant (GasCostsView over per-field statics) was tried but bflat's riscv64 codegen
         // miscompiles it (crash PC=0x80034cd4), and a GC-static SpecGasCosts cache crashes too
         // (PC=0xBEC8xxxx). The trivial getter inlines, so `spec.GasCostsFast.X` == `spec.GasCosts.X`.
