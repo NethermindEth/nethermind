@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -19,11 +20,12 @@ public static class InclusionListValidator
         // FOCIL is conditional: no gas left for a base-cost transfer → nothing is appendable.
         if (block.GasUsed + Transaction.BaseTxGasCost > block.GasLimit) return true;
 
-        // Mark IL entries already present in the block via linear scan. IL is spec-capped at
-        // Eip7805Constants.MaxTransactionsPerInclusionList, so the stack-allocated bitmap is bounded.
-        Span<bool> included = il.Length <= Eip7805Constants.MaxTransactionsPerInclusionList
-            ? stackalloc bool[il.Length]
-            : new bool[il.Length];
+        // Mark IL entries already present in the block via linear scan. Stack-allocate the bitmap
+        // when IL fits within the spec cap; pool the heap fallback for malformed oversize inputs.
+        using ArrayPoolList<bool>? pooled = il.Length > Eip7805Constants.MaxTransactionsPerInclusionList
+            ? new ArrayPoolList<bool>(il.Length, il.Length)
+            : null;
+        Span<bool> included = pooled is null ? stackalloc bool[il.Length] : pooled.AsSpan();
 
         foreach (Transaction blockTx in block.Transactions)
         {

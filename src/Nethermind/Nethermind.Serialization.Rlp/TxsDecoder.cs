@@ -10,7 +10,6 @@ namespace Nethermind.Serialization.Rlp;
 
 public static class TxsDecoder
 {
-    // Parallel infra has ~50μs startup; only worthwhile when the workload amortises that.
     private const int ParallelDecodeThreshold = 16;
 
     public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors)
