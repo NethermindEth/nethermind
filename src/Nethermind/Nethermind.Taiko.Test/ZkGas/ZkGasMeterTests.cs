@@ -35,15 +35,23 @@ public class ZkGasMeterTests
         Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0x20], Is.EqualTo((ushort)31)); // keccak256
         Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0xf1], Is.EqualTo((ushort)20)); // call
         Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0xfe], Is.EqualTo((ushort)0));  // invalid
+        Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0x1e], Is.EqualTo((ushort)14)); // clz (EIP-7939)
         Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0xac], Is.EqualTo(ushort.MaxValue)); // unlisted -> failsafe
     }
 
     [Test]
     public void PrecompileMultipliers_Spot_Check_Spec_Values()
     {
-        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x05), Is.EqualTo((ushort)923)); // modexp
+        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x05), Is.EqualTo((ushort)154)); // modexp — recalibrated for EIP-7883 6× gas-cost increase
         Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x01), Is.EqualTo((ushort)47));  // ecrecover
         Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x04), Is.EqualTo((ushort)6));   // identity
+        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x0d), Is.EqualTo((ushort)230)); // bls12_g2add (EIP-2537)
+        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x10), Is.EqualTo((ushort)246)); // bls12_map_fp_to_g1
+        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x11), Is.EqualTo((ushort)208)); // bls12_map_fp2_to_g2 (last canonical EIP-2537 slot)
+        Assert.That(ZkGasTestSchedules.PrecompileMultipliers[Address.FromNumber(0x100)], Is.EqualTo((ushort)163), // p256verify (RIP-7212)
+            "p256verify lives at 0x100 — outside the canonical 0x..XX range");
+        Assert.That(ZkGasTestSchedules.PrecompileMultipliers.ContainsKey(Address.FromNumber(0x12)), Is.False,
+            "0x12 sat on the pre-final EIP-2537 draft and is not in the canonical Osaka set — meter charges fail-safe");
         Assert.That(ZkGasTestSchedules.PrecompileMultipliers.ContainsKey(Address.FromNumber(0x14)), Is.False,
             "0x14 is not listed — meter charges fail-safe");
     }
@@ -116,6 +124,65 @@ public class ZkGasMeterTests
 
         Assert.That(ecrecoverCharge, Is.EqualTo(47UL));
         Assert.That(l1SloadCharge, Is.EqualTo(200UL));
+    }
+
+    [Test]
+    public void Clz_charges_14_on_default_schedule()
+    {
+        // EIP-7939 added CLZ at opcode 0x1e in Osaka, which Unzen extends. The default Alethia
+        // schedule charges it at multiplier 14.
+        const byte clz = 0x1e;
+        const ulong rawGas = 5; // CLZ base gas cost under EIP-7939
+
+        ZkGasMeter meter = MeterWithAlethiaTables();
+        meter.ChargeOpcode(clz, rawGas);
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(rawGas * 14UL));
+    }
+
+    [Test]
+    public void Clz_charges_failsafe_when_entry_missing()
+    {
+        // A frozen schedule (e.g. Masaya) that pre-dates the 0x1e entry must keep charging
+        // the fail-safe so its finalized blocks stay consensus-valid against their committed
+        // ZK-gas totals.
+        ushort[] frozenOpcodes = new ushort[256];
+        frozenOpcodes.AsSpan().Fill(ZkGasSchedule.FailsafeMultiplier);
+        frozenOpcodes[0x20] = 31; // sanity entry so the meter isn't entirely failsafe
+
+        ZkGasMeter meter = new(opcodeMultipliers: frozenOpcodes);
+        meter.ChargeOpcode(0x1e, 1);
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.FailsafeMultiplier));
+    }
+
+    [Test]
+    public void P256Verify_charges_163_on_default_schedule()
+    {
+        // RIP-7212 / p256verify lives at 0x100 and is active wherever Unzen extends Osaka.
+        // The default Alethia schedule lists it at multiplier 163.
+        Address p256Verify = Address.FromNumber(0x100);
+        const ulong gasUsed = 6_900; // SecP256r1Precompile.BaseGasCost under EIP-7951
+
+        ZkGasMeter meter = MeterWithAlethiaTables();
+        meter.ChargePrecompile(p256Verify, gasUsed);
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(gasUsed * 163UL));
+    }
+
+    [Test]
+    public void P256Verify_charges_failsafe_when_entry_missing()
+    {
+        // A frozen schedule (e.g. Masaya) that pre-dates the 0x100 entry must keep charging
+        // the fail-safe so its finalized blocks stay consensus-valid against their committed
+        // ZK-gas totals.
+        Address p256Verify = Address.FromNumber(0x100);
+
+        FrozenDictionary<AddressAsKey, ushort> frozenPrecompiles =
+            new System.Collections.Generic.Dictionary<AddressAsKey, ushort>
+            {
+                [Address.FromNumber(0x01)] = 81, // pre-recalibration ecrecover, sanity entry
+            }.ToFrozenDictionary();
+        ZkGasMeter meter = new(precompileMultipliers: frozenPrecompiles);
+        meter.ChargePrecompile(p256Verify, 1);
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.FailsafeMultiplier));
     }
 
     [Test]
