@@ -9,9 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.StateDiffsWriter.Data;
-// ISortedKeyValueStore is declared in Nethermind.Core; using the namespace
-// already brings it into scope. The reference is kept inline near the cast
-// site (PruneOlderThan) so the call-graph reads top-down.
 
 namespace Nethermind.StateDiffsWriter.Storage;
 
