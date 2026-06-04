@@ -127,10 +127,12 @@ namespace Nethermind.Facade.Find
             {
                 int count = 0;
                 long currentNumber = fromBlock.Number;
-                long targetNumber = toBlock.Number;
+                long targetNumber = toBlock?.Number ?? fromBlock.Number;
 
                 while (count < maxBlockDepth && currentNumber <= targetNumber)
                 {
+                    if (_blockFinder.FindHeader(currentNumber) is null) yield break;
+
                     yield return currentNumber;
                     currentNumber++;
                     count++;
