@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -62,21 +63,21 @@ public class BlockStmTransactionsExecutor(
         TxReceipt[] receipts = new TxReceipt[txCount];
         TransactionResult[] results = new TransactionResult[txCount];
         bool processedSuccessfully = false;
-        OffParallelTrace trace = OffParallelTrace.Instance;
-        MultiVersionMemory multiVersionMemory = new(txCount, trace);
+        MultiVersionMemory multiVersionMemory = new(txCount);
         ParallelBlockMetricsCollector blockMetrics = new(txCount);
         FeeAccumulator feeAccumulator = new(txCount, block.Header.GasBeneficiary, _blockExecutionContext.Spec.FeeCollector);
-        ParallelScheduler scheduler = new(txCount, trace, _setPool);
-        // Block-level aggregate of every code-write performed by any tx's EVM. Per-tx
-        // resettable scopes use a read-only codeDb so their InsertCode is dropped — we
-        // accumulate writes here and replay onto the main state in PushChanges.
-        Dictionary<ValueHash256, byte[]> blockCodeWrites = [];
+        ParallelScheduler scheduler = new(txCount, _setPool);
+        // Block-level concurrent aggregate of every code-write performed by any tx's EVM.
+        // Per-tx resettable scopes use a read-only codeDb so their InsertCode is dropped —
+        // TrackingCodeDb captures writes here so PushChanges can replay onto the main state.
+        // Codehashes are content-addressed so concurrent writes are idempotent.
+        ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites = new();
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, feeAccumulator, receipts, results, blockCodeWrites, in _blockExecutionContext);
         try
         {
-            using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, _concurrencyLevel, blockMetrics);
+            using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, parallelTransactionProcessor, blockMetrics, _concurrencyLevel);
             parallelRunner.Run().GetAwaiter().GetResult();
             ThrowIfInvalidResults(block, transactions, results);
             FinalizeGasUsed(block, receipts);
@@ -97,39 +98,42 @@ public class BlockStmTransactionsExecutor(
         }
     }
 
-    private void FindNonceDependencies(int txIndex, Block block, ParallelScheduler scheduler)
+    private static void FindNonceDependencies(int txIndex, Block block, ParallelScheduler scheduler)
     {
         Address? sender = block.Transactions[txIndex].SenderAddress;
-        if (sender is not null)
-        {
-            for (int i = txIndex - 1; i >= 0; i--)
-            {
-                Transaction prevTx = block.Transactions[i];
-                if (prevTx.SenderAddress == sender)
-                {
-                    scheduler.AbortExecution(txIndex, i, false);
-                    return;
-                }
+        if (sender is null) return;
 
-                if (prevTx.HasAuthorizationList)
+        // Park this tx on the IMMEDIATE predecessor that touches the sender's nonce. STM
+        // re-execution will discover and serialise further predecessors; pre-seeding only
+        // the closest one is enough to break the initial scheduling order — adding all
+        // predecessors would create a chain and increase contention on the dep set.
+        for (int i = txIndex - 1; i >= 0; i--)
+        {
+            Transaction prevTx = block.Transactions[i];
+            if (prevTx.SenderAddress == sender)
+            {
+                scheduler.AbortExecution(txIndex, i, false);
+                return;
+            }
+
+            if (prevTx.HasAuthorizationList)
+            {
+                // tuple.Authority is populated by RecoverSignatures before processing; null
+                // means signature recovery failed and the auth is dropped at exec, creating
+                // no nonce dependency here.
+                foreach (AuthorizationTuple tuple in prevTx.AuthorizationList)
                 {
-                    // tuple.Authority is populated by RecoverSignatures before processing;
-                    // null means signature recovery failed and the auth is dropped at exec,
-                    // creating no nonce dependency here.
-                    foreach (AuthorizationTuple tuple in prevTx.AuthorizationList)
+                    if (tuple.Authority is not null && tuple.Authority == sender)
                     {
-                        if (tuple.Authority is not null && tuple.Authority == sender)
-                        {
-                            scheduler.AbortExecution(txIndex, i, false);
-                            return;
-                        }
+                        scheduler.AbortExecution(txIndex, i, false);
+                        return;
                     }
                 }
             }
         }
     }
 
-    private FeeRecipientWriteInfo PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, IReleaseSpec spec, int txCount, Dictionary<ValueHash256, byte[]> blockCodeWrites)
+    private FeeRecipientWriteInfo PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, IReleaseSpec spec, int txCount, IReadOnlyDictionary<ValueHash256, byte[]> blockCodeWrites)
     {
         HashSet<Address> storageTouched = [];
         Address? gasBeneficiary = feeAccumulator.GasBeneficiary;
@@ -178,18 +182,14 @@ public class BlockStmTransactionsExecutor(
             {
                 foreach (Address address in storageClears)
                 {
-                    // Only treat the clear as a SELFDESTRUCT when this tx also nulled the
-                    // account entry. A clear paired with a non-null account update is a
-                    // CREATE-into-existing or revival; force-clearing in that case would wipe
-                    // earlier txs' storage writes for the same address (audit bug B-PushChanges).
-                    bool accountDeletedToNull = accountUpdates is not null
-                        && accountUpdates.TryGetValue(address, out Account? deletedAccount)
-                        && deletedAccount is null;
-                    if (accountDeletedToNull || !storageTouched.Contains(address))
-                    {
-                        worldState.ClearStorage(address);
-                        storageTouched.Add(address);
-                    }
+                    // A storage-clear marker comes from either SELFDESTRUCT (paired with a
+                    // null account update) or a CREATE / CREATE2 collision into an account
+                    // with pre-existing storage (pre-EIP-7610; paired with a non-null
+                    // account update). Both semantics require wiping the prior storage —
+                    // skipping when an earlier tx touched the address would leave its
+                    // writes intact and diverge from sequential.
+                    worldState.ClearStorage(address);
+                    storageTouched.Add(address);
                 }
             }
 
@@ -233,7 +233,7 @@ public class BlockStmTransactionsExecutor(
         Address address,
         Account? account,
         IReleaseSpec spec,
-        Dictionary<ValueHash256, byte[]> blockCodeWrites)
+        IReadOnlyDictionary<ValueHash256, byte[]> blockCodeWrites)
     {
         if (account is null)
         {
@@ -438,8 +438,8 @@ public class ParallelTransactionProcessor(
     FeeAccumulator feeAccumulator,
     TxReceipt[] receipts,
     TransactionResult[] results,
-    Dictionary<ValueHash256, byte[]> blockCodeWrites,
-    in BlockExecutionContext blockExecutionContext) : IParallelTransactionProcessor<ParallelStateKey, object>
+    ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites,
+    in BlockExecutionContext blockExecutionContext) : IParallelTransactionProcessor
 {
     // BlockReceiptsTracer's ctor takes (parallel: true); needs a custom policy.
     private readonly ObjectPool<BlockReceiptsTracer> _tracers = new DefaultObjectPool<BlockReceiptsTracer>(new ParallelBlockReceiptsTracerPolicy());
@@ -451,15 +451,15 @@ public class ParallelTransactionProcessor(
     }
     private readonly BlockExecutionContext _blockExecutionContext = blockExecutionContext;
 
-    public Status TryExecute(TxVersion version, out int? blockingTx, out bool wroteNewLocation)
+    public Status TryExecute(TxVersion version, out int? blockingTx, out bool writeSetChanged)
     {
         int txIndex = version.TxIndex;
         blockingTx = null;
-        wroteNewLocation = false;
+        writeSetChanged = false;
         Transaction transaction = block.Transactions[txIndex];
 
         feeAccumulator.ClearFee(txIndex);
-        using ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv env = parallelEnvFactory.Create(version, multiVersionMemory, feeAccumulator, _blockExecutionContext.Spec);
+        using ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv env = parallelEnvFactory.Create(version, multiVersionMemory, feeAccumulator, blockCodeWrites, _blockExecutionContext.Spec);
         using IReadOnlyTxProcessingScope scope = env.Build(parentBlock);
         ITransactionProcessor transactionProcessor = scope.TransactionProcessor;
 
@@ -474,28 +474,24 @@ public class ParallelTransactionProcessor(
             transactionProcessor.SetBlockExecutionContext(in txContext);
 
             bool result = results[txIndex] = transactionProcessor.Execute(transaction, tracer);
-            if (result) scope.WorldState.Commit(_blockExecutionContext.Spec, txTracer, commitRoots: true);
+            if (!result)
+            {
+                // Failed tx: don't publish anything to MVMM and don't mark fees committed.
+                // ThrowIfInvalidResults will fail the block once the runner drains; in the
+                // meantime, higher txs that try to read this tx's fee keys correctly see
+                // "uncommitted" and abort with a dependency on it.
+                receipts[txIndex] = null;
+                return Status.Ok;
+            }
+            scope.WorldState.Commit(_blockExecutionContext.Spec, txTracer, commitRoots: true);
             EnsureFeeKeys(env.WorldStateScopeProvider, txIndex);
             feeAccumulator.MarkCommitted(txIndex);
-            // Aggregate per-tx code writes into the block-level dict so PushChanges can
-            // re-insert them onto the main state. Codehashes are content-addressed so
-            // collisions are idempotent; the lock prevents racing dictionary updates.
-            if (env.WorldStateScopeProvider.CodeWrites.Count > 0)
-            {
-                lock (blockCodeWrites)
-                {
-                    foreach (KeyValuePair<ValueHash256, byte[]> kv in env.WorldStateScopeProvider.CodeWrites)
-                    {
-                        blockCodeWrites[kv.Key] = kv.Value;
-                    }
-                }
-            }
-            wroteNewLocation = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
+            writeSetChanged = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
             // BlockReceiptsTracer resets CurrentIndex = 0 per borrow, so the receipt the
             // tracer built has Index = 0. Stamp the real tx index here. Guard against a
             // success path that didn't produce a receipt (would be a TransactionProcessor
             // contract violation, but throw on indexing should not be the failure mode).
-            TxReceipt? receipt = result && tracer.TxReceipts.Length > 0 ? tracer.LastReceipt : null;
+            TxReceipt? receipt = tracer.TxReceipts.Length > 0 ? tracer.LastReceipt : null;
             if (receipt is not null) receipt.Index = txIndex;
             receipts[txIndex] = receipt;
 

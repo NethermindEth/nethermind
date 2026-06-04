@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.Test.Processing.ParallelProcessing.BlockStm;
 
 public class MultiVersionMemoryTests
 {
-    private static MultiVersionMemory NewMemory(int txCount) => new(txCount, OffParallelTrace.Instance);
+    private static MultiVersionMemory NewMemory(int txCount) => new(txCount);
 
     private static ParallelStateKey K(int i) => ParallelStateKey.ForAccount(TestItem.Addresses[i]);
 
@@ -121,7 +121,7 @@ public class MultiVersionMemoryTests
     {
         MultiVersionMemory mem = NewMemory(2);
         // tx 1 read tx 0's value at version (0, 0)
-        HashSet<Read<ParallelStateKey>> readSet = [new Read<ParallelStateKey>(K(0), new TxVersion(0, 0))];
+        HashSet<Read> readSet = [new Read(K(0), new TxVersion(0, 0))];
         mem.Record(new TxVersion(0, 0), [], WriteSet((K(0), (object)"v0")));
         mem.Record(new TxVersion(1, 0), readSet, WriteSet());
 
@@ -132,7 +132,7 @@ public class MultiVersionMemoryTests
     public void ValidateReadSet_fails_when_lower_tx_re_executed()
     {
         MultiVersionMemory mem = NewMemory(2);
-        HashSet<Read<ParallelStateKey>> readSet = [new Read<ParallelStateKey>(K(0), new TxVersion(0, 0))];
+        HashSet<Read> readSet = [new Read(K(0), new TxVersion(0, 0))];
         mem.Record(new TxVersion(0, 0), [], WriteSet((K(0), (object)"v0")));
         mem.Record(new TxVersion(1, 0), readSet, WriteSet());
         // re-execute tx 0 → new incarnation → tx 1's read version is now stale

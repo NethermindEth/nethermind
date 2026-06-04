@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -18,18 +19,12 @@ public class MultiVersionMemoryScopeProvider(
     TxVersion version,
     IWorldStateScopeProvider baseProvider,
     MultiVersionMemory multiVersionMemory,
-    FeeAccumulator feeAccumulator)
+    FeeAccumulator feeAccumulator,
+    ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites)
     : IWorldStateScopeProvider
 {
-    public HashSet<Read<ParallelStateKey>> ReadSet { get; private set; } = null!;
+    public HashSet<Read> ReadSet { get; private set; } = null!;
     public Dictionary<ParallelStateKey, object> WriteSet { get; private set; } = null!;
-    /// <summary>
-    /// Code bytes inserted by this per-tx scope's EVM. The resettable world state's codeDb
-    /// is read-only, so writes to it are dropped — PushChanges must replay these onto the
-    /// main world state via InsertCode so the Account on the main state can resolve its
-    /// CodeHash.
-    /// </summary>
-    public Dictionary<ValueHash256, byte[]> CodeWrites { get; private set; } = null!;
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
@@ -37,9 +32,8 @@ public class MultiVersionMemoryScopeProvider(
     {
         ReadSet = []; //TODO: object pooling?
         WriteSet = [];
-        CodeWrites = [];
         object writeSetLock = new();
-        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, writeSetLock, CodeWrites);
+        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, writeSetLock, blockCodeWrites);
     }
 
     private class MultiVersionMemoryScope(
@@ -47,12 +41,12 @@ public class MultiVersionMemoryScopeProvider(
         IWorldStateScopeProvider.IScope baseScope,
         MultiVersionMemory multiVersionMemory,
         FeeAccumulator feeAccumulator,
-        HashSet<Read<ParallelStateKey>> readSet,
+        HashSet<Read> readSet,
         Dictionary<ParallelStateKey, object> writeSet,
         object writeSetLock,
-        Dictionary<ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.IScope
+        ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites) : IWorldStateScopeProvider.IScope
     {
-        private readonly TrackingCodeDb _codeDb = new(baseScope.CodeDb, codeWrites);
+        private readonly TrackingCodeDb _codeDb = new(baseScope.CodeDb, blockCodeWrites);
 
         public void Dispose() => baseScope.Dispose();
 
@@ -74,7 +68,7 @@ public class MultiVersionMemoryScopeProvider(
                 _ => throw new ArgumentOutOfRangeException(nameof(status), status, $"Unknown multi version memory read status: {status}")
             };
 
-            readSet.Add(new Read<ParallelStateKey>(location, readVersion));
+            readSet.Add(new Read(location, readVersion));
 
             FeeRecipientKind? feeKind = feeAccumulator.GetFeeKind(address);
             if (feeKind == FeeRecipientKind.None)
@@ -181,12 +175,35 @@ public class MultiVersionMemoryScopeProvider(
             }
         }
 
+        private void AddFeeReadDependencies(FeeRecipientKind feeKind, int startTxIndex, int txIndex)
+        {
+            for (int i = startTxIndex; i < txIndex; i++)
+            {
+                if (!feeAccumulator.IsCommitted(i))
+                {
+                    throw new AbortParallelExecutionException(new TxVersion(i, 0));
+                }
+
+                ParallelStateKey feeKey = ParallelStateKey.ForFee(feeKind, i);
+                Status status = multiVersionMemory.TryRead(feeKey, txIndex, out TxVersion feeVersion, out _);
+                switch (status)
+                {
+                    case Status.ReadError:
+                        throw new AbortParallelExecutionException(in feeVersion);
+                    case Status.NotFound:
+                        throw new AbortParallelExecutionException(new TxVersion(i, 0));
+                }
+
+                readSet.Add(new Read(feeKey, feeVersion));
+            }
+        }
+
         private class MultiVersionMemoryStorageTree(
             Address address,
             int txIndex,
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
             MultiVersionMemory multiVersionMemory,
-            HashSet<Read<ParallelStateKey>> readSet)
+            HashSet<Read> readSet)
             : IWorldStateScopeProvider.IStorageTree
         {
             public Hash256 RootHash => baseStorageTree.RootHash;
@@ -212,13 +229,13 @@ public class MultiVersionMemoryScopeProvider(
                 Status valueStatus = TryRead(location, out TxVersion valueVersion, out object? value);
                 Status clearStatus = TryRead(clearKey, out TxVersion clearVersion, out object? clearValue);
 
-                readSet.Add(new Read<ParallelStateKey>(location, valueVersion));
+                readSet.Add(new Read(location, valueVersion));
 
                 bool hasClear = clearStatus == Status.Ok && ReferenceEquals(clearValue, MultiVersionMemory.SelfDestructMonit);
 
                 // Always record the clearKey dependency so a later concurrent SELFDESTRUCT
                 // re-triggers validation, even on base-zero / not-found paths.
-                readSet.Add(new Read<ParallelStateKey>(clearKey, clearVersion));
+                readSet.Add(new Read(clearKey, clearVersion));
 
                 if (valueStatus == Status.Ok)
                 {
@@ -226,12 +243,10 @@ public class MultiVersionMemoryScopeProvider(
                     {
                         return VirtualMachineStatics.BytesZero;
                     }
-
                     return (byte[])value!;
                 }
 
                 byte[] baseValue = getFromStorage(baseStorageTree, location);
-
                 return hasClear ? VirtualMachineStatics.BytesZero : baseValue;
             }
 
@@ -242,81 +257,45 @@ public class MultiVersionMemoryScopeProvider(
                 {
                     throw new AbortParallelExecutionException(in version);
                 }
-
                 return status;
             }
 
             private static bool IsLater(TxVersion candidate, TxVersion current)
             {
-                if (candidate.IsEmpty)
-                {
-                    return false;
-                }
-
-                if (current.IsEmpty)
-                {
-                    return true;
-                }
-
-                if (candidate.TxIndex != current.TxIndex)
-                {
-                    return candidate.TxIndex > current.TxIndex;
-                }
-
+                if (candidate.IsEmpty) return false;
+                if (current.IsEmpty) return true;
+                if (candidate.TxIndex != current.TxIndex) return candidate.TxIndex > current.TxIndex;
                 return candidate.Incarnation > current.Incarnation;
-            }
-        }
-
-        private void AddFeeReadDependencies(FeeRecipientKind feeKind, int startTxIndex, int txIndex)
-        {
-            for (int i = startTxIndex; i < txIndex; i++)
-            {
-                if (!feeAccumulator.IsCommitted(i))
-                {
-                    throw new AbortParallelExecutionException(new TxVersion(i, 0));
-                }
-
-                ParallelStateKey feeKey = ParallelStateKey.ForFee(feeKind, i);
-                Status status = multiVersionMemory.TryRead(feeKey, txIndex, out TxVersion feeVersion, out _);
-                switch (status)
-                {
-                    case Status.ReadError:
-                        throw new AbortParallelExecutionException(in feeVersion);
-                    case Status.NotFound:
-                        throw new AbortParallelExecutionException(new TxVersion(i, 0));
-                }
-
-                readSet.Add(new Read<ParallelStateKey>(feeKey, feeVersion));
             }
         }
     }
 
-    // Captures code inserts so PushChanges can replay them onto the main world state.
-    // The resettable world state's codeDb (read-only DbProvider) drops writes, so without
-    // this the per-tx scope's InsertCode call leaves no trace and Account.CodeHash on the
-    // main state can't be resolved.
+    // Captures code inserts directly into the block-level ConcurrentDictionary so PushChanges
+    // can replay them onto the main world state. The resettable world state's codeDb is
+    // read-only and drops writes; without this the Account on the main state can't resolve
+    // its CodeHash. Codehashes are content-addressed so concurrent writes are idempotent.
     private sealed class TrackingCodeDb(
         IWorldStateScopeProvider.ICodeDb inner,
-        Dictionary<ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.ICodeDb
+        ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites) : IWorldStateScopeProvider.ICodeDb
     {
         public byte[]? GetCode(in ValueHash256 codeHash) =>
-            codeWrites.TryGetValue(codeHash, out byte[]? captured) ? captured : inner.GetCode(in codeHash);
+            blockCodeWrites.TryGetValue(codeHash, out byte[]? captured) ? captured : inner.GetCode(in codeHash);
 
-        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new TrackingSetter(inner.BeginCodeWrite(), codeWrites);
+        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new TrackingSetter(inner.BeginCodeWrite(), blockCodeWrites);
 
         public bool ContainsCode(in ValueHash256 codeHash) =>
-            codeWrites.ContainsKey(codeHash) || inner.ContainsCode(in codeHash);
+            blockCodeWrites.ContainsKey(codeHash) || inner.ContainsCode(in codeHash);
 
         public void MarkCodePersisted(in ValueHash256 codeHash) => inner.MarkCodePersisted(in codeHash);
 
         private sealed class TrackingSetter(
             IWorldStateScopeProvider.ICodeSetter inner,
-            Dictionary<ValueHash256, byte[]> codeWrites) : IWorldStateScopeProvider.ICodeSetter
+            ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites) : IWorldStateScopeProvider.ICodeSetter
         {
             public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code)
             {
                 // Capture before forwarding so PushChanges can re-insert onto the main state.
-                codeWrites[codeHash] = code.ToArray();
+                blockCodeWrites[codeHash] = code.ToArray();
                 inner.Set(in codeHash, code);
             }
 

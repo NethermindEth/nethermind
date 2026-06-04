@@ -37,7 +37,7 @@ public class ParallelSchedulerTests
     private static ParallelScheduler NewScheduler(int txCount, out TrackingHashSetPool pool)
     {
         pool = new TrackingHashSetPool();
-        return new ParallelScheduler(txCount, OffParallelTrace.Instance, pool);
+        return new ParallelScheduler(txCount, pool);
     }
 
     // Drains NextTask until we get a non-empty Executing task or run out of tries.
@@ -72,7 +72,7 @@ public class ParallelSchedulerTests
         Assert.That(scheduler.AbortExecution(tx1.TxVersion.TxIndex, 0), Is.True);
 
         // Tx 0 finishes; drains the dep-set and returns it exactly once.
-        scheduler.FinishExecution(tx0.TxVersion, wroteNewLocation: false);
+        scheduler.FinishExecution(tx0.TxVersion, writeSetChanged: false);
 
         Assert.That(pool.MaxReturnCount, Is.LessThanOrEqualTo(1));
     }
@@ -86,7 +86,7 @@ public class ParallelSchedulerTests
         TxTask tx1 = FetchExecution(scheduler);
 
         // Tx 0 finishes before tx 1 attempts to park on it.
-        scheduler.FinishExecution(tx0.TxVersion, wroteNewLocation: false);
+        scheduler.FinishExecution(tx0.TxVersion, writeSetChanged: false);
 
         Assert.That(scheduler.AbortExecution(tx1.TxVersion.TxIndex, 0), Is.False,
             "blocker already Executed → AbortExecution must short-circuit so caller re-executes");
@@ -104,7 +104,7 @@ public class ParallelSchedulerTests
         TxTask tx1 = FetchExecution(scheduler);
 
         scheduler.AbortExecution(tx1.TxVersion.TxIndex, 0);
-        scheduler.FinishExecution(tx0.TxVersion, wroteNewLocation: false);
+        scheduler.FinishExecution(tx0.TxVersion, writeSetChanged: false);
 
         TxTask resumed = FetchExecution(scheduler);
         Assert.That(resumed.TxVersion.TxIndex, Is.EqualTo(1));
@@ -119,7 +119,7 @@ public class ParallelSchedulerTests
         TxTask tx0 = FetchExecution(scheduler);
         Assert.That(tx0.TxVersion.TxIndex, Is.EqualTo(0));
 
-        scheduler.FinishExecution(tx0.TxVersion, wroteNewLocation: false);
+        scheduler.FinishExecution(tx0.TxVersion, writeSetChanged: false);
 
         // After finish, the validation pass will fire once; once that's done, scheduler
         // is Done.

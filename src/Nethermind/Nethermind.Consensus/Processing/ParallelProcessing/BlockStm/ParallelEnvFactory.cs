@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -12,7 +14,12 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 
 public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime)
 {
-    public ParallelAutoReadOnlyTxProcessingEnv Create(TxVersion version, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, IReleaseSpec spec)
+    public ParallelAutoReadOnlyTxProcessingEnv Create(
+        TxVersion version,
+        MultiVersionMemory multiVersionMemory,
+        FeeAccumulator feeAccumulator,
+        ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites,
+        IReleaseSpec spec)
     {
         // Do NOT wrap the per-tx resettable scope in a populating prewarmer here. That
         // prewarmer would write every fresh read into the SHARED PreBlockCaches.StateCache,
@@ -23,7 +30,8 @@ public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeS
             version,
             worldStateManager.CreateResettableWorldState(),
             multiVersionMemory,
-            feeAccumulator
+            feeAccumulator,
+            blockCodeWrites
         );
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope(builder =>

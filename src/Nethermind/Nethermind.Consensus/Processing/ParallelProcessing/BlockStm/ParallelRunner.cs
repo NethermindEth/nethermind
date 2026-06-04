@@ -2,33 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 
 /// <summary>
-/// This class is the main entry point to Block-STM algorithm, directly responsible for scheduling .net multithreaded code
-/// and processing transactions.
+/// Worker pool that drives the Block-STM scheduler to completion. Spawns
+/// <paramref name="concurrencyLevel"/> workers; each calls <see cref="ParallelScheduler.NextTask"/>
+/// and either executes a tx or validates one until the scheduler is <see cref="ParallelScheduler.Done"/>.
 /// </summary>
-public class ParallelRunner<TLocation, TData, TLogger>(
-    ParallelScheduler<TLogger> scheduler,
-    MultiVersionMemory<TLocation, TData, TLogger> memory,
-    ParallelTrace<TLogger> parallelTrace,
-    IParallelTransactionProcessor<TLocation, TData> parallelTransactionProcessor,
+public sealed class ParallelRunner(
+    ParallelScheduler scheduler,
+    MultiVersionMemory memory,
+    IParallelTransactionProcessor parallelTransactionProcessor,
     ParallelBlockMetricsCollector metrics,
-    int? concurrencyLevel = null) : IDisposable where TLogger : struct, IFlag where TLocation : notnull
+    int? concurrencyLevel = null) : IDisposable
 {
-    private int _threadIndex = -1;
     private readonly CancellationTokenSource _cts = new();
 
-    /// <summary>
-    /// Runs the Block-STM worker pool until <see cref="ParallelScheduler{TLogger}.Done"/>.
-    /// </summary>
     public async Task Run()
     {
         int concurrency = concurrencyLevel ?? Environment.ProcessorCount;
@@ -40,76 +34,47 @@ public class ParallelRunner<TLocation, TData, TLogger>(
         await Task.WhenAll(tasks.AsSpan());
     }
 
-    private void Loop() => Loop(Interlocked.Increment(ref _threadIndex));
-
-    private void Loop(int threadIndex)
+    private void Loop()
     {
         CancellationToken token = _cts.Token;
         try
         {
-            long start = Stopwatch.GetTimestamp();
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
             TxTask task = scheduler.NextTask();
             do
             {
-                if (typeof(TLogger) == typeof(OnFlag) && !task.IsEmpty) parallelTrace.Add($"NextTask: {task} on thread {threadIndex}");
-                // There can be 3 kinds of tasks
-                // Only 1 task per transaction should be run at the same time
+                // Three task kinds; only one task per transaction is active at a time.
                 task = task switch
                 {
-                    { IsEmpty: true } => scheduler.NextTask(), // no-op task - try fetch next
-                    { Validating: false } => TryExecute(task), // execution task
-                    { Validating: true } => NeedsReexecution(task.TxVersion) // validation task
+                    { IsEmpty: true } => scheduler.NextTask(),
+                    { Validating: false } => TryExecute(task),
+                    { Validating: true } => NeedsReexecution(task.TxVersion)
                 };
             } while (!scheduler.Done && !token.IsCancellationRequested);
-
-            if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Thread {threadIndex} finished in {Stopwatch.GetElapsedTime(start)}");
         }
-        catch (Exception)
+        catch
         {
             _cts.Cancel();
             throw;
         }
     }
 
-    /// <summary>
-    /// Executes a transaction
-    /// </summary>
-    /// <remarks>
-    /// If transaction execution ends with <see cref="Status.ReadError"/> then it is blocked by another transaction.
-    /// Then we try to add dependency between transactions.
-    /// This can fail if blocking tx just finished execution before we managed to add dependency.
-    /// In that case we return the task itself for re-execution.
-    ///
-    /// If dependency was added, we return an empty task, for the main loop to fetch the next one.
-    ///
-    /// If execution succeeds, we record read and write sets of it in <see cref="MultiVersionMemory{TLocation,TData,TLogger}"/>
-    /// and inform <see cref="ParallelScheduler{TLogger}"/> that it finished.
-    /// Scheduler may return a validation task for this transaction as it will be the next high-priority.
-    /// </remarks>
     private TxTask TryExecute(TxTask task)
     {
         metrics.RecordExecutionAttempt(task.TxVersion.TxIndex);
-        Status status = parallelTransactionProcessor.TryExecute(task.TxVersion, out int? blockingTx, out bool wroteNewLocation);
+        Status status = parallelTransactionProcessor.TryExecute(task.TxVersion, out int? blockingTx, out bool writeSetChanged);
         if (status == Status.ReadError)
         {
             metrics.RecordBlockedRead(task.TxVersion.TxIndex);
-            return !scheduler.AbortExecution(task.TxVersion.TxIndex, blockingTx ?? throw new InvalidOperationException("Blocking transaction index cannot be null")) ? task : TxTask.Empty;
+            // If AbortExecution returns false, the blocker finished while we were parking;
+            // re-run this task immediately.
+            int blocking = blockingTx ?? throw new InvalidOperationException("Blocking transaction index cannot be null");
+            return scheduler.AbortExecution(task.TxVersion.TxIndex, blocking) ? TxTask.Empty : task;
         }
 
-        return scheduler.FinishExecution(task.TxVersion, wroteNewLocation);
+        return scheduler.FinishExecution(task.TxVersion, writeSetChanged);
     }
 
-
-    /// <summary>
-    /// Checks if the transaction needs to be re-executed.
-    /// </summary>
-    /// <remarks>
-    /// First the <see cref="MultiVersionMemory{TLocation,TData,TLogger}.ValidateReadSet"/> is called to check if any of transaction reads are still dependent of pending writes.
-    /// If that is the case it uses <see cref="ParallelScheduler{TLogger}.TryValidationAbort"/> to abort the execution and marks all the transaction writes as estimates.
-    ///
-    /// After that is calls <see cref="ParallelScheduler{TLogger}.FinishValidation"/> to progress the work. This potentially can return a transaction task to execute.
-    /// </remarks>
     private TxTask NeedsReexecution(TxVersion version)
     {
         bool aborted = !memory.ValidateReadSet(version.TxIndex) && scheduler.TryValidationAbort(version);
@@ -118,32 +83,17 @@ public class ParallelRunner<TLocation, TData, TLogger>(
             metrics.RecordValidationFailure(version.TxIndex);
             memory.ConvertWritesToEstimates(version.TxIndex);
         }
-
         return scheduler.FinishValidation(version.TxIndex, aborted);
     }
 
     public void Dispose() => _cts.Dispose();
 }
 
-public sealed class ParallelRunner(
-    ParallelScheduler<OffFlag> scheduler,
-    MultiVersionMemory<ParallelStateKey, object, OffFlag> memory,
-    ParallelTrace<OffFlag> parallelTrace, IParallelTransactionProcessor<ParallelStateKey, object> parallelTransactionProcessor,
-    int? concurrencyLevel = null,
-    ParallelBlockMetricsCollector? metrics = null)
-    : ParallelRunner<ParallelStateKey, object, OffFlag>(scheduler, memory, parallelTrace, parallelTransactionProcessor, metrics, concurrencyLevel);
-
-/// <summary>
-/// Abstraction of transaction execution.
-/// </summary>
-public interface IParallelTransactionProcessor<TLocation, TData> where TLocation : notnull
+/// <summary>Executes a single transaction attempt and records its read/write sets.</summary>
+public interface IParallelTransactionProcessor
 {
-    /// <summary>
-    /// Execute transaction
-    /// </summary>
-    /// <param name="version">Transaction information</param>
-    /// <param name="blockingTx">Information about transaction this one depends on as it is expected to write to a location this one reads</param>
-    /// <param name="wroteNewLocation">True if any new location was written that wasn't written by the previous incarnation</param>
-    /// <returns><see cref="Status.Ok"/> if no dependency detected, <see cref="Status.ReadError"/> if transaction is blocked by other</returns>
-    public Status TryExecute(TxVersion version, out int? blockingTx, out bool wroteNewLocation);
+    /// <param name="version">Transaction version (index + incarnation) to execute.</param>
+    /// <param name="blockingTx">If the result is <see cref="Status.ReadError"/>, the index of the tx whose Estimate was observed.</param>
+    /// <param name="writeSetChanged">True when the published write-set may invalidate higher txs' validations.</param>
+    Status TryExecute(TxVersion version, out int? blockingTx, out bool writeSetChanged);
 }
