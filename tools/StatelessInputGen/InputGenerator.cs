@@ -85,22 +85,25 @@ internal static class InputGenerator
 
         block.Header.Hash ??= Keccak.Compute(Rlp.Encode(block.Header).Bytes);
 
+        // The chain_config envelope is no longer carried in the SSZ input. The
+        // StatelessInput / ChainConfig layout is a fixed Ethereum SSZ contract
+        // and must stay byte-compatible with already-published inputs, so we
+        // cannot add a variable-length field to ChainConfig. If a fixture still
+        // requests it, warn and fall back to the hardcoded chain map.
+        if (envelope is { Length: > 0 })
+            AnsiConsole.MarkupLine(
+                "[yellow]![/] chain_config envelope present but ignored: the SSZ ChainConfig " +
+                "format is fixed; the guest selects the spec from ChainId + ActiveFork.");
+
         byte[] data;
         ChainConfig configForResult;
         using (witness)
         {
-            // When the fixture carries an embedded chain_config envelope, build
-            // the SSZ ChainConfig around it: the guest re-parses it into a
-            // SingleReleaseSpecProvider so synthetic fork activations validate
-            // correctly. Otherwise fall back to the hardcoded chain map keyed
-            // off ChainId.
-            ChainConfig chainConfig = envelope is { Length: > 0 }
-                ? new() { ChainId = chainId, ChainConfigJson = envelope }
-                : new()
-                {
-                    ChainId = chainId,
-                    ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId))
-                };
+            ChainConfig chainConfig = new()
+            {
+                ChainId = chainId,
+                ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId))
+            };
             configForResult = chainConfig;
 
             StatelessInput<SszExecutionPayloadV3> input = new()
@@ -117,10 +120,6 @@ internal static class InputGenerator
             Buffer.BlockCopy(encoded, 0, data, sizeof(ushort), encoded.Length);
         }
 
-        if (envelope is not null)
-            AnsiConsole.MarkupLine(
-                $"[green]✓[/] Embedded chain_config envelope ({envelope.Length} bytes)");
-
         if (forZisk)
             data = ApplyZiskFrame(data);
 
@@ -136,18 +135,11 @@ internal static class InputGenerator
         NewPayloadRequest<SszExecutionPayloadV3>.Merkleize(
             NewPayloadRequest<SszExecutionPayloadV3>.From(block),
             out Nethermind.Int256.UInt256 newPayloadRoot);
-        // Mirror what the guest does on success — drop the ChainConfigJson so
-        // we stay inside ziskos' output-buffer limit.
         StatelessValidationResult expected = new()
         {
             NewPayloadRequestRoot = new Hash256(newPayloadRoot.ToLittleEndian()),
             IsSuccess = true,
-            ChainConfig = new()
-            {
-                ChainId = configForResult.ChainId,
-                ActiveFork = configForResult.ActiveFork,
-                ChainConfigJson = []
-            }
+            ChainConfig = configForResult
         };
         byte[] expectedBytes = StatelessValidationResult.Encode(expected);
         string hashPath = Path.Join(output, $"{block.Number}.hash");
