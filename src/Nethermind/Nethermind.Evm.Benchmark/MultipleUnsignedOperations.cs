@@ -70,7 +70,7 @@ public class MultipleUnsignedOperations
     public void GlobalSetup()
     {
         _stateProvider = TestWorldStateFactory.CreateForTest();
-        _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
+        _stateProvider.CreateAccount(Address.Zero, 1000.Ether);
         _stateProvider.Commit(_spec);
 
         Console.WriteLine(MuirGlacier.Instance);
@@ -86,7 +86,6 @@ public class MultipleUnsignedOperations
             codeInfo: new CodeInfo(_bytecode.Concat(_bytecode).Concat(_bytecode).Concat(_bytecode).ToArray()),
             callDepth: 0,
             value: 0,
-            transferValue: 0,
             inputData: default
         );
 
@@ -108,8 +107,5 @@ public class MultipleUnsignedOperations
     }
 
     [Benchmark(Baseline = true)]
-    public void No_machine_running()
-    {
-        _stateProvider.Reset();
-    }
+    public void No_machine_running() => _stateProvider.Reset();
 }

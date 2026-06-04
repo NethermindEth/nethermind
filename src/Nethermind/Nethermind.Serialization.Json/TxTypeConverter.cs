@@ -16,10 +16,7 @@ namespace Nethermind.Serialization.Json
         public override TxType Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
-            JsonSerializerOptions options)
-        {
-            return (TxType)Convert.ToByte(reader.GetString(), 16);
-        }
+            JsonSerializerOptions options) => (TxType)Convert.ToByte(reader.GetString(), 16);
 
         public override void Write(
             Utf8JsonWriter writer,

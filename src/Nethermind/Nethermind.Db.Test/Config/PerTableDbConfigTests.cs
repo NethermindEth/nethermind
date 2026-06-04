@@ -3,7 +3,6 @@
 
 using System;
 using System.Reflection;
-using FluentAssertions;
 using Nethermind.Db.Rocks.Config;
 using NUnit.Framework;
 
@@ -14,7 +13,7 @@ public class PerTableDbConfigTests
     [Test]
     public void CanReadAllConfigForAllTable()
     {
-        DbConfig dbConfig = new DbConfig();
+        DbConfig dbConfig = new();
         string[] tables =
         [
             DbNames.Storage,
@@ -30,7 +29,7 @@ public class PerTableDbConfigTests
 
         foreach (string table in tables)
         {
-            PerTableDbConfig config = new PerTableDbConfig(dbConfig, table);
+            PerTableDbConfig config = new(dbConfig, table, validate: false);
 
             object _ = config.RocksDbOptions;
             _ = config.AdditionalRocksDbOptions;
@@ -43,35 +42,35 @@ public class PerTableDbConfigTests
     [Test]
     public void When_ColumnDb_UsePerTableConfig()
     {
-        DbConfig dbConfig = new DbConfig();
+        DbConfig dbConfig = new();
         dbConfig.RocksDbOptions = "some_option=1;";
         dbConfig.ReceiptsDbRocksDbOptions = "some_option=2;";
         dbConfig.ReceiptsBlocksDbRocksDbOptions = "some_option=3;";
 
-        PerTableDbConfig config = new PerTableDbConfig(dbConfig, DbNames.Receipts, "Blocks");
-        config.RocksDbOptions.Should().Be("some_option=1;some_option=2;some_option=3;");
+        PerTableDbConfig config = new(dbConfig, DbNames.Receipts, "Blocks");
+        Assert.That(config.RocksDbOptions, Is.EqualTo("some_option=1;some_option=2;some_option=3;"));
     }
 
     [Test]
     public void When_PerTableConfigIsAvailable_UsePerTableConfig()
     {
-        DbConfig dbConfig = new DbConfig();
+        DbConfig dbConfig = new();
         dbConfig.RocksDbOptions = "some_option=1;";
         dbConfig.ReceiptsDbRocksDbOptions = "some_option=2;";
         dbConfig.ReceiptsBlocksDbRocksDbOptions = "some_option=3;";
 
-        PerTableDbConfig config = new PerTableDbConfig(dbConfig, DbNames.Receipts);
-        config.RocksDbOptions.Should().Be("some_option=1;some_option=2;");
+        PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
+        Assert.That(config.RocksDbOptions, Is.EqualTo("some_option=1;some_option=2;"));
     }
 
     [Test]
     public void When_PerTableConfigIsNotAvailable_UseGeneralConfig()
     {
-        DbConfig dbConfig = new DbConfig();
+        DbConfig dbConfig = new();
         dbConfig.MaxOpenFiles = 2;
 
-        PerTableDbConfig config = new PerTableDbConfig(dbConfig, DbNames.Receipts);
-        config.MaxOpenFiles.Should().Be(2);
+        PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
+        Assert.That(config.MaxOpenFiles, Is.EqualTo(2));
     }
 
     [Test]
@@ -80,9 +79,9 @@ public class PerTableDbConfigTests
         Type dbConfigType = typeof(DbConfig);
         Type iDbConfigType = typeof(IDbConfig);
 
-        foreach (PropertyInfo propertyInfo in dbConfigType.Properties())
+        foreach (PropertyInfo propertyInfo in dbConfigType.GetProperties())
         {
-            iDbConfigType.GetProperty(propertyInfo.Name).Should().NotBeNull($"{propertyInfo.Name} is missing in {nameof(IDbConfig)}");
+            Assert.That(iDbConfigType.GetProperty(propertyInfo.Name), Is.Not.Null, $"{propertyInfo.Name} is missing in {nameof(IDbConfig)}");
         }
     }
 }

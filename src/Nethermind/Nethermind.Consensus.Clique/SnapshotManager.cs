@@ -10,6 +10,7 @@ using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -17,37 +18,26 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class SnapshotManager : ISnapshotManager
+    public class SnapshotManager(
+        ICliqueConfig cliqueConfig,
+        [KeyFilter(DbNames.Blocks)] IDb blocksDb,
+        IBlockTree blockTree,
+        IEthereumEcdsa ecdsa,
+        ILogManager logManager
+        ) : ISnapshotManager
     {
         private static readonly byte[] _snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
-        private readonly IBlockTree _blockTree;
-        private readonly ICliqueConfig _cliqueConfig;
-        private readonly ILogger _logger;
-        private readonly LruCache<ValueHash256, Address> _signatures;
-        private readonly IEthereumEcdsa _ecdsa;
-        private readonly IDb _blocksDb;
+        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        private readonly ICliqueConfig _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
+        private readonly ILogger _logger = logManager?.GetClassLogger<SnapshotManager>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly LruCache<ValueHash256, Address> _signatures = new(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
+        private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+        private readonly IDb _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
         private ulong _lastSignersCount = 0;
         private readonly LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
-
-        public SnapshotManager(
-            ICliqueConfig cliqueConfig,
-            [KeyFilter(DbNames.Blocks)] IDb blocksDb,
-            IBlockTree blockTree,
-            IEthereumEcdsa ecdsa,
-            ILogManager logManager
-        )
-        {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
-            _signatures = new(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        }
 
         public Address GetBlockSealer(BlockHeader header)
         {
@@ -110,7 +100,7 @@ namespace Nethermind.Consensus.Clique
                 return snapshot;
             }
 
-            List<BlockHeader> headers = new List<BlockHeader>();
+            List<BlockHeader> headers = [];
             lock (_snapshotCreationLock)
             {
                 BlockHeader? header = null;
@@ -122,13 +112,11 @@ namespace Nethermind.Consensus.Clique
 
                     // If we're at an checkpoint block, make a snapshot if it's known
                     BlockHeader? previousHeader = header;
-                    header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    if (header is null)
-                    {
-                        throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
-                    }
+                    header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                        ?? throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
 
-                    if (header.Hash is null) throw new InvalidOperationException("Block tree block without hash set");
+                    if (header.Hash is null)
+                        throw new InvalidOperationException("Block tree block without hash set");
 
                     Hash256 parentHash = header.ParentHash;
                     if (IsEpochTransition(number))
@@ -137,7 +125,7 @@ namespace Nethermind.Consensus.Clique
 
                         if (_logger.IsInfo) _logger.Info($"Creating epoch snapshot at block {number}");
                         int signersCount = CalculateSignersCount(header);
-                        SortedList<Address, long> signers = new SortedList<Address, long>(signersCount, AddressComparer.Instance);
+                        SortedList<Address, long> signers = new(signersCount, GenericComparer.GetOptimized<Address>());
                         Address epochSigner = GetBlockSealer(header);
                         for (int i = 0; i < signersCount; i++)
                         {
@@ -174,7 +162,7 @@ namespace Nethermind.Consensus.Clique
                     {
                         int signerIndex = 0;
                         string word = countAfter > countBefore ? "added to" : "removed from";
-                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + s.Key))}");
+                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, GenericComparer.GetOptimized<Address>()).Select(s => $"  Signer {signerIndex++}: " + s.Key))}");
                     }
                 }
 
@@ -204,15 +192,9 @@ namespace Nethermind.Consensus.Clique
             return signer && !authorize || !signer && authorize;
         }
 
-        public bool IsInTurn(Snapshot snapshot, long number, Address signer)
-        {
-            return (long)number % snapshot.Signers.Count == snapshot.Signers.IndexOfKey(signer);
-        }
+        public bool IsInTurn(Snapshot snapshot, long number, Address signer) => (long)number % snapshot.Signers.Count == snapshot.Signers.IndexOfKey(signer);
 
-        private bool IsEpochTransition(long number)
-        {
-            return (ulong)number % _cliqueConfig.Epoch == 0;
-        }
+        private bool IsEpochTransition(long number) => (ulong)number % _cliqueConfig.Epoch == 0;
 
         private Snapshot? GetSnapshot(long number, Hash256 hash)
         {
@@ -245,20 +227,12 @@ namespace Nethermind.Consensus.Clique
         [Todo(Improve.Refactor, "I guess it was only added here because of the use of blocksdb")]
         private Snapshot? LoadSnapshot(Hash256 hash)
         {
-            Hash256 key = GetSnapshotKey(hash);
-            byte[]? bytes = _blocksDb.Get(key);
-            if (bytes is null) return null;
-
-            return _decoder.Decode(bytes.AsRlpStream());
+            byte[]? bytes = _blocksDb.Get(GetSnapshotKey(hash));
+            return bytes is null ? null : _decoder.Decode(bytes);
         }
 
-        private void Store(Snapshot snapshot)
-        {
-            RlpStream stream = new(_decoder.GetLength(snapshot, RlpBehaviors.None));
-            _decoder.Encode(stream, snapshot);
-            Hash256 key = GetSnapshotKey(snapshot.Hash);
-            _blocksDb.Set(key, stream.Data);
-        }
+        private void Store(Snapshot snapshot) =>
+            _blocksDb.Set(GetSnapshotKey(snapshot.Hash), _decoder.Encode(snapshot).Bytes);
 
         private Snapshot Apply(Snapshot original, List<BlockHeader> headers, ulong epoch)
         {
@@ -288,7 +262,7 @@ namespace Nethermind.Consensus.Clique
 
                 // Resolve the authorization key and check against signers
                 Address signer = header.Author;
-                if (!snapshot.Signers.TryGetValue(signer, out var value)) throw new InvalidOperationException("Unauthorized signer");
+                if (!snapshot.Signers.TryGetValue(signer, out long value)) throw new InvalidOperationException("Unauthorized signer");
                 if (HasSignedRecently(snapshot, number, signer)) throw new InvalidOperationException($"Recently signed (trying to sign {number} when last signed {value} with {snapshot.Signers.Count} signers)");
 
                 snapshot.Signers[signer] = number;

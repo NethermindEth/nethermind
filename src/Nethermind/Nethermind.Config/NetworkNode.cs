@@ -85,10 +85,7 @@ public class NetworkNode
     public override string ToString() => IsEnode ? Enode.ToString() : Enr.ToString();
 
     public NetworkNode(PublicKey publicKey, string ip, int port, long reputation = 0)
-        : this(new Enode(publicKey, IPAddress.Parse(ip), port))
-    {
-        Reputation = reputation;
-    }
+        : this(new Enode(publicKey, IPAddress.Parse(ip), port)) => Reputation = reputation;
 
     public NetworkNode(Enode enode) => _enode = enode;
 

@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
@@ -46,8 +45,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash), "tx hash");
         Assert.That(trace.Action.Gas, Is.EqualTo((long)tx.GasLimit - 21000), "gas");
         Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
-        Assert.That(trace.Action.Input, Is.EqualTo(tx.Data.AsArray()), "input");
-        Assert.That(trace.Action.TraceAddress, Is.EqualTo(Array.Empty<int>()), "trace address");
+        Assert.That(trace.Action.Input.ToArray(), Is.EqualTo(tx.Data.AsArray()), "input");
+        Assert.That(trace.Action.TraceAddress.ToArray(), Is.EqualTo(Array.Empty<int>()), "trace address");
     }
 
     [Test]
@@ -78,7 +77,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .PushData(SampleHexData1)
             .Done;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
-        Assert.That(trace.Action.TraceAddress, Is.EqualTo(Array.Empty<int>()));
+        Assert.That(trace.Action.TraceAddress.ToArray(), Is.EqualTo(Array.Empty<int>()));
     }
 
     [Test]
@@ -161,9 +160,9 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
 
         byte[] input = Bytes.FromHexString(SampleHexData2);
-        UInt256 value = 1.Ether();
+        UInt256 value = 1.Ether;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(input, value, code);
-        Assert.That(trace.Action.Input, Is.EqualTo(input));
+        Assert.That(trace.Action.Input.ToArray(), Is.EqualTo(input));
     }
 
     [Test]
@@ -174,7 +173,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
 
         byte[] input = Bytes.FromHexString(SampleHexData2);
-        UInt256 value = 1.Ether();
+        UInt256 value = 1.Ether;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(input, value, code);
         Assert.That(trace.Action.Value, Is.EqualTo(value));
     }
@@ -216,7 +215,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -235,9 +234,9 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "root subtraces");
         Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0 }), "[0] address");
+        Assert.That(trace.Action.Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0 }), "[0] address");
         Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
+        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
     }
 
     [Test]
@@ -254,7 +253,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -289,7 +288,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -323,7 +322,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -332,7 +331,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
 
         ParityLikeTxTrace trace = ExecuteAndTraceParityCall(code).trace;
-        trace.Action!.Error.Should().BeNullOrEmpty();
+        Assert.That(trace.Action!.Error, Is.Null.Or.Empty);
 
     }
 
@@ -350,11 +349,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
-            .CallWithValue(TestItem.AddressC, 50000, 1000000.Ether())
+            .CallWithValue(TestItem.AddressC, 50000, 1000000.Ether)
             .Done;
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
@@ -509,7 +508,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .PushData(push2Hex)
             .Done;
 
-        UInt256 value = 2.Ether();
+        UInt256 value = 2.Ether;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code, value);
         Assert.That(trace.VmTrace, Is.Null);
         Assert.That(trace.Action.Value, Is.EqualTo(value));
@@ -529,7 +528,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -573,11 +572,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         byte[] deployedCode = Prepare.EvmCode
             .Call(IdentityPrecompile.Address, 50000)
-            .CallWithValue(IdentityPrecompile.Address, 50000, 1.Ether())
+            .CallWithValue(IdentityPrecompile.Address, 50000, 1.Ether)
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, deployedCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -615,7 +614,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -639,18 +638,18 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
 
         Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0 }), "[0] address");
+        Assert.That(trace.Action.Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0 }), "[0] address");
         Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
 
         Assert.That(trace.Action.Subtraces[1].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
-        Assert.That(trace.Action.Subtraces[1].TraceAddress, Is.EqualTo(new[] { 1 }), "[1] address");
+        Assert.That(trace.Action.Subtraces[1].TraceAddress.ToArray(), Is.EqualTo(new[] { 1 }), "[1] address");
         Assert.That(trace.Action.Subtraces[1].CallType, Is.EqualTo("call"), "[1] type");
 
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
+        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
         Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
         Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[0, 0] type");
 
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 1, 0 }), "[1, 0] address");
+        Assert.That(trace.Action.Subtraces[1].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 1, 0 }), "[1, 0] address");
         Assert.That(trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 0] subtraces");
         Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[1, 0] type");
     }
@@ -670,7 +669,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -708,7 +707,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -741,10 +740,10 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
         Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
         Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
-        Assert.That(trace.StateChanges[Sender].Balance.Before, Is.EqualTo(100.Ether()), "sender before");
-        Assert.That(trace.StateChanges[Sender].Balance.After, Is.EqualTo(100.Ether() - 21001), "sender after");
-        Assert.That(trace.StateChanges[Recipient].Balance.Before, Is.EqualTo(100.Ether()), "recipient before");
-        Assert.That(trace.StateChanges[Recipient].Balance.After, Is.EqualTo(100.Ether() + 1), "recipient after");
+        Assert.That(trace.StateChanges[Sender].Balance.Before, Is.EqualTo(100.Ether), "sender before");
+        Assert.That(trace.StateChanges[Sender].Balance.After, Is.EqualTo(100.Ether - 21001), "sender after");
+        Assert.That(trace.StateChanges[Recipient].Balance.Before, Is.EqualTo(100.Ether), "recipient before");
+        Assert.That(trace.StateChanges[Recipient].Balance.After, Is.EqualTo(100.Ether + 1), "recipient after");
         Assert.That(trace.StateChanges[Miner].Balance.Before, Is.EqualTo(null), "miner before");
         Assert.That(trace.StateChanges[Miner].Balance.After, Is.EqualTo((UInt256)21000), "miner after");
     }

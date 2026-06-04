@@ -4,13 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using FluentAssertions;
 using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Test
         public void Intrinsic_cost_is_calculated_properly((Transaction Tx, long Cost, string Description) testCase)
         {
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance);
-            gas.Should().Be(new EthereumIntrinsicGas(Standard: testCase.Cost, FloorGas: 0));
+            Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(Standard: testCase.Cost, FloorGas: 0)));
         }
 
         [TestCaseSource(nameof(AccessTestCaseSource))]
@@ -86,7 +86,7 @@ namespace Nethermind.Evm.Test
                 else
                 {
                     EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
-                    gas.Should().Be(new EthereumIntrinsicGas(Standard: 21000 + testCase.Cost, FloorGas: 0), spec.Name);
+                    Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(Standard: 21000 + testCase.Cost, FloorGas: 0)), spec.Name);
                 }
             }
 
@@ -115,15 +115,12 @@ namespace Nethermind.Evm.Test
                 bool isAfterRepricing = options.HasFlag(GasOptions.AfterRepricing);
                 bool floorCostEnabled = options.HasFlag(GasOptions.FloorCostEnabled);
 
-                gas.Standard.Should()
-                    .Be(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost), spec.Name,
-                        testCase.Data.ToHexString());
-                gas.FloorGas.Should().Be(floorCostEnabled ? testCase.FloorCost : 0);
+                Assert.That(gas.Standard, Is.EqualTo(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost)), $"{spec.Name}: {testCase.Data.ToHexString()}");
+                Assert.That(gas.FloorGas, Is.EqualTo(floorCostEnabled ? testCase.FloorCost : 0));
 
-                gas.Should().Be(new EthereumIntrinsicGas(
+                Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(
                         Standard: 21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost),
-                        FloorGas: floorCostEnabled ? testCase.FloorCost : 0),
-                    spec.Name, testCase.Data.ToHexString());
+                        FloorGas: floorCostEnabled ? testCase.FloorCost : 0)), $"{spec.Name}: {testCase.Data.ToHexString()}");
             }
 
             Test(Homestead.Instance, GasOptions.None);
@@ -206,7 +203,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
 
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
-            gas.Standard.Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
+            Assert.That(gas.Standard, Is.EqualTo(GasCostOf.Transaction + (testCase.ExpectedCost)));
         }
 
         [Test]
@@ -225,6 +222,58 @@ namespace Nethermind.Evm.Test
                 .TestObject;
 
             Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
+        }
+
+        [Test]
+        public void Eip8037_policy_intrinsic_gas_splits_authorization_cost()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
+                .TestObject;
+            IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
+
+            Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular));
+            Assert.That(intrinsicGas.Standard.StateReservoir, Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
+        }
+
+        [Test]
+        public void Eip8037_nongeneric_intrinsic_gas_includes_state_gas_for_create()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithCode(Array.Empty<byte>())
+                .TestObject;
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+
+            long expectedRegular = GasCostOf.Transaction + GasCostOf.CreateRegular;
+            long expectedState = GasCostOf.CreateState;
+            Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
+            Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(gas.Standard, gas.FloorGas)));
+        }
+
+        [Test]
+        public void Eip8037_nongeneric_intrinsic_gas_includes_state_gas_for_setcode()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
+                .TestObject;
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+
+            long expectedRegular = GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular;
+            long expectedState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
+            Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
+        }
+
+        [Test]
+        public void Eip8037_nongeneric_minimal_gas_is_at_least_regular_plus_state()
+        {
+            // A create tx with no calldata: floor gas is low, Standard = regular + state
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithCode(Array.Empty<byte>())
+                .TestObject;
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+
+            long regularPlusState = GasCostOf.Transaction + GasCostOf.CreateRegular + GasCostOf.CreateState;
+            Assert.That(gas.MinimalGas, Is.GreaterThanOrEqualTo(regularPlusState));
         }
     }
 }

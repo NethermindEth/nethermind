@@ -26,7 +26,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
     private Instruction _op;
     private Address? _executingAccount;
     private EvmExceptionType? _error;
-    private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = new();
+    private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = [];
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
     private readonly HashSet<AddressAsKey> _createdAccounts;
     private readonly HashSet<AddressAsKey> _deletedAccounts;
@@ -53,9 +53,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         _diffMode = config.DiffMode;
         if (_diffMode)
         {
-            _poststate = new Dictionary<AddressAsKey, NativePrestateTracerAccount>();
-            _deletedAccounts = new HashSet<AddressAsKey>();
-            _createdAccounts = new HashSet<AddressAsKey>();
+            _poststate = [];
+            _deletedAccounts = [];
+            _createdAccounts = [];
         }
 
         LookupAccount(from!);
@@ -80,23 +80,23 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         return result;
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         if (_diffMode)
             ProcessDiffState();
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         if (_diffMode)
             ProcessDiffState();
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
-        base.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
+        base.StartOperation(pc, opcode, gas, env);
 
         if (_error is not null) return;
 
@@ -212,7 +212,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
     protected void LookupStorage(Address addr, UInt256 index)
     {
         NativePrestateTracerAccount account = _prestate[addr];
-        account.Storage ??= new Dictionary<UInt256, UInt256>();
+        account.Storage ??= [];
 
         if (!account.Storage.ContainsKey(index))
         {
@@ -230,11 +230,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                 continue;
 
             _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
-            NativePrestateTracerAccount poststateAccount = new NativePrestateTracerAccount(
+            NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
                 _worldState.GetCode(addr));
-            NativePrestateTracerAccount? diffAccount = new NativePrestateTracerAccount();
+            NativePrestateTracerAccount? diffAccount = new();
 
             bool modified = false;
             if (!poststateAccount.Balance.Equals(prestateAccount.Balance))
@@ -267,7 +267,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                         modified = true;
                         if (!poststateStorage.IsZero)
                         {
-                            diffAccount.Storage ??= new Dictionary<UInt256, UInt256>();
+                            diffAccount.Storage ??= [];
                             diffAccount.Storage.Add(index, poststateStorage);
                         }
                     }

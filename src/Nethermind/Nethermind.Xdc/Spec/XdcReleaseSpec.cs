@@ -3,8 +3,11 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs;
+using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace Nethermind.Xdc.Spec;
 
@@ -22,14 +25,15 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int MinePeriod { get; set; }                  // Miner mine period to mine a block
     public int TimeoutSyncThreshold { get; set; }        // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }               // Duration in ms
-    public double CertThreshold { get; set; }            // Necessary number of messages from master nodes to form a certificate
-    public double MasternodeReward { get; set; }         // Block reward per master node (core validator) - unit Ether
-    public double ProtectorReward { get; set; }          // Block reward per protector - unit Ether
-    public double ObserverReward { get; set; }           // Block reward per observer - unit Ether
+    public double CertificateThreshold { get; set; }            // Necessary number of messages from master nodes to form a certificate
+    public UInt256 MasternodeReward { get; set; }        // Block reward per masternode (core validator) in Wei
+    public UInt256 ProtectorReward { get; set; }         // Block reward per protector in Wei
+    public UInt256 ObserverReward { get; set; }          // Block reward per observer in Wei
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
-    public int LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
-    public List<V2ConfigParams> V2Configs { get; set; } = new List<V2ConfigParams>();
+    public List<V2ConfigParams> V2Configs { get; set; } = [];
 
     public Address[] GenesisMasterNodes { get; set; }
     public long MergeSignRange { get; set; }
@@ -40,18 +44,24 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public Address XDCXLendingAddressBinary { get; set; }
     public Address XDCXAddressBinary { get; set; }
     public Address TradingStateAddressBinary { get; set; }
+    public long TIP2019Block { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
+    public bool IsTipUpgradeRewardEnabled { get; set; }
+    public bool IsTipUpgradePenaltyEnabled { get; set; }
+    public bool IsTipTrc21FeeEnabled { get; set; }
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }
     public bool IsTIPXDCXMiner { get; set; }
+    public bool IsDynamicGasLimitBlock { get; set; }
+    public ulong RangeReturnSigner { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
         V2ConfigParams configParams = GetConfigAtRound(V2Configs, round);
         SwitchRound = configParams.SwitchRound;
         MaxMasternodes = configParams.MaxMasternodes;
-        CertThreshold = configParams.CertThreshold;
+        CertificateThreshold = configParams.CertificateThreshold;
         TimeoutSyncThreshold = configParams.TimeoutSyncThreshold;
         TimeoutPeriod = configParams.TimeoutPeriod;
         MinePeriod = configParams.MinePeriod;
@@ -72,15 +82,15 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 
     public static XdcReleaseSpec FromReleaseSpec(IReleaseSpec spec)
     {
-        var xdcSpec = new XdcReleaseSpec();
+        XdcReleaseSpec xdcSpec = new();
 
-        var baseType = typeof(ReleaseSpec);
-        var properties = baseType.GetProperties();
-        foreach (var property in properties)
+        Type baseType = typeof(ReleaseSpec);
+        PropertyInfo[] properties = baseType.GetProperties();
+        foreach (PropertyInfo property in properties)
         {
             if (property.CanRead && property.CanWrite)
             {
-                var value = property.GetValue(spec);
+                object value = property.GetValue(spec);
                 property.SetValue(xdcSpec, value);
             }
         }
@@ -103,12 +113,14 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int MinePeriod { get; set; }              // Miner mine period to mine a block
     public int TimeoutSyncThreshold { get; set; }    // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }           // Duration in ms
-    public double CertThreshold { get; set; }        // Necessary number of messages from master nodes to form a certificate
-    public double MasternodeReward { get; set; }     // Block reward per master node (core validator) - unit Ether
-    public double ProtectorReward { get; set; }      // Block reward per protector - unit Ether
-    public double ObserverReward { get; set; }       // Block reward per observer - unit Ether
+    public double CertificateThreshold { get; set; }        // Necessary number of messages from master nodes to form a certificate
+    public UInt256 MasternodeReward { get; set; }    // Block reward per masternode (core validator) in Wei
+    public UInt256 ProtectorReward { get; set; }     // Block reward per protector in Wei
+    public UInt256 ObserverReward { get; set; }      // Block reward per observer in Wei
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
-    public int LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public ulong RangeReturnSigner { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
     public Address[] GenesisMasterNodes { get; set; }
@@ -123,8 +135,12 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public HashSet<Address> BlackListedAddresses { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
+    public bool IsTipUpgradeRewardEnabled { get; set; }
+    public bool IsTipTrc21FeeEnabled { get; set; }
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }
     public bool IsTIPXDCXMiner { get; set; }
+    public bool IsTipUpgradePenaltyEnabled { get; set; }
+    public bool IsDynamicGasLimitBlock { get; set; }
     public void ApplyV2Config(ulong round);
 }

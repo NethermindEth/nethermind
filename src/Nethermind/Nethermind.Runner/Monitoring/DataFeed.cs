@@ -31,6 +31,8 @@ using DataCompletion = System.Threading.Tasks.TaskCompletionSource<byte[]>;
 
 namespace Nethermind.Runner.Monitoring;
 
+using Nethermind.Core.Extensions;
+
 public class DataFeed
 {
     public static long StartTime { get; set; }
@@ -68,7 +70,7 @@ public class DataFeed
         _receiptFinder = receiptFinder;
         _syncPeerPool = syncPeerPool;
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<DataFeed>();
 
         mainProcessingContext.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
         blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
@@ -91,7 +93,7 @@ public class DataFeed
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Http request {nameof(DataFeed)} errored", e);
+            _logger.DebugError($"Http request {nameof(DataFeed)} errored", e);
         }
         finally
         {
@@ -116,7 +118,7 @@ public class DataFeed
         await ctx.Response.Body.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(ConsoleHelpers.GetRecentMessages(), JsonSerializerOptions.Web), ct);
         await ctx.Response.WriteAsync("\n\n", ct);
 
-        var channel = Channel.CreateUnbounded<ChannelEntry>();
+        Channel<ChannelEntry> channel = Channel.CreateUnbounded<ChannelEntry>();
 
         InitializeChannelSubscriptions(channel, ct);
 
@@ -177,26 +179,26 @@ public class DataFeed
             new NethermindNodeData(Environment.TickCount64 - StartTime),
             JsonSerializerOptions.Web);
 
-    private DataCompletion _txFlow = new();
+    private DataCompletion _txFlow = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private async Task StartTxFlowRefresh()
     {
         while (!_lifetime.IsCancellationRequested)
         {
-            await Task.Delay(millisecondsDelay: 1000);
+            await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
             // No subscribers, no need to prepare event data
             if (!HaveSubscribers) continue;
 
             byte[] data = GetTxFlowTask();
 
             DataCompletion txFlow = _txFlow;
-            _txFlow = new DataCompletion();
+            _txFlow = new(TaskCreationOptions.RunContinuationsAsynchronously);
             txFlow.TrySetResult(data);
         }
     }
 
     private Environment.ProcessCpuUsage _lastCpuUsage;
     private long _lastTimeStamp;
-    private DataCompletion _systemStats = new();
+    private DataCompletion _systemStats = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private async Task SystemStatsRefresh()
     {
         _lastCpuUsage = Environment.CpuUsage;
@@ -205,14 +207,14 @@ public class DataFeed
         {
             byte[] data = await GetStatsTask(delayMs: 1000);
             DataCompletion systemStats = _systemStats;
-            _systemStats = new();
+            _systemStats = new(TaskCreationOptions.RunContinuationsAsynchronously);
             systemStats.TrySetResult(data);
         }
     }
 
     private async Task<byte[]> GetStatsTask(int delayMs)
     {
-        await Task.Delay(delayMs);
+        await TaskExtensions.DelaySafe(delayMs, _lifetime);
 
         Environment.ProcessCpuUsage cpuUsage = Environment.CpuUsage;
         long timeStamp = Stopwatch.GetTimestamp();
@@ -232,20 +234,20 @@ public class DataFeed
         return JsonSerializer.SerializeToUtf8Bytes(stats, JsonSerializerOptions.Web);
     }
 
-    private DataCompletion _peers = new();
+    private DataCompletion _peers = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private async Task StartPeersRefresh()
     {
         _lastCpuUsage = Environment.CpuUsage;
         _lastTimeStamp = Stopwatch.GetTimestamp();
         while (!_lifetime.IsCancellationRequested)
         {
-            await Task.Delay(millisecondsDelay: 1000);
+            await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
             // No subscribers, no need to prepare event data
             if (!HaveSubscribers) continue;
 
             byte[] data = GetPeersTask();
             DataCompletion peers = _peers;
-            _peers = new();
+            _peers = new(TaskCreationOptions.RunContinuationsAsynchronously);
             peers.TrySetResult(data);
         }
     }
@@ -264,9 +266,7 @@ public class DataFeed
         return JsonSerializer.SerializeToUtf8Bytes(peers, JsonSerializerOptions.Web);
     }
 
-    private byte[] GetTxFlowTask()
-    {
-        return JsonSerializer.SerializeToUtf8Bytes(new TxPoolFlow(
+    private byte[] GetTxFlowTask() => JsonSerializer.SerializeToUtf8Bytes(new TxPoolFlow(
                     TxPool.Metrics.PendingTransactionsReceived,
                     TxPool.Metrics.PendingTransactionsNotSupportedTxType,
                     TxPool.Metrics.PendingTransactionsSizeTooLarge,
@@ -291,22 +291,21 @@ public class DataFeed
                     TxPool.Metrics.TransactionsSourcedMemPool,
                     TxPool.Metrics.TransactionsReorged
             )
-        {
-            PooledBlobTx = _txPool.GetPendingBlobTransactionsCount(),
-            PooledTx = _txPool.GetPendingTransactionsCount(),
-            HashesReceived = TxPool.Metrics.PendingTransactionsHashesReceived
-        },
+    {
+        PooledBlobTx = _txPool.GetPendingBlobTransactionsCount(),
+        PooledTx = _txPool.GetPendingTransactionsCount(),
+        HashesReceived = TxPool.Metrics.PendingTransactionsHashesReceived
+    },
             JsonSerializerOptions.Web);
-    }
 
-    private DataCompletion _processing = new();
+    private DataCompletion _processing = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
     {
         // No subscribers, no need to prepare event data
         if (!HaveSubscribers) return;
 
         DataCompletion processing = _processing;
-        _processing = new DataCompletion();
+        _processing = new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously);
 
         processing.TrySetResult(JsonSerializer.SerializeToUtf8Bytes(stats, JsonSerializerOptions.Web));
     }
@@ -329,15 +328,17 @@ public class DataFeed
         });
     }
 
-    private DataCompletion _forkChoice = new();
+    private DataCompletion _forkChoice = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private void OnForkChoiceUpdated(IBlockTree.ForkChoiceUpdateEventArgs choice)
     {
-        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion());
+        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously));
 
         Block head = choice.Head;
         Transaction[] txs = head.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(head.Header);
-        ReceiptForRpc[] receipts = _receiptFinder.Get(head).Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header))).ToArray();
+        ReceiptForRpc[] receipts = _receiptFinder.Get(head)
+            .Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header)))
+            .ToArray();
         forkChoice.TrySetResult(
             JsonSerializer.SerializeToUtf8Bytes(
                 new ForkData
@@ -463,14 +464,14 @@ public class DataFeed
         public long Head { get; set; }
     }
 
-    private DataCompletion _log = new();
+    private DataCompletion _log = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private void OnConsoleLineWritten(object? sender, string logLine)
     {
         // No subscribers, no need to prepare event data
         if (!HaveSubscribers) return;
 
         DataCompletion log = _log;
-        _log = new DataCompletion();
+        _log = new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously);
 
         log.TrySetResult(JsonSerializer.SerializeToUtf8Bytes(new[] { logLine }, JsonSerializerOptions.Web));
     }

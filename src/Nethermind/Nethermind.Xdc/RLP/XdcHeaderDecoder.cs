@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RLP;
 
 public sealed class XdcHeaderDecoder : BaseXdcHeaderDecoder<XdcBlockHeader>
 {
@@ -34,21 +34,6 @@ public sealed class XdcHeaderDecoder : BaseXdcHeaderDecoder<XdcBlockHeader>
         if (decoderContext.Position != headerCheck)
         {
             header.BaseFeePerGas = decoderContext.DecodeUInt256();
-        }
-    }
-
-    protected override void DecodeHeaderSpecificFields(RlpStream rlpStream, XdcBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
-    {
-        header.Validators = rlpStream.DecodeByteArray();
-        if (!IsForSealing(rlpBehaviors))
-        {
-            header.Validator = rlpStream.DecodeByteArray();
-        }
-        header.Penalties = rlpStream.DecodeByteArray();
-
-        if (rlpStream.Position != headerCheck)
-        {
-            header.BaseFeePerGas = rlpStream.DecodeUInt256();
         }
     }
 

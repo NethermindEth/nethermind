@@ -10,11 +10,11 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public interface IWorldStateManager
+public interface IWorldStateManager : IStateBoundary
 {
     IWorldStateScopeProvider GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
-    ISnapServer? SnapServer { get; }
+    ISnapServer SnapServer { get; }
     IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>
@@ -26,6 +26,13 @@ public interface IWorldStateManager
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     IOverridableWorldScope CreateOverridableWorldScope();
+
+    /// <summary>
+    /// Creates a read-only <see cref="IReadOnlyTrieStore"/> for trie-based operations (e.g. witness generation).
+    /// For trie mode, returns the existing read-only trie store.
+    /// For flat mode, returns an adapter over the flat DB's trie node data.
+    /// </summary>
+    IReadOnlyTrieStore CreateReadOnlyTrieStore();
 
     /// <summary>
     /// Probably should be called `verifyState` but the name stuck. Run an internal check for the integrity of the state.
@@ -42,7 +49,7 @@ public interface IWorldStateManager
     void FlushCache(CancellationToken cancellationToken);
 }
 
-public interface IOverridableWorldScope
+public interface IOverridableWorldScope : IDisposable
 {
     IWorldStateScopeProvider WorldState { get; }
     IStateReader GlobalStateReader { get; }

@@ -10,56 +10,43 @@ namespace Nethermind.Flashbots.Data;
 
 using System.Text.Json.Serialization;
 
-public class BidTrace
+public class BidTrace(
+    ulong slot,
+    Hash256 parentHash,
+    Hash256 blockHash,
+    PublicKey builderPublicKey,
+    PublicKey proposerPublicKey,
+    Address proposerFeeRecipient,
+    long gasLimit,
+    long gasUsed,
+    UInt256 value)
 {
     [JsonPropertyName("slot")]
-    public ulong Slot { get; set; }
+    public ulong Slot { get; set; } = slot;
 
     [JsonPropertyName("parent_hash")]
-    public Hash256 ParentHash { get; set; }
+    public Hash256 ParentHash { get; set; } = parentHash;
 
     [JsonPropertyName("block_hash")]
-    public Hash256 BlockHash { get; set; }
+    public Hash256 BlockHash { get; set; } = blockHash;
 
     [JsonPropertyName("builder_public_key")]
     [JsonConverter(typeof(PublicKeyConverter))]
-    public PublicKey BuilderPublicKey { get; set; }
+    public PublicKey BuilderPublicKey { get; set; } = builderPublicKey;
 
     [JsonPropertyName("proposer_public_key")]
     [JsonConverter(typeof(PublicKeyConverter))]
-    public PublicKey ProposerPublicKey { get; set; }
+    public PublicKey ProposerPublicKey { get; set; } = proposerPublicKey;
 
     [JsonPropertyName("proposer_fee_recipient")]
-    public Address ProposerFeeRecipient { get; set; }
+    public Address ProposerFeeRecipient { get; set; } = proposerFeeRecipient;
 
     [JsonPropertyName("gas_limit")]
-    public long GasLimit { get; set; }
+    public long GasLimit { get; set; } = gasLimit;
 
     [JsonPropertyName("gas_used")]
-    public long GasUsed { get; set; }
+    public long GasUsed { get; set; } = gasUsed;
 
     [JsonPropertyName("value")]
-    public UInt256 Value { get; set; }
-
-    public BidTrace(
-        ulong slot,
-        Hash256 parentHash,
-        Hash256 blockHash,
-        PublicKey builderPublicKey,
-        PublicKey proposerPublicKey,
-        Address proposerFeeRecipient,
-        long gasLimit,
-        long gasUsed,
-        UInt256 value)
-    {
-        Slot = slot;
-        ParentHash = parentHash;
-        BlockHash = blockHash;
-        BuilderPublicKey = builderPublicKey;
-        ProposerPublicKey = proposerPublicKey;
-        ProposerFeeRecipient = proposerFeeRecipient;
-        GasLimit = gasLimit;
-        GasUsed = gasUsed;
-        Value = value;
-    }
+    public UInt256 Value { get; set; } = value;
 }

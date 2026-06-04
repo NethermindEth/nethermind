@@ -4,7 +4,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -13,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -28,11 +28,11 @@ public class MainProcessingContextTests
             .AddModule(new TestNethermindModule(Cancun.Instance))
             .WithGenesisPostProcessor((_, state) =>
             {
-                state.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 10.Ether(), Osaka.Instance);
+                state.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 10.Ether, Osaka.Instance);
             })
             .Build();
 
-        var mainProcessingContext = ctx.Resolve<IMainProcessingContext>();
+        IMainProcessingContext mainProcessingContext = ctx.Resolve<IMainProcessingContext>();
         int totalTransactionProcessed = 0;
         mainProcessingContext.TransactionProcessed += (_, _) => totalTransactionProcessed++;
 
@@ -49,6 +49,6 @@ public class MainProcessingContextTests
                 .Signed(TestItem.PrivateKeyA)
                 .TestObject);
 
-        totalTransactionProcessed.Should().Be(1);
+        Assert.That(totalTransactionProcessed, Is.EqualTo(1));
     }
 }

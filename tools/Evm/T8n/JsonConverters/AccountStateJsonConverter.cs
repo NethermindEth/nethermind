@@ -15,19 +15,16 @@ public class AccountStateJsonConverter : JsonConverter<AccountState>
 {
     private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
 
-    public override AccountState? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        return _ethereumJsonSerializer.Deserialize<AccountState>(ref reader);
-    }
+    public override AccountState? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => _ethereumJsonSerializer.Deserialize<AccountState>(ref reader);
 
     public override void Write(Utf8JsonWriter writer, AccountState value, JsonSerializerOptions options)
     {
-        NumberConversion? previousValue = ForcedNumberConversion.ForcedConversion.Value;
+        NumberConversion previousValue = ForcedNumberConversion.Value;
         try
         {
             writer.WriteStartObject();
 
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            ForcedNumberConversion.Value = NumberConversion.Hex;
             writer.WritePropertyName("balance"u8);
             JsonSerializer.Serialize(writer, value.Balance, options);
 
@@ -43,10 +40,10 @@ public class AccountStateJsonConverter : JsonConverter<AccountState>
                 JsonSerializer.Serialize(writer, value.Code, options);
             }
 
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+            ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;
             if (value.Storage.Count > 0)
             {
-                var storage = value.Storage.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToUInt256());
+                Dictionary<UInt256, UInt256> storage = value.Storage.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToUInt256());
                 writer.WritePropertyName("storage"u8);
                 JsonSerializer.Serialize(writer, storage, options);
             }
@@ -55,7 +52,7 @@ public class AccountStateJsonConverter : JsonConverter<AccountState>
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = previousValue;
+            ForcedNumberConversion.Value = previousValue;
         }
     }
 }

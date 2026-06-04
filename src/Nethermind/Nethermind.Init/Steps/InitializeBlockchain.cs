@@ -17,7 +17,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -29,15 +28,12 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : IStep
+    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy) : IStep
     {
         private readonly INethermindApi _api = api;
-        private ILogManager _logManager = api.LogManager;
+        protected readonly ITxGossipPolicy _txGossipPolicy = txGossipPolicy;
 
-        public async Task Execute(CancellationToken _)
-        {
-            await InitBlockchain();
-        }
+        public async Task Execute(CancellationToken _) => await InitBlockchain();
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         protected virtual Task InitBlockchain()
@@ -53,8 +49,6 @@ namespace Nethermind.Init.Steps
                 blocksConfig.ExtraData :
                 "- binary data -");
 
-            _api.TxGossipPolicy.Policies.Add(new SpecDrivenTxGossipPolicy(chainHeadInfoProvider));
-
             ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
             _api.BlockPreprocessor.AddFirst(
@@ -69,9 +63,9 @@ namespace Nethermind.Init.Steps
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
-            var mainBranchProcessor = setApi.MainProcessingContext.BranchProcessor;
+            IBranchProcessor mainBranchProcessor = setApi.MainProcessingContext.BranchProcessor;
 
-            BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
+            BackgroundTaskScheduler backgroundTaskScheduler = new(
                 mainBranchProcessor,
                 chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
@@ -110,7 +104,7 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.TxGossipPolicy,
+                _txGossipPolicy,
                 null,
                 _api.HeadTxValidator
             );

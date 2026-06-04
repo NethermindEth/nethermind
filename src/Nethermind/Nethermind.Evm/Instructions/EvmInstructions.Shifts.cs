@@ -10,7 +10,7 @@ namespace Nethermind.Evm;
 
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Interface for shift operations.
@@ -32,14 +32,6 @@ internal static partial class EvmInstructions
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The resulting shifted value.</param>
         abstract static void Operation(in UInt256 a, in UInt256 b, out UInt256 result);
-
-        /// <summary>
-        /// Checks the stack for underflow conditions specific to call operations.
-        /// </summary>
-        virtual static bool CheckStackUnderflow(ref EvmStack stack)
-        {
-            return stack.Head < 2;
-        }
     }
 
     /// <summary>
@@ -63,32 +55,22 @@ internal static partial class EvmInstructions
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
-        if (TOpShift.CheckStackUnderflow(ref stack)) goto StackUnderflow;
-
         // Deduct gas cost specific to the shift operation.
         TGasPolicy.Consume(ref gas, TOpShift.GasCost);
 
-        // Pop the shift amount from the stack.
-        stack.PopUInt256(out UInt256 a);
+        // Amortise the bounds check across both operands (mirrors InstructionSar).
+        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
 
-        // If the shift amount is 256 or more, per EVM semantics, discard the second operand and push zero.
-        if (a >= 256)
+        // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
+        if (!a.IsUint64 || a.u0 >= 256)
         {
-            // Pop the second operand without using its value.
-            stack.PopLimbo();
-            stack.PushZero<TTracingInst>();
-        }
-        else
-        {
-            // Otherwise, pop the value to be shifted.
-            stack.PopUInt256(out UInt256 b);
-            // Perform the shift operation using the specific implementation.
-            TOpShift.Operation(in a, in b, out UInt256 result);
-            stack.PushUInt256<TTracingInst>(in result);
+            return stack.PushZero<TTracingInst>();
         }
 
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Perform the shift operation using the specific implementation.
+        TOpShift.Operation(in a, in b, out UInt256 result);
+        return stack.PushUInt256<TTracingInst>(in result);
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -112,45 +94,29 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        static bool CheckStackUnderflow(ref EvmStack stack) => stack.Head < 2;
-
-        if (CheckStackUnderflow(ref stack))
-        {
-            goto StackUnderflow;
-        }
-
         // Deduct the gas cost for the arithmetic shift operation.
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the shift amount and the value to be shifted.
-        stack.PopUInt256(out UInt256 a);
-        stack.PopUInt256(out UInt256 b);
+        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
 
         // If the shift amount is 256 or more, the result depends solely on the sign of the value.
-        if (a >= 256)
+        // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
+        if (!a.IsUint64 || a.u0 >= 256)
         {
             // Convert the unsigned value to a signed integer to determine its sign.
-            if (As<UInt256, Int256>(ref b).Sign >= 0)
-            {
+            return As<UInt256, Int256>(ref b).Sign >= 0
                 // Non-negative value: result is zero.
-                stack.PushZero<TTracingInst>();
-            }
-            else
-            {
+                ? stack.PushZero<TTracingInst>()
                 // Negative value: result is -1 (all bits set).
-                stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
-            }
-        }
-        else
-        {
-            // For a valid shift amount (<256), perform an arithmetic right shift.
-            As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
-            // Convert the signed result back to unsigned representation.
-            stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
+                : stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
         }
 
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // For a valid shift amount (<256), perform an arithmetic right shift.
+        As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
+        // Convert the signed result back to unsigned representation.
+        return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

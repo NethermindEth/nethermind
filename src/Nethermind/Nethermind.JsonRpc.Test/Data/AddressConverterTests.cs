@@ -11,9 +11,6 @@ namespace Nethermind.JsonRpc.Test.Data
     public class AddressConverterTests : SerializationTestBase
     {
         [Test]
-        public void Can_do_roundtrip()
-        {
-            TestRoundtrip(TestItem.AddressA);
-        }
+        public void Can_do_roundtrip() => TestRoundtrip(TestItem.AddressA);
     }
 }

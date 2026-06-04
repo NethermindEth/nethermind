@@ -45,7 +45,7 @@ namespace Nethermind.Api
         // A simple class to prevent having to modify subclass of NethermindApi many times
         public record Dependencies(
             IConfigProvider ConfigProvider,
-            IJsonSerializer JsonSerializer,
+            EthereumJsonSerializer JsonSerializer,
             ILogManager LogManager,
             ChainSpec ChainSpec,
             ISpecProvider SpecProvider,
@@ -78,14 +78,14 @@ namespace Nethermind.Api
             new BuildBlocksWhenRequested();
 
         public IIPResolver IpResolver => Context.Resolve<IIPResolver>();
-        public IJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
+        public EthereumJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
         public IKeyStore? KeyStore { get; set; }
         public ILogManager LogManager => _dependencies.LogManager;
         public IMessageSerializationService MessageSerializationService => Context.Resolve<IMessageSerializationService>();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
         public IProtocolsManager? ProtocolsManager { get; set; }
-        public IProtocolValidator? ProtocolValidator { get; set; }
+        public IProtocolValidator ProtocolValidator => Context.Resolve<IProtocolValidator>();
         public IReceiptStorage? ReceiptStorage => Context.Resolve<IReceiptStorage>();
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
         public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
@@ -133,7 +133,7 @@ namespace Nethermind.Api
         public IDisposableStack DisposeStack => Context.Resolve<IDisposableStack>();
         public IReadOnlyList<INethermindPlugin> Plugins => _dependencies.Plugins;
         public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;
-        public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
+
         public ILifetimeScope Context => _dependencies.Context;
     }
 }

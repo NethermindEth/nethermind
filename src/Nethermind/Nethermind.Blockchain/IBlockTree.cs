@@ -159,6 +159,19 @@ namespace Nethermind.Blockchain
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         void DeleteInvalidBlock(Block invalidBlock);
+
+        /// <summary>
+        /// Records <paramref name="badBlock"/> as invalid without altering the canonical chain.
+        /// </summary>
+        /// <remarks>
+        /// Stores the block in the bad-block store (surfaced by <c>debug_getBadBlocks</c>) and the
+        /// in-memory invalid-block cache. Use for blocks rejected in stages that run before block
+        /// insertion (e.g. hash, orphan, or suggested-block validation in <c>NewPayloadHandler</c>),
+        /// where <see cref="DeleteInvalidBlock"/> is inappropriate because it would also reset
+        /// <c>BestSuggested*</c> and delete from the block store.
+        /// </remarks>
+        void ReportBadBlock(Block badBlock);
+
         void DeleteOldBlock(long blockNumber, Hash256 blockHash);
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
@@ -187,7 +200,7 @@ namespace Nethermind.Blockchain
 
         bool IsBetterThanHead(BlockHeader? header);
 
-        void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
+        void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
 

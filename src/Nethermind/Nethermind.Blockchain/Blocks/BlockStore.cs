@@ -12,29 +12,25 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder headerDecoder = null) : IBlockStore
+public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder? headerDecoder = null) : IBlockStore, IClearableCache
 {
-    private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
     public const int CacheSize = 128 + 32;
 
-    private readonly ClockCache<ValueHash256, Block>
+    private readonly IDb _blockDb = blockDb;
+    private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
+
+    private readonly AssociativeCache<ValueHash256, Block>
         _blockCache = new(CacheSize);
 
-    public void SetMetadata(byte[] key, byte[] value)
-    {
-        blockDb.Set(key, value);
-    }
+    public void SetMetadata(byte[] key, byte[] value) => _blockDb.Set(key, value);
 
-    public byte[]? GetMetadata(byte[] key)
-    {
-        return blockDb.Get(key);
-    }
+    public byte[]? GetMetadata(byte[] key) => _blockDb.Get(key);
 
     public bool HasBlock(long blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        return blockDb.KeyExists(dbKey);
+        return _blockDb.KeyExists(dbKey);
     }
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -48,30 +44,30 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
         // Although cpu is the main bottleneck since NettyRlpStream uses pooled memory which avoid unnecessary allocations..
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
-        blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+        _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
     }
 
     public void Delete(long blockNumber, Hash256 blockHash)
     {
-        _blockCache.Delete(blockHash);
-        blockDb.Delete(blockNumber, blockHash);
-        blockDb.Remove(blockHash.Bytes);
+        _blockCache.Delete(in blockHash.ValueHash256);
+        _blockDb.Delete(blockNumber, blockHash);
+        _blockDb.Remove(blockHash.Bytes);
     }
 
     public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
         if (b is not null) return b;
-        return blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        return _blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
     }
 
     public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        var b = blockDb.Get(dbKey);
+        byte[] b = _blockDb.Get(dbKey);
         if (b is not null) return b;
-        return blockDb.Get(blockHash);
+        return _blockDb.Get(blockHash);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
@@ -79,14 +75,19 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = blockDb.GetOwnedMemory(keyWithBlockNumber);
-        memoryOwner ??= blockDb.GetOwnedMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
+        memoryOwner ??= _blockDb.GetOwnedMemory(blockHash.Bytes);
+        if (memoryOwner is null) return null;
 
-        return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner?.Memory ?? Memory<byte>.Empty, RlpBehaviors.None);
+        return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);
     }
 
-    public void Cache(Block block)
-    {
-        _blockCache.Set(block.Hash, block);
-    }
+    public void Cache(Block block) =>
+        // Cache a sanitized copy to avoid retaining large BAL/account-change
+        // structures, without mutating the original block instance which may
+        // still be used by downstream consumers (e.g., TxPool reads and
+        // disposes AccountChanges after this call).
+        _blockCache.Set(in block.Hash.ValueHash256, new(block.Header, block.Body));
+
+    void IClearableCache.ClearCache() => _blockCache.Clear();
 }

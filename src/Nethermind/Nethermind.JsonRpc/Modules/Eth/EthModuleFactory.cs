@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
+using Nethermind.Db.LogIndex;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -33,18 +34,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IFeeHistoryOracle feeHistoryOracle,
         IProtocolsManager protocolsManager,
         IBlocksConfig blocksConfig,
-        IForkInfo forkInfo)
+        IForkInfo forkInfo,
+        ILogIndexConfig logIndexConfig,
+        IEthCapabilitiesProvider capabilitiesProvider)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
         private readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
+        private readonly HeadBlockSignal _headBlockSignal = new(blockTree);
 
-        public override IEthRpcModule Create()
-        {
-            return new EthRpcModule(
+        public override IEthRpcModule Create() => new EthRpcModule(
                 config,
                 blockchainBridgeFactory.CreateBlockchainBridge(),
                 _blockTree,
+                blockTree,
                 receiptStorage,
                 stateReader,
                 txPool,
@@ -57,7 +60,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 feeHistoryOracle,
                 protocolsManager,
                 forkInfo,
-                _secondsPerSlot);
-        }
+                logIndexConfig,
+                _secondsPerSlot,
+                _headBlockSignal,
+                capabilitiesProvider);
     }
 }

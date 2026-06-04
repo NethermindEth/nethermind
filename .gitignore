@@ -86,6 +86,7 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+build/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
@@ -358,6 +359,10 @@ paket-files/
 #tools/**
 #!tools/packages.config
 
+# JitAsm uops.info database (110MB, download separately)
+tools/JitAsm/instructions.xml
+tools/JitAsm/instructions.db
+
 # Tabs Studio
 *.tss
 
@@ -436,7 +441,9 @@ FodyWeavers.xsd
 .DS_Store
 
 # AI
-.claude/
+.claude/*
+!.claude/CLAUDE.md
+!.claude/skills
 .gemini/
 
 # Worktrees
@@ -445,3 +452,7 @@ FodyWeavers.xsd
 ## Nethermind
 keystore/
 /.githooks
+
+# Worktrees
+.worktrees/
+/.dotnet-cli

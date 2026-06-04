@@ -12,12 +12,9 @@ public class EthEntry(byte[] forkHash, long nextBlock) : EnrContentEntry<ForkId>
 {
     public override string Key => EnrContentKey.Eth;
 
-    protected override int GetRlpLengthOfValue()
-    {
-        return Rlp.LengthOfSequence(
+    protected override int GetRlpLengthOfValue() => Rlp.LengthOfSequence(
                 Rlp.LengthOfSequence(
                     5 + Rlp.LengthOf(Value.NextBlock)));
-    }
 
     protected override void EncodeValue(RlpStream rlpStream)
     {

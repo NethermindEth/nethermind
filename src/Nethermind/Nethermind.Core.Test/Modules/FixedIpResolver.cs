@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -12,8 +13,5 @@ public class FixedIpResolver(INetworkConfig networkConfig) : IIPResolver
 {
     public IPAddress LocalIp => IPAddress.Parse(networkConfig.LocalIp!);
     public IPAddress ExternalIp => IPAddress.Parse(networkConfig.ExternalIp!);
-    public Task Initialize()
-    {
-        return Task.CompletedTask;
-    }
+    public Task Initialize(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

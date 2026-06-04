@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -16,24 +15,27 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
-namespace Nethermind.JsonRpc.TraceStore.Tests;
+namespace Nethermind.JsonRpc.TraceStore.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class TraceStoreRpcModuleTests
 {
+    private static readonly EthereumJsonSerializer Serializer = new();
+
     [Test]
     public void trace_call_returns_from_inner_module()
     {
         TestContext test = new();
 
-        test.Module.trace_call(
+        Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_call(
                 call: TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject),
                 traceTypes: [ParityTraceTypes.Trace.ToString()],
-                blockParameter: BlockParameter.Latest)
-            .Should().BeEquivalentTo(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.NonDbTraces[0])));
+                blockParameter: BlockParameter.Latest))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.NonDbTraces[0]))))).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -41,11 +43,9 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        TransactionForRpcWithTraceTypes[] calls = [
-            new() { TraceTypes = [ParityTraceTypes.Trace.ToString()], Transaction = TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject) }
-        ];
-        test.Module.trace_callMany(calls, BlockParameter.Latest)
-            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t))));
+        Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_callMany(
+                new(new(1) { new() { TraceTypes = [nameof(ParityTraceTypes.Trace)], Transaction = TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject) } }),
+                BlockParameter.Latest))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t)))))).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -53,8 +53,7 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        test.Module.trace_rawTransaction(Bytes.Empty, new[] { ParityTraceTypes.Trace.ToString() })
-            .Should().BeEquivalentTo(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.NonDbTraces[0])));
+        Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_rawTransaction(Bytes.Empty, new[] { ParityTraceTypes.Trace.ToString() }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.NonDbTraces[0]))))).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -62,8 +61,7 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        test.Module.trace_replayTransaction(test.NonDbTraces.First().TransactionHash!, new[] { ParityTraceTypes.Trace.ToString() })
-            .Should().BeEquivalentTo(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.NonDbTraces[0])));
+        Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_replayTransaction(test.NonDbTraces.First().TransactionHash!, new[] { ParityTraceTypes.Trace.ToString() }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.NonDbTraces[0]))))).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -71,8 +69,7 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, new[] { ParityTraceTypes.Trace.ToString() })
-            .Should().BeEquivalentTo(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.DbTrace)));
+        Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, new[] { ParityTraceTypes.Trace.ToString() }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.DbTrace))))).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -80,8 +77,7 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        test.Module.trace_replayBlockTransactions(new BlockParameter(1), new[] { ParityTraceTypes.Trace.ToString() })
-            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t))));
+        Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_replayBlockTransactions(new BlockParameter(1), new[] { ParityTraceTypes.Trace.ToString() }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t)))))).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -89,8 +85,7 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        test.Module.trace_replayBlockTransactions(BlockParameter.Latest, new[] { ParityTraceTypes.Trace.ToString(), ParityTraceTypes.Rewards.ToString() })
-            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.DbTraces.Select(static t => new ParityTxTraceFromReplay(t))));
+        Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_replayBlockTransactions(BlockParameter.Latest, new[] { ParityTraceTypes.Trace.ToString(), ParityTraceTypes.Rewards.ToString() }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.DbTraces.Select(static t => new ParityTxTraceFromReplay(t)))))).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -98,8 +93,7 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = new BlockParameter(1) })
-            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.NonDbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
+        Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = new BlockParameter(1) }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.NonDbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace))))).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -107,8 +101,19 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest })
-            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
+        Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace))))).Using(JToken.EqualityComparer));
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void trace_filter_returns_from_inner_module_when_any_block_trace_is_missing(int parallelization)
+    {
+        TestContext test = new(parallelization: parallelization);
+
+        Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Latest }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.NonDbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace))))).Using(JToken.EqualityComparer));
+
+        test.InnerModule.Received().trace_filter(Arg.Any<TraceFilterForRpc>());
     }
 
     private class TestContext
@@ -122,14 +127,14 @@ public class TraceStoreRpcModuleTests
         public IReceiptFinder ReceiptFinder { get; }
         public TraceStoreRpcModule Module { get; }
 
-        public TestContext()
+        public TestContext(int parallelization = 0)
         {
             InnerModule = Substitute.For<ITraceRpcModule>();
             Store = new MemDb();
             BlockFinder = Build.A.BlockTree().OfChainLength(3).TestObject;
             ReceiptFinder = Substitute.For<IReceiptFinder>();
             ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
-            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, LimboLogs.Instance);
+            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, new JsonRpcConfig(), LimboLogs.Instance, parallelization);
             Hash256 dbTransaction = Build.A.Transaction.TestObject.Hash!;
             Hash256 dbBlock = BlockFinder.Head!.Hash!;
             DbTrace = new() { BlockHash = dbBlock, TransactionHash = dbTransaction };
@@ -146,7 +151,7 @@ public class TraceStoreRpcModuleTests
             InnerModule.trace_call(Arg.Any<TransactionForRpc>(), Arg.Any<string[]>(), Arg.Any<BlockParameter>())
                 .Returns(nonDbReplayWrapper);
 
-            InnerModule.trace_callMany(Arg.Any<TransactionForRpcWithTraceTypes[]>(), Arg.Any<BlockParameter>())
+            InnerModule.trace_callMany(Arg.Any<TraceCallManyRequest>(), Arg.Any<BlockParameter>())
                 .Returns(nonDbReplaysWrapper);
 
             InnerModule.trace_rawTransaction(Arg.Any<byte[]>(), Arg.Any<string[]>())

@@ -3,13 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
+using System.Reflection;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 
@@ -79,6 +80,7 @@ public class ChainSpecTest
                 Registrar = Address.Zero,
                 MinGasLimit = 11,
                 MinHistoryRetentionEpochs = 11,
+                MinBalRetentionEpochs = 7,
                 GasLimitBoundDivisor = 13,
                 MaximumExtraDataSize = 17,
                 Eip140Transition = 1400L,
@@ -139,13 +141,13 @@ public class ChainSpecTest
         Assert.That(provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, Is.EqualTo(maxCodeSize), "at transition");
         Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, Is.EqualTo(maxCodeSize), "one after");
 
-        ReleaseSpec expected = new();
+        OverridableReleaseSpec expected = new(new ReleaseSpec());
 
-        void TestTransitions(ForkActivation activation, Action<ReleaseSpec> changes)
+        void TestTransitions(ForkActivation activation, Action<OverridableReleaseSpec> changes)
         {
             changes(expected);
             IReleaseSpec underTest = provider.GetSpec(activation);
-            underTest.Should().BeEquivalentTo(expected);
+            AssertReleaseSpecEquivalent(underTest, expected);
         }
 
         TestTransitions((ForkActivation)0L, r =>
@@ -153,6 +155,7 @@ public class ChainSpecTest
             r.DifficultyBoundDivisor = 0x800;
             r.MinGasLimit = 11L;
             r.MinHistoryRetentionEpochs = 11L;
+            r.MinBalRetentionEpochs = 7L;
             r.GasLimitBoundDivisor = 13L;
             r.MaximumExtraDataSize = 17L;
             r.MaxCodeSize = long.MaxValue;
@@ -214,4 +217,17 @@ public class ChainSpecTest
         TestTransitions((40001L, 1000000032), r => { r.IsEip7702Enabled = true; });
     }
 
+    private static void AssertReleaseSpecEquivalent(IReleaseSpec actual, IReleaseSpec expected) =>
+        Assert.Multiple(() =>
+        {
+            foreach (PropertyInfo property in typeof(IReleaseSpec).GetProperties())
+            {
+                if (property.Name is nameof(IReleaseSpec.Name) or nameof(IReleaseSpec.Precompiles))
+                {
+                    continue;
+                }
+
+                Assert.That(property.GetValue(actual), Is.EqualTo(property.GetValue(expected)), property.Name);
+            }
+        });
 }

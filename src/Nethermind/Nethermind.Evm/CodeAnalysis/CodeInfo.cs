@@ -3,35 +3,102 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class CodeInfo(ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPoolWorkItem
+public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 {
-    private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
-    public static CodeInfo Empty { get; } = new(ReadOnlyMemory<byte>.Empty);
-    public ReadOnlyMemory<byte> Code { get; } = code;
-    ReadOnlySpan<byte> ICodeInfo.CodeSpan => Code.Span;
+    public static CodeInfo Empty { get; }
+    // Empty code sentinel
+    private static readonly JumpDestinationAnalyzer _emptyAnalyzer;
 
-    private readonly JumpDestinationAnalyzer _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
+    static CodeInfo()
+    {
+        CodeInfo stub = new(); // allocate without analyzer
+        _emptyAnalyzer = new JumpDestinationAnalyzer(stub, skipAnalysis: true);
+        Empty = new CodeInfo(_emptyAnalyzer);
+    }
 
+    // Empty
+    private CodeInfo() { }
+    private CodeInfo(JumpDestinationAnalyzer analyzer) => _analyzer = analyzer;
+
+    // Regular contract
+    public CodeInfo(ReadOnlyMemory<byte> code)
+    {
+        Code = code;
+        _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(this);
+    }
+
+    // Precompile
+    public CodeInfo(IPrecompile? precompile)
+    {
+        Precompile = precompile;
+        _analyzer = null;
+    }
+
+    protected CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> code)
+    {
+        Precompile = precompile;
+        Code = code;
+        _analyzer = null;
+    }
+
+    public ReadOnlyMemory<byte> Code { get; }
+    public ReadOnlySpan<byte> CodeSpan => Code.Span;
+
+    public IPrecompile? Precompile { get; }
+
+    private readonly JumpDestinationAnalyzer? _analyzer;
+
+    /// <summary>
+    /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
+    /// </summary>
+    /// <remarks>
+    /// Empty code is represented by the shared analyzer sentinel so fast paths can test this without inspecting bytecode.
+    /// Constructors that create zero-length executable bytecode must assign the sentinel to preserve that invariant.
+    /// </remarks>
     public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer);
+    public bool IsPrecompile => Precompile is not null;
 
     public bool ValidateJump(int destination)
-    {
-        return _analyzer.ValidateJump(destination);
-    }
+        => _analyzer?.ValidateJump(destination) ?? false;
 
     void IThreadPoolWorkItem.Execute()
-    {
-        _analyzer.Execute();
-    }
+        => _analyzer?.Execute();
 
     public void AnalyzeInBackgroundIfRequired()
     {
-        if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && _analyzer.RequiresAnalysis)
+        if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
         {
+#if ZK_EVM
+            _analyzer.Execute();
+#else
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+#endif
         }
+    }
+
+    public override bool Equals(object? obj)
+        => Equals(obj as CodeInfo);
+
+    public override int GetHashCode()
+    {
+        if (IsPrecompile)
+            return Precompile?.GetType().GetHashCode() ?? 0;
+        return CodeSpan.FastHash();
+    }
+
+    public bool Equals(CodeInfo? other)
+    {
+        if (other is null)
+            return false;
+        if (ReferenceEquals(this, other))
+            return true;
+        if (IsPrecompile || other.IsPrecompile)
+            return Precompile?.GetType() == other.Precompile?.GetType();
+        return CodeSpan.SequenceEqual(other.CodeSpan);
     }
 }

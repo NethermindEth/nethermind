@@ -4,14 +4,15 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
+using System;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using System.Linq;
-using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using BenchmarkDotNet.Columns;
+using Nethermind.Merge.Plugin.Benchmark;
 using Nethermind.Precompiles.Benchmark;
 
 namespace Nethermind.Benchmark.Runner
@@ -20,10 +21,10 @@ namespace Nethermind.Benchmark.Runner
     {
         public DashboardConfig(params Job[] jobs)
         {
-            foreach (Job job in jobs)
-            {
-                AddJob(job.WithToolchain(InProcessNoEmitToolchain.Instance));
-            }
+            //foreach (Job job in jobs)
+            //{
+            //    AddJob(job.WithToolchain(InProcessNoEmitToolchain.Instance));
+            //}
 
             AddColumnProvider(DefaultColumnProviders.Descriptor);
             AddColumnProvider(DefaultColumnProviders.Statistics);
@@ -33,26 +34,30 @@ namespace Nethermind.Benchmark.Runner
             AddExporter(BenchmarkDotNet.Exporters.Json.JsonExporter.FullCompressed);
             AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
             WithSummaryStyle(SummaryStyle.Default.WithMaxParameterColumnWidth(100));
+            BuildTimeout = TimeSpan.FromMinutes(10);
         }
     }
 
     public class PrecompileBenchmarkConfig : DashboardConfig
     {
-        public PrecompileBenchmarkConfig() : base(Job.MediumRun.WithRuntime(CoreRuntime.Core90))
-        {
+        public PrecompileBenchmarkConfig(Job job) : base(job) =>
             AddColumnProvider(new GasColumnProvider());
-        }
     }
 
     public static class Program
     {
         public static void Main(string[] args)
         {
+            bool quickMode = args.Contains("--quick");
+            string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
+            Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);
+
             List<Assembly> additionalJobAssemblies = [
                 typeof(JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
                 typeof(Benchmarks.Core.Keccak256Benchmarks).Assembly,
                 typeof(Evm.Benchmark.EvmStackBenchmarks).Assembly,
                 typeof(Network.Benchmarks.DiscoveryBenchmarks).Assembly,
+                typeof(NewPayloadSerializationBenchmarks).Assembly,
             ];
 
             List<Assembly> simpleJobAssemblies = [
@@ -65,17 +70,15 @@ namespace Nethermind.Benchmark.Runner
             }
             else
             {
-                foreach (Assembly assembly in additionalJobAssemblies)
-                {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)), args);
-                }
+                Assembly[] releaseAssemblies = additionalJobAssemblies
+                    .Union(simpleJobAssemblies)
+                    .Append(typeof(KeccakBenchmark).Assembly)
+                    .Distinct()
+                    .ToArray();
 
-                foreach (Assembly assembly in simpleJobAssemblies)
-                {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig(), args);
-                }
-
-                BenchmarkRunner.Run(typeof(KeccakBenchmark).Assembly, new PrecompileBenchmarkConfig(), args);
+                BenchmarkSwitcher
+                    .FromAssemblies(releaseAssemblies)
+                    .Run(benchmarkArgs, new PrecompileBenchmarkConfig(benchmarkJob));
             }
         }
     }

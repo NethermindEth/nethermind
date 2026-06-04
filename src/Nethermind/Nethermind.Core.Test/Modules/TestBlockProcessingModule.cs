@@ -16,9 +16,7 @@ namespace Nethermind.Core.Test.Modules;
 
 public class TestBlockProcessingModule : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder
+    protected override void Load(ContainerBuilder builder) => builder
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
             // NOTE: The ordering of block preprocessors is not guaranteed
             .AddComposite<IBlockPreprocessorStep, CompositeBlockPreprocessorStep>()
@@ -26,7 +24,6 @@ public class TestBlockProcessingModule : Module
             .AddSingleton<IBlockPreprocessorStep, RecoverSignatures>()
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
-            .AddSingleton<CompositeTxGossipPolicy>()
             .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
 
             // Seems to be only used by block producer.
@@ -47,13 +44,12 @@ public class TestBlockProcessingModule : Module
             .AddSingleton<ISigner>(NullSigner.Instance)
 
             ;
-    }
 
     public class AutoBlockProducerFactory<T>(ILifetimeScope rootLifetime, IBlockProducerEnvFactory producerEnvFactory) : IBlockProducerFactory where T : IBlockProducer
     {
         public IBlockProducer InitBlockProducer()
         {
-            IBlockProducerEnv env = producerEnvFactory.Create();
+            IBlockProducerEnv env = producerEnvFactory.CreatePersistent();
             ILifetimeScope innerScope = rootLifetime.BeginLifetimeScope((builder) => builder
                 // Block producer specific things is in `IBlockProducerEnvFactory`.
                 // Yea, it can be added as `AddScoped` too and then mapped out, but its clearer this way.

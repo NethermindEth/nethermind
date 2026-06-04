@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
@@ -19,13 +18,13 @@ public class ReadOnlyTxProcessingScopeTests
     {
         bool closed = false;
         IDisposable closer = new Reactive.AnonymousDisposable(() => closed = true);
-        ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
+        ReadOnlyTxProcessingScope env = new(
             Substitute.For<ITransactionProcessor>(),
             closer,
             Substitute.For<IWorldState>());
 
         env.Dispose();
 
-        closed.Should().BeTrue();
+        Assert.That(closed, Is.True);
     }
 }

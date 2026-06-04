@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -41,11 +42,12 @@ public class Eth69ProtocolHandler(
     ISpecProvider specProvider,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer
+        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer, IStaticProtocolInfo
 {
     public override string Name => "eth69";
 
-    public override byte ProtocolVersion => EthVersions.Eth69;
+    public new static byte Version => EthVersions.Eth69;
+    public override byte ProtocolVersion => Version;
 
     public override int MessageIdSpaceSize => 18;
 
@@ -56,9 +58,7 @@ public class Eth69ProtocolHandler(
         set { }
     }
 
-    public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
-
-    public override void HandleMessage(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -67,23 +67,22 @@ public class Eth69ProtocolHandler(
                 StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content);
                 ReportIn(statusMsg, size);
                 Handle(statusMsg);
-                break;
+                return true;
             case Eth69MessageCode.Receipts:
                 ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
                 ReportIn(receiptsMessage, size);
                 base.Handle(receiptsMessage, size);
-                break;
+                return true;
             case Eth69MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage, ReceiptsMessage69>(message, Handle);
-                break;
+                return true;
             case Eth69MessageCode.BlockRangeUpdate:
                 BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message.Content);
                 ReportIn(blockRangeUpdateMsg, size);
                 Handle(blockRangeUpdateMsg);
-                break;
+                return true;
             default:
-                base.HandleMessage(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 
@@ -112,7 +111,7 @@ public class Eth69ProtocolHandler(
         Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
         HeadNumber = status.LatestBlock;
         HeadHash = status.LatestBlockHash;
-        ProtocolInitialized?.Invoke(this, eventArgs);
+        NotifyProtocolInitialized(eventArgs);
     }
 
     private void Handle(BlockRangeUpdateMessage blockRangeUpdate)
@@ -124,18 +123,19 @@ public class Eth69ProtocolHandler(
                 $"BlockRangeUpdate with earliest ({blockRangeUpdate.EarliestBlock}) > latest ({blockRangeUpdate.LatestBlock})."
             );
         }
-
-        if (blockRangeUpdate.LatestBlockHash.IsZero)
+        else if (blockRangeUpdate.LatestBlockHash.IsZero)
         {
             Disconnect(
                 DisconnectReason.InvalidBlockRangeUpdate,
                 "BlockRangeUpdate with latest block hash as zero."
             );
         }
-
-        _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
-        HeadNumber = blockRangeUpdate.LatestBlock;
-        HeadHash = blockRangeUpdate.LatestBlockHash;
+        else
+        {
+            _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
+            HeadNumber = blockRangeUpdate.LatestBlock;
+            HeadHash = blockRangeUpdate.LatestBlockHash;
+        }
     }
 
     private new async Task<ReceiptsMessage69> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)

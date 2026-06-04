@@ -10,13 +10,7 @@ public class SubnetSnapshot : Snapshot
 {
     public Address[] NextEpochPenalties { get; set; }
 
-    public SubnetSnapshot(long number, Hash256 hash, Address[] validators) : base(number, hash, validators)
-    {
-        NextEpochPenalties = [];
-    }
+    public SubnetSnapshot(long number, Hash256 hash, Address[] validators) : base(number, hash, validators) => NextEpochPenalties = [];
 
-    public SubnetSnapshot(long number, Hash256 hash, Address[] validators, Address[] penalties) : base(number, hash, validators)
-    {
-        NextEpochPenalties = penalties ?? [];
-    }
+    public SubnetSnapshot(long number, Hash256 hash, Address[] validators, Address[] penalties) : base(number, hash, validators) => NextEpochPenalties = penalties ?? [];
 }

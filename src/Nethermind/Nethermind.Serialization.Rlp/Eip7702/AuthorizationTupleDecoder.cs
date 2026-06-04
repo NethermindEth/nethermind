@@ -9,33 +9,10 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
-public sealed class AuthorizationTupleDecoder : RlpValueDecoder<AuthorizationTuple>
+[method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AuthorizationTupleDecoder))]
+public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
 {
     public static readonly AuthorizationTupleDecoder Instance = new();
-
-    protected override AuthorizationTuple DecodeInternal(RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        int length = stream.ReadSequenceLength();
-        int check = length + stream.Position;
-        UInt256 chainId = stream.DecodeUInt256();
-        Address? codeAddress = stream.DecodeAddress();
-        ulong nonce = stream.DecodeULong();
-        byte yParity = stream.DecodeByte();
-        UInt256 r = stream.DecodeUInt256();
-        UInt256 s = stream.DecodeUInt256();
-
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            stream.Check(check);
-        }
-
-        if (codeAddress is null)
-        {
-            ThrowMissingCodeAddressException();
-        }
-
-        return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
-    }
 
     protected override AuthorizationTuple DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -59,13 +36,6 @@ public sealed class AuthorizationTupleDecoder : RlpValueDecoder<AuthorizationTup
         }
 
         return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
-    }
-
-    public RlpStream Encode(AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        RlpStream stream = new(GetLength(item, rlpBehaviors));
-        Encode(stream, item, rlpBehaviors);
-        return stream;
     }
 
     public override void Encode(RlpStream stream, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

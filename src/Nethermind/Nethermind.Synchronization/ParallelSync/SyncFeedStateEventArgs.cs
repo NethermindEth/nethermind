@@ -5,13 +5,8 @@ using System;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public class SyncFeedStateEventArgs : EventArgs
+    public class SyncFeedStateEventArgs(SyncFeedState newState) : EventArgs
     {
-        public SyncFeedStateEventArgs(SyncFeedState newState)
-        {
-            NewState = newState;
-        }
-
-        public SyncFeedState NewState { get; }
+        public SyncFeedState NewState { get; } = newState;
     }
 }

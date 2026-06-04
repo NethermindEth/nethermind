@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -25,7 +26,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// Execution client may stop the building process with the corresponding payload_id value after serving this call.
 /// </remarks>
 public class GetPayloadV1Handler(IPayloadPreparationService payloadPreparationService, ISpecProvider specProvider, ILogManager logManager)
-    : GetPayloadHandlerBase<ExecutionPayload>(1, payloadPreparationService, specProvider, logManager)
+    : GetPayloadHandlerBase<ExecutionPayload>(EngineApiVersions.GetPayload.V1, payloadPreparationService, specProvider, logManager)
 {
     protected override ExecutionPayload GetPayloadResultFromBlock(IBlockProductionContext context) =>
         ExecutionPayload.Create(context.CurrentBestBlock!);

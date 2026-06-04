@@ -9,36 +9,29 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 {
     internal static class Extensions
     {
-        public static SyncMode GetSyncMode(this FastBlocksState state, bool isFullSync = false)
-        {
-            return state switch
+        public static SyncMode GetSyncMode(this FastBlocksState state, bool isFullSync = false) =>
+            state switch
             {
                 FastBlocksState.None => SyncMode.FastHeaders,
-                FastBlocksState.FinishedHeaders => isFullSync ? SyncMode.FastBodies : SyncMode.None,
-                FastBlocksState.FinishedBodies => isFullSync ? SyncMode.FastReceipts : SyncMode.None,
+                FastBlocksState.FinishedHeaders => isFullSync ? SyncMode.FastBodies | SyncMode.FastBlockAccessLists : SyncMode.None,
+                FastBlocksState.FinishedBodies => isFullSync ? SyncMode.FastReceipts | SyncMode.FastBlockAccessLists : SyncMode.None,
+                FastBlocksState.FinishedReceipts => isFullSync ? SyncMode.FastBlockAccessLists : SyncMode.None,
                 _ => SyncMode.None,
             };
-        }
 
-        public static FastBlocksFinishedState IsFastBlocksFinished(this ISyncProgressResolver syncProgressResolver)
+        public static FastBlocksFinishedState IsFastBlocksFinished(this ISyncProgressResolver syncProgressResolver) =>
+            new(syncProgressResolver);
+
+        internal class FastBlocksFinishedState(ISyncProgressResolver syncProgressResolver)
         {
-            return new FastBlocksFinishedState(syncProgressResolver);
-        }
-
-        internal class FastBlocksFinishedState
-        {
-            private readonly ISyncProgressResolver _syncProgressResolver;
-
-            public FastBlocksFinishedState(ISyncProgressResolver syncProgressResolver)
-            {
-                _syncProgressResolver = syncProgressResolver;
-            }
+            private readonly ISyncProgressResolver _syncProgressResolver = syncProgressResolver;
 
             public void Returns(FastBlocksState returns)
             {
                 _syncProgressResolver.IsFastBlocksHeadersFinished().Returns(returns >= FastBlocksState.FinishedHeaders);
                 _syncProgressResolver.IsFastBlocksBodiesFinished().Returns(returns >= FastBlocksState.FinishedBodies);
                 _syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(returns >= FastBlocksState.FinishedReceipts);
+                _syncProgressResolver.IsFastBlockAccessListsFinished().Returns(returns >= FastBlocksState.FinishedBlockAccessLists);
             }
         }
     }

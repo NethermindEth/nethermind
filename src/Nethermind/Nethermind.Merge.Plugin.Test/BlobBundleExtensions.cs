@@ -13,7 +13,7 @@ internal static class BlobBundleExtensions
     {
         byte[][] hashes = new byte[blobsBundle.Commitments.Length][];
 
-        for (var i = 0; i < blobsBundle.Commitments.Length; i++)
+        for (int i = 0; i < blobsBundle.Commitments.Length; i++)
         {
             hashes[i] = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
             KzgPolynomialCommitments.TryComputeCommitmentHashV1(blobsBundle.Commitments[i], hashes[i]);

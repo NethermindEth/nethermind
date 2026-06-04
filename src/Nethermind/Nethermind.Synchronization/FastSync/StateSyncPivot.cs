@@ -11,10 +11,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager? logManager)
+    public class StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager? logManager) : IStateSyncPivot
     {
         private BlockHeader? _bestHeader;
-        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ILogger _logger = logManager?.GetClassLogger<StateSyncPivot>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public long Diff => (blockTree.BestSuggestedHeader?.Number ?? 0) - (_bestHeader?.Number ?? 0);
 
@@ -54,6 +54,8 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = new();
+        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = [];
+
+        public bool CanFinalize(BlockHeader pivot) => true;
     }
 }

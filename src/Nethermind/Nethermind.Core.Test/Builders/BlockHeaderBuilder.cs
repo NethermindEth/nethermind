@@ -22,9 +22,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         base.BeforeReturn();
     }
 
-    public BlockHeaderBuilder()
-    {
-        TestObjectInternal = new BlockHeader(
+    public BlockHeaderBuilder() => TestObjectInternal = new BlockHeader(
             Keccak.Compute("parent"),
             Keccak.OfAnEmptySequenceRlp,
             Address.Zero,
@@ -32,15 +30,14 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
             4_000_000,
             1_000_000,
             [1, 2, 3])
-        {
-            Bloom = Bloom.Empty,
-            MixHash = Keccak.Compute("mix_hash"),
-            Nonce = 1000,
-            ReceiptsRoot = Keccak.EmptyTreeHash,
-            StateRoot = Keccak.EmptyTreeHash,
-            TxRoot = Keccak.EmptyTreeHash
-        };
-    }
+    {
+        Bloom = Bloom.Empty,
+        MixHash = Keccak.Compute("mix_hash"),
+        Nonce = 1000,
+        ReceiptsRoot = Keccak.EmptyTreeHash,
+        StateRoot = Keccak.EmptyTreeHash,
+        TxRoot = Keccak.EmptyTreeHash
+    };
 
     public BlockHeaderBuilder WithParent(BlockHeader parentHeader)
     {
@@ -210,6 +207,17 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
     public BlockHeaderBuilder WithRequestsHash(Hash256? requestsHash)
     {
         TestObjectInternal.RequestsHash = requestsHash;
+        return this;
+    }
+    public BlockHeaderBuilder WithBlockAccessListHash(Hash256? balHash)
+    {
+        TestObjectInternal.BlockAccessListHash = balHash;
+        return this;
+    }
+
+    public BlockHeaderBuilder WithSlotNumber(ulong? slotNumber)
+    {
+        TestObjectInternal.SlotNumber = slotNumber;
         return this;
     }
 }

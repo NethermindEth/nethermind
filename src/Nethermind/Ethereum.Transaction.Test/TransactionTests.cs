@@ -22,135 +22,58 @@ namespace Ethereum.Transaction.Test;
 public class TransactionTests
 {
     [OneTimeSetUp]
-    public void SetUp()
-    {
-        Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-    }
+    public void SetUp() => Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+
+    private static readonly string[] TestSets =
+        ["Address", "Data", "EIP2028", "GasLimit", "GasPrice", "Nonce", "RSValue", "Signature", "Value", "WrongRLP"];
+
+    private static IEnumerable<TransactionTest> LoadAllTests() => TestSets.SelectMany(LoadTests);
 
     private static IEnumerable<TransactionTest> LoadTests(string testSet)
     {
-        Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-        IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", "tt" + testSet);
-        Dictionary<string, Dictionary<string, TransactionTestJson>> testJsonMap =
-            new();
-        foreach (string testDir in testDirs)
+        List<TransactionTest> tests = [];
+        foreach (string testDir in Directory.EnumerateDirectories(".", "tt" + testSet))
         {
-            testJsonMap[testDir] = new Dictionary<string, TransactionTestJson>();
-            IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
-            foreach (string testFile in testFiles)
+            foreach (string testFile in Directory.EnumerateFiles(testDir))
             {
                 string json = File.ReadAllText(testFile);
                 Dictionary<string, TransactionTestJson> testsInFile = JsonSerializer.Deserialize<Dictionary<string, TransactionTestJson>>(json);
                 foreach (KeyValuePair<string, TransactionTestJson> namedTest in testsInFile)
                 {
-                    testJsonMap[testDir].Add(namedTest.Key, namedTest.Value);
+                    tests.Add(CreateTest(testDir, namedTest.Key, namedTest.Value));
                 }
-            }
-        }
-
-        List<TransactionTest> tests = new();
-        foreach (KeyValuePair<string, Dictionary<string, TransactionTestJson>> byDir in testJsonMap)
-        {
-            foreach (KeyValuePair<string, TransactionTestJson> byName in byDir.Value)
-            {
-                TransactionJson transactionJson = byName.Value.Transaction;
-                TransactionTest test;
-                if (transactionJson is not null)
-                {
-                    test = new ValidTransactionTest(byDir.Key, byName.Key, byName.Value.Rlp);
-                    ValidTransactionTest validTest = (ValidTransactionTest)test;
-                    validTest.BlockNumber = Bytes.FromHexString(byName.Value.BlockNumber).ToUInt256();
-                    validTest.Data = Bytes.FromHexString(transactionJson.Data);
-                    validTest.GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToUInt256();
-                    validTest.GasPrice = Bytes.FromHexString(transactionJson.GasPrice).ToUInt256();
-                    validTest.Nonce = Bytes.FromHexString(transactionJson.Nonce).ToUInt256();
-                    validTest.R = Bytes.FromHexString(transactionJson.R).ToUInt256();
-                    validTest.S = Bytes.FromHexString(transactionJson.S).ToUInt256();
-                    validTest.V = Bytes.FromHexString(transactionJson.V)[0];
-                    validTest.Sender = new Address(byName.Value.Sender);
-                    validTest.Value = Bytes.FromHexString(transactionJson.Value).ToUInt256();
-                    validTest.To = string.IsNullOrEmpty(transactionJson.To) ? null : new Address(transactionJson.To);
-                }
-                else
-                {
-                    test = new TransactionTest(byDir.Key, byName.Key, byName.Value.Rlp);
-                }
-
-                tests.Add(test);
             }
         }
 
         return tests;
     }
 
-    [TestCaseSource(nameof(LoadTests), new object[] { "Address" })]
-    public void Test_Address(TransactionTest test)
+    private static TransactionTest CreateTest(string network, string name, TransactionTestJson testJson)
     {
-        RunTest(test, Frontier.Instance);
+        TransactionJson transactionJson = testJson.Transaction;
+        if (transactionJson is null)
+            return new TransactionTest(network, name, testJson.Rlp);
+
+        return new ValidTransactionTest(network, name, testJson.Rlp)
+        {
+            BlockNumber = Bytes.FromHexString(testJson.BlockNumber).ToUInt256(),
+            Data = Bytes.FromHexString(transactionJson.Data),
+            GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToUInt256(),
+            GasPrice = Bytes.FromHexString(transactionJson.GasPrice).ToUInt256(),
+            Nonce = Bytes.FromHexString(transactionJson.Nonce).ToUInt256(),
+            R = Bytes.FromHexString(transactionJson.R).ToUInt256(),
+            S = Bytes.FromHexString(transactionJson.S).ToUInt256(),
+            V = Bytes.FromHexString(transactionJson.V)[0],
+            Sender = new Address(testJson.Sender),
+            Value = Bytes.FromHexString(transactionJson.Value).ToUInt256(),
+            To = string.IsNullOrEmpty(transactionJson.To) ? null : new Address(transactionJson.To)
+        };
     }
 
-    [TestCaseSource(nameof(LoadTests), new object[] { "Data" })]
-    public void Test_Data(TransactionTest test)
-    {
-        RunTest(test, Frontier.Instance);
-    }
+    [TestCaseSource(nameof(LoadAllTests))]
+    public void Test(TransactionTest test) => RunTest(test, Frontier.Instance);
 
-    [TestCaseSource(nameof(LoadTests), new object[] { "EIP2028" })]
-    public void Test_EIP2028(TransactionTest test)
-    {
-        RunTest(test, Frontier.Instance);
-    }
-
-    [TestCaseSource(nameof(LoadTests), new object[] { "GasLimit" })]
-    public void Test_GasLimit(TransactionTest test)
-    {
-        RunTest(test, Frontier.Instance);
-    }
-
-    [TestCaseSource(nameof(LoadTests), new object[] { "GasPrice" })]
-    public void Test_GasPrice(TransactionTest test)
-    {
-        RunTest(test, Frontier.Instance);
-    }
-
-    [TestCaseSource(nameof(LoadTests), new object[] { "Nonce" })]
-    public void Test_Nonce(TransactionTest test)
-    {
-        RunTest(test, Frontier.Instance);
-    }
-
-    [TestCaseSource(nameof(LoadTests), new object[] { "RSValue" })]
-    public void Test_RSValue(TransactionTest test)
-    {
-        RunTest(test, Frontier.Instance);
-    }
-
-    [TestCaseSource(nameof(LoadTests), new object[] { "Signature" })]
-    public void Test_Signature(TransactionTest test)
-    {
-        RunTest(test, Frontier.Instance);
-    }
-
-    [TestCaseSource(nameof(LoadTests), new object[] { "Value" })]
-    public void Test_Value(TransactionTest test)
-    {
-        RunTest(test, Frontier.Instance);
-    }
-
-    // ToDo: this tests are not starting because of TargetInvocationException
-    // [TestCaseSource(nameof(LoadTests), new object[] { "VValue" })]
-    // public void Test_VValue(TransactionTest test)
-    // {
-    //     RunTest(test, Frontier.Instance);
-    // }
-
-    [TestCaseSource(nameof(LoadTests), new object[] { "WrongRLP" })]
-    public void Test_WrongRLP(TransactionTest test)
-    {
-        RunTest(test, Frontier.Instance);
-    }
-
-    private void RunTest(TransactionTest test, IReleaseSpec spec)
+    private static void RunTest(TransactionTest test, IReleaseSpec spec)
     {
         ValidTransactionTest validTest = test as ValidTransactionTest;
         Nethermind.Core.Transaction transaction;
@@ -162,15 +85,12 @@ public class TransactionTests
         catch (Exception)
         {
             if (validTest is null)
-            {
                 return;
-            }
 
             throw;
         }
 
         bool useChainId = transaction.Signature.V > 28UL;
-
         TxValidator validator = new(useChainId ? BlockchainIds.Mainnet : 0UL);
 
         if (validTest is not null)
@@ -187,9 +107,7 @@ public class TransactionTests
             Assert.That(transaction.Signature, Is.EqualTo(expectedSignature), "signature");
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? BlockchainIds.Mainnet : 0UL);
-            bool verified = ecdsa.Verify(
-                validTest.Sender,
-                transaction);
+            bool verified = ecdsa.Verify(validTest.Sender, transaction);
             Assert.That(verified, Is.True);
         }
         else
@@ -198,23 +116,13 @@ public class TransactionTests
         }
     }
 
-    public class TransactionTest
+    public class TransactionTest(string network, string name, string rlp)
     {
-        public TransactionTest(string network, string name, string rlp)
-        {
-            Network = network;
-            Name = name;
-            Rlp = rlp;
-        }
+        public string Network { get; set; } = network;
+        public string Name { get; set; } = name;
+        public string Rlp { get; set; } = rlp;
 
-        public string Network { get; set; }
-        public string Name { get; set; }
-        public string Rlp { get; set; }
-
-        public override string ToString()
-        {
-            return string.Concat(Network, "->", Name);
-        }
+        public override string ToString() => string.Concat(Network, "->", Name);
     }
 
     public class TransactionJson
@@ -238,13 +146,9 @@ public class TransactionTests
         public TransactionJson Transaction { get; set; }
     }
 
-    public class ValidTransactionTest : TransactionTest
+    public class ValidTransactionTest(string network, string name, string rlp)
+        : TransactionTest(network, name, rlp)
     {
-        public ValidTransactionTest(string network, string name, string rlp)
-            : base(network, name, rlp)
-        {
-        }
-
         public Address Sender { get; set; }
         public UInt256 BlockNumber { get; set; }
         public UInt256 Nonce { get; set; }

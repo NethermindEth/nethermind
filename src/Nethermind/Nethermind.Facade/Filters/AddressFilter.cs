@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Facade.Filters
 {
     public class AddressFilter(HashSet<AddressAsKey> addresses)
     {
@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Filters
                 return true;
             }
 
-            for (var i = 0; i < AddressesBloomExtracts.Length; i++)
+            for (int i = 0; i < AddressesBloomExtracts.Length; i++)
             {
                 if (bloom.Matches(AddressesBloomExtracts[i]))
                 {
@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Filters
                 return true;
             }
 
-            for (var i = 0; i < AddressesBloomExtracts.Length; i++)
+            for (int i = 0; i < AddressesBloomExtracts.Length; i++)
             {
                 if (bloom.Matches(AddressesBloomExtracts[i]))
                 {

@@ -37,9 +37,6 @@ namespace Nethermind.JsonRpc.Data
         public byte[] Data { get; set; }
         public Hash256[] Topics { get; set; }
 
-        public LogEntry ToLogEntry()
-        {
-            return new(Address, Data, Topics);
-        }
+        public LogEntry ToLogEntry() => new(Address, Data, Topics);
     }
 }

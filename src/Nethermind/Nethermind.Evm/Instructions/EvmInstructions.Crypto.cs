@@ -11,7 +11,7 @@ namespace Nethermind.Evm;
 
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Computes the Keccak-256 hash of a specified memory region.
@@ -23,11 +23,9 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (CheckStackUnderflow(ref stack, 2)) goto StackUnderflow;
-
         // Ensure two 256-bit words are available (memory offset and length).
-        stack.PopUInt256(out UInt256 a);
-        stack.PopUInt256(out UInt256 b);
+        if (!stack.PopUInt256(out UInt256 a, out UInt256 b))
+            goto StackUnderflow;
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
         TGasPolicy.Consume(ref gas, GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out bool outOfGas));
@@ -44,10 +42,8 @@ internal static partial class EvmInstructions
         // Compute the Keccak-256 hash.
         KeccakCache.ComputeTo(bytes, out ValueHash256 keccak);
         // Push the 256-bit hash result onto the stack.
-        stack.Push32Bytes<TTracingInst>(in keccak);
-
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        return stack.Push32Bytes<TTracingInst>(in keccak);
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

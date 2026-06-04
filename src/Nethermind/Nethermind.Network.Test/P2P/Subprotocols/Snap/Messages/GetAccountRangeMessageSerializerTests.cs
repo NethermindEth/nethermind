@@ -22,8 +22,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             };
             GetAccountRangeMessageSerializer serializer = new();
 
-            var bytes = serializer.Serialize(msg);
-            var deserializedMsg = serializer.Deserialize(bytes);
+            byte[] bytes = serializer.Serialize(msg);
+            GetAccountRangeMessage deserializedMsg = serializer.Deserialize(bytes);
 
             Assert.That(deserializedMsg.RequestId, Is.EqualTo(msg.RequestId));
             Assert.That(deserializedMsg.PacketType, Is.EqualTo(msg.PacketType));

@@ -5,14 +5,10 @@ using Nethermind.Abi;
 
 namespace Nethermind.Blockchain.Contracts.Json
 {
-    public class AbiTypeFactory : IAbiTypeFactory
+    public class AbiTypeFactory(AbiType abiType) : IAbiTypeFactory
     {
-        private readonly AbiType _abiType;
+        private readonly AbiType _abiType = abiType;
 
-        public AbiTypeFactory(AbiType abiType)
-        {
-            _abiType = abiType;
-        }
         public AbiType? Create(string abiTypeSignature) => _abiType.Name == abiTypeSignature ? _abiType : null;
     }
 }

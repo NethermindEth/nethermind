@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -29,7 +28,7 @@ public class BloomStorageTests
     public void Empty_storage_does_not_contain_blocks(long from, long to)
     {
         BloomStorage storage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
-        storage.ContainsRange(from, to).Should().BeFalse();
+        Assert.That(storage.ContainsRange(from, to), Is.False);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -75,12 +74,18 @@ public class BloomStorageTests
             int bucketItems = new BloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } }, new MemDb(), new InMemoryDictionaryFileStoreFactory()).MaxBucketSize;
             int count = bucketItems * Buckets;
             int maxIndex = count - 1;
-            yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets);
-            yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket);
-            yield return new TestCaseData(5, 49, true, GetRange(45, 5), 4 + 45); // 4 lookups at level one (16), 45 lookups at bottom level (49-5+1)
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier), searchesPerBucket - 1); // skips highest level
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 2 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 2), (searchesPerBucket - 1) * 2); // skips highest level
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 3 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 3), searchesPerBucket * 3); // doesn't skip highest level
+            yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets)
+                .SetName("Returns_no_blocks_when_blooms_do_not_match");
+            yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket)
+                .SetName("Returns_all_blocks_when_all_blooms_match");
+            yield return new TestCaseData(5, 49, true, GetRange(45, 5), 4 + 45)
+                .SetName("Returns_range_after_level_one_lookup");
+            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier), searchesPerBucket - 1)
+                .SetName("Returns_single_bucket_without_highest_level_lookup");
+            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 2 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 2), (searchesPerBucket - 1) * 2)
+                .SetName("Returns_two_buckets_without_highest_level_lookup");
+            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 3 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 3), searchesPerBucket * 3)
+                .SetName("Returns_three_buckets_with_highest_level_lookup");
         }
     }
 
@@ -91,7 +96,7 @@ public class BloomStorageTests
         long bloomsChecked = 0;
 
         IBloomEnumeration bloomEnumeration = storage.GetBlooms(from, to);
-        IList<long> ranges = new List<long>();
+        IList<long> ranges = [];
         foreach (Core.Bloom unused in bloomEnumeration)
         {
             bloomsChecked++;
@@ -101,8 +106,8 @@ public class BloomStorageTests
             }
         }
 
-        ranges.Should().BeEquivalentTo(expectedBlocks);
-        bloomsChecked.Should().Be(expectedBloomsChecked);
+        Assert.That(ranges, Is.EqualTo(expectedBlocks));
+        Assert.That(bloomsChecked, Is.EqualTo(expectedBloomsChecked));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -142,7 +147,7 @@ public class BloomStorageTests
 
         long[] expectedFoundBlocks = blocksSet.Where(b => b >= from && b <= to).ToArray();
         TestContext.Out.WriteLine($"Expected found blocks: {string.Join(", ", expectedFoundBlocks)}");
-        foundBlocks.Should().BeEquivalentTo(expectedFoundBlocks);
+        Assert.That(foundBlocks, Is.EqualTo(expectedFoundBlocks));
     }
 
     private const int Buckets = 3;
@@ -167,50 +172,17 @@ public class BloomStorageTests
     [TestCase(ushort.MaxValue, Explicit = true)]
     [TestCase(ushort.MaxValue * 8 + 7, Explicit = true)]
     [TestCase(ushort.MaxValue * 128 + 127, Explicit = true)]
-    public void Can_safely_insert_concurrently(int maxBlock)
+    public void Can_safely_insert_concurrently(int maxBlock) => RunInsertAndVerify(maxBlock, (storage, count) =>
     {
-        BloomConfig config = new() { IndexLevelBucketSizes = new[] { 16, 16, 16 } };
-        TempPath tempPath = TempPath.GetTempDirectory();
-        string basePath = tempPath.Path;
-        try
-        {
-            FixedSizeFileStoreFactory fileStorageFactory = new(basePath, DbNames.Bloom, Core.Bloom.ByteLength);
-            using BloomStorage storage = new(config, new MemDb(), fileStorageFactory);
-
-            Parallel.For(0, maxBlock + 1,
-                new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 16 },
-                i =>
-                {
-                    Core.Bloom bloom = new();
-                    bloom.Set(i % Core.Bloom.BitLength);
-                    storage.Store(i, bloom);
-                });
-
-            IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
-            int j = 0;
-            foreach (Core.Bloom bloom in blooms)
+        Parallel.For(0, count,
+            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 16 },
+            i =>
             {
-                j++;
-                (long FromBlock, long ToBlock) = blooms.CurrentIndices;
-                int fromBlock = (int)(FromBlock % Core.Bloom.BitLength);
-                int toBlock = (int)(Math.Min(ToBlock, maxBlock) % Core.Bloom.BitLength);
-                Core.Bloom expectedBloom = new();
-                for (int i = fromBlock; i <= toBlock; i++)
-                {
-                    expectedBloom.Set(i);
-                }
-
-                bloom.Should().Be(expectedBloom, $"blocks <{FromBlock}, {ToBlock}>");
-                blooms.TryGetBlockNumber(out _);
-            }
-
-            TestContext.Out.WriteLine($"Checked {j} blooms");
-        }
-        finally
-        {
-            Directory.Delete(basePath, true);
-        }
-    }
+                Core.Bloom bloom = new();
+                bloom.Set(i % Core.Bloom.BitLength);
+                storage.Store(i, bloom);
+            });
+    });
 
     [MaxTime(Timeout.MaxTestTime)]
     [TestCase(byte.MaxValue)]
@@ -218,7 +190,19 @@ public class BloomStorageTests
     [TestCase(ushort.MaxValue, Explicit = true)]
     [TestCase(ushort.MaxValue * 8 + 7, Explicit = true)]
     [TestCase(ushort.MaxValue * 128 + 127, Explicit = true)]
-    public void Can_safely_insert_in_batch(int maxBlock)
+    public void Can_safely_insert_in_batch(int maxBlock) => RunInsertAndVerify(maxBlock, (storage, count) =>
+    {
+        using ArrayPoolList<(long, Core.Bloom)> bloomInsertions = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            Core.Bloom bloom = new();
+            bloom.Set(i % Core.Bloom.BitLength);
+            bloomInsertions.Add((i, bloom));
+        }
+        storage.Store(bloomInsertions);
+    });
+
+    private static void RunInsertAndVerify(int maxBlock, Action<BloomStorage, int> insertAction)
     {
         BloomConfig config = new() { IndexLevelBucketSizes = new[] { 16, 16, 16 } };
         TempPath tempPath = TempPath.GetTempDirectory();
@@ -228,14 +212,7 @@ public class BloomStorageTests
             FixedSizeFileStoreFactory fileStorageFactory = new(basePath, DbNames.Bloom, Core.Bloom.ByteLength);
             using BloomStorage storage = new(config, new MemDb(), fileStorageFactory);
 
-            using ArrayPoolList<(long, Core.Bloom)> bloomInsertions = new(maxBlock);
-            for (int i = 0; i < maxBlock + 1; i++)
-            {
-                Core.Bloom bloom = new();
-                bloom.Set(i % Core.Bloom.BitLength);
-                bloomInsertions.Add((i, bloom));
-            }
-            storage.Store(bloomInsertions);
+            insertAction(storage, maxBlock + 1);
 
             IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
             int j = 0;
@@ -251,7 +228,7 @@ public class BloomStorageTests
                     expectedBloom.Set(i);
                 }
 
-                bloom.Should().Be(expectedBloom, $"blocks <{FromBlock}, {ToBlock}>");
+                Assert.That(bloom, Is.EqualTo(expectedBloom), $"blocks <{FromBlock}, {ToBlock}>");
                 blooms.TryGetBlockNumber(out _);
             }
 

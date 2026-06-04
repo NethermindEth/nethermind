@@ -10,10 +10,11 @@ namespace Nethermind.JsonRpc.Modules
 {
     public static class BlockFinderExtensions
     {
+        public const string HeaderNotFound = "header not found";
 
         public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
         {
-            var requestedBlock = blockParameter.BlockNumber;
+            long? requestedBlock = blockParameter.BlockNumber;
             if (requestedBlock is null)
             {
                 SearchResult<BlockHeader> headerResult = blockFinder.SearchForHeader(blockParameter);
@@ -45,7 +46,7 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             return header is null && !allowNulls
-                ? new SearchResult<BlockHeader>($"{blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found", ErrorCodes.ResourceNotFound)
+                ? new SearchResult<BlockHeader>(HeaderNotFound, ErrorCodes.ResourceNotFound)
                 : new SearchResult<BlockHeader>(header);
         }
 
@@ -72,14 +73,14 @@ namespace Nethermind.JsonRpc.Modules
 
                 if (blockFinder.IsBlockPruned(blockParameter))
                 {
-                    return new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
+                    return new SearchResult<Block>(
+                        $"pruned history unavailable for block {blockParameter}",
+                        ErrorCodes.PrunedHistoryUnavailable);
                 }
 
                 if (!allowNulls)
                 {
-                    return new SearchResult<Block>(
-                        $"Block {blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found",
-                        ErrorCodes.ResourceNotFound);
+                    return new SearchResult<Block>(HeaderNotFound, ErrorCodes.ResourceNotFound);
                 }
             }
 

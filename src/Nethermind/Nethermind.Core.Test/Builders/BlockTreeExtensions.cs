@@ -41,7 +41,7 @@ namespace Nethermind.Core.Test.Builders
         public static void AddBranch(this IBlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
-            List<Block> blocks = new();
+            List<Block> blocks = [];
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
                 Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical)!;
@@ -55,18 +55,12 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public static void UpdateMainChain(this IBlockTree blockTree, Block block)
-        {
-            blockTree.UpdateMainChain(new[] { block }, true);
-        }
+        public static void UpdateMainChain(this IBlockTree blockTree, Block block) => blockTree.UpdateMainChain(new[] { block }, true);
 
-        public static Task WaitForNewBlock(this IBlockTree blockTree, CancellationToken cancellation)
-        {
-            return Wait.ForEventCondition<BlockReplacementEventArgs>(
+        public static Task WaitForNewBlock(this IBlockTree blockTree, CancellationToken cancellation) => Wait.ForEventCondition<BlockReplacementEventArgs>(
                 cancellation,
                 (h) => blockTree.BlockAddedToMain += h,
                 (h) => blockTree.BlockAddedToMain -= h,
                 (e) => true);
-        }
     }
 }

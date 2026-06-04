@@ -5,6 +5,7 @@
     "Taiko": {
       "ontakeTransition": "0x0",
       "pacayaTransition": "0x0",
+      "shastaTimestamp": "0x69849450",
       "taikoL2Address": "0x1670130000000000000000000000000000010001"
     }
   },
