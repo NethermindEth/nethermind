@@ -86,7 +86,7 @@ public partial class BlockAccessListManager
         private readonly ILogManager _logManager;
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
         private int _processorCount;
-        private bool _witnessMode;
+        private readonly bool _witnessMode;
 
         public ParallelTxProcessorWithWorldStateManager(
             IBlockhashProvider blockHashProvider,
