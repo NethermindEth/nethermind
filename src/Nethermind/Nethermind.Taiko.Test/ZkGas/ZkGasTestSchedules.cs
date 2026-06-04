@@ -58,6 +58,7 @@ public static class ZkGasTestSchedules
         a[0x1b] = 24;
         a[0x1c] = 22;
         a[0x1d] = 21;
+        a[0x1e] = 14;
         a[0x20] = 31;
         a[0x30] = 19;
         a[0x31] = 4;
@@ -201,11 +202,11 @@ public static class ZkGasTestSchedules
             [Address.FromNumber(0x0a)] = 859,
             [Address.FromNumber(0x0b)] = 201,
             [Address.FromNumber(0x0c)] = 93,
-            [Address.FromNumber(0x0e)] = 230,
-            [Address.FromNumber(0x0f)] = 71,
-            [Address.FromNumber(0x11)] = 365,
-            [Address.FromNumber(0x12)] = 246,
-            [Address.FromNumber(0x13)] = 208,
+            [Address.FromNumber(0x0d)] = 230,
+            [Address.FromNumber(0x0e)] = 71,
+            [Address.FromNumber(0x0f)] = 365,
+            [Address.FromNumber(0x10)] = 246,
+            [Address.FromNumber(0x11)] = 208,
             [Address.FromNumber(0x100)] = 163,
         };
         return d.ToFrozenDictionary();

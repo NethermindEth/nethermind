@@ -157,13 +157,13 @@ public class ZkGasScheduleTests
         {
             ["0x0000000000000000000000000000000000000001"] = 47,
             ["0x0000000000000000000000000000000000000005"] = 923,
-            ["0x0000000000000000000000000000000000000013"] = 208,
+            ["0x0000000000000000000000000000000000000011"] = 208,
         };
 
         FrozenDictionary<AddressAsKey, ushort> resolved = ZkGasSchedule.BuildPrecompileTable(entries);
 
         Assert.That(resolved[Address.FromNumber(0x01)], Is.EqualTo(ZkGasTestSchedules.PrecompileMultiplier(0x01)));
         Assert.That(resolved[Address.FromNumber(0x05)], Is.EqualTo(ZkGasTestSchedules.PrecompileMultiplier(0x05)));
-        Assert.That(resolved[Address.FromNumber(0x13)], Is.EqualTo(ZkGasTestSchedules.PrecompileMultiplier(0x13)));
+        Assert.That(resolved[Address.FromNumber(0x11)], Is.EqualTo(ZkGasTestSchedules.PrecompileMultiplier(0x11)));
     }
 }
