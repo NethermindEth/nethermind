@@ -66,7 +66,7 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
 
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value)
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
         {
             byte[]? addrPreimage = preimageDb.Get(addrHash.Bytes[..PreimageLookupSize]);
             byte[]? slotPreimage = preimageDb.Get(slotHash.Bytes[..PreimageLookupSize]);
@@ -74,20 +74,13 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
             {
                 Address addr = new(addrPreimage);
                 UInt256 slot = new(slotPreimage, isBigEndian: true);
-                inner.SetStorage(addr, slot, value);
+                Rlp.ValueDecoderContext ctx = new(rlpValue);
+                inner.SetStorage(addr, slot, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
             }
             else
             {
-                inner.SetStorageRaw(addrHash, slotHash, value);
+                inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
             }
-        }
-
-        // Preimage recording is a non-default decorator; decode and reuse the preimage-aware raw path
-        // rather than passing the encoded bytes straight through.
-        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
-        {
-            Rlp.ValueDecoderContext ctx = new(rlpValue);
-            SetStorageRaw(addrHash, slotHash, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
         }
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account)

@@ -298,8 +298,6 @@ public static class BasePersistence
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
-
         /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
 
@@ -354,9 +352,6 @@ public static class BasePersistence
             StorageTree.ComputeKeyWithLookup(slot, ref hashBuffer);
             _flatWriteBatch.SetStorage(addr.ToAccountPath, hashBuffer, value);
         }
-
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
-            _flatWriteBatch.SetStorage(addrHash, slotHash, value);
 
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             _flatWriteBatch.SetStorageEncoded(addrHash, slotHash, rlpValue);
@@ -497,9 +492,6 @@ public static class BasePersistence
 
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
             _trieWriteBatch.SetStorageTrieNode(address, path, rlp);
-
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
-            _flatWriter.SetStorageRaw(addrHash, slotHash, value);
 
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             _flatWriter.SetStorageRawEncoded(addrHash, slotHash, rlpValue);

@@ -171,9 +171,6 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, IFlatDbCon
             _flatWriteBatch.SetStorage(fakeAddrHash, fakeSlotHash, value);
         }
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
-            throw new InvalidOperationException("Raw operations not available in preimage mode");
-
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
 

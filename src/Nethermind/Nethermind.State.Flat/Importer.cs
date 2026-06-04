@@ -120,14 +120,11 @@ public class Importer(
                 }
                 else
                 {
+                    // A storage leaf value is RLP(stripped) and never empty (zero slots are absent), so it is
+                    // stored verbatim when wrapping, skipping a decode + re-encode round-trip.
                     ReadOnlySpan<byte> value = node.Value.AsSpan();
-                    if (value.IsEmpty)
+                    if (!value.IsEmpty)
                     {
-                        writeBatch.SetStorageRaw(address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(StorageTree.ZeroBytes));
-                    }
-                    else
-                    {
-                        // node.Value is already RLP(stripped) — store verbatim when wrapping, skipping decode + re-encode.
                         writeBatch.SetStorageRawEncoded(address, fullPath.ToHash256(), value);
                     }
                 }
