@@ -235,10 +235,12 @@ public class TestBlockchain : IDisposable
     }
 
     /// <summary>
-    /// Whether this test chain uses the flat state backend. Set to <c>false</c> for trie-only tests
-    /// (e.g. those asserting patricia-specific internals or full pruning) to pin the patricia backend.
+    /// Whether this test chain uses the flat state backend. Defaults to patricia (matching the production
+    /// default); set the <c>TEST_USE_FLAT=1</c> environment variable to run the suite under flat, or set this
+    /// to <c>true</c>/<c>false</c> per fixture. Pin to <c>false</c> for trie-only tests that assert
+    /// patricia-specific internals (missing trie nodes, full pruning, trie healing, BestPersistedState).
     /// </summary>
-    public bool UseFlatDb { get; set; } = true;
+    public bool UseFlatDb { get; set; } = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
 
     protected virtual ChainSpec CreateChainSpec() => new();
 
