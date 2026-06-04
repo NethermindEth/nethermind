@@ -19,7 +19,6 @@ public class InclusionListBuilderTests
 {
     private static Transaction TxOfSize(int payloadBytes, int nonce = 0)
     {
-        // Data bytes inflate encoded RLP ~1:1 → predictable sizing.
         byte[] data = new byte[payloadBytes];
         return Build.A.Transaction
             .WithNonce((UInt256)nonce)
