@@ -386,7 +386,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     private ReadOnlySpan<byte> GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell)
     {
-        if (parallel && accountChanges?.TryGetStorageChange(storageCell.Index, out StorageChange? change) == true)
+        // Read-only accounts (e.g. an account that is only SLOAD-ed this block) never have a storage
+        // change, so the dictionary probe below always misses. Gate it on the cheap StorageChangeCount
+        // int read so the common read path skips the slot-key hash + dictionary lookup entirely.
+        if (parallel
+            && accountChanges is { StorageChangeCount: > 0 }
+            && accountChanges.TryGetStorageChange(storageCell.Index, out StorageChange? change))
         {
             // Store the 32-byte word straight into _scratchStorage; the returned span outlives this
             // frame without allocating a new byte[32] per SLOAD.

@@ -43,9 +43,16 @@ start_dotnet_trace() {
 start_dottrace() {
   echo "Starting dotTrace..."
 
+  # Profiling type:
+  #   timeline — sampling + thread states + GC events + lock waits (low overhead, statistical)
+  #   tracing  — entry/exit probes on every method (2-5x slower, exact call counts + per-call timing)
+  # Default = timeline (richer view: threads, waits, GC). Set DIAG_DOTTRACE_PROFILING_TYPE=tracing
+  # when you need exact per-method attribution.
+  local profiling_type="${DIAG_DOTTRACE_PROFILING_TYPE:-timeline}"
+
   exec dottrace start \
     --framework=netcore \
-    --profiling-type=timeline \
+    --profiling-type="${profiling_type}" \
     --propagate-exit-code \
     --save-to=/nethermind/diag/dottrace \
     --service-output=on \
