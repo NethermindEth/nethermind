@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;

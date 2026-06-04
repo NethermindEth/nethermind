@@ -4,7 +4,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
-using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
