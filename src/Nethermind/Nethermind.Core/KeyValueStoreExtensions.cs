@@ -48,6 +48,8 @@ namespace Nethermind.Core
 
             public bool KeyExists(long key) => db.KeyExists(key.ToBigEndianSpanWithoutLeadingZeros(out _));
 
+            public Span<byte> GetSpan(long key) => db.GetSpan(key.ToBigEndianSpanWithoutLeadingZeros(out _));
+
             public byte[]? Get(long key) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)];
         }
 

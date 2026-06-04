@@ -99,6 +99,9 @@ public static class Int64Extensions
         return unchecked((long)u);
     }
 
+    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this Span<byte> bytes)
+        => ToLongFromBigEndianByteArrayWithoutLeadingZeros((ReadOnlySpan<byte>)bytes);
+
     public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes)
     {
         if (bytes is null)
