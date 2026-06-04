@@ -30,7 +30,6 @@ namespace Nethermind.Facade.Find
 
         private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-
         private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
         private readonly int _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -72,6 +71,7 @@ namespace Nethermind.Facade.Find
                 throw new ResourceNotFoundException($"Receipt not available for To block {toBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
+
             return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
@@ -123,23 +123,25 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            int count = 0;
-            while (count < maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
+            IEnumerable<long> GetBlockNumbers()
             {
-                foreach (FilterLog filterLog in FindLogsInBlock(filter, fromBlock, cancellationToken))
+                int count = 0;
+                long currentNumber = fromBlock.Number;
+                long targetNumber = toBlock.Number;
+
+                while (count < maxBlockDepth && currentNumber <= targetNumber)
                 {
-                    yield return filterLog;
+                    yield return currentNumber;
+                    currentNumber++;
+                    count++;
                 }
-
-                fromBlock = _blockFinder.FindHeader(fromBlock.Number + 1);
-                if (fromBlock is null) break;
-
-                count++;
             }
+
+            return FilterLogsInBlocksParallel(filter, GetBlockNumbers(), cancellationToken);
         }
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block, CancellationToken cancellationToken) =>
-            filter.Matches(block.Bloom!)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken) =>
+            block is not null && filter.Matches(block.Bloom!)
                 ? FindLogsInBlock(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
                 : [];
 

@@ -6,7 +6,6 @@ using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Db.Blooms;
 using Nethermind.Shutter.Config;
 using static Nethermind.Merge.AuRa.Test.AuRaMergeEngineModuleTests;
 

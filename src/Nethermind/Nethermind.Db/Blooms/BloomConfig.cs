@@ -5,6 +5,7 @@ using System;
 
 namespace Nethermind.Db.Blooms
 {
+    [Obsolete("BloomStorage has been replaced by the Log Index. This property is now a no-op.")]
     public class BloomConfig : IBloomConfig
     {
         [Obsolete("BloomStorage has been replaced by the Log Index. This property is now a no-op.")]

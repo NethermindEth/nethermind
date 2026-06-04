@@ -154,11 +154,11 @@ public class LogFinderTests
     {
         get
         {
-            yield return new TestCaseData(new[] { TestItem.AddressA }, 2).SetName("filter_by_address_A_without_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressB }, 1).SetName("filter_by_address_B_without_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressC }, 1).SetName("filter_by_address_C_without_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressD }, 1).SetName("filter_by_address_D_without_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressA, TestItem.AddressC, TestItem.AddressD }, 4).SetName("filter_by_addresses_A_C_D_without_bloom");
+            yield return new TestCaseData(new[] { TestItem.AddressA }, 2).SetName("filter_by_address_A");
+            yield return new TestCaseData(new[] { TestItem.AddressB }, 1).SetName("filter_by_address_B");
+            yield return new TestCaseData(new[] { TestItem.AddressC }, 1).SetName("filter_by_address_C");
+            yield return new TestCaseData(new[] { TestItem.AddressD }, 1).SetName("filter_by_address_D");
+            yield return new TestCaseData(new[] { TestItem.AddressA, TestItem.AddressC, TestItem.AddressD }, 4).SetName("filter_by_addresses_A_C_D");
         }
     }
 
@@ -178,12 +178,12 @@ public class LogFinderTests
     {
         get
         {
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, new long[] { 1, 1, 4 }).SetName("filter_by_topic_A_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, new long[] { 1, 4 }).SetName("filter_by_any_then_topic_B_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, new long[] { 4 }).SetName("filter_by_any_A_any_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, new long[] { 4 }).SetName("filter_by_B_any_E_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, new long[] { 1, 1, 4, 4 }).SetName("filter_by_topic_A_or_B_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, new long[] { 1, 4 }).SetName("filter_by_A_or_B_then_B_without_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, new long[] { 1, 1, 4 }).SetName("filter_by_topic_A");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, new long[] { 1, 4 }).SetName("filter_by_any_then_topic_B");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, new long[] { 4 }).SetName("filter_by_any_A_any");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, new long[] { 4 }).SetName("filter_by_B_any_E");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, new long[] { 1, 1, 4, 4 }).SetName("filter_by_topic_A_or_B");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, new long[] { 1, 4 }).SetName("filter_by_A_or_B_then_B");
         }
     }
 
@@ -202,12 +202,12 @@ public class LogFinderTests
     {
         get
         {
-            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build(), 3).SetName("filter_by_latest_to_latest_without_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToLatestBlock().Build(), 5).SetName("filter_by_earliest_to_latest_without_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToPendingBlock().Build(), 5).SetName("filter_by_earliest_to_pending_without_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToEarliestBlock().Build(), 0).SetName("filter_by_earliest_to_earliest_without_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromBlock(1).ToBlock(1).Build(), 2).SetName("filter_by_block_one_without_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToEarliestBlock().Build(), 0).SetName("filter_by_wrong_order_without_bloom");
+            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build(), 3).SetName("filter_by_latest_to_latest");
+            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToLatestBlock().Build(), 5).SetName("filter_by_earliest_to_latest");
+            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToPendingBlock().Build(), 5).SetName("filter_by_earliest_to_pending");
+            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToEarliestBlock().Build(), 0).SetName("filter_by_earliest_to_earliest");
+            yield return new TestCaseData(FilterBuilder.New().FromBlock(1).ToBlock(1).Build(), 2).SetName("filter_by_block_one");
+            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToEarliestBlock().Build(), 0).SetName("filter_by_wrong_order");
         }
     }
 
@@ -234,11 +234,11 @@ public class LogFinderTests
         {
             yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
                 .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
-                .WithAddresses(TestItem.AddressC, TestItem.AddressD).Build(), 2).SetName("complex_filter_C_D_without_bloom");
+                .WithAddresses(TestItem.AddressC, TestItem.AddressD).Build(), 2).SetName("complex_filter_C_D");
 
             yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
                 .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
-                .WithAddresses(TestItem.AddressC).Build(), 1).SetName("complex_filter_C_without_bloom");
+                .WithAddresses(TestItem.AddressC).Build(), 1).SetName("complex_filter_C");
         }
     }
 
