@@ -140,7 +140,7 @@ public sealed class DiffsWriterService : IDisposable
         // FlatDb's BeginScope materialises the snapshot bundle for one block,
         // so a diff across two roots needs one scope per side — otherwise the
         // off-side nodes resolve as Unknown and the walker silently emits an
-        // empty diff. Matches the legacy StateComposition.Service approach.
+        // empty diff.
         using IReadOnlyTrieStore oldStore = _worldStateManager.CreateReadOnlyTrieStore();
         using IDisposable oldScope = oldStore.BeginScope(parent);
         using IReadOnlyTrieStore newStore = _worldStateManager.CreateReadOnlyTrieStore();
