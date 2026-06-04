@@ -250,17 +250,14 @@ internal static class FixtureReader
         return new Block(header, transactions, [], withdrawals);
     }
 
-    private static Witness ReadWitness(JsonElement w)
+    private static Witness ReadWitness(JsonElement w) => new()
     {
-        return new Witness
-        {
-            Codes = ReadByteArrayList(w.GetProperty("codes")),
-            Headers = ReadByteArrayList(w.GetProperty("headers")),
-            // InputSerializer ignores keys but Witness requires the field to be set.
-            Keys = ArrayPoolList<byte[]>.Empty(),
-            State = ReadByteArrayList(w.GetProperty("state")),
-        };
-    }
+        Codes = ReadByteArrayList(w.GetProperty("codes")),
+        Headers = ReadByteArrayList(w.GetProperty("headers")),
+        // InputSerializer ignores keys but Witness requires the field to be set.
+        Keys = ArrayPoolList<byte[]>.Empty(),
+        State = ReadByteArrayList(w.GetProperty("state")),
+    };
 
     private static ArrayPoolList<byte[]> ReadByteArrayList(JsonElement arr)
     {
