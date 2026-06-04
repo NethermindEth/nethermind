@@ -194,7 +194,7 @@ public static class ZkGasTestSchedules
             [Address.FromNumber(0x02)] = 10,
             [Address.FromNumber(0x03)] = 4,
             [Address.FromNumber(0x04)] = 6,
-            [Address.FromNumber(0x05)] = 923,
+            [Address.FromNumber(0x05)] = 154,
             [Address.FromNumber(0x06)] = 19,
             [Address.FromNumber(0x07)] = 58,
             [Address.FromNumber(0x08)] = 54,

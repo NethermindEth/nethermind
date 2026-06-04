@@ -42,7 +42,7 @@ public class ZkGasMeterTests
     [Test]
     public void PrecompileMultipliers_Spot_Check_Spec_Values()
     {
-        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x05), Is.EqualTo((ushort)923)); // modexp
+        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x05), Is.EqualTo((ushort)154)); // modexp — recalibrated for EIP-7883 6× gas-cost increase
         Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x01), Is.EqualTo((ushort)47));  // ecrecover
         Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x04), Is.EqualTo((ushort)6));   // identity
         Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x0d), Is.EqualTo((ushort)230)); // bls12_g2add (EIP-2537)
