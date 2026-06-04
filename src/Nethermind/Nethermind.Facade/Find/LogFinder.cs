@@ -75,15 +75,15 @@ namespace Nethermind.Facade.Find
             return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<long> blockNumbers, CancellationToken cancellationToken)
+        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<BlockHeader?> blocks, CancellationToken cancellationToken)
         {
-            static IEnumerable<long> ParallelizeWithLock(IEnumerable<long> blocks, bool runParallel, CancellationToken ct)
+            static IEnumerable<BlockHeader?> ParallelizeWithLock(IEnumerable<BlockHeader?> source, bool runParallel, CancellationToken ct)
             {
                 try
                 {
-                    foreach (long blockNumber in blocks)
+                    foreach (BlockHeader? block in source)
                     {
-                        yield return blockNumber;
+                        yield return block;
                         ct.ThrowIfCancellationRequested();
                     }
                 }
@@ -103,7 +103,7 @@ namespace Nethermind.Facade.Find
             int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
             bool canRunParallel = parallelLock == 0;
 
-            IEnumerable<long> filterBlocks = ParallelizeWithLock(blockNumbers, canRunParallel, cancellationToken);
+            IEnumerable<BlockHeader?> filterBlocks = ParallelizeWithLock(blocks, canRunParallel, cancellationToken);
 
             if (canRunParallel)
             {
@@ -118,12 +118,12 @@ namespace Nethermind.Facade.Find
             }
 
             return filterBlocks
-                .SelectMany(blockNumber => FindLogsInBlock(filter, FindHeaderOrLogError(blockNumber, cancellationToken), cancellationToken));
+                .SelectMany(block => FindLogsInBlock(filter, block, cancellationToken));
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            IEnumerable<long> GetBlockNumbers()
+            IEnumerable<BlockHeader?> GetHeaders()
             {
                 int count = 0;
                 long currentNumber = fromBlock.Number;
@@ -131,15 +131,16 @@ namespace Nethermind.Facade.Find
 
                 while (count < maxBlockDepth && currentNumber <= targetNumber)
                 {
-                    if (_blockFinder.FindHeader(currentNumber) is null) yield break;
+                    BlockHeader? header = _blockFinder.FindHeader(currentNumber);
+                    if (header is null) yield break;
 
-                    yield return currentNumber;
+                    yield return header;
                     currentNumber++;
                     count++;
                 }
             }
 
-            return FilterLogsInBlocksParallel(filter, GetBlockNumbers(), cancellationToken);
+            return FilterLogsInBlocksParallel(filter, GetHeaders(), cancellationToken);
         }
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken) =>
