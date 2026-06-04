@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -56,27 +55,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                ResultWrapper<ForkchoiceUpdatedV1Result> result =
-                    await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes, version);
-
-                bool fcuSucceeded = result.Result.ResultType == ResultType.Success
-                    && result.Data?.PayloadStatus?.Status == PayloadStatus.Valid;
-
-                if (custodyColumns is not null && fcuSucceeded)
-                {
-                    try
-                    {
-                        ApplyCustodyColumns(custodyColumns);
-                    }
-                    catch (Exception ex)
-                    {
-                        // Log but swallow: custody errors must not affect the forkchoice result.
-                        if (_logger.IsWarn)
-                            _logger.Warn($"engine_forkchoiceUpdatedV{version}: custody-column update failed (ignored per spec): {ex.Message}");
-                    }
-                }
-
-                return result;
+                return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes, version);
             }
             finally
             {
@@ -91,7 +70,6 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    protected virtual void ApplyCustodyColumns(BitArray custodyColumns) { }
 
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {

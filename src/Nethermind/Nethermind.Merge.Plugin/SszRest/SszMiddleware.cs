@@ -33,8 +33,8 @@ public sealed class SszMiddleware
     private readonly ILogger _logger;
     private readonly CancellationToken _processExitToken;
 
-    // Path: /engine/{fork}/{resource}[/{extra}]
-    private const string EnginePrefix = "/engine/";
+    // Path: /engine/v2/{fork}/{resource}[/{extra}]
+    private const string EnginePrefix = "/engine/v2/";
 
     /// <summary>
     /// Maximum allowed request body size in bytes (128 MiB).
@@ -179,7 +179,7 @@ public sealed class SszMiddleware
             // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
             // intermediate string; appending the span goes straight into the format buffer.
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                $"Unknown method: {ctx.Request.Method} /engine/{pathSegment.Span}",
+                $"Unknown method: {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
                 SszRestErrorCodes.MethodNotFound);
         }
         else
@@ -192,8 +192,8 @@ public sealed class SszMiddleware
             if (_logger.IsTrace)
             {
                 _logger.Trace(extra.IsEmpty
-                    ? $"SSZ-REST {ctx.Request.Method} /engine/{pathSegment.Span}"
-                    : $"SSZ-REST {ctx.Request.Method} /engine/{pathSegment.Span}/{extra.Span}");
+                    ? $"SSZ-REST {ctx.Request.Method} /engine/v2/{pathSegment.Span}"
+                    : $"SSZ-REST {ctx.Request.Method} /engine/v2/{pathSegment.Span}/{extra.Span}");
             }
 
             // Read directly from PipeReader: the buffer is a ReadOnlySequence over Kestrel's
@@ -338,7 +338,7 @@ public sealed class SszMiddleware
         }
         else
         {
-            // Recognised fork but missing resource segment, e.g. /engine/cancun — not
+            // Recognised fork but missing resource segment, e.g. /engine/v2/cancun — not
             // a valid endpoint; leave unsupportedFork = false so the caller uses 404.
             return false;
         }
@@ -423,18 +423,33 @@ public sealed class SszMiddleware
     {
         string path = ctx.Request.Path.Value ?? string.Empty;
 
-        if (!path.StartsWith(EnginePrefix, StringComparison.OrdinalIgnoreCase))
+        if (!path.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase))
             return SszRequestKind.NotEngine;
+
+        ReadOnlySpan<char> span = path.AsSpan("/engine/".Length);
+        int nextSlash = span.IndexOf('/');
+        ReadOnlySpan<char> versionSegment = nextSlash < 0 ? span : span[..nextSlash];
+
+        bool isVersioned = versionSegment.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+            && versionSegment.Length > 1
+            && int.TryParse(versionSegment[1..], out _);
+
+        if (!isVersioned)
+            return SszRequestKind.NotEngine;
+
+        bool isEnginePrefix = path.StartsWith(EnginePrefix, StringComparison.OrdinalIgnoreCase);
 
         switch (ctx.Request.Method)
         {
             case "POST":
+                if (!isEnginePrefix) return SszRequestKind.EngineOk;
                 return ctx.Request.ContentType?.Contains(
                     MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase) == true
                     ? SszRequestKind.EngineOk
                     : SszRequestKind.EngineWrongMediaType;
 
             case "GET":
+                if (!isEnginePrefix) return SszRequestKind.EngineOk;
                 if (IsDiagnosticGetPath(path))
                     return SszRequestKind.EngineOk;
 
@@ -456,9 +471,9 @@ public sealed class SszMiddleware
     private static bool IsDiagnosticGetPath(string path)
     {
         ReadOnlySpan<char> span = path.AsSpan();
-        const string capabilitiesPath = "/engine/capabilities";
-        const string identityPath = "/engine/identity";
-        
+        const string capabilitiesPath = "/engine/v2/capabilities";
+        const string identityPath = "/engine/v2/identity";
+
         return span.Equals(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase)
             || (span.StartsWith(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase) && span.Length > capabilitiesPath.Length && span[capabilitiesPath.Length] == '/')
             || span.Equals(identityPath.AsSpan(), StringComparison.OrdinalIgnoreCase)
