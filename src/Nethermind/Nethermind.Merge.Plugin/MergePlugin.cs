@@ -93,7 +93,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
             _poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
             _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker.InvalidChainTracker>();
-
             if (_txPoolConfig.BlobsSupport.SupportsReorgs())
             {
                 ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
