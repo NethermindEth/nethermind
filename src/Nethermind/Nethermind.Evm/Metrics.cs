@@ -95,7 +95,14 @@ public class Metrics
     private static long _otherSLoadOpcode;
     [Description("Number of SLOAD opcodes executed on main processing thread.")]
     public static long MainThreadSLoadOpcode => _mainSLoadOpcode;
-    public static void IncrementSLoadOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSLoadOpcode : ref _otherSLoadOpcode);
+    public static void IncrementSLoadOpcode()
+    {
+        // The main counter has a single writer (the block-processing thread), so a plain increment
+        // is correct and avoids the LOCK-prefixed atomic + memory barrier on the per-SLOAD hot path.
+        // Only the multi-writer "other" counter (prewarmer/RPC threads) needs the interlocked op.
+        if (IsBlockProcessingThread) _mainSLoadOpcode++;
+        else Interlocked.Increment(ref _otherSLoadOpcode);
+    }
 
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
@@ -104,7 +111,12 @@ public class Metrics
     private static long _otherSStoreOpcode;
     [Description("Number of SSTORE opcodes executed on main processing thread.")]
     public static long MainThreadSStoreOpcode => _mainSStoreOpcode;
-    public static void IncrementSStoreOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSStoreOpcode : ref _otherSStoreOpcode);
+    public static void IncrementSStoreOpcode()
+    {
+        // Single-writer main counter — plain increment; multi-writer other counter — interlocked.
+        if (IsBlockProcessingThread) _mainSStoreOpcode++;
+        else Interlocked.Increment(ref _otherSStoreOpcode);
+    }
 
     [Description("Number of TLOAD opcodes executed.")]
     public static long TloadOpcode { get; set; }
