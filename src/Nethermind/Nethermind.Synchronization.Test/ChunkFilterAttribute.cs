@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Ethereum.Test.Base;
+using Nethermind.Core.Test;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 
