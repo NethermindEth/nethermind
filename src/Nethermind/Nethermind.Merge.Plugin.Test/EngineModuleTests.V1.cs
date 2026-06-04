@@ -34,6 +34,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;

@@ -70,40 +70,11 @@ public class SszMiddlewareTests
     {
         RequestDelegate passthrough = next ?? (_ => Task.CompletedTask);
 
-        ISszEndpointHandler[] handlers =
-        [
-            new NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV3, NewPayloadV3RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV4, NewPayloadV4RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
-
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV1, ForkchoiceUpdatedV1RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV2, ForkchoiceUpdatedV2RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>(_engineModule, _specProvider),
-
-            new GetPayloadSszHandler<GetPayloadDescriptorV1, ExecutionPayload>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV6, GetPayloadV6Result>(_engineModule),
-
-            new GetBlobsV1SszHandler(_engineModule),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV2>(_engineModule),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV3>(_engineModule),
-            new GetBlobsV4SszHandler(_engineModule),
-
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule),
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule),
-
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule),
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule),
-
-            new ClientVersionSszHandler(_engineModule),
-            new CapabilitiesSszHandler(_specProvider),
-        ];
+        ISszEndpointHandler[] rpcHandlers = SszRpcEndpointHandler.CreateHandlers(_engineModule, _specProvider);
+        ISszEndpointHandler[] handlers = new ISszEndpointHandler[rpcHandlers.Length + 2];
+        rpcHandlers.CopyTo(handlers, 0);
+        handlers[^2] = new ClientVersionSszHandler(_engineModule);
+        handlers[^1] = new CapabilitiesSszHandler(_specProvider);
 
         return new SszMiddleware(
             passthrough,

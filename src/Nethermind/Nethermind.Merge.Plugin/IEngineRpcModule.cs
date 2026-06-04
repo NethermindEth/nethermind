@@ -21,6 +21,5 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the client version specification.",
         IsSharable = true,
         IsImplemented = true)]
-
     ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1);
 }
