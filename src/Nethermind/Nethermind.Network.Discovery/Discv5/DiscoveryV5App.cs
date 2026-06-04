@@ -186,7 +186,14 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
     internal bool TryGetAcceptableNodeFromEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
     {
-        if (Node.TryFromEnr(enr, out Node? enrNode) && IsDiscoveryAddressAcceptable(enrNode.Address.Address, _allowNonRoutableEnrs))
+        if (IsConsensusOnlyNodeRecord(enr))
+        {
+            node = null;
+            if (Logger.IsTrace) Logger.Trace("Enr declined, consensus-only ENRs are not execution discovery peers.");
+            return false;
+        }
+
+        if (Node.TryFromDiscoveryEnr(enr, out Node? enrNode) && IsDiscoveryAddressAcceptable(enrNode.Address.Address, _allowNonRoutableEnrs))
         {
             node = enrNode;
             return true;
@@ -219,6 +226,9 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
     internal static bool IsDiscoveryAddressRoutable(IPAddress ipAddress)
         => IsDiscoveryAddressAcceptable(ipAddress, allowNonRoutable: false);
+
+    internal static bool IsConsensusOnlyNodeRecord(NodeRecord enr)
+        => enr.HasEntry(EnrContentKey.Eth2) && !enr.HasEntry(EnrContentKey.Eth);
 
     private static bool ShouldAcceptNonRoutableEnrs(IPAddress externalIp)
         => !IPAddress.Any.Equals(externalIp)

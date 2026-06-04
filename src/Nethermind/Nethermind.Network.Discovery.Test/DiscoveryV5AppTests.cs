@@ -93,7 +93,7 @@ public class DiscoveryV5AppTests
         _discoveryDb.Dispose();
     }
 
-    private static NodeRecord CreateTestEnr(Nethermind.Crypto.PrivateKey privateKey, IPAddress? ipAddress = null, int port = 30303, int? udpPort = null, bool includeTcp = true, bool includeUdp = true)
+    private static NodeRecord CreateTestEnr(Nethermind.Crypto.PrivateKey privateKey, IPAddress? ipAddress = null, int port = 30303, int? udpPort = null, bool includeTcp = true, bool includeUdp = true, bool includeEth2 = false)
     {
         NodeRecord enr = new();
         enr.SetEntry(IdEntry.Instance);
@@ -106,6 +106,10 @@ public class DiscoveryV5AppTests
         if (includeUdp)
         {
             enr.SetEntry(new UdpEntry(udpPort ?? port));
+        }
+        if (includeEth2)
+        {
+            enr.SetEntry(new TestEth2Entry());
         }
         enr.EnrSequence = 1;
         new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
@@ -211,6 +215,22 @@ public class DiscoveryV5AppTests
         Assert.That(result, Is.True);
         Assert.That(node, Is.Not.Null);
         Assert.That(node!.Host, Is.EqualTo("8.8.8.8"));
+    }
+
+    [Test]
+    public void Should_Reject_Consensus_Only_Enr()
+    {
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), includeEth2: true);
+        NodeRecord decoded = NodeRecord.FromEnrString(enr.EnrString);
+
+        bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(decoded, out Node? node);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.HasEntry(EnrContentKey.Eth2), Is.True);
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -357,5 +377,14 @@ public class DiscoveryV5AppTests
             Assert.That(bootNodes[0].Port, Is.EqualTo(9001));
             Assert.That(bootNodes[0].Enr, Is.EqualTo(enr.EnrString));
         }
+    }
+
+    private sealed class TestEth2Entry() : EnrContentEntry<byte[]>([1, 2, 3, 4])
+    {
+        public override string Key => EnrContentKey.Eth2;
+
+        protected override int GetRlpLengthOfValue() => Nethermind.Serialization.Rlp.Rlp.LengthOf(Value);
+
+        protected override void EncodeValue(Nethermind.Serialization.Rlp.RlpStream rlpStream) => rlpStream.Encode(Value);
     }
 }

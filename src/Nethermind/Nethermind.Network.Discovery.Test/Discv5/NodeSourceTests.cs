@@ -3,13 +3,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv5.Kademlia;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -59,8 +62,53 @@ public class NodeSourceTests
         Assert.That(enumerator.Current, Is.EqualTo(droppedNode));
     }
 
-    private static Node CreateNode(int index) =>
-        new(TestItem.PublicKeys[index], $"192.168.1.{index + 1}", 30303);
+    [Test]
+    [CancelAfter(10000)]
+    public async Task DiscoverNodes_ShouldEmitPeerCandidateWithTcpEndpoint(CancellationToken token)
+    {
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        kademlia.IterateNodes().Returns(Array.Empty<Node>());
+        NodeSource source = new(
+            kademlia,
+            new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
+            LimboLogs.Instance);
+
+        await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
+        ValueTask<bool> firstMove = enumerator.MoveNextAsync();
+        await Task.Yield();
+        RaiseNode(kademlia, CreateNode(1, tcpPort: 30303, udpPort: 30304));
+
+        Assert.That(await firstMove.AsTask(), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enumerator.Current.Id, Is.EqualTo(TestItem.PrivateKeys[1].PublicKey));
+            Assert.That(enumerator.Current.Port, Is.EqualTo(30303));
+        }
+    }
+
+    private static Node CreateNode(int index, int tcpPort = 30303, int udpPort = 30304)
+    {
+        PrivateKey privateKey = TestItem.PrivateKeys[index];
+        string host = $"192.168.1.{index + 1}";
+        NodeRecord enr = CreateEnr(privateKey, IPAddress.Parse(host), tcpPort, udpPort);
+        return new Node(privateKey.PublicKey, host, udpPort)
+        {
+            Enr = enr.EnrString
+        };
+    }
+
+    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, int tcpPort, int udpPort)
+    {
+        NodeRecord enr = new();
+        enr.SetEntry(IdEntry.Instance);
+        enr.SetEntry(new IpEntry(ipAddress));
+        enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        enr.SetEntry(new TcpEntry(tcpPort));
+        enr.SetEntry(new UdpEntry(udpPort));
+        enr.EnrSequence = 1;
+        new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
+        return enr;
+    }
 
     private static void RaiseNode(IKademlia<PublicKey, Node> kademlia, Node node) =>
         kademlia.OnNodeAdded += Raise.Event<EventHandler<Node>>(null, node);

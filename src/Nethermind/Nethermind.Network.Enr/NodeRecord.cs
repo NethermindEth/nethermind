@@ -128,6 +128,23 @@ public class NodeRecord
     /// </remarks>
     public int? DiscoveryPort => GetDiscoveryEndpoint().Port;
 
+    /// <summary>
+    /// Gets the IP address advertised for RLPx TCP traffic.
+    /// </summary>
+    /// <remarks>
+    /// IPv4 is preferred when both <c>ip</c> and <c>tcp</c> are present. Otherwise IPv6 is returned when it has a
+    /// TCP port, with <c>tcp</c> as the EIP-778 fallback.
+    /// </remarks>
+    public IPAddress? TcpIp => GetTcpEndpoint().Ip;
+
+    /// <summary>
+    /// Gets the TCP port advertised for RLPx traffic.
+    /// </summary>
+    /// <remarks>
+    /// For IPv6, <c>tcp6</c> is preferred and <c>tcp</c> is used as the EIP-778 fallback.
+    /// </remarks>
+    public int? TcpPort => GetTcpEndpoint().Port;
+
     private (IPAddress? Ip, int? Port) GetDiscoveryEndpoint()
     {
         IPAddress? ip = GetObj<IPAddress>(EnrContentKey.Ip);
@@ -146,6 +163,26 @@ public class NodeRecord
         }
 
         return ip is not null && udp6 is not null ? (ip, udp6) : (null, null);
+    }
+
+    private (IPAddress? Ip, int? Port) GetTcpEndpoint()
+    {
+        IPAddress? ip = GetObj<IPAddress>(EnrContentKey.Ip);
+        int? tcp = GetValue<int>(EnrContentKey.Tcp);
+        if (ip is not null && tcp is not null)
+        {
+            return (ip, tcp);
+        }
+
+        IPAddress? ip6 = GetObj<IPAddress>(EnrContentKey.Ip6);
+        int? tcp6 = GetValue<int>(EnrContentKey.Tcp6);
+        if (ip6 is not null)
+        {
+            int? port = tcp6 ?? tcp;
+            return port is null ? (null, null) : (ip6, port);
+        }
+
+        return (null, null);
     }
 
     public static NodeRecord FromEnrString(string enrString)
@@ -215,6 +252,13 @@ public class NodeRecord
         _contentHash = null;
         _signature = null;
     }
+
+    /// <summary>
+    /// Checks whether an ENR entry with the specified key is present.
+    /// </summary>
+    /// <param name="entryKey">Key of the entry to check.</param>
+    /// <returns><see langword="true"/> when the entry is present; otherwise <see langword="false"/>.</returns>
+    public bool HasEntry(string entryKey) => Entries.ContainsKey(entryKey);
 
     /// <summary>
     /// Gets a record entry value (in case of the value types). Use <see cref="GetObj{TValue}"/> for reference types./>

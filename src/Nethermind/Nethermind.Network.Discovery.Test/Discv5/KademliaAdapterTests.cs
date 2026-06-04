@@ -148,16 +148,60 @@ public class KademliaAdapterTests
     private static Node CreateNode(PublicKey publicKey, int hostSuffix) =>
         new(publicKey, $"192.168.1.{hostSuffix}", 30303);
 
-    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress)
+    [Test]
+    public void IsAcceptableNodeRecord_ShouldRejectConsensusOnlyRecord()
+    {
+        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.8.8"), includeEth2: true);
+
+        Assert.That(
+            KademliaAdapter.IsAcceptableNodeRecord(
+                NodeRecord.FromEnrString(record.EnrString),
+                TestItem.PrivateKeyB.PublicKey.Hash,
+                allowNonRoutable: false),
+            Is.False);
+    }
+
+    [Test]
+    public void TrySetKnownRecord_ShouldNotDowngradeSequence()
+    {
+        KademliaAdapter adapter = CreateAdapter();
+        NodeRecord newer = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.8.8"), enrSequence: 2);
+        NodeRecord stale = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.4.4"), enrSequence: 1);
+
+        Assert.That(adapter.TrySetKnownRecord(TestItem.PrivateKeyB.PublicKey.Hash, newer, out NodeRecord current), Is.True);
+        Assert.That(current, Is.SameAs(newer));
+
+        Assert.That(adapter.TrySetKnownRecord(TestItem.PrivateKeyB.PublicKey.Hash, stale, out current), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(current, Is.SameAs(newer));
+            Assert.That(current.EnrSequence, Is.EqualTo(2));
+        }
+    }
+
+    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, ulong enrSequence = 1, bool includeEth2 = false)
     {
         NodeRecord enr = new();
         enr.SetEntry(IdEntry.Instance);
         enr.SetEntry(new IpEntry(ipAddress));
         enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
         enr.SetEntry(new UdpEntry(30303));
-        enr.EnrSequence = 1;
+        if (includeEth2)
+        {
+            enr.SetEntry(new TestEth2Entry());
+        }
+        enr.EnrSequence = enrSequence;
         new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
         return enr;
+    }
+
+    private sealed class TestEth2Entry() : EnrContentEntry<byte[]>([1, 2, 3, 4])
+    {
+        public override string Key => EnrContentKey.Eth2;
+
+        protected override int GetRlpLengthOfValue() => Nethermind.Serialization.Rlp.Rlp.LengthOf(Value);
+
+        protected override void EncodeValue(Nethermind.Serialization.Rlp.RlpStream rlpStream) => rlpStream.Encode(Value);
     }
 
 }

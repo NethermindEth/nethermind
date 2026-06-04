@@ -90,24 +90,34 @@ namespace Nethermind.Stats.Model
         }
 
         /// <summary>
-        /// Tries to create a node from an Ethereum Node Record with a secp256k1 key and discovery endpoint.
+        /// Tries to create an RLPx peer candidate from an Ethereum Node Record with a secp256k1 key and TCP endpoint.
         /// </summary>
         /// <param name="enr">The Ethereum Node Record to read.</param>
-        /// <param name="node">The node created from the record when the record contains a usable discovery endpoint.</param>
+        /// <param name="node">The node created from the record when the record contains a usable TCP endpoint.</param>
         /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
         public static bool TryFromEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
+            => TryFromEnrEndpoint(enr, enr.TcpIp, enr.TcpPort, out node);
+
+        /// <summary>
+        /// Tries to create a discovery-routing node from an Ethereum Node Record with a secp256k1 key and UDP endpoint.
+        /// </summary>
+        /// <param name="enr">The Ethereum Node Record to read.</param>
+        /// <param name="node">The node created from the record when the record contains a usable UDP discovery endpoint.</param>
+        /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
+        public static bool TryFromDiscoveryEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
+            => TryFromEnrEndpoint(enr, enr.DiscoveryIp, enr.DiscoveryPort, out node);
+
+        private static bool TryFromEnrEndpoint(NodeRecord enr, IPAddress ip, int? port, [MaybeNullWhen(false)] out Node node)
         {
             node = null;
 
             PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
-            IPAddress ip = enr.DiscoveryIp;
-            int? discoveryPort = enr.DiscoveryPort;
-            if (key is null || ip is null || discoveryPort is null || discoveryPort.Value == 0 || (uint)discoveryPort.Value > ushort.MaxValue)
+            if (key is null || ip is null || port is null || port.Value == 0 || (uint)port.Value > ushort.MaxValue)
             {
                 return false;
             }
 
-            node = new Node(key, new IPEndPoint(ip, discoveryPort.Value))
+            node = new Node(key, new IPEndPoint(ip, port.Value))
             {
                 Enr = enr.EnrString
             };

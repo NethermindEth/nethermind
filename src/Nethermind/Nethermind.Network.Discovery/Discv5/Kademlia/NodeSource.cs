@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia;
@@ -33,10 +35,12 @@ public class NodeSource(
 
         foreach (Node node in kademlia.IterateNodes())
         {
-            if (!IsExcluded(node) && recentlyWrittenNodes.TryReserve(node.IdHash))
+            if (!IsExcluded(node) &&
+                TryCreatePeerCandidate(node, out Node? peerCandidate) &&
+                recentlyWrittenNodes.TryReserve(peerCandidate.IdHash))
             {
                 initialNodes++;
-                yield return node;
+                yield return peerCandidate;
             }
         }
 
@@ -57,18 +61,20 @@ public class NodeSource(
 
         void Handler(object? _, Node node)
         {
-            if (IsExcluded(node) || !recentlyWrittenNodes.TryReserve(node.IdHash))
+            if (IsExcluded(node) ||
+                !TryCreatePeerCandidate(node, out Node? peerCandidate) ||
+                !recentlyWrittenNodes.TryReserve(peerCandidate.IdHash))
             {
                 return;
             }
 
-            if (channel.Writer.TryWrite(node))
+            if (channel.Writer.TryWrite(peerCandidate))
             {
-                if (_logger.IsDebug) _logger.Debug($"Discv5 node source queued discovered node {node:s}.");
+                if (_logger.IsDebug) _logger.Debug($"Discv5 node source queued discovered node {peerCandidate:s}.");
                 return;
             }
 
-            recentlyWrittenNodes.Release(node.IdHash);
+            recentlyWrittenNodes.Release(peerCandidate.IdHash);
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Discv5 node source queue is full, dropping discovered node {node:s}.");
@@ -77,4 +83,24 @@ public class NodeSource(
     }
 
     private bool IsExcluded(Node node) => node.IsBootnode || node.IdHash.Equals(_currentNodeHash);
+
+    private bool TryCreatePeerCandidate(Node discoveryNode, [NotNullWhen(true)] out Node? peerCandidate)
+    {
+        peerCandidate = null;
+        if (string.IsNullOrEmpty(discoveryNode.Enr))
+        {
+            return false;
+        }
+
+        try
+        {
+            NodeRecord record = NodeRecord.FromEnrString(discoveryNode.Enr);
+            return Node.TryFromEnr(record, out peerCandidate);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Unable to parse discv5 discovered ENR for {discoveryNode}: {e}");
+            return false;
+        }
+    }
 }

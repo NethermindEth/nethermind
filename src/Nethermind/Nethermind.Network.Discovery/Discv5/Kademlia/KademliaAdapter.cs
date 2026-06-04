@@ -56,6 +56,7 @@ public class KademliaAdapter(
     private readonly LruCache<PendingNonceKey, PendingRequest> _pendingByNonce = new(MaxPendingRequests, "discv5 pending requests");
     private readonly LruCache<ResponseKey, IResponseHandler> _responseHandlers = new(MaxResponseHandlers, "discv5 response handlers");
     private readonly LruCache<Hash256, NodeRecord> _knownRecords = new(MaxKnownRecords, "discv5 known records");
+    private readonly object _knownRecordsLock = new();
     private readonly LruCache<SessionKey, long> _endpointChecks = new(MaxEndpointChecks, "discv5 endpoint checks");
     private readonly AddressBurstLimiter _challengeRateLimiter = new(ChallengeRateLimitBurstPerIp, ChallengeRateLimitFilterSize, ChallengeRateLimitWindow);
 
@@ -423,8 +424,8 @@ public class KademliaAdapter(
 
                     if (IsAcceptableNodeRecord(nodeRecord, nodeId, IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(endpoint.Address)))
                     {
-                        SetKnownRecord(nodeId, nodeRecord);
-                        messageRecord = nodeRecord;
+                        TrySetKnownRecord(nodeId, nodeRecord, out NodeRecord currentRecord);
+                        messageRecord = currentRecord;
                     }
                 }
 
@@ -637,7 +638,7 @@ public class KademliaAdapter(
             NodeRecord record = NodeRecord.FromEnrString(node.Enr);
             if (IsAcceptableNodeRecord(record, node.Id.Hash, IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(node.Address.Address)))
             {
-                SetKnownRecord(node.Id.Hash, record);
+                TrySetKnownRecord(node.Id.Hash, record, out _);
             }
         }
         catch (Exception e)
@@ -708,11 +709,25 @@ public class KademliaAdapter(
 
     private bool TryGetKnownRecord(Hash256 nodeId, [NotNullWhen(true)] out NodeRecord? record) => _knownRecords.TryGet(nodeId, out record);
 
-    private void SetKnownRecord(Hash256 nodeId, NodeRecord record)
-        => _knownRecords.Set(nodeId, record);
+    internal bool TrySetKnownRecord(Hash256 nodeId, NodeRecord record, out NodeRecord currentRecord)
+    {
+        lock (_knownRecordsLock)
+        {
+            if (_knownRecords.TryGet(nodeId, out NodeRecord? knownRecord) && knownRecord.EnrSequence >= record.EnrSequence)
+            {
+                currentRecord = knownRecord;
+                return false;
+            }
+
+            _knownRecords.Set(nodeId, record);
+            currentRecord = record;
+            return true;
+        }
+    }
 
     internal static bool IsAcceptableNodeRecord(NodeRecord record, Hash256 expectedNodeId, bool allowNonRoutable)
-        => Node.TryFromEnr(record, out Node? node) &&
+        => !DiscoveryV5App.IsConsensusOnlyNodeRecord(record) &&
+            Node.TryFromDiscoveryEnr(record, out Node? node) &&
             node.Id.Hash.Equals(expectedNodeId) &&
             DiscoveryV5App.IsDiscoveryAddressAcceptable(node.Address.Address, allowNonRoutable);
 

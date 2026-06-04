@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -140,9 +141,13 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     nodeRecord.SetEntry(new SecP256k1Entry(reportedKey));
                     break;
                 default:
-                    // snap
                     canVerify = false;
+                    int valueStart = ctx.Position;
                     ctx.SkipItem();
+                    int valueLength = ctx.Position - valueStart;
+                    nodeRecord.SetEntry(new UnknownEntry(
+                        Encoding.UTF8.GetString(key),
+                        ctx.Data.Slice(valueStart, valueLength).ToArray()));
                     nodeRecord.Snap = true;
                     break;
             }
