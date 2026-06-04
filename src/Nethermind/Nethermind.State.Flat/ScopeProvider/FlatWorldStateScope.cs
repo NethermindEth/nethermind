@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -268,7 +269,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (totalSlots == 0) return;
 
-        using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot, ValueHash256 SlotHash)> jobs = new(totalSlots, totalSlots);
+        using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot, ValueHash256 SlotHash, uint AddrPrefix)> jobs = new(totalSlots, totalSlots);
         int idx = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
@@ -276,21 +277,28 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
-            int runStart = idx;
+            ValueHash256 addrHash = address.ToAccountPath;
+            uint addrPrefix = BinaryPrimitives.ReadUInt32BigEndian(addrHash.Bytes);
             foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
-                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key, ComputeSlotHash(slotChanges.Key));
+                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key, ComputeSlotHash(slotChanges.Key), addrPrefix);
             foreach (UInt256 readKey in ac.StorageReads)
-                jobs[idx++] = (address, selfDestructIdx, readKey, ComputeSlotHash(readKey));
-            // Issue this account's persistence reads in on-disk slot order. Within one account the
-            // 52-byte storage key's address prefix/suffix are constant, so slotHash alone decides
-            // on-disk order; sweeping it ascending turns scattered point gets into a sequential scan.
-            jobs.AsSpan().Slice(runStart, idx - runStart).Sort(static (a, b) => a.SlotHash.CompareTo(b.SlotHash));
+                jobs[idx++] = (address, selfDestructIdx, readKey, ComputeSlotHash(readKey), addrPrefix);
         }
+
+        // Issue persistence reads in on-disk key order. The flat storage key is
+        // addrHash[0..4] ++ slotHash ++ addrHash[4..20], so ordering by (addrHash prefix, slotHash)
+        // makes the parallel workers sweep a contiguous keyspace slice instead of scattering point
+        // gets; the 16-byte addrHash suffix tie-break is negligible (~1-in-2^32 shared prefix).
+        jobs.AsSpan().Sort(static (a, b) =>
+        {
+            int c = a.AddrPrefix.CompareTo(b.AddrPrefix);
+            return c != 0 ? c : a.SlotHash.CompareTo(b.SlotHash);
+        });
 
         Parallel.For(0, idx, parallelOptions, (j) =>
         {
             if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot, _) = jobs[j];
+            (Address address, int selfDestructIdx, UInt256 slot, _, _) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         });
     }
