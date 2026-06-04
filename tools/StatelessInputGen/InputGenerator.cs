@@ -363,7 +363,7 @@ internal static class InputGenerator
         BlockHeader synthetic = new(
             original.ParentHash ?? Nethermind.Core.Crypto.Keccak.Zero, original.UnclesHash ?? Nethermind.Core.Crypto.Keccak.OfAnEmptySequenceRlp,
             original.Beneficiary ?? Nethermind.Core.Address.Zero, original.Difficulty, latest.Value.BlockNumber, original.GasLimit, latest.Value.Timestamp!.Value, original.ExtraData ?? Array.Empty<byte>())
-            { Hash = original.Hash };
+        { Hash = original.Hash };
         return synthetic;
     }
 
