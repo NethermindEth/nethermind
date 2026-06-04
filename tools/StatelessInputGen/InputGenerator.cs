@@ -75,7 +75,7 @@ internal static class InputGenerator
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fixturePath);
 
-        (Block block, Witness witness, ulong chainId, byte[]? envelope) =
+        (Block block, Witness witness, ulong chainId, byte[]? envelope, System.Text.Json.JsonElement chainConfigJson) =
             FixtureReader.Read(fixturePath, includeChainConfigEnvelope: chainConfigEnvelope);
 
         AnsiConsole.MarkupLine(
@@ -99,10 +99,14 @@ internal static class InputGenerator
         ChainConfig configForResult;
         using (witness)
         {
+            // For synthetic EEST fixtures (timestamps near 0) ForkConfig.From would map
+            // the fake header to pre-Frontier. Detect target fork from chain_config and use
+            // the matching mainnet activation point so the guest picks the intended spec.
+            BlockHeader headerForFork = MaybeOverrideHeader(block.Header, chainConfigJson, chainId);
             ChainConfig chainConfig = new()
             {
                 ChainId = chainId,
-                ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId))
+                ActiveFork = ForkConfig.From(headerForFork, GetSpecProvider(chainId))
             };
             configForResult = chainConfig;
 
@@ -328,4 +332,39 @@ internal static class InputGenerator
         BlockchainIds.Sepolia => SepoliaSpecProvider.Instance,
         _ => throw new ArgumentException($"Unsupported chainId id: {chainId}", nameof(chainId))
     };
+    /// <summary>
+    /// For EEST/test fixtures with synthetic block timing (timestamps near 0 but
+    /// chain_config has e.g. osaka_time=0), pick the latest activated fork from
+    /// chain_config and return a synthetic header whose timestamp matches that
+    /// fork on mainnet. Otherwise return the original header unchanged.
+    /// </summary>
+    private static BlockHeader MaybeOverrideHeader(BlockHeader original, System.Text.Json.JsonElement chainConfig, ulong chainId)
+    {
+        // Only mainnet ChainId 1 gets the override (Hoodi/Sepolia not handled).
+        if (chainId != 1UL) return original;
+        // Order matters: latest entry wins.
+        (string Field, Nethermind.Core.Specs.ForkActivation Activation)[] order =
+        {
+            ("shanghai_time", Nethermind.Specs.MainnetSpecProvider.ShanghaiActivation),
+            ("cancun_time",   Nethermind.Specs.MainnetSpecProvider.CancunActivation),
+            ("prague_time",   Nethermind.Specs.MainnetSpecProvider.PragueActivation),
+            ("osaka_time",    Nethermind.Specs.MainnetSpecProvider.OsakaActivation),
+        };
+        Nethermind.Core.Specs.ForkActivation? latest = null;
+        foreach ((string field, Nethermind.Core.Specs.ForkActivation activation) in order)
+        {
+            if (!chainConfig.TryGetProperty(field, out System.Text.Json.JsonElement el)) continue;
+            if (el.ValueKind == System.Text.Json.JsonValueKind.Null) continue;
+            ulong t = el.GetUInt64();
+            if (t <= original.Timestamp) latest = activation;
+        }
+        if (latest is null) return original;
+        // Real-mainnet block synthesizing to drive ForkConfig.From -> latest fork.
+        BlockHeader synthetic = new(
+            original.ParentHash ?? Nethermind.Core.Crypto.Keccak.Zero, original.UnclesHash ?? Nethermind.Core.Crypto.Keccak.OfAnEmptySequenceRlp,
+            original.Beneficiary ?? Nethermind.Core.Address.Zero, original.Difficulty, latest.Value.BlockNumber, original.GasLimit, latest.Value.Timestamp!.Value, original.ExtraData ?? Array.Empty<byte>())
+            { Hash = original.Hash };
+        return synthetic;
+    }
+
 }
