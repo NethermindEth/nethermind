@@ -35,9 +35,7 @@ public abstract class BarrierSyncFeed<T>(IDb metadataDb, ISpecProvider specProvi
         }
         else if (_metadataDb.KeyExists(BarrierWhenStartedMetadataDbKey))
         {
-            Span<byte> bytes = _metadataDb.GetSpan(BarrierWhenStartedMetadataDbKey);
-            _barrierWhenStarted = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-            _metadataDb.DangerousReleaseMemory(bytes);
+            _barrierWhenStarted = _metadataDb.GetLongFromBigEndianByteArrayWithoutLeadingZeros(BarrierWhenStartedMetadataDbKey);
         }
         else
         {
