@@ -45,7 +45,12 @@ public class FullPruningDiskTest
         public IChainEstimations _chainEstimations = Substitute.For<IChainEstimations>();
         public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
-        public PruningTestBlockchain() => TempDirectory = TempPath.GetTempDirectory();
+        // Full pruning operates on the patricia trie state DB (FullPruningDb); it has no flat equivalent.
+        public PruningTestBlockchain()
+        {
+            TempDirectory = TempPath.GetTempDirectory();
+            UseFlatDb = false;
+        }
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null)
         {
@@ -133,12 +138,6 @@ public class FullPruningDiskTest
                 WaitHandle.Set();
             }
         }
-    }
-
-    [SetUp]
-    public void Setup()
-    {
-        if (PseudoNethermindModule.TestUseFlat) Assert.Ignore("Disabled in flat");
     }
 
     [Test, MaxTime(Timeout.LongTestTime)]

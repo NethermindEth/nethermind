@@ -15,5 +15,5 @@ namespace Nethermind.State.OverridableEnv;
 /// </summary>
 public interface IShareableOverridableEnvSource<T> : IDisposable
 {
-    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null);
+    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
 }

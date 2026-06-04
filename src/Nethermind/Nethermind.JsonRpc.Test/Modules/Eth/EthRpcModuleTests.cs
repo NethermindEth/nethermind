@@ -500,7 +500,8 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_storage_at_missing_trie_node()
     {
-        using Context ctx = await Context.Create();
+        // Asserts the patricia "missing trie node" error, which has no equivalent in the flat backend.
+        using Context ctx = await Context.Create(useFlatDb: false);
         await Task.Delay(100); // Wait a bit for pruning
         ctx.Test.WorldStateManager.FlushCache(CancellationToken.None);
         ctx.Test.StateDb.Clear();
@@ -2708,7 +2709,8 @@ public partial class EthRpcModuleTests
 
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,
-            Action<ContainerBuilder>? configurer = null)
+            Action<ContainerBuilder>? configurer = null,
+            bool useFlatDb = true)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -2722,6 +2724,7 @@ public partial class EthRpcModuleTests
                     .WithBlockchainBridge(blockchainBridge!)
                     .WithConfig(new JsonRpcConfig { EstimateErrorMargin = 0 })
                     .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
+                    .WithFlatDb(useFlatDb)
                     .Build(wrappedConfigurer).Result,
 
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)

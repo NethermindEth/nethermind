@@ -202,6 +202,7 @@ public class TestBlockchain : IDisposable
         JsonSerializer = new EthereumJsonSerializer();
 
         IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         ConfigureContainer(builder, configProvider);
@@ -232,6 +233,12 @@ public class TestBlockchain : IDisposable
 
         return this;
     }
+
+    /// <summary>
+    /// Whether this test chain uses the flat state backend. Set to <c>false</c> for trie-only tests
+    /// (e.g. those asserting patricia-specific internals or full pruning) to pin the patricia backend.
+    /// </summary>
+    public bool UseFlatDb { get; set; } = true;
 
     protected virtual ChainSpec CreateChainSpec() => new();
 

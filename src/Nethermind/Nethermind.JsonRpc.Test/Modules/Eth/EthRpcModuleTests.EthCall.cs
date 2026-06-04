@@ -194,7 +194,8 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_missing_state_after_fast_sync()
     {
-        using Context ctx = await Context.Create();
+        // Simulates pruned/missing patricia state (clears StateDb, persists the pruning trie store); flat has no equivalent.
+        using Context ctx = await Context.Create(useFlatDb: false);
         LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
         {
             From = TestItem.AddressA,
