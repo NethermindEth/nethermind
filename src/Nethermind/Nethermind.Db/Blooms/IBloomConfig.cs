@@ -6,6 +6,9 @@ using Nethermind.Config;
 
 namespace Nethermind.Db.Blooms;
 
+/// <remarks>
+/// See <see cref="Nethermind.Db.ILogIndexConfig"/> for the replacement.
+/// </remarks>
 [Obsolete("BloomStorage has been replaced by the Log Index. This property is now a no-op.")]
 public interface IBloomConfig : IConfig
 {
