@@ -10,7 +10,6 @@ namespace Nethermind.Consensus.Stateless;
 
 public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorator(state)
 {
-    /// <inheritdoc/>
     /// <remarks>
     /// Resolving the code forces a lookup against the witness-backed code database,
     /// which fails if the bytecode was not included in the witness.
