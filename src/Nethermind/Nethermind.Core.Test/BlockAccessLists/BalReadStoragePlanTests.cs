@@ -16,13 +16,13 @@ namespace Nethermind.Core.Test.BlockAccessLists;
 /// absent accounts report no ordinal.
 /// </summary>
 [TestFixture]
-public class BalStorageReadPlanTests
+public class BalReadStoragePlanTests
 {
     // A: 3 reads (linear path). B: 21 reads (binary-search path, > LinearScanThreshold). C: none.
     private static readonly UInt256[] ReadsA = [2, 5, 9];
     private static readonly UInt256[] ReadsB = Enumerable.Range(100, 21).Select(i => (UInt256)i).ToArray();
 
-    private static BalStorageReadPlan BuildPlan() => BalStorageReadPlan.Build(
+    private static BalReadStoragePlan BuildPlan() => BalReadStoragePlan.Build(
         Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(ReadsA).TestObject,
@@ -33,7 +33,7 @@ public class BalStorageReadPlanTests
     [Test]
     public void Read_bases_are_prefix_sums_in_plan_order()
     {
-        BalStorageReadPlan plan = BuildPlan();
+        BalReadStoragePlan plan = BuildPlan();
 
         Assert.That(plan.AccountCount, Is.EqualTo(3));
         Assert.That(plan.TotalReads, Is.EqualTo(ReadsA.Length + ReadsB.Length)); // 24
@@ -52,7 +52,7 @@ public class BalStorageReadPlanTests
     [Test]
     public void Global_ordinals_partition_the_space_account_relative()
     {
-        BalStorageReadPlan plan = BuildPlan();
+        BalReadStoragePlan plan = BuildPlan();
 
         // Every declared read maps to ReadBase + localIndex, and the ordinals tile [0, TotalReads)
         // exactly once (the empty account contributes none).
@@ -77,7 +77,7 @@ public class BalStorageReadPlanTests
     [Test]
     public void Undeclared_slot_and_absent_account_report_no_ordinal()
     {
-        BalStorageReadPlan plan = BuildPlan();
+        BalReadStoragePlan plan = BuildPlan();
 
         Assert.That(plan.TryGetGlobalReadOrdinal(TestItem.AddressA, 7, out int undeclared), Is.False);
         Assert.That(undeclared, Is.EqualTo(-1));
@@ -89,7 +89,7 @@ public class BalStorageReadPlanTests
     [Test]
     public void Ascending_stream_advances_the_cursor_in_order()
     {
-        BalStorageReadPlan plan = BuildPlan();
+        BalReadStoragePlan plan = BuildPlan();
         Assert.That(plan.TryGetAccountIndex(TestItem.AddressB, out int b), Is.True);
 
         int cursor = -1;
@@ -104,7 +104,7 @@ public class BalStorageReadPlanTests
     [Test]
     public void Out_of_order_lookup_falls_back_to_search_without_corrupting_cursor()
     {
-        BalStorageReadPlan plan = BuildPlan();
+        BalReadStoragePlan plan = BuildPlan();
         Assert.That(plan.TryGetAccountIndex(TestItem.AddressB, out int b), Is.True);
 
         int cursor = -1;

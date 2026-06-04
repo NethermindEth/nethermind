@@ -9,7 +9,7 @@ namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
 /// Prefetch destination indexed directly by the dense global read ordinal from
-/// <see cref="BalStorageReadPlan"/> - O(1) store/lookup with no hashing and no eviction, sized
+/// <see cref="BalReadStoragePlan"/> - O(1) store/lookup with no hashing and no eviction, sized
 /// once to the block's exact declared-read count. Used when a block's read set is too large for
 /// the fixed-capacity associative cache (which would conflict-evict).
 /// </summary>

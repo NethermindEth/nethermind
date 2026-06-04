@@ -42,11 +42,11 @@ public class PreBlockCaches
     // destination instead. Below the threshold the StorageCache suffices and none is built.
     public const int StorageReadDestinationThreshold = 32768;
 
-    private BalStorageReadPlan? _storageReadPlan;
+    private BalReadStoragePlan? _storageReadPlan;
     private BalStorageValueCache? _storageValueDestination;
 
     /// <summary>Dense read-ordinal model for the current block, or null when the read set is small.</summary>
-    public BalStorageReadPlan? StorageReadPlan => _storageReadPlan;
+    public BalReadStoragePlan? StorageReadPlan => _storageReadPlan;
 
     /// <summary>Ordinal-keyed prefetch destination for the current block, or null when the read set is small.</summary>
     public BalStorageValueCache? StorageValueDestination => _storageValueDestination;
@@ -61,7 +61,7 @@ public class PreBlockCaches
         ReleaseStorageReadDestination();
         if (bal.TotalStorageReads <= StorageReadDestinationThreshold) return;
 
-        BalStorageReadPlan plan = BalStorageReadPlan.Build(bal);
+        BalReadStoragePlan plan = BalReadStoragePlan.Build(bal);
         _storageReadPlan = plan;
         _storageValueDestination = new BalStorageValueCache(plan.TotalReads);
     }

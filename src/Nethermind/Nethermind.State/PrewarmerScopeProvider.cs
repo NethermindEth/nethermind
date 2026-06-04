@@ -159,7 +159,7 @@ public class PrewarmerScopeProvider(
         private sealed class CacheSink(
             SeqlockCache<AddressAsKey, Account> stateCache,
             SeqlockCache<StorageCell, byte[]> storageCache,
-            BalStorageReadPlan? readPlan,
+            BalReadStoragePlan? readPlan,
             BalStorageValueCache? readDestination
         ) : IWorldStateScopeProvider.IAsyncBalReaderSink
         {

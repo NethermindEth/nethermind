@@ -26,7 +26,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// decoder-sorted <see cref="ReadOnlyAccountChanges.StorageReads"/>. No per-slot hash map is allocated.
 /// </para>
 /// </remarks>
-public sealed class BalStorageReadPlan
+public sealed class BalReadStoragePlan
 {
     /// <summary>Read sets at or below this length use a linear scan; larger ones binary-search.</summary>
     private const int LinearScanThreshold = 16;
@@ -40,7 +40,7 @@ public sealed class BalStorageReadPlan
     /// <summary>Number of BAL accounts, indexable via <see cref="GetAccount"/>.</summary>
     public int AccountCount => _accounts.Length;
 
-    private BalStorageReadPlan(AccountEntry[] accounts, Dictionary<AddressAsKey, int> addressToIndex, int totalReads)
+    private BalReadStoragePlan(AccountEntry[] accounts, Dictionary<AddressAsKey, int> addressToIndex, int totalReads)
     {
         _accounts = accounts;
         _addressToIndex = addressToIndex;
@@ -51,7 +51,7 @@ public sealed class BalStorageReadPlan
     /// Builds the read-ordinal model from a suggested BAL. Accounts keep the BAL's address-sorted
     /// order; <c>ReadBase</c> is the running prefix sum of per-account read counts.
     /// </summary>
-    public static BalStorageReadPlan Build(ReadOnlyBlockAccessList bal)
+    public static BalReadStoragePlan Build(ReadOnlyBlockAccessList bal)
     {
         ReadOnlySpan<ReadOnlyAccountChanges> accounts = bal.AccountChanges.AsSpan();
         AccountEntry[] entries = new AccountEntry[accounts.Length];
@@ -68,7 +68,7 @@ public sealed class BalStorageReadPlan
         }
 
         // readBase has accumulated every account's read count -> the total ordinal space (== bal.TotalStorageReads).
-        return new BalStorageReadPlan(entries, addressToIndex, readBase);
+        return new BalReadStoragePlan(entries, addressToIndex, readBase);
     }
 
     /// <summary>The account at <paramref name="accountIndex"/> (BAL address-sorted order).</summary>
