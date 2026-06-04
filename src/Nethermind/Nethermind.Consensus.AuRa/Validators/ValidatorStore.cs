@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,7 +27,15 @@ namespace Nethermind.Consensus.AuRa.Validators
         public ValidatorStore([KeyFilter(DbNames.BlockInfos)] IDb db)
         {
             _db = db;
-            _latestFinalizedValidatorsBlockNumber = _db.Get(LatestFinalizedValidatorsBlockNumberKey)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? EmptyBlockNumber;
+            _latestFinalizedValidatorsBlockNumber = Get(LatestFinalizedValidatorsBlockNumberKey, EmptyBlockNumber);
+
+            long Get(Hash256 key, long defaultValue)
+            {
+                Span<byte> bytes = _db.GetSpan(key);
+                long value = bytes.IsNull() ? defaultValue : bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                _db.DangerousReleaseMemory(bytes);
+                return value;
+            }
         }
 
         public void SetValidators(long finalizingBlockNumber, Address[] validators)

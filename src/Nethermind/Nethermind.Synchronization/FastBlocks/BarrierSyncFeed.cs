@@ -42,7 +42,9 @@ public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
         }
         else if (_metadataDb.KeyExists(BarrierWhenStartedMetadataDbKey))
         {
-            _barrierWhenStarted = _metadataDb.Get(BarrierWhenStartedMetadataDbKey).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            Span<byte> bytes = _metadataDb.GetSpan(BarrierWhenStartedMetadataDbKey);
+            _barrierWhenStarted = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            _metadataDb.DangerousReleaseMemory(bytes);
         }
         else
         {

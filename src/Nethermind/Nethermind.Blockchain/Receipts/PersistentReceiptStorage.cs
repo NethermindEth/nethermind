@@ -52,7 +52,13 @@ namespace Nethermind.Blockchain.Receipts
         {
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _defaultColumn = _database.GetColumnDb(ReceiptsColumns.Default);
-            long Get(Hash256 key, long defaultValue) => _defaultColumn.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
+            long Get(Hash256 key, long defaultValue)
+            {
+                Span<byte> bytes = _defaultColumn.GetSpan(key);
+                long value = bytes.IsNull() ? defaultValue : bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                _defaultColumn.DangerousReleaseMemory(bytes);
+                return value;
+            }
 
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));

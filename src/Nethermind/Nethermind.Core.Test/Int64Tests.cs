@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
@@ -16,7 +15,7 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = Bytes.FromHexString("7fffffffffffffff");
             long number = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-            number.Should().Be(long.MaxValue);
+            Assert.That(number, Is.EqualTo(long.MaxValue));
         }
 
         [TestCase("0000", 0L)]
@@ -32,8 +31,8 @@ namespace Nethermind.Core.Test
             byte[] bytes = Bytes.FromHexString(hexBytes);
             long viaArray = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
             long viaSpan = bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-            viaArray.Should().Be(expected);
-            viaSpan.Should().Be(expected);
+            Assert.That(viaArray, Is.EqualTo(expected));
+            Assert.That(viaSpan, Is.EqualTo(expected));
         }
 
         [Test]
@@ -41,8 +40,8 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = Bytes.FromHexString("0102030405060708");
             long expected = unchecked((long)0x0102030405060708UL);
-            bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros().Should().Be(expected);
-            bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros().Should().Be(expected);
+            Assert.That(bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+            Assert.That(bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
         }
 
         [TestCase("01ffffffffffffffff", -1L)]
@@ -50,8 +49,8 @@ namespace Nethermind.Core.Test
         public void ToLongFromBytes_Oversized_inputs_keep_last_8_bytes(string hexBytes, long expected)
         {
             byte[] bytes = Bytes.FromHexString(hexBytes);
-            bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros().Should().Be(expected);
-            bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros().Should().Be(expected);
+            Assert.That(bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+            Assert.That(bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
         }
 
         [Test]
@@ -59,7 +58,7 @@ namespace Nethermind.Core.Test
         {
             ReadOnlySpan<byte> span = ReadOnlySpan<byte>.Empty;
             long number = span.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-            number.Should().Be(0L);
+            Assert.That(number, Is.EqualTo(0L));
         }
 
         [Test]
@@ -67,7 +66,7 @@ namespace Nethermind.Core.Test
         {
             byte[]? bytes = null;
             long number = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-            number.Should().Be(0L);
+            Assert.That(number, Is.EqualTo(0L));
         }
     }
 }
