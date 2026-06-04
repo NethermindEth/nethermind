@@ -7,11 +7,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, IFlatDbConfig flatDbConfig, ILogManager logManager) : IPersistence
+public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager) : IPersistence
 {
     private readonly WriteBufferAdjuster _adjuster = new(db);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
-    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, flatDbConfig, logManager.GetClassLogger<RocksDbPersistence>());
+    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, logManager.GetClassLogger<RocksDbPersistence>());
     private int _slotEncodingPersisted = 0;
 
     public void Flush() => db.Flush();

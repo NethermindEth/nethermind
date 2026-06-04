@@ -133,8 +133,8 @@ public static class BasePersistence
     }
 
     /// <summary>
-    /// Decides whether storage slot values should be RLP-wrapped for this DB. The recorded version of an
-    /// existing DB always wins; the config flag only chooses the format for a brand-new DB.
+    /// Decides whether storage slot values are RLP-wrapped for this DB. Brand-new DBs always wrap; the recorded
+    /// version of an existing DB always wins so its on-disk format is read back correctly.
     /// </summary>
     /// <remarks>
     /// An absent <see cref="SlotEncodingKey"/> is ambiguous: a brand-new DB and a DB synced before this
@@ -142,7 +142,7 @@ public static class BasePersistence
     /// previously-synced DB will already have recorded — its presence means raw legacy data, so wrapping is
     /// disabled (with a deprecation warning) to avoid misreading raw values as RLP.
     /// </remarks>
-    internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogger logger)
+    internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, ILogger logger)
     {
         IReadOnlyKeyValueStore meta = db.GetColumnDb(FlatDbColumns.Metadata);
         byte? stored = ReadSlotEncoding(meta);
@@ -153,7 +153,7 @@ public static class BasePersistence
                 case SlotEncodingRlp:
                     return true;
                 case SlotEncodingRaw:
-                    WarnIfRawDeprecated(config, logger);
+                    WarnRawDeprecated(logger);
                     return false;
                 default:
                     throw new InvalidConfigurationException(
@@ -165,21 +165,17 @@ public static class BasePersistence
         bool preExisting = ReadLayout(meta) is not null;
         if (preExisting)
         {
-            WarnIfRawDeprecated(config, logger);
+            WarnRawDeprecated(logger);
             return false;
         }
 
-        return config.RlpWrapStorageSlots;
+        return true;
     }
 
-    /// <summary>
-    /// Warns that the DB is on the deprecated raw slot encoding, but only when the operator actually wants RLP
-    /// (the default). If raw was chosen deliberately via <see cref="IFlatDbConfig.RlpWrapStorageSlots"/>, the
-    /// "please resync" message would be misleading, so it is suppressed.
-    /// </summary>
-    private static void WarnIfRawDeprecated(IFlatDbConfig config, ILogger logger)
+    /// <summary>Warns that the DB is on the deprecated raw slot encoding and should be resynced.</summary>
+    private static void WarnRawDeprecated(ILogger logger)
     {
-        if (config.RlpWrapStorageSlots && logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
+        if (logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
     }
 
     internal static void RecordSlotEncodingOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, bool rlpWrap)

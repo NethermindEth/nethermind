@@ -25,8 +25,13 @@ public class SlotRlpEncodingTests
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
     private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
 
-    private static RocksDbPersistence CreatePersistence(IColumnsDb<FlatDbColumns> db, bool rlpWrap = true) =>
-        new(db, new FlatDbConfig { RlpWrapStorageSlots = rlpWrap }, LimboLogs.Instance);
+    private static RocksDbPersistence CreatePersistence(IColumnsDb<FlatDbColumns> db, bool rlpWrap = true)
+    {
+        // Wrapping is always on for fresh DBs; raw mode only exists for DBs synced before the feature, detected
+        // via a recorded Layout with no SlotEncoding key. Seed that marker to exercise the legacy raw path.
+        if (!rlpWrap) db.GetColumnDb(FlatDbColumns.Metadata).Set(LayoutKey, new[] { (byte)FlatLayout.Flat });
+        return new RocksDbPersistence(db, LimboLogs.Instance);
+    }
 
     private static void WriteSlot(IPersistence persistence, in SlotValue value)
     {

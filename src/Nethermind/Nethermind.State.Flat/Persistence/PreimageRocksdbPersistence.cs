@@ -21,12 +21,12 @@ namespace Nethermind.State.Flat.Persistence;
 /// - Cannot snap sync.
 /// - Cannot import without a complete preimage db.
 /// </summary>
-public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, IFlatDbConfig flatDbConfig, ILogManager logManager) : IPersistence
+public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager) : IPersistence
 {
     private static readonly AccountDecoder SlimAccountDecoder = AccountDecoder.Slim;
     private readonly WriteBufferAdjuster _adjuster = new(db);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.PreimageFlat);
-    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, flatDbConfig, logManager.GetClassLogger<PreimageRocksdbPersistence>());
+    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, logManager.GetClassLogger<PreimageRocksdbPersistence>());
     private int _slotEncodingPersisted = 0;
 
     public void Flush() => db.Flush();
