@@ -26,12 +26,13 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
 {
     protected override void Load(ContainerBuilder builder)
     {
+        builder.Register(static context => new NodesLoaderOptions(
+                LoadBootnodesAsPeerCandidates: (context.Resolve<IDiscoveryConfig>().DiscoveryVersion & DiscoveryVersion.V4) != 0))
+            .SingleInstance();
+
         builder.RegisterType<NodesLoader>()
             .AsSelf()
             .WithAttributeFiltering()
-            .WithParameter(
-                static (parameterInfo, _) => parameterInfo.ParameterType == typeof(bool) && parameterInfo.Name == "loadBootnodesAsPeerCandidates",
-                static (_, context) => (context.Resolve<IDiscoveryConfig>().DiscoveryVersion & DiscoveryVersion.V4) != 0)
             .SingleInstance();
 
         builder

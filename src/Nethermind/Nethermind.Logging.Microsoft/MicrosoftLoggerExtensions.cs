@@ -1,21 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using MsILogger = global::Microsoft.Extensions.Logging.ILogger;
-using MsLogLevel = global::Microsoft.Extensions.Logging.LogLevel;
+using MsLogging = Microsoft.Extensions.Logging;
 
 namespace Nethermind.Logging.Microsoft
 {
     public static class MicrosoftLoggerExtensions
     {
-        public static bool IsError(this MsILogger logger) => logger.IsEnabled(MsLogLevel.Error);
+        public static bool IsError(this MsLogging.ILogger logger) => logger.IsEnabled(MsLogging.LogLevel.Error);
 
-        public static bool IsWarn(this MsILogger logger) => logger.IsEnabled(MsLogLevel.Warning);
+        public static bool IsWarn(this MsLogging.ILogger logger) => logger.IsEnabled(MsLogging.LogLevel.Warning);
 
-        public static bool IsInfo(this MsILogger logger) => logger.IsEnabled(MsLogLevel.Information);
+        public static bool IsInfo(this MsLogging.ILogger logger) => logger.IsEnabled(MsLogging.LogLevel.Information);
 
-        public static bool IsDebug(this MsILogger logger) => logger.IsEnabled(MsLogLevel.Debug);
+        public static bool IsDebug(this MsLogging.ILogger logger) => logger.IsEnabled(MsLogging.LogLevel.Debug);
 
-        public static bool IsTrace(this MsILogger logger) => logger.IsEnabled(MsLogLevel.Trace);
+        public static bool IsTrace(this MsLogging.ILogger logger) => logger.IsEnabled(MsLogging.LogLevel.Trace);
     }
 }

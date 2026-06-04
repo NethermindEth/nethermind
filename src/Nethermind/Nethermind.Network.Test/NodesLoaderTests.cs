@@ -35,7 +35,8 @@ public class NodesLoaderTests
     }
 
     private NodesLoader CreateLoader(bool loadBootnodesAsPeerCandidates = true) =>
-        new(_networkConfig, _statsManager, _peerStorage, _rlpxHost, LimboLogs.Instance, loadBootnodesAsPeerCandidates);
+        new(_networkConfig, _statsManager, _peerStorage, _rlpxHost, LimboLogs.Instance,
+            new NodesLoaderOptions(LoadBootnodesAsPeerCandidates: loadBootnodesAsPeerCandidates));
 
     [Test]
     public void When_no_peers_then_no_peers_nada_zero()
