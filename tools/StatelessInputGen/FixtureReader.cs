@@ -51,7 +51,7 @@ internal static class FixtureReader
     /// the fixture; <see cref="BuildChainConfigEnvelope"/> documents the byte-for-byte
     /// compatibility with the Rust encoder.
     /// </remarks>
-    internal static (Block Block, Witness Witness, ulong ChainId, byte[]? ChainConfigEnvelope) Read(
+    internal static (Block Block, Witness Witness, ulong ChainId, byte[]? ChainConfigEnvelope, System.Text.Json.JsonElement ChainConfigCopy) Read(
         string path, bool includeChainConfigEnvelope = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -81,7 +81,7 @@ internal static class FixtureReader
 
         byte[]? envelope = includeChainConfigEnvelope ? BuildChainConfigEnvelope(chainConfig) : null;
 
-        return (block, witness, chainId, envelope);
+        return (block, witness, chainId, envelope, chainConfig.Clone());
     }
 
     /// <summary>
