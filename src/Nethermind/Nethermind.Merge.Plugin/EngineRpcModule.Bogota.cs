@@ -25,8 +25,8 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     /// <summary>
     /// on top of Amsterdam's <see cref="ExecutionPayloadV4"/>: adds an
-    /// <c>inclusionListTransactions</c> parameter validated against the parent-block state
-    /// snapshot; returns <see cref="PayloadStatus.InclusionListUnsatisfied"/> when any IL tx is
+    /// <c>inclusionListTransactions</c> parameter validated against the post-execution state;
+    /// returns <see cref="PayloadStatus.InclusionListUnsatisfied"/> when any IL tx is
     /// valid but missing.
     /// </summary>
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)

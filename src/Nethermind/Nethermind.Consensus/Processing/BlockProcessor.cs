@@ -84,7 +84,8 @@ public partial class BlockProcessor(
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
-        blockValidator.CheckInclusionList(block, suggestedBlock, _stateProvider, options);
+        if (!blockValidator.ValidateInclusionList(block, suggestedBlock, _stateProvider, options))
+            throw new InclusionListUnsatisfiedException(suggestedBlock);
 
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {

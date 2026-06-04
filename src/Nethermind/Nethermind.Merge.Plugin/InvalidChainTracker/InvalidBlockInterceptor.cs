@@ -20,8 +20,8 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => blockValidator.ValidateOrphanedBlock(block, out error);
 
-    public void CheckInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options) =>
-        blockValidator.CheckInclusionList(processedBlock, suggestedBlock, worldState, options);
+    public bool ValidateInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options) =>
+        blockValidator.ValidateInclusionList(processedBlock, suggestedBlock, worldState, options);
 
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {

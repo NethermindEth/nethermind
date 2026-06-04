@@ -149,16 +149,18 @@ public class BlockValidator(
         ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
 
     /// <inheritdoc/>
-    public void CheckInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options)
+    public bool ValidateInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options)
     {
-        if (options.ContainsFlag(ProcessingOptions.NoValidation)) return;
+        if (options.ContainsFlag(ProcessingOptions.NoValidation)) return true;
         IReleaseSpec spec = _specProvider.GetSpec(processedBlock.Header);
-        if (!spec.InclusionListsEnabled) return;
+        if (!spec.InclusionListsEnabled) return true;
 
-        // The IL is attached to the engine-API payload (suggestedBlock); the post-execution
-        // state lives on the processed copy. Mirror so the spec rule sees both together.
+        // IL is a CL artifact attached via engine API; a null list means non-engine path (genesis, RLP
+        // import) where IL doesn't apply. engine_newPayloadV6 enforces non-null upstream.
+        if (suggestedBlock.InclusionListTransactions is null) return true;
+
         processedBlock.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
-        suggestedBlock.InclusionListUnsatisfied = !InclusionListValidator.IsSatisfied(processedBlock, worldState, spec);
+        return InclusionListValidator.IsSatisfied(processedBlock, worldState, spec);
     }
 
     /// <summary>

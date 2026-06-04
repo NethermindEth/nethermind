@@ -139,8 +139,6 @@ public class Block
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
 
-    public bool InclusionListUnsatisfied { get; set; }
-
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
 

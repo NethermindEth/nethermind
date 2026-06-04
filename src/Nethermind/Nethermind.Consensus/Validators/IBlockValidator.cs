@@ -15,7 +15,7 @@ public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
     bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error);
     bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error);
 
-    /// <summary>Runs the EIP-7805 IL satisfaction check post-execution and stamps the verdict
-    /// on <paramref name="suggestedBlock"/>; no-op when IL is gated off.</summary>
-    void CheckInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options);
+    /// <summary>Runs the EIP-7805 IL satisfaction check against post-execution state.
+    /// Returns <c>true</c> when the IL is satisfied or gated off; <c>false</c> when unsatisfied.</summary>
+    bool ValidateInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options);
 }
