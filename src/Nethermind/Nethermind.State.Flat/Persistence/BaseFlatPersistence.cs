@@ -259,6 +259,18 @@ public static class BaseFlatPersistence
             }
         }
 
+        public void SetStorageEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
+        {
+            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], addrHash, slotHash);
+
+            // The input is the trie leaf value, i.e. RLP(stripped). When wrapping is on that is byte-identical
+            // to our on-disk format, so the bytes are stored verbatim — no decode + re-encode round-trip.
+            // The single DecodeByteArraySpan call validates canonical form and bounds the item exactly.
+            Rlp.ValueDecoderContext ctx = new(rlpValue);
+            ReadOnlySpan<byte> stripped = ctx.DecodeByteArraySpan();
+            storage.PutSpan(theKey, rlpWrapSlots ? rlpValue[..ctx.Position] : stripped, flags);
+        }
+
         public void SetAccount(in ValueHash256 addrHash, ReadOnlySpan<byte> account)
         {
             ReadOnlySpan<byte> key = addrHash.Bytes[..AccountKeyLength];

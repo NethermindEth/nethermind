@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -79,6 +80,14 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
             {
                 inner.SetStorageRaw(addrHash, slotHash, value);
             }
+        }
+
+        // Preimage recording is a non-default decorator; decode and reuse the preimage-aware raw path
+        // rather than passing the encoded bytes straight through.
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
+        {
+            Rlp.ValueDecoderContext ctx = new(rlpValue);
+            SetStorageRaw(addrHash, slotHash, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
         }
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account)

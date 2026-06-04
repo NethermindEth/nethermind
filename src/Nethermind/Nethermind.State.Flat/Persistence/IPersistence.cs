@@ -55,6 +55,13 @@ public interface IPersistence
         void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
 
         void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
+
+        /// <summary>
+        /// Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>), as produced
+        /// during sync. When slot values are RLP-wrapped this avoids the decode + re-encode round-trip of
+        /// <see cref="SetStorageRaw"/>; in raw mode the value is unwrapped to its stripped bytes.
+        /// </summary>
+        void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
         void SetAccountRaw(in ValueHash256 addrHash, Account account);
 
         void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);

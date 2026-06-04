@@ -121,19 +121,15 @@ public class Importer(
                 else
                 {
                     ReadOnlySpan<byte> value = node.Value.AsSpan();
-                    byte[] toWrite;
-
                     if (value.IsEmpty)
                     {
-                        toWrite = StorageTree.ZeroBytes;
+                        writeBatch.SetStorageRaw(address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(StorageTree.ZeroBytes));
                     }
                     else
                     {
-                        Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
-                        toWrite = rlp.DecodeByteArray();
+                        // node.Value is already RLP(stripped) — store verbatim when wrapping, skipping decode + re-encode.
+                        writeBatch.SetStorageRawEncoded(address, fullPath.ToHash256(), value);
                     }
-
-                    writeBatch.SetStorageRaw(address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
                 }
             }
 

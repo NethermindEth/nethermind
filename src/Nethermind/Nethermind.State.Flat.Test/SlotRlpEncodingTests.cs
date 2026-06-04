@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
 
@@ -31,6 +32,17 @@ public class SlotRlpEncodingTests
     {
         using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         batch.SetStorage(Addr, Slot, value);
+    }
+
+    private static void WriteSlotEncoded(IPersistence persistence, byte[] rlpValue)
+    {
+        ValueHash256 addrHash = ValueKeccak.Compute(Addr.Bytes);
+        Span<byte> slotBytes = stackalloc byte[32];
+        Slot.ToBigEndian(slotBytes);
+        ValueHash256 slotHash = ValueKeccak.Compute(slotBytes);
+
+        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        batch.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
     }
 
     private static void WriteRawSlotToDb(IColumnsDb<FlatDbColumns> db, byte[] strippedValue)
@@ -71,6 +83,30 @@ public class SlotRlpEncodingTests
         SlotValue read = default;
         Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
         Assert.That(read.AsReadOnlySpan.ToArray(), Is.EqualTo(value.AsReadOnlySpan.ToArray()));
+    }
+
+    // The sync path feeds the trie-leaf RLP value (RLP(stripped)) directly via SetStorageRawEncoded.
+    [TestCase(true, "05")]
+    [TestCase(false, "05")]
+    [TestCase(true, "0102")]
+    [TestCase(false, "0102")]
+    [TestCase(true, "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
+    public void SetStorageRawEncoded_round_trips_and_stores_verbatim_when_wrapping(bool rlpWrap, string strippedHex)
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        RocksDbPersistence persistence = CreatePersistence(db, rlpWrap);
+
+        byte[] stripped = Bytes.FromHexString(strippedHex);
+        byte[] rlpLeaf = Rlp.Encode((ReadOnlySpan<byte>)stripped).Bytes; // trie leaf value == RLP(stripped)
+        WriteSlotEncoded(persistence, rlpLeaf);
+
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        SlotValue read = default;
+        Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
+        Assert.That(read.ToEvmBytes(), Is.EqualTo(stripped));
+
+        // Wrapping stores the leaf RLP verbatim (no re-encode); raw mode stores the unwrapped stripped bytes.
+        Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(rlpWrap ? rlpLeaf : stripped));
     }
 
     [Test]
