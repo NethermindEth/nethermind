@@ -11,7 +11,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// <summary>
 /// Dense read-ordinal model over a suggested BAL: assigns every declared storage read a unique
 /// global ordinal <c>0 &lt;= g &lt; <see cref="TotalReads"/></c>, built once per block and reused by
-/// the prefetch destination, the no-cache read path, and read-coverage validation.
+/// the prefetch destination, the pure-read path, and read-coverage validation.
 /// </summary>
 /// <remarks>
 /// The ordinal is implied by position, never stored per slot: an account at index <c>a</c> owns the
