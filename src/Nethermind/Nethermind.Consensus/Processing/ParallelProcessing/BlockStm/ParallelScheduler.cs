@@ -309,9 +309,19 @@ public readonly record struct TxTask(TxVersion TxVersion, bool Validating)
 /// Packed (Status, Incarnation) tuple. Stored as a 64-bit aligned struct so the scheduler
 /// can update both fields with a single packed CAS via <c>Unsafe.As&lt;TxState, long&gt;</c>.
 /// </summary>
-[StructLayout(LayoutKind.Explicit)]
+/// <remarks>
+/// The <c>_alignmentAnchor</c> overlay at offset 0 forces the struct's natural alignment to
+/// 8 bytes — without it, alignment would be 4 (the max field alignment of two <c>int</c>s),
+/// and array elements would land on 4-byte boundaries. <c>Interlocked.CompareExchange</c>
+/// and <c>Volatile.Read</c> on a <c>long</c> view at 4-byte alignment is atomic on x86 but
+/// not on ARM64, where it can tear or trap.
+/// </remarks>
+[StructLayout(LayoutKind.Explicit, Size = 8)]
 public struct TxState(int status, int incarnation)
 {
+    [FieldOffset(0)]
+    private long _alignmentAnchor;
+
     [FieldOffset(0)]
     public int Status = status;
 

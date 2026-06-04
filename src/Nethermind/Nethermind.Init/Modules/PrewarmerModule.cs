@@ -19,7 +19,9 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        if (blocksConfig.PreWarmStateOnBlockProcessing)
+        // Block-STM has its own per-block MVCC memoization, so the block-level prewarmer's
+        // PreBlockCaches state fill would be duplicated work competing with the worker pool.
+        if (blocksConfig.PreWarmStateOnBlockProcessing && !blocksConfig.BlockStmEnabled)
         {
             builder
 
