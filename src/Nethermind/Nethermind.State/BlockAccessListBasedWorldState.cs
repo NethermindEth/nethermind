@@ -25,7 +25,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State;
 
-public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogManager logManager) : IWorldState
+public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
     private ReadOnlyBlockAccessList? _suggestedBlockAccessList;
@@ -111,11 +111,34 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
                     .WithoutLeadingZeros();
             }
 
+            // Pure declared read (slotChanges is null) in a large block: serve the prefetched value
+            // from the ordinal destination (byte-identical to parentReader.Get; zero/absent is empty).
+            // A not-yet-loaded slot or small block falls through to the parent reader unchanged.
+            if (slotChanges is null && TryGetPrefetchedRead(in storageCell, out ReadOnlySpan<byte> prefetched))
+            {
+                return prefetched;
+            }
+
             return parentReader.Get(storageCell);
         }
 
         ThrowMissingStorage(storageCell);
         return default;
+    }
+
+    private bool TryGetPrefetchedRead(in StorageCell storageCell, out ReadOnlySpan<byte> value)
+    {
+        if (preBlockCaches?.StorageValueDestination is { } destination
+            && preBlockCaches.StorageReadPlan is { } readPlan
+            && readPlan.TryGetGlobalReadOrdinal(storageCell.Address, storageCell.Index, out int ordinal)
+            && destination.TryGet(ordinal, out byte[]? prefetched))
+        {
+            value = prefetched; // already stripped of leading zeros; null/empty => empty span (zero slot)
+            return true;
+        }
+
+        value = default;
+        return false;
     }
 
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)

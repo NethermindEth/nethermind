@@ -85,6 +85,7 @@ public partial class BlockAccessListManager
         private readonly IWorldState _stateProvider;
         private readonly ILogManager _logManager;
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
+        private readonly PreBlockCaches? _preBlockCaches;
         private int _processorCount;
 
         public ParallelTxProcessorWithWorldStateManager(
@@ -100,6 +101,7 @@ public partial class BlockAccessListManager
             _specProvider = specProvider;
             _stateProvider = stateProvider;
             _logManager = logManager;
+            _preBlockCaches = preBlockCaches;
             _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);
             for (int i = 0; i < ProcessorPoolSize; i++)
             {
@@ -223,7 +225,7 @@ public partial class BlockAccessListManager
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
         private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager);
+            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _preBlockCaches);
 
         private TxProcessorWithWorldState RentProcessor()
         {
@@ -372,14 +374,15 @@ public partial class BlockAccessListManager
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,
             IWorldState stateProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            PreBlockCaches? preBlockCaches = null)
         {
 
             VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
             IWorldState worldState = stateProvider;
             if (parallel)
             {
-                _balWorldState = new BlockAccessListBasedWorldState(stateProvider, logManager);
+                _balWorldState = new BlockAccessListBasedWorldState(stateProvider, logManager, preBlockCaches);
                 worldState = _balWorldState;
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);

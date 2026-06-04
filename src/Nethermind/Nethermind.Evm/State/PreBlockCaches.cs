@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
 using Nethermind.Trie;
@@ -36,6 +37,42 @@ public class PreBlockCaches
     public SeqlockCache<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
+    // Reads beyond the associative StorageCache's 2-way capacity (16384 sets x 2) conflict-evict,
+    // so a block declaring more than this many reads is served from an exact-sized ordinal
+    // destination instead. Below the threshold the StorageCache suffices and none is built.
+    public const int StorageReadDestinationThreshold = 32768;
+
+    private BalStorageReadPlan? _storageReadPlan;
+    private BalStorageValueCache? _storageValueDestination;
+
+    /// <summary>Dense read-ordinal model for the current block, or null when the read set is small.</summary>
+    public BalStorageReadPlan? StorageReadPlan => _storageReadPlan;
+
+    /// <summary>Ordinal-keyed prefetch destination for the current block, or null when the read set is small.</summary>
+    public BalStorageValueCache? StorageValueDestination => _storageValueDestination;
+
+    /// <summary>
+    /// Builds the ordinal-keyed read destination when <paramref name="bal"/> declares more reads than
+    /// the associative cache can hold without conflict-evicting; otherwise leaves it null. Replaces
+    /// (and releases) any prior block's destination.
+    /// </summary>
+    public void BuildStorageReadDestination(ReadOnlyBlockAccessList bal)
+    {
+        ReleaseStorageReadDestination();
+        if (bal.TotalStorageReads <= StorageReadDestinationThreshold) return;
+
+        BalStorageReadPlan plan = BalStorageReadPlan.Build(bal);
+        _storageReadPlan = plan;
+        _storageValueDestination = new BalStorageValueCache(plan.TotalReads);
+    }
+
+    private void ReleaseStorageReadDestination()
+    {
+        _storageValueDestination?.Dispose();
+        _storageValueDestination = null;
+        _storageReadPlan = null;
+    }
+
     public CacheType ClearCaches()
     {
         CacheType isDirty = CacheType.None;
@@ -44,6 +81,7 @@ public class PreBlockCaches
             isDirty |= clearCache();
         }
 
+        ReleaseStorageReadDestination();
         return isDirty;
     }
 

@@ -94,6 +94,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
                 if (bal is not null)
                 {
+                    // Large read sets get an exact-sized ordinal destination the prefetch fills and
+                    // parallel execution consumes; small sets stay on the associative StorageCache.
+                    _preBlockCaches.BuildStorageReadDestination(bal);
                     return _stateProvider.HintBal(bal);
                 }
 
