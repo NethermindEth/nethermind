@@ -34,9 +34,13 @@ public class StatelessBlockProcessingEnv(
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
-    public IWorldState WorldState => _worldState ??= new WorldState(
-        new TrieStoreScopeProvider(new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager),
-        logManager
+    public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
+        new WorldState(
+            new TrieStoreScopeProvider(
+                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager
+            ),
+            logManager
+        )
     );
 
     private BlockProcessor GetProcessor()
