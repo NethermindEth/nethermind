@@ -149,7 +149,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -189,7 +189,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -233,7 +233,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -277,7 +277,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode

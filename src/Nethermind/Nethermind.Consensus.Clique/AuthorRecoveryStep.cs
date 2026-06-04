@@ -8,15 +8,10 @@ using Nethermind.Core.Attributes;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class AuthorRecoveryStep : IBlockPreprocessorStep
+    [method: Todo(Improve.Refactor, "Strong coupling here")]
+    public class AuthorRecoveryStep(ISnapshotManager snapshotManager) : IBlockPreprocessorStep
     {
-        private readonly ISnapshotManager _snapshotManager;
-
-        [Todo(Improve.Refactor, "Strong coupling here")]
-        public AuthorRecoveryStep(ISnapshotManager snapshotManager)
-        {
-            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-        }
+        private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
 
         public void RecoverData(Block block)
         {

@@ -304,7 +304,7 @@ def to_nethermind_runner(chain_name, l1, chain):
             "LogFileName": f"{qualified_name}.log",
         },
         "TxPool": {"BlobsSupport": "Disabled"},
-        "Sync": {"FastSync": True, "SnapSync": True, "FastSyncCatchUpHeightDelta": "10000000000"},
+        "Sync": {"FastSync": True, "SnapSync": True},
         "Discovery": {"DiscoveryVersion": "V5"},
         "JsonRpc": {"Enabled": True, "Port": 8545, "EnginePort": 8551},
         "Pruning": {"PruningBoundary": 256},

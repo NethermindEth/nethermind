@@ -5,72 +5,51 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handler
+public sealed class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IBlockStore blockStore, ILogManager logManager)
+    : IGetPayloadBodiesByRangeV1Handler
 {
-    protected const int MaxCount = 1024;
+    private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeV1Handler));
 
-    protected readonly IBlockTree _blockTree;
-    protected readonly ILogger _logger;
-
-    public GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, ILogManager logManager)
-    {
-        _blockTree = blockTree;
-        _logger = logManager.GetClassLogger();
-    }
-
-    protected bool CheckRangeCount(long start, long count, out string? error, out int errorCode)
+    public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Handle(long start, long count)
     {
         if (start < 1 || count < 1)
         {
-            error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
-
-            if (_logger.IsError) _logger.Error($"{GetType().Name}: ${error}");
-
-            errorCode = ErrorCodes.InvalidParams;
-            return false;
-        }
-
-        if (count > MaxCount)
-        {
-            error = $"The number of requested bodies must not exceed {MaxCount}";
-
+            const string error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
             if (_logger.IsError) _logger.Error($"{GetType().Name}: {error}");
-
-            errorCode = MergeErrorCodes.TooLargeRequest;
-            return false;
+            return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Fail(error, ErrorCodes.InvalidParams);
         }
-        error = null;
-        errorCode = 0;
-        return true;
+
+        if (count > PayloadBodiesHandlerHelper.MaxCount)
+        {
+            string error = $"The number of requested bodies must not exceed {PayloadBodiesHandlerHelper.MaxCount}";
+            if (_logger.IsError) _logger.Error($"{GetType().Name}: {error}");
+            return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+        }
+
+        return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success(GetRequests(start, count));
     }
 
-    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> Handle(long start, long count)
+    private PayloadBodiesV1DirectResponse GetRequests(long start, long count)
     {
-        if (!CheckRangeCount(start, count, out string? error, out int errorCode))
+        long headNumber = blockTree.Head?.Number ?? 0;
+        long end = Math.Min(start + count - 1, headNumber);
+        if (end < start) return new PayloadBodiesV1DirectResponse(Array.Empty<PayloadBodiesV1DirectResponse.PayloadBody?>());
+
+        PayloadBodiesV1DirectResponse.PayloadBody?[] results = new PayloadBodiesV1DirectResponse.PayloadBody?[end - start + 1];
+        for (long i = start; i <= end; i++)
         {
-            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error!, errorCode);
+            results[i - start] = PayloadBodiesHandlerHelper.CreatePayloadBodyV1(
+                blockStore,
+                blockTree.FindHeader(i, PayloadBodiesHandlerHelper.RangeLookupOptions));
         }
 
-        return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(GetRequests(start, count));
-    }
-
-    private IEnumerable<ExecutionPayloadBodyV1Result?> GetRequests(long start, long count)
-    {
-        var headNumber = _blockTree.Head?.Number ?? 0;
-
-        for (long i = start, c = Math.Min(start + count - 1, headNumber); i <= c; i++)
-        {
-            var block = _blockTree.FindBlock(i);
-
-            yield return (block is null ? null : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals));
-        }
-
-        yield break;
+        return new PayloadBodiesV1DirectResponse(results);
     }
 }

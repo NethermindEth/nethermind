@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Ethereum.Test.Base.Interfaces;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -26,9 +25,6 @@ namespace Ethereum.Test.Base
         public Dictionary<Address, AccountState>? PostState { get; set; }
         public Hash256? PostStateRoot { get; set; }
 
-        public override string? ToString()
-        {
-            return Name;
-        }
+        public override string? ToString() => Name;
     }
 }

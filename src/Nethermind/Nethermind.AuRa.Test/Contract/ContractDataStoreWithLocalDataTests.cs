@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Receipts;
@@ -27,7 +26,7 @@ namespace Nethermind.AuRa.Test.Contract
             localDataSource.Data.Returns((IEnumerable<Address>)null);
             TestCase<Address> testCase = BuildTestCase(localDataSource, false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
-            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader).Should().BeEquivalentTo(Enumerable.Empty<Address>());
+            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EquivalentTo(Enumerable.Empty<Address>()));
         }
 
         [Test]
@@ -38,7 +37,7 @@ namespace Nethermind.AuRa.Test.Contract
             localDataSource.Data.Returns(expected);
             TestCase<Address> testCase = BuildTestCase(localDataSource, false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
-            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader).Should().BeEquivalentTo(expected.Cast<object>());
+            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EquivalentTo(expected.Cast<object>()));
         }
 
         [Test]
@@ -51,11 +50,11 @@ namespace Nethermind.AuRa.Test.Contract
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
             localDataSource.Data.Returns(expected);
             localDataSource.Changed += Raise.Event<EventHandler>();
-            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader).Should().BeEquivalentTo(expected.Cast<object>());
+            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EquivalentTo(expected.Cast<object>()));
         }
 
         [Test]
-        public void doesnt_reload_data_from_local_when_changed_not_fired()
+        public void does_not_reload_data_from_local_when_changed_not_fired()
         {
             ILocalDataSource<IEnumerable<Address>> localDataSource = Substitute.For<ILocalDataSource<IEnumerable<Address>>>();
             Address[] expected = { TestItem.AddressA };
@@ -63,7 +62,7 @@ namespace Nethermind.AuRa.Test.Contract
             TestCase<Address> testCase = BuildTestCase(localDataSource, false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
             localDataSource.Data.Returns(new[] { TestItem.AddressA, TestItem.AddressB });
-            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader).Should().BeEquivalentTo(expected.Cast<object>());
+            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EquivalentTo(expected.Cast<object>()));
         }
 
         [Test]
@@ -76,7 +75,7 @@ namespace Nethermind.AuRa.Test.Contract
             testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
 
             Address[] expected = { TestItem.AddressC, TestItem.AddressA };
-            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader).Should().BeEquivalentTo(expected.Cast<object>());
+            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EquivalentTo(expected.Cast<object>()));
 
             Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
             expected = [TestItem.AddressC, TestItem.AddressB];
@@ -86,7 +85,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             Assert.That(
                 () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
-                Is.EquivalentTo(expected.Cast<object>()).After(1000, 100)
+                Is.EquivalentTo(expected.Cast<object>()).After(200, 20)
             );
 
             localDataSource.Data.Returns(new[] { TestItem.AddressC, TestItem.AddressD });
@@ -95,7 +94,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             Assert.That(
                 () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
-                Is.EquivalentTo(expected.Cast<object>()).After(1000, 100)
+                Is.EquivalentTo(expected.Cast<object>()).After(200, 20)
             );
         }
 

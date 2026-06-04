@@ -128,9 +128,6 @@ namespace Nethermind.Core
             BlockInfos = blockInfos;
         }
 
-        public void SwapToMain(int index)
-        {
-            (BlockInfos[index], BlockInfos[0]) = (BlockInfos[0], BlockInfos[index]);
-        }
+        public void SwapToMain(int index) => (BlockInfos[index], BlockInfos[0]) = (BlockInfos[0], BlockInfos[index]);
     }
 }

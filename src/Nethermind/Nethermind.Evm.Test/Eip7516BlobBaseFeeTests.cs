@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
@@ -21,14 +20,9 @@ public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
     [TestCase(true, 20ul)]
     [TestCase(false, 20ul)]
     [TestCase(false, 0ul)]
-    [TestCase(true, 0ul)]
-    [TestCase(true, 100ul)]
-    [TestCase(true, 20ul)]
-    [TestCase(false, 20ul)]
-    [TestCase(false, 0ul)]
     public void Blob_Base_fee_opcode_should_return_expected_results(bool eip7516Enabled, ulong excessBlobGas)
     {
-        _processor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
         byte[] code = Prepare.EvmCode
             .Op(Instruction.BLOBBASEFEE)
             .PushData(0)
@@ -49,7 +43,7 @@ public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
         }
         else
         {
-            tracer.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
+            Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.BadInstruction.ToString()));
             AssertStorage((UInt256)0, (UInt256)0);
         }
     }

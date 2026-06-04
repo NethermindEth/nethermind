@@ -11,27 +11,20 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.FastBlocks;
 
-public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
+public abstract class BarrierSyncFeed<T>(IDb metadataDb, ISpecProvider specProvider, ILogger logger) : ActivatedSyncFeed<T>
 {
     protected abstract long? LowestInsertedNumber { get; }
     protected abstract int BarrierWhenStartedMetadataDbKey { get; }
     protected abstract long SyncConfigBarrierCalc { get; }
     protected abstract Func<bool> HasPivot { get; }
 
-    protected readonly ISpecProvider _specProvider;
-    protected readonly ILogger _logger;
+    protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    protected readonly ILogger _logger = logger;
     protected long _barrier;
     protected long _pivotNumber;
     protected long? _barrierWhenStarted;
 
-    protected readonly IDb _metadataDb;
-
-    public BarrierSyncFeed(IDb metadataDb, ISpecProvider specProvider, ILogger logger)
-    {
-        _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _logger = logger;
-    }
+    protected readonly IDb _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
 
     public void InitializeMetadataDb()
     {
@@ -42,7 +35,7 @@ public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
         }
         else if (_metadataDb.KeyExists(BarrierWhenStartedMetadataDbKey))
         {
-            Span<byte> bytes = _metadataDb.GetSpan(BarrierWhenStartedMetadataDbKey);
+            Span<byte> bytes = _metadataDb.GetSpan(((long)BarrierWhenStartedMetadataDbKey).ToBigEndianSpanWithoutLeadingZeros(out _));
             _barrierWhenStarted = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
             _metadataDb.DangerousReleaseMemory(bytes);
         }

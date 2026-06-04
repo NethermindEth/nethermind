@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Xdc.Spec;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 
 namespace Nethermind.Xdc.Test;
 
@@ -15,48 +17,48 @@ public class XdcSpecProviderTests
     [Test]
     public void V2Configs_ShouldThrow_IfMissingDefaultRoundZero()
     {
-        var bad = new List<V2ConfigParams>
-        {
+        List<V2ConfigParams> bad =
+        [
             new() { SwitchRound = 2000 }
-        };
+        ];
 
-        var p = new XdcChainSpecEngineParameters();
+        XdcChainSpecEngineParameters p = new();
         Action action = () => p.V2Configs = bad;
 
-        action.Should().Throw<InvalidOperationException>();
+        Assert.That(action, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
     public void V2Configs_ShouldThrow_IfDuplicateSwitchRound()
     {
-        var dup = new List<V2ConfigParams>
-        {
+        List<V2ConfigParams> dup =
+        [
             new() { SwitchRound = 0 },
             new() { SwitchRound = 2000 },
             new() { SwitchRound = 2000 },
-        };
+        ];
 
-        var p = new XdcChainSpecEngineParameters();
+        XdcChainSpecEngineParameters p = new();
         Action action = () => p.V2Configs = dup;
 
-        action.Should().Throw<InvalidOperationException>();
+        Assert.That(action, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
     public void V2Configs_ShouldBeSortedBySwitchRound()
     {
-        var unsorted = new List<V2ConfigParams>
-        {
+        List<V2ConfigParams> unsorted =
+        [
             new() { SwitchRound = 8000 },
             new() { SwitchRound = 0 },
             new() { SwitchRound = 2000 },
-        };
+        ];
 
-        var p = new XdcChainSpecEngineParameters { V2Configs = unsorted };
+        XdcChainSpecEngineParameters p = new() { V2Configs = unsorted };
 
-        p.V2Configs[0].SwitchRound.Should().Be(0);
-        p.V2Configs[1].SwitchRound.Should().Be(2000);
-        p.V2Configs[2].SwitchRound.Should().Be(8000);
+        Assert.That(p.V2Configs[0].SwitchRound, Is.EqualTo(0));
+        Assert.That(p.V2Configs[1].SwitchRound, Is.EqualTo(2000));
+        Assert.That(p.V2Configs[2].SwitchRound, Is.EqualTo(8000));
     }
 
     [TestCase(0UL, 0UL)]
@@ -68,16 +70,51 @@ public class XdcSpecProviderTests
     public void ApplyV2Config_PicksExpectedConfigForRound(
         ulong round, ulong expectedSwitchRound)
     {
-        var v2Configs = new List<V2ConfigParams>
-        {
+        List<V2ConfigParams> v2Configs =
+        [
             new() { SwitchRound = 0 },
             new() { SwitchRound = 2000 },
             new() { SwitchRound = 8000 },
             new() { SwitchRound = 220000 },
-        };
+        ];
 
         V2ConfigParams cfg = XdcReleaseSpec.GetConfigAtRound(v2Configs, round);
 
-        cfg.SwitchRound.Should().Be(expectedSwitchRound);
+        Assert.That(cfg.SwitchRound, Is.EqualTo(expectedSwitchRound));
+    }
+
+    [Test]
+    public void GetXdcSpec_ReturnsDifferentSpecInstances()
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip1559Transition = 5,
+            },
+            EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>(),
+        };
+        XdcChainSpecEngineParameters parameters = new()
+        {
+            SwitchBlock = 1,
+            V2Configs =
+            {
+                new() { SwitchRound = 0 },
+                new() { SwitchRound = 10 },
+            }
+        };
+
+
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, parameters, Substitute.For<ILogManager>());
+
+        IXdcReleaseSpec specA = specProvider.GetXdcSpec(6, 6);
+        Assert.That(specA.SwitchRound, Is.EqualTo(0));
+
+        IXdcReleaseSpec specB = specProvider.GetXdcSpec(11, 11);
+        Assert.That(specB.SwitchRound, Is.EqualTo(10));
+
+        Assert.That(specA.SwitchRound, Is.EqualTo(0));
+
+        Assert.That(ReferenceEquals(specA, specB), Is.False);
     }
 }

@@ -25,7 +25,7 @@ public class ShutterKeyValidator(
     ILogManager logManager) : IShutterKeyValidator
 {
     private ulong? _highestValidatedSlot;
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterKeyValidator>();
     private readonly ulong _instanceId = shutterConfig.InstanceID;
     private readonly Lock _lockObject = new();
 
@@ -84,7 +84,7 @@ public class ShutterKeyValidator(
 
         if (decryptionKeys.Keys.Count == 0)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Invalid Shutter decryption keys received: expected placeholder key.");
+            _logger.DebugError("Invalid Shutter decryption keys received: expected placeholder key.");
             return false;
         }
 
@@ -102,7 +102,7 @@ public class ShutterKeyValidator(
             }
             catch (Bls.BlsException e)
             {
-                if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Invalid Shutter decryption keys received.", e);
+                _logger.DebugError("Invalid Shutter decryption keys received.", e);
                 return false;
             }
 

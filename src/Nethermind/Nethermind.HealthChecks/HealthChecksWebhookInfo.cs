@@ -1,4 +1,4 @@
-/* Class to provide useful information in healh checks' webhook notifications */
+/* Class to provide useful information in health checks' webhook notifications */
 
 using System.Net;
 using System;

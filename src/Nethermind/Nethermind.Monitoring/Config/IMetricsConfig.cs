@@ -20,11 +20,17 @@ public interface IMetricsConfig : IConfig
     [ConfigItem(Description = "Whether to publish metrics using .NET diagnostics that can be collected with dotnet-counters.", DefaultValue = "false")]
     bool CountersEnabled { get; }
 
-    [ConfigItem(Description = "The Prometheus Pushgateway instance URL.")]
+    [ConfigItem(Description = "The Prometheus Pushgateway instance URL.", IsSensitive = true)]
     string PushGatewayUrl { get; }
 
     [ConfigItem(DefaultValue = "5", Description = "The frequency of pushing metrics to Prometheus, in seconds.")]
     int IntervalSeconds { get; }
+
+    [ConfigItem(DefaultValue = "60", Description = "The frequency of updating db metrics, in seconds.")]
+    int DbMetricIntervalSeconds { get; }
+
+    [ConfigItem(DefaultValue = "true", Description = "Pause db metric collection during block processing to prevent overhead.")]
+    bool PauseDbMetricDuringBlockProcessing { get; }
 
     [ConfigItem(Description = "The name to display on the Grafana dashboard.", DefaultValue = "Nethermind")]
     string NodeName { get; }

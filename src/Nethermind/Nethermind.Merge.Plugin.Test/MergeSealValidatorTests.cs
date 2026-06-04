@@ -29,18 +29,14 @@ public class MergeSealValidatorTests
             return this;
         }
 
-        public void BaseValidateSealShouldBeForced()
-        {
+        public void BaseValidateSealShouldBeForced() =>
             _baseValidator.Received().ValidateSeal(_blockHeader, true);
-        }
     }
 
     [Test]
-    public void TestTerminalBlockBehaviour()
-    {
+    public void TestTerminalBlockBehaviour() =>
         new Context()
             .WhenHeaderIsTerminalBlock()
             .OnValidateSeal()
             .BaseValidateSealShouldBeForced();
-    }
 }

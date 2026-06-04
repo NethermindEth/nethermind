@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <RootNamespace>Nethermind.DocGen</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

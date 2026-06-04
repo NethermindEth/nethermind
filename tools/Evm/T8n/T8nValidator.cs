@@ -31,7 +31,7 @@ public static class T8nValidator
                 T8nErrorCodes.ErrorConfig);
         }
 
-        var parent = Build.A.BlockHeader.WithNumber(env.CurrentNumber - 1).WithBaseFee(env.ParentBaseFee.Value)
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(env.CurrentNumber - 1).WithBaseFee(env.ParentBaseFee.Value)
             .WithGasUsed(env.ParentGasUsed).WithGasLimit(env.ParentGasLimit).TestObject;
         env.CurrentBaseFee = BaseFeeCalculator.Calculate(parent, spec);
     }
@@ -68,7 +68,7 @@ public static class T8nValidator
             if (env.CurrentRandom is null)
                 throw new T8nException("post-merge requires currentRandom to be defined in env",
                     T8nErrorCodes.ErrorConfig);
-            if (env.CurrentDifficulty?.IsZero ?? false)
+            if (env.CurrentDifficulty is not null && !env.CurrentDifficulty.Value.IsZero)
                 throw new T8nException("post-merge difficulty must be zero (or omitted) in env",
                     T8nErrorCodes.ErrorConfig);
             return;

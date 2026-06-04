@@ -12,20 +12,14 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.GC;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Config;
 using Nethermind.Logging;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.HealthChecks;
 using Nethermind.Init.Steps;
 using Nethermind.Optimism.CL;
 using Nethermind.Specs.ChainSpecStyle;
@@ -40,7 +34,6 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
@@ -55,8 +48,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     private OptimismNethermindApi? _api;
     private ILogger _logger;
-    private ManualBlockFinalizationManager? _blockFinalizationManager;
-
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
@@ -70,9 +61,9 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         StepDependencyException.ThrowIfNull(_api);
 
-        OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
+        OptimismGasLimitCalculator gasLimitCalculator = new();
 
-        IBlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
+        IBlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.CreatePersistent();
 
         return new OptimismPostMergeBlockProducer(
             new OptimismPayloadTxSource(),
@@ -101,14 +92,14 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public Task Init(INethermindApi api)
     {
         _api = (OptimismNethermindApi)api;
-        _logger = _api.LogManager.GetClassLogger();
+        _logger = _api.LogManager.GetClassLogger<OptimismPlugin>();
 
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        _api.FinalizationManager = _blockFinalizationManager = new ManualBlockFinalizationManager();
+        _api.FinalizationManager = new ManualBlockFinalizationManager();
 
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
@@ -127,7 +118,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
 
-        ArgumentNullException.ThrowIfNull(_blockFinalizationManager);
+        ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
 
         IEngineRpcModule engineRpcModule = _api.Context.Resolve<IEngineRpcModule>();
 
@@ -203,13 +194,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         return Task.CompletedTask;
     }
 
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-    {
-        return new StandardBlockProducerRunner(
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new StandardBlockProducerRunner(
             DefaultBlockProductionTrigger,
             _api!.BlockTree!,
             blockProducer);
-    }
 
     public bool MustInitialize => true;
 
@@ -249,6 +237,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
             .AddScoped<IBlockProcessor, OptimismBlockProcessor>()
             .AddScoped<IWithdrawalProcessor, OptimismWithdrawalProcessor>()
+            .AddSingleton<IWithdrawalProcessorFactory, OptimismWithdrawalProcessorFactory>()
             .AddScoped<Create2DeployerContractRewriter>()
             .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
                 new OptimismBlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))

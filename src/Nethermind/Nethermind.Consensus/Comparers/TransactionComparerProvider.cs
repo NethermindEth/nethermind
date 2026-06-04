@@ -9,42 +9,23 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Comparers
 {
-    public class TransactionComparerProvider : ITransactionComparerProvider
+    public class TransactionComparerProvider(ISpecProvider specProvider, IBlockFinder blockFinder)
+        : ITransactionComparerProvider
     {
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockFinder _blockFinder;
-
         // we're caching default comparer
         private IComparer<Transaction>? _defaultComparer = null;
 
-        public TransactionComparerProvider(ISpecProvider specProvider, IBlockFinder blockFinder)
-        {
-            _specProvider = specProvider;
-            _blockFinder = blockFinder;
-        }
-
-        public IComparer<Transaction> GetDefaultComparer()
-        {
-            if (_defaultComparer is null)
-            {
-                IComparer<Transaction> gasPriceComparer = new GasPriceTxComparer(_blockFinder, _specProvider);
-                _defaultComparer = gasPriceComparer
-                    .ThenBy(CompareTxByTimestamp.Instance)
-                    .ThenBy(CompareTxByPoolIndex.Instance)
-                    .ThenBy(CompareTxByGasLimit.Instance);
-            }
-
-            return _defaultComparer;
-        }
-
-        public IComparer<Transaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext)
-        {
-            IComparer<Transaction> gasPriceComparer =
-                new GasPriceTxComparerForProducer(blockPreparationContext, _specProvider);
-            return gasPriceComparer
+        public IComparer<Transaction> GetDefaultComparer() =>
+            _defaultComparer ??= new GasPriceTxComparer(blockFinder, specProvider)
                 .ThenBy(CompareTxByTimestamp.Instance)
                 .ThenBy(CompareTxByPoolIndex.Instance)
                 .ThenBy(CompareTxByGasLimit.Instance);
-        }
+
+        public IComparer<Transaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext) =>
+            new GasPriceTxComparerForProducer(blockPreparationContext, specProvider)
+                .ThenBy(BlobTxPriorityComparer.Instance)
+                .ThenBy(CompareTxByTimestamp.Instance)
+                .ThenBy(CompareTxByPoolIndex.Instance)
+                .ThenBy(CompareTxByGasLimit.Instance);
     }
 }

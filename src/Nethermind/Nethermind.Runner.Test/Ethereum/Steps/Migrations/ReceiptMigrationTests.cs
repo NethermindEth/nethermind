@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -109,7 +109,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 int txCount = blockNum * 2;
                 defaultDb.KeyWasWritten((item => item.Item2 is null), txCount);
                 ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
-                outMemoryReceiptStorage.Count.Should().Be(txCount);
+                Assert.That(outMemoryReceiptStorage.Count, Is.EqualTo(txCount));
             }
             else
             {
@@ -117,39 +117,54 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
         }
 
-        private class TestReceiptStorage : IReceiptStorage
+        [TestCaseSource(nameof(PointerTrackerScenarios))]
+        public void MigrationPointerTracker_advances_pointer_only_across_contiguously_completed_blocks(
+            long to, long[] completionOrder, long[] expectedPointerAfterEachCompletion)
         {
-            private readonly IReceiptStorage _inStorage;
-            private readonly IReceiptStorage _outStorage;
+            InMemoryReceiptStorage receiptStorage = new() { MigratedBlockNumber = to + 1 };
+            ReceiptMigration.MigrationPointerTracker tracker = new(receiptStorage, to);
 
-            public TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage)
+            for (int i = 0; i < completionOrder.Length; i++)
             {
-                _inStorage = inStorage;
-                _outStorage = outStorage;
+                tracker.ReportCompleted(completionOrder[i]);
+                Assert.That(receiptStorage.MigratedBlockNumber, Is.EqualTo(expectedPointerAfterEachCompletion[i]),
+                    $"pointer after completing block {completionOrder[i]}");
             }
+        }
 
-            public Hash256 FindBlockHash(Hash256 txHash) => _inStorage.FindBlockHash(txHash);
+        private static IEnumerable<TestCaseData> PointerTrackerScenarios()
+        {
+            yield return new TestCaseData(3L, new[] { 3L, 2L, 1L, 0L }, new[] { 3L, 2L, 1L, 0L })
+                .SetName("DescendingCompletionAdvancesOneByOne");
+            yield return new TestCaseData(10L, new[] { 10L, 9L, 7L, 8L }, new[] { 10L, 9L, 9L, 7L })
+                .SetName("GapHoldsPointerUntilFilledThenJumps");
+            yield return new TestCaseData(3L, new[] { 0L, 1L, 2L, 3L }, new[] { 4L, 4L, 4L, 0L })
+                .SetName("UnfinishedHighestBlockHoldsPointerUntilItCompletes");
+        }
 
-            public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => _inStorage.Get(block, recover, recoverSender);
+        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptMigrationStore
+        {
+            public Hash256 FindBlockHash(Hash256 txHash) => inStorage.FindBlockHash(txHash);
 
-            public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => _inStorage.Get(blockHash, recover);
+            public void InsertForMigration(Block block, TxReceipt[] receipts) => outStorage.Insert(block, receipts);
 
-            public bool CanGetReceiptsByHash(long blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
-            public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+            public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => inStorage.Get(block, recover, recoverSender);
 
-            public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber) => _outStorage.Insert(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
-            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber) => _outStorage.Insert(block, txReceipts, ensureCanonical, writeFlags, lastBlockNumber);
+            public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => inStorage.Get(blockHash, recover);
+
+            public bool CanGetReceiptsByHash(long blockNumber) => inStorage.CanGetReceiptsByHash(blockNumber);
+            public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+
+            public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber) => outStorage.Insert(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
+            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber) => outStorage.Insert(block, txReceipts, ensureCanonical, writeFlags, lastBlockNumber);
 
             public long MigratedBlockNumber
             {
-                get => _outStorage.MigratedBlockNumber;
-                set => _outStorage.MigratedBlockNumber = value;
+                get => outStorage.MigratedBlockNumber;
+                set => outStorage.MigratedBlockNumber = value;
             }
 
-            public bool HasBlock(long blockNumber, Hash256 hash)
-            {
-                return _outStorage.HasBlock(blockNumber, hash);
-            }
+            public bool HasBlock(long blockNumber, Hash256 hash) => outStorage.HasBlock(blockNumber, hash);
 
             public void EnsureCanonical(Block block)
             {

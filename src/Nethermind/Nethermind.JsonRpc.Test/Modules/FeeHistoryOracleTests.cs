@@ -3,17 +3,18 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.Evm;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,20 +28,20 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GetFeeHistory_BlocksToCheckLess1_ReturnsFailingWrapper()
         {
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
-            var expected = ResultWrapper<FeeHistoryResults>.Fail("blockCount: Value 0 is less than 1", ErrorCodes.InvalidParams);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("blockCount: Value 0 is less than 1", ErrorCodes.InvalidParams);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, BlockParameter.Latest);
-            resultWrapper.Should().BeEquivalentTo(expected);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, BlockParameter.Latest, []);
+            Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
         }
 
         [Test]
         public void GetFeeHistory_HashParameter_ReturnsFailingWrapper()
         {
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
-            var expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, new BlockParameter(TestItem.KeccakA));
-            resultWrapper.Should().BeEquivalentTo(expected);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, new BlockParameter(TestItem.KeccakA), []);
+            Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
         }
 
         [Test]
@@ -49,10 +50,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock(Arg.Any<long>()).Returns((Block?)null);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
-            var expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("upstream does not have the requested block yet", ErrorCodes.InternalError);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long)0));
-            resultWrapper.Should().BeEquivalentTo(expected);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long)0), []);
+            Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
         }
 
 
@@ -64,11 +65,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindPendingBlock().Returns(Build.A.Block.WithNumber(pendingBlockNumber).TestObject);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
-            var expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("upstream does not have the requested block yet", ErrorCodes.InternalError);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(lastBlockNumber));
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(lastBlockNumber), []);
 
-            resultWrapper.Should().BeEquivalentTo(expected);
+            Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
         }
 
         [Test]
@@ -82,8 +83,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, rewardPercentiles);
 
-            resultWrapper.Result.Error.Should().Be("rewardPercentiles: Value at index 4: 1 is less than or equal to the value at previous index 3: 5.");
-            resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
+            Assert.That(resultWrapper.Result.Error, Is.EqualTo("rewardPercentiles: Value at index 4: 1 is less than or equal to the value at previous index 3: 5."));
+            Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
         }
 
         [Test]
@@ -97,12 +98,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             double[] percentiles = Enumerable.Range(1, 999).Select(p => p / 10d).ToArray();
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, percentiles);
 
-            resultWrapper.Result.Error.Should().Be("rewardPercentiles: 999 is over the query limit 100.");
-            resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
+            Assert.That(resultWrapper.Result.Error, Is.EqualTo("rewardPercentiles: 999 is over the query limit 100."));
+            Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
         }
 
-        [TestCase(new double[] { -1, 1, 2 })]
-        [TestCase(new[] { 1, 2.2, 101, 102 })]
+        [TestCase(new double[] { -1, 1, 2 }, TestName = "NegativePercentile")]
+        [TestCase(new[] { 1, 2.2, 101, 102 }, TestName = "PercentileOver100")]
         public void GetFeeHistory_IfRewardPercentilesContainInvalidNumber_ResultsInFailure(double[] rewardPercentiles)
         {
             int blockCount = 10;
@@ -112,8 +113,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, rewardPercentiles);
 
-            resultWrapper.Result.Error.Should().Be("rewardPercentiles: Some values are below 0 or greater than 100.");
-            resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
+            Assert.That(resultWrapper.Result.Error, Is.EqualTo("rewardPercentiles: Some values are below 0 or greater than 100."));
+            Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
         }
 
         [TestCase(3, 3, 5, 6)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5 * 5) / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6
@@ -133,13 +134,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, specProvider: specProvider);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, newestBlock);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, []);
 
-            var resultNextBaseFee = resultWrapper.Data.BaseFeePerGas[1];
-            var resultBaseFee = resultWrapper.Data.BaseFeePerGas[0];
+            UInt256 resultNextBaseFee = resultWrapper.Data.BaseFeePerGas[1];
+            UInt256 resultBaseFee = resultWrapper.Data.BaseFeePerGas[0];
 
-            resultNextBaseFee.Should().Be((UInt256)expectedNextBaseFee);
-            resultBaseFee.Should().Be((UInt256)baseFee);
+            Assert.That(resultNextBaseFee, Is.EqualTo((UInt256)expectedNextBaseFee));
+            Assert.That(resultBaseFee, Is.EqualTo((UInt256)baseFee));
 
         }
 
@@ -159,9 +160,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(true);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, specProvider: specProvider);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, []);
 
-            resultWrapper.Data.GasUsedRatio![0].Should().Be(expectedGasUsedRatio);
+            Assert.That(resultWrapper.Data.GasUsedRatio![0], Is.EqualTo(expectedGasUsedRatio));
         }
 
         [TestCase(3, 3)]
@@ -176,23 +177,22 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockTree.FindBlock(newestBlock).Returns(headBlock);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, specProvider: specProvider);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, []);
 
-            resultWrapper.Data.BaseFeePerGas![1].Should().Be((UInt256)expectedNextBaseFee);
-            resultWrapper.Data.BaseFeePerGas![0].Should().Be((UInt256)baseFee);
+            Assert.That(resultWrapper.Data.BaseFeePerGas![1], Is.EqualTo((UInt256)expectedNextBaseFee));
+            Assert.That(resultWrapper.Data.BaseFeePerGas![0], Is.EqualTo((UInt256)baseFee));
         }
 
-        [TestCase(null)]
-        [TestCase(new double[] { })]
-        public void GetFeeHistory_IfRewardPercentilesIsNullOrEmpty_RewardsIsNull(double[]? rewardPercentiles)
+        [Test]
+        public void GetFeeHistory_IfRewardPercentilesIsEmpty_RewardsIsNull()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock(BlockParameter.Latest).Returns(Build.A.Block.TestObject);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, BlockParameter.Latest, rewardPercentiles);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, BlockParameter.Latest, []);
 
-            resultWrapper.Data.Reward.Should().BeNull();
+            Assert.That(resultWrapper.Data.Reward, Is.Null, "an empty rewardPercentiles array means no reward computation was requested");
         }
 
         [TestCase(5, new ulong[] { 0, 0, 0, 0, 0 })]
@@ -209,7 +209,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, rewardPercentiles);
 
             UInt256[] expectedRewardsUInt256 = expectedRewards.Select(static x => (UInt256)x).ToArray();
-            resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedRewardsUInt256);
+            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(expectedRewardsUInt256));
         }
 
 
@@ -217,7 +217,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(5, 3, 0)]
         public void GetFeeHistory_GivenValidInputs_FirstBlockNumberCalculatedCorrectly(int blockCount, long newestBlockNumber, long expectedOldestBlockNumber)
         {
-            // BlockParameter lastBlockNumber = new(newestBlockNumber);
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             const BlockTreeLookupOptions options = BlockTreeLookupOptions.ExcludeTxHashes |
                                                    BlockTreeLookupOptions.TotalDifficultyNotNeeded |
@@ -244,9 +243,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, newestBlockParameter);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, newestBlockParameter, []);
 
-            resultWrapper.Data.OldestBlock.Should().Be(expectedOldestBlockNumber);
+            Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(expectedOldestBlockNumber));
         }
 
         [TestCase(2, 2)]
@@ -260,9 +259,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper =
-                feeHistoryOracle.GetFeeHistory(1, BlockParameter.Pending);
+                feeHistoryOracle.GetFeeHistory(1, BlockParameter.Pending, []);
 
-            resultWrapper.Data.OldestBlock.Should().Be(lastBlockNumberExpected);
+            Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(lastBlockNumberExpected));
         }
 
         [TestCase(2, 2)]
@@ -276,9 +275,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper =
-                feeHistoryOracle.GetFeeHistory(1, BlockParameter.Latest);
+                feeHistoryOracle.GetFeeHistory(1, BlockParameter.Latest, []);
 
-            resultWrapper.Data.OldestBlock.Should().Be(lastBlockNumberExpected);
+            Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(lastBlockNumberExpected));
         }
 
         [Test]
@@ -289,9 +288,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper =
-                feeHistoryOracle.GetFeeHistory(1, BlockParameter.Earliest);
+                feeHistoryOracle.GetFeeHistory(1, BlockParameter.Earliest, []);
 
-            resultWrapper.Data.OldestBlock.Should().Be(0);
+            Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(0));
         }
 
         [TestCase(new double[] { 20, 40, 60, 80.5 }, new ulong[] { 4, 10, 10, 22 })]
@@ -309,30 +308,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, rewardPercentiles);
 
             UInt256[] expectedUInt256 = expected.Select(static x => (UInt256)x).ToArray();
-            resultWrapper.Data.Reward!.Count.Should().Be(1);
-            resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedUInt256);
+            Assert.That(resultWrapper.Data.Reward!.Count, Is.EqualTo(1));
+            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(expectedUInt256));
         }
 
 
-        private static object[] GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
+        private static IEnumerable<TestCaseData> GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
         {
-            return
-            [
-                new object[]
-                {
-                    new double[][] {[ 20, 40, 60, 80.5 ], [10, 20, 30, 40 ]},
+            yield return new TestCaseData(
+                    new double[][] { [20, 40, 60, 80.5], [10, 20, 30, 40] },
                     new ulong[][] { [4, 10, 10, 22], [4, 4, 10, 10] },
                     3,
-                    15
-                },
-                new object[]
-                {
-                    new double[][] {[ 10, 20, 30, 40 ], [ 20, 40, 60, 80.5 ]},
-                    new ulong[][] {[ 4, 4, 10, 10 ], [ 4, 10, 10, 22 ]},
+                    15)
+                .SetName("High then low percentiles");
+            yield return new TestCaseData(
+                    new double[][] { [10, 20, 30, 40], [20, 40, 60, 80.5] },
+                    new ulong[][] { [4, 4, 10, 10], [4, 10, 10, 22] },
                     3,
-                    15
-                }
-            ];
+                    15)
+                .SetName("Low then high percentiles");
         }
 
         [TestCaseSource(nameof(GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases))]
@@ -344,17 +338,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockParameter newestBlockParameter = new((long)0);
             blockTree.FindBlock(newestBlockParameter).Returns(headBlock);
             IReceiptStorage? receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, new long[] { 10, 20, 30, 40 });
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage, cacheSize: cacheSize);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
             while (repetitions-- > 0)
             {
-                for (var i = 0; i < rewardPercentilesArray.Length; i++)
+                for (int i = 0; i < rewardPercentilesArray.Length; i++)
                 {
                     using ResultWrapper<FeeHistoryResults> resultWrapper =
                         feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, rewardPercentilesArray[i]);
 
                     UInt256[] expectedUInt256 = expectedArray[i].Select(static x => (UInt256)x).ToArray();
-                    resultWrapper.Data.Reward!.Count.Should().Be(1);
-                    resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedUInt256);
+                    Assert.That(resultWrapper.Data.Reward!.Count, Is.EqualTo(1));
+                    Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(expectedUInt256));
                 }
 
             }
@@ -364,9 +358,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
 
-            var txReceiptsArray = new TxReceipt[gasUsedArray.Length];
+            TxReceipt[] txReceiptsArray = new TxReceipt[gasUsedArray.Length];
             txReceiptsArray[0] = new TxReceipt() { GasUsedTotal = gasUsedArray[0] };
-            for (var i = 1; i < gasUsedArray.Length; i++)
+            for (int i = 1; i < gasUsedArray.Length; i++)
             {
                 txReceiptsArray[i] = new TxReceipt()
                 {
@@ -380,7 +374,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private static Transaction[] GetTestTransactions()
         {
-            var transactions = new Transaction[]
+            Transaction[] transactions = new Transaction[]
             {
                 //Rewards:
                 Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(13)
@@ -426,7 +420,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             );
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(2, newestBlockParameter, rewardPercentiles);
-            resultWrapper.Data.Should().BeEquivalentTo(expected);
+            Assert.That(resultWrapper.Data, Is.EqualTo(expected).UsingPropertiesComparer());
 
             static FeeHistoryOracle SetUpFeeHistoryManager(BlockParameter blockParameter, IReleaseSpec spec)
             {
@@ -459,11 +453,54 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
+        [Test]
+        public void GetFeeHistory_BaseFeePerBlobGasNewestPlusOne_UsesNextBlockEstimate()
+        {
+            // The last entry of baseFeePerBlobGas (index = blockCount) is the NEXT block's
+            // estimated fee — derived from CalculateExcessBlobGas(newestBlock.Header), not the current fee.
+            // Use large excess so the fake-exponential produces a fee well above MinBlobGasPrice,
+            // ensuring current and next are numerically distinct after BlobGasUsed=0 reduces excess.
+            const BlockTreeLookupOptions options = BlockTreeLookupOptions.ExcludeTxHashes |
+                                                   BlockTreeLookupOptions.TotalDifficultyNotNeeded |
+                                                   BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+
+            IReleaseSpec spec = Cancun.Instance;
+            ulong excessBlobGas = spec.GasCosts.MaxBlobGasPerBlock * 16;
+            Block block = Build.A.Block.Genesis
+                .WithBaseFeePerGas(1)
+                .WithGasUsed(1).WithGasLimit(10)
+                .WithBlobGasUsed(0)
+                .WithExcessBlobGas(excessBlobGas)
+                .TestObject;
+
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+            blockTree.Head.Returns(block);
+            blockTree.FindBlock(block.Hash!, options, block.Number).Returns(block);
+
+            ISpecProvider specProvider = SpecProviderSubstitute.Create();
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
+
+            FeeHistoryOracle oracle = new(blockTree, Substitute.For<IReceiptStorage>(), specProvider);
+            using ResultWrapper<FeeHistoryResults> result = oracle.GetFeeHistory(1, new BlockParameter(0L), []);
+
+            ArrayPoolList<UInt256> fees = result.Data.BaseFeePerBlobGas;
+            Assert.That(fees.Count, Is.EqualTo(2), "blockCount + 1 entries");
+
+            BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 expectedCurrentFee);
+            Assert.That(fees[0], Is.EqualTo(expectedCurrentFee), "index 0 is the current block's blob base fee");
+
+            ulong nextExcess = BlobGasCalculator.CalculateExcessBlobGas(block.Header, spec) ?? 0;
+            BlobGasCalculator.TryCalculateFeePerBlobGas(nextExcess, spec.BlobBaseFeeUpdateFraction, out UInt256 expectedNextFee);
+            Assert.That(fees[1], Is.EqualTo(expectedNextFee), "index 1 is the next block's estimated blob base fee");
+            Assert.That(fees[1], Is.LessThan(fees[0]), "next fee must be lower since BlobGasUsed=0 reduces excess blob gas");
+        }
+
         private static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
             IBlockTree? blockTree = null,
             IReceiptStorage? receiptStorage = null,
             ISpecProvider? specProvider = null,
-            int? cacheSize = null,
             int? maxDistFromHead = null,
             IReleaseSpec? spec = null)
         {
@@ -474,7 +511,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
             else
             {
-                provider = Substitute.For<ISpecProvider>();
+                provider = SpecProviderSubstitute.Create();
                 provider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
                 if (spec is not null)
                 {

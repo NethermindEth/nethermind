@@ -1,20 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -24,14 +21,13 @@ using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Extensions;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.HealthChecks.Test;
 
 public class NodeHealthServiceTests
 {
-    private static readonly long _freeSpaceBytes = (int)(1.GiB() * 1.5);
+    private static readonly long _freeSpaceBytes = (int)(1.GiB * 1.5);
 
     [Test]
     public void CheckHealth_returns_expected_results([ValueSource(nameof(CheckHealthTestCases))] CheckHealthTest test)
@@ -165,7 +161,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = true,
                 PeerCount = 10,
                 ExpectedHealthy = true,
-                ExpectedErrors = new(),
+                ExpectedErrors = [],
                 ExpectedMessage = "Fully synced. Peers: 10.",
                 ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 10."
             };
@@ -176,7 +172,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = true,
                 PeerCount = 0,
                 ExpectedHealthy = false,
-                ExpectedErrors = new() { "NoPeers" },
+                ExpectedErrors = ["NoPeers"],
                 ExpectedMessage = "Fully synced. Node is not connected to any peers.",
                 ExpectedLongMessage = "The node is now fully synced with a network. Node is not connected to any peers."
             };
@@ -186,7 +182,7 @@ public class NodeHealthServiceTests
                 IsSyncing = true,
                 PeerCount = 7,
                 ExpectedHealthy = false,
-                ExpectedErrors = new(),
+                ExpectedErrors = [],
                 ExpectedMessage = "Still syncing. Peers: 7.",
                 ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 7."
             };
@@ -197,7 +193,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = false,
                 PeerCount = 7,
                 ExpectedHealthy = false,
-                ExpectedErrors = new() { "NotProcessingBlocks" },
+                ExpectedErrors = ["NotProcessingBlocks"],
                 ExpectedMessage = "Fully synced. Peers: 7. Stopped processing blocks.",
                 ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 7. The node stopped processing blocks."
             };
@@ -210,7 +206,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = false,
                 PeerCount = 4,
                 ExpectedHealthy = true,
-                ExpectedErrors = new(),
+                ExpectedErrors = [],
                 ExpectedMessage = "Still syncing. Peers: 4.",
                 ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 4."
             };
@@ -223,7 +219,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = false,
                 PeerCount = 0,
                 ExpectedHealthy = false,
-                ExpectedErrors = new() { "NoPeers" },
+                ExpectedErrors = ["NoPeers"],
                 ExpectedMessage = "Still syncing. Node is not connected to any peers.",
                 ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Node is not connected to any peers."
             };
@@ -236,7 +232,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = false,
                 PeerCount = 1,
                 ExpectedHealthy = false,
-                ExpectedErrors = new() { "NotProcessingBlocks", "NotProducingBlocks" },
+                ExpectedErrors = ["NotProcessingBlocks", "NotProducingBlocks"],
                 ExpectedMessage = "Fully synced. Peers: 1. Stopped processing blocks. Stopped producing blocks.",
                 ExpectedLongMessage = "The node is now fully synced with a network. Peers: 1. The node stopped processing blocks. The node stopped producing blocks."
             };
@@ -249,7 +245,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = true,
                 PeerCount = 1,
                 ExpectedHealthy = true,
-                ExpectedErrors = new(),
+                ExpectedErrors = [],
                 ExpectedMessage = "Fully synced. Peers: 1.",
                 ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 1."
             };
@@ -263,7 +259,7 @@ public class NodeHealthServiceTests
                 PeerCount = 1,
                 AvailableDiskSpacePercent = 4.73,
                 ExpectedHealthy = false,
-                ExpectedErrors = new() { "LowDiskSpace" },
+                ExpectedErrors = ["LowDiskSpace"],
                 ExpectedMessage = "Fully synced. Peers: 1. Low free disk space.",
                 ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 1. The node is running out of free disk space in 'C:/' - only {1.5:F2} GB ({4.73:F2}%) left."
             };
@@ -385,7 +381,7 @@ public class NodeHealthServiceTests
     {
         if (messages.Any(static x => !string.IsNullOrWhiteSpace(x)))
         {
-            var joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
+            string joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
             if (!string.IsNullOrWhiteSpace(joined))
             {
                 return joined + ".";
@@ -397,24 +393,17 @@ public class NodeHealthServiceTests
 
     private class CustomRpcCapabilitiesProvider : IRpcCapabilitiesProvider
     {
-        private readonly Dictionary<string, (bool Enabled, bool WarnIfMissing)> _capabilities = new();
+        private readonly Dictionary<string, RpcCapabilityOptions> _capabilities = [];
 
         public CustomRpcCapabilitiesProvider(IReadOnlyList<string> enabledCapabilities, IReadOnlyList<string> disabledCapabilities)
         {
             foreach (string capability in enabledCapabilities)
-            {
-                _capabilities[capability] = (true, true);
-            }
+                _capabilities[capability] = RpcCapabilityOptions.Enabled | RpcCapabilityOptions.WarnIfMissing;
 
             foreach (string capability in disabledCapabilities)
-            {
-                _capabilities[capability] = (false, false);
-            }
+                _capabilities[capability] = RpcCapabilityOptions.None;
         }
 
-        public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities()
-        {
-            return _capabilities;
-        }
+        public FrozenDictionary<string, RpcCapabilityOptions> GetEngineCapabilities() => _capabilities.ToFrozenDictionary();
     }
 }

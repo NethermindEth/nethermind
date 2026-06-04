@@ -10,15 +10,17 @@ using Nethermind.Evm;
 
 namespace Evm.T8n;
 
-public class T8nBlockHashProvider(Dictionary<long, Hash256?> blockHashes) : IBlockhashProvider
+public class T8nBlockHashProvider(Dictionary<long, Hash256> blockHashes) : IBlockhashProvider
 {
     public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
     {
         long current = currentBlock.Number;
-        return number >= current || number < current - Math.Min(current, BlockhashProvider.MaxDepth)
-            ? null
-            : blockHashes.GetValueOrDefault(number, null) ??
-              throw new T8nException($"BlockHash for block {number} not provided",
+        if (number >= current || number < current - Math.Min(current, BlockhashProvider.MaxDepth))
+            return null;
+
+        return blockHashes.TryGetValue(number, out Hash256? hash)
+            ? hash
+            : throw new T8nException($"BlockHash for block {number} not provided",
                   T8nErrorCodes.ErrorMissingBlockhash);
     }
 

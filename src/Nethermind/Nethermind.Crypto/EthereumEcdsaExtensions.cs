@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -68,7 +67,7 @@ namespace Nethermind.Crypto
             bool applyEip155 = useSignatureChainId
                                || tx.Signature.V == CalculateV(ecdsa.ChainId, false)
                                || tx.Signature.V == CalculateV(ecdsa.ChainId, true);
-            var chainId = tx.Type switch
+            ulong chainId = tx.Type switch
             {
                 TxType.Legacy when useSignatureChainId => tx.Signature.ChainId.Value,
                 TxType.Legacy => ecdsa.ChainId,

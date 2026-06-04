@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\..\src\Nethermind\tests.props" />
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Nethermind.StatsAnalyzer.Plugin.Test</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Testably.Abstractions.Testing"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Core.Test\Nethermind.Core.Test.csproj"/>
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj"/>
+    <ProjectReference Include="..\Nethermind.StatsAnalyzer.Plugin\Nethermind.StatsAnalyzer.Plugin.csproj"/>
+  </ItemGroup>
+
+</Project>

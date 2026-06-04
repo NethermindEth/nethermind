@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using NLog;
 using NLog.Config;
 using NUnit.Framework;
@@ -16,8 +15,8 @@ namespace Nethermind.Logging.NLog.Test
         [Test]
         public void Logger_name_is_set_to_full_class_name()
         {
-            NLogManager manager = new NLogManager("test", null);
-            NLogLogger logger = (NLogLogger)manager.GetClassLogger().UnderlyingLogger;
+            NLogManager manager = new("test", null);
+            NLogLogger logger = (NLogLogger)manager.GetClassLogger<NLogManagerTests>().UnderlyingLogger;
             Assert.That(logger.Name, Is.EqualTo(GetType().FullName.Replace("Nethermind.", string.Empty)));
         }
 
@@ -31,11 +30,11 @@ namespace Nethermind.Logging.NLog.Test
                     IEnumerable<LoggingRule> foundRules = LogManager.Configuration.LoggingRules.Where(r => r.LoggerNamePattern == rules[i]);
                     if (shouldExist)
                     {
-                        foundRules.Should().NotBeEmpty();
+                        Assert.That(foundRules, Is.Not.Empty);
                     }
                     else
                     {
-                        foundRules.Should().BeEmpty();
+                        Assert.That(foundRules, Is.Empty);
                     }
                 }
 
@@ -44,17 +43,24 @@ namespace Nethermind.Logging.NLog.Test
             string[] rulePatterns = { "Abc.*", "Cdf.efg" };
             CheckRules(rulePatterns, false);
             string logRules = string.Join(";", rulePatterns.Select(r => $"{r}:Warn"));
-            NLogManager manager = new("test", null, logRules);
+            _ = new NLogManager("test", null, logRules);
             CheckRules(rulePatterns, true);
         }
 
         [Test]
         public void Create_removes_overwritten_rules()
         {
-            NLogManager manager = new("test", null, "*:Error");
-            LogManager.Configuration.LoggingRules.Should().BeEquivalentTo(
-                new LoggingRule[] { new LoggingRule("*", global::NLog.LogLevel.Error, null) },
-                static c => c.Excluding(static r => r.Targets));
+            _ = new NLogManager("test", null, "*:Error");
+            Assert.That(LogManager.Configuration.LoggingRules, Has.Count.EqualTo(1));
+
+            LoggingRule rule = LogManager.Configuration.LoggingRules.Single();
+            Assert.That(rule.LoggerNamePattern, Is.EqualTo("*"));
+            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Trace), Is.False);
+            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Debug), Is.False);
+            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Info), Is.False);
+            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Warn), Is.False);
+            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Error), Is.True);
+            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Fatal), Is.True);
         }
     }
 }

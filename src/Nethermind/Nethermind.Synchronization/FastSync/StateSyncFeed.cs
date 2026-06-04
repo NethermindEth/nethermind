@@ -1,8 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -11,89 +10,39 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
+    public class StateSyncFeed(TreeSync treeSync, ILogManager logManager) : ISimpleSyncFeed<StateSyncBatch>
     {
-        private const StateSyncBatch EmptyBatch = null;
+        private readonly ILogger _logger = logManager.GetClassLogger<StateSyncFeed>();
 
-        private readonly Stopwatch _handleWatch = new();
-        private readonly ILogger _logger;
-        private readonly TreeSync _treeSync;
-        private bool _disposed = false;
-        private SyncMode _currentSyncMode = SyncMode.None;
-
-        public override bool IsMultiFeed => true;
-
-        public override AllocationContexts Contexts => AllocationContexts.State;
-
-        public StateSyncFeed(
-            TreeSync treeSync,
-            ILogManager logManager)
+        public async Task<StateSyncBatch?> PrepareRequest(CancellationToken token)
         {
-            _treeSync = treeSync ?? throw new ArgumentNullException(nameof(treeSync));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-
-        public override async Task<StateSyncBatch?> PrepareRequest(CancellationToken token = default)
-        {
-            try
+            while (!token.IsCancellationRequested)
             {
-                (bool continueProcessing, bool finishSyncRound) = _treeSync.ValidatePrepareRequest(_currentSyncMode);
-
-                if (finishSyncRound)
+                try
                 {
-                    FinishThisSyncRound();
+                    if (treeSync.IsSyncRoundFinished())
+                        return null;
+
+                    StateSyncBatch? batch = await treeSync.PrepareRequest();
+                    if (batch is not null)
+                        return batch;
+                }
+                catch (Exception e)
+                {
+                    _logger.Error("Error when preparing a state sync batch", e);
                 }
 
-                if (!continueProcessing)
-                {
-                    return EmptyBatch!;
-                }
-
-                return await _treeSync.PrepareRequest();
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error when preparing a batch", e);
-                return EmptyBatch;
-            }
-        }
-
-        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch, PeerInfo? peer = null)
-        {
-            using StateSyncBatch? b = batch;
-            return _treeSync.HandleResponse(b, peer);
-        }
-
-        public void Dispose()
-        {
-            _disposed = true;
-        }
-
-        public override void SyncModeSelectorOnChanged(SyncMode current)
-        {
-            if (_disposed) return;
-            if (CurrentState == SyncFeedState.Dormant)
-            {
-                if ((current & SyncMode.StateNodes) == SyncMode.StateNodes)
-                {
-                    _treeSync.ResetStateRootToBestSuggested(CurrentState);
-                    Activate();
-                }
+                // Pending queue empty or transient error — wait and retry
+                await Task.Delay(50, token);
             }
 
-            _currentSyncMode = current;
+            return null;
         }
 
-        private void FinishThisSyncRound()
+        public SyncResponseHandlingResult HandleResponse(StateSyncBatch batch, PeerInfo? peer = null)
         {
-            lock (_handleWatch)
-            {
-                FallAsleep();
-                _treeSync.ResetStateRoot(CurrentState);
-            }
+            using StateSyncBatch b = batch;
+            return treeSync.HandleResponse(b, peer);
         }
-
-        public override bool IsFinished => false; // Check MultiSyncModeSelector
-        public override string FeedName => nameof(StateSyncFeed);
     }
 }

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -24,6 +23,66 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class GasPriceOracleTests
     {
+        [TestCaseSource(nameof(SelectKthSmallestInPlace_Cases))]
+        public void SelectKthSmallestInPlace_ReturnsCorrectKthElement(uint[] values, int k)
+        {
+            List<UInt256> list = values.Select(static v => (UInt256)v).ToList();
+            UInt256 expected = values.OrderBy(static v => v).Select(static v => (UInt256)v).ElementAt(k);
+
+            UInt256 result = GasPriceOracle.SelectKthSmallestInPlace(list, k);
+
+            Assert.That(result, Is.EqualTo(expected));
+            Assert.That(list, Has.Count.EqualTo(values.Length));
+            Assert.That(list, Is.EquivalentTo(values.Select(static v => (UInt256)v))); // ensures mutation doesn't lose/duplicate items
+        }
+
+        [TestCaseSource(nameof(SelectKthSmallestInPlace_InvalidKCases))]
+        public void SelectKthSmallestInPlace_InvalidK_Throws(uint[] values, int k)
+        {
+            List<UInt256> list = values.Select(static v => (UInt256)v).ToList();
+
+            Action act = () => GasPriceOracle.SelectKthSmallestInPlace(list, k);
+
+            Assert.That(act, Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        private static IEnumerable<TestCaseData> SelectKthSmallestInPlace_Cases()
+        {
+            // single element
+            yield return new TestCaseData(new uint[] { 7 }, 0).SetName("SelectKthSmallestInPlace_SingleElement_k0");
+
+            // two elements
+            yield return new TestCaseData(new uint[] { 2, 1 }, 0).SetName("SelectKthSmallestInPlace_TwoElements_k0");
+            yield return new TestCaseData(new uint[] { 2, 1 }, 1).SetName("SelectKthSmallestInPlace_TwoElements_kLast");
+
+            // already sorted
+            yield return new TestCaseData(new uint[] { 1, 2, 3, 4, 5 }, 0).SetName("SelectKthSmallestInPlace_Sorted_k0");
+            yield return new TestCaseData(new uint[] { 1, 2, 3, 4, 5 }, 4).SetName("SelectKthSmallestInPlace_Sorted_kLast");
+            yield return new TestCaseData(new uint[] { 1, 2, 3, 4, 5 }, 2).SetName("SelectKthSmallestInPlace_Sorted_kMid");
+
+            // reverse sorted (forces lots of swaps)
+            yield return new TestCaseData(new uint[] { 5, 4, 3, 2, 1 }, 0).SetName("SelectKthSmallestInPlace_Reverse_k0");
+            yield return new TestCaseData(new uint[] { 5, 4, 3, 2, 1 }, 4).SetName("SelectKthSmallestInPlace_Reverse_kLast");
+            yield return new TestCaseData(new uint[] { 5, 4, 3, 2, 1 }, 2).SetName("SelectKthSmallestInPlace_Reverse_kMid");
+
+            // duplicates (partition uses < pivot, so equal elements are a good edge case)
+            yield return new TestCaseData(new uint[] { 7, 7, 7, 7 }, 0).SetName("SelectKthSmallestInPlace_AllEqual_k0");
+            yield return new TestCaseData(new uint[] { 7, 7, 7, 7 }, 3).SetName("SelectKthSmallestInPlace_AllEqual_kLast");
+            yield return new TestCaseData(new uint[] { 5, 1, 5, 3, 5, 2 }, 2).SetName("SelectKthSmallestInPlace_Duplicates_kMid");
+
+            // pivot-in-the-middle style layouts (median-of-range pivot)
+            yield return new TestCaseData(new uint[] { 9, 1, 8, 2, 7, 3, 6, 4, 5 }, 4).SetName("SelectKthSmallestInPlace_ZigZag_kMid");
+            yield return new TestCaseData(new uint[] { 100, 1, 50, 2, 49, 3, 48, 4 }, 3).SetName("SelectKthSmallestInPlace_ZigZagEven_kMid");
+        }
+
+        private static IEnumerable<TestCaseData> SelectKthSmallestInPlace_InvalidKCases()
+        {
+            yield return new TestCaseData(Array.Empty<uint>(), 0).SetName("SelectKthSmallestInPlace_Empty_Throws");
+            yield return new TestCaseData(new uint[] { 1 }, -1).SetName("SelectKthSmallestInPlace_kNegative_Throws");
+            yield return new TestCaseData(new uint[] { 1 }, 1).SetName("SelectKthSmallestInPlace_kEqualsCount_Throws");
+            yield return new TestCaseData(new uint[] { 1, 2 }, 2).SetName("SelectKthSmallestInPlace_kGreaterThanLast_Throws");
+        }
+
         [Test]
         public async ValueTask GasPriceEstimate_NoChangeInHeadBlock_ReturnsPreviousGasPrice()
         {
@@ -37,7 +96,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 result = await testGasPriceOracle.GetGasPriceEstimate();
 
-            result.Should().Be((UInt256)7);
+            Assert.That(result, Is.EqualTo((UInt256)7));
         }
 
         [TestCase(null)]
@@ -49,8 +108,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, gasPrice);
 
             UInt256 estimate = await testGasPriceOracle.GetGasPriceEstimate();
-            UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.Wei()) / 100;
-            estimate.Should().BeEquivalentTo(expectedGasPrice);
+            UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.Wei) / 100;
+            Assert.That(estimate, Is.EqualTo(expectedGasPrice));
         }
 
         [TestCase(3)]
@@ -66,14 +125,14 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 estimate = await testGasPriceOracle.GetGasPriceEstimate();
 
-            estimate.Should().BeEquivalentTo((UInt256?)lastGasPrice);
+            Assert.That(estimate, Is.EqualTo((UInt256?)lastGasPrice));
         }
 
         [TestCase(null)]
         [TestCase(100ul)]
         public async ValueTask GasPriceEstimate_EmptyChain_BaseFeeIncluded(ulong? gasPrice)
         {
-            UInt256 baseFeePerGas = 10.GWei();
+            UInt256 baseFeePerGas = 10.GWei;
             Block headBlock = Build.A.Block.WithBaseFeePerGas(baseFeePerGas).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(headBlock);
@@ -82,13 +141,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, gasPrice);
 
             UInt256 estimate = await testGasPriceOracle.GetGasPriceEstimate();
-            estimate.Should().Be((baseFeePerGas + (gasPrice ?? 1.Wei())) * 110 / 100);
+            Assert.That(estimate, Is.EqualTo((baseFeePerGas + (gasPrice ?? 1.Wei)) * 110 / 100));
         }
 
         [Test]
         public async ValueTask GasPriceEstimate_IfCalculatedGasPriceGreaterThanMax_MaxGasPriceReturned()
         {
-            Transaction tx = Build.A.Transaction.WithGasPrice(501.GWei()).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasPrice(501.GWei).TestObject;
             Block headBlock = Build.A.Block.WithTransactions(tx).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(headBlock);
@@ -98,7 +157,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 result = await testGasPriceOracle.GetGasPriceEstimate();
 
-            result.Should().Be(500.GWei());
+            Assert.That(result, Is.EqualTo(500.GWei));
         }
 
         [Test]
@@ -179,7 +238,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Action act = () => testGasPriceOracle.GetGasPriceEstimate();
 
-            act.Should().NotThrow();
+            Assert.That(act, Throws.Nothing);
         }
 
         [Test]
@@ -192,9 +251,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockFinder.FindBlock(0).Returns(headBlock);
             GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance);
 
-            IEnumerable<UInt256> results = testGasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
+            IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.Count().Should().Be(3);
+            Assert.That(results.Count(), Is.EqualTo(3));
         }
 
         [Test]
@@ -204,11 +263,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(testBlock);
             GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance);
-            List<UInt256> expected = new() { 2, 3, 4 };
+            List<UInt256> expected = [2, 3, 4];
 
-            IEnumerable<UInt256> results = testGasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
+            IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.Should().BeEquivalentTo(expected);
+            Assert.That(results, Is.EquivalentTo(expected));
         }
 
         private Transaction[] GetFiveTransactionsWithDifferentGasPrices()
@@ -238,10 +297,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(block);
             GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance);
-            List<UInt256> expected = new() { 8, 9 };
+            List<UInt256> expected = [8, 9];
 
-            IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
-            results.Should().BeEquivalentTo(expected);
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
+            Assert.That(results, Is.EquivalentTo(expected));
         }
 
         [TestCase(true, new ulong[] { 26, 27, 27 })]
@@ -258,10 +317,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockFinder.FindBlock(0).Returns(eip1559Block);
             GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
 
-            IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
             List<UInt256> expectedList = expected.Select(static n => (UInt256)n).ToList();
-            results.Should().BeEquivalentTo(expectedList);
+            Assert.That(results, Is.EquivalentTo(expectedList));
         }
 
         [TestCase(true, new ulong[] { 25, 26, 27 })]
@@ -278,10 +337,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockFinder.FindBlock(0).Returns(nonEip1559Block);
             GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
 
-            IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
             List<UInt256> expectedList = expected.Select(static n => (UInt256)n).ToList();
-            results.Should().BeEquivalentTo(expectedList);
+            Assert.That(results, Is.EquivalentTo(expectedList));
         }
 
         public static ISpecProvider GetSpecProviderWithEip1559EnabledAs(bool isEip1559) =>
@@ -300,11 +359,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(block);
             GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance) { _gasPriceEstimation = new(null, 7) };
-            List<UInt256> expected = new() { 7 };
+            List<UInt256> expected = [7];
 
-            IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.ToList().Should().BeEquivalentTo(expected);
+            Assert.That(results.ToList(), Is.EquivalentTo(expected));
         }
 
         [Test]
@@ -315,11 +374,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(block);
             GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance) { _gasPriceEstimation = new(null, 7) };
-            List<UInt256> expected = new() { 7 };
+            List<UInt256> expected = [7];
 
-            IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.ToList().Should().BeEquivalentTo(expected);
+            Assert.That(results.ToList(), Is.EquivalentTo(expected));
         }
 
         [Test]
@@ -335,11 +394,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(testBlock);
             GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(false), LimboLogs.Instance);
-            List<UInt256> expected = new() { 2, 3 };
+            List<UInt256> expected = [2, 3];
 
-            IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.Should().BeEquivalentTo(expected);
+            Assert.That(results, Is.EquivalentTo(expected));
         }
 
         [Test]
@@ -355,11 +414,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(testBlock);
             GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance);
-            List<UInt256> expected = new() { 3, 4 };
+            List<UInt256> expected = [3, 4];
 
-            IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.Should().BeEquivalentTo(expected);
+            Assert.That(results, Is.EquivalentTo(expected));
         }
     }
 }

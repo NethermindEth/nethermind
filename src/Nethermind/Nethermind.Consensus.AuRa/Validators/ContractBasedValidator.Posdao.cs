@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (ForSealing)
             {
-                var newBlockNumber = parent.Number + 1;
+                long newBlockNumber = parent.Number + 1;
                 if (newBlockNumber < _posdaoTransition)
                 {
                     if (_logger.IsTrace) _logger.Trace("Skipping a call to emitInitiateChange");

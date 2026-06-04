@@ -13,11 +13,9 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -149,10 +147,7 @@ public class ShutterApi : IShutterApi
         TxSource.LoadTransactions(head, parentHeader, keys.Value);
     }
 
-    protected virtual void InitP2P(IPAddress ip)
-    {
-        P2P = new ShutterP2P(_cfg, _logManager, _fileSystem, _keyStoreConfig, ip);
-    }
+    protected virtual void InitP2P(IPAddress ip) => P2P = new ShutterP2P(_cfg, _logManager, _fileSystem, _keyStoreConfig, ip);
 
     protected virtual IShutterEon InitEon()
         => new ShutterEon(_readOnlyBlockTree, _txProcessorSource, _abiEncoder, _cfg, _logManager);

@@ -6,8 +6,5 @@ using Nethermind.Core;
 
 public static class Extensions
 {
-    public static bool Validate(this IHeaderValidator headerValidator, BlockHeader header, BlockHeader? parent, bool isUncle = false)
-    {
-        return headerValidator.Validate(header, parent, isUncle, out _);
-    }
+    public static bool Validate(this IHeaderValidator headerValidator, BlockHeader header, BlockHeader? parent, bool isUncle = false) => headerValidator.Validate(header, parent, isUncle, out _);
 }

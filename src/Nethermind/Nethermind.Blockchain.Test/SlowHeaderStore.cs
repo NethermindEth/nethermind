@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Test;
@@ -26,4 +27,6 @@ public class SlowHeaderStore(IHeaderStore headerStore) : IHeaderStore
     public void Delete(Hash256 blockHash) => headerStore.Delete(blockHash);
     public void InsertBlockNumber(Hash256 blockHash, long blockNumber) => headerStore.InsertBlockNumber(blockHash, blockNumber);
     public long? GetBlockNumber(Hash256 blockHash) => headerStore.GetBlockNumber(blockHash);
+    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count) =>
+        headerStore.FindReversedHeaders(endBlockNumber, endBlockHash, count);
 }

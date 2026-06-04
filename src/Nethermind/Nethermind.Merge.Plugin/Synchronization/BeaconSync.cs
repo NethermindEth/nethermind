@@ -13,65 +13,40 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Synchronization
 {
-    public class BeaconSync : IMergeSyncController, IBeaconSyncStrategy
+    public class BeaconSync(
+        IBeaconPivot beaconPivot,
+        IBlockTree blockTree,
+        ISyncConfig syncConfig,
+        IBlockCacheService blockCacheService,
+        IPoSSwitcher poSSwitcher,
+        ILogManager logManager) : IMergeSyncController, IBeaconSyncStrategy
     {
-        private readonly IBeaconPivot _beaconPivot;
-        private readonly IBlockTree _blockTree;
-        private readonly ISyncConfig _syncConfig;
-        private readonly IBlockCacheService _blockCacheService;
-        private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IBeaconPivot _beaconPivot = beaconPivot;
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly ISyncConfig _syncConfig = syncConfig;
+        private readonly IBlockCacheService _blockCacheService = blockCacheService;
+        private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
         private bool _isInBeaconModeControl = false;
-        private readonly ILogger _logger;
-
-        // beacon header sync can be initialized only when global pivot is already set,
-        // otherwise it might result in conflicting pivots and a deadlock
-        private bool _canInitBeaconHeaderSync = false;
-
-        public BeaconSync(
-            IBeaconPivot beaconPivot,
-            IBlockTree blockTree,
-            ISyncConfig syncConfig,
-            IBlockCacheService blockCacheService,
-            IPoSSwitcher poSSwitcher,
-            ILogManager logManager)
-        {
-            _beaconPivot = beaconPivot;
-            _blockTree = blockTree;
-            _syncConfig = syncConfig;
-            _blockCacheService = blockCacheService;
-            _poSSwitcher = poSSwitcher;
-            _logger = logManager.GetClassLogger();
-        }
+        private readonly ILogger _logger = logManager.GetClassLogger<BeaconSync>();
 
         public void StopSyncing()
         {
             if (!_isInBeaconModeControl)
             {
                 _beaconPivot.RemoveBeaconPivot();
-                _blockCacheService.BlockCache.Clear();
+                _blockCacheService.Clear();
             }
 
             _isInBeaconModeControl = true;
         }
 
-        public bool TryInitBeaconHeaderSync(BlockHeader blockHeader)
+        public void InitBeaconHeaderSync(BlockHeader blockHeader)
         {
-            if (!_canInitBeaconHeaderSync) return false;
-
             StopBeaconModeControl();
             _beaconPivot.EnsurePivot(blockHeader);
-            return true;
         }
 
-        public void StopBeaconModeControl()
-        {
-            _isInBeaconModeControl = false;
-        }
-
-        public void AllowBeaconHeaderSync()
-        {
-            _canInitBeaconHeaderSync = true;
-        }
+        public void StopBeaconModeControl() => _isInBeaconModeControl = false;
 
         public bool ShouldBeInBeaconHeaders()
         {
@@ -132,22 +107,16 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return null;
         }
 
-        public Hash256? GetFinalizedHash()
-        {
-            return _blockCacheService.FinalizedHash;
-        }
+        public Hash256? GetFinalizedHash() => _blockCacheService.FinalizedHash;
 
-        public Hash256? GetHeadBlockHash()
-        {
-            return _blockCacheService.HeadBlockHash;
-        }
+        public Hash256? GetHeadBlockHash() => _blockCacheService.HeadBlockHash;
     }
 
     public interface IMergeSyncController
     {
         void StopSyncing();
 
-        bool TryInitBeaconHeaderSync(BlockHeader blockHeader);
+        void InitBeaconHeaderSync(BlockHeader blockHeader);
 
         void StopBeaconModeControl();
     }

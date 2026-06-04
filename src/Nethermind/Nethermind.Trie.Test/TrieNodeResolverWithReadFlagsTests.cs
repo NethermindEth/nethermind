@@ -11,6 +11,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class TrieNodeResolverWithReadFlagsTests
 {
     [Test]
@@ -29,7 +30,7 @@ public class TrieNodeResolverWithReadFlagsTests
     }
 
     [Test]
-    public void LoadRlp_combine_passed_flaeg()
+    public void LoadRlp_combine_passed_flag()
     {
         ReadFlags theFlags = ReadFlags.HintCacheMiss;
         TestMemDb memDb = new();

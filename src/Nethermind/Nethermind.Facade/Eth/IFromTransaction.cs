@@ -10,15 +10,45 @@ namespace Nethermind.Facade.Eth;
 
 public interface IFromTransaction<out T> : ITxTyped where T : TransactionForRpc
 {
-    static abstract T FromTransaction(Transaction tx, TransactionConverterExtraData extraData);
+    static abstract T FromTransaction(Transaction tx, in TransactionForRpcContext extraData);
 }
 
-public readonly struct TransactionConverterExtraData
+public readonly record struct TransactionForRpcContext
 {
-    public ulong? ChainId { get; init; }
-    public Hash256? BlockHash { get; init; }
-    public long? BlockNumber { get; init; }
-    public int? TxIndex { get; init; }
-    public UInt256? BaseFee { get; init; }
-    public TxReceipt Receipt { get; init; }
+    public ulong? ChainId { get; }
+    public Hash256? BlockHash { get; }
+    public long? BlockNumber { get; }
+    public ulong? BlockTimestamp { get; }
+    public int? TxIndex { get; }
+    public UInt256? BaseFee { get; }
+    public TxReceipt? Receipt { get; }
+
+    public TransactionForRpcContext(ulong chainId)
+    {
+        ChainId = chainId;
+        BlockHash = null;
+        BlockNumber = null;
+        BlockTimestamp = null;
+        TxIndex = null;
+        BaseFee = null;
+        Receipt = null;
+    }
+
+    public TransactionForRpcContext(
+        ulong chainId,
+        Hash256 blockHash,
+        long blockNumber,
+        int txIndex,
+        ulong blockTimestamp,
+        UInt256 baseFee,
+        TxReceipt? receipt = null)
+    {
+        ChainId = chainId;
+        BlockHash = blockHash;
+        BlockNumber = blockNumber;
+        BlockTimestamp = blockTimestamp;
+        TxIndex = txIndex;
+        BaseFee = baseFee;
+        Receipt = receipt;
+    }
 }

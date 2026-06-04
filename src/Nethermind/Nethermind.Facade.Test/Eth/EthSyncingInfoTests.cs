@@ -1,8 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
@@ -84,7 +83,7 @@ namespace Nethermind.Facade.Test.Eth
         [TestCase(false, false, true)]
         [TestCase(true, true, false)]
         public void IsSyncing_AncientBarriers(bool resolverDownloadingBodies,
-            bool resolverDownloadingreceipts, bool expectedResult)
+            bool resolverDownloadingReceipts, bool expectedResult)
         {
             ISyncConfig syncConfig = new SyncConfig
             {
@@ -95,14 +94,14 @@ namespace Nethermind.Facade.Test.Eth
                 // AncientReceiptsBarrierCalc = Max(1, Min(Pivot, Max(BodiesBarrier, ReceiptsBarrier))) = ReceiptsBarrier = 900
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = true,
-                PivotNumber = "1000"
+                PivotNumber = 1000
             };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.SyncPivot.Returns((1000, Keccak.Zero));
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(resolverDownloadingBodies);
-            syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(resolverDownloadingreceipts);
+            syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(resolverDownloadingReceipts);
 
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
@@ -130,30 +129,30 @@ namespace Nethermind.Facade.Test.Eth
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
 
-            ethSyncingInfo.IsSyncing().Should().Be(false);
-            ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds.Should().Be(0);
+            Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(false));
+            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.EqualTo(0));
 
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80).TestObject)
                 .TestObject);
 
             // First call starting timer
-            ethSyncingInfo.IsSyncing().Should().Be(true);
-            ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds.Should().Be(0);
+            Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
+            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.EqualTo(0));
 
             Thread.Sleep(100);
 
             // Second call timer should count some time
-            ethSyncingInfo.IsSyncing().Should().Be(true);
-            ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds.Should().NotBe(0);
+            Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
+            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.Not.EqualTo(0));
 
             // Sync ended time should be zero
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(100).TestObject)
                 .TestObject);
 
-            ethSyncingInfo.IsSyncing().Should().Be(false);
-            ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds.Should().Be(0);
+            Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(false));
+            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.EqualTo(0));
         }
 
         [TestCase(6178001L, 6178000L)]
@@ -171,7 +170,7 @@ namespace Nethermind.Facade.Test.Eth
             {
                 FastSync = true,
                 SnapSync = true,
-                PivotNumber = "0", // Equivalent to not having a pivot
+                PivotNumber = 0, // Equivalent to not having a pivot
             };
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.100-noble@sha256:c7445f141c04f1a6b454181bd098dcfa606c61ba0bd213d0a702489e5bd4cd71 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.300-resolute@sha256:8b3c86c1a43c4d084c20be348dfa8821508003cf5caf02146d30de76256d1dab AS build
 
 ARG BUILD_CONFIG=release
 ARG CI=true
@@ -13,6 +13,7 @@ WORKDIR /nethermind
 
 COPY src/Nethermind src/Nethermind
 COPY Directory.*.props .
+COPY Directory.Build.targets .
 COPY global.json .
 COPY nuget.config .
 
@@ -28,9 +29,13 @@ RUN cd /publish && \
   mkdir logs && \
   mkdir nethermind_db
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.0-noble-chiseled@sha256:5730fa91fab5ec91f69661b86897249ad6a01c8da6da557695e9da4c6bc83621
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.8-resolute-chiseled@sha256:deca9bb91992932c95d051081c5fb8638f226f36d8cce64637530f4da9648fca
 
 WORKDIR /nethermind
+
+# For large pages
+# ENV DOTNET_GCLargePages=1
+# ENV DOTNET_GCRegionRange=0x800000000
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs

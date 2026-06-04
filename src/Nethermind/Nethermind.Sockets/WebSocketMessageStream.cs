@@ -13,16 +13,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Sockets;
 
-public sealed class WebSocketMessageStream : Stream, IMessageBorderPreservingStream
+public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logManager) : Stream, IMessageBorderPreservingStream
 {
-    private readonly WebSocket _socket;
-    private readonly ILogger _logger;
-
-    public WebSocketMessageStream(WebSocket socket, ILogManager logManager)
-    {
-        _socket = socket;
-        _logger = logManager.GetClassLogger<WebSocketMessageStream>();
-    }
+    private readonly WebSocket _socket = socket;
+    private readonly ILogger _logger = logManager.GetClassLogger<WebSocketMessageStream>();
 
     public override bool CanRead => true;
     public override bool CanSeek => false;

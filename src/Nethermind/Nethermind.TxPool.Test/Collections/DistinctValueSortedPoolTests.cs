@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
@@ -34,7 +33,7 @@ namespace Nethermind.TxPool.Test.Collections
             Enumerable.Range(0, count).Select(i =>
             {
                 UInt256 iUint256 = (UInt256)i;
-                var transaction = Build.A.Transaction.WithGasPrice(gasPrice ?? iUint256).WithNonce(nonce ?? iUint256)
+                Transaction transaction = Build.A.Transaction.WithGasPrice(gasPrice ?? iUint256).WithNonce(nonce ?? iUint256)
                     .WithSenderAddress(address ?? TestItem.Addresses[i]).TestObject;
                 transaction.Hash = Keccak.Compute(i.ToString());
                 return transaction;
@@ -73,33 +72,33 @@ namespace Nethermind.TxPool.Test.Collections
         [TestCaseSource(nameof(DistinctTestCases))]
         public void Distinct_transactions_are_all_added(Transaction[] transactions, int expectedCount)
         {
-            var pool = new TxDistinctSortedPool(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
+            TxDistinctSortedPool pool = new(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 
             Parallel.ForEach(transactions, transaction =>
             {
                 pool.TryInsert(transaction.Hash, transaction);
             });
 
-            pool.Count.Should().Be(expectedCount);
+            Assert.That(pool.Count, Is.EqualTo(expectedCount));
         }
 
         [TestCase(true)]
         [TestCase(false)]
         public void Same_transactions_are_all_replaced_with_highest_gas_price(bool gasPriceAscending)
         {
-            var pool = new TxDistinctSortedPool(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
+            TxDistinctSortedPool pool = new(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 
-            var transactions = gasPriceAscending
+            IOrderedEnumerable<Transaction> transactions = gasPriceAscending
                 ? GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderBy(static t => t.GasPrice)
                 : GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderByDescending(static t => t.GasPrice);
 
-            foreach (var transaction in transactions)
+            foreach (Transaction transaction in transactions)
             {
                 pool.TryInsert(transaction.Hash, transaction);
             }
 
-            pool.Count.Should().Be(1);
-            pool.GetSnapshot().First().GasPrice.Should().Be(Capacity - 1);
+            Assert.That(pool.Count, Is.EqualTo(1));
+            Assert.That(pool.GetSnapshot().First().GasPrice, Is.EqualTo((UInt256)(Capacity - 1)));
         }
 
         private static int _finalizedCount;
@@ -109,10 +108,7 @@ namespace Nethermind.TxPool.Test.Collections
         {
             public int Index { get; }
 
-            public WithFinalizer()
-            {
-                Index = Interlocked.Increment(ref _allCount);
-            }
+            public WithFinalizer() => Index = Interlocked.Increment(ref _allCount);
 
             public WithFinalizer(int index)
             {
@@ -120,45 +116,23 @@ namespace Nethermind.TxPool.Test.Collections
                 Interlocked.Increment(ref _allCount);
             }
 
-            ~WithFinalizer()
-            {
-                Interlocked.Increment(ref _finalizedCount);
-            }
+            ~WithFinalizer() => Interlocked.Increment(ref _finalizedCount);
         }
 
         private class WithFinalizerComparer : IEqualityComparer<WithFinalizer>
         {
-            public bool Equals(WithFinalizer x, WithFinalizer y)
-            {
-                return x?.Index == y?.Index;
-            }
+            public bool Equals(WithFinalizer x, WithFinalizer y) => x?.Index == y?.Index;
 
-            public int GetHashCode(WithFinalizer obj)
-            {
-                return obj.Index.GetHashCode();
-            }
+            public int GetHashCode(WithFinalizer obj) => obj.Index.GetHashCode();
         }
 
-        private class ShrinkableDistinctPool : WithFinalizerDistinctPool
+        private class ShrinkableDistinctPool(int capacity, IComparer<DistinctValueSortedPoolTests.WithFinalizer> comparer, IEqualityComparer<DistinctValueSortedPoolTests.WithFinalizer> distinctComparer, ILogManager logManager) : WithFinalizerDistinctPool(capacity, comparer, distinctComparer, logManager)
         {
-            public ShrinkableDistinctPool(int capacity, IComparer<WithFinalizer> comparer, IEqualityComparer<WithFinalizer> distinctComparer, ILogManager logManager)
-                : base(capacity, comparer, distinctComparer, logManager)
-            {
-            }
-
-            public void Shrink(int capacity)
-            {
-                EnsureCapacity(capacity);
-            }
+            public void Shrink(int capacity) => EnsureCapacity(capacity);
         }
 
-        private class WithFinalizerDistinctPool : DistinctValueSortedPool<int, WithFinalizer, int>
+        private class WithFinalizerDistinctPool(int capacity, IComparer<DistinctValueSortedPoolTests.WithFinalizer> comparer, IEqualityComparer<DistinctValueSortedPoolTests.WithFinalizer> distinctComparer, ILogManager logManager) : DistinctValueSortedPool<int, WithFinalizer, int>(capacity, comparer, distinctComparer, logManager)
         {
-            public WithFinalizerDistinctPool(int capacity, IComparer<WithFinalizer> comparer, IEqualityComparer<WithFinalizer> distinctComparer, ILogManager logManager)
-                : base(capacity, comparer, distinctComparer, logManager)
-            {
-            }
-
             protected override IComparer<WithFinalizer> GetUniqueComparer(IComparer<WithFinalizer> comparer) => comparer;
 
             protected override IComparer<WithFinalizer> GetGroupComparer(IComparer<WithFinalizer> comparer) => comparer;
@@ -183,7 +157,7 @@ namespace Nethermind.TxPool.Test.Collections
         [Test]
         public void Capacity_is_never_exceeded()
         {
-            var pool = new WithFinalizerDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            WithFinalizerDistinctPool pool = new(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             int capacityMultiplier = 10;
             int expectedAllCount = Capacity * capacityMultiplier;
@@ -199,9 +173,9 @@ namespace Nethermind.TxPool.Test.Collections
 
             CollectAndFinalize();
 
-            _allCount.Should().Be(expectedAllCount);
-            _finalizedCount.Should().BeLessThanOrEqualTo(expectedAllCount - Capacity);
-            pool.Count.Should().Be(Capacity);
+            Assert.That(_allCount, Is.EqualTo(expectedAllCount));
+            Assert.That(_finalizedCount, Is.LessThanOrEqualTo(expectedAllCount - Capacity));
+            Assert.That(pool.Count, Is.EqualTo(Capacity));
         }
 
         [TestCase(0, 16)]
@@ -213,7 +187,7 @@ namespace Nethermind.TxPool.Test.Collections
         [TestCase(13, 6)]
         public void Capacity_can_shrink_to_given_value(int shrinkValue, int expectedCapacity)
         {
-            var pool = new ShrinkableDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            ShrinkableDistinctPool pool = new(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             int capacityMultiplier = 10;
             int expectedAllCount = Capacity * capacityMultiplier;
@@ -227,13 +201,13 @@ namespace Nethermind.TxPool.Test.Collections
             CollectAndFinalize();
 
             pool.Shrink(Capacity - shrinkValue);
-            pool.Count.Should().Be(expectedCapacity);
+            Assert.That(pool.Count, Is.EqualTo(expectedCapacity));
         }
 
         [Test]
         public void Capacity_is_never_exceeded_when_there_are_duplicates()
         {
-            var pool = new WithFinalizerDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            WithFinalizerDistinctPool pool = new(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             int capacityMultiplier = 10;
 
@@ -245,19 +219,19 @@ namespace Nethermind.TxPool.Test.Collections
 
             CollectAndFinalize();
 
-            _finalizedCount.Should().BeLessThanOrEqualTo(Capacity * (capacityMultiplier - 1));
-            _allCount.Should().Be(Capacity * capacityMultiplier);
-            pool.Count.Should().Be(Capacity);
+            Assert.That(_finalizedCount, Is.LessThanOrEqualTo(Capacity * (capacityMultiplier - 1)));
+            Assert.That(_allCount, Is.EqualTo(Capacity * capacityMultiplier));
+            Assert.That(pool.Count, Is.EqualTo(Capacity));
         }
 
         [Test]
         public async Task Capacity_is_never_exceeded_with_multiple_threads()
         {
             int capacityMultiplier = 10;
-            _finalizedCount.Should().Be(0);
-            _allCount.Should().Be(0);
+            Assert.That(_finalizedCount, Is.EqualTo(0));
+            Assert.That(_allCount, Is.EqualTo(0));
 
-            var pool = new WithFinalizerDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            WithFinalizerDistinctPool pool = new(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             void KeepGoing(int iterations)
             {
@@ -290,8 +264,8 @@ namespace Nethermind.TxPool.Test.Collections
             CollectAndFinalize();
 
             int expectedAllCount = Capacity * capacityMultiplier * 3;
-            _allCount.Should().Be(expectedAllCount);
-            _finalizedCount.Should().BeGreaterThanOrEqualTo(expectedAllCount - Capacity);
+            Assert.That(_allCount, Is.EqualTo(expectedAllCount));
+            Assert.That(_finalizedCount, Is.GreaterThanOrEqualTo(expectedAllCount - Capacity));
         }
 
         private static void CollectAndFinalize()

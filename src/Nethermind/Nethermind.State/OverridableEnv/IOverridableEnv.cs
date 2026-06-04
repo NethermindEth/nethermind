@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Autofac.Core;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -18,7 +19,7 @@ namespace Nethermind.State.OverridableEnv;
 /// </summary>
 public interface IOverridableEnv : IModule
 {
-    IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null);
+    IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null);
 }
 
 /// <summary>
@@ -31,5 +32,5 @@ public interface IOverridableEnv : IModule
 /// <typeparam name="T"></typeparam>
 public interface IOverridableEnv<T>
 {
-    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null);
+    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null);
 }

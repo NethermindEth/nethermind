@@ -99,13 +99,14 @@ public class CliqueTests
         signer.CanSignHeader.Returns(true);
         signer.CanSign.Returns(true);
         signer.Address.Returns(new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"));
-        signer.Sign(Arg.Any<BlockHeader>()).Returns(new Signature(new byte[65]));
-        CliqueSealer sut = new CliqueSealer(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
+        signer.TrySign(Arg.Any<BlockHeader>(), out Arg.Any<Signature>())
+            .Returns(call => { call[1] = new Signature(new byte[65]); return true; });
+        CliqueSealer sut = new(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
         Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
 
         await sut.SealBlock(block, System.Threading.CancellationToken.None);
 
-        signer.Received().Sign(Arg.Any<BlockHeader>());
+        signer.Received().TrySign(Arg.Any<BlockHeader>(), out Arg.Any<Signature>());
     }
 
     [TestCase(Block4Rlp)]
@@ -114,13 +115,14 @@ public class CliqueTests
         ISigner signer = Substitute.For<ISigner>();
         signer.CanSign.Returns(true);
         signer.Address.Returns(new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"));
-        signer.Sign(Arg.Any<ValueHash256>()).Returns(new Signature(new byte[65]));
-        CliqueSealer sut = new CliqueSealer(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
+        signer.TrySign(in Arg.Any<ValueHash256>(), out Arg.Any<Signature>())
+            .Returns(call => { call[1] = new Signature(new byte[65]); return true; });
+        CliqueSealer sut = new(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
         Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
 
         await sut.SealBlock(block, System.Threading.CancellationToken.None);
 
-        signer.Received().Sign(Arg.Any<ValueHash256>());
+        signer.Received().TrySign(in Arg.Any<ValueHash256>(), out Arg.Any<Signature>());
     }
 
     public static Block GetGenesis()

@@ -1,0 +1,436 @@
+name: Collect PGO Profile
+
+on:
+  workflow_dispatch:
+    inputs:
+      state_layout:
+        description: State layout mode
+        required: true
+        type: choice
+        options:
+          - flat
+          - halfpath
+        default: flat
+      payload_set:
+        description: Payload set mode
+        required: true
+        type: choice
+        options:
+          - realblocks
+          - superblocks
+        default: realblocks
+  schedule:
+    # Weekly on Sunday at 02:00 UTC
+    - cron: "0 2 * * 0"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: write
+  pull-requests: write
+
+env:
+  EXPB_DATA_DIR: /mnt/sda/expb-data
+  PGO_TAG: pgo-${{ github.run_id }}
+
+jobs:
+  build-pgo-image:
+    name: Build PGO collection image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Trigger publish-docker.yml with Dockerfile.pgo
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: publish-docker.yml
+          ref: ${{ github.ref }}
+          token: ${{ github.token }}
+          inputs: '{
+            "image-name": "nethermind",
+            "tag": "${{ env.PGO_TAG }}",
+            "dockerfile": "Dockerfile.pgo",
+            "build-config": "release"
+            }'
+
+      - name: Wait for publish-docker.yml to complete
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Waiting for publish-docker.yml to start and complete..."
+
+          max_discovery=300
+          poll=15
+          max_completion=7200
+          elapsed=0
+          run_id=""
+
+          # Phase 1: discover the run (filter by head_sha to avoid matching unrelated runs)
+          head_sha="${{ github.sha }}"
+          while [[ -z "${run_id}" ]]; do
+            response=$(gh api "repos/${{ github.repository }}/actions/workflows/publish-docker.yml/runs?per_page=5&branch=${{ github.ref_name }}&head_sha=${head_sha}" 2>/dev/null || echo '{"workflow_runs":[]}')
+            run_id=$(echo "${response}" | jq -r '.workflow_runs[0].id // empty')
+
+            if [[ -n "${run_id}" ]]; then
+              echo "Found publish-docker run: ${run_id}"
+              break
+            fi
+
+            elapsed=$((elapsed + poll))
+            if [[ "${elapsed}" -ge "${max_discovery}" ]]; then
+              echo "No publish-docker.yml run found within ${max_discovery}s."
+              exit 1
+            fi
+            echo "Waiting for run to appear... (${elapsed}/${max_discovery}s)"
+            sleep "${poll}"
+          done
+
+          # Phase 2: wait for completion
+          elapsed=0
+          while true; do
+            run_data=$(gh api "repos/${{ github.repository }}/actions/runs/${run_id}" 2>/dev/null || echo '{}')
+            status=$(echo "${run_data}" | jq -r '.status // "unknown"')
+            conclusion=$(echo "${run_data}" | jq -r '.conclusion // empty')
+
+            if [[ "${status}" == "completed" ]]; then
+              if [[ "${conclusion}" == "success" ]]; then
+                echo "publish-docker.yml completed successfully."
+                exit 0
+              else
+                echo "publish-docker.yml finished with conclusion: ${conclusion}"
+                exit 1
+              fi
+            fi
+
+            elapsed=$((elapsed + poll))
+            if [[ "${elapsed}" -ge "${max_completion}" ]]; then
+              echo "Timeout waiting for publish-docker.yml (${max_completion}s)."
+              exit 1
+            fi
+            echo "Status: ${status} — waiting... (${elapsed}/${max_completion}s)"
+            sleep "${poll}"
+          done
+
+  collect:
+    name: Collect PGO profile via EXPB
+    needs: [build-pgo-image]
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 720
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Resolve config file
+        id: resolve
+        shell: bash
+        env:
+          STATE_LAYOUT: ${{ inputs.state_layout || 'flat' }}
+          PAYLOAD_SET: ${{ inputs.payload_set || 'realblocks' }}
+        run: |
+          set -euo pipefail
+          if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
+            config_file="github-action-compressed-mainnet-flat.yaml"
+          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
+            config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
+            config_file="github-action-compressed-mainnet.yaml"
+          else
+            config_file="github-action-mainnet.yaml"
+          fi
+          echo "config_file=${config_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Render benchmark config
+        id: render-config
+        shell: bash
+        env:
+          CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
+        run: |
+          set -euo pipefail
+          rendered="${RUNNER_TEMP}/rendered-pgo-config.yaml"
+          sed \
+            -e 's#<<DOCKER_TAG>>#${{ env.PGO_TAG }}#g' \
+            -e 's#<<DELAY>>#0#g' \
+            -e 's#^\([[:space:]]*\)nethermind:#\1nethermind-pgo-collect:#g' \
+            "${EXPB_DATA_DIR}/${CONFIG_FILE}" \
+            > "${rendered}"
+          # Inject a writable pgo volume so EventPipe/PGO data survives container removal
+          # EXPB stores extra_volumes under {outputs_dir}/{scenario}/volumes/{name}/
+          sed -i '/^[[:space:]]*mode: r$/{
+            a\      pgo:
+            a\        bind: /nethermind/pgo
+            a\        mode: rw
+          }' "${rendered}"
+          echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
+          echo "Rendered config:"
+          cat "${rendered}"
+
+      - name: Install or upgrade expb
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v uv >/dev/null 2>&1; then
+            echo "uv is required but not found in PATH."
+            exit 1
+          fi
+          uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks@56f83b112a93436a66468b863ed9e47bcd5feba6" expb
+          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+      - name: Run EXPB for PGO collection
+        id: run-expb
+        continue-on-error: true
+        shell: bash
+        working-directory: ${{ env.EXPB_DATA_DIR }}
+        run: |
+          set -euo pipefail
+
+          # Background: tail Nethermind container logs for visibility
+          log_tail_pid=""
+          (
+            sleep 5
+            for i in $(seq 1 60); do
+              cid=$(docker ps --filter "ancestor=nethermindeth/nethermind:${{ env.PGO_TAG }}" \
+                --format '{{.ID}}' 2>/dev/null | head -1)
+              if [[ -n "${cid}" ]]; then
+                echo "=== Tailing Nethermind container ${cid} logs ==="
+                exec docker logs -f "${cid}" 2>&1 | sed 's/^/[nethermind] /'
+              fi
+              sleep 2
+            done
+          ) &
+          log_tail_pid=$!
+
+          expb execute-scenarios \
+            --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
+            --per-payload-metrics \
+            --print-logs \
+            2>&1 | tee "${RUNNER_TEMP}/expb-pgo-run.log"
+          expb_exit=$?
+
+          # Kill the entire process group to ensure docker logs is terminated
+          kill -- -"${log_tail_pid}" 2>/dev/null || kill "${log_tail_pid}" 2>/dev/null || true
+          exit "${expb_exit}"
+
+      - name: Extract PGO data from EXPB output
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/pgo-data"
+
+          # EXPB stores extra_volumes under {outputs_dir}/{scenario}/volumes/{name}/
+          # Find the pgo volume directory from the latest EXPB run
+          expb_outputs="${EXPB_DATA_DIR}/outputs"
+          pgo_vol_dir=$(find "${expb_outputs}" -maxdepth 3 -type d -name "pgo" -path "*/volumes/pgo" \
+            -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
+
+          if [[ -n "${pgo_vol_dir}" ]]; then
+            echo "Found PGO volume at: ${pgo_vol_dir}"
+            ls -la "${pgo_vol_dir}/"
+            cp -a "${pgo_vol_dir}/." "${RUNNER_TEMP}/pgo-data/"
+          else
+            echo "No EXPB pgo volume found, trying container fallback..."
+            container_id=$(docker ps -a --filter "ancestor=nethermindeth/nethermind:${{ env.PGO_TAG }}" \
+              --format '{{.ID}}' | head -1)
+            if [[ -n "${container_id}" ]]; then
+              echo "Extracting from container ${container_id}..."
+              docker cp "${container_id}:/nethermind/pgo/" "${RUNNER_TEMP}/pgo-data/" 2>/dev/null || true
+            else
+              echo "No container found either."
+            fi
+          fi
+
+          echo "=== .nettrace files (EventPipe method traces) ==="
+          find "${RUNNER_TEMP}/pgo-data" -name "*.nettrace" -type f -ls 2>/dev/null || true
+          echo "=== .jit files (edge/block profiling data) ==="
+          find "${RUNNER_TEMP}/pgo-data" -name "*.jit" -type f -ls 2>/dev/null || true
+
+      - name: Set up .NET
+        if: always()
+        uses: actions/setup-dotnet@v5
+        with:
+          cache: false
+
+      - name: Build dotnet-pgo from source
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Pin to v10.0.5 — matches the SDK/runtime in our Docker base images
+          git clone --depth 1 --branch v10.0.5 \
+            https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
+          cd "${RUNNER_TEMP}/dotnet-runtime"
+          # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
+          ./build.sh -c Release \
+            --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
+
+          dotnet_pgo_dir=$(find "${RUNNER_TEMP}/dotnet-runtime/artifacts" -type d -name "dotnet-pgo" -path "*/bin/*" | head -1)
+          if [[ -z "${dotnet_pgo_dir}" ]] || [[ ! -f "${dotnet_pgo_dir}/dotnet-pgo.dll" ]]; then
+            echo "dotnet-pgo was not produced under artifacts/"
+            exit 1
+          fi
+
+          cp -a "${dotnet_pgo_dir}" "${RUNNER_TEMP}/dotnet-pgo-bin"
+          # Add a wrapper script so dotnet-pgo is callable by name
+          cat > "${RUNNER_TEMP}/dotnet-pgo-bin/dotnet-pgo" <<'WRAPPER'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          exec dotnet "${script_dir}/dotnet-pgo.dll" "$@"
+          WRAPPER
+          chmod +x "${RUNNER_TEMP}/dotnet-pgo-bin/dotnet-pgo"
+          echo "${RUNNER_TEMP}/dotnet-pgo-bin" >> "${GITHUB_PATH}"
+
+      - name: Convert traces to .mibc and merge with edge profiling
+        id: convert
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mibc_file="${RUNNER_TEMP}/nethermind.mibc"
+          pgo_dir="${RUNNER_TEMP}/pgo-data"
+
+          if [[ ! -d "${pgo_dir}" ]] || [[ -z "$(ls -A "${pgo_dir}" 2>/dev/null)" ]]; then
+            echo "No PGO data found in ${pgo_dir}."
+            exit 1
+          fi
+
+          # Step 1: Create .mibc from EventPipe trace (method-level hot/cold)
+          trace_file=$(find "${pgo_dir}" -name "*.nettrace" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
+          if [[ -z "${trace_file}" ]]; then
+            echo "No .nettrace file found under: ${pgo_dir}"
+            ls -laR "${pgo_dir}"
+            exit 1
+          fi
+
+          # Extract Nethermind assemblies from the PGO image so dotnet-pgo can resolve
+          # generic method signatures against R2R tables
+          ref_dir="${RUNNER_TEMP}/nethermind-ref"
+          cid=$(docker create "nethermindeth/nethermind:${{ env.PGO_TAG }}" --entrypoint /bin/true 2>/dev/null || true)
+          if [[ -n "${cid}" ]]; then
+            docker cp "${cid}:/nethermind/" "${ref_dir}/" 2>/dev/null || true
+            docker rm "${cid}" >/dev/null 2>&1 || true
+          fi
+
+          echo "Converting ${trace_file} to .mibc..."
+          trace_mibc="${RUNNER_TEMP}/trace.mibc"
+          create_mibc_args=(
+            --trace "${trace_file}"
+            --output "${trace_mibc}"
+          )
+          if [[ -d "${ref_dir}" ]]; then
+            for dll in "${ref_dir}"/*.dll; do
+              create_mibc_args+=(--reference "${dll}")
+            done
+          fi
+          dotnet-pgo create-mibc "${create_mibc_args[@]}"
+
+          cp "${trace_mibc}" "${mibc_file}"
+
+          echo "Generated .mibc profile:"
+          ls -lh "${mibc_file}"
+          echo "mibc_file=${mibc_file}" >> "${GITHUB_OUTPUT}"
+
+          # Step 2: Trim .jit edge/block profiling data for runtime PGO
+          # .jit files (from DOTNET_WritePGOData) use a JIT-internal text format read
+          # back via DOTNET_ReadPGOData — they can't be merged into .mibc by dotnet-pgo.
+          jit_file=$(find "${pgo_dir}" -name "*.jit" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
+          jit_gz="${RUNNER_TEMP}/nethermind.jit.gz"
+          if [[ -n "${jit_file}" ]]; then
+            echo "Trimming ${jit_file} with PgoTrim..."
+            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
+              "${jit_file}" "${jit_gz}" --min-block 100 --min-edge 250
+            echo "jit_gz=${jit_gz}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "No .jit file found — skipping edge profiling trim."
+          fi
+
+      - name: Upload .mibc artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind-pgo-profile
+          path: ${{ steps.convert.outputs.mibc_file }}
+          retention-days: 90
+
+      - name: Upload trimmed .jit.gz artifact
+        if: always() && steps.convert.outputs.jit_gz != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind-pgo-jit
+          path: ${{ steps.convert.outputs.jit_gz }}
+          retention-days: 90
+
+      - name: Upload raw PGO data
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind-pgo-raw-data
+          path: ${{ runner.temp }}/pgo-data/
+          if-no-files-found: warn
+          retention-days: 30
+
+  update-pgo-profile:
+    name: Create PR to update PGO profile
+    needs: collect
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Download .mibc artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: nethermind-pgo-profile
+          path: src/Nethermind/Nethermind.Runner/pgo/
+
+      - name: Download .jit.gz artifact
+        uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: nethermind-pgo-jit
+          path: src/Nethermind/Nethermind.Runner/pgo/
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet src/Nethermind/Nethermind.Runner/pgo/; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo "No changes to PGO profile."
+          else
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            echo "PGO profile has changed."
+          fi
+
+      - name: Create pull request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="chore/update-pgo-profile-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${branch}"
+          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
+          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.jit.gz 2>/dev/null || true
+          git commit -m "chore(pgo): update PGO profile from weekly collection"
+          git push -u origin "${branch}"
+          gh pr create \
+            --title "chore(pgo): update PGO profile" \
+            --body "$(cat <<'EOF'
+          ## Summary
+          - Weekly automated update of the PGO (.mibc) profile used for R2R compilation
+          - Updated edge/block profiling data (.jit.gz) for runtime branch optimization
+          - Generated from 5000 mainnet blocks via EventPipe profiling
+
+          ## Test plan
+          - [ ] CI passes (R2R build uses the updated profile automatically)
+          EOF
+          )" \
+            --base master

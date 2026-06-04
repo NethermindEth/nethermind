@@ -2,13 +2,12 @@
 
 ## Run using docker
 
-```
+```sh
 docker run nethermindeth/send-blobs:latest --rpcurl http://localhost:8545 --bloboptions 5 --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 --receiveraddress 0x000000000000000000000000000000000000f1c1
 docker run nethermindeth/send-blobs:latest --rpcurl http://localhost:8545 --bloboptions 5x6 --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 --receiveraddress 0x000000000000000000000000000000000000f1c1 --maxfeeperblobgas 10000 --feemultiplier 4
 ```
 
 ## Usage
-
 
 The tool can help with:
 
@@ -18,12 +17,12 @@ The tool can help with:
 
 Use "SendBlobs [command] --help" for more information about supported commands.
 
-The default fork for now is Prague, which means blob will be sent with V0 proofs. Use `--fork Osaka` option to change it to V1. The default behavior may change post Osaka.
+The default fork for now is Osaka, which means blobs will be sent with V1 proofs. Use `--fork Prague` option to change it to V0. The default behavior may change post Osaka.
 
 ## Build
 
 ```sh
-apt install libsnappy-dev dotnet-sdk-9.0 -y
+apt install libsnappy-dev dotnet-sdk-10.0 -y
 cd ./nethermind/tools/SendBlobs
 dotnet publish --sc -o .
 ./SendBlobs
@@ -91,7 +90,6 @@ Issues that can be intentionally added to simulate broken transactions:
   11   = max fee per blob gas = max value / blobgasperblob + 1
   14   = 100 blobs
   15   = 1000 blobs
-  wait = wait for each transaction to be included in a block before posting the next
 
 Syntax:
 
@@ -101,6 +99,8 @@ Syntax:
              ^  how it's broken (optional, tx is correct by default) or write true
 ```
 
+Use `--wait` to wait for each transaction to be included in a block before posting the next one
+
 ## Debug
 
-For funding the private key used in the project launch settings, the address is: `0x428a95ceb38b706fbfe74fa0144701cfc1c25ef7`
+For funding the private key used in the project launch settings, the address is: `0xd51a7e12997f6f1d04accc2b4053307a62b373cb`

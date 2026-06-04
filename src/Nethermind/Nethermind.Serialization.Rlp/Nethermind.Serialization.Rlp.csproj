@@ -6,10 +6,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Core.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Ckzg.Bindings" />
     <PackageReference Include="Nethermind.DotNetty.Buffers" />
   </ItemGroup>
 

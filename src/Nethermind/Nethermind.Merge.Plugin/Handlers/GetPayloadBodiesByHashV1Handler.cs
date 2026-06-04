@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Core;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -11,36 +11,30 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetPayloadBodiesByHashV1Handler(IBlockTree blockTree, ILogManager logManager)
-    : IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>
+public sealed class GetPayloadBodiesByHashV1Handler(IBlockTree blockTree, IBlockStore blockStore, ILogManager logManager)
+    : IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>
 {
-    private const int MaxCount = 1024;
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByHashV1Handler));
 
-    protected bool CheckHashCount(IReadOnlyList<Hash256> blockHashes, out string? error)
+    public ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>> Handle(IReadOnlyList<Hash256> blockHashes)
     {
-        if (blockHashes.Count > MaxCount)
+        if (blockHashes.Count > PayloadBodiesHandlerHelper.MaxCount)
         {
-            error = $"The number of requested bodies must not exceed {MaxCount}";
-
+            string error = $"The number of requested bodies must not exceed {PayloadBodiesHandlerHelper.MaxCount}";
             if (_logger.IsError) _logger.Error($"{GetType().Name}: {error}");
-            return false;
+            return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
-        error = null;
-        return true;
-    }
 
-    public ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>> Handle(IReadOnlyList<Hash256> blockHashes) =>
-        !CheckHashCount(blockHashes, out string? error)
-            ? ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error!, MergeErrorCodes.TooLargeRequest)
-            : ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(GetRequests(blockHashes));
-
-    private IEnumerable<ExecutionPayloadBodyV1Result?> GetRequests(IReadOnlyList<Hash256> blockHashes)
-    {
+        PayloadBodiesV1DirectResponse.PayloadBody?[] results = new PayloadBodiesV1DirectResponse.PayloadBody?[blockHashes.Count];
         for (int i = 0; i < blockHashes.Count; i++)
         {
-            Block? block = blockTree.FindBlock(blockHashes[i]);
-            yield return block is null ? null : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals);
+            Hash256 blockHash = blockHashes[i];
+            results[i] = PayloadBodiesHandlerHelper.CreatePayloadBodyV1(
+                blockStore,
+                blockTree.FindHeader(blockHash, PayloadBodiesHandlerHelper.HashLookupOptions),
+                blockHash);
         }
+
+        return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success(new PayloadBodiesV1DirectResponse(results));
     }
 }

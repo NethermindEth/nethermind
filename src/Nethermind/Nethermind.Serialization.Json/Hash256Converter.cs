@@ -3,48 +3,51 @@
 
 #nullable enable
 using System;
-using System.Text.Json.Serialization;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Json;
 
-public class Hash256Converter : JsonConverter<Hash256>
+public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash256>
 {
-    private readonly bool _strictHexFormat;
+    private readonly bool _strictHexFormat = strictHexFormat;
 
-    public Hash256Converter(bool strictHexFormat = false)
-    {
-        _strictHexFormat = strictHexFormat;
-    }
-
+    [SkipLocalsInit]
     public override Hash256? Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
         JsonSerializerOptions options)
     {
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+        {
+            return new Hash256(bytes);
+        }
 
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
-        return bytes is null ? null : new Hash256(bytes);
+        byte[]? bytesArray = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
+        return bytesArray is null ? null : new Hash256(bytesArray);
     }
 
+    [SkipLocalsInit]
     public override void Write(
         Utf8JsonWriter writer,
         Hash256 keccak,
-        JsonSerializerOptions options)
-    {
-        ByteArrayConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: false);
-    }
+        JsonSerializerOptions options) => HexWriter.WriteFixed32HexRawValue(writer, keccak.ValueHash256.Bytes);
 
-    // Methods needed to ser/de dictionary keys
+    [SkipLocalsInit]
     public override Hash256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
-        return bytes is null ? null! : new Hash256(bytes);
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+        {
+            return new Hash256(bytes);
+        }
+
+        byte[]? bytesArray = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
+        return bytesArray is null ? null! : new Hash256(bytesArray);
     }
 
-    public override void WriteAsPropertyName(Utf8JsonWriter writer, Hash256 value, JsonSerializerOptions options)
-    {
-        writer.WritePropertyName(value.ToString());
-    }
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, Hash256 value, JsonSerializerOptions options) => writer.WritePropertyName(value.ToString());
 }

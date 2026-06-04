@@ -22,6 +22,6 @@ namespace Nethermind.Config
         /// <param name="category">Configuration category (e.g. Init).</param>
         /// <param name="name">Name of the configuration property.</param>
         /// <returns></returns>
-        object GetRawValue(string category, string name);
+        object? GetRawValue(string category, string name);
     }
 }
