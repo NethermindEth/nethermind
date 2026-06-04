@@ -222,6 +222,52 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_HintBalWithSink_ManySlots_ReadInFullAfterSorting()
+    {
+        using Context ctx = new(useFlat);
+
+        // 8 slots so the prewarmer's per-account on-disk-order sort runs over a non-trivial run;
+        // a dropped/duplicated/misread slot surfaces as a missing or wrong sink value below.
+        UInt256[] slots = [7, 3, 1, 8, 2, 6, 4, 5];
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using (IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, slots.Length))
+                {
+                    foreach (UInt256 slot in slots)
+                        storageA.Set(slot, [(byte)slot, (byte)(slot + 100)]);
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(slots).TestObject)
+            .TestObject;
+
+        CollectingBalSink sink = new();
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            scope.HintBal(bal, sink).Wait();
+
+            IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
+            foreach (UInt256 slot in slots)
+            {
+                StorageCell cell = new(TestItem.AddressA, slot);
+                Assert.That(sink.Storage.ContainsKey(cell), Is.True, $"slot {slot} missing from sink");
+                Assert.That(sink.Storage[cell], Is.EqualTo(storageTreeA.Get(slot)), $"slot {slot} value mismatch");
+            }
+        }
+    }
+
+    [Test]
     public void Test_HintBal_DoesNotThrow()
     {
         using Context ctx = new(useFlat);

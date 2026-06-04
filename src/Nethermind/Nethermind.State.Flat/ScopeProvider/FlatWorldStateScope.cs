@@ -268,7 +268,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (totalSlots == 0) return;
 
-        using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
+        using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot, ValueHash256 SlotHash)> jobs = new(totalSlots, totalSlots);
         int idx = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
@@ -276,18 +276,30 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
+            int runStart = idx;
             foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
-                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
+                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key, ComputeSlotHash(slotChanges.Key));
             foreach (UInt256 readKey in ac.StorageReads)
-                jobs[idx++] = (address, selfDestructIdx, readKey);
+                jobs[idx++] = (address, selfDestructIdx, readKey, ComputeSlotHash(readKey));
+            // Issue this account's persistence reads in on-disk slot order. Within one account the
+            // 52-byte storage key's address prefix/suffix are constant, so slotHash alone decides
+            // on-disk order; sweeping it ascending turns scattered point gets into a sequential scan.
+            jobs.AsSpan().Slice(runStart, idx - runStart).Sort(static (a, b) => a.SlotHash.CompareTo(b.SlotHash));
         }
 
         Parallel.For(0, idx, parallelOptions, (j) =>
         {
             if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+            (Address address, int selfDestructIdx, UInt256 slot, _) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         });
+    }
+
+    private static ValueHash256 ComputeSlotHash(in UInt256 slot)
+    {
+        ValueHash256 slotHash = default;
+        StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
+        return slotHash;
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
