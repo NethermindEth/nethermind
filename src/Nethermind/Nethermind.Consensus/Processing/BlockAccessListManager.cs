@@ -82,7 +82,6 @@ public partial class BlockAccessListManager(
     // can't see (no lane data on either side). Forces the validator's fallback walk so the
     // same "missing account changes" error fires as on the sequential path.
     private bool _hasGeneratedRequiredReadAccountMismatch;
-    private bool _witnessMode = witnessMode;
 
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(
