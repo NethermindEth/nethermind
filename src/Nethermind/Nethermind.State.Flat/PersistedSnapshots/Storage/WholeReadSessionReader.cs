@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.Intrinsics.X86;
 using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -30,5 +31,18 @@ public readonly unsafe ref struct WholeReadSessionReader(byte* basePtr, long len
         if ((ulong)offset + (ulong)size > (ulong)length)
             throw new ArgumentOutOfRangeException(nameof(offset));
         return new NoOpPin(new ReadOnlySpan<byte>(_basePtr + offset, checked((int)size)));
+    }
+
+    /// <summary>
+    /// Prefetches the body of a BTree node whose first byte was just read (page + TLB now resident):
+    /// pulls the two cache lines after the header line so the floor-search's key scan finds them warm.
+    /// <paramref name="offset"/> is the node start; line 0 is already cached from the flag-byte read.
+    /// </summary>
+    public void Prefetch(long offset)
+    {
+        if (!Sse.IsSupported || (ulong)offset >= (ulong)length) return;
+        byte* p = _basePtr + offset;
+        Sse.Prefetch0(p + 64);
+        Sse.Prefetch0(p + 128);
     }
 }

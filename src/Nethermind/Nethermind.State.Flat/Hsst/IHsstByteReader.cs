@@ -99,6 +99,12 @@ public interface IHsstByteReader<TPin> where TPin : struct, IBufferPin, allows r
     /// the returned pin is disposed.
     /// </summary>
     TPin PinBuffer(long offset, long size);
+
+    /// <summary>
+    /// Software-prefetch hint for the cache line(s) at <paramref name="offset"/>. No-op for readers
+    /// without a stable base pointer; pointer-backed readers issue a real prefetch.
+    /// </summary>
+    void Prefetch(long offset);
 }
 
 /// <summary>
@@ -127,4 +133,6 @@ public readonly ref struct SpanByteReader : IHsstByteReader<NoOpPin>
             throw new ArgumentOutOfRangeException(nameof(offset));
         return new NoOpPin(_data.Slice((int)offset, (int)size));
     }
+
+    public readonly void Prefetch(long offset) { }
 }

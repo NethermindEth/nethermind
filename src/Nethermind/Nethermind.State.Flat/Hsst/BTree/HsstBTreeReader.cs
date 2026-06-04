@@ -131,6 +131,11 @@ internal static class HsstBTreeReader
                     exactMatch, keyFirst, trailerKeyLength, out resultBound);
             }
 
+            // The flag-byte read above faulted this node's page and warmed its TLB entry, so a prefetch
+            // of the node body now lands (instead of being dropped on a TLB miss). Pull the keys the
+            // floor-search is about to scan; overlaps with the separator copy below.
+            reader.Prefetch(currentAbsStart);
+
             // Leaf or Intermediate — parse as a BTreeNode node.
             if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, scopeEnd, parentSeparator, out BTreeNodeReader node, out TPin pin))
                 return false;

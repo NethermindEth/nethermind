@@ -246,4 +246,6 @@ public readonly unsafe ref struct ArenaBufferReader : IHsstByteReader<NoOpPin>
             throw new ArgumentOutOfRangeException(nameof(offset));
         return new NoOpPin(new ReadOnlySpan<byte>(_ptr + offset, checked((int)size)));
     }
+
+    public void Prefetch(long offset) { }
 }

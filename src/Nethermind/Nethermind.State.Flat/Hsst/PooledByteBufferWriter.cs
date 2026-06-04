@@ -125,5 +125,7 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
             int from = _start + (int)offset;
             return new NoOpPin(new ReadOnlySpan<byte>(_writer._buffer + from, (int)size));
         }
+
+        public void Prefetch(long offset) { }
     }
 }

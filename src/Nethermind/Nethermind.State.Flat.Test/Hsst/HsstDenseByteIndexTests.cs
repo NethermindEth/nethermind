@@ -295,6 +295,8 @@ public class HsstDenseByteIndexTests
             int srcOff = (int)(offset - _trailerStart);
             return new NoOpPin(_trailer.Slice(srcOff, (int)size));
         }
+
+        public void Prefetch(long offset) { }
     }
 
     /// <summary>
@@ -512,6 +514,8 @@ public class HsstDenseByteIndexTests
                 throw new InvalidOperationException($"spec stage too small: need {size}, have {_specStage.Length}");
             return new NoOpPin(_specStage[..(int)size]);
         }
+
+        public void Prefetch(long offset) { }
     }
 
     [Test]

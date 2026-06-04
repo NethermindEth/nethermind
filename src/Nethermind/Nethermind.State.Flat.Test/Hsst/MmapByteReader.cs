@@ -33,4 +33,6 @@ public readonly unsafe ref struct MmapByteReader(byte* basePtr, long size) : IHs
             throw new ArgumentOutOfRangeException(nameof(offset));
         return new NoOpPin(new ReadOnlySpan<byte>(_basePtr + offset, checked((int)size)));
     }
+
+    public void Prefetch(long offset) { }
 }

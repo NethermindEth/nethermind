@@ -79,6 +79,8 @@ public class HsstReaderTests
             _data.AsSpan((int)offset, (int)size).CopyTo(rented);
             return pin;
         }
+
+        public readonly void Prefetch(long offset) { }
     }
 
     [TestCase(1)]
