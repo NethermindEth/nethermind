@@ -60,7 +60,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
 
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
-    private InclusionListTxSource? _inclusionListTxSource = null;
 
     public virtual string Name => "Merge";
     public virtual string Description => "Merge plugin for ETH1-ETH2";
@@ -94,7 +93,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
             _poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
             _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker.InvalidChainTracker>();
-            _inclusionListTxSource = new InclusionListTxSource(_api.EthereumEcdsa, _api.SpecProvider, _api.LogManager);
 
             if (_txPoolConfig.BlobsSupport.SupportsReorgs())
             {
