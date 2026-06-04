@@ -41,8 +41,6 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
 
         Address address = ctx.DecodeAddress();
 
-        // EIP-7928 SlotChanges is a 2-field sequence (slot key + storage changes list);
-        // an empty inner list (RLP 0xc0) causes DecodeArray to throw RlpException.
         ReadOnlySlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, limit: _slotsLimit);
         UInt256? lastSlot = null;
         foreach (ReadOnlySlotChanges slotChange in slotChanges)
