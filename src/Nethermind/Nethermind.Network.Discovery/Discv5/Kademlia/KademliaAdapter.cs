@@ -233,11 +233,7 @@ public class KademliaAdapter(
         if (TryGetSession(sessionKey, out Session? session))
         {
             Span<byte> writeKey = stackalloc byte[Session.KeySize];
-            if (!session.TryCopyWriteKey(writeKey))
-            {
-                _sessions.TryRemove(sessionKey, out _);
-            }
-            else
+            if (session.TryCopyWriteKey(writeKey))
             {
                 Span<byte> sessionNonce = stackalloc byte[PacketCodec.NonceSize];
                 session.WriteNextNonce(cryptoRandom, sessionNonce);
@@ -291,7 +287,6 @@ public class KademliaAdapter(
         Span<byte> writeKey = stackalloc byte[Session.KeySize];
         if (!session.TryCopyWriteKey(writeKey))
         {
-            _sessions.TryRemove(sessionKey, out _);
             return;
         }
 

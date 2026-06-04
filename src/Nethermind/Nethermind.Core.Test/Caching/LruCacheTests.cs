@@ -313,6 +313,22 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
+        public async Task Clear_invokes_eviction_callback_outside_lock()
+        {
+            LruCache<int, int> cache = null!;
+            TaskCompletionSource<bool> callbackResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            cache = new LruCache<int, int>(2, "test", _ => callbackResult.SetResult(cache.Contains(1)));
+            cache.Set(1, 10);
+
+            Task clearTask = Task.Run(cache.Clear);
+            Task completedTask = await Task.WhenAny(clearTask, Task.Delay(TimeSpan.FromSeconds(5)));
+
+            Assert.That(completedTask, Is.SameAs(clearTask));
+            await clearTask;
+            Assert.That(await callbackResult.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.False);
+        }
+
+        [Test]
         public void Delete_keeps_internal_structure()
         {
             int maxCapacity = 32;

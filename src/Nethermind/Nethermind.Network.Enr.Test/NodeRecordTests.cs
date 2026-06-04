@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -34,6 +35,30 @@ public class NodeRecordTests
     {
         NodeRecord nodeRecord = new();
         Assert.Throws<Exception>(() => _ = nodeRecord.EnrString);
+    }
+
+    [Test]
+    public void Discovery_endpoint_uses_udp6_when_ipv4_udp_is_missing()
+    {
+        IPAddress ip = IPAddress.Parse("192.0.2.1");
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new IpEntry(ip));
+        nodeRecord.SetEntry(new Udp6Entry(30304));
+
+        Assert.That(nodeRecord.DiscoveryIp, Is.EqualTo(ip));
+        Assert.That(nodeRecord.DiscoveryPort, Is.EqualTo(30304));
+    }
+
+    [Test]
+    public void Discovery_endpoint_uses_udp_as_ipv6_fallback()
+    {
+        IPAddress ip = IPAddress.Parse("2001:db8::1");
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new Ip6Entry(ip));
+        nodeRecord.SetEntry(new UdpEntry(30303));
+
+        Assert.That(nodeRecord.DiscoveryIp, Is.EqualTo(ip));
+        Assert.That(nodeRecord.DiscoveryPort, Is.EqualTo(30303));
     }
 
     [Test]

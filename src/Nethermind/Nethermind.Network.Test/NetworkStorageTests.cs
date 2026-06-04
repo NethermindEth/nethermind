@@ -146,4 +146,23 @@ public class NetworkStorageTests
             Assert.That(persistedNode.Reputation, Is.EqualTo(peer.Reputation));
         }
     }
+
+    [Test]
+    public void Discard_batch_drops_pending_nodes()
+    {
+        NetworkStorage storage = new(new SnapshotableMemDb(), LimboLogs.Instance);
+        NetworkNode node = new(TestItem.PublicKeyA, "192.1.1.1", 3441, 0L);
+
+        storage.StartBatch();
+        storage.UpdateNode(node);
+        storage.DiscardBatch();
+
+        Assert.That(storage.GetPersistedNodes(), Is.Empty);
+
+        storage.StartBatch();
+        storage.UpdateNode(node);
+        storage.Commit();
+
+        Assert.That(storage.GetPersistedNodes(), Has.Length.EqualTo(1));
+    }
 }

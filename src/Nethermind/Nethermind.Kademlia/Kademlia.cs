@@ -195,11 +195,6 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
     {
         lock (_lastBucketRefreshLock)
         {
-            if (_lastBucketRefreshTicks.Count <= activeBucketPrefixes.Count)
-            {
-                return;
-            }
-
             List<TKadKey>? stalePrefixes = null;
             foreach (TKadKey prefix in _lastBucketRefreshTicks.Keys)
             {

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -197,6 +198,29 @@ public class KademliaTests
         Assert.That(kad.GetAllAtDistance(250).ToHashSet(), Is.EquivalentTo(testHashes[10..].ToHashSet()));
     }
 
+    [Test]
+    public void PruneLastBucketRefreshTicks_removes_stale_prefixes_even_when_counts_match()
+    {
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = CreateKad(new KademliaConfig<ValueHash256>
+        {
+            KSize = 5,
+            Beta = 0,
+        });
+
+        Hash256 activePrefix = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+        Hash256 stalePrefix = new("0x2222222222222222222222222222222222222222222222222222222222222222");
+        Dictionary<Hash256, long> lastRefreshTicks = GetLastBucketRefreshTicks(kad);
+        lastRefreshTicks[activePrefix] = 1;
+        lastRefreshTicks[stalePrefix] = 2;
+
+        typeof(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>)
+            .GetMethod("PruneLastBucketRefreshTicks", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(kad, [new HashSet<Hash256> { activePrefix, new("0x3333333333333333333333333333333333333333333333333333333333333333") }]);
+
+        Assert.That(lastRefreshTicks.ContainsKey(activePrefix), Is.True);
+        Assert.That(lastRefreshTicks.ContainsKey(stalePrefix), Is.False);
+    }
+
     private static Hash256 ToHash(ValueHash256 hash) => ValueHashKeyOperator<ValueHash256>.ToHash(hash);
 
     private static ValueHash256 ToValueHash(Hash256 hash) => ValueHashKeyOperator<ValueHash256>.ToValueHash(hash);
@@ -204,4 +228,8 @@ public class KademliaTests
     private static ValueHash256 RandomValueHashAtDistance(ValueHash256 currentHash, int distance) =>
         ToValueHash(Hash256KademliaDistance.Instance.GetRandomHashAtDistance(ToHash(currentHash), distance));
 
+    private static Dictionary<Hash256, long> GetLastBucketRefreshTicks(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad)
+        => (Dictionary<Hash256, long>)typeof(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>)
+            .GetField("_lastBucketRefreshTicks", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(kad)!;
 }

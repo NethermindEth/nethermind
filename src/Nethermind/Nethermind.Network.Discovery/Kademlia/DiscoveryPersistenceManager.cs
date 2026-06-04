@@ -120,6 +120,7 @@ public class DiscoveryPersistenceManager(
             }
             catch (Exception ex)
             {
+                _discoveryStorage.DiscardBatch();
                 _logger.Error($"Error during discovery commit: {ex}");
             }
         }

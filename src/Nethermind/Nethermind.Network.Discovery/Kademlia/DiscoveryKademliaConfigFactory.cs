@@ -12,6 +12,7 @@ internal static class DiscoveryKademliaConfigFactory
     public static KademliaConfig<Node> Create(PublicKey masterNode, IReadOnlyList<Node> bootNodes, IDiscoveryConfig discoveryConfig)
         => new()
         {
+            // The table only needs the local node identity here; its endpoint is never contacted.
             CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true),
             KSize = discoveryConfig.BucketSize,
             Alpha = discoveryConfig.Concurrency,

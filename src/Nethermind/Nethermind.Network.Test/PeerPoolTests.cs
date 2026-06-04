@@ -229,6 +229,7 @@ public class PeerPoolTests
         public void RemoveNode(PublicKey nodeId) => Pending = true;
         public void StartBatch() { Interlocked.Increment(ref _startBatchCountBacking); StartBatchCount = _startBatchCountBacking; }
         public void Commit() { Interlocked.Increment(ref _commitCountBacking); CommitCount = _commitCountBacking; }
+        public void DiscardBatch() { }
         public bool AnyPendingChange() => Pending;
 
         private int _commitCountBacking;

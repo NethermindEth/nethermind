@@ -16,6 +16,13 @@ internal sealed record Session(PublicKey RemotePublicKey, byte[] ReadKey, byte[]
     private long _nonceCounter;
     private bool _disposed;
 
+    /// <summary>
+    /// Writes the next nonce for an ordinary packet sent on this session.
+    /// </summary>
+    /// <remarks>
+    /// Callers must first copy the write key with <see cref="TryCopyWriteKey"/>; a false result means the session is
+    /// disposed and must not be used for another packet.
+    /// </remarks>
     public void WriteNextNonce(ICryptoRandom random, Span<byte> nonce)
     {
         if (nonce.Length != PacketCodec.NonceSize)

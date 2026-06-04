@@ -38,11 +38,15 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
-            using McsLock.Disposable lockRelease = _lock.Acquire();
+            TValue[]? evictedValues;
+            using (McsLock.Disposable lockRelease = _lock.Acquire())
+            {
+                evictedValues = GetEvictedValues();
+                _leastRecentlyUsed = null;
+                _cacheMap.Clear();
+            }
 
-            NotifyEvictedValues();
-            _leastRecentlyUsed = null;
-            _cacheMap.Clear();
+            NotifyEvictedValues(evictedValues);
         }
 
         public TValue Get(TKey key)
@@ -250,16 +254,33 @@ namespace Nethermind.Core.Caching
                     $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
         }
 
-        private void NotifyEvictedValues()
+        private TValue[]? GetEvictedValues()
         {
-            if (_onEvict is null)
+            if (_onEvict is null || _cacheMap.Count == 0)
+            {
+                return null;
+            }
+
+            int i = 0;
+            TValue[] evictedValues = new TValue[_cacheMap.Count];
+            foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+            {
+                evictedValues[i++] = kvp.Value.Value.Value;
+            }
+
+            return evictedValues;
+        }
+
+        private void NotifyEvictedValues(TValue[]? evictedValues)
+        {
+            if (evictedValues is null)
             {
                 return;
             }
 
-            foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+            for (int i = 0; i < evictedValues.Length; i++)
             {
-                _onEvict(kvp.Value.Value.Value);
+                NotifyEvicted(evictedValues[i]);
             }
         }
 

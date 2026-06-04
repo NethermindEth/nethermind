@@ -17,6 +17,7 @@ namespace Nethermind.Network
         void RemoveNode(PublicKey nodeId);
         void StartBatch();
         void Commit();
+        void DiscardBatch();
         bool AnyPendingChange();
     }
 }
