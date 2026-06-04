@@ -25,9 +25,9 @@ namespace Nethermind.State;
 /// </remarks>
 public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IPreBlockCaches, IBlockAccessListSource
 {
-    public PreBlockCaches Caches => (State.ScopeProvider as IPreBlockCaches)?.Caches
+    public PreBlockCaches Caches => (ScopeProvider as IPreBlockCaches)?.Caches
         ?? throw new InvalidOperationException($"{nameof(IPreBlockCaches)} is unavailable from the wrapped world state's scope provider.");
-    public bool IsWarmWorldState => (State.ScopeProvider as IPreBlockCaches)?.IsWarmWorldState ?? false;
+    public bool IsWarmWorldState => (ScopeProvider as IPreBlockCaches)?.IsWarmWorldState ?? false;
 
     // Set by SetGeneratingBlockAccessList; see class remarks.
     private BlockAccessListAtIndex? _generatingBlockAccessList;
@@ -43,7 +43,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         UInt256? currentBalance = GetBalanceCurrent(address);
-        State.AddToBalance(address, balanceChange, spec, out oldBalance);
+        base.AddToBalance(address, balanceChange, spec, out oldBalance);
         oldBalance = currentBalance ?? oldBalance;
 
         UInt256 newBalance = oldBalance + balanceChange;
@@ -54,7 +54,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         bool? currentlyExists = AccountExistsCurrent(address);
         UInt256? currentBalance = GetBalanceCurrent(address);
-        bool res = State.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
+        bool res = base.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         oldBalance = currentBalance ?? oldBalance;
         res = currentlyExists ?? res;
 
@@ -75,14 +75,14 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
         UInt256? currentNonce = GetNonceCurrent(address);
-        State.IncrementNonce(address, delta, out oldNonce);
+        base.IncrementNonce(address, delta, out oldNonce);
         oldNonce = currentNonce ?? oldNonce;
         _generatingBlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
     }
 
     public override void SetNonce(Address address, in UInt256 nonce)
     {
-        State.SetNonce(address, nonce);
+        base.SetNonce(address, nonce);
         _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
     }
 
@@ -90,14 +90,14 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         byte[] oldCode = GetCodeInternal(address) ?? [];
         _generatingBlockAccessList.AddCodeChange(address, oldCode, code);
-        return State.InsertCode(address, codeHash, code, spec, isGenesis);
+        return base.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
         ReadOnlySpan<byte> oldValue = GetInternal(storageCell);
         _generatingBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
-        State.Set(storageCell, newValue);
+        base.Set(storageCell, newValue);
     }
 
     public override ref readonly UInt256 GetBalance(Address address)
@@ -109,7 +109,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
             _scratchBalance = bc.Value;
             return ref _scratchBalance;
         }
-        return ref State.GetBalance(address);
+        return ref base.GetBalance(address);
     }
 
     public override UInt256 GetNonce(Address address)
@@ -127,7 +127,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
             _scratchCodeHash = cc.CodeHash;
             return ref _scratchCodeHash;
         }
-        return ref State.GetCodeHash(address);
+        return ref base.GetCodeHash(address);
     }
 
     public override byte[]? GetCode(Address address)
@@ -146,7 +146,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         }
 
         UInt256? currentBalance = GetBalanceCurrent(address);
-        State.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
+        base.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         oldBalance = currentBalance ?? oldBalance;
 
         UInt256 newBalance = oldBalance - balanceChange;
@@ -156,19 +156,19 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void DeleteAccount(Address address)
     {
         _generatingBlockAccessList.DeleteAccount(address, GetBalanceInternal(address));
-        State.DeleteAccount(address);
+        base.DeleteAccount(address);
     }
 
     public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
-        State.CreateAccount(address, balance, nonce);
+        base.CreateAccount(address, balance, nonce);
     }
 
     public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
-        State.CreateAccountIfNotExists(address, balance, nonce);
+        base.CreateAccountIfNotExists(address, balance, nonce);
     }
 
     public override bool TryGetAccount(Address address, out AccountStruct account)
@@ -210,13 +210,13 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void Restore(Snapshot snapshot)
     {
         _generatingBlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
-        State.Restore(snapshot);
+        base.Restore(snapshot);
     }
 
     public override Snapshot TakeSnapshot(bool newTransactionStart = false)
     {
         int blockAccessListSnapshot = _generatingBlockAccessList.TakeSnapshot();
-        Snapshot snapshot = State.TakeSnapshot(newTransactionStart);
+        Snapshot snapshot = base.TakeSnapshot(newTransactionStart);
         return new(snapshot.StorageSnapshot, snapshot.StateSnapshot, blockAccessListSnapshot);
     }
 
@@ -235,7 +235,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override bool IsStorageEmpty(Address address)
     {
         AddAccountRead(address);
-        return State.IsStorageEmpty(address);
+        return base.IsStorageEmpty(address);
     }
 
     public override bool IsDeadAccount(Address address)
@@ -251,11 +251,11 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void ClearStorage(Address address)
     {
         AddAccountRead(address);
-        State.ClearStorage(address);
+        base.ClearStorage(address);
     }
 
     private UInt256 GetBalanceInternal(Address address)
-        => GetBalanceCurrent(address) ?? State.GetBalance(address);
+        => GetBalanceCurrent(address) ?? base.GetBalance(address);
 
     private UInt256? GetBalanceCurrent(Address address)
     {
@@ -264,7 +264,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     }
 
     private UInt256 GetNonceInternal(Address address)
-        => GetNonceCurrent(address) ?? State.GetNonce(address);
+        => GetNonceCurrent(address) ?? base.GetNonce(address);
 
     private UInt256? GetNonceCurrent(Address address)
     {
@@ -294,10 +294,10 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     }
 
     private byte[]? GetCodeInternal(Address address)
-        => GetCodeCurrent(address) ?? State.GetCode(address);
+        => GetCodeCurrent(address) ?? base.GetCode(address);
 
     private ValueHash256 GetCodeHashInternal(Address address)
-        => GetCodeHashCurrent(address, out ValueHash256? hash) ? hash.Value : State.GetCodeHash(address);
+        => GetCodeHashCurrent(address, out ValueHash256? hash) ? hash.Value : base.GetCodeHash(address);
 
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
     {
@@ -315,11 +315,11 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
             }
         }
 
-        return State.Get(storageCell);
+        return base.Get(storageCell);
     }
 
     private bool AccountExistsInternal(Address address)
-        => AccountExistsCurrent(address) ?? State.AccountExists(address);
+        => AccountExistsCurrent(address) ?? base.AccountExists(address);
 
     private bool? AccountExistsCurrent(Address address)
     {

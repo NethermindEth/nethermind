@@ -17,7 +17,7 @@ public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorat
     /// </remarks>
     public override void RecordBytecodeAccess(Address address)
     {
-        if (State.IsContract(address) && GetCode(address) is null)
+        if (IsContract(address) && GetCode(address) is null)
             throw new InvalidOperationException($"Missing bytecode at address {address}");
     }
 }

@@ -108,32 +108,32 @@ public class WitnessGeneratingWorldState(IWorldState state, IStateReader stateRe
     public override bool TryGetAccount(Address address, out AccountStruct account)
     {
         RecordEmptySlots(address);
-        return State.TryGetAccount(address, out account);
+        return base.TryGetAccount(address, out account);
     }
 
     public override UInt256 GetNonce(Address address)
     {
         RecordEmptySlots(address);
-        return State.GetNonce(address);
+        return base.GetNonce(address);
     }
 
     public override bool IsStorageEmpty(Address address)
     {
         RecordEmptySlots(address);
-        return State.IsStorageEmpty(address);
+        return base.IsStorageEmpty(address);
     }
 
     public override byte[]? GetCode(Address address)
     {
         RecordEmptySlots(address);
-        byte[] code = State.GetCode(address);
+        byte[] code = base.GetCode(address);
         RecordBytecode(code);
         return code;
     }
 
     public override byte[]? GetCode(in ValueHash256 codeHash)
     {
-        byte[] code = State.GetCode(in codeHash);
+        byte[] code = base.GetCode(in codeHash);
         RecordBytecode(code);
         return code;
     }
@@ -143,121 +143,121 @@ public class WitnessGeneratingWorldState(IWorldState state, IStateReader stateRe
     public override bool IsContract(Address address)
     {
         RecordEmptySlots(address);
-        return State.IsContract(address);
+        return base.IsContract(address);
     }
 
     public override bool AccountExists(Address address)
     {
         RecordEmptySlots(address);
-        return State.AccountExists(address);
+        return base.AccountExists(address);
     }
 
     public override bool IsDeadAccount(Address address)
     {
         RecordEmptySlots(address);
-        return State.IsDeadAccount(address);
+        return base.IsDeadAccount(address);
     }
 
     public override ref readonly UInt256 GetBalance(Address address)
     {
         RecordEmptySlots(address);
-        return ref State.GetBalance(address);
+        return ref base.GetBalance(address);
     }
 
     public override ref readonly ValueHash256 GetCodeHash(Address address)
     {
         RecordEmptySlots(address);
-        return ref State.GetCodeHash(address);
+        return ref base.GetCodeHash(address);
     }
 
     public override ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         RecordSlot(storageCell);
-        return State.GetOriginal(in storageCell);
+        return base.GetOriginal(in storageCell);
     }
 
     public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
         RecordSlot(storageCell);
-        return State.Get(in storageCell);
+        return base.Get(in storageCell);
     }
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
         RecordSlot(storageCell);
-        State.Set(in storageCell, newValue);
+        base.Set(in storageCell, newValue);
     }
 
     public override void ClearStorage(Address address)
     {
         RecordEmptySlots(address);
-        State.ClearStorage(address);
+        base.ClearStorage(address);
     }
 
     public override void DeleteAccount(Address address)
     {
         RecordEmptySlots(address);
-        State.DeleteAccount(address);
+        base.DeleteAccount(address);
     }
 
     public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
         RecordEmptySlots(address);
-        State.CreateAccount(address, in balance, in nonce);
+        base.CreateAccount(address, in balance, in nonce);
     }
 
     public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
         RecordEmptySlots(address);
-        State.CreateAccountIfNotExists(address, in balance, in nonce);
+        base.CreateAccountIfNotExists(address, in balance, in nonce);
     }
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         RecordEmptySlots(address);
-        return State.InsertCode(address, in codeHash, code, spec, isGenesis);
+        return base.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         RecordEmptySlots(address);
-        State.AddToBalance(address, in balanceChange, spec, out oldBalance);
+        base.AddToBalance(address, in balanceChange, spec, out oldBalance);
     }
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         RecordEmptySlots(address);
-        return State.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out oldBalance);
+        return base.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out oldBalance);
     }
 
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         RecordEmptySlots(address);
-        State.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
+        base.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
     }
 
     public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
         RecordEmptySlots(address);
-        State.IncrementNonce(address, delta, out oldNonce);
+        base.IncrementNonce(address, delta, out oldNonce);
     }
 
     public override void DecrementNonce(Address address, UInt256 delta)
     {
         RecordEmptySlots(address);
-        State.DecrementNonce(address, delta);
+        base.DecrementNonce(address, delta);
     }
 
     public override void SetNonce(Address address, in UInt256 nonce)
     {
         RecordEmptySlots(address);
-        State.SetNonce(address, in nonce);
+        base.SetNonce(address, in nonce);
     }
 
     public override void CreateEmptyAccountIfDeleted(Address address)
     {
         RecordEmptySlots(address);
-        State.CreateEmptyAccountIfDeleted(address);
+        base.CreateEmptyAccountIfDeleted(address);
     }
 
     private void RecordSlot(in StorageCell storageCell) => RecordEmptySlots(storageCell.Address).Add(storageCell.Index);
