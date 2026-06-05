@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
@@ -95,6 +96,37 @@ namespace Nethermind.Evm.Test
 
             Assert.That(result.TransactionExecuted, Is.True);
             Assert.That(TestState.AccountExists(target), Is.False);
+        }
+
+        [Test]
+        public void Staticcall_to_ecrecover_returns_success_with_empty_output_for_invalid_input()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(32)
+                .PushData(128)
+                .PushData(128)
+                .PushData(0)
+                .PushData(PrecompiledAddresses.ECRecover)
+                .PushData(50_000)
+                .Op(Instruction.STATICCALL)
+                .PushData(0)
+                .Op(Instruction.SSTORE)
+                .PushData(128)
+                .Op(Instruction.MLOAD)
+                .PushData(1)
+                .Op(Instruction.SSTORE)
+                .Done;
+
+            (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, code, value: 0);
+
+            TransactionResult result = _processor.Execute(
+                transaction,
+                new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+                NullTxTracer.Instance);
+
+            Assert.That(result.TransactionExecuted, Is.True);
+            AssertStorage(UInt256.Zero, UInt256.One);
+            AssertStorage(UInt256.One, UInt256.Zero);
         }
 
         private static byte[] BuildEmptyCodeCall(Instruction instruction, Address target) =>

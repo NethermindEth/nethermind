@@ -5,9 +5,11 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -245,6 +247,26 @@ public static partial class EvmInstructions
             return pushResult;
         }
 
+        if (TOpCall.ExecutionType == ExecutionType.STATICCALL &&
+            !TTracingInst.IsActive &&
+            !vm.TxTracer.IsTracingActions &&
+            target == PrecompiledAddresses.ECRecover &&
+            codeInfo.Precompile is IPrecompile precompile)
+        {
+            return ExecuteECRecoverStaticCallFastPath(
+                vm,
+                ref stack,
+                ref gas,
+                precompile,
+                in dataOffset,
+                dataLength,
+                outputOffset,
+                outputLength,
+                target,
+                gasLimitUl,
+                spec);
+        }
+
         // Fast-path for calls to externally owned accounts (non-contracts)
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
@@ -272,6 +294,81 @@ public static partial class EvmInstructions
         }
 
         return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
+
+        static EvmExceptionType ExecuteECRecoverStaticCallFastPath(
+            VirtualMachine<TGasPolicy> vm,
+            ref EvmStack stack,
+            ref TGasPolicy gas,
+            IPrecompile precompile,
+            in UInt256 dataOffset,
+            UInt256 dataLength,
+            UInt256 outputOffset,
+            UInt256 outputLength,
+            Address target,
+            long gasLimitUl,
+            IReleaseSpec spec)
+        {
+            if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
+            {
+                return EvmExceptionType.OutOfGas;
+            }
+
+            ulong precompileGasCostUl = (ulong)precompile.BaseGasCost(spec) + (ulong)precompile.DataGasCost(callData, spec);
+            if (precompileGasCostUl > (ulong)gasLimitUl)
+            {
+                vm.ReturnDataBuffer = Array.Empty<byte>();
+                vm.ReturnData = null;
+                return stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+            }
+
+            Result<byte[]> output;
+            try
+            {
+                output = precompile.Run(callData, spec);
+            }
+            catch (Exception)
+            {
+                vm.ReturnDataBuffer = Array.Empty<byte>();
+                vm.ReturnData = null;
+                return stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+            }
+
+            bool success = output;
+            if (!success)
+            {
+                vm.ReturnDataBuffer = Array.Empty<byte>();
+                vm.ReturnData = null;
+                return stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+            }
+
+            vm.WorldState.AddToBalanceAndCreateIfNotExists(target, UInt256.Zero, spec);
+
+            ReadOnlyMemory<byte> outputData = output.Data;
+            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl - (long)precompileGasCostUl);
+            vm.ReturnDataBuffer = outputData;
+            vm.ReturnData = null;
+
+            EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
+            if (pushResult != EvmExceptionType.None)
+            {
+                return pushResult;
+            }
+
+            if (outputData.Length > 0 && !outputLength.IsZero)
+            {
+                int copyLength = (int)Math.Min(outputData.Length, outputLength.ToLong());
+                if (copyLength > 0)
+                {
+                    ZeroPaddedSpan outputToCopy = outputData.Span.SliceWithZeroPadding(0, copyLength);
+                    if (!vm.VmState.Memory.TrySave(in outputOffset, outputToCopy))
+                    {
+                        return EvmExceptionType.OutOfGas;
+                    }
+                }
+            }
+
+            return EvmExceptionType.None;
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         static EvmExceptionType CreateFullCallFrame(
