@@ -4,6 +4,8 @@
 using System;
 using System.Buffers;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -64,11 +66,30 @@ public sealed class BalReadCoverage : IDisposable
     /// <summary>OR-reduces <paramref name="other"/>'s structural coverage into this instance and adds its chargeable count.</summary>
     public void Absorb(BalReadCoverage other)
     {
-        ulong[] mine = _coverage;
-        ulong[] theirs = other._coverage;
-        for (int w = 0; w < _wordCount; w++)
+        int n = _wordCount;
+        ref ulong mine = ref MemoryMarshal.GetArrayDataReference(_coverage);
+        ref ulong theirs = ref MemoryMarshal.GetArrayDataReference(other._coverage);
+        int w = 0;
+
+        if (Vector512.IsHardwareAccelerated)
         {
-            mine[w] |= theirs[w];
+            for (; w + Vector512<ulong>.Count <= n; w += Vector512<ulong>.Count)
+                (Vector512.LoadUnsafe(ref mine, (nuint)w) | Vector512.LoadUnsafe(ref theirs, (nuint)w)).StoreUnsafe(ref mine, (nuint)w);
+        }
+        else if (Vector256.IsHardwareAccelerated)
+        {
+            for (; w + Vector256<ulong>.Count <= n; w += Vector256<ulong>.Count)
+                (Vector256.LoadUnsafe(ref mine, (nuint)w) | Vector256.LoadUnsafe(ref theirs, (nuint)w)).StoreUnsafe(ref mine, (nuint)w);
+        }
+        else if (Vector128.IsHardwareAccelerated)
+        {
+            for (; w + Vector128<ulong>.Count <= n; w += Vector128<ulong>.Count)
+                (Vector128.LoadUnsafe(ref mine, (nuint)w) | Vector128.LoadUnsafe(ref theirs, (nuint)w)).StoreUnsafe(ref mine, (nuint)w);
+        }
+
+        for (; w < n; w++)
+        {
+            _coverage[w] |= other._coverage[w];
         }
         _chargeableCount += other._chargeableCount;
     }
@@ -82,7 +103,26 @@ public sealed class BalReadCoverage : IDisposable
     public bool TryFindFirstUncovered(out int ordinal)
     {
         int fullWords = _count >> 6;
-        for (int w = 0; w < fullWords; w++)
+        ref ulong cov = ref MemoryMarshal.GetArrayDataReference(_coverage);
+        int w = 0;
+        // SIMD fast-skip: a fully-covered run is all-ones, the common valid-block case. Drop to the
+        // scalar word scan at the first vector block (or the partial tail word) that has a gap.
+        if (Vector512.IsHardwareAccelerated)
+        {
+            for (; w + Vector512<ulong>.Count <= fullWords; w += Vector512<ulong>.Count)
+                if (Vector512.LoadUnsafe(ref cov, (nuint)w) != Vector512<ulong>.AllBitsSet) break;
+        }
+        else if (Vector256.IsHardwareAccelerated)
+        {
+            for (; w + Vector256<ulong>.Count <= fullWords; w += Vector256<ulong>.Count)
+                if (Vector256.LoadUnsafe(ref cov, (nuint)w) != Vector256<ulong>.AllBitsSet) break;
+        }
+        else if (Vector128.IsHardwareAccelerated)
+        {
+            for (; w + Vector128<ulong>.Count <= fullWords; w += Vector128<ulong>.Count)
+                if (Vector128.LoadUnsafe(ref cov, (nuint)w) != Vector128<ulong>.AllBitsSet) break;
+        }
+        for (; w < fullWords; w++)
         {
             ulong missing = ~_coverage[w];
             if (missing != 0)

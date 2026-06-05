@@ -40,6 +40,40 @@ public class BalReadCoverageTests
         Assert.That(ordinal, Is.EqualTo(missing));
     }
 
+    // 1000 bits = 15 full words + a partial word, so fullWords >= the widest Vector<ulong>.Count
+    // (8 on AVX-512): exercises the SIMD all-ones skip in TryFindFirstUncovered and the scalar tail.
+    [TestCase(0)]    // first word, SIMD block breaks immediately
+    [TestCase(500)]  // mid full word, SIMD skips then scalar drops in
+    [TestCase(999)]  // partial last word, handled outside the SIMD/full-word loop
+    public void Large_coverage_finds_single_gap(int missing)
+    {
+        using BalReadCoverage coverage = new(1000);
+        for (int i = 0; i < 1000; i++)
+        {
+            if (i != missing) coverage.MarkRead(i, chargeable: false);
+        }
+
+        Assert.That(coverage.TryFindFirstUncovered(out int ordinal), Is.True);
+        Assert.That(ordinal, Is.EqualTo(missing));
+    }
+
+    [Test]
+    public void Large_coverage_all_marked_is_covered_and_absorb_sums()
+    {
+        using BalReadCoverage a = new(1000);
+        using BalReadCoverage b = new(1000);
+        for (int i = 0; i < 1000; i++)
+        {
+            if ((i & 1) == 0) a.MarkRead(i, chargeable: true);
+            else b.MarkRead(i, chargeable: true);
+        }
+
+        a.Absorb(b); // SIMD OR-reduce over 15+ words
+
+        Assert.That(a.TryFindFirstUncovered(out _), Is.False);
+        Assert.That(a.ChargeableCount, Is.EqualTo(1000));
+    }
+
     [Test]
     public void Empty_coverage_is_vacuously_covered()
     {
