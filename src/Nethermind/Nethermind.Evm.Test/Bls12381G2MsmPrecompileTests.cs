@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -10,6 +13,37 @@ namespace Nethermind.Evm.Test;
 // Test data from https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
 public class Bls12381G2MsmPrecompileTests : PrecompileTests<Bls12381G2MsmPrecompile, Bls12381G2MsmPrecompileTests>, IPrecompileTests
 {
+    [TestCaseSource(nameof(OpInputSizeLimitCases))]
+    public void Op_input_size_limit(IReleaseSpec spec, int inputLength, bool expectSuccess)
+    {
+        Result<byte[]> result = Instance.Run(new byte[inputLength], spec);
+
+        Assert.That(result.IsSuccess, Is.EqualTo(expectSuccess));
+        if (!expectSuccess)
+            Assert.That(result.Error, Is.EqualTo(Errors.InvalidInputLength));
+    }
+
+    private static IEnumerable<TestCaseData> OpInputSizeLimitCases()
+    {
+        const int itemSize = Bls12381G2MsmPrecompile.ItemSize;
+        IReleaseSpec preFork = new Prague();
+        IReleaseSpec isthmus = new Prague { IsOpIsthmusEnabled = true };
+        IReleaseSpec jovian = new Prague { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true };
+        IReleaseSpec karst = new Prague { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true, IsOpKarstEnabled = true };
+
+        // Pre-fork: no limit, only the item-size modulo applies
+        yield return new(preFork, 1_697 * itemSize, true) { TestName = "PreFork over Isthmus limit" };
+        yield return new(preFork, itemSize - 1, false) { TestName = "PreFork not a multiple of item size" };
+        // Isthmus: 488,448 bytes (1,696 items)
+        yield return new(isthmus, 1_696 * itemSize, true) { TestName = "Isthmus at limit" };
+        yield return new(isthmus, 1_697 * itemSize, false) { TestName = "Isthmus over limit" };
+        // Jovian: 278,784 bytes (968 items); Karst keeps the Jovian limit
+        yield return new(jovian, 968 * itemSize, true) { TestName = "Jovian at limit" };
+        yield return new(jovian, 969 * itemSize, false) { TestName = "Jovian over limit" };
+        yield return new(karst, 968 * itemSize, true) { TestName = "Karst at Jovian limit" };
+        yield return new(karst, 969 * itemSize, false) { TestName = "Karst over Jovian limit" };
+    }
+
     static IEnumerable<string> IPrecompileTests.TestFiles()
     {
         yield return "Bls/multiexp_G2_bls.json";

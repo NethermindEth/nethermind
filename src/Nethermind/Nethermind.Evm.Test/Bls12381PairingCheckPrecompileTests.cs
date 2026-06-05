@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -10,6 +13,37 @@ namespace Nethermind.Evm.Test;
 // Test data from https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
 public class Bls12381PairingCheckPrecompileTests : PrecompileTests<Bls12381PairingCheckPrecompile, Bls12381PairingCheckPrecompileTests>, IPrecompileTests
 {
+    [TestCaseSource(nameof(OpInputSizeLimitCases))]
+    public void Op_input_size_limit(IReleaseSpec spec, int inputLength, bool expectSuccess)
+    {
+        Result<byte[]> result = Instance.Run(new byte[inputLength], spec);
+
+        Assert.That(result.IsSuccess, Is.EqualTo(expectSuccess));
+        if (!expectSuccess)
+            Assert.That(result.Error, Is.EqualTo(Errors.InvalidInputLength));
+    }
+
+    private static IEnumerable<TestCaseData> OpInputSizeLimitCases()
+    {
+        const int pairSize = 384;
+        IReleaseSpec preFork = new Prague();
+        IReleaseSpec isthmus = new Prague { IsOpIsthmusEnabled = true };
+        IReleaseSpec jovian = new Prague { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true };
+        IReleaseSpec karst = new Prague { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true, IsOpKarstEnabled = true };
+
+        // Pre-fork: no limit, only the pair-size modulo applies
+        yield return new(preFork, 613 * pairSize, true) { TestName = "PreFork over Isthmus limit" };
+        yield return new(preFork, pairSize - 1, false) { TestName = "PreFork not a multiple of pair size" };
+        // Isthmus: 235,008 bytes (612 pairs)
+        yield return new(isthmus, 612 * pairSize, true) { TestName = "Isthmus at limit" };
+        yield return new(isthmus, 613 * pairSize, false) { TestName = "Isthmus over limit" };
+        // Jovian: 156,672 bytes (408 pairs); Karst keeps the Jovian limit
+        yield return new(jovian, 408 * pairSize, true) { TestName = "Jovian at limit" };
+        yield return new(jovian, 409 * pairSize, false) { TestName = "Jovian over limit" };
+        yield return new(karst, 408 * pairSize, true) { TestName = "Karst at Jovian limit" };
+        yield return new(karst, 409 * pairSize, false) { TestName = "Karst over Jovian limit" };
+    }
+
     static IEnumerable<string> IPrecompileTests.TestFiles()
     {
         yield return "Bls/pairing_check_bls.json";
