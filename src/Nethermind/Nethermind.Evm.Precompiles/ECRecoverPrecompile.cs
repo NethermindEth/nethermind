@@ -9,6 +9,7 @@ using Nethermind.Crypto;
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -28,6 +29,7 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
     [ThreadStatic] private static byte[]? t_cachedInput;
     [ThreadStatic] private static Result<byte[]> t_cachedResult;
     [ThreadStatic] private static bool t_hasCachedResult;
+    private static CachedResult? s_cachedResult;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
@@ -124,15 +126,55 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
             return true;
         }
 
+        CachedResult? cachedResult = Volatile.Read(ref s_cachedResult);
+        if (cachedResult is not null && cachedResult.Matches(inputData))
+        {
+            result = cachedResult.Result;
+            CacheThreadResult(inputData, result);
+            return true;
+        }
+
         result = default;
         return false;
     }
 
     private static void CacheResult(ReadOnlySpan<byte> inputData, Result<byte[]> result)
     {
+        Volatile.Write(ref s_cachedResult, new CachedResult(inputData, result));
+        CacheThreadResult(inputData, result);
+    }
+
+    private static void CacheThreadResult(ReadOnlySpan<byte> inputData, Result<byte[]> result)
+    {
         byte[] cachedInput = t_cachedInput ??= new byte[InputLength];
         inputData.CopyTo(cachedInput);
         t_cachedResult = result;
         t_hasCachedResult = true;
+    }
+
+    private sealed class CachedResult
+    {
+        private readonly ValueHash256 _message;
+        private readonly ValueHash256 _v;
+        private readonly ValueHash256 _r;
+        private readonly ValueHash256 _s;
+
+        public CachedResult(ReadOnlySpan<byte> inputData, Result<byte[]> result)
+        {
+            _message = new ValueHash256(inputData[..32]);
+            _v = new ValueHash256(inputData.Slice(32, 32));
+            _r = new ValueHash256(inputData.Slice(64, 32));
+            _s = new ValueHash256(inputData.Slice(96, 32));
+            Result = result;
+        }
+
+        public Result<byte[]> Result { get; }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Matches(ReadOnlySpan<byte> inputData) =>
+            _message.Equals(new ValueHash256(inputData[..32])) &&
+            _v.Equals(new ValueHash256(inputData.Slice(32, 32))) &&
+            _r.Equals(new ValueHash256(inputData.Slice(64, 32))) &&
+            _s.Equals(new ValueHash256(inputData.Slice(96, 32)));
     }
 }
