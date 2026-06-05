@@ -2,33 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-#if !ZK_EVM
-using System.Threading.Tasks;
-#endif
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
 
 public static class TxsDecoder
 {
-#if !ZK_EVM
-    // Parallel infra has ~50μs startup; only worthwhile when the workload amortises that.
-    private const int ParallelDecodeThreshold = 16;
-#endif
-
     public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors)
     {
         IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
         if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
-#if !ZK_EVM
-        // BCL Parallel.For isn't available in the Zisk stateless guest build (--no-pthread).
-        if (txData.Length >= ParallelDecodeThreshold)
-        {
-            return DecodeParallel(txData, rlpDecoder, skipErrors);
-        }
-#endif
+        return TryDecodeParallel(txData, rlpDecoder, skipErrors, out TransactionDecodingResult result)
+            ? result
+            : DecodeSequential(txData, rlpDecoder, skipErrors);
+    }
 
+    private static TransactionDecodingResult DecodeSequential(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
+    {
         Transaction[] transactions = new Transaction[txData.Length];
         int added = 0;
         for (int i = 0; i < transactions.Length; i++)
@@ -60,8 +51,17 @@ public static class TxsDecoder
     }
 
 #if !ZK_EVM
-    private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
+    // Parallel infra has ~50μs startup; only worthwhile when the workload amortises that.
+    private const int ParallelDecodeThreshold = 16;
+
+    private static bool TryDecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors, out TransactionDecodingResult result)
     {
+        if (txData.Length < ParallelDecodeThreshold)
+        {
+            result = default;
+            return false;
+        }
+
         // Declared non-nullable but null slots are legal at runtime (CLR doesn't distinguish T[]
         // from T?[]). On the !skipErrors path, the first thrown decode aborts via state.Stop() so
         // we never observe nulls.
@@ -70,7 +70,7 @@ public static class TxsDecoder
         int firstError = int.MaxValue;
         object errorGate = new();
 
-        Parallel.For(0, txData.Length, (i, state) =>
+        System.Threading.Tasks.Parallel.For(0, txData.Length, (i, state) =>
         {
             try
             {
@@ -96,10 +96,15 @@ public static class TxsDecoder
 
         if (error is not null)
         {
-            return new TransactionDecodingResult(error);
+            result = new TransactionDecodingResult(error);
+            return true;
         }
 
-        if (!skipErrors) return new TransactionDecodingResult(slots);
+        if (!skipErrors)
+        {
+            result = new TransactionDecodingResult(slots);
+            return true;
+        }
 
         // Parallel.For doesn't preserve a contiguous prefix when skipErrors leaves nulls — compact in place.
         int j = 0;
@@ -112,7 +117,16 @@ public static class TxsDecoder
             }
         }
         if (j != slots.Length) Array.Resize(ref slots, j);
-        return new TransactionDecodingResult(slots);
+        result = new TransactionDecodingResult(slots);
+        return true;
+    }
+#else
+    // Zisk stateless guest builds with --no-pthread; BCL Parallel.For is unavailable, so the
+    // dispatch always short-circuits to DecodeSequential.
+    private static bool TryDecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors, out TransactionDecodingResult result)
+    {
+        result = default;
+        return false;
     }
 #endif
 }
