@@ -586,6 +586,46 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void TestReadOnlyAccountIsNotCommittedInSnapshot()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+
+        Assert.That(scope.Get(address), Is.EqualTo(account));
+
+        scope.Commit(1);
+
+        Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
+        Assert.That(ctx.LastCommittedSnapshot!.AccountsCount, Is.EqualTo(0));
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(address, out _), Is.False);
+    }
+
+    [Test]
+    public void TestHintGetSeedsReadCacheWithoutCommittingAccount()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateRandomAccount();
+
+        scope.HintGet(address, account);
+
+        Assert.That(scope.Get(address), Is.EqualTo(account));
+        ctx.PersistenceReader.DidNotReceive().GetAccount(address);
+
+        scope.Commit(1);
+
+        Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
+        Assert.That(ctx.LastCommittedSnapshot!.AccountsCount, Is.EqualTo(0));
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(address, out _), Is.False);
+    }
+
+    [Test]
     public void TestMultipleCommitsAccumulateData()
     {
         using TestContext ctx = new();
