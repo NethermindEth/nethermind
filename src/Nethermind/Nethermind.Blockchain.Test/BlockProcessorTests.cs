@@ -684,8 +684,9 @@ public class BlockProcessorTests
     public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks(int txCount) =>
         WithScopedAmsterdamBalManager(balManager => AssertParallelBalExecutionEnabled(balManager, txCount));
 
-    [Test]
-    public void Bal_transaction_processors_use_shared_precompile_cache()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Bal_transaction_processors_use_shared_precompile_cache(bool cachePrecompilesOnBlockProcessing)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         PreBlockCaches preBlockCaches = new();
@@ -721,7 +722,7 @@ public class BlockProcessorTests
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
-            new BlocksConfig { ParallelExecution = false, CachePrecompilesOnBlockProcessing = true },
+            new BlocksConfig { ParallelExecution = false, CachePrecompilesOnBlockProcessing = cachePrecompilesOnBlockProcessing },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
             preBlockCaches: preBlockCaches);
 

@@ -58,7 +58,7 @@ public partial class BlockAccessListManager(
             logManager,
             prewarmerEnvFactory,
             preBlockCaches,
-            blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null,
+            preBlockCaches?.PrecompileCache,
             readOnlyTxProcessingEnvFactory));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
         new(() => new(
@@ -66,7 +66,7 @@ public partial class BlockAccessListManager(
             specProvider,
             stateProvider,
             logManager,
-            blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null));
+            preBlockCaches?.PrecompileCache));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
