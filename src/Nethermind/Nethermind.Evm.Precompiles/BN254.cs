@@ -171,13 +171,9 @@ internal static unsafe class BN254
 
     private static bool CheckPairingVector(byte[] output, byte* data, int pairCount)
     {
-        const int UlongSize = sizeof(ulong);
-        int g1UlongCount = sizeof(mclBnG1) / UlongSize;
-        int g2UlongCount = sizeof(mclBnG2) / UlongSize;
-        ulong* g1Buffer = stackalloc ulong[pairCount * g1UlongCount];
-        ulong* g2Buffer = stackalloc ulong[pairCount * g2UlongCount];
-        byte* g1Bytes = (byte*)g1Buffer;
-        byte* g2Bytes = (byte*)g2Buffer;
+        // Allocate in bytes so the buffer size matches the write stride (sizeof) exactly, regardless of struct padding.
+        byte* g1Bytes = stackalloc byte[pairCount * sizeof(mclBnG1)];
+        byte* g2Bytes = stackalloc byte[pairCount * sizeof(mclBnG2)];
 
         int nonZeroPairCount = 0;
 

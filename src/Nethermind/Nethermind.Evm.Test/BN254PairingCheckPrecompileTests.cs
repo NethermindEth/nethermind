@@ -85,6 +85,9 @@ public class BN254PairingCheckPrecompileTests : PrecompileTests<BN254PairingChec
 
     private static IEnumerable<TestCaseData> MultiPairBoundaryCases()
     {
+        // 4 pairs <= MaxStackPairCount: vectorized path whose product is not one (guards against an always-one vector result).
+        yield return new TestCaseData(TwoPairsProductOne + OnePairNotOne + InfinityPairs(1), ResultNotOne, true)
+            .SetName("CheckPairing_4_pairs_product_not_one_vector_path");
         // 32 pairs == MaxStackPairCount: vectorized path; 16 cancelling blocks multiply to one.
         yield return new TestCaseData(Repeat(TwoPairsProductOne, 16), ResultOne, true)
             .SetName("CheckPairing_32_pairs_product_one_vector_path");
