@@ -57,6 +57,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
     public void SetReadCoverageActive(bool active) => _coverageActive = active;
 
+    public BalReadStoragePlan? GetActiveDeclaredReadPlan() => _innerWorldState.GetActiveDeclaredReadPlan();
+
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);
 

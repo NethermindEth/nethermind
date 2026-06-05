@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
@@ -28,6 +29,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private int _storageKeysSnapshots;
     private int _destroyListSnapshots;
     private int _logsSnapshots;
+    private int _warmthSnapshots;
 
     public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
 
@@ -37,7 +39,15 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         => _trackingState.AccessedAddresses.Add(address);
 
     public readonly bool WarmUp(in StorageCell storageCell)
-        => _trackingState.AccessedStorageCells.Add(storageCell);
+    {
+        // Verify-only declared reads carry warmth in an ordinal bitset instead of the 52-byte cell
+        // journal set. The lanes are disjoint (EIP-7928 reads are read-only, changes are written), so a
+        // cell lives in exactly one; non-verify execution leaves Warmth null and takes the cell path.
+        BalReadWarmth? warmth = _trackingState.Warmth;
+        return warmth is not null && _trackingState.Plan!.TryGetGlobalReadOrdinal(storageCell.Address, in storageCell.Index, out int ordinal)
+            ? warmth.WarmUp(ordinal)
+            : _trackingState.AccessedStorageCells.Add(storageCell);
+    }
 
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -48,10 +58,22 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
                 _trackingState.AccessedAddresses.Add(address);
                 foreach (UInt256 storage in storages)
                 {
-                    _trackingState.AccessedStorageCells.Add(new StorageCell(address, in storage));
+                    // Route through WarmUp so access-list pre-warming hits the same lane as the SLOAD.
+                    WarmUp(new StorageCell(address, in storage));
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Routes EIP-2929 warmth for the BAL's declared (read-only) storage slots through an ordinal bitset
+    /// keyed by <paramref name="plan"/> instead of the storage-cell journal set. Verify-only, non-tracing
+    /// path; the tracker takes ownership of <paramref name="warmth"/> and disposes it when reset.
+    /// </summary>
+    public readonly void EnableDeclaredReadWarmth(BalReadStoragePlan plan, BalReadWarmth warmth)
+    {
+        _trackingState.Plan = plan;
+        _trackingState.Warmth = warmth;
     }
 
     public readonly void ToBeDestroyed(Address address) => _trackingState.DestroyList.Add(address);
@@ -64,6 +86,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         _storageKeysSnapshots = _trackingState.AccessedStorageCells.TakeSnapshot();
         _destroyListSnapshots = _trackingState.DestroyList.TakeSnapshot();
         _logsSnapshots = _trackingState.Logs.TakeSnapshot();
+        _warmthSnapshots = _trackingState.Warmth?.TakeSnapshot() ?? 0;
     }
 
     public readonly void Restore()
@@ -74,6 +97,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         {
             _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
             _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+            _trackingState.Warmth?.Restore(_warmthSnapshots);
         }
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
@@ -103,6 +127,11 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
 
+        // Per-tx verify-only declared-read warmth; null on the normal path. Owned here (disposed on Clear)
+        // so the pooled state returns its bitset arrays between transactions.
+        public BalReadWarmth? Warmth { get; set; }
+        public BalReadStoragePlan? Plan { get; set; }
+
         private void Clear()
         {
             AccessedAddresses.Clear();
@@ -110,6 +139,9 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
+            Warmth?.Dispose();
+            Warmth = null;
+            Plan = null;
         }
     }
 }

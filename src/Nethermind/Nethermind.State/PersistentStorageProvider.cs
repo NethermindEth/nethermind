@@ -478,7 +478,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (!storageCell.IsHash)
             {
                 EnsureStorageTree();
-                _backend.HintSet(storageCell.Index, value);
+                _backend.HintSet(in storageCell.Index, value);
             }
         }
 
@@ -506,7 +506,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             EnsureStorageTree();
             return !storageCell.IsHash
-                ? _backend.Get(storageCell.Index)
+                ? _backend.Get(in storageCell.Index)
                 : _backend.Get(storageCell.Hash);
         }
 

@@ -198,7 +198,7 @@ public class PrewarmerScopeProvider(
             {
                 if (readDestination is not null && readPlan is not null)
                 {
-                    return readPlan.TryGetGlobalReadOrdinal(storageCell.Address, storageCell.Index, out ordinal);
+                    return readPlan.TryGetGlobalReadOrdinal(storageCell.Address, in storageCell.Index, out ordinal);
                 }
                 ordinal = -1;
                 return false;
@@ -250,7 +250,7 @@ public class PrewarmerScopeProvider(
             Db.Metrics.IncrementStorageTreeReads();
 
             return !storageCell.IsHash
-                ? baseStorageTree.Get(storageCell.Index)
+                ? baseStorageTree.Get(in storageCell.Index)
                 : baseStorageTree.Get(storageCell.Hash);
         }
 

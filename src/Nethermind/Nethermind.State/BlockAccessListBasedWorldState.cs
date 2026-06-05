@@ -75,6 +75,10 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     /// <summary>Whether this worker is marking verify-only read coverage for the current block.</summary>
     public bool ReadCoverageActive => _readCoverage is not null;
 
+    /// <inheritdoc/>
+    /// <remarks>The block's declared-read ordinal plan, present whenever the prefetch/coverage plan was built.</remarks>
+    public BalReadStoragePlan? GetActiveDeclaredReadPlan() => preBlockCaches?.StorageReadPlan;
+
     /// <summary>
     /// Distinct chargeable (non-system) declared reads this worker marked for the current slice. Read
     /// by the pool at slice return so the validator can accumulate the chargeable budget per slice.
@@ -184,7 +188,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         }
 
         if (_coverageHasAccount &&
-            plan.TryGetReadLocalIndex(_coverageAccountIndex, storageCell.Index, ref _coverageCursor, out int localIndex))
+            plan.TryGetReadLocalIndex(_coverageAccountIndex, in storageCell.Index, ref _coverageCursor, out int localIndex))
         {
             int ordinal = plan.GlobalReadOrdinal(_coverageAccountIndex, localIndex);
             coverage.MarkRead(ordinal, chargeable: !IsSystemContract(storageCell.Address));
@@ -213,7 +217,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         if (preBlockCaches?.StorageValueDestination is not { } destination
             || preBlockCaches.StorageReadPlan is not { } readPlan
-            || !readPlan.TryGetGlobalReadOrdinal(storageCell.Address, storageCell.Index, out int ordinal))
+            || !readPlan.TryGetGlobalReadOrdinal(storageCell.Address, in storageCell.Index, out int ordinal))
         {
             value = null;
             return false;
