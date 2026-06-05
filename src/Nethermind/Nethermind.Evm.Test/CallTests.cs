@@ -17,6 +17,15 @@ namespace Nethermind.Evm.Test
 {
     public class CallTests : VirtualMachineTestsBase
     {
+        private const string ValidECRecoverInput =
+            "38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e" +
+            "000000000000000000000000000000000000000000000000000000000000001b" +
+            "38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e" +
+            "789d1dd423d25f0772d2748d60f7e4b81bb14d086eba8e8e8efb6dcff8a4ae02";
+
+        private static readonly byte[] ValidECRecoverOutput =
+            Bytes.FromHexString("000000000000000000000000ceaccac640adf55b2028469bd36ba501f28b699d");
+
         protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
 
@@ -101,10 +110,67 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Staticcall_to_ecrecover_returns_success_with_empty_output_for_invalid_input()
         {
-            byte[] code = Prepare.EvmCode
+            TransactionResult result = ExecuteECRecoverStaticCall(Prepare.EvmCode, 128);
+
+            Assert.That(result.TransactionExecuted, Is.True);
+            AssertStorage(UInt256.Zero, UInt256.One);
+            AssertStorage(UInt256.One, UInt256.Zero);
+        }
+
+        [Test]
+        public void Staticcall_to_ecrecover_returns_success_with_empty_output_for_short_input()
+        {
+            TransactionResult result = ExecuteECRecoverStaticCall(Prepare.EvmCode, 63);
+
+            Assert.That(result.TransactionExecuted, Is.True);
+            AssertStorage(UInt256.Zero, UInt256.One);
+            AssertStorage(UInt256.One, UInt256.Zero);
+        }
+
+        [Test]
+        public void Staticcall_to_ecrecover_returns_success_with_empty_output_for_invalid_v()
+        {
+            byte[] invalidV = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000001");
+            TransactionResult result = ExecuteECRecoverStaticCall(Prepare.EvmCode.MSTORE(32, invalidV), 128);
+
+            Assert.That(result.TransactionExecuted, Is.True);
+            AssertStorage(UInt256.Zero, UInt256.One);
+            AssertStorage(UInt256.One, UInt256.Zero);
+        }
+
+        [Test]
+        public void Staticcall_to_ecrecover_with_valid_v_uses_regular_precompile_result()
+        {
+            byte[] input = Bytes.FromHexString(ValidECRecoverInput);
+            Prepare code = Prepare.EvmCode;
+            for (int i = 0; i < 4; i++)
+            {
+                code.MSTORE((UInt256)(i * 32), input.AsSpan(i * 32, 32).ToArray());
+            }
+
+            TransactionResult result = ExecuteECRecoverStaticCall(code, 128);
+
+            Assert.That(result.TransactionExecuted, Is.True);
+            AssertStorage(UInt256.Zero, UInt256.One);
+            AssertStorage(UInt256.One, ValidECRecoverOutput);
+        }
+
+        private static byte[] BuildEmptyCodeCall(Instruction instruction, Address target) =>
+            instruction switch
+            {
+                Instruction.CALL => Prepare.EvmCode.CallWithValue(target, 50_000, 1.Ether).Done,
+                Instruction.CALLCODE => Prepare.EvmCode.CallCode(target, 50_000, 1.Ether).Done,
+                Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(target, 50_000).Done,
+                Instruction.STATICCALL => Prepare.EvmCode.StaticCall(target, 50_000).Done,
+                _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null)
+            };
+
+        private TransactionResult ExecuteECRecoverStaticCall(Prepare code, int dataLength)
+        {
+            byte[] bytecode = code
                 .PushData(32)
                 .PushData(128)
-                .PushData(128)
+                .PushData(dataLength)
                 .PushData(0)
                 .PushData(PrecompiledAddresses.ECRecover)
                 .PushData(50_000)
@@ -117,26 +183,12 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, code, value: 0);
+            (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, bytecode, value: 0);
 
-            TransactionResult result = _processor.Execute(
+            return _processor.Execute(
                 transaction,
                 new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
                 NullTxTracer.Instance);
-
-            Assert.That(result.TransactionExecuted, Is.True);
-            AssertStorage(UInt256.Zero, UInt256.One);
-            AssertStorage(UInt256.One, UInt256.Zero);
         }
-
-        private static byte[] BuildEmptyCodeCall(Instruction instruction, Address target) =>
-            instruction switch
-            {
-                Instruction.CALL => Prepare.EvmCode.CallWithValue(target, 50_000, 1.Ether).Done,
-                Instruction.CALLCODE => Prepare.EvmCode.CallCode(target, 50_000, 1.Ether).Done,
-                Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(target, 50_000).Done,
-                Instruction.STATICCALL => Prepare.EvmCode.StaticCall(target, 50_000).Done,
-                _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null)
-            };
     }
 }

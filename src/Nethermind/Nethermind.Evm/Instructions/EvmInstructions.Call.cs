@@ -9,7 +9,6 @@ using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -251,20 +250,19 @@ public static partial class EvmInstructions
             !TTracingInst.IsActive &&
             !vm.TxTracer.IsTracingActions &&
             target == PrecompiledAddresses.ECRecover &&
-            codeInfo.Precompile is IPrecompile precompile)
-        {
-            return ExecuteECRecoverStaticCallFastPath(
+            codeInfo.IsPrecompile &&
+            TryExecuteInvalidECRecoverStaticCallFastPath(
                 vm,
                 ref stack,
                 ref gas,
-                precompile,
                 in dataOffset,
                 dataLength,
-                outputOffset,
-                outputLength,
                 target,
                 gasLimitUl,
-                spec);
+                spec,
+                out EvmExceptionType result))
+        {
+            return result;
         }
 
         // Fast-path for calls to externally owned accounts (non-contracts)
@@ -295,79 +293,61 @@ public static partial class EvmInstructions
 
         return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
 
-        static EvmExceptionType ExecuteECRecoverStaticCallFastPath(
+        static bool TryExecuteInvalidECRecoverStaticCallFastPath(
             VirtualMachine<TGasPolicy> vm,
             ref EvmStack stack,
             ref TGasPolicy gas,
-            IPrecompile precompile,
             in UInt256 dataOffset,
             UInt256 dataLength,
-            UInt256 outputOffset,
-            UInt256 outputLength,
             Address target,
             long gasLimitUl,
-            IReleaseSpec spec)
+            IReleaseSpec spec,
+            out EvmExceptionType result)
         {
-            if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
-            {
-                return EvmExceptionType.OutOfGas;
-            }
+            const long ECRecoverBaseGasCost = 3000L;
 
-            ulong precompileGasCostUl = (ulong)precompile.BaseGasCost(spec) + (ulong)precompile.DataGasCost(callData, spec);
-            if (precompileGasCostUl > (ulong)gasLimitUl)
+            if (gasLimitUl < ECRecoverBaseGasCost)
             {
                 vm.ReturnDataBuffer = Array.Empty<byte>();
                 vm.ReturnData = null;
-                return stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+                result = stack.PushZero<TTracingInst>();
+                return true;
             }
 
-            Result<byte[]> output;
-            try
+            if (!HasInvalidECRecoverV(vm, in dataOffset, dataLength))
             {
-                output = precompile.Run(callData, spec);
-            }
-            catch (Exception)
-            {
-                vm.ReturnDataBuffer = Array.Empty<byte>();
-                vm.ReturnData = null;
-                return stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+                result = EvmExceptionType.None;
+                return false;
             }
 
-            bool success = output;
-            if (!success)
+            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl - ECRecoverBaseGasCost);
+            vm.ReturnDataBuffer = Array.Empty<byte>();
+            vm.ReturnData = null;
+
+            EvmExceptionType pushResult = stack.PushOne<TTracingInst>();
+            if (pushResult != EvmExceptionType.None)
             {
-                vm.ReturnDataBuffer = Array.Empty<byte>();
-                vm.ReturnData = null;
-                return stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+                result = pushResult;
+                return true;
             }
 
             vm.WorldState.AddToBalanceAndCreateIfNotExists(target, UInt256.Zero, spec);
+            result = EvmExceptionType.None;
+            return true;
+        }
 
-            ReadOnlyMemory<byte> outputData = output.Data;
-            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl - (long)precompileGasCostUl);
-            vm.ReturnDataBuffer = outputData;
-            vm.ReturnData = null;
-
-            EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
-            if (pushResult != EvmExceptionType.None)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static bool HasInvalidECRecoverV(VirtualMachine<TGasPolicy> vm, in UInt256 dataOffset, UInt256 dataLength)
+        {
+            if (dataLength < 64)
             {
-                return pushResult;
+                return true;
             }
 
-            if (outputData.Length > 0 && !outputLength.IsZero)
-            {
-                int copyLength = (int)Math.Min(outputData.Length, outputLength.ToLong());
-                if (copyLength > 0)
-                {
-                    ZeroPaddedSpan outputToCopy = outputData.Span.SliceWithZeroPadding(0, copyLength);
-                    if (!vm.VmState.Memory.TrySave(in outputOffset, outputToCopy))
-                    {
-                        return EvmExceptionType.OutOfGas;
-                    }
-                }
-            }
-
-            return EvmExceptionType.None;
+            UInt256 vOffset = dataOffset + BigInt32;
+            Span<byte> vBytes = vm.VmState.Memory.LoadSpanAfterGas(in vOffset, EvmPooledMemory.WordSize);
+            byte v = vBytes[31];
+            return (v != 27 && v != 28) || vBytes[..31].IndexOfAnyExcept((byte)0) >= 0;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
