@@ -25,6 +25,11 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     private const int InputLength = 128;
 
+    // ECRECOVER is commonly called in tight loops with identical calldata; keep this bounded and thread-local.
+    [ThreadStatic] private static byte[]? t_cachedInput;
+    [ThreadStatic] private static Result<byte[]> t_cachedResult;
+    [ThreadStatic] private static bool t_hasCachedResult;
+
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
@@ -58,6 +63,25 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
     }
 
     private Result<byte[]> RunInternal(ReadOnlySpan<byte> inputDataSpan)
+    {
+        inputDataSpan = inputDataSpan[..InputLength];
+
+        if (t_hasCachedResult && inputDataSpan.SequenceEqual(t_cachedInput))
+        {
+            return t_cachedResult;
+        }
+
+        Result<byte[]> result = Recover(inputDataSpan);
+
+        t_cachedInput ??= new byte[InputLength];
+        inputDataSpan.CopyTo(t_cachedInput);
+        t_cachedResult = result;
+        t_hasCachedResult = true;
+
+        return result;
+    }
+
+    private Result<byte[]> Recover(ReadOnlySpan<byte> inputDataSpan)
     {
         ReadOnlySpan<byte> vBytes = inputDataSpan.Slice(32, 32);
 
