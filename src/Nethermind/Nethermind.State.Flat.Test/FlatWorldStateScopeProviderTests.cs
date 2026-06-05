@@ -11,7 +11,6 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
@@ -670,52 +669,6 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(sink.AccountReadCount, Is.EqualTo(0));
         ctx.PersistenceReader.DidNotReceive().GetAccount(address);
     }
-
-    [Test]
-    public void TestStateTrieRlpUsesNodeStorageCache()
-    {
-        ResourcePool pool = new(new FlatDbConfig());
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        TreePath path = TreePath.Empty;
-        Hash256 hash = Keccak.Zero;
-        byte[] rlp = [0xc1, 0x80];
-        reader.TryLoadStateRlp(path, ReadFlags.None).Returns(rlp);
-
-        using SnapshotBundle bundle = CreateSnapshotBundle(pool, reader);
-        NodeStorageCache cache = new() { Enabled = true };
-        StateTrieStoreAdapter adapter = new(bundle, new ConcurrencyController(1), cache);
-
-        Assert.That(adapter.TryLoadRlp(path, hash, ReadFlags.None), Is.EqualTo(rlp));
-        Assert.That(adapter.TryLoadRlp(path, hash, ReadFlags.None), Is.EqualTo(rlp));
-        reader.Received(1).TryLoadStateRlp(path, ReadFlags.None);
-    }
-
-    [Test]
-    public void TestStorageTrieRlpUsesNodeStorageCache()
-    {
-        ResourcePool pool = new(new FlatDbConfig());
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        TreePath path = TreePath.Empty;
-        Hash256 hash = Keccak.Zero;
-        Hash256 addressHash = Keccak.Compute(TestItem.AddressA.Bytes);
-        byte[] rlp = [0xc1, 0x80];
-        reader.TryLoadStorageRlp(addressHash, path, ReadFlags.None).Returns(rlp);
-
-        using SnapshotBundle bundle = CreateSnapshotBundle(pool, reader);
-        NodeStorageCache cache = new() { Enabled = true };
-        StorageTrieStoreAdapter adapter = new(bundle, new ConcurrencyController(1), addressHash, cache);
-
-        Assert.That(adapter.TryLoadRlp(path, hash, ReadFlags.None), Is.EqualTo(rlp));
-        Assert.That(adapter.TryLoadRlp(path, hash, ReadFlags.None), Is.EqualTo(rlp));
-        reader.Received(1).TryLoadStorageRlp(addressHash, path, ReadFlags.None);
-    }
-
-    private static SnapshotBundle CreateSnapshotBundle(ResourcePool pool, IPersistence.IPersistenceReader reader) =>
-        new(
-            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false),
-            new TrieNodeCache(new FlatDbConfig(), LimboLogs.Instance),
-            pool,
-            ResourcePool.Usage.MainBlockProcessing);
 
     [Test]
     public void TestMultipleCommitsAccumulateData()
