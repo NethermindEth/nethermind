@@ -163,9 +163,14 @@ public class MultiVersionMemoryScopeProvider(
 
         private void AddFeeReadDependencies(FeeRecipientKind feeKind, int startTxIndex, int txIndex)
         {
+            // Fast path: if the contiguous-committed prefix covers everything below txIndex,
+            // skip the per-i IsCommitted check. ClearFee retreats the prefix before unsetting
+            // any flag, so this hint is a safe lower bound.
+            bool allPriorCommitted = feeAccumulator.HighestContiguouslyCommitted >= txIndex - 1;
+
             for (int i = startTxIndex; i < txIndex; i++)
             {
-                if (!feeAccumulator.IsCommitted(i))
+                if (!allPriorCommitted && !feeAccumulator.IsCommitted(i))
                 {
                     throw new AbortParallelExecutionException(new TxVersion(i, 0));
                 }

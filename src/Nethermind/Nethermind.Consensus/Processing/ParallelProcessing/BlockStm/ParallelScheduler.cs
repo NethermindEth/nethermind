@@ -214,6 +214,11 @@ public sealed class ParallelScheduler(int txCount, ObjectPool<HashSet<int>> setP
         {
             long current = Volatile.Read(ref stateInt);
             TxState currentState = Unsafe.As<long, TxState>(ref current);
+            // Only wake from Aborting; a tx parked on multiple blockers gets a SetReady per
+            // blocker resume, but only the first should transition / bump the incarnation.
+            // A second wake while already Ready / Executing / Executed would otherwise re-bump
+            // and leave an in-flight worker writing under a stale incarnation.
+            if (currentState.Status != TxStatus.Aborting) return;
             TxState newState = new(TxStatus.Ready, currentState.Incarnation + 1);
             long newInt = Unsafe.As<TxState, long>(ref newState);
             if (Interlocked.CompareExchange(ref stateInt, newInt, current) == current)

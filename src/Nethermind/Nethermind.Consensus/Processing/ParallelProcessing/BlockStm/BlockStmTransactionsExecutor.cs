@@ -153,30 +153,30 @@ public class BlockStmTransactionsExecutor(
         Address? sender = block.Transactions[txIndex].SenderAddress;
         if (sender is null) return;
 
-        // Park this tx on the IMMEDIATE predecessor that touches the sender's nonce. STM
-        // re-execution will discover and serialise further predecessors; pre-seeding only
-        // the closest one is enough to break the initial scheduling order — adding all
-        // predecessors would create a chain and increase contention on the dep set.
+        // Park this tx on EVERY prior tx that bumps the sender's nonce (same sender, or any
+        // EIP-7702 authorization with this sender as authority). The scheduler tolerates
+        // multiple AbortExecution calls for the same tx — SetReady is idempotent on the
+        // Aborting status — and ResumeDependencies wakes the tx exactly once even if it's
+        // queued on multiple blockers. Chaining everything avoids cascade gaps in
+        // multi-auth scenarios where the auth chain isn't co-parked by the same-sender rule.
         for (int i = txIndex - 1; i >= 0; i--)
         {
             Transaction prevTx = block.Transactions[i];
             if (prevTx.SenderAddress == sender)
             {
                 scheduler.AbortExecution(txIndex, i, false);
-                return;
+                continue;
             }
 
             if (prevTx.HasAuthorizationList)
             {
-                // tuple.Authority is populated by RecoverSignatures before processing; null
-                // means signature recovery failed and the auth is dropped at exec, creating
-                // no nonce dependency here.
+                // tuple.Authority null = signature recovery failed; the auth is dropped at exec, no nonce bump.
                 foreach (AuthorizationTuple tuple in prevTx.AuthorizationList)
                 {
                     if (tuple.Authority is not null && tuple.Authority == sender)
                     {
                         scheduler.AbortExecution(txIndex, i, false);
-                        return;
+                        break;
                     }
                 }
             }

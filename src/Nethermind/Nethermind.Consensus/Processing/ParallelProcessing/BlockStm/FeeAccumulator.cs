@@ -26,6 +26,12 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
     private readonly bool[] _committed = new bool[txCount];
     private readonly bool[] _gasBeneficiaryCreates = new bool[txCount];
 
+    // Highest tx index N such that _committed[0..N] are all true. Used as a fast-path hint
+    // by AddFeeReadDependencies to skip the per-i IsCommitted scan when the entire prefix
+    // is committed. Safe lower bound: ClearFee retreats this BEFORE clearing any flag, so a
+    // reader observing prefix >= X is guaranteed not to race a concurrent uncommit at <= X.
+    private int _highestContiguouslyCommitted = -1;
+
     /// <summary>
     /// Gets the GasBeneficiary address.
     /// </summary>
@@ -86,7 +92,35 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
     /// Marks a transaction as committed.
     /// </summary>
     /// <param name="txIndex">Transaction index</param>
-    public void MarkCommitted(int txIndex) => Interlocked.Exchange(ref _committed[txIndex], true);
+    public void MarkCommitted(int txIndex)
+    {
+        Interlocked.Exchange(ref _committed[txIndex], true);
+        AdvancePrefixIfPossible(txIndex);
+    }
+
+    /// <summary>Highest index N such that 0..N are all currently committed (or -1).</summary>
+    public int HighestContiguouslyCommitted => Volatile.Read(ref _highestContiguouslyCommitted);
+
+    private void AdvancePrefixIfPossible(int txIndex)
+    {
+        // Single-step advance only when this tx is exactly at prefix+1; cascade forward
+        // while subsequent slots are already committed.
+        int current = Volatile.Read(ref _highestContiguouslyCommitted);
+        while (current + 1 == txIndex)
+        {
+            if (Interlocked.CompareExchange(ref _highestContiguouslyCommitted, txIndex, current) == current)
+            {
+                int next = txIndex + 1;
+                while (next < _committed.Length && Volatile.Read(ref _committed[next]))
+                {
+                    if (Interlocked.CompareExchange(ref _highestContiguouslyCommitted, next, next - 1) != next - 1) return;
+                    next++;
+                }
+                return;
+            }
+            current = Volatile.Read(ref _highestContiguouslyCommitted);
+        }
+    }
 
     /// <summary>
     /// Returns whether the transaction fees have been committed for the given transaction.
@@ -141,6 +175,15 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
     /// <param name="txIndex">Transaction index</param>
     public void ClearFee(int txIndex)
     {
+        // Retreat the contiguous-committed prefix BEFORE unsetting the flag so fast-path
+        // readers can't observe a stale prefix that still covers this index.
+        int current = Volatile.Read(ref _highestContiguouslyCommitted);
+        while (current >= txIndex)
+        {
+            if (Interlocked.CompareExchange(ref _highestContiguouslyCommitted, txIndex - 1, current) == current) break;
+            current = Volatile.Read(ref _highestContiguouslyCommitted);
+        }
+
         Interlocked.Exchange(ref _committed[txIndex], false);
         Volatile.Write(ref _gasBeneficiaryCreates[txIndex], false);
         _gasBeneficiaryFees[txIndex] = UInt256.Zero;
