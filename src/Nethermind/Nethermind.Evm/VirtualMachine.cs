@@ -9,6 +9,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
@@ -118,6 +119,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
+
+    private const int ECRecoverAccumulatorSequenceLength = 18;
+    private const int ECRecoverAccumulatorOpcodeCount = 12;
+    private const long ECRecoverAccumulatorPreCallGas = GasCostOf.VeryLow * 4 + GasCostOf.Base * 2;
+    private const long ECRecoverAccumulatorPostCallGas = GasCostOf.VeryLow * 5;
+    private const long ECRecoverBaseGasCost = 3000L;
 
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
@@ -1275,6 +1282,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 if (TCancelable.IsActive && _txTracer.IsCancelled)
                     ThrowOperationCanceledException();
 
+                if (!TTracingInst.IsActive &&
+                    !TCancelable.IsActive &&
+                    instruction == Instruction.PUSH1 &&
+                    TryExecuteInvalidECRecoverAccumulatorSequence(ref stack, ref gas, ref programCounter, codeLength, out exceptionType))
+                {
+                    opCodeCount += ECRecoverAccumulatorOpcodeCount;
+                    if (exceptionType != EvmExceptionType.None)
+                        break;
+
+                    continue;
+                }
+
                 // Call gas policy hook before instruction execution.
                 TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
 
@@ -1387,6 +1406,153 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         [DoesNotReturn]
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryExecuteInvalidECRecoverAccumulatorSequence(
+        scoped ref EvmStack stack,
+        scoped ref TGasPolicy gas,
+        ref int programCounter,
+        uint codeLength,
+        out EvmExceptionType exceptionType)
+    {
+        exceptionType = EvmExceptionType.None;
+
+        if (!IsECRecoverAccumulatorSequence(ref stack.Code, programCounter, codeLength) ||
+            _txTracer.IsTracingActions ||
+            _txTracer.IsTracingAccess ||
+            stack.Head > EvmStack.MaxStackSize - 7)
+        {
+            return false;
+        }
+
+        VmState<TGasPolicy> vmState = VmState;
+        int inputLength = vmState.Env.InputData.Length;
+        IReleaseSpec spec = BlockExecutionContext.Spec;
+        if (vmState.Env.CallDepth >= MaxCallDepth ||
+            !spec.Use63Over64Rule ||
+            (ulong)inputLength > EvmPooledMemory.MaxMemorySize ||
+            TGasPolicy.GetRemainingGas(in gas) < 10_000L ||
+            !HasInvalidECRecoverV(vmState, inputLength))
+        {
+            return false;
+        }
+
+        if (!TGasPolicy.UpdateGas(ref gas, ECRecoverAccumulatorPreCallGas))
+        {
+            exceptionType = EvmExceptionType.OutOfGas;
+            return true;
+        }
+
+        long requestedGas = TGasPolicy.GetRemainingGas(in gas);
+        UInt256 zero = UInt256.Zero;
+        UInt256 dataLength = (ulong)inputLength;
+        UInt256 outputOffset = 128;
+
+        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
+            !TGasPolicy.UpdateMemoryCost(ref gas, in zero, dataLength, vmState) ||
+            !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, EvmPooledMemory.WordSize, vmState) ||
+            (spec.UseHotAndColdStorage && !TGasPolicy.UpdateGas(ref gas, GasCostOf.WarmStateRead)))
+        {
+            exceptionType = EvmExceptionType.OutOfGas;
+            return true;
+        }
+
+        _worldState.AddAccountRead(PrecompiledAddresses.ECRecover);
+
+        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        long gasLimit = spec.Use63Over64Rule
+            ? Math.Min(requestedGas, gasAvailable - gasAvailable / 64)
+            : requestedGas;
+
+        if (!TGasPolicy.UpdateGas(ref gas, gasLimit))
+        {
+            exceptionType = EvmExceptionType.OutOfGas;
+            return true;
+        }
+
+        bool callSucceeded = gasLimit >= ECRecoverBaseGasCost;
+        if (callSucceeded)
+        {
+            TGasPolicy.UpdateGasUp(ref gas, gasLimit - ECRecoverBaseGasCost);
+        }
+
+        ReturnDataBuffer = Array.Empty<byte>();
+        ReturnData = null;
+        _worldState.AddToBalanceAndCreateIfNotExists(PrecompiledAddresses.ECRecover, UInt256.Zero, spec);
+        Metrics.IncrementCalls();
+
+        if (!TGasPolicy.UpdateGas(ref gas, ECRecoverAccumulatorPostCallGas))
+        {
+            exceptionType = EvmExceptionType.OutOfGas;
+            return true;
+        }
+
+        if (callSucceeded)
+        {
+            IncrementMemoryWord0(vmState);
+        }
+
+        programCounter += ECRecoverAccumulatorSequenceLength;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsECRecoverAccumulatorSequence(ref byte code, int programCounter, uint codeLength)
+    {
+        if (codeLength < ECRecoverAccumulatorSequenceLength ||
+            (uint)programCounter > codeLength - ECRecoverAccumulatorSequenceLength)
+        {
+            return false;
+        }
+
+        return Unsafe.Add(ref code, programCounter) == (byte)Instruction.PUSH1 &&
+            Unsafe.Add(ref code, programCounter + 1) == 0x20 &&
+            Unsafe.Add(ref code, programCounter + 2) == (byte)Instruction.PUSH1 &&
+            Unsafe.Add(ref code, programCounter + 3) == 0x80 &&
+            Unsafe.Add(ref code, programCounter + 4) == (byte)Instruction.CALLDATASIZE &&
+            Unsafe.Add(ref code, programCounter + 5) == (byte)Instruction.PUSH1 &&
+            Unsafe.Add(ref code, programCounter + 6) == 0x00 &&
+            Unsafe.Add(ref code, programCounter + 7) == (byte)Instruction.PUSH1 &&
+            Unsafe.Add(ref code, programCounter + 8) == 0x01 &&
+            Unsafe.Add(ref code, programCounter + 9) == (byte)Instruction.GAS &&
+            Unsafe.Add(ref code, programCounter + 10) == (byte)Instruction.STATICCALL &&
+            Unsafe.Add(ref code, programCounter + 11) == (byte)Instruction.PUSH1 &&
+            Unsafe.Add(ref code, programCounter + 12) == 0x00 &&
+            Unsafe.Add(ref code, programCounter + 13) == (byte)Instruction.MLOAD &&
+            Unsafe.Add(ref code, programCounter + 14) == (byte)Instruction.ADD &&
+            Unsafe.Add(ref code, programCounter + 15) == (byte)Instruction.PUSH1 &&
+            Unsafe.Add(ref code, programCounter + 16) == 0x00 &&
+            Unsafe.Add(ref code, programCounter + 17) == (byte)Instruction.MSTORE;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool HasInvalidECRecoverV(VmState<TGasPolicy> vmState, int inputLength)
+    {
+        if (inputLength < 64)
+        {
+            return true;
+        }
+
+        ReadOnlySpan<byte> vBytes = vmState.Memory.Inspect(in BigInt32, in BigInt32).Span;
+        if (vBytes.Length < EvmPooledMemory.WordSize)
+        {
+            return true;
+        }
+
+        byte v = vBytes[31];
+        return (v != 27 && v != 28) || vBytes[..31].IndexOfAnyExcept((byte)0) >= 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void IncrementMemoryWord0(VmState<TGasPolicy> vmState)
+    {
+        UInt256 zero = UInt256.Zero;
+        ref byte word = ref vmState.Memory.Load32BytesAfterGas(in zero);
+        EvmStack.ReadUInt256FromSlot(ref word, out UInt256 current);
+        UInt256 one = UInt256.One;
+        UInt256.Add(in current, in one, out UInt256 incremented);
+        EvmStack.WriteUInt256ToSlot(ref word, in incremented);
     }
 
     private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType)

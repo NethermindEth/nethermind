@@ -155,6 +155,30 @@ namespace Nethermind.Evm.Test
             AssertStorage(UInt256.One, ValidECRecoverOutput);
         }
 
+        [Test]
+        public void Repeated_benchmark_ecrecover_sequence_accumulates_successes()
+        {
+            const string ecrecoverAccumulator =
+                "6020608036600060015afa60005101600052" +
+                "6020608036600060015afa60005101600052" +
+                "6020608036600060015afa60005101600052";
+
+            byte[] bytecode = Prepare.EvmCode
+                .FromCode(ecrecoverAccumulator)
+                .FromCode("600051600055")
+                .Done;
+
+            (Block block, Transaction transaction) = PrepareTx(Activation, 120_000, bytecode, new byte[128], UInt256.Zero);
+
+            TransactionResult result = _processor.Execute(
+                transaction,
+                new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+                NullTxTracer.Instance);
+
+            Assert.That(result.TransactionExecuted, Is.True);
+            AssertStorage(UInt256.Zero, (UInt256)3);
+        }
+
         private static byte[] BuildEmptyCodeCall(Instruction instruction, Address target) =>
             instruction switch
             {
