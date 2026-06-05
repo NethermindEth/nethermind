@@ -154,6 +154,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     public IDisposable? BeginTriePrewarmSuppression() => null;
 
+    /// <summary>
+    /// Applies decoded BAL account balance and nonce changes through an implementation-specific fast path.
+    /// </summary>
+    /// <returns><c>true</c> when the implementation handled the BAL account changes; otherwise <c>false</c>.</returns>
+    public bool TryApplyBlockAccessListAccountChanges(ReadOnlyBlockAccessList blockAccessList) => false;
+
     // See https://eips.ethereum.org/EIPS/eip-7610
     bool IsNonZeroAccount(Address address, out bool accountExists)
     {

@@ -102,6 +102,30 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void ApplyStateChanges_applies_account_changes_without_storage_changes()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 175))
+                .WithNonceChanges(new NonceChange(0, 4))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: stateProvider => stateProvider.CreateAccount(TestItem.AddressA, 100),
+            assertState: stateProvider =>
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)175));
+                    Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)4));
+                }
+            });
+    }
+
+    [Test]
     public void Parallel_validation_parent_reader_scope_is_per_worker_and_disposed_on_return()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();

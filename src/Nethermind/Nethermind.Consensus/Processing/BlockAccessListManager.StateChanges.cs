@@ -34,9 +34,21 @@ public partial class BlockAccessListManager
     /// </remarks>
     public static void ApplyStateChanges(ReadOnlyBlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
     {
-        using IDisposable? triePrewarmSuppression = HasStorageChanges(suggestedBlockAccessList)
+        bool hasStorageOrCodeChanges = HasStorageOrCodeChanges(suggestedBlockAccessList);
+        using IDisposable? triePrewarmSuppression = hasStorageOrCodeChanges
             ? null
             : stateProvider.BeginTriePrewarmSuppression();
+
+        if (!hasStorageOrCodeChanges && stateProvider.TryApplyBlockAccessListAccountChanges(suggestedBlockAccessList))
+        {
+            stateProvider.Commit(spec);
+            if (shouldComputeStateRoot)
+            {
+                stateProvider.RecalculateStateRoot();
+            }
+
+            return;
+        }
 
         foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
@@ -87,11 +99,11 @@ public partial class BlockAccessListManager
         }
     }
 
-    private static bool HasStorageChanges(ReadOnlyBlockAccessList suggestedBlockAccessList)
+    private static bool HasStorageOrCodeChanges(ReadOnlyBlockAccessList suggestedBlockAccessList)
     {
         foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.StorageChanges.Length > 0)
+            if (accountChanges.StorageChanges.Length > 0 || accountChanges.CodeChanges.Length > 0)
             {
                 return true;
             }
