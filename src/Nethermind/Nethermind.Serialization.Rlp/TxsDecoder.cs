@@ -2,24 +2,32 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+#if !ZK_EVM
 using System.Threading.Tasks;
+#endif
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
 
 public static class TxsDecoder
 {
+#if !ZK_EVM
+    // Parallel infra has ~50μs startup; only worthwhile when the workload amortises that.
     private const int ParallelDecodeThreshold = 16;
+#endif
 
     public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors)
     {
         IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
         if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
+#if !ZK_EVM
+        // BCL Parallel.For isn't available in the Zisk stateless guest build (--no-pthread).
         if (txData.Length >= ParallelDecodeThreshold)
         {
             return DecodeParallel(txData, rlpDecoder, skipErrors);
         }
+#endif
 
         Transaction[] transactions = new Transaction[txData.Length];
         int added = 0;
@@ -51,6 +59,7 @@ public static class TxsDecoder
         return new TransactionDecodingResult(transactions);
     }
 
+#if !ZK_EVM
     private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
     {
         // Declared non-nullable but null slots are legal at runtime (CLR doesn't distinguish T[]
@@ -105,6 +114,7 @@ public static class TxsDecoder
         if (j != slots.Length) Array.Resize(ref slots, j);
         return new TransactionDecodingResult(slots);
     }
+#endif
 }
 
 public readonly struct TransactionDecodingResult

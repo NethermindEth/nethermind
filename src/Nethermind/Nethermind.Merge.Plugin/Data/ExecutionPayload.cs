@@ -207,41 +207,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
-    /// <remarks>
-    /// Kept as a serial inline loop (not delegating to <see cref="TxsDecoder"/>) because this method
-    /// runs inside the Zisk single-threaded stateless guest (built with <c>--no-pthread</c>), where
-    /// <see cref="System.Threading.Tasks.Parallel"/> is unavailable. <see cref="TxsDecoder"/>'s
-    /// parallel path can be used from any host-side caller that needs it.
-    /// </remarks>
     public Result<Transaction[]> TryGetTransactions()
     {
         if (_transactions is not null) return _transactions;
 
-        IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
-        if (rlpDecoder is null) return $"{nameof(Transaction)} decoder is not registered";
-
-        int i = 0;
-        try
-        {
-            byte[][] txData = Transactions;
-            Transaction[] transactions = new Transaction[txData.Length];
-
-            for (i = 0; i < transactions.Length; i++)
-            {
-                Rlp.ValueDecoderContext ctx = new(txData[i]);
-                transactions[i] = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
-            }
-
-            return _transactions = transactions;
-        }
-        catch (RlpException e)
-        {
-            return $"Transaction {i} is not valid: {e.Message}";
-        }
-        catch (ArgumentException)
-        {
-            return $"Transaction {i} is not valid";
-        }
+        TransactionDecodingResult res = TxsDecoder.DecodeTxs(Transactions, skipErrors: false);
+        if (res.Error is not null) return res.Error;
+        return _transactions = res.Transactions;
     }
 
     /// <summary>
