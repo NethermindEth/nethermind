@@ -124,6 +124,10 @@ internal class VotesManager : IVotesManager, IDisposable
         return TryBuildQc(proposedHeader, roundVotes);
     }
 
+    /// <remarks>
+    /// Catch-up path for votes that may arrive before their block. <see cref="HandleVote"/>
+    /// buffers them but cannot build a QC without the header; this drains them on block arrival.
+    /// </remarks>
     private async Task OnNewBlock(XdcBlockHeader header)
     {
         try
