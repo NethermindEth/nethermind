@@ -1283,7 +1283,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     ThrowOperationCanceledException();
 
                 if (!TTracingInst.IsActive &&
-                    !TCancelable.IsActive &&
                     instruction == Instruction.PUSH1 &&
                     TryExecuteInvalidECRecoverAccumulatorSequence(ref stack, ref gas, ref programCounter, codeLength, out exceptionType))
                 {
