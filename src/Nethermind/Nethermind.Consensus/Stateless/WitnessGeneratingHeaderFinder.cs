@@ -28,7 +28,7 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
     public IOwnedReadOnlyList<byte[]> GetWitnessHeaders(Hash256 parentHash)
     {
         Hash256 currentHash = parentHash;
-        BlockHeader childHeader = inner.Get(currentHash) ?? throw new ArgumentException($"Parent {currentHash} is not found");
+        BlockHeader parentHeader = inner.Get(currentHash) ?? throw new ArgumentException($"Parent {currentHash} is not found");
 
         // Headers are emitted in ascending block-number order (oldest first and the recorded block's
         // parent last) so they form a contiguous chain, matching the stateless verifier's expectation.
@@ -36,21 +36,21 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
         // Only the parent is captured unless ancestor headers were requested during processing
         // (e.g. BLOCKHASH reaching further back), tracked by _lowestRequestedHeader.
         int count = _lowestRequestedHeader < long.MaxValue
-            ? (int)(childHeader.Number - _lowestRequestedHeader + 1)
+            ? (int)(parentHeader.Number - _lowestRequestedHeader + 1)
             : 1;
         int index = count - 1;
         ArrayPoolList<byte[]> headers = new(count, count)
         {
-            [index--] = _decoder.Encode(childHeader).Bytes
+            [index--] = _decoder.Encode(parentHeader).Bytes
         };
 
         if (index >= 0)
         {
-            for (long i = childHeader.Number - 1; i >= _lowestRequestedHeader; i--)
+            for (long i = parentHeader.Number - 1; i >= _lowestRequestedHeader; i--)
             {
-                currentHash = childHeader.ParentHash!;
-                childHeader = inner.Get(currentHash, i) ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
-                headers[index--] = _decoder.Encode(childHeader).Bytes;
+                currentHash = parentHeader.ParentHash!;
+                parentHeader = inner.Get(currentHash, i) ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
+                headers[index--] = _decoder.Encode(parentHeader).Bytes;
             }
         }
 
