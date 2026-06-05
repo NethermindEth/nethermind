@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -133,6 +134,31 @@ public class FlatWorldStateScopeProviderTests
                 ResourcePool,
                 ResourcePool.Usage.MainBlockProcessing));
         }
+    }
+
+    private sealed class CachedAccountBalSink(Address cachedAddress, Account? cachedAccount) : IWorldStateScopeProvider.IAsyncBalReaderSink
+    {
+        public int AccountReadCount { get; private set; }
+
+        public void OnAccountRead(Address address, Account? account) => AccountReadCount++;
+
+        public void OnStorageRead(in StorageCell storageCell, byte[] value)
+        {
+        }
+
+        public bool StillNeeded(Address address, out Account? account)
+        {
+            if (address.Equals(cachedAddress))
+            {
+                account = cachedAccount;
+                return false;
+            }
+
+            account = null;
+            return true;
+        }
+
+        public bool StillNeeded(in StorageCell storageCell) => false;
     }
 
 
@@ -623,6 +649,25 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
         Assert.That(ctx.LastCommittedSnapshot!.AccountsCount, Is.EqualTo(0));
         Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(address, out _), Is.False);
+    }
+
+    [Test]
+    public void TestHintBalSkipsAccountReadWhenSinkHasAccount()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateRandomAccount();
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(address).TestObject)
+            .TestObject;
+        CachedAccountBalSink sink = new(address, account);
+
+        scope.HintBal(bal, sink).Wait();
+
+        Assert.That(sink.AccountReadCount, Is.EqualTo(0));
+        ctx.PersistenceReader.DidNotReceive().GetAccount(address);
     }
 
     [Test]

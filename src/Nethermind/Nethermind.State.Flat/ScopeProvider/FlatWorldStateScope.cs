@@ -207,12 +207,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
 
-                    Account? account = sink is null && storageChangeCount == 0
-                        ? null
-                        : _snapshotBundle.GetAccount(address);
+                    Account? account = null;
+                    bool accountStillNeeded = sink is null || sink.StillNeeded(address, out account);
 
-                    if (sink is not null && sink.StillNeeded(address, out _))
+                    if (accountStillNeeded && (sink is not null || storageChangeCount != 0))
+                    {
+                        account = _snapshotBundle.GetAccount(address);
+                    }
+
+                    if (sink is not null && accountStillNeeded)
+                    {
                         sink.OnAccountRead(address, account);
+                    }
 
                     if (account is null) return;
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
