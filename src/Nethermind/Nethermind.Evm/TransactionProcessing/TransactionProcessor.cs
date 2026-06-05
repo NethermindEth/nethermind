@@ -1016,7 +1016,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(errorDetail);
             }
 
-            // mgval = gasLimit * effectiveGasPrice .
+            // mgval = gasLimit * effectiveGasPrice.
             if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
