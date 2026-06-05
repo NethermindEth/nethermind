@@ -63,19 +63,16 @@ public static class StatelessExecutor
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
     {
-        BlockHeader? parentHeader = null;
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
+        BlockHeader parentHeader;
 
-        foreach (BlockHeader header in headers)
+        // The parent header must be the last one in the list
+        // and must match the parent hash of the suggested block
+        if (headers.Count > 0 && suggestedBlock.Header.ParentHash == headers[^1].Hash)
         {
-            if (header.Hash == suggestedBlock.Header.ParentHash)
-            {
-                parentHeader = header;
-                break;
-            }
+            parentHeader = headers[^1];
         }
-
-        if (parentHeader is null)
+        else
         {
             Debug.Fail("Witness is missing the parent header");
             return false;
