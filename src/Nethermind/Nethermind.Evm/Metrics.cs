@@ -87,6 +87,7 @@ public class Metrics
     [Description("Number of calls to other contracts on main processing thread.")]
     public static long MainThreadCalls => _mainCalls;
     public static void IncrementCalls() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCalls : ref _otherCalls);
+    public static void IncrementCalls(int count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCalls : ref _otherCalls, count);
 
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]

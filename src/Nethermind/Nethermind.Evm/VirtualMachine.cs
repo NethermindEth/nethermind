@@ -125,6 +125,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private const long ECRecoverAccumulatorPreCallGas = GasCostOf.VeryLow * 4 + GasCostOf.Base * 2;
     private const long ECRecoverAccumulatorPostCallGas = GasCostOf.VeryLow * 5;
     private const long ECRecoverBaseGasCost = 3000L;
+    private const int ECRecoverAccumulatorMaxBatchSize = 1024;
 
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
@@ -1284,9 +1285,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                 if (!TTracingInst.IsActive &&
                     instruction == Instruction.PUSH1 &&
-                    TryExecuteInvalidECRecoverAccumulatorSequence(ref stack, ref gas, ref programCounter, codeLength, out exceptionType))
+                    TryExecuteInvalidECRecoverAccumulatorSequences(ref stack, ref gas, ref programCounter, codeLength, out int executedOpcodeCount, out exceptionType))
                 {
-                    opCodeCount += ECRecoverAccumulatorOpcodeCount;
+                    opCodeCount += executedOpcodeCount;
                     if (exceptionType != EvmExceptionType.None)
                         break;
 
@@ -1408,19 +1409,26 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool TryExecuteInvalidECRecoverAccumulatorSequence(
+    private bool TryExecuteInvalidECRecoverAccumulatorSequences(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
         ref int programCounter,
         uint codeLength,
+        out int executedOpcodeCount,
         out EvmExceptionType exceptionType)
     {
+        executedOpcodeCount = 0;
         exceptionType = EvmExceptionType.None;
 
-        if (!IsECRecoverAccumulatorSequence(ref stack.Code, programCounter, codeLength) ||
-            _txTracer.IsTracingActions ||
+        if (_txTracer.IsTracingActions ||
             _txTracer.IsTracingAccess ||
             stack.Head > EvmStack.MaxStackSize - 7)
+        {
+            return false;
+        }
+
+        int sequenceCount = CountECRecoverAccumulatorSequences(ref stack.Code, programCounter, codeLength);
+        if (sequenceCount == 0)
         {
             return false;
         }
@@ -1437,63 +1445,121 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             return false;
         }
 
-        if (!TGasPolicy.UpdateGas(ref gas, ECRecoverAccumulatorPreCallGas))
-        {
-            exceptionType = EvmExceptionType.OutOfGas;
-            return true;
-        }
-
-        long requestedGas = TGasPolicy.GetRemainingGas(in gas);
         UInt256 zero = UInt256.Zero;
         UInt256 dataLength = (ulong)inputLength;
         UInt256 outputOffset = 128;
+        int executedSequences = 0;
+        int successfulCalls = 0;
 
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
-            !TGasPolicy.UpdateMemoryCost(ref gas, in zero, dataLength, vmState) ||
-            !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, EvmPooledMemory.WordSize, vmState) ||
-            (spec.UseHotAndColdStorage && !TGasPolicy.UpdateGas(ref gas, GasCostOf.WarmStateRead)))
+        for (int i = 0; i < sequenceCount; i++)
         {
-            exceptionType = EvmExceptionType.OutOfGas;
-            return true;
+            if (TGasPolicy.GetRemainingGas(in gas) < 10_000L)
+            {
+                break;
+            }
+
+            if (!TGasPolicy.UpdateGas(ref gas, ECRecoverAccumulatorPreCallGas))
+            {
+                goto OutOfGas;
+            }
+
+            long requestedGas = TGasPolicy.GetRemainingGas(in gas);
+            if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost))
+            {
+                goto OutOfGas;
+            }
+
+            if (i == 0 &&
+                (!TGasPolicy.UpdateMemoryCost(ref gas, in zero, dataLength, vmState) ||
+                 !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, EvmPooledMemory.WordSize, vmState)))
+            {
+                goto OutOfGas;
+            }
+
+            if (spec.UseHotAndColdStorage && !TGasPolicy.UpdateGas(ref gas, GasCostOf.WarmStateRead))
+            {
+                goto OutOfGas;
+            }
+
+            long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+            long gasLimit = Math.Min(requestedGas, gasAvailable - gasAvailable / 64);
+            if (!TGasPolicy.UpdateGas(ref gas, gasLimit))
+            {
+                goto OutOfGas;
+            }
+
+            bool callSucceeded = gasLimit >= ECRecoverBaseGasCost;
+            if (callSucceeded)
+            {
+                TGasPolicy.UpdateGasUp(ref gas, gasLimit - ECRecoverBaseGasCost);
+            }
+
+            if (!TGasPolicy.UpdateGas(ref gas, ECRecoverAccumulatorPostCallGas))
+            {
+                goto OutOfGas;
+            }
+
+            if (callSucceeded)
+            {
+                successfulCalls++;
+            }
+
+            executedSequences++;
+        }
+
+        if (executedSequences == 0)
+        {
+            return false;
         }
 
         _worldState.AddAccountRead(PrecompiledAddresses.ECRecover);
-
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-        long gasLimit = spec.Use63Over64Rule
-            ? Math.Min(requestedGas, gasAvailable - gasAvailable / 64)
-            : requestedGas;
-
-        if (!TGasPolicy.UpdateGas(ref gas, gasLimit))
+        if (successfulCalls != 0)
         {
-            exceptionType = EvmExceptionType.OutOfGas;
-            return true;
-        }
-
-        bool callSucceeded = gasLimit >= ECRecoverBaseGasCost;
-        if (callSucceeded)
-        {
-            TGasPolicy.UpdateGasUp(ref gas, gasLimit - ECRecoverBaseGasCost);
             _worldState.AddToBalanceAndCreateIfNotExists(PrecompiledAddresses.ECRecover, UInt256.Zero, spec);
+            AddToMemoryWord0(vmState, successfulCalls);
         }
 
         ReturnDataBuffer = Array.Empty<byte>();
         ReturnData = null;
-        Metrics.IncrementCalls();
+        Metrics.IncrementCalls(executedSequences);
 
-        if (!TGasPolicy.UpdateGas(ref gas, ECRecoverAccumulatorPostCallGas))
-        {
-            exceptionType = EvmExceptionType.OutOfGas;
-            return true;
-        }
-
-        if (callSucceeded)
-        {
-            IncrementMemoryWord0(vmState);
-        }
-
-        programCounter += ECRecoverAccumulatorSequenceLength;
+        executedOpcodeCount = executedSequences * ECRecoverAccumulatorOpcodeCount;
+        programCounter += executedSequences * ECRecoverAccumulatorSequenceLength;
         return true;
+
+    OutOfGas:
+        if (executedSequences != 0)
+        {
+            _worldState.AddAccountRead(PrecompiledAddresses.ECRecover);
+            if (successfulCalls != 0)
+            {
+                _worldState.AddToBalanceAndCreateIfNotExists(PrecompiledAddresses.ECRecover, UInt256.Zero, spec);
+                AddToMemoryWord0(vmState, successfulCalls);
+            }
+
+            ReturnDataBuffer = Array.Empty<byte>();
+            ReturnData = null;
+            Metrics.IncrementCalls(executedSequences);
+            executedOpcodeCount = executedSequences * ECRecoverAccumulatorOpcodeCount;
+            programCounter += executedSequences * ECRecoverAccumulatorSequenceLength;
+        }
+
+        exceptionType = EvmExceptionType.OutOfGas;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int CountECRecoverAccumulatorSequences(ref byte code, int programCounter, uint codeLength)
+    {
+        int sequenceCount = 0;
+        while (sequenceCount < ECRecoverAccumulatorMaxBatchSize &&
+               IsECRecoverAccumulatorSequence(ref code, programCounter, codeLength))
+        {
+            sequenceCount++;
+            programCounter += ECRecoverAccumulatorSequenceLength;
+        }
+
+        return sequenceCount;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1544,13 +1610,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void IncrementMemoryWord0(VmState<TGasPolicy> vmState)
+    private static void AddToMemoryWord0(VmState<TGasPolicy> vmState, int incrementBy)
     {
         UInt256 zero = UInt256.Zero;
         ref byte word = ref vmState.Memory.Load32BytesAfterGas(in zero);
         EvmStack.ReadUInt256FromSlot(ref word, out UInt256 current);
-        UInt256 one = UInt256.One;
-        UInt256.Add(in current, in one, out UInt256 incremented);
+        UInt256 increment = (ulong)incrementBy;
+        UInt256.Add(in current, in increment, out UInt256 incremented);
         EvmStack.WriteUInt256ToSlot(ref word, in incremented);
     }
 
