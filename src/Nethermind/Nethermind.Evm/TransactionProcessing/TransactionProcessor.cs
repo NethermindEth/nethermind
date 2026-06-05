@@ -844,8 +844,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance, BlockErrorMessages.InsufficientMaxFeePerBlobGas);
                 }
 
-                if (UInt256.MultiplyOverflow(blobGas, blobBaseFee, out UInt256 actualBlobFee)
-                    || UInt256.AddOverflow(senderReservedGasPayment, actualBlobFee, out senderReservedGasPayment))
+                if (UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment))
                 {
                     TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                     return RequiredBalanceExceeds256Bits(tx);
