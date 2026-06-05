@@ -21,7 +21,23 @@ public class MultiVersionMemoryScopeProvider(
     ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites)
     : IWorldStateScopeProvider
 {
+    // Per-tx initial capacities sized to common mainnet payloads — most txs read ~20-60
+    // locations and write ~5-15. Pre-sized to skip the first 1-2 dictionary rehashes.
+    private const int InitialReadSetCapacity = 32;
+    private const int InitialWriteSetCapacity = 16;
+
     private TxVersion _version;
+
+    // Single lock object reused across BeginScope calls on the same worker — the lock
+    // guards merging of per-storage-tree write batches into WriteSet, which only happens
+    // from the worker that owns this scope provider. One allocation per env instead of
+    // one per tx attempt.
+    private readonly object _writeSetLock = new();
+
+    // WriteSet is consumed by MultiVersionMemory.Record (entries copied into its per-tx
+    // ConcurrentDictionary) and never retained by MVMM. Safe to pool on the scope
+    // provider: clear between BeginScope calls and hand the same instance back out.
+    private readonly Dictionary<ParallelStateKey, object> _pooledWriteSet = new(InitialWriteSetCapacity);
 
     /// <summary>
     /// Sets the per-tx version captured by the next <see cref="BeginScope"/>. The provider
@@ -37,10 +53,13 @@ public class MultiVersionMemoryScopeProvider(
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
-        ReadSet = []; //TODO: object pooling?
-        WriteSet = [];
-        object writeSetLock = new();
-        return new MultiVersionMemoryScope(_version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, writeSetLock, blockCodeWrites);
+        // ReadSet stays per-tx: MVMM.Record stores it in _lastReads for re-validation by
+        // higher txs and may be iterated concurrently with a later Record overwrite, so
+        // pooling would need a hand-off-after-quiescence scheme to be safe.
+        ReadSet = new HashSet<Read>(InitialReadSetCapacity);
+        _pooledWriteSet.Clear();
+        WriteSet = _pooledWriteSet;
+        return new MultiVersionMemoryScope(_version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, _writeSetLock, blockCodeWrites);
     }
 
     private class MultiVersionMemoryScope(
