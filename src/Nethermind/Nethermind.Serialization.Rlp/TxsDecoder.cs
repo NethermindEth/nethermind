@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -54,7 +53,10 @@ public static class TxsDecoder
 
     private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
     {
-        using ArrayPoolList<Transaction?> slots = new(txData.Length, txData.Length);
+        // Declared non-nullable but null slots are legal at runtime (CLR doesn't distinguish T[]
+        // from T?[]). On the !skipErrors path, the first thrown decode aborts via state.Stop() so
+        // we never observe nulls.
+        Transaction[] slots = new Transaction[txData.Length];
         string? error = null;
         int firstError = int.MaxValue;
         object errorGate = new();
@@ -88,35 +90,20 @@ public static class TxsDecoder
             return new TransactionDecodingResult(error);
         }
 
-        // Compact — Parallel.For doesn't preserve a contiguous prefix when skipErrors leaves nulls.
-        Transaction[] result;
-        if (skipErrors)
-        {
-            int count = 0;
-            for (int i = 0; i < slots.Count; i++)
-            {
-                if (slots[i] is not null) count++;
-            }
-            result = new Transaction[count];
-            int j = 0;
-            for (int i = 0; i < slots.Count; i++)
-            {
-                if (slots[i] is { } tx)
-                {
-                    result[j++] = tx;
-                }
-            }
-        }
-        else
-        {
-            result = new Transaction[slots.Count];
-            for (int i = 0; i < slots.Count; i++)
-            {
-                result[i] = slots[i]!;
-            }
-        }
+        if (!skipErrors) return new TransactionDecodingResult(slots);
 
-        return new TransactionDecodingResult(result);
+        // Parallel.For doesn't preserve a contiguous prefix when skipErrors leaves nulls — compact in place.
+        int j = 0;
+        for (int i = 0; i < slots.Length; i++)
+        {
+            if (slots[i] is not null)
+            {
+                if (i != j) slots[j] = slots[i];
+                j++;
+            }
+        }
+        if (j != slots.Length) Array.Resize(ref slots, j);
+        return new TransactionDecodingResult(slots);
     }
 }
 

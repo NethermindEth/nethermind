@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -19,10 +18,10 @@ public class InclusionListBuilder(ITxPool txPool)
     // mempool size. The earlier .Where(...).Shuffle(...) path materialised the entire filtered
     // mempool into an ArrayPoolList that grew through power-of-2 reallocations.
     // TODO: score txs and randomly sample weighted by score.
-    private static ArrayPoolList<Transaction> ReservoirSampleNonBlobTxs(Transaction[] mempool)
+    private static Transaction[] ReservoirSampleNonBlobTxs(Transaction[] mempool)
     {
         const int capacity = Eip7805Constants.MaxTransactionsPerInclusionList;
-        ArrayPoolList<Transaction> reservoir = new(capacity, capacity);
+        Transaction[] reservoir = new Transaction[capacity];
         Random rnd = Random.Shared;
         int seen = 0;
 
@@ -53,40 +52,31 @@ public class InclusionListBuilder(ITxPool txPool)
             (reservoir[i], reservoir[j]) = (reservoir[j], reservoir[i]);
         }
 
-        if (actual < capacity) reservoir.ReduceCount(actual);
+        if (actual < capacity) Array.Resize(ref reservoir, actual);
         return reservoir;
     }
 
-    private static IEnumerable<byte[]> DecodeTransactionsUpToLimit(ArrayPoolList<Transaction> txs)
+    private static IEnumerable<byte[]> DecodeTransactionsUpToLimit(Transaction[] txs)
     {
-        // try-finally around yield ensures the rented buffer returns to the pool when the
-        // consumer's enumerator is disposed (after .ToList()/.ToArray() in the handler).
-        try
+        int size = 0;
+        foreach (Transaction tx in txs)
         {
-            int size = 0;
-            foreach (Transaction tx in txs)
+            byte[] txBytes = InclusionListDecoder.Encode(tx);
+
+            // skip tx if it's too big to fit in the inclusion list
+            if (size + txBytes.Length > Eip7805Constants.MaxBytesPerInclusionList)
             {
-                byte[] txBytes = InclusionListDecoder.Encode(tx);
-
-                // skip tx if it's too big to fit in the inclusion list
-                if (size + txBytes.Length > Eip7805Constants.MaxBytesPerInclusionList)
-                {
-                    continue;
-                }
-
-                size += txBytes.Length;
-                yield return txBytes;
-
-                // impossible to fit another tx in the inclusion list
-                if (size + Eip7805Constants.MinTransactionSizeBytesUpper > Eip7805Constants.MaxBytesPerInclusionList)
-                {
-                    yield break;
-                }
+                continue;
             }
-        }
-        finally
-        {
-            txs.Dispose();
+
+            size += txBytes.Length;
+            yield return txBytes;
+
+            // impossible to fit another tx in the inclusion list
+            if (size + Eip7805Constants.MinTransactionSizeBytesUpper > Eip7805Constants.MaxBytesPerInclusionList)
+            {
+                yield break;
+            }
         }
     }
 }

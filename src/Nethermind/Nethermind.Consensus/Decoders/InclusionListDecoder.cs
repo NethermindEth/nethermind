@@ -5,7 +5,6 @@ using System;
 using System.IO;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -26,8 +25,6 @@ public class InclusionListDecoder(
 {
     private readonly RecoverSignatures _recoverSignatures = new(ecdsa, specProvider, logManager);
     private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<InclusionListDecoder>();
-
-    // Parallel infra has ~50μs startup; only worthwhile when the workload amortises that.
     private const int ParallelThreshold = 16;
 
     public Transaction[] DecodeAndRecover(byte[][] txBytes, IReleaseSpec spec)
@@ -43,7 +40,9 @@ public class InclusionListDecoder(
             return [];
         }
 
-        using ArrayPoolList<Transaction?> slots = new(txBytes.Length, txBytes.Length);
+        // Declared non-nullable but null slots are legal at runtime (nullability is a compile-time
+        // annotation; CLR T[] = T?[]). Failed decodes leave null until Compact removes them.
+        Transaction[] slots = new Transaction[txBytes.Length];
 
         if (txBytes.Length >= ParallelThreshold)
         {
@@ -54,7 +53,7 @@ public class InclusionListDecoder(
                 (slots, txBytes, rlpDecoder, recoverer: _recoverSignatures, spec, logger: _logger),
                 static (i, state) =>
                 {
-                    state.slots[i] = TryDecodeAndRecover(state.txBytes[i], state.rlpDecoder, state.recoverer, state.spec, state.logger);
+                    state.slots[i] = TryDecodeAndRecover(state.txBytes[i], state.rlpDecoder, state.recoverer, state.spec, state.logger)!;
                     return state;
                 });
         }
@@ -62,7 +61,7 @@ public class InclusionListDecoder(
         {
             for (int i = 0; i < txBytes.Length; i++)
             {
-                slots[i] = TryDecodeAndRecover(txBytes[i], rlpDecoder, _recoverSignatures, spec, _logger);
+                slots[i] = TryDecodeAndRecover(txBytes[i], rlpDecoder, _recoverSignatures, spec, _logger)!;
             }
         }
 
@@ -95,28 +94,27 @@ public class InclusionListDecoder(
         catch (Exception e) when (e is InvalidDataException or ArgumentException or System.Security.Cryptography.CryptographicException)
         {
             // Recovery failed → keep the tx with null SenderAddress; the validator handles
-            // null-sender entries as not-appendable. Narrow catch keeps NRE/OOM observable.
+            // null-sender entries as not-appendable.
             if (logger.IsTrace) logger.Trace($"IL signature recovery failed for tx {tx.Hash}: {e.GetType().Name}: {e.Message}");
         }
 
         return tx;
     }
 
-    private static Transaction[] Compact(ArrayPoolList<Transaction?> slots)
+    private static Transaction[] Compact(Transaction[] slots)
     {
-        int count = 0;
-        for (int i = 0; i < slots.Count; i++)
-        {
-            if (slots[i] is not null) count++;
-        }
-
-        Transaction[] result = new Transaction[count];
         int j = 0;
-        for (int i = 0; i < slots.Count; i++)
+        for (int i = 0; i < slots.Length; i++)
         {
-            if (slots[i] is { } tx) result[j++] = tx;
+            if (slots[i] is not null)
+            {
+                if (i != j) slots[j] = slots[i];
+                j++;
+            }
         }
-        return result;
+        if (j == slots.Length) return slots;
+        Array.Resize(ref slots, j);
+        return slots;
     }
 
     public static byte[] Encode(Transaction transaction)

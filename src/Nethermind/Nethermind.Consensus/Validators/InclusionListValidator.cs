@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -22,11 +21,11 @@ public static class InclusionListValidator
         // FOCIL is conditional: no gas left for a base-cost transfer → nothing is appendable.
         if (block.GasUsed + Transaction.BaseTxGasCost > block.GasLimit) return true;
 
-        // Stack-allocate the inclusion bitmap when IL fits the spec cap; pool the heap fallback.
-        using ArrayPoolList<bool>? pooled = il.Length > Eip7805Constants.MaxTransactionsPerInclusionList
-            ? new ArrayPoolList<bool>(il.Length, il.Length)
-            : null;
-        Span<bool> included = pooled is null ? stackalloc bool[il.Length] : pooled.AsSpan();
+        // Stack-allocate the inclusion bitmap when IL fits the spec cap; heap-alloc the unreachable
+        // oversize path — engine API enforces the byte cap upstream, which bounds tx count.
+        Span<bool> included = il.Length <= Eip7805Constants.MaxTransactionsPerInclusionList
+            ? stackalloc bool[il.Length]
+            : new bool[il.Length];
 
         // O(N+M) inclusion marking: hash → IL index, one dict lookup per block tx.
         Dictionary<Hash256, int> ilByHash = new(il.Length);
