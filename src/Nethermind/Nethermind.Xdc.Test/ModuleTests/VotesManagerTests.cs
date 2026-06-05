@@ -333,7 +333,7 @@ public class VotesManagerTests
 
         qcm.DidNotReceive().CommitCertificate(Arg.Any<QuorumCertificate>());
 
-        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
+        blockTree.NewSuggestedBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
 
         qcm.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
     }
@@ -379,7 +379,7 @@ public class VotesManagerTests
 
         qcm.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
 
-        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
+        blockTree.NewSuggestedBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
 
         qcm.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
     }
@@ -403,7 +403,7 @@ public class VotesManagerTests
             QuorumCertificateManager = quorumCertificateManager
         }.Build();
 
-        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
+        blockTree.NewSuggestedBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
 
         quorumCertificateManager.DidNotReceive().CommitCertificate(Arg.Any<QuorumCertificate>());
     }

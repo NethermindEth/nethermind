@@ -69,10 +69,10 @@ internal class VotesManager : IVotesManager, IDisposable
         _specProvider = specProvider;
         _signer = signer;
         _logger = logManager.GetClassLogger<VotesManager>();
-        _blockTree.NewHeadBlock += OnNewHeadBlock;
+        _blockTree.NewSuggestedBlock += OnNewBlock;
     }
 
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e) => _ = OnNewBlock((XdcBlockHeader)e.Block.Header);
+    private void OnNewBlock(object? sender, BlockEventArgs e) => _ = OnNewBlock((XdcBlockHeader)e.Block.Header);
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
@@ -129,6 +129,8 @@ internal class VotesManager : IVotesManager, IDisposable
         try
         {
             ulong round = header.ExtraConsensusData?.BlockRound ?? 0;
+            if (round < _ctx.CurrentRound)
+                return;
             foreach (IReadOnlyCollection<Vote> group in _votePool.GetGroupsByRound(round))
             {
                 if (group.First().ProposedBlockInfo.Hash == header.Hash)
@@ -361,5 +363,5 @@ internal class VotesManager : IVotesManager, IDisposable
 
     public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);
 
-    public void Dispose() => _blockTree.NewHeadBlock -= OnNewHeadBlock;
+    public void Dispose() => _blockTree.NewSuggestedBlock -= OnNewBlock;
 }
