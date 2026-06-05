@@ -14,9 +14,9 @@ public partial class Bls12381G1MsmPrecompile
 {
     private const int StackallocPairCountThreshold = 8;
 
-    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        if (!ValidateInputLength(inputData))
+        if (!ValidateInputLength(inputData, releaseSpec))
             return Errors.InvalidInputLength;
 
         int pairCount = inputData.Length / ItemSize;

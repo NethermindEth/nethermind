@@ -15,11 +15,11 @@ namespace Nethermind.Evm.Precompiles;
 public partial class Bls12381PairingCheckPrecompile
 {
     [SkipLocalsInit]
-    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bls12381PairingCheckPrecompile++;
 
-        if (!ValidateInputLength(inputData))
+        if (!ValidateInputLength(inputData, releaseSpec))
             return Errors.InvalidInputLength;
 
         G1 x = new(stackalloc long[G1.Sz]);
