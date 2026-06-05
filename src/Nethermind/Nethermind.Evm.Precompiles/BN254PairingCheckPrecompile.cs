@@ -14,9 +14,11 @@ public partial class BN254PairingCheckPrecompile : IPrecompile<BN254PairingCheck
 {
     // See: https://specs.optimism.io/protocol/granite/exec-engine.html#bn256pairing-precompile-input-restriction
     private const int PairingMaxInputSizeGranite = 112_687;
+
     // See: https://specs.optimism.io/protocol/jovian/exec-engine.html#precompile-input-size-restrictions
     private const int OpJovianPairingMaxInputSize = 81_984;
-    // See: https://specs.optimism.io/protocol/isthmus/exec-engine.html#bls-precompiles
+
+    // See: https://specs.optimism.io/protocol/karst/exec-engine.html#precompile-input-size-restrictions
     private const int OpKarstPairingMaxInputSize = 57_600;
 
     public static BN254PairingCheckPrecompile Instance { get; } = new();

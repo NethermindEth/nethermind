@@ -16,6 +16,7 @@ public partial class Bls12381G1MsmPrecompile : IPrecompile<Bls12381G1MsmPrecompi
 
     // See: https://specs.optimism.io/protocol/isthmus/exec-engine.html#bls-precompiles
     private const int OpIsthmusMsmMaxInputSize = 513_760;
+
     // See: https://specs.optimism.io/protocol/jovian/exec-engine.html#precompile-input-size-restrictions
     private const int OpJovianMsmMaxInputSize = 288_960;
 

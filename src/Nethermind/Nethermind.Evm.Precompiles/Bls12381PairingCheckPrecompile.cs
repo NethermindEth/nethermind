@@ -16,6 +16,7 @@ public partial class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381Pairin
 
     // See: https://specs.optimism.io/protocol/isthmus/exec-engine.html#bls-precompiles
     private const int OpIsthmusPairingMaxInputSize = 235_008;
+
     // See: https://specs.optimism.io/protocol/jovian/exec-engine.html#precompile-input-size-restrictions
     private const int OpJovianPairingMaxInputSize = 156_672;
 

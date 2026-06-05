@@ -356,11 +356,10 @@ namespace Nethermind.Core.Specs
         /// OP Jovian
         bool IsOpJovianEnabled { get; }
 
-        /// OP Karst
-        bool IsOpKarstEnabled { get; }
-
         // OP Isthmus
         bool IsOpIsthmusEnabled { get; }
+        /// OP Karst
+        bool IsOpKarstEnabled { get; }
 
         /// <summary>
         ///  Increase call data cost

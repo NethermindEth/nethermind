@@ -24,24 +24,24 @@ public class BN254PairingCheckPrecompileTests : PrecompileTests<BN254PairingChec
 
     private static IEnumerable<TestCaseData> OpInputSizeLimitCases()
     {
-        const int pairSize = 192;
+        const int bn254PairSize = 192;
         IReleaseSpec preFork = new Prague();
         IReleaseSpec granite = new Prague { IsOpGraniteEnabled = true };
         IReleaseSpec jovian = new Prague { IsOpGraniteEnabled = true, IsOpJovianEnabled = true };
         IReleaseSpec karst = new Prague { IsOpGraniteEnabled = true, IsOpJovianEnabled = true, IsOpKarstEnabled = true };
 
         // Pre-fork: no limit, only the pair-size modulo applies
-        yield return new(preFork, 587 * pairSize, true) { TestName = "PreFork over Granite limit" };
+        yield return new(preFork, 587 * bn254PairSize, true) { TestName = "PreFork over Granite limit" };
         yield return new(preFork, 57_599, false) { TestName = "PreFork not a multiple of pair size" };
         // Granite: 112,687 bytes (586 whole pairs)
-        yield return new(granite, 586 * pairSize, true) { TestName = "Granite at limit" };
-        yield return new(granite, 587 * pairSize, false) { TestName = "Granite over limit" };
+        yield return new(granite, 586 * bn254PairSize, true) { TestName = "Granite at limit" };
+        yield return new(granite, 587 * bn254PairSize, false) { TestName = "Granite over limit" };
         // Jovian: 81,984 bytes (427 pairs)
-        yield return new(jovian, 427 * pairSize, true) { TestName = "Jovian at limit" };
-        yield return new(jovian, 428 * pairSize, false) { TestName = "Jovian over limit" };
+        yield return new(jovian, 427 * bn254PairSize, true) { TestName = "Jovian at limit" };
+        yield return new(jovian, 428 * bn254PairSize, false) { TestName = "Jovian over limit" };
         // Karst: 57,600 bytes (300 pairs)
-        yield return new(karst, 300 * pairSize, true) { TestName = "Karst at limit" };
-        yield return new(karst, 301 * pairSize, false) { TestName = "Karst over limit" };
+        yield return new(karst, 300 * bn254PairSize, true) { TestName = "Karst at limit" };
+        yield return new(karst, 301 * bn254PairSize, false) { TestName = "Karst over limit" };
         yield return new(karst, 57_599, false) { TestName = "Karst not a multiple of pair size" };
     }
 
