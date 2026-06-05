@@ -296,6 +296,11 @@ public partial class BlockAccessListManager
         _hasGeneratedValidationIndexUpdates = true;
     }
 
+    // for tests: drives a generated slice through the real validation-index registration so
+    // structural read-coverage tests exercise _generatedValidationIndex + the chargeable counter,
+    // not the GeneratedBlockAccessList.Merge shortcut that bypasses both.
+    internal void RegisterGeneratedSliceForTest(BlockAccessListAtIndex slice) => RegisterGeneratedSlice(slice);
+
     /// <summary>
     /// True iff any account in <paramref name="slice"/> has no state changes, isn't a tolerated
     /// read-only entry (system-user at index 0 or any storage-read row), and isn't declared in
