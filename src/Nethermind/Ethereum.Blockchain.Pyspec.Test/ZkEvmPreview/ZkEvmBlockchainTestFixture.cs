@@ -21,6 +21,9 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
         if (!inputBytes.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"StatelessInputBytes must be 0x-prefixed.");
 
+        if (!expectedOutputBytes.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"StatelessOutputBytes must be 0x-prefixed.");
+
         byte[] actualOutput = StatelessExecutor.Execute(Convert.FromHexString(inputBytes[2..]));
         byte[] expectedOutput = Convert.FromHexString(expectedOutputBytes[2..]);
 
