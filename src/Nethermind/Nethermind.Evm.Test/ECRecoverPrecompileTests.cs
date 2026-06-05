@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Nethermind.Core;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -16,6 +19,24 @@ public class ECRecoverPrecompileTests : PrecompileTests<ECRecoverPrecompile, ECR
     [TestCase("18c547e4f7b0f325ad1e56f57e26c745b09a3e503d86e00e5255ff7f715d3d1c000000000000000000000000000000000000001000000000000000000000001c73b1693892219d736caba55bdb67216e485557ea6b6af75f37096c9aa6a5a75feeb940b1d03b21e36b0e47e79769f095fe2ab855bd91e3a38756b7d75a9c4549", "", true)]
     [TestCase("18c547e4f7b0f325ad1e56f57e26c745b09a3e503d86e00e5255ff7f715d3d1c000000000000000000000000000000000000001000000000000000000000011c73b1693892219d736caba55bdb67216e485557ea6b6af75f37096c9aa6a5a75feeb940b1d03b21e36b0e47e79769f095fe2ab855bd91e3a38756b7d75a9c4549", "", true)]
     public void Test(string input, string output, bool status) => RunTest(input, output, status);
+
+    [Test]
+    public void Repeated_effective_input_returns_cached_result()
+    {
+        byte[] input = Convert.FromHexString(
+            "38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e" +
+            "000000000000000000000000000000000000000000000000000000000000001b" +
+            "38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e" +
+            "789d1dd423d25f0772d2748d60f7e4b81bb14d086eba8e8e8efb6dcff8a4ae02");
+        byte[] repeatedInput = (byte[])input.Clone();
+
+        Result<byte[]> first = ECRecoverPrecompile.Instance.Run(input, Prague.Instance);
+        Result<byte[]> second = ECRecoverPrecompile.Instance.Run(repeatedInput, Prague.Instance);
+
+        Assert.That(first.IsSuccess, Is.True);
+        Assert.That(second.IsSuccess, Is.True);
+        Assert.That(second.Data, Is.SameAs(first.Data));
+    }
 
     [TestCase(
         "38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e000000000000000000000000000000000000000000000000000000000000001b38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e789d1dd423d25f0772d2748d60f7e4b81bb14d086eba8e8e8efb6dcff8a4ae02"

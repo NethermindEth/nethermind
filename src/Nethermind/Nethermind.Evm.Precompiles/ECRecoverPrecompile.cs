@@ -25,6 +25,10 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     private const int InputLength = 128;
 
+    [ThreadStatic] private static byte[]? t_cachedInput;
+    [ThreadStatic] private static Result<byte[]> t_cachedResult;
+    [ThreadStatic] private static bool t_hasCachedResult;
+
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
@@ -45,7 +49,20 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 #if !ZK_EVM
         Metrics.ECRecoverPrecompile++;
 #endif
-        return inputData.Length >= 128 ? RunInternal(inputData.Span) : RunInternal(inputData);
+        if (inputData.Length >= InputLength)
+        {
+            ReadOnlySpan<byte> effectiveInput = inputData.Span[..InputLength];
+            if (TryGetCachedResult(effectiveInput, out Result<byte[]> cachedResult))
+            {
+                return cachedResult;
+            }
+
+            Result<byte[]> result = RunInternal(effectiveInput);
+            CacheResult(effectiveInput, result);
+            return result;
+        }
+
+        return RunInternal(inputData);
     }
 
     private Result<byte[]> RunInternal(ReadOnlyMemory<byte> inputData)
@@ -96,5 +113,26 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
         Unsafe.InitBlockUnaligned(ref resultRef, 0, 12);
 
         return result;
+    }
+
+    private static bool TryGetCachedResult(ReadOnlySpan<byte> inputData, out Result<byte[]> result)
+    {
+        byte[]? cachedInput = t_cachedInput;
+        if (t_hasCachedResult && cachedInput is not null && inputData.SequenceEqual(cachedInput))
+        {
+            result = t_cachedResult;
+            return true;
+        }
+
+        result = default;
+        return false;
+    }
+
+    private static void CacheResult(ReadOnlySpan<byte> inputData, Result<byte[]> result)
+    {
+        byte[] cachedInput = t_cachedInput ??= new byte[InputLength];
+        inputData.CopyTo(cachedInput);
+        t_cachedResult = result;
+        t_hasCachedResult = true;
     }
 }
