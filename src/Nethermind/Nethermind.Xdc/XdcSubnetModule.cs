@@ -27,4 +27,6 @@ public class XdcSubnetModule : XdcModule
 
         builder.RegisterType<SubnetSnapshotManager>().As<ISubnetSnapshotManager>().WithAttributeFiltering().SingleInstance();
     }
+
+    protected override XdcChainSpecLoader CreateChainSpecLoader() => new XdcSubnetChainSpecLoader();
 }
