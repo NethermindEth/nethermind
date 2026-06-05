@@ -35,6 +35,33 @@ public class BlockStmTransactionsExecutor(
     : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly ObjectPool<HashSet<int>> _setPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>());
+
+    // Pools for per-tx aggregate collections used in PushChanges. Large maximumRetained so a
+    // single high-tx-count block fully recycles between blocks instead of repeatedly allocating.
+    private const int AggregatePoolCapacity = 1024;
+    private static readonly ObjectPool<Dictionary<Address, Account?>> AccountUpdatesPool =
+        new DefaultObjectPool<Dictionary<Address, Account?>>(new ClearingDictPolicy<Address, Account?>(), AggregatePoolCapacity);
+    private static readonly ObjectPool<HashSet<Address>> StorageClearsPool =
+        new DefaultObjectPool<HashSet<Address>>(new ClearingHashSetPolicy<Address>(), AggregatePoolCapacity);
+    private static readonly ObjectPool<List<(StorageCell Cell, byte[] Value)>> StorageWritesPool =
+        new DefaultObjectPool<List<(StorageCell Cell, byte[] Value)>>(new ClearingListPolicy<(StorageCell Cell, byte[] Value)>(), AggregatePoolCapacity);
+
+    private sealed class ClearingDictPolicy<TK, TV> : PooledObjectPolicy<Dictionary<TK, TV>> where TK : notnull
+    {
+        public override Dictionary<TK, TV> Create() => [];
+        public override bool Return(Dictionary<TK, TV> obj) { obj.Clear(); return true; }
+    }
+    private sealed class ClearingHashSetPolicy<T> : PooledObjectPolicy<HashSet<T>>
+    {
+        public override HashSet<T> Create() => [];
+        public override bool Return(HashSet<T> obj) { obj.Clear(); return true; }
+    }
+    private sealed class ClearingListPolicy<T> : PooledObjectPolicy<List<T>>
+    {
+        public override List<T> Create() => [];
+        public override bool Return(List<T> obj) { obj.Clear(); return true; }
+    }
+
     private BlockExecutionContext _blockExecutionContext;
     private readonly ILogger _logger = logManager.GetClassLogger<BlockStmTransactionsExecutor>();
     private readonly MvmmSystemWriteCapture _systemWriteCapture = new();
@@ -158,93 +185,108 @@ public class BlockStmTransactionsExecutor(
 
     private FeeRecipientWriteInfo PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, IReleaseSpec spec, int txCount, IReadOnlyDictionary<ValueHash256, byte[]> blockCodeWrites)
     {
-        HashSet<Address> storageTouched = [];
         Address? gasBeneficiary = feeAccumulator.GasBeneficiary;
         Address? feeCollector = feeAccumulator.FeeCollector;
         int gasBeneficiaryLastWrite = -1;
         int feeCollectorLastWrite = -1;
-        for (int txIndex = 0; txIndex < txCount; txIndex++)
+
+        // Categorize each tx's writes into account/clear/storage buckets in parallel. IWorldState
+        // is not thread-safe, so application stays sequential below.
+        TxWriteAggregate[] aggregates = new TxWriteAggregate[txCount];
+        ParallelUnbalancedWork.For(0, txCount, i =>
         {
-            Dictionary<Address, Account?>? accountUpdates = null;
-            HashSet<Address>? storageClears = null;
-            List<(StorageCell Cell, byte[] Value)>? storageWrites = null;
+            CategorizeTxWrites(ref aggregates[i], multiVersionMemory.GetFinalWriteSet(i));
+        });
 
-            foreach (KeyValuePair<ParallelStateKey, MultiVersionMemory.Value> write in multiVersionMemory.GetFinalWriteSet(txIndex))
+        try
+        {
+            for (int txIndex = 0; txIndex < txCount; txIndex++)
             {
-                if (write.Value.IsEstimate)
+                ref TxWriteAggregate agg = ref aggregates[txIndex];
+
+                if (agg.StorageClears is { } clears)
                 {
-                    continue;
+                    // Clear marker is emitted on SELFDESTRUCT and pre-EIP-7610 CREATE/CREATE2 collisions; both wipe prior storage.
+                    foreach (Address address in clears) worldState.ClearStorage(address);
                 }
 
-                ParallelStateKey key = write.Key;
-                object? value = write.Value.Data;
-
-                switch (key.Kind)
+                if (agg.StorageWrites is { } writes)
                 {
-                    case ParallelStateKeyKind.Account:
-                        // null = SELFDESTRUCT/DeleteAccount; non-null = set/create.
-                        (accountUpdates ??= [])[key.Address] = value as Account;
-                        break;
-                    case ParallelStateKeyKind.StorageClear:
-                        (storageClears ??= []).Add(key.Address);
-                        break;
-                    case ParallelStateKeyKind.Storage:
-                        if (value is byte[] bytes)
+                    foreach ((StorageCell Cell, byte[] Value) write in writes) worldState.Set(write.Cell, write.Value);
+                }
+
+                if (agg.AccountUpdates is { } accounts)
+                {
+                    foreach (KeyValuePair<Address, Account?> accountUpdate in accounts)
+                    {
+                        ApplyAccountUpdate(worldState, accountUpdate.Key, accountUpdate.Value, spec, blockCodeWrites);
+
+                        if (gasBeneficiary is not null && accountUpdate.Key == gasBeneficiary)
                         {
-                            (storageWrites ??= []).Add((key.StorageCell, bytes));
+                            gasBeneficiaryLastWrite = txIndex;
                         }
-                        break;
-                    // Fees flow through FeeAccumulator, applied separately.
-                    case ParallelStateKeyKind.FeeGasBeneficiary:
-                    case ParallelStateKeyKind.FeeCollector:
-                        break;
-                }
-            }
 
-            if (storageClears is not null)
-            {
-                foreach (Address address in storageClears)
-                {
-                    // A storage-clear marker comes from either SELFDESTRUCT (paired with a
-                    // null account update) or a CREATE / CREATE2 collision into an account
-                    // with pre-existing storage (pre-EIP-7610; paired with a non-null
-                    // account update). Both semantics require wiping the prior storage —
-                    // skipping when an earlier tx touched the address would leave its
-                    // writes intact and diverge from sequential.
-                    worldState.ClearStorage(address);
-                    storageTouched.Add(address);
-                }
-            }
-
-            if (storageWrites is not null)
-            {
-                foreach ((StorageCell Cell, byte[] Value) write in storageWrites)
-                {
-                    worldState.Set(write.Cell, write.Value);
-                    storageTouched.Add(write.Cell.Address);
-                }
-            }
-
-            if (accountUpdates is not null)
-            {
-                foreach (KeyValuePair<Address, Account?> accountUpdate in accountUpdates)
-                {
-                    ApplyAccountUpdate(worldState, accountUpdate.Key, accountUpdate.Value, spec, blockCodeWrites);
-
-                    if (gasBeneficiary is not null && accountUpdate.Key == gasBeneficiary)
-                    {
-                        gasBeneficiaryLastWrite = txIndex;
-                    }
-
-                    if (feeCollector is not null && accountUpdate.Key == feeCollector)
-                    {
-                        feeCollectorLastWrite = txIndex;
+                        if (feeCollector is not null && accountUpdate.Key == feeCollector)
+                        {
+                            feeCollectorLastWrite = txIndex;
+                        }
                     }
                 }
+            }
+
+            return new FeeRecipientWriteInfo(gasBeneficiaryLastWrite, feeCollectorLastWrite);
+        }
+        finally
+        {
+            ReturnAggregatesToPool(aggregates);
+        }
+    }
+
+    private static void CategorizeTxWrites(ref TxWriteAggregate agg, ConcurrentDictionary<ParallelStateKey, MultiVersionMemory.Value> writeSet)
+    {
+        foreach (KeyValuePair<ParallelStateKey, MultiVersionMemory.Value> write in writeSet)
+        {
+            if (write.Value.IsEstimate) continue;
+
+            ParallelStateKey key = write.Key;
+            object? value = write.Value.Data;
+
+            switch (key.Kind)
+            {
+                case ParallelStateKeyKind.Account:
+                    // null = SELFDESTRUCT/DeleteAccount; non-null = set/create.
+                    (agg.AccountUpdates ??= AccountUpdatesPool.Get())[key.Address] = value as Account;
+                    break;
+                case ParallelStateKeyKind.StorageClear:
+                    (agg.StorageClears ??= StorageClearsPool.Get()).Add(key.Address);
+                    break;
+                case ParallelStateKeyKind.Storage:
+                    if (value is byte[] bytes) (agg.StorageWrites ??= StorageWritesPool.Get()).Add((key.StorageCell, bytes));
+                    break;
+                // Fees flow through FeeAccumulator separately.
+                case ParallelStateKeyKind.FeeGasBeneficiary:
+                case ParallelStateKeyKind.FeeCollector:
+                    break;
             }
         }
+    }
 
-        return new FeeRecipientWriteInfo(gasBeneficiaryLastWrite, feeCollectorLastWrite);
+    private static void ReturnAggregatesToPool(TxWriteAggregate[] aggregates)
+    {
+        for (int i = 0; i < aggregates.Length; i++)
+        {
+            ref TxWriteAggregate agg = ref aggregates[i];
+            if (agg.AccountUpdates is { } accounts) AccountUpdatesPool.Return(accounts);
+            if (agg.StorageClears is { } clears) StorageClearsPool.Return(clears);
+            if (agg.StorageWrites is { } writes) StorageWritesPool.Return(writes);
+        }
+    }
+
+    private struct TxWriteAggregate
+    {
+        public Dictionary<Address, Account?>? AccountUpdates;
+        public HashSet<Address>? StorageClears;
+        public List<(StorageCell Cell, byte[] Value)>? StorageWrites;
     }
 
     // Replays a captured final Account state onto the main world state using the typed

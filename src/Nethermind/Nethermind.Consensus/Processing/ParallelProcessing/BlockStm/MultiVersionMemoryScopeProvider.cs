@@ -28,6 +28,7 @@ public class MultiVersionMemoryScopeProvider(
     private readonly object _writeSetLock = new();
     // MVMM.Record copies entries out; safe to reuse across BeginScope calls.
     private readonly Dictionary<ParallelStateKey, object> _pooledWriteSet = new(InitialWriteSetCapacity);
+    private readonly Stack<PooledStorageWriteBatch> _storageBatchPool = new();
 
     /// <summary>Targets the next <see cref="BeginScope"/> at this tx version.</summary>
     public void SetTxVersion(in TxVersion version) => _version = version;
@@ -43,10 +44,31 @@ public class MultiVersionMemoryScopeProvider(
         ReadSet = new HashSet<Read>(InitialReadSetCapacity);
         _pooledWriteSet.Clear();
         WriteSet = _pooledWriteSet;
-        return new MultiVersionMemoryScope(_version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, _writeSetLock, blockCodeWrites);
+        return new MultiVersionMemoryScope(this, _version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, _writeSetLock, blockCodeWrites);
+    }
+
+    private PooledStorageWriteBatch RentStorageBatch(Address address)
+    {
+        PooledStorageWriteBatch? batch;
+        lock (_storageBatchPool)
+        {
+            _storageBatchPool.TryPop(out batch);
+        }
+        batch ??= new PooledStorageWriteBatch(this);
+        batch.Init(address);
+        return batch;
+    }
+
+    private void ReturnStorageBatch(PooledStorageWriteBatch batch)
+    {
+        lock (_storageBatchPool)
+        {
+            _storageBatchPool.Push(batch);
+        }
     }
 
     private class MultiVersionMemoryScope(
+        MultiVersionMemoryScopeProvider owner,
         TxVersion version,
         IWorldStateScopeProvider.IScope baseScope,
         MultiVersionMemory multiVersionMemory,
@@ -112,11 +134,14 @@ public class MultiVersionMemoryScopeProvider(
             new MultiVersionMemoryStorageTree(address, version.TxIndex, baseScope.CreateStorageTree(address), multiVersionMemory, readSet);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
-            new MultiVersionMemoryWriteBatch(writeSet, writeSetLock);
+            new MultiVersionMemoryWriteBatch(owner, writeSet, writeSetLock);
 
         public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
 
-        private class MultiVersionMemoryWriteBatch(Dictionary<ParallelStateKey, object> writeSet, object writeSetLock)
+        private class MultiVersionMemoryWriteBatch(
+            MultiVersionMemoryScopeProvider owner,
+            Dictionary<ParallelStateKey, object> writeSet,
+            object writeSetLock)
             : IWorldStateScopeProvider.IWorldStateWriteBatch
         {
             public void Dispose() { }
@@ -133,56 +158,7 @@ public class MultiVersionMemoryScopeProvider(
             }
 
             public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
-                new MultiVersionMemoryStorageWriteBatch(key, estimatedEntries, writeSet, writeSetLock);
-
-            private class MultiVersionMemoryStorageWriteBatch(
-                Address address,
-                int estimatedEntries,
-                Dictionary<ParallelStateKey, object> writeSet,
-                object writeSetLock)
-                : IWorldStateScopeProvider.IStorageWriteBatch
-            {
-                private Dictionary<ParallelStateKey, object>? _localWrites;
-
-                private Dictionary<ParallelStateKey, object> GetLocalWrites()
-                {
-                    if (_localWrites is not null)
-                    {
-                        return _localWrites;
-                    }
-
-                    _localWrites = estimatedEntries > 0
-                        ? new Dictionary<ParallelStateKey, object>(estimatedEntries)
-                        : [];
-
-                    return _localWrites;
-                }
-
-                public void Set(in UInt256 index, byte[] value) =>
-                    GetLocalWrites()[ParallelStateKey.ForStorage(new StorageCell(address, index))] = value;
-
-                public void Clear() =>
-                    GetLocalWrites()[ParallelStateKey.ForStorageClear(address)] = MultiVersionMemory.SelfDestructMonit;
-
-                public void Dispose()
-                {
-                    if (_localWrites is null)
-                    {
-                        return;
-                    }
-
-                    // Merge under lock — storage batches Dispose from parallel workers.
-                    lock (writeSetLock)
-                    {
-                        foreach (KeyValuePair<ParallelStateKey, object> write in _localWrites)
-                        {
-                            writeSet[write.Key] = write.Value;
-                        }
-                    }
-
-                    _localWrites = null;
-                }
-            }
+                owner.RentStorageBatch(key);
         }
 
         private void AddFeeReadDependencies(FeeRecipientKind feeKind, int startTxIndex, int txIndex)
@@ -310,6 +286,38 @@ public class MultiVersionMemoryScopeProvider(
             }
 
             public void Dispose() => inner.Dispose();
+        }
+    }
+
+    /// <summary>Reusable storage write batch; <see cref="Dispose"/> merges into the provider's WriteSet and returns to the pool.</summary>
+    private sealed class PooledStorageWriteBatch(MultiVersionMemoryScopeProvider owner)
+        : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        private Address _address = null!;
+        private readonly Dictionary<ParallelStateKey, object> _localWrites = new(16);
+
+        public void Init(Address address) => _address = address;
+
+        public void Set(in UInt256 index, byte[] value) =>
+            _localWrites[ParallelStateKey.ForStorage(new StorageCell(_address, index))] = value;
+
+        public void Clear() =>
+            _localWrites[ParallelStateKey.ForStorageClear(_address)] = MultiVersionMemory.SelfDestructMonit;
+
+        public void Dispose()
+        {
+            if (_localWrites.Count > 0)
+            {
+                lock (owner._writeSetLock)
+                {
+                    foreach (KeyValuePair<ParallelStateKey, object> write in _localWrites)
+                    {
+                        owner._pooledWriteSet[write.Key] = write.Value;
+                    }
+                }
+                _localWrites.Clear();
+            }
+            owner.ReturnStorageBatch(this);
         }
     }
 }
