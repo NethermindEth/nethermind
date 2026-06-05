@@ -162,6 +162,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             OpGraniteTransitionTimestamp = chainSpecJson.Params.OpGraniteTransitionTimestamp,
             OpHoloceneTransitionTimestamp = chainSpecJson.Params.OpHoloceneTransitionTimestamp,
             OpIsthmusTransitionTimestamp = chainSpecJson.Params.OpIsthmusTransitionTimestamp,
+            OpKarstTransitionTimestamp = chainSpecJson.Params.OpKarstTransitionTimestamp,
             Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
             Eip7702TransitionTimestamp = chainSpecJson.Params.Eip7702TransitionTimestamp,
             Eip7918TransitionTimestamp = chainSpecJson.Params.Eip7918TransitionTimestamp,

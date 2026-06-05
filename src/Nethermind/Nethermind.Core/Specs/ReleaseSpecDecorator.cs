@@ -93,6 +93,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
     public virtual bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
     public virtual bool IsOpJovianEnabled => spec.IsOpJovianEnabled;
+    public virtual bool IsOpKarstEnabled => spec.IsOpKarstEnabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
     public virtual bool IsEip7976Enabled => spec.IsEip7976Enabled;
     public virtual bool IsEip7981Enabled => spec.IsEip7981Enabled;

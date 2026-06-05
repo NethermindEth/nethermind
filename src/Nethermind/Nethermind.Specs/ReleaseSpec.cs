@@ -87,6 +87,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsOpHoloceneEnabled { get; set; }
     public bool IsOpIsthmusEnabled { get; set; }
     public bool IsOpJovianEnabled { get; set; }
+    public bool IsOpKarstEnabled { get; set; }
     public bool IsEip7623Enabled { get; set; }
     public bool IsEip7976Enabled { get; set; }
     public bool IsEip7981Enabled { get; set; }

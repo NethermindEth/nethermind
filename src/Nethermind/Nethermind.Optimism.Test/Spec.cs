@@ -19,6 +19,7 @@ public static class Spec
     public const ulong HoloceneTimeStamp = 2_000;
     public const ulong IsthmusTimeStamp = 2_100;
     public const ulong JovianTimeStamp = 2_200;
+    public const ulong KarstTimeStamp = 2_300;
 
     public static readonly IOptimismSpecHelper Instance =
         new OptimismSpecHelper(new OptimismChainSpecEngineParameters
@@ -28,6 +29,7 @@ public static class Spec
             HoloceneTimestamp = HoloceneTimeStamp,
             IsthmusTimestamp = IsthmusTimeStamp,
             JovianTimestamp = JovianTimeStamp,
+            KarstTimestamp = KarstTimeStamp,
         });
 
     public static ISpecProvider BuildFor(params BlockHeader[] headers)
@@ -43,6 +45,7 @@ public static class Spec
             spec.IsOpGraniteEnabled = Instance.IsGranite(header);
             spec.IsOpIsthmusEnabled = Instance.IsIsthmus(header);
             spec.IsOpJovianEnabled = Instance.IsJovian(header);
+            spec.IsOpKarstEnabled = Instance.IsKarst(header);
 
             specProvider.GetSpec(header).Returns(spec);
         }
@@ -62,6 +65,7 @@ public static class Spec
             spec.IsOpHoloceneEnabled = timestamp >= HoloceneTimeStamp;
             spec.IsOpIsthmusEnabled = timestamp >= IsthmusTimeStamp;
             spec.IsOpJovianEnabled = timestamp >= JovianTimeStamp;
+            spec.IsOpKarstEnabled = timestamp >= KarstTimeStamp;
 
             specProvider.GetSpec(Arg.Is<ForkActivation>(f => f.Timestamp == timestamp)).Returns(spec);
         }

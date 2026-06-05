@@ -185,6 +185,7 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
     public ulong? OpIsthmusTransitionTimestamp { get; set; }
+    public ulong? OpKarstTransitionTimestamp { get; set; }
     public SortedSet<BlobScheduleSettings> BlobSchedule { get; set; } = [];
     public ulong? Eip7594TransitionTimestamp { get; set; }
     public ulong? Eip7939TransitionTimestamp { get; set; }
