@@ -779,7 +779,7 @@ namespace Nethermind.Evm.TransactionProcessing
             senderReservedGasPayment = UInt256.Zero;
             blobBaseFee = UInt256.Zero;
             UInt256 balance = WorldState.GetBalance(tx.SenderAddress!);
-            
+
             bool validate = ShouldValidateGas(tx, opts);
 
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
@@ -834,7 +834,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 // Compute actual blob fee and add to mgval.
                 if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee))
                 {
-                    TraceLogInvalidTx(tx, $"INVALID_BLOB_BASE_FEE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}");   
+                    TraceLogInvalidTx(tx, $"INVALID_BLOB_BASE_FEE: ({tx.SenderAddress})_BALANCE = {balance}");
                     return TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail($"invalid blobBaseFee: {UInt256.MaxValue}");
                 }
 
@@ -847,7 +847,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (UInt256.MultiplyOverflow(blobGas, blobBaseFee, out UInt256 actualBlobFee)
                     || UInt256.AddOverflow(senderReservedGasPayment, actualBlobFee, out senderReservedGasPayment))
                 {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}");
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                     return RequiredBalanceExceeds256Bits(tx);
                 }
             }

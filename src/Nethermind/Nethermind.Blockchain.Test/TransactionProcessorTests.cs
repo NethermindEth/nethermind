@@ -251,7 +251,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         if (!systemUser)
         {
-            Assert.That(result, Is.EqualTo(TransactionResult.InsufficientSenderBalance));
+            Assert.That(result, Is.EqualTo(TransactionResult.InsufficientMaxFeePerGasForSenderBalance));
         }
         else
         {
