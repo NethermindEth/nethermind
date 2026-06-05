@@ -150,6 +150,8 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
+        public IDisposable? BeginTriePrewarmSuppression() => baseScope.BeginTriePrewarmSuppression();
+
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
             sink ??= new CacheSink(preBlockCache, storageCache);

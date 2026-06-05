@@ -93,7 +93,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     private void WarmUpSlot(UInt256 index)
     {
-        if (_bundle.ShouldQueuePrewarm(_address, index))
+        if (!_scope.IsTriePrewarmSuppressed && _bundle.ShouldQueuePrewarm(_address, index))
         {
             if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId))
                 _scope.IncrementOutstandingWarmups();
@@ -105,7 +105,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         try
         {
-            if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
+            if (_scope.HintSequenceId != sequenceId || _scope.IsTriePrewarmSuppressed)
             {
                 return false;
             }

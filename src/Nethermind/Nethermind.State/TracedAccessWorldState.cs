@@ -93,6 +93,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
 
+    public IDisposable? BeginTriePrewarmSuppression() => _innerWorldState.BeginTriePrewarmSuppression();
+
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
         AccountChangesAtIndex accountChanges;

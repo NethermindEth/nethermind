@@ -82,6 +82,11 @@ public interface IWorldStateScopeProvider
         /// <param name="sink">Optional sink that receives each account/slot value read during the pass.</param>
         /// <returns>A task that completes when the asynchronous warmup finishes.</returns>
         Task HintBal(ReadOnlyBlockAccessList bal, IAsyncBalReaderSink? sink = null);
+
+        /// <summary>
+        /// Temporarily suppresses asynchronous trie prewarm hints for state changes that will be committed immediately.
+        /// </summary>
+        IDisposable? BeginTriePrewarmSuppression() => null;
     }
 
     /// <summary>

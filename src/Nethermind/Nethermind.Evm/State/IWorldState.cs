@@ -149,6 +149,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 
+    /// <summary>
+    /// Temporarily suppresses asynchronous trie prewarm hints for state changes that will be committed immediately.
+    /// </summary>
+    public IDisposable? BeginTriePrewarmSuppression() => null;
+
     // See https://eips.ethereum.org/EIPS/eip-7610
     bool IsNonZeroAccount(Address address, out bool accountExists)
     {

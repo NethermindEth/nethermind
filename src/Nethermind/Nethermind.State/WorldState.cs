@@ -275,6 +275,12 @@ namespace Nethermind.State
             return _currentScope!.HintBal(bal);
         }
 
+        public IDisposable? BeginTriePrewarmSuppression()
+        {
+            GuardInScope();
+            return _currentScope!.BeginTriePrewarmSuppression();
+        }
+
         public ref readonly UInt256 GetBalance(Address address)
         {
             DebugGuardInScope();
