@@ -40,7 +40,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     {
         // state-override commits must not trigger EIP-158 deletion on accounts whose
         // code/nonce were zeroed while storage remains — EIP-7610 collision checks need that storage.
-        IReleaseSpec spec = releaseSpec.WithoutEip158();
+        releaseSpec = releaseSpec.WithoutEip158();
 
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, spec);
 
