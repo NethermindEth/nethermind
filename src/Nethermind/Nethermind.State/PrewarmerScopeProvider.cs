@@ -201,8 +201,8 @@ public class PrewarmerScopeProvider(
 
         private Account? GetFromBaseTreeDeduplicated(in AddressAsKey address)
         {
-            object gate = readDeduplicator!.GetAccountLock(in address);
-            lock (gate)
+            System.Threading.Lock gate = readDeduplicator!.GetAccountLock(in address);
+            using (gate.EnterScope())
             {
                 if (preBlockCache.TryGetValue(in address, out Account? account))
                 {
@@ -275,8 +275,8 @@ public class PrewarmerScopeProvider(
 
         private byte[] LoadFromTreeStorageDeduplicated(in StorageCell storageCell)
         {
-            object gate = readDeduplicator!.GetStorageLock(in storageCell);
-            lock (gate)
+            System.Threading.Lock gate = readDeduplicator!.GetStorageLock(in storageCell);
+            using (gate.EnterScope())
             {
                 if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
                 {
