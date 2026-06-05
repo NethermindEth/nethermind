@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
 using NUnit.Framework;
 
 namespace Nethermind.Serialization.Ssz.Test
@@ -22,7 +22,7 @@ namespace Nethermind.Serialization.Ssz.Test
 
             // Act
             byte[] encoded = new byte[(input.Length + 7) / 8];
-            Ssz.EncodeVector(encoded, input);
+            Ssz.Encode(encoded, input);
 
             // Assert
             string byteString = Bytes.ToHexString(encoded);
@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Ssz.Test
 
             // Act
             byte[] encoded = new byte[(input.Length + 8) / 8];
-            Ssz.EncodeList(encoded, input);
+            Ssz.Encode(encoded, input, (int)limit);
 
             // Assert
             string byteString = Bytes.ToHexString(encoded);

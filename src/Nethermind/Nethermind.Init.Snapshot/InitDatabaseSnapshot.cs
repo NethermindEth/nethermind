@@ -78,7 +78,7 @@ public class InitDatabaseSnapshot(
 
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        using SnapshotDownloader downloader = new(api.LogManager, api.TimerFactory);
+        using SnapshotDownloader downloader = new(api.LogManager);
         await DownloadWithRetryAsync(downloader, snapshotUrl, snapshotPath, checkpoint, cancellationToken).ConfigureAwait(false);
 
         bool checksumPassed = await VerifyChecksumAsync(snapshotPath, snapshotConfig, checkpoint, cancellationToken).ConfigureAwait(false);

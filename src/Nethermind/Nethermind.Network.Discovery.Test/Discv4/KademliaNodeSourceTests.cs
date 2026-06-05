@@ -74,9 +74,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _lookup.Lookup(Arg.Any<PublicKey>(), token)
                 .Returns(CreateAsyncEnumerable(node1, node2));
             _discv4Adapter.Ping(node1, token)
-                .Returns(Task.CompletedTask);
+                .Returns(true);
             _discv4Adapter.Ping(node2, token)
-                .Returns(Task.CompletedTask);
+                .Returns(true);
 
             IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
@@ -94,7 +94,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Node node = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             int pingCount = 0;
             _discv4Adapter.Ping(node, token)
-                .Returns(Task.CompletedTask)
+                .Returns(true)
                 .AndDoes(_ => Interlocked.Increment(ref pingCount));
             _lookup.Lookup(Arg.Any<PublicKey>(), token)
                 .Returns(CreateAsyncEnumerable(node));
@@ -147,10 +147,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             int node1PingCount = 0;
             _discv4Adapter.Ping(node1, token)
-                .Returns(Task.FromException(new OperationCanceledException()))
+                .Returns(false)
                 .AndDoes(_ => Interlocked.Increment(ref node1PingCount));
             _discv4Adapter.Ping(node2, token)
-                .Returns(Task.CompletedTask);
+                .Returns(true);
 
             _lookup.Lookup(Arg.Any<PublicKey>(), token)
                 .Returns(CreateAsyncEnumerable(node1, node2));

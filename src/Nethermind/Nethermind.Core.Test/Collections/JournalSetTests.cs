@@ -55,5 +55,14 @@ namespace Nethermind.Core.Test.Collections
             journalSet.Restore(snapshot);
             Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 10)));
         }
+
+        [Test]
+        public void Single_returns_the_only_item()
+        {
+            JournalSet<int> journalSet = CreateJournalSet();
+            journalSet.Add(3);
+
+            Assert.That(journalSet.First, Is.EqualTo(3));
+        }
     }
 }

@@ -23,5 +23,5 @@ public class SubnetSnapshotDecoderTests
 
     [Test, TestCaseSource(nameof(Snapshots))]
     public void RoundTrip(SubnetSnapshot original) =>
-        Assert.That(Decoder.Decode(Decoder.Encode(original).Bytes), Is.EqualTo(original).UsingPropertiesComparer());
+        Assert.That(Decoder.Decode(Decoder.Encode(original).Bytes), Is.EqualTo(original).UsingXdcComparer());
 }
