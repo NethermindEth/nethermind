@@ -14,7 +14,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
@@ -369,29 +368,6 @@ public class BlockCachePreWarmerTests
         Assert.That(populatedAccount!.Balance, Is.EqualTo(1_000_000.Ether));
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage), Is.True);
         Assert.That(new UInt256(populatedStorage, isBigEndian: true), Is.EqualTo((UInt256)0x99));
-    }
-
-    [Test]
-    public void CollectUniqueWarmupAddresses_DeduplicatesSendersAndRecipients()
-    {
-        Transaction[] txs =
-        [
-            Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-            Build.A.Transaction.WithNonce(1).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-            Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
-        ];
-
-        Block block = Build.A.Block
-            .WithTransactions(txs)
-            .WithGasLimit(30_000_000)
-            .TestObject;
-
-        using ArrayPoolList<AddressAsKey> addresses = BlockCachePreWarmer.CollectUniqueWarmupAddresses(block);
-
-        Assert.That(addresses.Count, Is.EqualTo(3));
-        Assert.That(addresses.Contains(TestItem.AddressA), Is.True);
-        Assert.That(addresses.Contains(TestItem.AddressB), Is.True);
-        Assert.That(addresses.Contains(TestItem.AddressC), Is.True);
     }
 
     private BlockCachePreWarmer CreatePreWarmerFromConfig(bool parallelExecution, bool parallelExecutionBatchRead)
