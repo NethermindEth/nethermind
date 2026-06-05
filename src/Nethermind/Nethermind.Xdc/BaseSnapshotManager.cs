@@ -58,6 +58,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     Snapshot? ISnapshotManager.GetSnapshotByGapNumber(long gapNumber) => GetSnapshotByGapNumber(gapNumber);
 
     Snapshot? ISnapshotManager.GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec) => GetSnapshotByBlockNumber(blockNumber, spec);
+    public abstract Snapshot CreateInitialSnapshot(long number, Hash256 hash, Address[] genesisMasterNodes);
 
     void ISnapshotManager.StoreSnapshot(Snapshot snapshot)
     {
