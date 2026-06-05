@@ -9,7 +9,6 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
@@ -285,13 +284,6 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.IsContractCreation) Metrics.IncrementCreates();
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
-            // Verify-only validation: route EIP-2929 warmth for the BAL's declared reads through an ordinal
-            // bitset rather than the storage-cell journal set. Non-tracing only (tracing reports the cell set).
-            // The warmth is pooled per worker and reset for this tx, so there is no per-tx allocation.
-            if (!tracer.IsTracingAccess && WorldState.GetActiveDeclaredReadPlan() is { } declaredReadPlan)
-            {
-                accessTracker.EnableDeclaredReadWarmth(declaredReadPlan, WorldState.GetDeclaredReadWarmth()!);
-            }
             int delegationRefunds = 0;
             int delegationAuthBaseRefunds = 0;
             TransactionResult result;
