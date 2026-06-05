@@ -18,6 +18,7 @@ using static Mcl;
 internal static unsafe class BN254
 {
     internal const int PairSize = 192;
+    private const int MaxStackPairCount = 32;
 
     static BN254()
     {
@@ -35,10 +36,10 @@ internal static unsafe class BN254
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
-            if (!DeserializeG1(data, out mclBnG1 x))
+            if (!DeserializeG1(data, out mclBnG1 x, out _))
                 return false;
 
-            if (!DeserializeG1(data + chunkSize, out mclBnG1 y))
+            if (!DeserializeG1(data + chunkSize, out mclBnG1 y, out _))
                 return false;
 
             mclBnG1_add(ref x, x, y); // x += y
@@ -58,7 +59,7 @@ internal static unsafe class BN254
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
-            if (!DeserializeG1(data, out mclBnG1 x))
+            if (!DeserializeG1(data, out mclBnG1 x, out _))
                 return false;
 
             Unsafe.SkipInit(out mclBnFr y);
@@ -87,68 +88,145 @@ internal static unsafe class BN254
         if (input.Length % PairSize != 0)
             return false;
 
+        int pairCount = input.Length / PairSize;
+
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
-            Unsafe.SkipInit(out mclBnGT ml);
-            Unsafe.SkipInit(out mclBnGT acc);
-            bool hasMl = false;
+            if (pairCount == 1)
+                return CheckPairingSingle(output, data);
 
-            for (int i = 0; i < input.Length; i += PairSize)
+            if (pairCount <= MaxStackPairCount)
             {
-                if (!DeserializeG1(data + i, out mclBnG1 g1))
-                    return false;
-
-                if (!DeserializeG2(data + i + 64, out mclBnG2 g2))
-                    return false;
-
-                // Skip if g1 or g2 are zero
-                if (IsZero(g1) || IsZero(g2))
-                    continue;
-
-                mclBn_millerLoop(ref hasMl ? ref ml : ref acc, g1, g2); // Miller loop only
-
-                if (hasMl)
-                {
-                    mclBnGT_mul(ref acc, acc, ml);
-                }
-                else
-                {
-                    hasMl = true;
-                }
+                return CheckPairingVector(output, data, pairCount);
             }
 
-            // All pairs had zero element -> valid
-            if (!hasMl)
-            {
-                output[31] = 1;
-                return true;
-            }
-
-            // Single final exponentiation for the product
-            mclBn_finalExp(ref acc, acc);
-
-            // True if the product of pairings equals 1 in GT
-            output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
+            return CheckPairingScalar(output, data, pairCount);
         }
+    }
+
+    private static bool CheckPairingSingle(byte[] output, byte* data)
+    {
+        if (!DeserializeG1(data, out mclBnG1 g1, out bool g1IsZero))
+            return false;
+
+        if (!DeserializeG2(data + 64, out mclBnG2 g2, out bool g2IsZero))
+            return false;
+
+        if (g1IsZero || g2IsZero)
+        {
+            output[31] = 1;
+            return true;
+        }
+
+        Unsafe.SkipInit(out mclBnGT acc);
+        mclBn_millerLoop(ref acc, g1, g2);
+        mclBn_finalExp(ref acc, acc);
+
+        output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
         return true;
     }
 
-    private static bool IsZero<T>(in T data)
-        where T : unmanaged, allows ref struct
+    private static bool CheckPairingScalar(byte[] output, byte* data, int pairCount)
     {
-        ref byte start = ref Unsafe.As<T, byte>(ref Unsafe.AsRef(in data));
-        ReadOnlySpan<byte> span = MemoryMarshal.CreateReadOnlySpan(in start, sizeof(T));
-        return span.IndexOfAnyExcept((byte)0) < 0;
+        Unsafe.SkipInit(out mclBnGT ml);
+        Unsafe.SkipInit(out mclBnGT acc);
+        bool hasMl = false;
+
+        for (int i = 0; i < pairCount; i++)
+        {
+            int inputOffset = i * PairSize;
+
+            if (!DeserializeG1(data + inputOffset, out mclBnG1 g1, out bool g1IsZero))
+                return false;
+
+            if (!DeserializeG2(data + inputOffset + 64, out mclBnG2 g2, out bool g2IsZero))
+                return false;
+
+            if (g1IsZero || g2IsZero)
+                continue;
+
+            mclBn_millerLoop(ref hasMl ? ref ml : ref acc, g1, g2);
+
+            if (hasMl)
+            {
+                mclBnGT_mul(ref acc, acc, ml);
+            }
+            else
+            {
+                hasMl = true;
+            }
+        }
+
+        if (!hasMl)
+        {
+            output[31] = 1;
+            return true;
+        }
+
+        mclBn_finalExp(ref acc, acc);
+
+        output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
+        return true;
     }
 
-    private static bool DeserializeG1(byte* data, out mclBnG1 point)
+    private static bool CheckPairingVector(byte[] output, byte* data, int pairCount)
+    {
+        const int UlongSize = sizeof(ulong);
+        int g1UlongCount = sizeof(mclBnG1) / UlongSize;
+        int g2UlongCount = sizeof(mclBnG2) / UlongSize;
+        ulong* g1Buffer = stackalloc ulong[pairCount * g1UlongCount];
+        ulong* g2Buffer = stackalloc ulong[pairCount * g2UlongCount];
+        byte* g1Bytes = (byte*)g1Buffer;
+        byte* g2Bytes = (byte*)g2Buffer;
+
+        int nonZeroPairCount = 0;
+
+        for (int i = 0; i < pairCount; i++)
+        {
+            int inputOffset = i * PairSize;
+
+            if (!DeserializeG1(data + inputOffset, out mclBnG1 g1, out bool g1IsZero))
+                return false;
+
+            if (!DeserializeG2(data + inputOffset + 64, out mclBnG2 g2, out bool g2IsZero))
+                return false;
+
+            if (g1IsZero || g2IsZero)
+                continue;
+
+            Unsafe.AsRef<mclBnG1>(g1Bytes + nonZeroPairCount * sizeof(mclBnG1)) = g1;
+            Unsafe.AsRef<mclBnG2>(g2Bytes + nonZeroPairCount * sizeof(mclBnG2)) = g2;
+            nonZeroPairCount++;
+        }
+
+        if (nonZeroPairCount == 0)
+        {
+            output[31] = 1;
+            return true;
+        }
+
+        Unsafe.SkipInit(out mclBnGT acc);
+        mclBn_millerLoopVec(
+            ref acc,
+            in Unsafe.AsRef<mclBnG1>(g1Bytes),
+            in Unsafe.AsRef<mclBnG2>(g2Bytes),
+            (nuint)nonZeroPairCount);
+
+        mclBn_finalExp(ref acc, acc);
+
+        output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
+        return true;
+    }
+
+    private static bool DeserializeG1(byte* data, out mclBnG1 point, out bool isZero)
     {
         const int chunkSize = 32;
 
         point = default;
+        isZero = IsZero64(data);
 
         // Treat all-zero as point at infinity for your calling convention
-        if (IsZero64(data))
+        if (isZero)
         {
             return true;
         }
@@ -169,14 +247,15 @@ internal static unsafe class BN254
         return mclBnG1_isValid(point) == 1;
     }
 
-    private static bool DeserializeG2(byte* data, out mclBnG2 point)
+    private static bool DeserializeG2(byte* data, out mclBnG2 point, out bool isZero)
     {
         const int chunkSize = 32;
 
         point = default;
+        isZero = IsZero128(data);
 
         // Treat all-zero as point at infinity
-        if (IsZero128(data))
+        if (isZero)
         {
             return true;
         }
