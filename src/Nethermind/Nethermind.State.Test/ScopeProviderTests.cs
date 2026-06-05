@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -337,6 +338,47 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.DoesNotThrow(() => scope.HintBal(bal));
         }
+    }
+
+    [Test]
+    public void Test_HintBal_DrainedTask_DoesNotThrow_WhenReHintCancels()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                writeBatch.Set(TestItem.AddressB, new Account(200, 200));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject)
+            .TestObject;
+
+        Task hint;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            // Start a warming pass, then immediately re-hint: the second HintBal cancels the first task's
+            // token (as the next block does). The first task must still complete - not end Cancelled -
+            // because BranchProcessor.WaitAndClear drains it via GetResult on fast/empty blocks and would
+            // otherwise surface a TaskCanceledException and fail the block.
+            hint = scope.HintBal(bal);
+            scope.HintBal(bal);
+        }
+
+        Assert.DoesNotThrow(() => hint.GetAwaiter().GetResult());
+        Assert.That(hint.IsCanceled, Is.False);
     }
 
 #nullable enable

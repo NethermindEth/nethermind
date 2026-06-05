@@ -194,7 +194,11 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 {
                     accountChanges.Dispose();
                 }
-            }, token);
+                // Don't pass token to Task.Run: the body observes cancellation itself (early-return + OCE
+                // catch). Passing it lets a pre-start cancel - a fast empty block cancels the background
+                // token before the pool starts this - mark the task Canceled, surfacing as
+                // TaskCanceledException in BranchProcessor.WaitAndClear and failing the block.
+            });
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
