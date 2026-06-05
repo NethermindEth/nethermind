@@ -1061,7 +1061,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee))
                 {
                     TraceLogInvalidTx(tx, $"INVALID_BLOB_BASE_FEE: ({tx.SenderAddress})_BALANCE = {balance}");
-                    return TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail($"invalid blobBaseFee: {UInt256.MaxValue}");
+                    return RequiredBalanceExceeds256Bits(tx);
                 }
 
                 if (validate && tx.MaxFeePerBlobGas < feePerBlobGas)

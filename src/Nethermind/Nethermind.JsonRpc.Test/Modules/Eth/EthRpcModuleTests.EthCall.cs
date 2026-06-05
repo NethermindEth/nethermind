@@ -1058,7 +1058,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
 
-        (object stateOverride, object transaction) = (
+        (object stateOverride, object transaction, object blockOverride) = (
             JsonSerializer.Deserialize<object>("""{"0x1111111111111111111111111111111111111111":{"balance":"0x0"}}""")!,
             JsonSerializer.Deserialize<object>("""
                 {
@@ -1072,15 +1072,20 @@ public partial class EthRpcModuleTests
                     "blobVersionedHashes": ["0x0100000000000000000000000000000000000000000000000000000000000000"],
                     "type": "0x3"
                 }
-                """)!
+                """)!,
+            JsonSerializer.Deserialize<object>("""{"blobBaseFee":"0x1"}""")!
         );
 
-        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
         JToken parsed = JToken.Parse(serialized);
         string message = parsed["error"]!["message"]!.Value<string>()!;
 
-        Assert.That(message, Does.Contain("insufficient sender balance for gas * price + value"));
-        Assert.That(message, Does.Contain("have 0 want 11796480000000000"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
+            Assert.That(message, Does.Contain("insufficient sender balance for gas * price + value"));
+            Assert.That(message, Does.Contain("have 0 want 11796480000000000"));
+        }
     }
 
     // BlobBaseFee block override = UInt256.MaxValue → blobGas × MaxValue overflows → "invalid blobBaseFee"
