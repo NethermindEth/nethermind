@@ -38,10 +38,16 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     // validator OR-reduces every slice's coverage at block end. Per-slice, so no block tag is needed:
     // only one block runs at a time and the worker's state is cleared at slice return.
     private BalReadCoverage? _readCoverage;
-    private Address? _coverageAccount;        // last marked account, for cursor reuse
+    // Single per-account context cache shared by every read: same-account streams (the bloat loop
+    // walks one account, ascending slots) reuse the resolved BAL account changes and the coverage
+    // plan index/cursor instead of re-probing the BAL account dictionary on each read. Keyed by
+    // _contextAccount; invalidated when the queried address changes (or per slice in Setup).
+    private Address? _contextAccount;
+    private ReadOnlyAccountChanges? _contextChanges;
     private int _coverageAccountIndex;
     private bool _coverageHasAccount;
-    private int _coverageCursor;              // ascending-read cursor within _coverageAccount
+    private bool _coveragePlanResolved;       // plan index lazily resolved for _contextAccount
+    private int _coverageCursor;              // ascending-read cursor within _contextAccount
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
     private UInt256 _scratchBalance;
@@ -62,6 +68,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         _suggestedBlockHeader = suggestedBlock.Header;
         _codeChangesByHash = BuildCodeChangesByHash();
         _transientStorageProvider.Reset();
+        ResetContextCache();
         SetupReadCoverage();
     }
 
@@ -74,15 +81,10 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     /// </summary>
     public long CurrentSliceChargeableReads => _readCoverage?.ChargeableCount ?? 0;
 
-    // Setup runs per tx (per slice): rent a fresh coverage and reset the ascending-read cursor. The
-    // slice's coverage is enqueued for the block-end reduce; the worker forgets it at slice return.
+    // Setup runs per tx (per slice): rent a fresh coverage instance enqueued for the block-end reduce;
+    // the worker forgets it at slice return.
     private void SetupReadCoverage()
-    {
-        _readCoverage = preBlockCaches is { ReadCoverageEnabled: true } caches ? caches.RentReadCoverage() : null;
-        _coverageAccount = null;
-        _coverageHasAccount = false;
-        _coverageCursor = -1;
-    }
+        => _readCoverage = preBlockCaches is { ReadCoverageEnabled: true } caches ? caches.RentReadCoverage() : null;
 
     public void SetParentReader(IWorldState parentReader)
     {
@@ -103,6 +105,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         // The slice's coverage is owned by the block-end reduce queue now; drop our reference so the
         // next slice rents a fresh one.
         _readCoverage = null;
+        ResetContextCache();
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
@@ -171,20 +174,20 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         BalReadCoverage? coverage = _readCoverage;
         if (coverage is null) return;
 
-        Address address = storageCell.Address;
+        // ResolveContext already keyed _contextAccount to this address (Get resolved it first), so the
+        // cursor is valid for it; resolve the plan account index lazily, once per account.
         BalReadStoragePlan plan = preBlockCaches!.StorageReadPlan!;
-        if (!address.Equals(_coverageAccount))
+        if (!_coveragePlanResolved)
         {
-            _coverageHasAccount = plan.TryGetAccountIndex(address, out _coverageAccountIndex);
-            _coverageAccount = address;
-            _coverageCursor = -1;
+            _coverageHasAccount = plan.TryGetAccountIndex(storageCell.Address, out _coverageAccountIndex);
+            _coveragePlanResolved = true;
         }
 
         if (_coverageHasAccount &&
             plan.TryGetReadLocalIndex(_coverageAccountIndex, storageCell.Index, ref _coverageCursor, out int localIndex))
         {
             int ordinal = plan.GlobalReadOrdinal(_coverageAccountIndex, localIndex);
-            coverage.MarkRead(ordinal, chargeable: !IsSystemContract(address));
+            coverage.MarkRead(ordinal, chargeable: !IsSystemContract(storageCell.Address));
         }
     }
 
@@ -508,7 +511,26 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     private (IWorldState ParentReader, ReadOnlyAccountChanges AccountChanges) ResolveContext(Address address)
     {
         CheckInitialized();
-        return (GetParentReader(), GetAccountChangesOrThrow(address));
+        if (!address.Equals(_contextAccount))
+        {
+            // New account: re-resolve its BAL changes and invalidate the coverage plan index + cursor.
+            _contextChanges = GetAccountChangesOrThrow(address);
+            _contextAccount = address;
+            _coveragePlanResolved = false;
+            _coverageCursor = -1;
+        }
+        return (GetParentReader(), _contextChanges!);
+    }
+
+    // Invalidates the per-account context cache. Called per slice in Setup and when the parent reader
+    // detaches; ResolveContext re-resolves on the next distinct address.
+    private void ResetContextCache()
+    {
+        _contextAccount = null;
+        _contextChanges = null;
+        _coverageHasAccount = false;
+        _coveragePlanResolved = false;
+        _coverageCursor = -1;
     }
 
     private bool TryGetDeclaredCode(in ValueHash256 codeHash, [NotNullWhen(true)] out byte[]? code)
