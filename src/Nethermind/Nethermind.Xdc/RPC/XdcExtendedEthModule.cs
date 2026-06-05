@@ -45,13 +45,13 @@ internal sealed class XdcExtendedEthModule(
         if (header is null)
         {
             return Task.FromResult(ResultWrapper<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>.Success(
-                new Dictionary<string, Dictionary<string, Dictionary<string, string>>>()));
+                []));
         }
 
         if (!rewardsStore.TryGetEpochRewardsRpc((ulong)header.Number, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards)
             || rewards is null)
         {
-            rewards = new Dictionary<string, Dictionary<string, Dictionary<string, string>>>();
+            rewards = [];
         }
 
         return Task.FromResult(ResultWrapper<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>.Success(rewards));
