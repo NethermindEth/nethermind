@@ -28,21 +28,20 @@ public static class StatelessExecutor
 
         if (transactions.Length == publicKeys.Length)
         {
-            ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig);
-            IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
-
-#if !ZK_EVM
-            if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
-                KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
-#endif
-
-            for (int i = 0; i < transactions.Length; i++)
-                transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].Bytes.AsSpan(1));
-
-            using Witness witness = payload.Witness.ToWitness();
-
             try
             {
+                ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig);
+                IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
+#if !ZK_EVM
+                if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
+                    KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
+#endif
+                for (int i = 0; i < transactions.Length; i++)
+                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].Bytes.AsSpan(1));
+
+                using Witness witness = payload.Witness.ToWitness();
+
+
                 success = Execute(payload.Block, witness, specProvider);
             }
             catch (Exception ex)
