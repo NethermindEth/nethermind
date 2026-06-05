@@ -778,6 +778,8 @@ namespace Nethermind.Evm.TransactionProcessing
             premiumPerGas = UInt256.Zero;
             senderReservedGasPayment = UInt256.Zero;
             blobBaseFee = UInt256.Zero;
+            UInt256 balance = WorldState.GetBalance(tx.SenderAddress!);
+            
             bool validate = ShouldValidateGas(tx, opts);
 
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
@@ -788,10 +790,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(errorDetail);
             }
 
-            // mgval = gasLimit * effectiveGasPrice — the amount actually deducted from sender.
+            // mgval = gasLimit * effectiveGasPrice .
             if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment))
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}");
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                 return RequiredBalanceExceeds256Bits(tx);
             }
 
@@ -801,7 +803,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out balanceCheck))
                 {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
                     return RequiredBalanceExceeds256Bits(tx);
                 }
             }
@@ -813,7 +815,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Include tx.Value in the balance requirement.
             if (UInt256.AddOverflow(balanceCheck, tx.ValueRef, out balanceCheck))
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}");
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                 return RequiredBalanceExceeds256Bits(tx);
             }
 
@@ -825,14 +827,15 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (UInt256.MultiplyOverflow(blobGas, (UInt256)tx.MaxFeePerBlobGas, out UInt256 maxBlobGasFee)
                     || UInt256.AddOverflow(balanceCheck, maxBlobGasFee, out balanceCheck))
                 {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}");
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                     return RequiredBalanceExceeds256Bits(tx);
                 }
 
                 // Compute actual blob fee and add to mgval.
                 if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee))
                 {
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"invalid blobBaseFee: {UInt256.MaxValue}");
+                    TraceLogInvalidTx(tx, $"INVALID_BLOB_BASE_FEE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}");   
+                    return TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail($"invalid blobBaseFee: {UInt256.MaxValue}");
                 }
 
                 if (validate && tx.MaxFeePerBlobGas < feePerBlobGas)
@@ -844,15 +847,15 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (UInt256.MultiplyOverflow(blobGas, blobBaseFee, out UInt256 actualBlobFee)
                     || UInt256.AddOverflow(senderReservedGasPayment, actualBlobFee, out senderReservedGasPayment))
                 {
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {WorldState.GetBalance(tx.SenderAddress)}");
                     return RequiredBalanceExceeds256Bits(tx);
                 }
             }
 
-            UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress);
-            if (senderBalance < balanceCheck)
+            if (balance < balanceCheck)
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return InsufficientFundsForGas(tx, senderBalance, balanceCheck);
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
+                return InsufficientFundsForGas(tx, balance, balanceCheck);
             }
 
             if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
