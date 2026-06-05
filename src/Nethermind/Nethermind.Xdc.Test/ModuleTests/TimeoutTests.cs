@@ -80,7 +80,7 @@ public class TimeoutTests
         signatures.Add(lastTimeoutMsg.Signature!);
 
         TimeoutCertificate expectedTC = new(round, signatures.ToArray(), gap);
-        Assert.That(ctx.HighestTC, Is.EqualTo(expectedTC).UsingXdcProperties());
+        Assert.That(ctx.HighestTC, Is.EqualTo(expectedTC).UsingXdcComparer());
         Assert.That(ctx.CurrentRound, Is.EqualTo(round + 1));
     }
 }

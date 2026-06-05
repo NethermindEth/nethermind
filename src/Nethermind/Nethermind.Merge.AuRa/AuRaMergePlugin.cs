@@ -16,8 +16,11 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
@@ -56,14 +59,6 @@ namespace Nethermind.Merge.AuRa
             }
         }
 
-        protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
-            => new AuRaPostMergeBlockProducerFactory(
-                _api.SpecProvider!,
-                _api.SealEngine,
-                _manualTimestamper!,
-                _blocksConfig,
-                _api.LogManager);
-
         protected override IBlockFinalizationManager InitializeMergeFinalizationManager() => new AuRaMergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(),
                 _auraApi!.FinalizationManager ??
                 throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
@@ -86,6 +81,14 @@ namespace Nethermind.Merge.AuRa
 
                 // Aura (non merge) use `BlockProducerStarter` directly.
                 .AddSingleton<IBlockProducerTxSourceFactory, AuRaMergeBlockProducerTxSourceFactory>()
+
+                // Post-merge block production decorates the AuRa engine factory (from AuRaModule).
+                .AddSingleton<ManualTimestamper>()
+                .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager>(
+                    (specProvider, sealEngine, timestamper, blocksConfig, logManager) =>
+                        new AuRaPostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
+                .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
+                .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
 
                 .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
                 .AddScoped<IWithdrawalContract, IWithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))

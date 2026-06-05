@@ -28,6 +28,8 @@ public class HistoryPruner : IHistoryPruner
     private const int LockWaitTimeoutMs = 100;
     private const int SlotsPerEpoch = 32;
 
+    public long GetRetentionBlocks(long retentionEpochs) => retentionEpochs * SlotsPerEpoch;
+
     private readonly object _pruneLock = new();
 
     private readonly ILogger _logger;
