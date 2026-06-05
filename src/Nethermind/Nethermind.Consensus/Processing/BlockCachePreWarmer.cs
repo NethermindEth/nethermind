@@ -273,6 +273,32 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return groups;
     }
 
+    internal static ArrayPoolList<AddressAsKey> CollectUniqueWarmupAddresses(Block block)
+    {
+        int capacity = block.Transactions.Length * 2;
+        ArrayPoolList<AddressAsKey> addresses = new(capacity);
+        HashSet<AddressAsKey> seen = new(capacity);
+
+        foreach (Transaction tx in block.Transactions)
+        {
+            AddIfNew(tx.SenderAddress);
+            AddIfNew(tx.To);
+        }
+
+        return addresses;
+
+        void AddIfNew(Address? address)
+        {
+            if (address is null) return;
+
+            AddressAsKey key = address;
+            if (seen.Add(key))
+            {
+                addresses.Add(key);
+            }
+        }
+    }
+
     private static void WarmupSingleTransaction(
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
@@ -387,21 +413,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
                 if (Bal is null)
                 {
-                    WarmingState<Block> baseState = new(envPool, block, parent);
+                    using ArrayPoolList<AddressAsKey> addresses = CollectUniqueWarmupAddresses(block);
+                    WarmingState<ArrayPoolList<AddressAsKey>> baseState = new(envPool, addresses, parent);
 
                     ParallelUnbalancedWork.For(
                         0,
-                        block.Transactions.Length,
+                        addresses.Count,
                         parallelOptions,
                         baseState.InitThreadState,
                     static (i, state) =>
                     {
-                        Transaction tx = state.Payload.Transactions[i];
-                        WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
+                        WarmupAddress(state.Payload[i], state.Scope!.WorldState);
 
                         return state;
                     },
-                    WarmingState<Block>.FinallyAction);
+                    WarmingState<ArrayPoolList<AddressAsKey>>.FinallyAction);
                 }
             }
             catch (OperationCanceledException)
@@ -410,19 +436,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
+        private static void WarmupAddress(Address address, IWorldState worldState)
         {
             try
             {
-                if (sender is not null)
-                {
-                    worldState.WarmUp(sender);
-                }
-
-                if (to is not null)
-                {
-                    worldState.WarmUp(to);
-                }
+                worldState.WarmUp(address);
             }
             catch (MissingTrieNodeException)
             {
