@@ -10,7 +10,7 @@ namespace Nethermind.Network.Discovery.Discv4.Messages;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-868
 /// </summary>
-public class EnrResponseMsg : DiscoveryMsg
+public sealed class EnrResponseMsg : DiscoveryMsg
 {
     private const long MaxTime = long.MaxValue; // non-expiring message
 

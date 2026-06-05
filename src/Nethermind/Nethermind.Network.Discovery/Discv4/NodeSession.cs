@@ -9,7 +9,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-public record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
+public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
 {
     public static readonly TimeSpan BondTimeout = TimeSpan.FromHours(12);
     public static readonly TimeSpan PingRetryTimeout = TimeSpan.FromMinutes(10);

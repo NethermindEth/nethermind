@@ -7,7 +7,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-public class NodeSourceToDiscV4Feeder([KeyFilter(NodeSourceToDiscV4Feeder.SourceKey)] INodeSource nodeSource, IDiscoveryApp discoveryApp, IProcessExitSource exitSource, int maxNodes = 50)
+public sealed class NodeSourceToDiscV4Feeder([KeyFilter(NodeSourceToDiscV4Feeder.SourceKey)] INodeSource nodeSource, IDiscoveryApp discoveryApp, IProcessExitSource exitSource, int maxNodes = 50)
 {
     public const string SourceKey = "Enr";
 

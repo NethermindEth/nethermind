@@ -26,7 +26,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <param name="discoveryConfig">Configuration for the discovery process.</param>
 /// <param name="logManager">Log manager for logging events.</param>
 /// <exception cref="ArgumentNullException">Thrown if any required parameter is null.</exception>
-public class DiscoveryPersistenceManager(
+public sealed class DiscoveryPersistenceManager(
     [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage discoveryStorage,
     INodeStatsManager nodeStatsManager,
     IKademliaMessageSender<PublicKey, Node> messageSender,

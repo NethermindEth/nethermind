@@ -17,7 +17,7 @@ namespace Nethermind.Network.Discovery.Discv5;
 /// <summary>
 /// DotNetty UDP bridge used by the native discv5 implementation.
 /// </summary>
-public class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel? channel = null) : NettyDiscoveryBaseHandler(loggerManager, channel)
+public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel? channel = null) : NettyDiscoveryBaseHandler(loggerManager, channel)
 {
     private const int MaxMessagesBuffered = 1024;
 

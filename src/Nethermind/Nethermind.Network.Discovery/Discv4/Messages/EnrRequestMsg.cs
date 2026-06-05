@@ -9,7 +9,7 @@ namespace Nethermind.Network.Discovery.Discv4.Messages;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-868
 /// </summary>
-public class EnrRequestMsg : DiscoveryMsg
+public sealed class EnrRequestMsg : DiscoveryMsg
 {
     public override MsgType MsgType => MsgType.EnrRequest;
 

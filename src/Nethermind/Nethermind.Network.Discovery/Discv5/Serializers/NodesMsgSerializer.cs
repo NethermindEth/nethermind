@@ -10,21 +10,20 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal sealed class NodesMsgSerializer : MsgSerializerBase
+internal sealed class NodesMsgSerializer : MsgSerializerBase<NodesMsg>
 {
     private readonly IEcdsa _ecdsa = new Ecdsa();
 
-    public int GetContentLength(NodesMsg msg)
-        => GetRequestIdLength(msg.RequestId) + Rlp.LengthOf(msg.Total) + GetNodeRecordsLength(msg.Records);
+    protected override int GetContentLengthCore(NodesMsg msg)
+        => Rlp.LengthOf(msg.Total) + GetNodeRecordsLength(msg.Records);
 
-    public void Serialize(NettyRlpStream stream, NodesMsg msg)
+    protected override void SerializeCore(NettyRlpStream stream, NodesMsg msg)
     {
-        EncodeRequestId(stream, msg.RequestId);
         Encode(stream, msg.Total);
         EncodeNodeRecords(stream, msg.Records);
     }
 
-    public NodesMsg Deserialize(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ArrayPoolSpan<byte>? owner)
+    protected override NodesMsg DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
         int total = ctx.DecodePositiveInt();
         return new NodesMsg(requestId, total, DecodeNodeRecords(ref ctx), owner);

@@ -7,7 +7,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Discv4.Messages;
 
-public class PongMsg : DiscoveryMsg
+public sealed class PongMsg : DiscoveryMsg
 {
     public byte[] PingMdc { get; init; }
 

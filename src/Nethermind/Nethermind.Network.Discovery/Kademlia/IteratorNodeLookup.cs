@@ -19,7 +19,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// is to reach all node. The lookup is not parallelized as it is expected to be parallelized at a higher level with
 /// each worker having different target to look into.
 /// </summary>
-public class IteratorNodeLookup<TKey, TNode, TKadKey>(
+public sealed class IteratorNodeLookup<TKey, TNode, TKadKey>(
     IRoutingTable<TNode, TKadKey> routingTable,
     KademliaConfig<TNode> kademliaConfig,
     IKademliaMessageSender<TKey, TNode> msgSender,

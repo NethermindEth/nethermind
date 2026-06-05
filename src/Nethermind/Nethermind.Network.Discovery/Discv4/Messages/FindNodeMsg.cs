@@ -7,7 +7,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Discv4.Messages;
 
-public class FindNodeMsg : DiscoveryMsg
+public sealed class FindNodeMsg : DiscoveryMsg
 {
     public byte[] SearchedNodeId { get; set; }
 

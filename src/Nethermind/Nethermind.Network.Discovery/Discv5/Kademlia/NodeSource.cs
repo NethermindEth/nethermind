@@ -13,7 +13,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 
-public class NodeSource(
+public sealed class NodeSource(
     IKademlia<PublicKey, Node> kademlia,
     KademliaConfig<Node> kademliaConfig,
     ILogManager logManager)

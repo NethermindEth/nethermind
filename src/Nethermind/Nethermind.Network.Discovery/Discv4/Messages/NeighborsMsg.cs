@@ -7,7 +7,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4.Messages;
 
-public class NeighborsMsg : DiscoveryMsg
+public sealed class NeighborsMsg : DiscoveryMsg
 {
     public ArraySegment<Node> Nodes { get; init; }
 

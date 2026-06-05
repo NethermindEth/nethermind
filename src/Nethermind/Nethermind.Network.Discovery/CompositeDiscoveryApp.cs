@@ -20,7 +20,7 @@ namespace Nethermind.Network.Discovery;
 /// <summary>
 /// Combines several protocol versions under a single <see cref="IDiscoveryApp"/> implementation.
 /// </summary>
-public class CompositeDiscoveryApp : IDiscoveryApp
+public sealed class CompositeDiscoveryApp : IDiscoveryApp
 {
     private readonly INetworkConfig _networkConfig;
     private readonly IConnectionsPool _connections;

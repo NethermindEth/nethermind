@@ -6,7 +6,7 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Network.Discovery.Discv4.Messages;
 
-public class NodeIdResolver(IEcdsa ecdsa) : INodeIdResolver
+public sealed class NodeIdResolver(IEcdsa ecdsa) : INodeIdResolver
 {
     private readonly IEcdsa _ecdsa = ecdsa;
 

@@ -7,7 +7,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Discv4.Messages;
 
-public class PingMsg : DiscoveryMsg
+public sealed class PingMsg : DiscoveryMsg
 {
     public IPEndPoint SourceAddress { get; }
     public IPEndPoint DestinationAddress { get; }

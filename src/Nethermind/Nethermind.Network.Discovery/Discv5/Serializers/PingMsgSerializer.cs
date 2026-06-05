@@ -7,17 +7,14 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal sealed class PingMsgSerializer : MsgSerializerBase
+internal sealed class PingMsgSerializer : MsgSerializerBase<PingMsg>
 {
-    public int GetContentLength(PingMsg msg)
-        => GetRequestIdLength(msg.RequestId) + Rlp.LengthOf(msg.EnrSequence);
+    protected override int GetContentLengthCore(PingMsg msg)
+        => Rlp.LengthOf(msg.EnrSequence);
 
-    public void Serialize(NettyRlpStream stream, PingMsg msg)
-    {
-        EncodeRequestId(stream, msg.RequestId);
-        Encode(stream, msg.EnrSequence);
-    }
+    protected override void SerializeCore(NettyRlpStream stream, PingMsg msg)
+        => Encode(stream, msg.EnrSequence);
 
-    public PingMsg Deserialize(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ArrayPoolSpan<byte>? owner)
+    protected override PingMsg DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
         => new(requestId, ctx.DecodeULong(), owner);
 }

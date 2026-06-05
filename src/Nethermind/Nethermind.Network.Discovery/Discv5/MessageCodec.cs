@@ -40,7 +40,7 @@ internal static class MessageCodec
     {
         if (NeedsOwnedMessage(message))
         {
-            throw new RlpException("discv5 TALK messages require owned message memory. Use DecodeOwned or DecodeCopied.");
+            throw new RlpException("discv5 TALK messages require owned message memory. Use DecodeOwned.");
         }
 
         return Decode(message, default, null);
@@ -48,21 +48,6 @@ internal static class MessageCodec
 
     public static Discv5Message DecodeOwned(ReadOnlyMemory<byte> message, ArrayPoolSpan<byte> owner)
         => Decode(message.Span, message, owner);
-
-    public static Discv5Message DecodeCopied(ReadOnlySpan<byte> message)
-    {
-        ArrayPoolSpan<byte> owner = new(message.Length);
-        try
-        {
-            message.CopyTo(owner);
-            return DecodeOwned(owner.AsReadOnlyMemory(), owner);
-        }
-        catch
-        {
-            owner.Dispose();
-            throw;
-        }
-    }
 
     private static Discv5Message Decode(ReadOnlySpan<byte> message, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
@@ -79,15 +64,14 @@ internal static class MessageCodec
             Rlp.ValueDecoderContext ctx = new(message[1..]);
             int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
 
-            RequestId requestId = MsgSerializerBase.DecodeRequestId(ref ctx);
             decoded = messageType switch
             {
-                MessageType.Ping => PingSerializer.Deserialize(requestId, ref ctx, owner),
-                MessageType.Pong => PongSerializer.Deserialize(requestId, ref ctx, owner),
-                MessageType.FindNode => FindNodeSerializer.Deserialize(requestId, ref ctx, owner),
-                MessageType.Nodes => NodesSerializer.Deserialize(requestId, ref ctx, owner),
-                MessageType.TalkReq => TalkReqSerializer.Deserialize(requestId, ref ctx, ownedMessage, owner),
-                MessageType.TalkResp => TalkRespSerializer.Deserialize(requestId, ref ctx, ownedMessage, owner),
+                MessageType.Ping => PingSerializer.Deserialize(ref ctx, ownedMessage, owner),
+                MessageType.Pong => PongSerializer.Deserialize(ref ctx, ownedMessage, owner),
+                MessageType.FindNode => FindNodeSerializer.Deserialize(ref ctx, ownedMessage, owner),
+                MessageType.Nodes => NodesSerializer.Deserialize(ref ctx, ownedMessage, owner),
+                MessageType.TalkReq => TalkReqSerializer.Deserialize(ref ctx, ownedMessage, owner),
+                MessageType.TalkResp => TalkRespSerializer.Deserialize(ref ctx, ownedMessage, owner),
                 _ => throw new RlpException($"Unsupported discv5 message type {(byte)messageType}.")
             };
 

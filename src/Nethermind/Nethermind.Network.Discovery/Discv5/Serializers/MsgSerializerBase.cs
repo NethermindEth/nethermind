@@ -1,37 +1,35 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal abstract class MsgSerializerBase
+internal abstract class MsgSerializerBase<TMessage>
+    where TMessage : Discv5Message
 {
-    internal static RequestId DecodeRequestId(ref Rlp.ValueDecoderContext ctx)
-    {
-        ReadOnlySpan<byte> requestId = ctx.DecodeByteArraySpan();
-        if (requestId.Length > RequestId.MaxLength)
-        {
-            throw new RlpException($"discv5 request-id length {requestId.Length} exceeds {RequestId.MaxLength}.");
-        }
+    public int GetContentLength(TMessage msg)
+        => msg.RequestId.GetRlpLength() + GetContentLengthCore(msg);
 
-        return RequestId.From(requestId);
+    public void Serialize(NettyRlpStream stream, TMessage msg)
+    {
+        EncodeRequestId(stream, msg.RequestId);
+        SerializeCore(stream, msg);
     }
 
-    protected static int GetRequestIdLength(RequestId requestId)
+    public TMessage Deserialize(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
-        Span<byte> bytes = stackalloc byte[RequestId.MaxLength];
-        requestId.CopyTo(bytes);
-        return Rlp.LengthOf(bytes[..requestId.Length]);
+        RequestId requestId = DecodeRequestId(ref ctx);
+        return DeserializeCore(requestId, ref ctx, ownedMessage, owner);
     }
 
-    protected static void EncodeRequestId(NettyRlpStream stream, RequestId requestId)
-    {
-        Span<byte> bytes = stackalloc byte[RequestId.MaxLength];
-        requestId.CopyTo(bytes);
-        stream.Encode(bytes[..requestId.Length]);
-    }
+    protected abstract int GetContentLengthCore(TMessage msg);
+
+    protected abstract void SerializeCore(NettyRlpStream stream, TMessage msg);
+
+    protected abstract TMessage DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner);
 
     protected static ReadOnlyMemory<byte> DecodeByteMemory(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage)
     {
@@ -47,4 +45,22 @@ internal abstract class MsgSerializerBase
     protected static void Encode(NettyRlpStream stream, ulong value) => stream.Encode(value);
 
     protected static void Encode(NettyRlpStream stream, int value) => stream.Encode(value);
+
+    private static RequestId DecodeRequestId(ref Rlp.ValueDecoderContext ctx)
+    {
+        ReadOnlySpan<byte> requestId = ctx.DecodeByteArraySpan();
+        if (requestId.Length > RequestId.MaxLength)
+        {
+            throw new RlpException($"discv5 request-id length {requestId.Length} exceeds {RequestId.MaxLength}.");
+        }
+
+        return RequestId.From(requestId);
+    }
+
+    private static void EncodeRequestId(NettyRlpStream stream, RequestId requestId)
+    {
+        Span<byte> bytes = stackalloc byte[RequestId.MaxLength];
+        requestId.CopyTo(bytes);
+        stream.Encode(bytes[..requestId.Length]);
+    }
 }

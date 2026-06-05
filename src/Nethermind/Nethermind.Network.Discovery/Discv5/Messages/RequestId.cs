@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Serialization.Rlp;
+
 namespace Nethermind.Network.Discovery.Discv5.Messages;
 
 internal readonly record struct RequestId(ulong Value, byte Length)
@@ -33,6 +35,12 @@ internal readonly record struct RequestId(ulong Value, byte Length)
             destination[i] = (byte)value;
             value >>= 8;
         }
+    }
+
+    public int GetRlpLength()
+    {
+        byte firstByte = Length == 0 ? (byte)0 : (byte)(Value >> ((Length - 1) * 8));
+        return Rlp.LengthOfByteString(Length, firstByte);
     }
 
     public byte[] ToArray()

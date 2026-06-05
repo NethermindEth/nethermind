@@ -7,7 +7,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node, Hash256>
+public sealed class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node, Hash256>
 {
     public PublicKey GetKey(Node node) => node.Id;
 

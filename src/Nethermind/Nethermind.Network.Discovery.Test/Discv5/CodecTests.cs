@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Modules;
@@ -201,6 +202,18 @@ public class CodecTests
         Assert.That(decodedFindNode.Distances, Is.EqualTo(message.Distances));
     }
 
+    [TestCase(new byte[] { }, 1)]
+    [TestCase(new byte[] { 0x7f }, 1)]
+    [TestCase(new byte[] { 0x80 }, 2)]
+    [TestCase(new byte[] { 0x00, 0x01 }, 3)]
+    [TestCase(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, 9)]
+    public void RequestId_GetRlpLength_ShouldMatchByteStringRules(byte[] requestId, int expectedLength)
+    {
+        RequestId value = RequestId.From(requestId);
+
+        Assert.That(value.GetRlpLength(), Is.EqualTo(expectedLength));
+    }
+
     [Test]
     public void MessageCodec_Roundtrips_Pong()
     {
@@ -223,7 +236,9 @@ public class CodecTests
         using TalkReqMsg message = new([0, 0, 0, 3], "eth"u8.ToArray(), new byte[] { 1, 2, 3, 4 });
 
         using NettyRlpStream encoded = MessageCodec.Encode(message);
-        using Discv5Message decoded = MessageCodec.DecodeCopied(encoded.AsSpan());
+        ArrayPoolSpan<byte> owner = new(encoded.AsSpan().Length);
+        encoded.AsSpan().CopyTo(owner);
+        using Discv5Message decoded = MessageCodec.DecodeOwned(owner.AsReadOnlyMemory(), owner);
 
         Assert.That(decoded, Is.InstanceOf<TalkReqMsg>());
         TalkReqMsg decodedTalkReq = (TalkReqMsg)decoded;
@@ -238,7 +253,9 @@ public class CodecTests
         using TalkRespMsg message = new([0, 0, 0, 4], new byte[] { 5, 6, 7, 8 });
 
         using NettyRlpStream encoded = MessageCodec.Encode(message);
-        using Discv5Message decoded = MessageCodec.DecodeCopied(encoded.AsSpan());
+        ArrayPoolSpan<byte> owner = new(encoded.AsSpan().Length);
+        encoded.AsSpan().CopyTo(owner);
+        using Discv5Message decoded = MessageCodec.DecodeOwned(owner.AsReadOnlyMemory(), owner);
 
         Assert.That(decoded, Is.InstanceOf<TalkRespMsg>());
         TalkRespMsg decodedTalkResp = (TalkRespMsg)decoded;

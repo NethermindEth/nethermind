@@ -17,7 +17,7 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 /// </summary>
 /// <param name="masterNode"></param>
 /// <param name="bootNodes"></param>
-public class KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(masterNode, bootNodes)
+public sealed class KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(masterNode, bootNodes)
 {
     protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
             // This two class contains the actual `INodeSource` logic. As in finding nodes within the network.

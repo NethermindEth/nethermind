@@ -6,7 +6,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 
-public class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
+public sealed class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
 {
     private Node[] _current = [];
     public TaskCompletionSource<DiscoveryResponse<Node[]>> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

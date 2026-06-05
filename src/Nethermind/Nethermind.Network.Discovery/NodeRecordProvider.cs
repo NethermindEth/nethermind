@@ -8,7 +8,7 @@ using Nethermind.Network.Enr;
 
 namespace Nethermind.Network.Discovery;
 
-public class NodeRecordProvider(
+public sealed class NodeRecordProvider(
     [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
     IIPResolver ipResolver,
     IEthereumEcdsa ethereumEcdsa,

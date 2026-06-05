@@ -12,7 +12,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
-public class NodeSource(
+public sealed class NodeSource(
     IKademlia<PublicKey, Node> kademlia,
     IIteratorNodeLookup<PublicKey, Node> lookup,
     IKademliaAdapter discv4Adapter,

@@ -7,18 +7,15 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal sealed class FindNodeMsgSerializer : MsgSerializerBase
+internal sealed class FindNodeMsgSerializer : MsgSerializerBase<FindNodeMsg>
 {
-    public int GetContentLength(FindNodeMsg msg)
-        => GetRequestIdLength(msg.RequestId) + GetDistancesLength(msg.Distances);
+    protected override int GetContentLengthCore(FindNodeMsg msg)
+        => GetDistancesLength(msg.Distances);
 
-    public void Serialize(NettyRlpStream stream, FindNodeMsg msg)
-    {
-        EncodeRequestId(stream, msg.RequestId);
-        EncodeDistances(stream, msg.Distances);
-    }
+    protected override void SerializeCore(NettyRlpStream stream, FindNodeMsg msg)
+        => EncodeDistances(stream, msg.Distances);
 
-    public FindNodeMsg Deserialize(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ArrayPoolSpan<byte>? owner)
+    protected override FindNodeMsg DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
         => new(requestId, DecodeDistances(ref ctx), owner);
 
     private static int GetDistancesLength(Distances distances)

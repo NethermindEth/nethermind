@@ -15,7 +15,7 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
-public class KademliaAdapter(
+public sealed class KademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia, // Cyclic dependency
     Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
     IDiscoveryConfig discoveryConfig,

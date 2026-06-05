@@ -19,7 +19,7 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 /// <summary>
 /// Maps discv5 FINDNODE distance requests onto the protocol-specific Kademlia table.
 /// </summary>
-public class KademliaAdapter(
+public sealed class KademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia, // Cyclic dependency: Kademlia uses this adapter as its message sender.
     NettyDiscoveryV5Handler discoveryHandler,
     PacketCodec packetCodec,

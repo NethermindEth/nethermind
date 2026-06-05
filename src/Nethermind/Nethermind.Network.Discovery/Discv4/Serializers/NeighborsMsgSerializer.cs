@@ -12,7 +12,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
-public class NeighborsMsgSerializer(
+public sealed class NeighborsMsgSerializer(
     IEcdsa ecdsa,
     [KeyFilter(IProtectedPrivateKey.NodeKey)]
     IPrivateKeyGenerator nodeKey,

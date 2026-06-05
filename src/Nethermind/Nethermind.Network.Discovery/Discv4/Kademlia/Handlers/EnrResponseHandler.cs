@@ -6,7 +6,7 @@ using Nethermind.Network.Discovery.Discv4.Messages;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 
-public class EnrResponseHandler(EnrRequestMsg request) : ITaskCompleter<EnrResponseMsg>
+public sealed class EnrResponseHandler(EnrRequestMsg request) : ITaskCompleter<EnrResponseMsg>
 {
     public TaskCompletionSource<DiscoveryResponse<EnrResponseMsg>> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

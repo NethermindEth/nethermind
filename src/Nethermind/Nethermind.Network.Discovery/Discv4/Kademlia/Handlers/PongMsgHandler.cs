@@ -6,7 +6,7 @@ using Nethermind.Network.Discovery.Discv4.Messages;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 
-public class PongMsgHandler(PingMsg ping) : ITaskCompleter<PongMsg>
+public sealed class PongMsgHandler(PingMsg ping) : ITaskCompleter<PongMsg>
 {
     public TaskCompletionSource<DiscoveryResponse<PongMsg>> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

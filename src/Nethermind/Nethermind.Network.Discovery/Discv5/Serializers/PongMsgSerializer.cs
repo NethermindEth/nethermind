@@ -9,23 +9,21 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal sealed class PongMsgSerializer : MsgSerializerBase
+internal sealed class PongMsgSerializer : MsgSerializerBase<PongMsg>
 {
-    public int GetContentLength(PongMsg msg)
-        => GetRequestIdLength(msg.RequestId) +
-            Rlp.LengthOf(msg.EnrSequence) +
+    protected override int GetContentLengthCore(PongMsg msg)
+        => Rlp.LengthOf(msg.EnrSequence) +
             IPAddressRlp.GetLength(msg.RecipientIp) +
             Rlp.LengthOf(msg.RecipientPort);
 
-    public void Serialize(NettyRlpStream stream, PongMsg msg)
+    protected override void SerializeCore(NettyRlpStream stream, PongMsg msg)
     {
-        EncodeRequestId(stream, msg.RequestId);
         Encode(stream, msg.EnrSequence);
         IPAddressRlp.Encode(stream, msg.RecipientIp);
         Encode(stream, msg.RecipientPort);
     }
 
-    public PongMsg Deserialize(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ArrayPoolSpan<byte>? owner)
+    protected override PongMsg DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
         ulong enrSequence = ctx.DecodeULong();
         IPAddress recipientIp = new(ctx.DecodeByteArraySpan());
