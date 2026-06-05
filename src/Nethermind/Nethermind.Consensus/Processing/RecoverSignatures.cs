@@ -89,14 +89,6 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        public void RecoverOne(Transaction tx, IReleaseSpec releaseSpec)
-        {
-            bool useSignatureChainId = !releaseSpec.ValidateChainId;
-            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
-            RecoverAuthorities(tx, releaseSpec);
-            if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
-        }
-
         private void RecoverAuthorities(Transaction tx, IReleaseSpec releaseSpec)
         {
             if (!releaseSpec.IsAuthorizationListEnabled
