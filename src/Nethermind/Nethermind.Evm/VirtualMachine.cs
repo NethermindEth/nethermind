@@ -860,6 +860,36 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return default;
     }
 
+    internal bool CanExecutePrecompileCallDirectlyForOpcode(IPrecompile precompile) =>
+        CanExecutePrecompileCallDirectly(precompile);
+
+    protected virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile) => true;
+
+    internal bool TryRunPrecompileDirectly(
+        IPrecompile precompile,
+        ReadOnlyMemory<byte> callData,
+        IReleaseSpec spec,
+        out Result<byte[]> output)
+    {
+        try
+        {
+            output = precompile.Run(callData, spec);
+            return true;
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
+        {
+            if (_logger.IsError) LogMissingDependency(precompile, exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException);
+            Environment.Exit(ExitCodes.MissingPrecompile);
+            throw; // Unreachable
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsError) LogExecutionException(precompile, exception);
+            output = default;
+            return false;
+        }
+    }
+
     protected void TraceTransactionActionStart(VmState<TGasPolicy> currentState)
     {
         _txTracer.ReportAction(TGasPolicy.GetRemainingGas(currentState.Gas),
