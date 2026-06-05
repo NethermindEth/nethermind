@@ -278,9 +278,9 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        // populatePreBlockCache: false targets the main-processing scope where HintBal actually runs.
+        // isPrewarmer: false targets the main-processing scope where HintBal actually runs.
         PreBlockCaches caches = new();
-        PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, populatePreBlockCache: false);
+        PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
 
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(

@@ -754,7 +754,7 @@ public class StorageProviderTests(bool useFlat)
 
             if (preBlockCaches is not null)
             {
-                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, LimboLogs.Instance, populatePreBlockCache: true);
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, LimboLogs.Instance, isPrewarmer: true);
             }
 
             if (trackWrittenData)

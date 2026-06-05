@@ -41,7 +41,7 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
             // Block production related.
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
             .AddScoped<PostMergeBlockProducerFactory>()
-            .AddDecorator<IBlockProducerFactory, TestMergeBlockProducerFactory>()
+            .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
 
             // Engine rpc
             .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
@@ -52,27 +52,6 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
             builder
                 .AddSingleton<ProcessedTransactionsDbCleaner>()
                 .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockFinalizationManager>();
-        }
-    }
-
-    private class TestMergeBlockProducerFactory(
-        IBlockProducerFactory baseBlockProducerFactory,
-        IBlockProducerEnvFactory blockProducerEnvFactory,
-        PostMergeBlockProducerFactory postMergeBlockProducerFactory,
-        IPoSSwitcher poSSwitcher,
-        IBlockProductionPolicy blockProductionPolicy) : IBlockProducerFactory
-    {
-        public IBlockProducer InitBlockProducer()
-        {
-            IMergeBlockProductionPolicy? mergeBlockProductionPolicy = blockProductionPolicy as IMergeBlockProductionPolicy;
-            IBlockProducer? blockProducer = (mergeBlockProductionPolicy?.ShouldInitPreMergeBlockProduction() != false)
-                ? baseBlockProducerFactory.InitBlockProducer()
-                : null;
-
-            IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.CreatePersistent();
-
-            PostMergeBlockProducer postMergeBlockProducer = postMergeBlockProducerFactory.Create(blockProducerEnv);
-            return new MergeBlockProducer(blockProducer, postMergeBlockProducer, poSSwitcher);
         }
     }
 }
