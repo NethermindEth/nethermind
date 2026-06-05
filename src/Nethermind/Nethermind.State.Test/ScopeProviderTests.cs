@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -293,6 +295,47 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
+    [Test]
+    public async Task PrewarmerWrappedScope_DeduplicatesConcurrentAccountMisses()
+    {
+        PreBlockCaches caches = new();
+        PrewarmerReadDeduplicator readDeduplicator = new();
+        CountingScopeProvider inner = new();
+        PrewarmerScopeProvider prewarmer = new(inner, caches, LimboLogs.Instance, readDeduplicator: readDeduplicator);
+
+        using IWorldStateScopeProvider.IScope scope1 = prewarmer.BeginScope(null);
+        using IWorldStateScopeProvider.IScope scope2 = prewarmer.BeginScope(null);
+
+        Account[] accounts = await Task.WhenAll(
+            Task.Run(() => scope1.Get(TestItem.AddressA)),
+            Task.Run(() => scope2.Get(TestItem.AddressA)));
+
+        Assert.That(accounts[0], Is.SameAs(accounts[1]));
+        Assert.That(inner.AccountReads, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task PrewarmerWrappedScope_DeduplicatesConcurrentStorageMisses()
+    {
+        PreBlockCaches caches = new();
+        PrewarmerReadDeduplicator readDeduplicator = new();
+        CountingScopeProvider inner = new();
+        PrewarmerScopeProvider prewarmer = new(inner, caches, LimboLogs.Instance, readDeduplicator: readDeduplicator);
+
+        using IWorldStateScopeProvider.IScope scope1 = prewarmer.BeginScope(null);
+        using IWorldStateScopeProvider.IScope scope2 = prewarmer.BeginScope(null);
+
+        IWorldStateScopeProvider.IStorageTree storage1 = scope1.CreateStorageTree(TestItem.AddressA);
+        IWorldStateScopeProvider.IStorageTree storage2 = scope2.CreateStorageTree(TestItem.AddressA);
+
+        byte[][] values = await Task.WhenAll(
+            Task.Run(() => storage1.Get((UInt256)1)),
+            Task.Run(() => storage2.Get((UInt256)1)));
+
+        Assert.That(values[0], Is.SameAs(values[1]));
+        Assert.That(inner.StorageReads, Is.EqualTo(1));
+    }
+
 #nullable enable
     private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
@@ -312,4 +355,80 @@ public class ScopeProviderTests(bool useFlat)
             => Storage[storageCell] = value;
     }
 #nullable disable
+
+    private sealed class CountingScopeProvider : IWorldStateScopeProvider
+    {
+        private readonly Account _account = new((UInt256)1);
+        private readonly byte[] _value = [1];
+
+        public int AccountReads;
+        public int StorageReads;
+
+        public bool HasRoot(BlockHeader baseBlock) => true;
+
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock) => new Scope(this);
+
+        private sealed class Scope(CountingScopeProvider parent) : IWorldStateScopeProvider.IScope
+        {
+            public Hash256 RootHash => Keccak.EmptyTreeHash;
+
+            public void Dispose()
+            {
+            }
+
+            public void UpdateRootHash()
+            {
+            }
+
+            public Account Get(Address address)
+            {
+                Interlocked.Increment(ref parent.AccountReads);
+                Thread.Sleep(25);
+                return parent._account;
+            }
+
+            public void HintGet(Address address, Account account)
+            {
+            }
+
+            public IWorldStateScopeProvider.ICodeDb CodeDb => NullCodeDb.Instance;
+
+            public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => new StorageTree(parent);
+
+            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => throw new NotSupportedException();
+
+            public void Commit(long blockNumber)
+            {
+            }
+
+            public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null) => Task.CompletedTask;
+        }
+
+        private sealed class StorageTree(CountingScopeProvider parent) : IWorldStateScopeProvider.IStorageTree
+        {
+            public Hash256 RootHash => Keccak.EmptyTreeHash;
+
+            public byte[] Get(in UInt256 index)
+            {
+                Interlocked.Increment(ref parent.StorageReads);
+                Thread.Sleep(25);
+                return parent._value;
+            }
+
+            public void HintSet(in UInt256 index, byte[] value)
+            {
+            }
+
+            public byte[] Get(in ValueHash256 hash) => Get(UInt256.Zero);
+        }
+
+        private sealed class NullCodeDb : IWorldStateScopeProvider.ICodeDb
+        {
+            public static NullCodeDb Instance { get; } = new();
+
+            public byte[] GetCode(in ValueHash256 codeHash) => null;
+
+            public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => throw new NotSupportedException();
+        }
+    }
 }
