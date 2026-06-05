@@ -38,7 +38,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         long blockNumber,
         IReleaseSpec releaseSpec)
     {
-        stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec.WithoutEip158());
+        // state-override commits must not trigger EIP-158 deletion on accounts whose
+        // code/nonce were zeroed while storage remains — EIP-7610 collision checks need that storage.
+        IReleaseSpec spec = releaseSpec.WithoutEip158();
+
+        stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, spec);
 
         IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
         IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
@@ -47,7 +51,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
 
-        stateProvider.Commit(releaseSpec.WithoutEip158(), commitRoots: true);
+        stateProvider.Commit(spec, commitRoots: true);
         stateProvider.CommitTree(blockNumber);
     }
 
