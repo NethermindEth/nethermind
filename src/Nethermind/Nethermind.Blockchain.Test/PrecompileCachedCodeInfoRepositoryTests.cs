@@ -163,6 +163,44 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     [Test]
+    public void CachedPrecompile_DoesNotUseStaleThreadCache_WhenInputBufferMutates()
+    {
+        int runCount = 0;
+        TestPrecompile cachingPrecompile = new(supportsCaching: true, onRun: () => runCount++);
+        Address precompileAddress = Address.FromNumber(100);
+
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
+        {
+            [precompileAddress] = new(cachingPrecompile)
+        }.ToFrozenDictionary();
+
+        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
+        precompileProvider.GetPrecompiles().Returns(precompiles);
+
+        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+
+        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
+
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+
+        byte[] input = [1, 2, 3];
+
+        Result<byte[]> result1 = codeInfo.Precompile!.Run(input, Prague.Instance);
+        input[0] = 9;
+        Result<byte[]> result2 = codeInfo.Precompile.Run(input, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(2));
+            Assert.That(cache.Count, Is.EqualTo(2));
+            Assert.That(result1.Data, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(result2.Data, Is.EqualTo(new byte[] { 9, 2, 3 }));
+        }
+    }
+
+    [Test]
     public void NonCachingPrecompile_DoesNotCacheResults()
     {
         // Arrange
