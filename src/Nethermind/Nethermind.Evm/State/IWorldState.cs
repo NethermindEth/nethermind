@@ -84,6 +84,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     BalReadStoragePlan? GetActiveDeclaredReadPlan() => null;
 
     /// <summary>
+    /// The pooled EIP-2929 warmth bitset for the current transaction when a declared-read plan is active,
+    /// reset for reuse; <c>null</c> otherwise. Pooled per worker so verify-only execution does not allocate
+    /// a block-sized bitset per transaction. The default returns <c>null</c>.
+    /// </summary>
+    BalReadWarmth? GetDeclaredReadWarmth() => null;
+
+    /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>

@@ -76,10 +76,25 @@ public sealed class BalReadWarmth : IDisposable
         _journalCount = snapshot;
     }
 
-    /// <summary>Clears all warmth and the journal so the instance can be reused for the next transaction.</summary>
+    /// <summary>
+    /// Clears all warmth and the journal so a pooled instance can be reused for the next transaction.
+    /// Clears via the journal (only the warmed bits) when that is cheaper than a full bitset clear, so a
+    /// transaction that warmed few of many declared reads costs O(warmed) rather than O(capacity).
+    /// </summary>
     public void Reset()
     {
-        _warm.AsSpan(0, _wordCount).Clear();
+        if (_journalCount <= _wordCount)
+        {
+            for (int i = 0; i < _journalCount; i++)
+            {
+                int ordinal = _journal[i];
+                _warm[ordinal >> 6] &= ~(1UL << (ordinal & 63));
+            }
+        }
+        else
+        {
+            _warm.AsSpan(0, _wordCount).Clear();
+        }
         _journalCount = 0;
     }
 

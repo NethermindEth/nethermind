@@ -48,6 +48,10 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     private bool _coverageHasAccount;
     private bool _coveragePlanResolved;       // plan index lazily resolved for _contextAccount
     private int _coverageCursor;              // ascending-read cursor within _contextAccount
+    // Per-worker pooled EIP-2929 declared-read warmth, reused across this worker's transactions and
+    // rebuilt only when the block's read plan changes; avoids a per-tx block-sized allocation.
+    private BalReadWarmth? _readWarmth;
+    private BalReadStoragePlan? _readWarmthPlan;
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
     private UInt256 _scratchBalance;
@@ -78,6 +82,29 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     /// <inheritdoc/>
     /// <remarks>The block's declared-read ordinal plan, present whenever the prefetch/coverage plan was built.</remarks>
     public BalReadStoragePlan? GetActiveDeclaredReadPlan() => preBlockCaches?.StorageReadPlan;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Pooled per worker and reset for the current transaction, so a verify-only EVM transaction does not
+    /// rent/clear a block-sized bitset on every entry. Rebuilt only when the active plan changes (new block);
+    /// reused (just <see cref="BalReadWarmth.Reset"/>) across this worker's transactions otherwise.
+    /// </remarks>
+    public BalReadWarmth? GetDeclaredReadWarmth()
+    {
+        BalReadStoragePlan? plan = preBlockCaches?.StorageReadPlan;
+        if (plan is null) return null;
+        if (!ReferenceEquals(_readWarmthPlan, plan))
+        {
+            _readWarmth?.Dispose();
+            _readWarmth = new BalReadWarmth(plan.TotalReads);
+            _readWarmthPlan = plan;
+        }
+        else
+        {
+            _readWarmth!.Reset();
+        }
+        return _readWarmth;
+    }
 
     /// <summary>
     /// Distinct chargeable (non-system) declared reads this worker marked for the current slice. Read

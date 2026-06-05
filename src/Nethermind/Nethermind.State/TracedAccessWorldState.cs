@@ -59,6 +59,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public BalReadStoragePlan? GetActiveDeclaredReadPlan() => _innerWorldState.GetActiveDeclaredReadPlan();
 
+    public BalReadWarmth? GetDeclaredReadWarmth() => _innerWorldState.GetDeclaredReadWarmth();
+
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);
 

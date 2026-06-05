@@ -68,7 +68,8 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     /// <summary>
     /// Routes EIP-2929 warmth for the BAL's declared (read-only) storage slots through an ordinal bitset
     /// keyed by <paramref name="plan"/> instead of the storage-cell journal set. Verify-only, non-tracing
-    /// path; the tracker takes ownership of <paramref name="warmth"/> and disposes it when reset.
+    /// path; <paramref name="warmth"/> is pooled and owned by the world state (reset per tx there), so the
+    /// tracker only references it for the transaction and never disposes it.
     /// </summary>
     public readonly void EnableDeclaredReadWarmth(BalReadStoragePlan plan, BalReadWarmth warmth)
     {
@@ -139,7 +140,8 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
-            Warmth?.Dispose();
+            // Warmth is pooled and owned by the world state (reset per tx there), not by the tracker;
+            // drop the reference without disposing so the pooled arrays survive across transactions.
             Warmth = null;
             Plan = null;
         }

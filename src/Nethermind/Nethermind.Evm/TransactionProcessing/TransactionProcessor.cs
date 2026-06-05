@@ -287,9 +287,10 @@ namespace Nethermind.Evm.TransactionProcessing
             using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
             // Verify-only validation: route EIP-2929 warmth for the BAL's declared reads through an ordinal
             // bitset rather than the storage-cell journal set. Non-tracing only (tracing reports the cell set).
+            // The warmth is pooled per worker and reset for this tx, so there is no per-tx allocation.
             if (!tracer.IsTracingAccess && WorldState.GetActiveDeclaredReadPlan() is { } declaredReadPlan)
             {
-                accessTracker.EnableDeclaredReadWarmth(declaredReadPlan, new BalReadWarmth(declaredReadPlan.TotalReads));
+                accessTracker.EnableDeclaredReadWarmth(declaredReadPlan, WorldState.GetDeclaredReadWarmth()!);
             }
             int delegationRefunds = 0;
             int delegationAuthBaseRefunds = 0;

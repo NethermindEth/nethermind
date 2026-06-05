@@ -110,6 +110,21 @@ public class BalReadWarmthTests
         Assert.That(warmth.WarmUp(1), Is.True, "post-reset access is cold again");
     }
 
+    [Test]
+    public void Reset_clears_dense_warmth_via_full_bitset()
+    {
+        // journalCount (70) > wordCount (2) takes Reset's full-bitset clear branch rather than the
+        // journal-driven clear; both must leave the instance fully cold for pooled reuse.
+        using BalReadWarmth warmth = new(70);
+        for (int i = 0; i < 70; i++) warmth.WarmUp(i);
+
+        warmth.Reset();
+
+        for (int i = 0; i < 70; i++) Assert.That(warmth.IsWarm(i), Is.False, $"ordinal {i} should be cold after reset");
+        Assert.That(warmth.TakeSnapshot(), Is.EqualTo(0));
+        Assert.That(warmth.WarmUp(5), Is.True, "post-reset access is cold again");
+    }
+
     // 1000 ordinals = 15 full words + a partial word: exercises bit addressing across word boundaries
     // and the journaled un-warm of a partial, scattered set.
     [TestCase(0)]

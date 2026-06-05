@@ -79,6 +79,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         _previousCodeChanges.Clear();
         _lastReadAddress = null;
         _lastReadChanges = null;
+        ChargeableReadCount = 0;
     }
 
     public void Reset()
