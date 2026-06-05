@@ -15,7 +15,7 @@ internal static class ForkIndexHelper
         [TangerineWhistle.Instance.Name] = 3,
         [SpuriousDragon.Instance.Name] = 4,
         [Byzantium.Instance.Name] = 5,
-        [ConstantinopleFix.Instance.Name] = 7, // TODO: -1 for removed Constantinople
+        [ConstantinopleFix.Instance.Name] = 7, // TODO: Decrease by 1 for removed Constantinople on the next fixture release
         [Istanbul.Instance.Name] = 8,
         [MuirGlacier.Instance.Name] = 9,
         [Berlin.Instance.Name] = 10,
@@ -29,7 +29,7 @@ internal static class ForkIndexHelper
         [Osaka.Instance.Name] = 18,
         [BPO1.Instance.Name] = 19,
         [BPO2.Instance.Name] = 20,
-        [Amsterdam.Instance.Name] = 24  // TODO: -3 for removed BPOs
+        [Amsterdam.Instance.Name] = 24  // TODO: Decrease by 3 for removed BPOs on the next fixture release
     };
 
     internal static ulong GetForkIndexByName(string name) =>
@@ -43,7 +43,7 @@ internal static class ForkIndexHelper
         3 => TangerineWhistle.Instance.Name,
         4 => SpuriousDragon.Instance.Name,
         5 => Byzantium.Instance.Name,
-        7 => ConstantinopleFix.Instance.Name, // TODO: -1 for removed Constantinople
+        7 => ConstantinopleFix.Instance.Name, // TODO: Decrease by 1 for removed Constantinople on the next fixture release
         8 => Istanbul.Instance.Name,
         9 => MuirGlacier.Instance.Name,
         10 => Berlin.Instance.Name,
@@ -57,7 +57,7 @@ internal static class ForkIndexHelper
         18 => Osaka.Instance.Name,
         19 => BPO1.Instance.Name,
         20 => BPO2.Instance.Name,
-        24 => Amsterdam.Instance.Name,  // TODO: -3 for removed BPOs
+        24 => Amsterdam.Instance.Name,  // TODO: Decrease by 3 for removed BPOs on the next fixture release
         _ => null
     };
 }
