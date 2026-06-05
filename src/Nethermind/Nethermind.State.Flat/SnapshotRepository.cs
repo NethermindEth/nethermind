@@ -31,12 +31,31 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     }
 
     public SnapshotPooledList AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
-    {
-        if (baseBlock == targetState) return SnapshotPooledList.Empty();
+        => baseBlock == targetState
+            ? SnapshotPooledList.Empty()
+            : AssembleSnapshotsBfs(baseBlock, targetState.BlockNumber, targetState, estimatedSize);
 
-        // BFS from baseBlock back to targetState across both compacted (wider jump, tried first) and
-        // base snapshot edges. `visited` owns a lease on every leased snapshot for the duration of
-        // the search; the winning path is re-acquired before the finally releases them all.
+    public SnapshotPooledList AssembleSnapshotsUntil(in StateId baseBlock, long minBlockNumber, int estimatedSize)
+        => AssembleSnapshotsBfs(baseBlock, minBlockNumber, exactTarget: null, estimatedSize);
+
+    /// <summary>
+    /// BFS over the snapshot graph from <paramref name="baseBlock"/> back toward
+    /// <paramref name="minBlockNumber"/>, returning the snapshots along the winning path in ascending
+    /// order (<c>result[0].From</c> is the terminus, <c>result[^1].To == baseBlock</c>). Returns an
+    /// empty list when no path reaches the terminus.
+    /// </summary>
+    /// <remarks>
+    /// Each StateId node has up to 2 edges, explored widest-jump first - the in-memory compacted
+    /// snapshot, then the in-memory base snapshot. Edges dropping below <paramref name="minBlockNumber"/>
+    /// are pruned, so a wide compacted jump that overshoots is discarded in favour of the narrower base
+    /// edge. The path wins at the first node reaching <paramref name="minBlockNumber"/>; when
+    /// <paramref name="exactTarget"/> is supplied that node must also equal it (used to assemble a path
+    /// to a specific state), otherwise any state at that block number qualifies (used to gather a window
+    /// for compaction). `visited` owns a lease on every leased snapshot; the winning path is re-leased
+    /// before the finally releases all of them.
+    /// </remarks>
+    private SnapshotPooledList AssembleSnapshotsBfs(in StateId baseBlock, long minBlockNumber, StateId? exactTarget, int estimatedSize)
+    {
         using ArrayPoolListRef<(Snapshot Snapshot, int ParentIndex)> visited = new(estimatedSize);
         using PooledQueue<(StateId Current, int ParentIndex)> queue = new();
         using PooledSet<StateId> seen = new();
@@ -64,7 +83,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
                     StateId from = snapshot.From;
 
-                    if (from.BlockNumber < targetState.BlockNumber || !seen.Add(from))
+                    if (from.BlockNumber < minBlockNumber || !seen.Add(from))
                     {
                         snapshot.Dispose();
                         continue;
@@ -73,7 +92,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
                     int index = visited.Count;
                     visited.Add((snapshot, parentIndex));
 
-                    if (from == targetState)
+                    if (from.BlockNumber == minBlockNumber && (exactTarget is not StateId target || from == target))
                     {
                         winnerIndex = index;
                         break;
@@ -85,7 +104,8 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
             if (winnerIndex < 0) return SnapshotPooledList.Empty();
 
-            // Walk winner -> root yields ascending order: result[0].From == targetState, result[^1].To == baseBlock.
+            // Walk winner -> root: yields ascending order directly (result[0].From == terminus,
+            // result[^1].To == baseBlock).
             SnapshotPooledList result = new(estimatedSize);
             for (int walk = winnerIndex; walk >= 0; walk = visited[walk].ParentIndex)
             {
@@ -104,53 +124,6 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
                 visited[i].Snapshot.Dispose();
             }
         }
-    }
-
-    public SnapshotPooledList AssembleSnapshotsUntil(in StateId baseBlock, long minBlockNumber, int estimatedSize)
-    {
-        SnapshotPooledList snapshots = new(estimatedSize);
-
-        StateId current = baseBlock;
-        while (TryLeaseCompactedState(current, out Snapshot? snapshot) || TryLeaseState(current, out snapshot))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Got {snapshot.From} -> {snapshot.To}");
-
-            if (snapshot.From.BlockNumber < minBlockNumber)
-            {
-                // `snapshot` is now a compacted snapshot, we dont want to use it.
-                snapshot.Dispose();
-
-                // Try got get a non compacted one
-                if (!TryLeaseState(current, out snapshot))
-                {
-                    // Failure, exit loop.
-                    break;
-                }
-            }
-
-            if (snapshot.From.BlockNumber < minBlockNumber)
-            {
-                // Should not happen... unless someone try to add out of order snapshots
-                snapshot.Dispose();
-                break;
-            }
-
-            snapshots.Add(snapshot);
-            if (snapshot.From == current)
-            {
-                break; // Some test commit two block with the same id, so we dont know the parent anymore.
-            }
-
-            if (snapshot.From.BlockNumber == minBlockNumber)
-            {
-                break;
-            }
-
-            current = snapshot.From;
-        }
-
-        snapshots.Reverse();
-        return snapshots;
     }
 
     public bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
