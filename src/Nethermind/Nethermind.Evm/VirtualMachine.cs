@@ -1475,11 +1475,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (callSucceeded)
         {
             TGasPolicy.UpdateGasUp(ref gas, gasLimit - ECRecoverBaseGasCost);
+            _worldState.AddToBalanceAndCreateIfNotExists(PrecompiledAddresses.ECRecover, UInt256.Zero, spec);
         }
 
         ReturnDataBuffer = Array.Empty<byte>();
         ReturnData = null;
-        _worldState.AddToBalanceAndCreateIfNotExists(PrecompiledAddresses.ECRecover, UInt256.Zero, spec);
         Metrics.IncrementCalls();
 
         if (!TGasPolicy.UpdateGas(ref gas, ECRecoverAccumulatorPostCallGas))
