@@ -1736,6 +1736,18 @@ namespace Nethermind.Evm.TransactionProcessing
         IFeeRecorder? feeRecorder = null)
         : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel: false, feeRecorder);
 
+    /// <summary>Parallel-mode <see cref="EthereumTransactionProcessor"/> for Block-STM.</summary>
+    /// <remarks>Skips header.GasUsed mutation and uses 0 for the per-tx block-gas-limit allowance; cumulative gas is validated post-parallel by the executor.</remarks>
+    public sealed class EthereumParallelTransactionProcessor(
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider? specProvider,
+        IWorldState? worldState,
+        IVirtualMachine? virtualMachine,
+        ICodeInfoRepository? codeInfoRepository,
+        ILogManager? logManager,
+        IFeeRecorder? feeRecorder = null)
+        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel: true, feeRecorder);
+
     public readonly struct TransactionResult : IEquatable<TransactionResult>
     {
         private TransactionResult(ErrorType error = ErrorType.None, EvmExceptionType evmException = EvmExceptionType.None, string errorDescription = "")

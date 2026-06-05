@@ -86,10 +86,7 @@ public class BlockStmTransactionsExecutor(
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         IReleaseSpec spec = _blockExecutionContext.Spec;
-        // One env per worker — reused across every tx that worker handles. Pre-build here
-        // so the parallel runner only pays Autofac/ResettableWorldState construction N times
-        // per block instead of N×(txCount + reexecutions) times. If runner concurrency ever
-        // exceeds the pool size, the worker grows the pool on demand via the captured factory.
+        // One env per worker, reused across every tx that worker handles.
         ConcurrentBag<ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv> envPool = [];
         ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv CreateEnv() =>
             parallelEnvFactory.Create(multiVersionMemory, feeAccumulator, blockCodeWrites, spec);
@@ -485,9 +482,7 @@ public class ParallelTransactionProcessor(
         Transaction transaction = block.Transactions[txIndex];
 
         feeAccumulator.ClearFee(txIndex);
-        // Pool is sized to concurrency, so TryTake almost always succeeds on the worker fast
-        // path. If runner concurrency happens to exceed pool size, grow the pool on demand —
-        // the extra env joins the pool on return and stays around until end-of-block teardown.
+        // Pool is sized to concurrency; grow on miss if runner concurrency outpaces it.
         if (!envPool.TryTake(out ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv? env))
         {
             env = envFactory();
@@ -502,19 +497,13 @@ public class ParallelTransactionProcessor(
             env.SetTxVersion(in version);
             using IReadOnlyTxProcessingScope scope = env.Build(parentBlock);
             ITransactionProcessor transactionProcessor = scope.TransactionProcessor;
-
-            BlockHeader header = block.Header.Clone();
-            BlockExecutionContext txContext = new(header, _blockExecutionContext.Spec);
+            BlockExecutionContext txContext = new(block.Header, _blockExecutionContext.Spec);
             transactionProcessor.SetBlockExecutionContext(in txContext);
 
             bool result = results[txIndex] = transactionProcessor.Execute(transaction, tracer);
             if (!result)
             {
-                // Failed tx: publish zero-fee keys + MarkCommitted so later txs reading
-                // coinbase drain (otherwise the worker spins forever — AddFeeReadDependencies
-                // sees IsCommitted=false, throws, and AbortExecution can't park on an Executed
-                // blocker). The read-set is still published so a subsequent commit by a prior
-                // tx (e.g. funding the sender) triggers validation abort and re-execution.
+                // Failed: publish zero-fee keys + MarkCommitted so later coinbase readers don't livelock; readSet still published so prior-tx funding triggers re-validation.
                 receipts[txIndex] = null;
                 env.WorldStateScopeProvider.WriteSet.Clear();
                 EnsureFeeKeys(env.WorldStateScopeProvider, txIndex);
@@ -526,10 +515,7 @@ public class ParallelTransactionProcessor(
             EnsureFeeKeys(env.WorldStateScopeProvider, txIndex);
             feeAccumulator.MarkCommitted(txIndex);
             writeSetChanged = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
-            // BlockReceiptsTracer resets CurrentIndex = 0 per borrow, so the receipt the
-            // tracer built has Index = 0. Stamp the real tx index here. Guard against a
-            // success path that didn't produce a receipt (would be a TransactionProcessor
-            // contract violation, but throw on indexing should not be the failure mode).
+            // Receipt built by a pooled tracer has Index=0; stamp the real index.
             TxReceipt? receipt = tracer.TxReceipts.Length > 0 ? tracer.LastReceipt : null;
             if (receipt is not null) receipt.Index = txIndex;
             receipts[txIndex] = receipt;

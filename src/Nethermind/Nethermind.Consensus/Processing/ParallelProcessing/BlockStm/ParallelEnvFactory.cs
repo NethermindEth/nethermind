@@ -14,19 +14,8 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 
 public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime)
 {
-    /// <summary>
-    /// Builds a reusable parallel-execution env. The returned env is intended to be pooled
-    /// per worker for the lifetime of a block: callers set the per-tx context via
-    /// <see cref="ParallelAutoReadOnlyTxProcessingEnv.SetTxVersion"/> before each
-    /// <see cref="AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv.Build"/>.
-    /// </summary>
-    /// <remarks>
-    /// Do NOT wrap the per-tx resettable scope in a populating prewarmer here. That
-    /// prewarmer would write every fresh read into the SHARED PreBlockCaches.StateCache,
-    /// poisoning subsequent txs whose outer (read-only) prewarmer would then return that
-    /// stale value without consulting MultiVersionMemory. The outer prewarmer in the DI
-    /// chain provides block-level caching; per-tx reads must go directly through MVMM.
-    /// </remarks>
+    /// <summary>Builds one parallel-execution env intended to be pooled per worker for a block.</summary>
+    /// <remarks>Must not wrap in a populating prewarmer — its writes to the shared PreBlockCaches.StateCache would shadow MVMM and poison later txs.</remarks>
     public ParallelAutoReadOnlyTxProcessingEnv Create(
         MultiVersionMemory multiVersionMemory,
         FeeAccumulator feeAccumulator,
@@ -45,6 +34,8 @@ public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeS
             builder
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddSingleton<MultiVersionMemoryScopeProvider>(worldState)
+                // Parallel-mode TxProcessor: no header.GasUsed mutation, lets us share block.Header across workers.
+                .AddScoped<ITransactionProcessor, EthereumParallelTransactionProcessor>()
                 .AddSingleton<ParallelFeeRecorder>(ctx => new ParallelFeeRecorder(feeAccumulator, worldState, ctx.Resolve<IWorldState>(), spec))
                 .AddSingleton<IFeeRecorder>(ctx => ctx.Resolve<ParallelFeeRecorder>())
                 .AddSingleton<ParallelAutoReadOnlyTxProcessingEnv>();
@@ -64,11 +55,7 @@ public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeS
         public MultiVersionMemoryScopeProvider WorldStateScopeProvider { get; } = worldStateScopeProvider;
         public ParallelFeeRecorder FeeRecorder { get; } = feeRecorder;
 
-        /// <summary>
-        /// Sets the per-tx context this env runs the next <see cref="Build"/> + Execute
-        /// pair against. Must be called from the worker that pooled this env, before
-        /// each tx, paired with a single Build/Dispose cycle on the returned scope.
-        /// </summary>
+        /// <summary>Targets this env at the given tx version for the next Build + Execute on the owning worker.</summary>
         public void SetTxVersion(in TxVersion version)
         {
             WorldStateScopeProvider.SetTxVersion(in version);

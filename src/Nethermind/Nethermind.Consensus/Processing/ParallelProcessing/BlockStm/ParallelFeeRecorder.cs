@@ -27,11 +27,7 @@ public sealed class ParallelFeeRecorder(
 {
     private int _txIndex;
 
-    /// <summary>
-    /// Sets the tx index this recorder reports against. The recorder is reused across
-    /// multiple tx executions on the same worker; the caller must set this before each
-    /// tx runs (paired with <see cref="MultiVersionMemoryScopeProvider.SetTxVersion"/>).
-    /// </summary>
+    /// <summary>Targets this recorder at the given tx index for subsequent <see cref="RecordFee"/> calls.</summary>
     public void SetTxIndex(int txIndex) => _txIndex = txIndex;
 
     public void RecordFee(Address recipient, in UInt256 amount, bool createAccount)

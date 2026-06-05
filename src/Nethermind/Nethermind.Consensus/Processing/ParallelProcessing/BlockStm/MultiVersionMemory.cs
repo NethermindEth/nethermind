@@ -28,31 +28,21 @@ public sealed class MultiVersionMemory(int txCount)
         public bool IsEstimate => Incarnation == -1;
     }
 
-    // Per-tx write-sets. Each entry is a ConcurrentDictionary so the executing worker can
-    // publish writes while higher txs read concurrently — lock-free on the hot read path.
+    // Per-tx write-sets: lock-free reads on the hot path.
     private readonly ConcurrentDictionary<ParallelStateKey, Value>[] _data = Enumerable.Range(0, txCount)
         .Select(_ => new ConcurrentDictionary<ParallelStateKey, Value>())
         .ToArray();
 
-    // Per-key writer index: every ever-written location maps to the sorted-descending list
-    // of tx indices that currently hold a write for it. TryRead consults this O(1) instead
-    // of walking N prior tx-dicts. Maintenance happens in ApplyWriteSet only.
+    // Per-key writer index — lets TryRead jump straight to the relevant writer slot.
     private readonly ConcurrentDictionary<ParallelStateKey, WriterList> _keyWriters = new();
 
-    // Locations written by the latest published incarnation of each tx — used to detect
-    // removed keys on re-execution and to convert writes to estimates on validation abort.
+    // Latest published write locations per tx — used to detect removed keys on re-record and drive ConvertWritesToEstimates.
     private readonly HashSet<ParallelStateKey>?[] _lastWrittenLocations = new HashSet<ParallelStateKey>?[txCount];
 
-    // Reads recorded by the latest published incarnation of each tx — used by
-    // ValidateReadSet to detect stale dependencies.
+    // Latest published read-set per tx — used by ValidateReadSet.
     private readonly HashSet<Read>?[] _lastReads = new HashSet<Read>?[txCount];
 
-    // Pre-block system-contract writes (EIP-4788 beacon root, EIP-2935 blockhash). Seeded
-    // once at block start and consulted as the last fallback before NotFound, so per-tx
-    // reads see the freshly-written system state instead of stale trie-store values.
-    // Returns Status.Ok with TxVersion.Empty so validation treats the value as stable —
-    // a real later tx writing the same location naturally invalidates the read via the
-    // standard version-mismatch path.
+    // EIP-4788 / EIP-2935 writes captured before the parallel run; consulted as the last fallback before NotFound.
     private Dictionary<ParallelStateKey, object>? _systemOverlay;
 
     /// <summary>Seeds pre-block system-contract writes. Must be called before workers start.</summary>
@@ -79,10 +69,7 @@ public sealed class MultiVersionMemory(int txCount)
 
         bool writeSetChanged = false;
 
-        // ConcurrentDictionary writes are individually atomic; readers (TryRead on higher
-        // txs) see either the old or the new Value, never a torn record. The lock here
-        // protects the lastWritten HashSet only — ConvertWritesToEstimates may iterate it
-        // from another worker concurrently with this tx's owner re-recording.
+        // Lock protects lastWritten only; ConcurrentDictionary writes don't need it.
         lock (lastWritten)
         {
             foreach (KeyValuePair<ParallelStateKey, object> write in writeSet)
@@ -131,33 +118,20 @@ public sealed class MultiVersionMemory(int txCount)
 
     private void RemoveFromKeyWriters(ParallelStateKey key, int txIndex)
     {
-        if (_keyWriters.TryGetValue(key, out WriterList? writers))
-        {
-            writers.Remove(txIndex);
-            // Leave empty WriterList in the map: shrinking races with concurrent readers and
-            // the per-key wrapper is tiny. The empty list is cheap to consult.
-        }
+        // Empty WriterList stays in the map; shrinking would race concurrent readers.
+        if (_keyWriters.TryGetValue(key, out WriterList? writers)) writers.Remove(txIndex);
     }
 
-    /// <summary>
-    /// Final write-set of the latest incarnation. Caller must only access after the parallel
-    /// runner has drained — no lock is taken.
-    /// </summary>
+    /// <summary>Final write-set of the latest incarnation. Caller must access only after the parallel runner has drained.</summary>
     public ConcurrentDictionary<ParallelStateKey, Value> GetFinalWriteSet(int txIndex) => _data[txIndex];
 
-    /// <summary>
-    /// Marks every location previously written by this tx as <see cref="Value.Estimate"/>
-    /// so higher txs that read them will register a dependency on the next re-execution.
-    /// </summary>
+    /// <summary>Marks every location previously written by this tx as <see cref="Value.Estimate"/> so dependents will re-take a dep on the next read.</summary>
     public void ConvertWritesToEstimates(int txIndex)
     {
         HashSet<ParallelStateKey>? previousLocations = _lastWrittenLocations[txIndex];
         if (previousLocations is null) return;
 
         ConcurrentDictionary<ParallelStateKey, Value> txData = _data[txIndex];
-        // Snapshot under the per-tx lock so we don't race a concurrent ApplyWriteSet
-        // mutating the HashSet. The dict writes are lock-free; each [key]=Estimate is
-        // an atomic CAS-style replace.
         ParallelStateKey[] snapshot;
         lock (previousLocations)
         {
@@ -170,22 +144,8 @@ public sealed class MultiVersionMemory(int txCount)
         }
     }
 
-    /// <summary>
-    /// Reads <paramref name="location"/> from the perspective of <paramref name="txIndex"/>
-    /// via the per-key writer index: jumps directly to the highest writer tx whose index is
-    /// below <paramref name="txIndex"/> instead of scanning all lower slots.
-    /// </summary>
-    /// <returns>
-    /// <see cref="Status.Ok"/> with the value and writing-tx version; or
-    /// <see cref="Status.NotFound"/> if no lower tx wrote (caller falls back to DB or system
-    /// overlay); or <see cref="Status.ReadError"/> if a lower tx wrote an Estimate (caller
-    /// must abort and take a dependency).
-    /// </returns>
-    /// <remarks>
-    /// Race handling: the writer index is updated outside the per-tx data dict's atomic
-    /// slot. If a writer removes its own write between our index hit and the dict fetch,
-    /// the dict lookup misses; we retry with the next-lower writer until exhausted.
-    /// </remarks>
+    /// <summary>Reads <paramref name="location"/> from the perspective of <paramref name="txIndex"/> via the per-key writer index.</summary>
+    /// <returns><see cref="Status.Ok"/>, <see cref="Status.NotFound"/>, or <see cref="Status.ReadError"/> (Estimate hit — caller must abort).</returns>
     public Status TryRead(ParallelStateKey location, int txIndex, out TxVersion version, out object? value)
     {
         if (_keyWriters.TryGetValue(location, out WriterList? writers))
@@ -222,11 +182,7 @@ public sealed class MultiVersionMemory(int txCount)
         return Status.NotFound;
     }
 
-    /// <summary>
-    /// Re-reads each location in <paramref name="txIndex"/>'s recorded read-set and returns
-    /// false if any read is now stale (lower tx wrote with a different version, or the
-    /// location was previously present but is no longer, or a lower tx is now an Estimate).
-    /// </summary>
+    /// <summary>Re-reads each location in <paramref name="txIndex"/>'s read-set and returns false if any read is now stale.</summary>
     public bool ValidateReadSet(int txIndex)
     {
         HashSet<Read>? priorReads = _lastReads[txIndex];
@@ -246,16 +202,7 @@ public sealed class MultiVersionMemory(int txCount)
         return true;
     }
 
-    /// <summary>
-    /// Sorted-descending list of tx indices that currently write a given key. Reads are
-    /// hot (every TryRead consults one); mutations happen only inside ApplyWriteSet.
-    /// </summary>
-    /// <remarks>
-    /// Uses a plain <see cref="List{T}"/> + monitor lock — for the common case of 1-3
-    /// writers per key, this beats a balanced tree on both memory and constant factors.
-    /// FindHighestBelow does a manual scan from the front since the list is sorted
-    /// descending and typically tiny; a binary search would be a wash at these sizes.
-    /// </remarks>
+    /// <summary>Sorted-descending list of tx indices that currently write a given key.</summary>
     private sealed class WriterList
     {
         private readonly List<int> _indicesDesc = [];
