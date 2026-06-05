@@ -114,7 +114,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
             // Pure declared read (slotChanges is null): a slot the BAL proves is read-only this block,
             // so original == current == pre-state. Serve it from the prefetched ordinal destination or
             // the parent's registry-bypassing read; both are byte-identical to parentReader.Get.
-            if (slotChanges is null && TryReadDeclaredPureRead(in storageCell, out ReadOnlySpan<byte> value))
+            if (slotChanges is null && TryReadDeclaredPureRead(in storageCell, out byte[]? value))
             {
                 return value;
             }
@@ -130,25 +130,39 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     /// For a BAL-declared read the value never changes in-block, so the same lookup answers both
     /// <see cref="Get"/> and <see cref="GetOriginal"/> and never needs the parent's change registry -
     /// which is what lets <see cref="GetOriginal"/> avoid <c>parentReader.GetOriginal</c> (it would
-    /// throw without a prior registered read). Returns false to fall back to the normal parent path.
+    /// throw without a prior registered read).
+    /// <para>
+    /// Gated on the ordinal destination existing (large blocks): there the destination serves repeats
+    /// in O(1), and a destination miss is read once through the parent's journal-bypassing read and
+    /// then cached by ordinal so later repeats also hit O(1). Without a destination (small blocks)
+    /// this returns false so the caller uses the normal registered read, whose upper cache is faster
+    /// for repeated same-slot reads.
+    /// </para>
     /// </remarks>
-    private bool TryReadDeclaredPureRead(in StorageCell storageCell, out ReadOnlySpan<byte> value)
+    private bool TryReadDeclaredPureRead(in StorageCell storageCell, out byte[]? value)
     {
-        if (preBlockCaches?.StorageValueDestination is { } destination
-            && preBlockCaches.StorageReadPlan is { } readPlan
-            && readPlan.TryGetGlobalReadOrdinal(storageCell.Address, storageCell.Index, out int ordinal)
-            && destination.TryGet(ordinal, out byte[]? prefetched))
+        if (preBlockCaches?.StorageValueDestination is not { } destination
+            || preBlockCaches.StorageReadPlan is not { } readPlan
+            || !readPlan.TryGetGlobalReadOrdinal(storageCell.Address, storageCell.Index, out int ordinal))
         {
-            value = prefetched; // already stripped of leading zeros; null/empty => empty span (zero slot)
+            value = null;
+            return false;
+        }
+
+        if (destination.TryGet(ordinal, out value))
+        {
+            return true; // prefetched or previously cached read-through; null/empty => zero slot
+        }
+
+        // Destination miss: read once through the parent without journaling, then cache by ordinal so
+        // repeats of this not-yet-prefetched declared slot hit O(1) instead of re-probing.
+        if (_parentReader is not null && _parentReader.TryGetPureReadStorage(in storageCell, out value))
+        {
+            destination.Set(ordinal, value);
             return true;
         }
 
-        if (_parentReader is not null)
-        {
-            return _parentReader.TryGetPureReadStorage(in storageCell, out value);
-        }
-
-        value = default;
+        value = null;
         return false;
     }
 
@@ -167,7 +181,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
             // Declared read: original == pre-state, so use the same pure read as Get rather than
             // parentReader.GetOriginal (which throws without a prior registered read).
-            if (slotChanges is null && TryReadDeclaredPureRead(in storageCell, out ReadOnlySpan<byte> value))
+            if (slotChanges is null && TryReadDeclaredPureRead(in storageCell, out byte[]? value))
             {
                 return value;
             }

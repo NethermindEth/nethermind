@@ -57,9 +57,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// journal - use the normal path"); a backing store that can read without journaling overrides it.
     /// </remarks>
     /// <returns><c>true</c> with the value when served without journaling; otherwise <c>false</c>.</returns>
-    bool TryGetPureReadStorage(in StorageCell cell, out ReadOnlySpan<byte> value)
+    bool TryGetPureReadStorage(in StorageCell cell, out byte[]? value)
     {
-        value = default;
+        value = null;
         return false;
     }
 

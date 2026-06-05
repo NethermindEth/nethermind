@@ -288,7 +288,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// be written or have <see cref="GetOriginal"/> registered against it this block - which the BAL
     /// guarantees for declared reads (they are never in <c>StorageChanges</c>).
     /// </remarks>
-    public ReadOnlySpan<byte> GetPureRead(in StorageCell storageCell) =>
+    public byte[] GetPureRead(in StorageCell storageCell) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTreeBypassingRegistry(storageCell);
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)

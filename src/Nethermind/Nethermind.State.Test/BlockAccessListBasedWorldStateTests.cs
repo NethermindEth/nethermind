@@ -111,15 +111,23 @@ public class BlockAccessListBasedWorldStateTests
     [Test]
     public void GetOriginal_DeclaredRead_ReturnsPreStateViaPureRead_WithoutPriorGet()
     {
-        // A BAL-declared read is read-only this block (original == current == pre-state), so the
-        // pure-read path serves GetOriginal directly. The old path (parentReader.GetOriginal) would
-        // throw "only after get" here, so a non-throwing pre-state value pins the pure read.
+        // Large block -> the storage pure-read path is active (gated on the ordinal destination). A
+        // declared read is read-only this block (original == current == pre-state), so GetOriginal
+        // is served by the pure read - without a prior Get and without throwing (the old
+        // parentReader.GetOriginal would throw "only after get").
+        int readCount = PreBlockCaches.StorageReadDestinationThreshold + 1;
+        UInt256[] reads = new UInt256[readCount];
+        for (int i = 0; i < readCount; i++) reads[i] = (UInt256)i;
+
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)
-                .WithStorageReads(5)
+                .WithStorageReads(reads)
                 .TestObject)
             .TestObject;
+
+        PreBlockCaches caches = new();
+        caches.BuildStorageReadDestination(bal);
 
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 0,
@@ -128,7 +136,8 @@ public class BlockAccessListBasedWorldStateTests
             {
                 ws.CreateAccount(TestItem.AddressA, 100);
                 ws.Set(new StorageCell(TestItem.AddressA, 5), [4, 2]);
-            });
+            },
+            preBlockCaches: caches);
         using (scope)
         {
             StorageCell cell = new(TestItem.AddressA, 5);
