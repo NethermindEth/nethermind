@@ -43,6 +43,17 @@ public sealed class MultiVersionMemory(int txCount)
     // ValidateReadSet to detect stale dependencies.
     private readonly HashSet<Read>?[] _lastReads = new HashSet<Read>?[txCount];
 
+    // Pre-block system-contract writes (EIP-4788 beacon root, EIP-2935 blockhash). Seeded
+    // once at block start and consulted as the last fallback before NotFound, so per-tx
+    // reads see the freshly-written system state instead of stale trie-store values.
+    // Returns Status.Ok with TxVersion.Empty so validation treats the value as stable —
+    // a real later tx writing the same location naturally invalidates the read via the
+    // standard version-mismatch path.
+    private Dictionary<ParallelStateKey, object>? _systemOverlay;
+
+    /// <summary>Seeds pre-block system-contract writes. Must be called before workers start.</summary>
+    public void SeedSystemOverlay(Dictionary<ParallelStateKey, object> writes) => _systemOverlay = writes;
+
     /// <summary>
     /// Publishes a transaction's read- and write-set. Returns true when higher txs that
     /// already read this tx may need re-validation (any added, removed, or re-written
@@ -174,6 +185,13 @@ public sealed class MultiVersionMemory(int txCount)
             {
                 prevTransactionData.Lock.ExitReadLock();
             }
+        }
+
+        if (_systemOverlay is not null && _systemOverlay.TryGetValue(location, out object? overlayValue))
+        {
+            version = TxVersion.Empty;
+            value = overlayValue;
+            return Status.Ok;
         }
 
         version = TxVersion.Empty;

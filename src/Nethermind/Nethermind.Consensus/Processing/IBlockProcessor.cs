@@ -44,6 +44,12 @@ namespace Nethermind.Consensus.Processing
             void SetupTxTimingMetrics(Block block) { }
             long StartTxTimer() => 0;
             void StopTxTimer(int i, long txStart) { }
+
+            // Optional ITxTracer used by BlockProcessor when running pre-block system
+            // contracts (EIP-4788 beacon root, EIP-2935 blockhash). Block-STM supplies one
+            // to capture the state writes so they can seed its MVMM and be visible to
+            // per-tx parallel reads; other executors default to no capture.
+            Evm.Tracing.ITxTracer? PreTxStateCommitTracer => null;
         }
     }
 }

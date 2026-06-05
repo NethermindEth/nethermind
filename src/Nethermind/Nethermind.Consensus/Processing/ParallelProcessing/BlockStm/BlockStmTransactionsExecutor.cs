@@ -37,6 +37,9 @@ public class BlockStmTransactionsExecutor(
     private readonly ObjectPool<HashSet<int>> _setPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>());
     private BlockExecutionContext _blockExecutionContext;
     private readonly ILogger _logger = logManager.GetClassLogger<BlockStmTransactionsExecutor>();
+    private readonly MvmmSystemWriteCapture _systemWriteCapture = new();
+
+    Evm.Tracing.ITxTracer? IBlockProcessor.IBlockTransactionsExecutor.PreTxStateCommitTracer => _systemWriteCapture;
 
     /// <summary>
     /// Most recent per-block metrics from this executor instance. Tests can assert against
@@ -63,6 +66,15 @@ public class BlockStmTransactionsExecutor(
         TransactionResult[] results = new TransactionResult[txCount];
         bool processedSuccessfully = false;
         MultiVersionMemory multiVersionMemory = new(txCount);
+        // Seed MVMM with pre-block system-contract writes (EIP-4788, EIP-2935) captured
+        // during the system tx's Execute via PreTxStateCommitTracer. Per-tx parallel scopes
+        // read through MVMM first, so the overlay shadows the stale view that
+        // worldStateManager's read-only trie store would otherwise return for these slots.
+        if (!_systemWriteCapture.IsEmpty)
+        {
+            multiVersionMemory.SeedSystemOverlay(_systemWriteCapture.BuildOverlay(stateProvider));
+            _systemWriteCapture.Reset();
+        }
         ParallelBlockMetricsCollector blockMetrics = new(txCount);
         FeeAccumulator feeAccumulator = new(txCount, block.Header.GasBeneficiary, _blockExecutionContext.Spec.FeeCollector);
         ParallelScheduler scheduler = new(txCount, _setPool);
@@ -73,14 +85,25 @@ public class BlockStmTransactionsExecutor(
         ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites = new();
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, feeAccumulator, receipts, results, blockCodeWrites, in _blockExecutionContext);
+        IReleaseSpec spec = _blockExecutionContext.Spec;
+        // One env per worker — reused across every tx that worker handles. Pre-build here
+        // so the parallel runner only pays Autofac/ResettableWorldState construction N times
+        // per block instead of N×(txCount + reexecutions) times. If runner concurrency ever
+        // exceeds the pool size, the worker grows the pool on demand via the captured factory.
+        ConcurrentBag<ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv> envPool = [];
+        ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv CreateEnv() =>
+            parallelEnvFactory.Create(multiVersionMemory, feeAccumulator, blockCodeWrites, spec);
+        for (int i = 0; i < _concurrencyLevel; i++)
+        {
+            envPool.Add(CreateEnv());
+        }
+        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, envPool, CreateEnv, multiVersionMemory, feeAccumulator, receipts, results, in _blockExecutionContext);
         try
         {
             using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, parallelTransactionProcessor, blockMetrics, _concurrencyLevel);
             parallelRunner.Run().GetAwaiter().GetResult();
             ThrowIfInvalidResults(block, transactions, results);
             FinalizeGasUsed(block, receipts);
-            IReleaseSpec spec = _blockExecutionContext.Spec;
             FeeRecipientWriteInfo feeRecipientWrites = PushChanges(stateProvider, multiVersionMemory, feeAccumulator, spec, txCount, blockCodeWrites);
             ApplyAccumulatedFees(stateProvider, feeAccumulator, spec, feeRecipientWrites);
             RaiseTransactionProcessedEvents(block, transactions, receipts);
@@ -90,6 +113,10 @@ public class BlockStmTransactionsExecutor(
         }
         finally
         {
+            while (envPool.TryTake(out ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv? env))
+            {
+                env.Dispose();
+            }
             ParallelBlockMetrics snapshot = blockMetrics.Snapshot();
             LastBlockSnapshot = snapshot;
             Metrics.ReportBlock(snapshot);
@@ -432,12 +459,12 @@ public class BlockStmTransactionsExecutor(
 public class ParallelTransactionProcessor(
     Block block,
     BlockHeader parentBlock,
-    ParallelEnvFactory parallelEnvFactory,
+    ConcurrentBag<ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv> envPool,
+    Func<ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv> envFactory,
     MultiVersionMemory multiVersionMemory,
     FeeAccumulator feeAccumulator,
     TxReceipt[] receipts,
     TransactionResult[] results,
-    ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites,
     in BlockExecutionContext blockExecutionContext) : IParallelTransactionProcessor
 {
     // BlockReceiptsTracer's ctor takes (parallel: true); needs a custom policy.
@@ -458,9 +485,13 @@ public class ParallelTransactionProcessor(
         Transaction transaction = block.Transactions[txIndex];
 
         feeAccumulator.ClearFee(txIndex);
-        using ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv env = parallelEnvFactory.Create(version, multiVersionMemory, feeAccumulator, blockCodeWrites, _blockExecutionContext.Spec);
-        using IReadOnlyTxProcessingScope scope = env.Build(parentBlock);
-        ITransactionProcessor transactionProcessor = scope.TransactionProcessor;
+        // Pool is sized to concurrency, so TryTake almost always succeeds on the worker fast
+        // path. If runner concurrency happens to exceed pool size, grow the pool on demand —
+        // the extra env joins the pool on return and stays around until end-of-block teardown.
+        if (!envPool.TryTake(out ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv? env))
+        {
+            env = envFactory();
+        }
 
         BlockReceiptsTracer tracer = _tracers.Get();
         tracer.StartNewBlockTrace(block);
@@ -468,6 +499,10 @@ public class ParallelTransactionProcessor(
 
         try
         {
+            env.SetTxVersion(in version);
+            using IReadOnlyTxProcessingScope scope = env.Build(parentBlock);
+            ITransactionProcessor transactionProcessor = scope.TransactionProcessor;
+
             BlockHeader header = block.Header.Clone();
             BlockExecutionContext txContext = new(header, _blockExecutionContext.Spec);
             transactionProcessor.SetBlockExecutionContext(in txContext);
@@ -475,11 +510,16 @@ public class ParallelTransactionProcessor(
             bool result = results[txIndex] = transactionProcessor.Execute(transaction, tracer);
             if (!result)
             {
-                // Failed tx: don't publish anything to MVMM and don't mark fees committed.
-                // ThrowIfInvalidResults will fail the block once the runner drains; in the
-                // meantime, higher txs that try to read this tx's fee keys correctly see
-                // "uncommitted" and abort with a dependency on it.
+                // Failed tx: publish zero-fee keys + MarkCommitted so later txs reading
+                // coinbase drain (otherwise the worker spins forever — AddFeeReadDependencies
+                // sees IsCommitted=false, throws, and AbortExecution can't park on an Executed
+                // blocker). The read-set is still published so a subsequent commit by a prior
+                // tx (e.g. funding the sender) triggers validation abort and re-execution.
                 receipts[txIndex] = null;
+                env.WorldStateScopeProvider.WriteSet.Clear();
+                EnsureFeeKeys(env.WorldStateScopeProvider, txIndex);
+                feeAccumulator.MarkCommitted(txIndex);
+                multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
                 return Status.Ok;
             }
             scope.WorldState.Commit(_blockExecutionContext.Spec, txTracer, commitRoots: true);
@@ -506,6 +546,7 @@ public class ParallelTransactionProcessor(
             txTracer.Dispose();
             tracer.EndTxTrace();
             _tracers.Return(tracer);
+            envPool.Add(env);
         }
     }
 

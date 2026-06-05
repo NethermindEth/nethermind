@@ -7,6 +7,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.State;
 
 namespace Nethermind.Init.Modules;
 
@@ -26,6 +27,11 @@ public class BlockStmModule(IBlocksConfig blocksConfig) : Module
         {
             return;
         }
+
+        // Disable the empty-tree short-circuit in PersistentStorageProvider. The optimization
+        // returns ZeroBytes for any unrecorded slot of an empty-tree contract, which would
+        // mask MVMM overlay entries seeded from pre-block system contracts (EIP-4788 etc.).
+        EmptyStorageTreeShortCircuit.Disabled = true;
 
         builder.AddSingleton<IMainProcessingModule, BlockStmMainProcessingModule>();
     }

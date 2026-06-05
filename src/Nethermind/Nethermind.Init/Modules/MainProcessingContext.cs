@@ -24,6 +24,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         ILifetimeScope rootLifetimeScope,
         IReceiptConfig receiptConfig,
         IInitConfig initConfig,
+        IBlocksConfig blocksConfig,
         IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
@@ -60,7 +61,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                         new BlockchainProcessor.Options
                         {
                             StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                            DumpOptions = initConfig.AutoDump
+                            DumpOptions = initConfig.AutoDump,
+                            DeleteInvalidBlocks = blocksConfig.DeleteInvalidBlocks
                         },
                         processingStats)
                     {

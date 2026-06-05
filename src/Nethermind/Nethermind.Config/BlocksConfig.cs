@@ -72,6 +72,7 @@ namespace Nethermind.Config
         public bool ParallelExecutionBatchRead { get; set; } = true;
         public bool BlockStmEnabled { get; set; }
         public int BlockStmConcurrency { get; set; }
+        public bool DeleteInvalidBlocks { get; set; } = true;
 
         public string ExtraData
         {

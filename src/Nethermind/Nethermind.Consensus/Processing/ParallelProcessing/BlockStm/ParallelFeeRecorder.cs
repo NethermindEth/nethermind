@@ -19,20 +19,28 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 /// recipient (correct semantics for an arbitrary address); without it the credit would
 /// silently vanish if it ever reached this path.
 /// </summary>
-internal sealed class ParallelFeeRecorder(
-    int txIndex,
+public sealed class ParallelFeeRecorder(
     FeeAccumulator feeAccumulator,
     MultiVersionMemoryScopeProvider scopeProvider,
     IWorldState worldState,
     IReleaseSpec spec) : IFeeRecorder
 {
+    private int _txIndex;
+
+    /// <summary>
+    /// Sets the tx index this recorder reports against. The recorder is reused across
+    /// multiple tx executions on the same worker; the caller must set this before each
+    /// tx runs (paired with <see cref="MultiVersionMemoryScopeProvider.SetTxVersion"/>).
+    /// </summary>
+    public void SetTxIndex(int txIndex) => _txIndex = txIndex;
+
     public void RecordFee(Address recipient, in UInt256 amount, bool createAccount)
     {
         FeeRecipientKind kind = feeAccumulator.GetFeeKind(recipient);
         if (kind != FeeRecipientKind.None)
         {
-            feeAccumulator.RecordFee(txIndex, recipient, in amount, createAccount);
-            ParallelStateKey key = ParallelStateKey.ForFee(kind, txIndex);
+            feeAccumulator.RecordFee(_txIndex, recipient, in amount, createAccount);
+            ParallelStateKey key = ParallelStateKey.ForFee(kind, _txIndex);
             ref object value = ref CollectionsMarshal.GetValueRefOrAddDefault(scopeProvider.WriteSet, key, out bool exists);
             value = exists && value is UInt256 existingAmount ? existingAmount + amount : amount;
             return;

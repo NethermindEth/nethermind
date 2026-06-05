@@ -115,22 +115,29 @@ public class BlockStmIntegrationTests
         // Direct ProcessOne, bypassing txpool / block builder. Codex used the same pattern
         // for unit-style tests because AddBlock-via-pool surfaces too many unrelated failures
         // (insufficient balance, gas-pricing, pool ordering) that aren't what we're testing.
-        public BlockPair ProcessBlock(params Transaction[] transactions) => ProcessBlock(NoDelays, transactions);
+        public BlockPair ProcessBlock(params Transaction[] transactions) => ProcessBlock(NoDelays, null, transactions);
 
-        public BlockPair ProcessBlock(TxDelay[] delays, params Transaction[] transactions)
+        public BlockPair ProcessBlock(TxDelay[] delays, params Transaction[] transactions) => ProcessBlock(delays, null, transactions);
+
+        public BlockPair ProcessBlockWithBeaconRoot(Hash256 parentBeaconBlockRoot, params Transaction[] transactions) =>
+            ProcessBlock(NoDelays, parentBeaconBlockRoot, transactions);
+
+        private BlockPair ProcessBlock(TxDelay[] delays, Hash256? parentBeaconBlockRoot, Transaction[] transactions)
         {
             Parallel.DelayPolicy.SetDelays(delays);
-            return new(ProcessDirect(Parallel, transactions), ProcessDirect(Single, transactions));
+            return new(ProcessDirect(Parallel, transactions, parentBeaconBlockRoot), ProcessDirect(Single, transactions, parentBeaconBlockRoot));
         }
 
-        private static Block ProcessDirect(StmTestBlockchain chain, Transaction[] transactions)
+        private static Block ProcessDirect(StmTestBlockchain chain, Transaction[] transactions, Hash256? parentBeaconBlockRoot = null)
         {
             BlockHeader parent = chain.BlockTree.Head!.Header;
-            Block block = Build.A.Block
+            BlockBuilder builder = Build.A.Block
                 .WithParent(parent)
                 .WithGasLimit(TestBlockGasLimit)
-                .WithTransactions(transactions)
-                .TestObject;
+                .WithTransactions(transactions);
+            if (parentBeaconBlockRoot is not null)
+                builder = builder.WithParentBeaconBlockRoot(parentBeaconBlockRoot);
+            Block block = builder.TestObject;
             IReleaseSpec spec = chain.SpecProvider.GetSpec(block.Header);
             using IDisposable scope = chain.MainProcessingContext.WorldState.BeginScope(parent);
             return chain.MainProcessingContext.BlockProcessor
@@ -389,5 +396,139 @@ public class BlockStmIntegrationTests
             receiverCreate, callerCreate, callerCall);
 
         blocks.AssertFullMatch(3);
+    }
+
+    [Test]
+    public async Task Tx_can_read_slot_written_by_pre_block_system_contract()
+    {
+        // Block 25244686 / tx 146 root cause: tx STATICCALLs the EIP-4788 BeaconRoots
+        // contract (0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02). BeaconRootHandler runs a
+        // system tx pre-block that writes the timestamp into slot (timestamp % 8191) and
+        // the parent beacon-block-root into slot (timestamp % 8191 + 8191). User contracts
+        // STATICCALL the beacon root contract with the timestamp to retrieve the root.
+        //
+        // In parallel mode, per-tx scopes pull state from worldStateManager.CreateResettableWorldState(),
+        // which reads through _readOnlyTrieStore. The pre-block CommitState uses
+        // commitRoots: false, which does not flush in-memory writes to the trie store, so
+        // the parallel scope cannot see the freshly-written timestamp -- the BeaconRoots
+        // contract reverts in parallel but succeeds in sequential.
+        //
+        // The block must carry a non-null ParentBeaconBlockRoot so BeaconRootHandler.StoreBeaconRoot
+        // actually runs the system tx; with null ParentBeaconBlockRoot it is a no-op and the
+        // bug doesn't manifest.
+        await using DualBlockchain chains = await DualBlockchain.Create();
+
+        // Tx: STATICCALL(beaconRoots, calldata = block.timestamp as 32-byte big-endian).
+        // Push calldata into memory at offset 0; STATICCALL with input[0:32], output[32:32].
+        // Then SSTORE slot 0 = returned beacon root (so the result is observable in state root).
+        byte[] callerCode = Prepare.EvmCode
+            .Op(Instruction.TIMESTAMP)
+            .PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).PushData(32).PushData(32).PushData(0).PushData(Eip4788Constants.BeaconRootsAddress).Op(Instruction.GAS).Op(Instruction.STATICCALL)
+            .Op(Instruction.POP)
+            .PushData(32).Op(Instruction.MLOAD)
+            .Op(Instruction.PUSH0).Op(Instruction.SSTORE)
+            .STOP()
+            .Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(callerCode).Done;
+        Address contractAddress = ContractAddress.From(TestItem.AddressA, 0);
+
+        Transaction deploy = TxCreateContract(TestItem.PrivateKeyA, 0, initCode);
+        Transaction callFromB = TxToContract(TestItem.PrivateKeyB, contractAddress, 0, []);
+        Transaction callFromC = TxToContract(TestItem.PrivateKeyC, contractAddress, 0, []);
+
+        BlockPair blocks = chains.ProcessBlockWithBeaconRoot(TestItem.KeccakA, deploy, callFromB, callFromC);
+        blocks.AssertFullMatch(3);
+    }
+
+    [Test]
+    public async Task Shared_counter_SSTORE_two_callers_matches_sequential()
+    {
+        // Each call: SLOAD slot 0, add 1, SSTORE slot 0.
+        await using DualBlockchain chains = await DualBlockchain.Create(Shanghai.Instance);
+
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.PUSH0).Op(Instruction.SLOAD)
+            .PushData(1).Op(Instruction.ADD)
+            .Op(Instruction.PUSH0).Op(Instruction.SSTORE)
+            .STOP()
+            .Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(code).Done;
+        Address contractAddress = ContractAddress.From(TestItem.AddressA, 0);
+
+        Transaction deploy = TxCreateContract(TestItem.PrivateKeyA, 0, initCode);
+        Transaction callFromB = TxToContract(TestItem.PrivateKeyB, contractAddress, 0, []);
+        Transaction callFromC = TxToContract(TestItem.PrivateKeyC, contractAddress, 0, []);
+
+        BlockPair blocks = chains.ProcessBlock(deploy, callFromB, callFromC);
+
+        blocks.AssertFullMatch(3);
+    }
+
+    [Test]
+    public async Task Shared_counter_plus_per_token_SSTORE_two_callers_matches_sequential()
+    {
+        // SLOAD slot 0, add 1, SSTORE slot 0 (shared), then SSTORE slot[new_value]=new_value (per-token).
+        await using DualBlockchain chains = await DualBlockchain.Create(Shanghai.Instance);
+
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.PUSH0).Op(Instruction.SLOAD)
+            .PushData(1).Op(Instruction.ADD)
+            .Op(Instruction.DUP1).Op(Instruction.PUSH0).Op(Instruction.SSTORE)
+            .Op(Instruction.DUP1).Op(Instruction.DUP1).Op(Instruction.SSTORE)
+            .STOP()
+            .Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(code).Done;
+        Address contractAddress = ContractAddress.From(TestItem.AddressA, 0);
+
+        Transaction deploy = TxCreateContract(TestItem.PrivateKeyA, 0, initCode);
+        Transaction callFromB = TxToContract(TestItem.PrivateKeyB, contractAddress, 0, []);
+        Transaction callFromC = TxToContract(TestItem.PrivateKeyC, contractAddress, 0, []);
+
+        BlockPair blocks = chains.ProcessBlock(deploy, callFromB, callFromC);
+
+        blocks.AssertFullMatch(3);
+    }
+
+    [Test, MaxTime(60_000)]
+    public async Task Failed_tx_re_executes_when_funding_tx_commits_later()
+    {
+        // Regression: a tx that fails (`result=false`) on its first execution because the
+        // sender's balance is short must publish its read-set so that when a prior tx funds
+        // the sender, validation aborts it and forces re-execution. Earlier the failed path
+        // published an empty read-set, leaving the tx permanently failed and the whole block
+        // invalid even though sequential succeeds. The funding tx is delayed so the parallel
+        // scheduler must run the spender first.
+        await using DualBlockchain chains = await DualBlockchain.Create();
+
+        // PrivateKeyD has no genesis balance (TestBlockchain only funds A, B, C).
+        Transaction fundD = Tx(TestItem.PrivateKeyA, TestItem.AddressD, nonce: 0, 5.Ether);
+        Transaction dSendsToE = Tx(TestItem.PrivateKeyD, TestItem.AddressE, nonce: 0, 1.Ether);
+
+        BlockPair blocks = chains.ProcessBlock([Delay(fundD, LongDelayMs)], fundD, dSendsToE);
+
+        blocks.AssertFullMatch(2);
+    }
+
+    [Test, MaxTime(60_000)]
+    public async Task Failed_tx_followed_by_fee_reading_tx_does_not_livelock()
+    {
+        // Regression: a block-invalid tx (TransactionProcessor.Execute returns false)
+        // used to livelock the runner. The failed tx finishes with Status=Executed but
+        // IsCommitted=false; any later tx reading coinbase threw AbortParallelExecutionException
+        // and the parking AbortExecution rejected it (Status==Executed), so the worker
+        // spun on the same task forever. Fix publishes a zero-fee write-set + MarkCommitted
+        // so the runner drains and the block fails via ThrowIfInvalidResults like sequential.
+        await using DualBlockchain chains = await DualBlockchain.Create();
+
+        Transaction[] txs =
+        [
+            // Nonce mismatch — PrivateKeyA's account starts at nonce 0.
+            Tx(TestItem.PrivateKeyA, TestItem.AddressD, nonce: 5, 1.Ether),
+            // Normal transfer; pays gas to coinbase, exercising the fee-read path.
+            Tx(TestItem.PrivateKeyB, TestItem.AddressE, nonce: 0, 1.Ether),
+        ];
+
+        Assert.Throws<InvalidTransactionException>(() => chains.ProcessBlock(txs));
     }
 }

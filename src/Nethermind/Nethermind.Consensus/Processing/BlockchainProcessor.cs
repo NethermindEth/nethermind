@@ -612,7 +612,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         finally
         {
-            if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
+            if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain) && _options.DeleteInvalidBlocks)
             {
                 DeleteInvalidBlocks(in processingBranch, invalidBlockHash);
             }
@@ -901,5 +901,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         public bool StoreReceiptsByDefault { get; set; } = true;
 
         public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
+
+        public bool DeleteInvalidBlocks { get; set; } = true;
     }
 }

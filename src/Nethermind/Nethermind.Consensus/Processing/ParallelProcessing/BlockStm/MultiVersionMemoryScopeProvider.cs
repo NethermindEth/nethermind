@@ -15,13 +15,21 @@ using Nethermind.Int256;
 namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 
 public class MultiVersionMemoryScopeProvider(
-    TxVersion version,
     IWorldStateScopeProvider baseProvider,
     MultiVersionMemory multiVersionMemory,
     FeeAccumulator feeAccumulator,
     ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites)
     : IWorldStateScopeProvider
 {
+    private TxVersion _version;
+
+    /// <summary>
+    /// Sets the per-tx version captured by the next <see cref="BeginScope"/>. The provider
+    /// is reused across multiple tx executions within a worker; each call before BeginScope
+    /// re-targets the read/write tracking to the new tx index.
+    /// </summary>
+    public void SetTxVersion(in TxVersion version) => _version = version;
+
     public HashSet<Read> ReadSet { get; private set; } = null!;
     public Dictionary<ParallelStateKey, object> WriteSet { get; private set; } = null!;
 
@@ -32,7 +40,7 @@ public class MultiVersionMemoryScopeProvider(
         ReadSet = []; //TODO: object pooling?
         WriteSet = [];
         object writeSetLock = new();
-        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, writeSetLock, blockCodeWrites);
+        return new MultiVersionMemoryScope(_version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, writeSetLock, blockCodeWrites);
     }
 
     private class MultiVersionMemoryScope(
