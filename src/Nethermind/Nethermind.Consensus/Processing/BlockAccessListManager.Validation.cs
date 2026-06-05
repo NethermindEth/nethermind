@@ -280,11 +280,20 @@ public partial class BlockAccessListManager
         }
 
         _generatedValidationIndex.Add(slice);
-        foreach (AccountChangesAtIndex ac in slice.AccountChanges)
+        if (preBlockCaches?.ReadCoverageEnabled == true)
         {
-            if (!IsSystemContract(ac.Address))
+            // Coverage path: reads aren't materialized; the worker counted this slice's distinct
+            // chargeable reads from its coverage at slice return.
+            _generatedChargeableStorageReads += (int)slice.ChargeableReadCount;
+        }
+        else
+        {
+            foreach (AccountChangesAtIndex ac in slice.AccountChanges)
             {
-                _generatedChargeableStorageReads += ac.StorageReads.Count;
+                if (!IsSystemContract(ac.Address))
+                {
+                    _generatedChargeableStorageReads += ac.StorageReads.Count;
+                }
             }
         }
 
@@ -380,8 +389,11 @@ public partial class BlockAccessListManager
             ThrowIncorrectChanges(block, overflowAddress, overflowIndex);
         }
 
+        // On the coverage path reads are validated by the per-worker read-coverage bitmap, not the
+        // (unmaterialized) flat read list; FindStructuralMismatch only checks account-set equivalence.
+        bool coverage = preBlockCaches?.ReadCoverageEnabled == true;
         BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
-            generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress, out int generatedAccountCount);
+            generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress, out int generatedAccountCount, compareReads: !coverage);
 
         string? error = mismatch switch
         {
@@ -398,5 +410,36 @@ public partial class BlockAccessListManager
         };
 
         if (error is not null) throw new InvalidBlockLevelAccessListException(block.Header, error);
+
+        if (coverage) ValidateReadCoverage(block);
     }
+
+    /// <summary>
+    /// Verify-only read-coverage check: OR-reduces the per-worker coverage bitmaps and requires every
+    /// declared read to have been executed (all <c>TotalReads</c> bits set). A suggested read that
+    /// execution never performed leaves its ordinal uncovered; undeclared execution reads already fail
+    /// fast at <c>BlockAccessListBasedWorldState.Get</c>.
+    /// </summary>
+    private void ValidateReadCoverage(Block block)
+    {
+        BalReadStoragePlan? plan = preBlockCaches!.StorageReadPlan;
+        int totalReads = plan?.TotalReads ?? 0;
+        using BalReadCoverage? reduced = preBlockCaches.DrainAndReduceReadCoverage();
+
+        if (totalReads == 0) return; // no declared reads to cover
+
+        if (reduced is null)
+        {
+            // Reads were declared but no worker produced coverage — none were executed.
+            ThrowMissingStorageReads(block, plan!.MapOrdinalToAddress(0));
+        }
+        else if (reduced.TryFindFirstUncovered(out int ordinal))
+        {
+            ThrowMissingStorageReads(block, plan!.MapOrdinalToAddress(ordinal));
+        }
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowMissingStorageReads(Block block, Address address)
+        => throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list declares a storage read for {address} that execution did not perform.");
 }

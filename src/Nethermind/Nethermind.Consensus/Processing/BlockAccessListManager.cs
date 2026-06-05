@@ -153,6 +153,14 @@ public partial class BlockAccessListManager(
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
+
+            // Verify-only parallel validation: workers mark per-worker read coverage instead of
+            // materializing a generated read set. Other modes (recorder / sequential / force-construct)
+            // keep full recording. Reuses the prewarmer's read plan when already built.
+            if (VerifyOnly && preBlockCaches is not null && suggestedBlock.BlockAccessList is not null)
+            {
+                preBlockCaches.EnableReadCoverage(suggestedBlock.BlockAccessList);
+            }
         }
     }
 

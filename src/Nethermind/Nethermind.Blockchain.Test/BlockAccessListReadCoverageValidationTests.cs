@@ -104,7 +104,7 @@ public class BlockAccessListReadCoverageValidationTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        using BlockAccessListManager balManager = CreateAmsterdamBalManager(stateProvider);
+        using BlockAccessListManager balManager = CreateBalManager(stateProvider);
 
         Block block = Build.A.Block
             .WithNumber(1)
@@ -135,6 +135,59 @@ public class BlockAccessListReadCoverageValidationTests
         }
     }
 
+    // Coverage path (PreBlockCaches present -> verify-only marks per-worker coverage instead of
+    // materializing reads). A system-contract read is the uncovered case so it is caught by coverage
+    // alone, not masked by the chargeable budget (system reads carry no chargeable weight).
+    [Test]
+    public void Coverage_AllDeclaredReadsCovered_DoesNotThrow()
+        => RunCoverageValidation(allReadsCovered: true);
+
+    [Test]
+    public void Coverage_UncoveredSystemRead_ThrowsViaCoverageNotBudget()
+        => RunCoverageValidation(allReadsCovered: false);
+
+    private static void RunCoverageValidation(bool allReadsCovered)
+    {
+        Address system = Eip7002Constants.WithdrawalRequestPredeployAddress;
+        ReadOnlyBlockAccessList suggested = Suggested(Reads(system, 0), Reads(TestItem.AddressA, 5));
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        PreBlockCaches caches = new();
+        using BlockAccessListManager balManager = CreateBalManager(stateProvider, caches);
+
+        Block block = Build.A.Block.WithNumber(1).WithGasUsed(0).WithBlockAccessList(suggested).TestObject;
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+        Assert.That(caches.ReadCoverageEnabled, Is.True, "verify-only parallel must enable coverage");
+
+        // A slice marking both accounts as accessed (account reads), so account-set equivalence holds;
+        // its chargeable count is the non-system read (AddressA) only.
+        BlockAccessListAtIndex slice = new() { Index = 0, ChargeableReadCount = 1 };
+        slice.AddAccountRead(system);
+        slice.AddAccountRead(TestItem.AddressA);
+        balManager.RegisterGeneratedSliceForTest(slice);
+
+        // Simulate execution covering the reads: always AddressA:5 (chargeable); the system read only
+        // when allReadsCovered, otherwise it is the uncovered gap.
+        BalReadCoverage coverage = caches.RentReadCoverage();
+        MarkCoverage(caches, coverage, TestItem.AddressA, 5);
+        if (allReadsCovered) MarkCoverage(caches, coverage, system, 0);
+
+        if (allReadsCovered)
+            Assert.DoesNotThrow(() => balManager.SetBlockAccessList(block));
+        else
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => balManager.SetBlockAccessList(block));
+    }
+
+    private static void MarkCoverage(PreBlockCaches caches, BalReadCoverage coverage, Address address, UInt256 slot)
+    {
+        Assert.That(caches.StorageReadPlan!.TryGetGlobalReadOrdinal(address, slot, out int ordinal), Is.True);
+        coverage.MarkRead(ordinal, chargeable: address != Eip7002Constants.WithdrawalRequestPredeployAddress);
+    }
+
     private static TestCaseData Case(
         string name,
         ReadOnlyBlockAccessList suggested,
@@ -150,12 +203,13 @@ public class BlockAccessListReadCoverageValidationTests
     private static ReadOnlyBlockAccessList Suggested(params ReadOnlyAccountChanges[] accounts)
         => Build.A.BlockAccessList.WithAccountChanges(accounts).TestObject;
 
-    private static BlockAccessListManager CreateAmsterdamBalManager(IWorldState stateProvider) =>
+    private static BlockAccessListManager CreateBalManager(IWorldState stateProvider, PreBlockCaches? preBlockCaches = null) =>
         new(
             stateProvider,
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            preBlockCaches: preBlockCaches);
 }

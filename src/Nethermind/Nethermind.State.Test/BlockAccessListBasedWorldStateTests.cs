@@ -179,6 +179,84 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void ReadCoverage_AllDeclaredReadsAccessed_AreCovered_SystemReadsExcludedFromCharge()
+    {
+        // Coverage replaces read materialization: declared reads mark a per-slice bitmap; system-
+        // contract reads are covered structurally but excluded from the chargeable budget.
+        Address system = Eip7002Constants.WithdrawalRequestPredeployAddress;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(system).WithStorageReads(0).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(5, 7).TestObject)
+            .TestObject;
+
+        PreBlockCaches caches = new();
+        caches.EnableReadCoverage(bal);
+        Assert.That(caches.ReadCoverageEnabled, Is.True);
+        Assert.That(caches.StorageReadPlan!.TotalReads, Is.EqualTo(3));
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(system, 1);
+                ws.Set(new StorageCell(system, 0), [1]);
+                ws.CreateAccount(TestItem.AddressA, 100);
+                ws.Set(new StorageCell(TestItem.AddressA, 5), [1, 1]);
+                ws.Set(new StorageCell(TestItem.AddressA, 7), [2, 2]);
+            },
+            preBlockCaches: caches);
+
+        using (scope)
+        {
+            Assert.That(bws.ReadCoverageActive, Is.True);
+            bws.Get(new StorageCell(system, 0));
+            bws.Get(new StorageCell(TestItem.AddressA, 5));
+            bws.Get(new StorageCell(TestItem.AddressA, 7));
+            Assert.That(bws.CurrentSliceChargeableReads, Is.EqualTo(2)); // system read excluded
+        }
+
+        using BalReadCoverage? reduced = caches.DrainAndReduceReadCoverage();
+        Assert.That(reduced, Is.Not.Null);
+        Assert.That(reduced!.TryFindFirstUncovered(out _), Is.False); // every declared read covered
+    }
+
+    [Test]
+    public void ReadCoverage_UnaccessedDeclaredRead_LeavesGap()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(5, 7).TestObject)
+            .TestObject;
+
+        PreBlockCaches caches = new();
+        caches.EnableReadCoverage(bal);
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 100);
+                ws.Set(new StorageCell(TestItem.AddressA, 5), [1, 1]);
+                ws.Set(new StorageCell(TestItem.AddressA, 7), [2, 2]);
+            },
+            preBlockCaches: caches);
+
+        using (scope)
+        {
+            bws.Get(new StorageCell(TestItem.AddressA, 5)); // slot 7 declared but never read
+        }
+
+        using BalReadCoverage? reduced = caches.DrainAndReduceReadCoverage();
+        Assert.That(reduced, Is.Not.Null);
+        Assert.That(reduced!.TryFindFirstUncovered(out int ordinal), Is.True);
+        Assert.That(caches.StorageReadPlan!.TryGetGlobalReadOrdinal(TestItem.AddressA, 7, out int slot7Ordinal), Is.True);
+        Assert.That(ordinal, Is.EqualTo(slot7Ordinal));
+        Assert.That(caches.StorageReadPlan!.MapOrdinalToAddress(ordinal), Is.EqualTo(TestItem.AddressA));
+    }
+
+    [Test]
     public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList

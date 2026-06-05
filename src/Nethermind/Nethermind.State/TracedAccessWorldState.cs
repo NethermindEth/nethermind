@@ -37,6 +37,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;
     protected IWorldState _innerWorldState = innerWorldState;
+    // Block-constant: when the inner BAL state marks verify-only read coverage, Get skips storage-read
+    // materialization. Set once per slice by the worker pool after the inner state's Setup.
+    private bool _coverageActive;
     // Set by SetGeneratingBlockAccessList; see class remarks.
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
@@ -52,6 +55,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     private bool _hasLastReadCell;
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
+    public void SetReadCoverageActive(bool active) => _coverageActive = active;
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);
@@ -103,7 +107,11 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         }
         else
         {
-            accountChanges = _generatingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
+            // Coverage mode: record the account read but skip storage-read materialization; the inner
+            // BAL state marks read coverage by ordinal instead (see BlockAccessListBasedWorldState.Get).
+            accountChanges = _coverageActive
+                ? _generatingBlockAccessList.RecordReadAndGet(storageCell.Address)
+                : _generatingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
             _lastReadStorageCell = storageCell;
             _lastReadStorageChanges = accountChanges;
             _hasLastReadCell = true;

@@ -29,6 +29,13 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public uint Index { get; set; }
 
+    /// <summary>
+    /// Distinct chargeable (non-system) declared reads this slice executed, captured from the worker's
+    /// read coverage at slice return. Used by the validator's read-budget tally on the coverage path
+    /// where per-read materialization is skipped; zero on the materialization path.
+    /// </summary>
+    public long ChargeableReadCount { get; set; }
+
     private readonly Dictionary<AddressAsKey, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
     private readonly List<Change> _changes = new(InitialChangeCapacity);
 

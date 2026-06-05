@@ -8,29 +8,24 @@ using System.Numerics;
 namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
-/// Per-worker proof that the suggested BAL's declared storage reads were all executed, replacing
-/// the materialized generated read set. Two lanes over the dense ordinal space of
+/// Per-slice proof that the suggested BAL's declared storage reads were executed, replacing the
+/// materialized generated read set. Two lanes over the dense ordinal space of
 /// <see cref="BalReadStoragePlan"/>: a structural coverage bitmap (every declared read, including
-/// system-contract reads) and a per-slice chargeable count (non-system reads, distinct within a
-/// slice, summed across slices) for the EIP-7928 read budget.
+/// system-contract reads) and a chargeable count (non-system reads, distinct within the slice) for
+/// the EIP-7928 read budget.
 /// </summary>
 /// <remarks>
-/// Each parallel worker owns one instance and marks it without synchronization on the SLOAD hot
-/// path: <see cref="MarkRead"/> is a single bit OR plus at most one stamp write. At block end the
-/// workers' bitmaps are OR-reduced via <see cref="Absorb"/> and the chargeable counts summed; the
-/// reduced bitmap must have all <c>TotalReads</c> bits set (checked by <see cref="TryFindFirstUncovered"/>).
-/// <para>
-/// The chargeable stamp distinguishes "first read of this ordinal in this slice" from a repeat by
-/// comparing a caller-supplied non-zero slice stamp against the rented-cleared stamp array (0 means
-/// "never seen"); callers pass the block-access index plus one so slice 0 is non-zero. Distinct
-/// slices stamp distinct values, so the same ordinal counts once per slice without clearing the
-/// array between slices. Backing arrays are pooled and released on <see cref="Dispose"/>.
-/// </para>
+/// Each parallel worker owns a fresh instance per slice (per tx) and marks it without synchronization
+/// on the SLOAD hot path: <see cref="MarkRead"/> is a single bit OR. Because the bitmap starts empty
+/// per slice, an unset bit means "first read of this ordinal in this slice", so the chargeable count
+/// dedups via the bitmap itself with no separate stamp array. At block end the slices' bitmaps are
+/// OR-reduced via <see cref="Absorb"/> (chargeable counts summed); the reduced bitmap must have all
+/// <c>TotalReads</c> bits set (checked by <see cref="TryFindFirstUncovered"/>). The backing array is
+/// pooled and released on <see cref="Dispose"/>.
 /// </remarks>
 public sealed class BalReadCoverage : IDisposable
 {
     private ulong[] _coverage;
-    private uint[] _sliceStamp;
     private readonly int _count;
     private readonly int _wordCount;
     private long _chargeableCount;
@@ -38,7 +33,7 @@ public sealed class BalReadCoverage : IDisposable
     /// <summary>Size of the ordinal space (the block's total declared storage reads).</summary>
     public int Count => _count;
 
-    /// <summary>This instance's accumulated per-slice-distinct chargeable read count.</summary>
+    /// <summary>This slice's distinct chargeable read count (summed across slices by <see cref="Absorb"/>).</summary>
     public long ChargeableCount => _chargeableCount;
 
     public BalReadCoverage(int count)
@@ -46,25 +41,23 @@ public sealed class BalReadCoverage : IDisposable
         _count = count;
         _wordCount = (count + 63) >> 6;
         _coverage = _wordCount == 0 ? [] : ArrayPool<ulong>.Shared.Rent(_wordCount);
-        _sliceStamp = count == 0 ? [] : ArrayPool<uint>.Shared.Rent(count);
-        // Rented arrays carry the previous tenant's contents; both lanes must start cleared.
+        // Rented arrays carry the previous tenant's contents; the bitmap must start cleared.
         _coverage.AsSpan(0, _wordCount).Clear();
-        _sliceStamp.AsSpan(0, count).Clear();
     }
 
     /// <summary>
-    /// Records a declared read at global <paramref name="ordinal"/>. Always marks the structural
-    /// coverage bit; when <paramref name="chargeable"/> (a non-system-contract read), also counts it
-    /// once per <paramref name="sliceStamp"/>.
+    /// Records a declared read at global <paramref name="ordinal"/>. Marks the structural coverage bit;
+    /// when <paramref name="chargeable"/> (a non-system-contract read) and this is the first time the
+    /// ordinal is seen this slice, counts it.
     /// </summary>
-    /// <param name="sliceStamp">Non-zero per-slice stamp (block-access index + 1).</param>
-    public void MarkRead(int ordinal, uint sliceStamp, bool chargeable)
+    public void MarkRead(int ordinal, bool chargeable)
     {
-        _coverage[ordinal >> 6] |= 1UL << (ordinal & 63);
-        if (chargeable && _sliceStamp[ordinal] != sliceStamp)
+        ref ulong word = ref _coverage[ordinal >> 6];
+        ulong mask = 1UL << (ordinal & 63);
+        if ((word & mask) == 0)
         {
-            _sliceStamp[ordinal] = sliceStamp;
-            _chargeableCount++;
+            word |= mask;
+            if (chargeable) _chargeableCount++;
         }
     }
 
@@ -118,11 +111,7 @@ public sealed class BalReadCoverage : IDisposable
     public void Dispose()
     {
         ulong[] coverage = _coverage;
-        uint[] sliceStamp = _sliceStamp;
         _coverage = [];
-        _sliceStamp = [];
-
         if (coverage.Length > 0) ArrayPool<ulong>.Shared.Return(coverage);
-        if (sliceStamp.Length > 0) ArrayPool<uint>.Shared.Return(sliceStamp);
     }
 }

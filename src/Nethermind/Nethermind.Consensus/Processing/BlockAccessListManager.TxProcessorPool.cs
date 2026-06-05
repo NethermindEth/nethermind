@@ -181,7 +181,11 @@ public partial class BlockAccessListManager
             TxProcessorWithWorldState? processor = _inUse[idx];
             if (processor is null) return;
 
-            _perTxBal[idx] = processor.WorldState.GetGeneratingBlockAccessList();
+            BlockAccessListAtIndex? slice = processor.WorldState.GetGeneratingBlockAccessList();
+            // Capture the slice's chargeable read count before ClearParentReader drops the coverage;
+            // the validator tallies it per slice on the coverage path (zero on the materialization path).
+            if (slice is not null) slice.ChargeableReadCount = processor.SliceChargeableReads;
+            _perTxBal[idx] = slice;
             processor.WorldState.SetGeneratingBlockAccessList(null);
             processor.ClearParentReader();
             _inUse[idx] = null;
@@ -369,6 +373,9 @@ public partial class BlockAccessListManager
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private ParentReaderLease? _parentReader;
 
+        /// <summary>Distinct chargeable reads the inner BAL state marked for the current slice (coverage path); zero otherwise.</summary>
+        public long SliceChargeableReads => _balWorldState?.CurrentSliceChargeableReads ?? 0;
+
         public TxProcessorWithWorldState(
             bool parallel,
             IBlockhashProvider blockHashProvider,
@@ -406,6 +413,7 @@ public partial class BlockAccessListManager
                 _balWorldState.SetParentReader(parentReader.WorldState);
                 _balWorldState.Setup(block);
             }
+            WorldState.SetReadCoverageActive(_balWorldState?.ReadCoverageActive ?? false);
         }
 
         public void ClearParentReader()

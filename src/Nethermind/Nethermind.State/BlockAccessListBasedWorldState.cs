@@ -33,6 +33,15 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     private IWorldState? _parentReader;
     private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
     private uint _blockAccessIndex = 0;
+    // Verify-only read coverage (replaces generated read materialization). A fresh instance is rented
+    // per slice (per tx) when PreBlockCaches.ReadCoverageEnabled, marked per declared read; the
+    // validator OR-reduces every slice's coverage at block end. Per-slice, so no block tag is needed:
+    // only one block runs at a time and the worker's state is cleared at slice return.
+    private BalReadCoverage? _readCoverage;
+    private Address? _coverageAccount;        // last marked account, for cursor reuse
+    private int _coverageAccountIndex;
+    private bool _coverageHasAccount;
+    private int _coverageCursor;              // ascending-read cursor within _coverageAccount
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
     private UInt256 _scratchBalance;
@@ -53,6 +62,26 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         _suggestedBlockHeader = suggestedBlock.Header;
         _codeChangesByHash = BuildCodeChangesByHash();
         _transientStorageProvider.Reset();
+        SetupReadCoverage();
+    }
+
+    /// <summary>Whether this worker is marking verify-only read coverage for the current block.</summary>
+    public bool ReadCoverageActive => _readCoverage is not null;
+
+    /// <summary>
+    /// Distinct chargeable (non-system) declared reads this worker marked for the current slice. Read
+    /// by the pool at slice return so the validator can accumulate the chargeable budget per slice.
+    /// </summary>
+    public long CurrentSliceChargeableReads => _readCoverage?.ChargeableCount ?? 0;
+
+    // Setup runs per tx (per slice): rent a fresh coverage and reset the ascending-read cursor. The
+    // slice's coverage is enqueued for the block-end reduce; the worker forgets it at slice return.
+    private void SetupReadCoverage()
+    {
+        _readCoverage = preBlockCaches is { ReadCoverageEnabled: true } caches ? caches.RentReadCoverage() : null;
+        _coverageAccount = null;
+        _coverageHasAccount = false;
+        _coverageCursor = -1;
     }
 
     public void SetParentReader(IWorldState parentReader)
@@ -71,6 +100,9 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         _suggestedBlockAccessList = null;
         _suggestedBlockHeader = null;
         _codeChangesByHash = null;
+        // The slice's coverage is owned by the block-end reduce queue now; drop our reference so the
+        // next slice rents a fresh one.
+        _readCoverage = null;
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
@@ -112,11 +144,16 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
             }
 
             // Pure declared read (slotChanges is null): a slot the BAL proves is read-only this block,
-            // so original == current == pre-state. Serve it from the prefetched ordinal destination or
-            // the parent's registry-bypassing read; both are byte-identical to parentReader.Get.
-            if (slotChanges is null && TryReadDeclaredPureRead(in storageCell, out byte[]? value))
+            // so original == current == pre-state. Mark verify-only read coverage, then serve it from
+            // the prefetched ordinal destination or the parent's registry-bypassing read; both are
+            // byte-identical to parentReader.Get.
+            if (slotChanges is null)
             {
-                return value;
+                MarkDeclaredReadCoverage(in storageCell);
+                if (TryReadDeclaredPureRead(in storageCell, out byte[]? value))
+                {
+                    return value;
+                }
             }
 
             return parentReader.Get(storageCell);
@@ -125,6 +162,36 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         ThrowMissingStorage(storageCell);
         return default;
     }
+
+    // Marks a declared storage read in the per-worker coverage, replacing generated read-set
+    // materialization. Folds the ordinal lookup onto an ascending-read cursor (O(1) for sorted streams).
+    // GetOriginal does not mark: it is only reached after Get for the same slot (SSTORE), already marked.
+    private void MarkDeclaredReadCoverage(in StorageCell storageCell)
+    {
+        BalReadCoverage? coverage = _readCoverage;
+        if (coverage is null) return;
+
+        Address address = storageCell.Address;
+        BalReadStoragePlan plan = preBlockCaches!.StorageReadPlan!;
+        if (!address.Equals(_coverageAccount))
+        {
+            _coverageHasAccount = plan.TryGetAccountIndex(address, out _coverageAccountIndex);
+            _coverageAccount = address;
+            _coverageCursor = -1;
+        }
+
+        if (_coverageHasAccount &&
+            plan.TryGetReadLocalIndex(_coverageAccountIndex, storageCell.Index, ref _coverageCursor, out int localIndex))
+        {
+            int ordinal = plan.GlobalReadOrdinal(_coverageAccountIndex, localIndex);
+            coverage.MarkRead(ordinal, chargeable: !IsSystemContract(address));
+        }
+    }
+
+    // System-contract reads are structurally compared but excluded from the chargeable read budget.
+    private static bool IsSystemContract(Address address)
+        => address == Eip7002Constants.WithdrawalRequestPredeployAddress
+        || address == Eip7251Constants.ConsolidationRequestPredeployAddress;
 
     /// <remarks>
     /// For a BAL-declared read the value never changes in-block, so the same lookup answers both

@@ -82,6 +82,23 @@ public sealed class BalReadStoragePlan
     public int GlobalReadOrdinal(int accountIndex, int localIndex) => _accounts[accountIndex].ReadBase + localIndex;
 
     /// <summary>
+    /// Maps a global read ordinal back to the account that owns it. Used only on the (rare) read-
+    /// coverage mismatch path to name the offending account; a linear scan over the accounts.
+    /// </summary>
+    public Address MapOrdinalToAddress(int globalOrdinal)
+    {
+        for (int i = 0; i < _accounts.Length; i++)
+        {
+            AccountEntry entry = _accounts[i];
+            if (globalOrdinal < entry.ReadBase + entry.Account.StorageReads.Length)
+            {
+                return entry.Account.Address;
+            }
+        }
+        return Address.Zero;
+    }
+
+    /// <summary>
     /// Finds the local index of <paramref name="slot"/> within the account's declared reads.
     /// </summary>
     /// <param name="cursor">
