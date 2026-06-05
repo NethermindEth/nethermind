@@ -784,7 +784,7 @@ namespace Nethermind.Trie
                     else
                     {
                         // 63%
-                        // 2+ non-null children, no need to collpase any node
+                        // 2+ non-null children, no need to collapse any node
                         // Nothing resolved, nothing captured (for witness recording, stateless execution)
                         return node;
                     }

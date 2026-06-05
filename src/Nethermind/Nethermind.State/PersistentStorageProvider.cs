@@ -516,7 +516,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             // resolving the surviving sibling node. Applying deletes last keeps the trie traversal aligned with
             // stateless verifiers that insert before deleting (see EELS client), which may avoid unnecessary branch
             // node collapses causing extra node resolving. So the captured witness node-set matches and partial-trie replay stays consistent.
-            // Deletes are usually rare i think, so we defer them into a pooled list only when encountered rather than scanning twice.
+            // Deletes are likely rare, so only allocate the list when one is encountered.
 
             ArrayPoolList<KeyValuePair<UInt256, StorageChangeTrace>>? deferredDeletes = null;
 
