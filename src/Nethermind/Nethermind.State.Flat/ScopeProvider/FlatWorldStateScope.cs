@@ -24,6 +24,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
+    private readonly NodeStorageCache? _nodeStorageCache;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
 
@@ -53,7 +54,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
-        bool isReadOnly = false)
+        bool isReadOnly = false,
+        NodeStorageCache? nodeStorageCache = null)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
@@ -62,7 +64,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _stateTree = new(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
+            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, nodeStorageCache),
             logManager
         )
         {
@@ -70,7 +72,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         };
 
         _warmupStateTree = new(
-            new StateTrieStoreWarmerAdapter(snapshotBundle),
+            new StateTrieStoreWarmerAdapter(snapshotBundle, nodeStorageCache),
             logManager
         )
         {
@@ -80,6 +82,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _configuration = configuration;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
+        _nodeStorageCache = nodeStorageCache;
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
@@ -234,6 +237,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             _concurrencyQuota,
                             storageRoot,
                             address,
+                            _nodeStorageCache,
                             _logManager);
 
                         foreach (ReadOnlySlotChanges slotChanges in storageChanges)
@@ -351,6 +355,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _concurrencyQuota,
             storageRoot,
             address,
+            _nodeStorageCache,
             _logManager);
 
         return storage;

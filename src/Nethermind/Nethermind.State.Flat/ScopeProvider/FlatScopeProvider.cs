@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -15,6 +16,7 @@ public class FlatScopeProvider(
     IFlatDbConfig configuration,
     ITrieWarmer trieWarmer,
     ResourcePool.Usage usage,
+    NodeStorageCache? nodeStorageCache,
     ILogManager logManager,
     bool isReadOnly)
     : IWorldStateScopeProvider
@@ -39,6 +41,7 @@ public class FlatScopeProvider(
             configuration,
             trieWarmer,
             logManager,
-            isReadOnly: isReadOnly);
+            isReadOnly: isReadOnly,
+            nodeStorageCache: nodeStorageCache);
     }
 }

@@ -9,6 +9,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.SnapServer;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -23,7 +24,8 @@ public class FlatWorldStateManager(
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
-    ILogManager logManager)
+    ILogManager logManager,
+    NodeStorageCache? nodeStorageCache = null)
     : IWorldStateManager
 {
     private readonly FlatScopeProvider _mainWorldState = new(
@@ -32,6 +34,7 @@ public class FlatWorldStateManager(
         configuration,
         trieWarmer,
         ResourcePool.Usage.MainBlockProcessing,
+        nodeStorageCache,
         logManager,
         isReadOnly: false);
 
@@ -66,6 +69,7 @@ public class FlatWorldStateManager(
             configuration,
             new NoopTrieWarmer(),
             ResourcePool.Usage.ReadOnlyProcessingEnv,
+            nodeStorageCache,
             logManager,
             isReadOnly: true);
 
