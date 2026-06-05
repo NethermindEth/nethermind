@@ -125,7 +125,7 @@ public static class StatelessExecutor
         if (!ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider))
             throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
 
-        // If the active fork is empty, use the base provider directly
+        // Empty arrays mean ActiveFork was omitted -— use the base provider as-is.
         if (chainConfig.ActiveFork.Fork == 0 &&
             chainConfig.ActiveFork.Activation.BlockNumber.Length == 0 &&
             chainConfig.ActiveFork.Activation.Timestamp.Length == 0)
