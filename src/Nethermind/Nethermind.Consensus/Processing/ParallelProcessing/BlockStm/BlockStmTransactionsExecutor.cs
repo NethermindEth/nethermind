@@ -73,10 +73,10 @@ public class BlockStmTransactionsExecutor(
     /// this without contending on the static <see cref="Metrics"/> counters.
     /// </summary>
     public ParallelBlockMetrics LastBlockSnapshot { get; private set; } = ParallelBlockMetrics.Empty;
-    // 0 => use logical-processor count, otherwise the configured value.
+    // 0 (default) => 75% of logical processors, min 1 — leaves headroom for CL traffic, RPC, sync.
     private readonly int _concurrencyLevel = blocksConfig.BlockStmConcurrency > 0
         ? blocksConfig.BlockStmConcurrency
-        : Math.Max(1, Environment.ProcessorCount);
+        : Math.Max(1, (Environment.ProcessorCount * 3) / 4);
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
     {
