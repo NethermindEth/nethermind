@@ -24,6 +24,10 @@ on:
         description: Reference node RPC URL
         required: true
         type: string
+  # TODO: temporary - remove BEFORE merge
+  push:
+    branches:
+      - feat/rpc-test-mon
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -90,6 +94,6 @@ jobs:
               -e RPC_MONITOR_BOT_TOKEN="$SLACK_BOT_TOKEN" \
               -e RPC_MONITOR_CHANNEL_ID="$SLACK_CHANNEL_ID" \
               nethermindeth/rpc-monitor:latest \
-              --target "${{ inputs.target_url }}" \
-              --reference "${{ inputs.reference_url }}" \
-              --tests "${{ inputs.chain }}/**/*"
+              --target "${{ inputs.target_url || 'http://38.154.254.162:8545' }}" \
+              --reference "${{ inputs.reference_url || 'https://ethereum-rpc.publicnode.com' }}" \
+              --tests "${{ inputs.chain || 'mainnet' }}/**/*"
