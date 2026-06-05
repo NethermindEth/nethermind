@@ -16,16 +16,14 @@ public class InclusionListTxSource(
     ISpecProvider? specProvider,
     Logging.ILogManager? logManager) : ITxSource
 {
+    private readonly InclusionListDecoder _decoder = new(ecdsa, specProvider, logManager);
     private IEnumerable<Transaction> _inclusionListTransactions = [];
-
-    private InclusionListDecoder? _decoder;
-    private InclusionListDecoder Decoder => _decoder ??= new InclusionListDecoder(ecdsa, specProvider, logManager);
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         => Volatile.Read(ref _inclusionListTransactions);
 
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
-        => Volatile.Write(ref _inclusionListTransactions, Decoder.DecodeAndRecover(inclusionListTransactions, spec));
+        => Volatile.Write(ref _inclusionListTransactions, _decoder.DecodeAndRecover(inclusionListTransactions, spec));
 
     public bool SupportsBlobs => false;
 }

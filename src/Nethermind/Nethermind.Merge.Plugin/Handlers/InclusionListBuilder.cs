@@ -12,8 +12,6 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class InclusionListBuilder(ITxPool txPool)
 {
-    private readonly Random _rnd = new();
-
     public IEnumerable<byte[]> GetInclusionList() =>
         DecodeTransactionsUpToLimit(ReservoirSampleNonBlobTxs(txPool.GetPendingTransactions()));
 
@@ -21,10 +19,11 @@ public class InclusionListBuilder(ITxPool txPool)
     // mempool size. The earlier .Where(...).Shuffle(...) path materialised the entire filtered
     // mempool into an ArrayPoolList that grew through power-of-2 reallocations.
     // TODO: score txs and randomly sample weighted by score.
-    private ArrayPoolList<Transaction> ReservoirSampleNonBlobTxs(Transaction[] mempool)
+    private static ArrayPoolList<Transaction> ReservoirSampleNonBlobTxs(Transaction[] mempool)
     {
         const int capacity = Eip7805Constants.MaxTransactionsPerInclusionList;
         ArrayPoolList<Transaction> reservoir = new(capacity, capacity);
+        Random rnd = Random.Shared;
         int seen = 0;
 
         for (int i = 0; i < mempool.Length; i++)
@@ -39,7 +38,7 @@ public class InclusionListBuilder(ITxPool txPool)
             }
             else
             {
-                int j = _rnd.Next(seen + 1);
+                int j = rnd.Next(seen + 1);
                 if (j < capacity) reservoir[j] = tx;
             }
             seen++;
@@ -50,7 +49,7 @@ public class InclusionListBuilder(ITxPool txPool)
         // priority, so the order needs to be random too, not just the membership.
         for (int i = actual - 1; i > 0; i--)
         {
-            int j = _rnd.Next(i + 1);
+            int j = rnd.Next(i + 1);
             (reservoir[i], reservoir[j]) = (reservoir[j], reservoir[i]);
         }
 

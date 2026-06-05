@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -124,6 +122,13 @@ public class InclusionListDecoder(
     public static byte[] Encode(Transaction transaction)
         => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
 
-    public static byte[][] Encode(IEnumerable<Transaction> transactions)
-        => [.. transactions.Select(Encode)];
+    public static byte[][] Encode(Transaction[] transactions)
+    {
+        byte[][] result = new byte[transactions.Length][];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            result[i] = Encode(transactions[i]);
+        }
+        return result;
+    }
 }

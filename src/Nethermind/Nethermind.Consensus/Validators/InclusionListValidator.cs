@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -20,33 +22,36 @@ public static class InclusionListValidator
         // FOCIL is conditional: no gas left for a base-cost transfer → nothing is appendable.
         if (block.GasUsed + Transaction.BaseTxGasCost > block.GasLimit) return true;
 
-        // Mark IL entries already present in the block via linear scan. Stack-allocate the bitmap
-        // when IL fits within the spec cap; pool the heap fallback for malformed oversize inputs.
+        // Stack-allocate the inclusion bitmap when IL fits the spec cap; pool the heap fallback.
         using ArrayPoolList<bool>? pooled = il.Length > Eip7805Constants.MaxTransactionsPerInclusionList
             ? new ArrayPoolList<bool>(il.Length, il.Length)
             : null;
         Span<bool> included = pooled is null ? stackalloc bool[il.Length] : pooled.AsSpan();
 
-        foreach (Transaction blockTx in block.Transactions)
-        {
-            for (int i = 0; i < il.Length; i++)
-            {
-                if (!included[i] && blockTx.Hash == il[i].Hash)
-                {
-                    included[i] = true;
-                    break;
-                }
-            }
-        }
-
+        // O(N+M) inclusion marking: hash → IL index, one dict lookup per block tx.
+        Dictionary<Hash256, int> ilByHash = new(il.Length);
         for (int i = 0; i < il.Length; i++)
         {
-            if (!included[i] && CouldIncludeTx(il[i], block, state)) return false;
+            Hash256? h = il[i].Hash;
+            if (h is not null) ilByHash[h] = i;
+        }
+
+        foreach (Transaction blockTx in block.Transactions)
+        {
+            if (blockTx.Hash is not null && ilByHash.TryGetValue(blockTx.Hash, out int idx))
+                included[idx] = true;
+        }
+
+        // Dedup sender state reads: spam IL with many txs from one sender → 1 TryGetAccount.
+        Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
+        for (int i = 0; i < il.Length; i++)
+        {
+            if (!included[i] && CouldIncludeTx(il[i], block, state, ref senderCache)) return false;
         }
         return true;
     }
 
-    private static bool CouldIncludeTx(Transaction tx, Block block, IAccountStateProvider state)
+    private static bool CouldIncludeTx(Transaction tx, Block block, IAccountStateProvider state, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
         if (tx.SenderAddress is null) return false;
         if (block.GasUsed + tx.GasLimit > block.GasLimit) return false;
@@ -55,7 +60,12 @@ public static class InclusionListValidator
         // (which is what tx.GasPrice exposes for type-2). Matches TransactionProcessor.
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
 
-        if (!state.TryGetAccount(tx.SenderAddress, out AccountStruct account)) return false;
+        senderCache ??= [];
+        if (!senderCache.TryGetValue(tx.SenderAddress, out AccountStruct account))
+        {
+            if (!state.TryGetAccount(tx.SenderAddress, out account)) return false;
+            senderCache[tx.SenderAddress] = account;
+        }
         UInt256 txCost = tx.Value + (UInt256)tx.GasLimit * tx.MaxFeePerGas;
         return account.Balance >= txCost && account.Nonce == tx.Nonce;
     }
