@@ -109,10 +109,7 @@ public static class StatelessExecutor
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
-        Block processedBlock;
-        TxReceipt[] receipts;
-
-        (processedBlock, receipts) = blockProcessor.ProcessOne(
+        (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
             suggestedBlock,
             ProcessingOptions.ReadOnlyChain,
             NullBlockTracer.Instance,
