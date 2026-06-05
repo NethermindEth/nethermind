@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
@@ -28,12 +28,16 @@ public sealed class MultiVersionMemory(int txCount)
         public bool IsEstimate => Incarnation == -1;
     }
 
-    // Per-tx write-sets. Each entry is a Dictionary guarded by a RWLock so the executing
-    // worker can publish writes (under WriteLock) while higher txs read concurrently
-    // (under ReadLock).
-    private readonly DataDictionary[] _data = Enumerable.Range(0, txCount)
-        .Select(_ => new DataDictionary())
+    // Per-tx write-sets. Each entry is a ConcurrentDictionary so the executing worker can
+    // publish writes while higher txs read concurrently — lock-free on the hot read path.
+    private readonly ConcurrentDictionary<ParallelStateKey, Value>[] _data = Enumerable.Range(0, txCount)
+        .Select(_ => new ConcurrentDictionary<ParallelStateKey, Value>())
         .ToArray();
+
+    // Per-key writer index: every ever-written location maps to the sorted-descending list
+    // of tx indices that currently hold a write for it. TryRead consults this O(1) instead
+    // of walking N prior tx-dicts. Maintenance happens in ApplyWriteSet only.
+    private readonly ConcurrentDictionary<ParallelStateKey, WriterList> _keyWriters = new();
 
     // Locations written by the latest published incarnation of each tx — used to detect
     // removed keys on re-execution and to convert writes to estimates on validation abort.
@@ -69,18 +73,21 @@ public sealed class MultiVersionMemory(int txCount)
     private bool ApplyWriteSet(TxVersion version, Dictionary<ParallelStateKey, object> writeSet)
     {
         (int txIndex, int incarnation) = (version.TxIndex, version.Incarnation);
-        DataDictionary txData = _data[txIndex];
+        ConcurrentDictionary<ParallelStateKey, Value> txData = _data[txIndex];
         ref HashSet<ParallelStateKey>? lastWritten = ref _lastWrittenLocations[txIndex];
         lastWritten ??= [];
 
         bool writeSetChanged = false;
 
-        txData.Lock.EnterWriteLock();
-        try
+        // ConcurrentDictionary writes are individually atomic; readers (TryRead on higher
+        // txs) see either the old or the new Value, never a torn record. The lock here
+        // protects the lastWritten HashSet only — ConvertWritesToEstimates may iterate it
+        // from another worker concurrently with this tx's owner re-recording.
+        lock (lastWritten)
         {
             foreach (KeyValuePair<ParallelStateKey, object> write in writeSet)
             {
-                txData.Dictionary[write.Key] = new Value(incarnation, write.Value);
+                txData[write.Key] = new Value(incarnation, write.Value);
             }
 
             if (lastWritten.Count != 0)
@@ -100,32 +107,43 @@ public sealed class MultiVersionMemory(int txCount)
                     foreach (ParallelStateKey id in toRemove)
                     {
                         lastWritten.Remove(id);
-                        txData.Dictionary.Remove(id, out _);
+                        txData.TryRemove(id, out _);
+                        RemoveFromKeyWriters(id, txIndex);
                     }
                 }
             }
 
-            // Mutate lastWritten inside the write lock so concurrent enumerators (e.g. a
-            // ConvertWritesToEstimates that beats the status fence) don't see a torn HashSet.
             foreach (ParallelStateKey key in writeSet.Keys)
             {
-                lastWritten.Add(key);
+                if (lastWritten.Add(key))
+                {
+                    AddToKeyWriters(key, txIndex);
+                }
                 writeSetChanged = true;
             }
         }
-        finally
-        {
-            txData.Lock.ExitWriteLock();
-        }
 
         return writeSetChanged;
+    }
+
+    private void AddToKeyWriters(ParallelStateKey key, int txIndex) =>
+        _keyWriters.GetOrAdd(key, static _ => new WriterList()).Add(txIndex);
+
+    private void RemoveFromKeyWriters(ParallelStateKey key, int txIndex)
+    {
+        if (_keyWriters.TryGetValue(key, out WriterList? writers))
+        {
+            writers.Remove(txIndex);
+            // Leave empty WriterList in the map: shrinking races with concurrent readers and
+            // the per-key wrapper is tiny. The empty list is cheap to consult.
+        }
     }
 
     /// <summary>
     /// Final write-set of the latest incarnation. Caller must only access after the parallel
     /// runner has drained — no lock is taken.
     /// </summary>
-    public Dictionary<ParallelStateKey, Value> GetFinalWriteSet(int txIndex) => _data[txIndex].Dictionary;
+    public ConcurrentDictionary<ParallelStateKey, Value> GetFinalWriteSet(int txIndex) => _data[txIndex];
 
     /// <summary>
     /// Marks every location previously written by this tx as <see cref="Value.Estimate"/>
@@ -136,42 +154,50 @@ public sealed class MultiVersionMemory(int txCount)
         HashSet<ParallelStateKey>? previousLocations = _lastWrittenLocations[txIndex];
         if (previousLocations is null) return;
 
-        DataDictionary txData = _data[txIndex];
-        txData.Lock.EnterWriteLock();
-        try
+        ConcurrentDictionary<ParallelStateKey, Value> txData = _data[txIndex];
+        // Snapshot under the per-tx lock so we don't race a concurrent ApplyWriteSet
+        // mutating the HashSet. The dict writes are lock-free; each [key]=Estimate is
+        // an atomic CAS-style replace.
+        ParallelStateKey[] snapshot;
+        lock (previousLocations)
         {
-            foreach (ParallelStateKey location in previousLocations)
-            {
-                txData.Dictionary[location] = Value.Estimate;
-            }
+            if (previousLocations.Count == 0) return;
+            snapshot = [.. previousLocations];
         }
-        finally
+        foreach (ParallelStateKey location in snapshot)
         {
-            txData.Lock.ExitWriteLock();
+            txData[location] = Value.Estimate;
         }
     }
 
     /// <summary>
-    /// Reads <paramref name="location"/> from the perspective of <paramref name="txIndex"/>:
-    /// walks lower txs from txIndex-1 downward, returning the first match.
+    /// Reads <paramref name="location"/> from the perspective of <paramref name="txIndex"/>
+    /// via the per-key writer index: jumps directly to the highest writer tx whose index is
+    /// below <paramref name="txIndex"/> instead of scanning all lower slots.
     /// </summary>
     /// <returns>
     /// <see cref="Status.Ok"/> with the value and writing-tx version; or
-    /// <see cref="Status.NotFound"/> if no lower tx wrote (caller falls back to DB); or
-    /// <see cref="Status.ReadError"/> if a lower tx wrote an Estimate (caller must abort and
-    /// take a dependency).
+    /// <see cref="Status.NotFound"/> if no lower tx wrote (caller falls back to DB or system
+    /// overlay); or <see cref="Status.ReadError"/> if a lower tx wrote an Estimate (caller
+    /// must abort and take a dependency).
     /// </returns>
+    /// <remarks>
+    /// Race handling: the writer index is updated outside the per-tx data dict's atomic
+    /// slot. If a writer removes its own write between our index hit and the dict fetch,
+    /// the dict lookup misses; we retry with the next-lower writer until exhausted.
+    /// </remarks>
     public Status TryRead(ParallelStateKey location, int txIndex, out TxVersion version, out object? value)
     {
-        for (int prevTx = txIndex - 1; prevTx >= 0; prevTx--)
+        if (_keyWriters.TryGetValue(location, out WriterList? writers))
         {
-            DataDictionary prevTransactionData = _data[prevTx];
-            prevTransactionData.Lock.EnterReadLock();
-            try
+            int upper = txIndex;
+            while (true)
             {
-                if (prevTransactionData.Dictionary.TryGetValue(location, out Value v))
+                int writerTx = writers.FindHighestBelow(upper);
+                if (writerTx < 0) break;
+                if (_data[writerTx].TryGetValue(location, out Value v))
                 {
-                    version = new TxVersion(prevTx, v.Incarnation);
+                    version = new TxVersion(writerTx, v.Incarnation);
                     if (v.IsEstimate)
                     {
                         value = null;
@@ -180,10 +206,7 @@ public sealed class MultiVersionMemory(int txCount)
                     value = v.Data;
                     return Status.Ok;
                 }
-            }
-            finally
-            {
-                prevTransactionData.Lock.ExitReadLock();
+                upper = writerTx;
             }
         }
 
@@ -223,10 +246,55 @@ public sealed class MultiVersionMemory(int txCount)
         return true;
     }
 
-    private sealed class DataDictionary
+    /// <summary>
+    /// Sorted-descending list of tx indices that currently write a given key. Reads are
+    /// hot (every TryRead consults one); mutations happen only inside ApplyWriteSet.
+    /// </summary>
+    /// <remarks>
+    /// Uses a plain <see cref="List{T}"/> + monitor lock — for the common case of 1-3
+    /// writers per key, this beats a balanced tree on both memory and constant factors.
+    /// FindHighestBelow does a manual scan from the front since the list is sorted
+    /// descending and typically tiny; a binary search would be a wash at these sizes.
+    /// </remarks>
+    private sealed class WriterList
     {
-        public readonly Dictionary<ParallelStateKey, Value> Dictionary = [];
-        public readonly ReaderWriterLockSlim Lock = new();
+        private readonly List<int> _indicesDesc = [];
+
+        public void Add(int txIndex)
+        {
+            lock (_indicesDesc)
+            {
+                int idx = _indicesDesc.BinarySearch(txIndex, DescendingComparer.Instance);
+                if (idx < 0) _indicesDesc.Insert(~idx, txIndex);
+            }
+        }
+
+        public void Remove(int txIndex)
+        {
+            lock (_indicesDesc)
+            {
+                int idx = _indicesDesc.BinarySearch(txIndex, DescendingComparer.Instance);
+                if (idx >= 0) _indicesDesc.RemoveAt(idx);
+            }
+        }
+
+        public int FindHighestBelow(int txIndex)
+        {
+            lock (_indicesDesc)
+            {
+                foreach (int i in _indicesDesc)
+                {
+                    if (i < txIndex) return i;
+                }
+                return -1;
+            }
+        }
+
+        private sealed class DescendingComparer : IComparer<int>
+        {
+            public static readonly DescendingComparer Instance = new();
+            public int Compare(int x, int y) => y.CompareTo(x);
+        }
     }
 }
 
