@@ -113,12 +113,14 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             try
             {
                 // Should be added on Pong.
-                await _kademliaMessageSender.Ping(node, token);
-                System.Threading.Interlocked.Increment(ref onlineBootNodes);
+                if (await _kademliaMessageSender.Ping(node, token))
+                {
+                    System.Threading.Interlocked.Increment(ref onlineBootNodes);
+                }
             }
             catch (OperationCanceledException)
             {
-                // Unreachable
+                throw;
             }
             catch (Exception e)
             {
@@ -126,7 +128,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             }
         });
 
-        if (_logger.IsInfo) _logger.Info($"Online bootnodes: {onlineBootNodes}");
+        if (_logger.IsDebug) _logger.Debug($"Online bootnodes: {onlineBootNodes}");
 
         TKey currentNodeIdAsKey = _keyOperator.GetKey(_currentNodeId);
         await LookupNodesClosest(currentNodeIdAsKey, token);

@@ -147,6 +147,9 @@ public class SyncDispatcherTests
         private readonly ConcurrentQueue<TestBatch> _returned = new();
         private readonly ManualResetEvent _responseLock = new(true);
         private readonly TaskCompletionSource _handleResponseCalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly object _watcherLock = new();
+        private int _watchedTarget = int.MaxValue;
+        private TaskCompletionSource? _watchedReached;
 
         public void LockResponse() =>
             _responseLock.Reset();
@@ -220,11 +223,30 @@ public class SyncDispatcherTests
                     HighestRequested += 8;
                 }
 
+                lock (_watcherLock)
+                {
+                    if (HighestRequested >= _watchedTarget)
+                    {
+                        _watchedReached?.TrySetResult();
+                    }
+                }
+
                 testBatch = new TestBatch(start, 8);
             }
 
             Interlocked.Increment(ref _pendingRequests);
             return testBatch;
+        }
+
+        public Task WaitForHighestRequested(int target)
+        {
+            lock (_watcherLock)
+            {
+                if (HighestRequested >= target) return Task.CompletedTask;
+                _watchedTarget = target;
+                _watchedReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                return _watchedReached.Task;
+            }
         }
     }
 
@@ -338,7 +360,6 @@ public class SyncDispatcherTests
         return (syncFeed, dispatcher);
     }
 
-    [Retry(tryCount: 5)]
     [TestCase(false, 1, 1, 8)]
     [TestCase(true, 1, 1, 24)]
     [TestCase(true, 2, 1, 32)]
@@ -363,9 +384,12 @@ public class SyncDispatcherTests
         Task _ = dispatcher.Start(CancellationToken.None);
         syncFeed.Activate();
 
-        await Task.Delay(100);
+        await syncFeed.WaitForHighestRequested(expectedHighestRequest).WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.That(() => syncFeed.HighestRequested, Is.EqualTo(expectedHighestRequest).After(4000, 100));
+        // The dispatcher must now plateau because all peers are busy / processing slots are full
+        // and HandleResponse is locked. Drain the scheduling queue and verify no further growth.
+        await Task.Yield();
+        Assert.That(syncFeed.HighestRequested, Is.EqualTo(expectedHighestRequest));
         syncFeed.UnlockResponse();
     }
 }

@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
@@ -1246,6 +1247,36 @@ public class BlockTreeTests
         Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "best known");
         Assert.That(tree.Head?.Header, Is.EqualTo(block5.Header), "head");
         Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block5.Hash), "suggested");
+    }
+
+    [Test]
+    public void Report_bad_block_stores_block_and_does_not_alter_main_chain()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
+        BlockTree blockTree = builder.TestObject;
+        BlockHeader originalSuggested = blockTree.BestSuggestedHeader!;
+        Block bad = Build.A.Block.WithNumber(4).WithParent(blockTree.Head!).TestObject;
+
+        blockTree.ReportBadBlock(bad);
+
+        Block[] stored = builder.BadBlockStore.GetAll().ToArray();
+        Assert.That(stored, Has.Length.EqualTo(1));
+        Assert.That(stored[0].Hash, Is.EqualTo(bad.Hash!));
+        Assert.That(blockTree.FindBlock(bad.Hash!, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
+        Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(originalSuggested),
+            "ReportBadBlock must not roll back BestSuggested the way DeleteInvalidBlock does");
+    }
+
+    [Test]
+    public void Report_bad_block_ignores_block_without_hash()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
+        BlockTree blockTree = builder.TestObject;
+        Block badNoHash = new(new BlockHeader(), new BlockBody());
+
+        blockTree.ReportBadBlock(badNoHash);
+
+        Assert.That(builder.BadBlockStore.GetAll(), Is.Empty);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
@@ -2500,6 +2531,29 @@ public class BlockTreeTests
         }
 
         Assert.That(blockTree.FindBlock(head.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "head must remain canonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ClearStaleMarkersAbove_DoesNotScanPastBestKnownNumber()
+    {
+        // Regression: scan must cap at Max(BestKnownNumber, BestKnownBeaconNumber) so a corrupted
+        // DB cannot drive an unbounded loop. A stray marker far above must survive the heal.
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis();
+
+        Block head = Build.A.Block.WithNumber(1).WithParent(genesis).TestObject;
+        blockTree.SuggestBlock(head);
+        blockTree.UpdateMainChain(new[] { head }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        const long strayHeight = 1_000_000L;
+        ChainLevelInfoRepository repo = new(_blocksInfosDb);
+        ChainLevelInfo strayLevel = new(true, [new BlockInfo(TestItem.KeccakA, UInt256.One)]);
+        repo.PersistLevel(strayHeight, strayLevel);
+
+        blockTree.HealCanonicalChain(head.Hash!, maxBlockDepth: 10);
+
+        ChainLevelInfo? afterHeal = new ChainLevelInfoRepository(_blocksInfosDb).LoadLevel(strayHeight);
+        Assert.That(afterHeal, Is.Not.Null, "stray level must remain in DB — bounded scan must not reach it");
+        Assert.That(afterHeal!.HasBlockOnMainChain, Is.True, "scan must not have cleared markers beyond BestKnownNumber");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

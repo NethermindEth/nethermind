@@ -36,8 +36,6 @@ public sealed class EraImporter(
     private readonly ILogger _logger = logManager.GetClassLogger<EraImporter>();
     private readonly int _maxEraSize = eraConfig.MaxEraSize;
 
-    private const int ProgressLogInterval = 10000;
-
     public async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
     {
         if (!fileSystem.Directory.Exists(src))
@@ -91,8 +89,7 @@ public sealed class EraImporter(
     {
         if (_logger.IsInfo) _logger.Info($"Starting EraE import from {from} to {to}");
 
-        ProgressLogger progressLogger = new("EraE import", logManager);
-        progressLogger.Reset(0, to - from + 1);
+        using ProgressReporter progress = new("EraE import", logManager, to - from + 1);
         long blocksProcessed = 0;
 
         using BlockTreeSuggestPacer pacer = new(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
@@ -141,7 +138,6 @@ public sealed class EraImporter(
         for (; blockNumber <= to; blockNumber++)
             await ImportBlock(blockNumber);
 
-        progressLogger.LogProgress();
         if (_logger.IsInfo) _logger.Info($"Finished EraE import from {from} to {to}");
 
         async Task ImportBlock(long number)
@@ -172,12 +168,7 @@ public sealed class EraImporter(
                 InsertBlockAndReceipts(block, receipts, to);
             }
 
-            long processed = Interlocked.Increment(ref blocksProcessed);
-            if (processed % ProgressLogInterval == 0)
-            {
-                progressLogger.Update(processed);
-                progressLogger.LogProgress();
-            }
+            progress.Update(Interlocked.Increment(ref blocksProcessed));
         }
     }
 

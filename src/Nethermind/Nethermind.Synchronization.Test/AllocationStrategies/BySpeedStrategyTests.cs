@@ -112,7 +112,6 @@ public class BySpeedStrategyTests
     [TestCase(10, 0, 1, 0)]
     [TestCase(10, 10, 1, 0.5)]
     [TestCase(10, 10, 0.5, 0.25)]
-    [Retry(3)]
     public void TestRecalculateSpeedProbability(int peerWithKnownSpeed, int peerWithUnknownSpeed, double recalculateSpeedProbability, double chanceOfPickingPeerWithNoSpeed)
     {
         long?[] peerSpeeds = Enumerable.Repeat<long?>(100, peerWithKnownSpeed)
@@ -127,10 +126,11 @@ public class BySpeedStrategyTests
 
         BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, 0, 0, recalculateSpeedProbability, 0);
 
+        const int iterations = 10_000;
         long peerWithSpeedPicked = 0;
         long peerWithoutSpeedPicked = 0;
 
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < iterations; i++)
         {
             PeerInfo selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject)!;
             int selectedPeerIdx = peers.IndexOf(selectedPeer);
@@ -145,7 +145,7 @@ public class BySpeedStrategyTests
         }
 
         double noSpeedPeerChance = (double)peerWithoutSpeedPicked / (peerWithSpeedPicked + peerWithoutSpeedPicked);
-        double marginOfError = 0.1;
+        double marginOfError = 0.02;
         Assert.That(noSpeedPeerChance, Is.InRange(chanceOfPickingPeerWithNoSpeed - marginOfError, chanceOfPickingPeerWithNoSpeed + marginOfError));
     }
 

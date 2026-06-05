@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -8,8 +9,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Visitors
 {
-    public interface IBlockTreeVisitor
+    public interface IBlockTreeVisitor : IDisposable
     {
+        void IDisposable.Dispose() { }
+
         /// <summary>
         /// Gives a hint to block tree that accepting new blocks should be halted for the length of the visit.
         /// </summary>

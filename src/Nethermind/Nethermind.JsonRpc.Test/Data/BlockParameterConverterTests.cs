@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
         [TestCase("0", true)]
         [TestCase("100", true)]
-        [TestCase("\"0x\"", false)]
+        [TestCase("\"0x\"", true)]
         [TestCase("\"0x0\"", false)]
         [TestCase("\"0xA\"", false)]
         [TestCase("\"0xa\"", false)]
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Data
                 Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
 
                 if (throws)
-                    Assert.That(action, Throws.TypeOf<FormatException>());
+                    Assert.That(action, Throws.InstanceOf<FormatException>());
                 else
                     Assert.That(action, Throws.Nothing);
             }
@@ -118,6 +118,20 @@ namespace Nethermind.JsonRpc.Test.Data
 
             Assert.That(blockParameter.BlockHash, Is.EqualTo(new Hash256(output)));
             Assert.That(blockParameter.RequireCanonical, Is.EqualTo(requireCanonical));
+        }
+
+        [Test]
+        public void Cannot_read_object_with_both_block_hash_and_block_number()
+        {
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+
+            Action action = () => serializer.Deserialize<BlockParameter>(
+                """{ "blockNumber": "0xa", "blockHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3" }""");
+
+            Assert.That(
+                action,
+                Throws.InstanceOf<FormatException>()
+                    .With.Message.EqualTo("cannot specify both BlockHash and BlockNumber, choose one or the other"));
         }
 
         [TestCase("\"latest\"", BlockParameterType.Latest)]
