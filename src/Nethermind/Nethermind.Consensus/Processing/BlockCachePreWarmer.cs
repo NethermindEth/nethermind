@@ -88,7 +88,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // is in use, drive warmup directly off the suggested block's access list.
                 ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
 
-                // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
+                // Run system access-list warming ahead of transactions, but queue to ThreadPool so it doesn't block the txs.
                 AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
@@ -311,7 +311,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
         : IThreadPoolWorkItem, IDisposable
     {
-        private readonly Block Block = block;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
         private readonly ReadOnlyBlockAccessList? Bal = bal;
         private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
@@ -342,7 +341,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             try
             {
                 if (parallelOptions.CancellationToken.IsCancellationRequested) return;
-                WarmupAddresses(parallelOptions, Block);
+                WarmupAddresses(parallelOptions);
             }
             catch (Exception ex)
             {
@@ -354,7 +353,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        private void WarmupAddresses(ParallelOptions parallelOptions, Block block)
+        private void WarmupAddresses(ParallelOptions parallelOptions)
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested)
             {
@@ -384,83 +383,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     }
                 }
 
-                // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
-                if (Bal is null)
-                {
-                    WarmingState<Block> baseState = new(envPool, block, parent);
-
-                    ParallelUnbalancedWork.For(
-                        0,
-                        block.Transactions.Length,
-                        parallelOptions,
-                        baseState.InitThreadState,
-                    static (i, state) =>
-                    {
-                        Transaction tx = state.Payload.Transactions[i];
-                        WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
-
-                        return state;
-                    },
-                    WarmingState<Block>.FinallyAction);
-                }
             }
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
             }
         }
-
-        private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
-        {
-            try
-            {
-                if (sender is not null)
-                {
-                    worldState.WarmUp(sender);
-                }
-
-                if (to is not null)
-                {
-                    worldState.WarmUp(to);
-                }
-            }
-            catch (MissingTrieNodeException)
-            {
-            }
-        }
-    }
-
-    private readonly struct WarmingState<TPayload>(ObjectPool<IReadOnlyTxProcessorSource> envPool, TPayload payload, BlockHeader parent) : IDisposable
-    {
-        public static Action<WarmingState<TPayload>> FinallyAction { get; } = DisposeThreadState;
-
-        private readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
-        private readonly IReadOnlyTxProcessorSource? Env;
-        public readonly TPayload Payload = payload;
-        public readonly IReadOnlyTxProcessingScope? Scope;
-
-        private WarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, TPayload payload, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, payload, parent)
-        {
-            Env = env;
-            Scope = scope;
-        }
-
-        public WarmingState<TPayload> InitThreadState()
-        {
-            IReadOnlyTxProcessorSource env = EnvPool.Get();
-            return new(EnvPool, Payload, parent, env, scope: env.Build(parent));
-        }
-
-        public void Dispose()
-        {
-            Scope?.Dispose();
-            if (Env is not null)
-            {
-                EnvPool.Return(Env);
-            }
-        }
-
-        private static void DisposeThreadState(WarmingState<TPayload> state) => state.Dispose();
     }
 
     /// <summary>
