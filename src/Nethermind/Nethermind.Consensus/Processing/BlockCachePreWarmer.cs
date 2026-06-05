@@ -69,7 +69,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        if (_preBlockCaches is not null && ShouldPreWarm(spec))
+        ReadOnlyBlockAccessList? bal = GetBalForReadWarming(suggestedBlock, spec);
+        if (_preBlockCaches is not null && ShouldPreWarm(spec, bal is not null))
         {
             CacheType result = _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
@@ -84,10 +85,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
-                // BAL makes speculative tx execution redundant — when BAL-based read warming
-                // is in use, drive warmup directly off the suggested block's access list.
-                ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
-
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
                 AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
@@ -99,13 +96,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return Task.CompletedTask;
     }
 
-    private bool ShouldPreWarm(IReleaseSpec spec)
+    private bool ShouldPreWarm(IReleaseSpec spec, bool shouldBalReadWarm)
         => !_parallelExecutionEnabled
         || !spec.BlockLevelAccessListsEnabled
-        || IsBalReadWarmingEnabled(spec);
+        || shouldBalReadWarm;
 
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
+
+    private ReadOnlyBlockAccessList? GetBalForReadWarming(Block suggestedBlock, IReleaseSpec spec)
+        => IsBalReadWarmingEnabled(spec)
+            && suggestedBlock.BlockAccessList is ReadOnlyBlockAccessList blockAccessList
+            && BlockAccessListManager.ShouldWarmBlockAccessList(blockAccessList)
+                ? blockAccessList
+                : null;
 
     public CacheType ClearCaches()
     {

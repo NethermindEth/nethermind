@@ -128,11 +128,9 @@ public class BlockCachePreWarmerTests
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
 
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(
-                Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject,
-                Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject)
-            .TestObject;
+        ReadOnlyBlockAccessList bal = BuildLargeBal(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject,
+            Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject);
 
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
@@ -155,18 +153,16 @@ public class BlockCachePreWarmerTests
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
 
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(
-                Build.An.AccountChanges
-                    .WithAddress(TestItem.AddressA)
-                    .WithStorageChanges(1, new StorageChange(0, 0xFF)) // slot 1 written
-                    .WithStorageReads(2) // slot 2 read-only
-                    .TestObject,
-                Build.An.AccountChanges
-                    .WithAddress(TestItem.AddressB)
-                    .WithStorageReads(10) // slot 10 read-only
-                    .TestObject)
-            .TestObject;
+        ReadOnlyBlockAccessList bal = BuildLargeBal(
+            Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageChanges(1, new StorageChange(0, 0xFF)) // slot 1 written
+                .WithStorageReads(2) // slot 2 read-only
+                .TestObject,
+            Build.An.AccountChanges
+                .WithAddress(TestItem.AddressB)
+                .WithStorageReads(10) // slot 10 read-only
+                .TestObject);
 
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
@@ -178,6 +174,30 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _), Is.True, "slot 1 (changed) should be pre-warmed via BAL");
         Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 2), out _), Is.True, "slot 2 (read-only) should be pre-warmed via BAL");
         Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressB, 10), out _), Is.True, "slot 10 on AddressB should be pre-warmed via BAL");
+    }
+
+    /// <summary>
+    /// Verifies that BAL-based prewarming is skipped for small access lists where the
+    /// batch-read warmup cost is larger than the expected execution benefit.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WithSmallBal_SkipsBalPath()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressC).TestObject)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithBlockAccessList(bal)
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _), Is.False, "small BALs should not trigger BAL-based prewarming");
     }
 
     /// <summary>
@@ -297,9 +317,7 @@ public class BlockCachePreWarmerTests
         BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution, batchRead);
 
         ReadOnlyBlockAccessList? bal = hasBal
-            ? Build.A.BlockAccessList
-                .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
-                .TestObject
+            ? BuildLargeBal(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
             : null;
 
         // Use Amsterdam (EIP-7928) when testing BALs, Osaka otherwise
@@ -324,13 +342,11 @@ public class BlockCachePreWarmerTests
         using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: true);
 
         StorageCell warmedCell = new(TestItem.AddressA, 1);
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(
-                Build.An.AccountChanges
-                    .WithAddress(TestItem.AddressA)
-                    .WithStorageReads(1)
-                    .TestObject)
-            .TestObject;
+        ReadOnlyBlockAccessList bal = BuildLargeBal(
+            Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads(1)
+                .TestObject);
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithBlockAccessList(bal)
@@ -422,7 +438,9 @@ public class BlockCachePreWarmerTests
         IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
         using (mainWorldState.BeginScope(parent))
         {
-            Task? hintBalTask = block.BlockAccessList is not null && preWarmer.IsBalReadWarmingEnabled(spec)
+            Task? hintBalTask = block.BlockAccessList is not null
+                && preWarmer.IsBalReadWarmingEnabled(spec)
+                && BlockAccessListManager.ShouldWarmBlockAccessList(block.BlockAccessList)
                 ? mainWorldState.HintBal(block.BlockAccessList)
                 : null;
             preWarmer.PreWarmCaches(block, parent, spec).GetAwaiter().GetResult();
@@ -447,6 +465,25 @@ public class BlockCachePreWarmerTests
             .WithTransactions(txs)
             .WithGasLimit(30_000_000)
             .TestObject;
+    }
+
+    private static ReadOnlyBlockAccessList BuildLargeBal(params ReadOnlyAccountChanges[] requiredAccounts)
+    {
+        ReadOnlyAccountChanges[] accounts = new ReadOnlyAccountChanges[BlockAccessListManager.MinBlockAccessListItemsForBatchReadWarmup];
+        int index = 0;
+        foreach (ReadOnlyAccountChanges requiredAccount in requiredAccounts)
+        {
+            accounts[index++] = requiredAccount;
+        }
+
+        for (int addressNumber = 10_000; index < accounts.Length; addressNumber++)
+        {
+            accounts[index++] = Build.An.AccountChanges
+                .WithAddress(Build.An.Address.FromNumber(addressNumber).TestObject)
+                .TestObject;
+        }
+
+        return Build.A.BlockAccessList.WithAccountChanges(accounts).TestObject;
     }
 
     /// <summary>

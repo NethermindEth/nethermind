@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -205,13 +206,16 @@ public class BranchProcessor(
                 token,
                 beaconBlockRootHandler);
 
-    // Tiny blocks normally don't justify prewarming overhead — except when the prewarmer
-    // would run in BAL read-warming mode, which is cheap and worthwhile regardless of tx count.
+    // Tiny blocks normally don't justify prewarming overhead. BAL read warming has its own
+    // threshold because small BALs cost more to warm than they save during execution.
     private bool ShouldSkipPreWarming(Block suggestedBlock, IReleaseSpec spec)
         => suggestedBlock.Transactions.Length < 3 && !ShouldBalReadWarm(suggestedBlock, spec);
 
     private bool ShouldBalReadWarm(Block suggestedBlock, IReleaseSpec spec)
-        => preWarmer is not null && preWarmer.IsBalReadWarmingEnabled(spec) && suggestedBlock.BlockAccessList is not null;
+        => preWarmer is not null
+            && preWarmer.IsBalReadWarmingEnabled(spec)
+            && suggestedBlock.BlockAccessList is ReadOnlyBlockAccessList blockAccessList
+            && BlockAccessListManager.ShouldWarmBlockAccessList(blockAccessList);
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 

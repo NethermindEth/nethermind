@@ -55,6 +55,7 @@ public partial class BlockAccessListManager(
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
     private const int GasValidationChunkSize = 8;
+    internal const int MinBlockAccessListItemsForBatchReadWarmup = 32;
     private long? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
@@ -111,6 +112,9 @@ public partial class BlockAccessListManager(
     // Merge target and the end-of-block encode + Keccak step.
     private GeneratedBlockAccessList? _currentGeneratedBlockAccessList;
     private bool VerifyOnly => _currentGeneratedBlockAccessList is null;
+
+    internal static bool ShouldWarmBlockAccessList(ReadOnlyBlockAccessList blockAccessList)
+        => blockAccessList.ItemCount >= MinBlockAccessListItemsForBatchReadWarmup;
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
