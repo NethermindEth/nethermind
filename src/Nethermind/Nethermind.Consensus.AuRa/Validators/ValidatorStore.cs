@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         public ValidatorStore([KeyFilter(DbNames.BlockInfos)] IDb db)
         {
             _db = db;
-            _latestFinalizedValidatorsBlockNumber = _db.Get(LatestFinalizedValidatorsBlockNumberKey)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? EmptyBlockNumber;
+            _latestFinalizedValidatorsBlockNumber = _db.GetLongFromBigEndianByteArrayWithoutLeadingZeros(LatestFinalizedValidatorsBlockNumberKey, EmptyBlockNumber);
         }
 
         public void SetValidators(long finalizingBlockNumber, Address[] validators)

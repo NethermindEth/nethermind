@@ -70,9 +70,6 @@ public sealed class TaikoBeaconSync(
     }
 
     /// <inheritdoc/>
-    public void AllowBeaconHeaderSync() => inner.AllowBeaconHeaderSync();
-
-    /// <inheritdoc/>
     public bool ShouldBeInBeaconModeControl() => inner.ShouldBeInBeaconModeControl();
 
     /// <inheritdoc/>

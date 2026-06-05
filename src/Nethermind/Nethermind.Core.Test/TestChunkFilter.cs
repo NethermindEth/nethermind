@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Ethereum.Test.Base;
+namespace Nethermind.Core.Test;
 
 /// <summary>
 /// Partitions tests into chunks for parallel CI execution. Driven by the
@@ -14,8 +14,6 @@ namespace Ethereum.Test.Base;
 /// </summary>
 public static class TestChunkFilter
 {
-    internal static bool IsEnabled => GetChunkConfig() is not null;
-
     public static IEnumerable<T> FilterByChunk<T>(IEnumerable<T> tests)
     {
         (int Index, int Total)? chunkConfig = GetChunkConfig();
