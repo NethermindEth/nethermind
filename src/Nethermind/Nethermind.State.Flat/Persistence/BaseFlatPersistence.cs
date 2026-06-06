@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -68,6 +69,11 @@ public static class BaseFlatPersistence
         bool isPreimageMode = false
     ) : BasePersistence.IHashedFlatReader
     {
+        private const int AccountSpanBufferSize = 256;
+
+        private readonly IReadOnlyNativeKeyValueStore? _nativeState = state as IReadOnlyNativeKeyValueStore;
+        private readonly IReadOnlyNativeKeyValueStore? _nativeStorage = storage as IReadOnlyNativeKeyValueStore;
+
         public bool IsPreimageMode => isPreimageMode;
 
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
@@ -76,16 +82,73 @@ public static class BaseFlatPersistence
             return state.Get(key, outBuffer);
         }
 
+        public Account? GetAccount(in ValueHash256 address, AccountDecoder accountDecoder)
+        {
+            if (_nativeState is null)
+            {
+                Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
+                int responseSize = GetAccount(address, valueBuffer);
+                if (responseSize == 0)
+                {
+                    return null;
+                }
+
+                Rlp.ValueDecoderContext fallbackContext = new(valueBuffer[..responseSize]);
+                return accountDecoder.Decode(ref fallbackContext);
+            }
+
+            ReadOnlySpan<byte> key = EncodeAccountKeyHashed(stackalloc byte[AccountKeyLength], address);
+            ReadOnlySpan<byte> value = _nativeState.GetNativeSlice(key, out IntPtr handle);
+            try
+            {
+                if (value.IsNull())
+                {
+                    return null;
+                }
+
+                Rlp.ValueDecoderContext ctx = new(value);
+                return accountDecoder.Decode(ref ctx);
+            }
+            finally
+            {
+                _nativeState.DangerousReleaseHandle(handle);
+            }
+        }
+
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
         {
             ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], address, slot);
+
+            if (_nativeStorage is not null)
+            {
+                ReadOnlySpan<byte> nativeValue = _nativeStorage.GetNativeSlice(storageKey, out IntPtr handle);
+                try
+                {
+                    if (nativeValue.IsNull())
+                    {
+                        return false;
+                    }
+
+                    CopyStorageValueToSlot(nativeValue, ref outValue);
+                    return true;
+                }
+                finally
+                {
+                    _nativeStorage.DangerousReleaseHandle(handle);
+                }
+            }
 
             Span<byte> buffer = stackalloc byte[40];
             int resultSize = GetStorageBuffer(storageKey, buffer);
             if (resultSize == 0) return false;
 
             Span<byte> value = buffer[..resultSize];
+            CopyStorageValueToSlot(value, ref outValue);
+            return true;
+        }
 
+        private static void CopyStorageValueToSlot(ReadOnlySpan<byte> value, ref SlotValue outValue)
+        {
             // Bypass bounds check on the slice - the length is already validated by the if guard above.
             // This writes the variable-length DB value into the end of the 32-byte struct.
             int len = value.Length;
@@ -107,8 +170,6 @@ public static class BaseFlatPersistence
                     ref MemoryMarshal.GetReference(value),
                     (uint)len);
             }
-
-            return true;
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
