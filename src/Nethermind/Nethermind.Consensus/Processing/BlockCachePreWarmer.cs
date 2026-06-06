@@ -89,7 +89,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
+                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal, warmTransactionAddresses: false);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
                 return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
@@ -308,7 +308,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null, bool warmTransactionAddresses = true)
         : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
@@ -385,7 +385,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 }
 
                 // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
-                if (Bal is null)
+                if (Bal is null && warmTransactionAddresses)
                 {
                     WarmingState<Block> baseState = new(envPool, block, parent);
 
