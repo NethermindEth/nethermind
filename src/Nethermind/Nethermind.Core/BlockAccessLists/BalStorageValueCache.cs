@@ -14,8 +14,10 @@ namespace Nethermind.Core.BlockAccessLists;
 /// the fixed-capacity associative cache (which would conflict-evict).
 /// </summary>
 /// <remarks>
-/// Each ordinal has exactly one prefetch writer, so publication uses a per-slot release/acquire on
-/// a state byte rather than a CAS: <see cref="Set"/> writes the value then releases the
+/// An ordinal may be written by more than one party - the prefetch fill and an execution worker that
+/// reads through on a destination miss - but every writer resolves against the same parent state root,
+/// so they publish identical values and the race is benign. Publication therefore uses a per-slot
+/// release/acquire on a state byte rather than a CAS: <see cref="Set"/> writes the value then releases the
 /// <c>Ready</c> flag; <see cref="TryGet"/> acquires the flag before reading the value. A loaded
 /// zero/absent slot is <c>Ready</c> with a zero/empty value - distinct from <c>Empty</c>
 /// ("not loaded yet"), which is what lets a reader tell "known zero" from "must read myself".
@@ -44,7 +46,8 @@ public sealed class BalStorageValueCache : IDisposable
 
     /// <summary>
     /// Publishes the resolved value for <paramref name="ordinal"/>. A <c>null</c>/empty value
-    /// records a known-zero slot (still <c>Ready</c>). Called once per ordinal by its prefetch writer.
+    /// records a known-zero slot (still <c>Ready</c>). May be called by more than one writer for the
+    /// same ordinal; all resolve against the same parent root, so the published value is identical.
     /// </summary>
     public void Set(int ordinal, byte[]? value)
     {

@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -66,6 +67,8 @@ public sealed class BalReadCoverage : IDisposable
     /// <summary>OR-reduces <paramref name="other"/>'s structural coverage into this instance and adds its chargeable count.</summary>
     public void Absorb(BalReadCoverage other)
     {
+        // Both must span the same ordinal space, else the SIMD loop reads past other._coverage.
+        Debug.Assert(_count == other._count, "Absorb requires matching coverage ordinal space");
         int n = _wordCount;
         ref ulong mine = ref MemoryMarshal.GetArrayDataReference(_coverage);
         ref ulong theirs = ref MemoryMarshal.GetArrayDataReference(other._coverage);

@@ -178,6 +178,8 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
         // ResolveContext already keyed _contextAccount to this address (Get resolved it first), so the
         // cursor is valid for it; resolve the plan account index lazily, once per account.
+        // Coverage is only enabled after EnsureReadPlan, so the plan is always present here.
+        Debug.Assert(preBlockCaches?.StorageReadPlan is not null, "Read coverage active without a storage read plan");
         BalReadStoragePlan plan = preBlockCaches!.StorageReadPlan!;
         if (!_coveragePlanResolved)
         {
