@@ -198,7 +198,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
+                    // Warm the account's state-trie node only when the account is written: FlatDB serves
+                    // account reads from the flat store and the post-block root update only re-hashes
+                    // changed accounts, so a read-only account's state-trie node is never needed. Slot
+                    // values for read-only accounts are still prefetched from the flat store in phase 2.
+                    if (ac.HasStateChanges
+                        && _snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
