@@ -85,12 +85,8 @@ public class ResourcePoolTests
     {
         TransientResource resource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
         Assert.That(resource, Is.Not.Null);
-        Assert.That(resource.size.PrewarmedAddressSize, Is.EqualTo(64 * 1024));
-        Assert.That(resource.size.NodesCacheSize, Is.EqualTo(64 * 1024));
-
-        TransientResource readOnlyResource = _resourcePool.GetCachedResource(ResourcePool.Usage.ReadOnlyProcessingEnv);
-        Assert.That(readOnlyResource.size.PrewarmedAddressSize, Is.EqualTo(1024));
-        Assert.That(readOnlyResource.size.NodesCacheSize, Is.EqualTo(1024));
+        Assert.That(resource.size.PrewarmedAddressSize, Is.EqualTo(1024));
+        Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
     }
 
     [Test]

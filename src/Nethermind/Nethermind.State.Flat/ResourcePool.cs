@@ -16,13 +16,10 @@ namespace Nethermind.State.Flat;
 /// <param name="flatConfig"></param>
 public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
 {
-    private static readonly TransientResource.Size DefaultCachedResourceSize = new(1024, 1024);
-    private static readonly TransientResource.Size MainBlockProcessingCachedResourceSize = new(64 * 1024, 64 * 1024);
-
     private readonly Dictionary<Usage, ResourcePoolCategory> _categories = new()
     {
         // For main BlockProcessing once a compacted snapshot is persisted, all `flatConfig.CompactSize` snapshot content will be returned.
-        { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, flatConfig.CompactSize + 8, 2, MainBlockProcessingCachedResourceSize) },
+        { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, flatConfig.CompactSize + 8, 2) },
 
         // PostMainBlockProcessing is a special usage right after the commit of `MainBlockProcessing` which only commit once and never modified.
         { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1) },
@@ -117,15 +114,11 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
 
     }
 
-    private class ResourcePoolCategory(
-        Usage usage,
-        int snapshotContentPoolSize,
-        int cachedResourcePoolSize,
-        TransientResource.Size? initialCachedResourceSize = null)
+    private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int cachedResourcePoolSize)
     {
         private readonly ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
-        private TransientResource.Size _lastCachedResourceSize = initialCachedResourceSize ?? DefaultCachedResourceSize;
+        private TransientResource.Size _lastCachedResourceSize = new(1024, 1024);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
 
@@ -168,25 +161,12 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
         public void ReturnCachedResource(TransientResource transientResource)
         {
             Metrics.ActivePooledResource.AddBy(_cachedResourceLabel, -1);
-            RememberLargestSize(transientResource.GetSize());
-
-            _cachedResourcePool.Return(transientResource);
-
-            Metrics.CachedPooledResource[_cachedResourceLabel] = (long)_cachedResourcePool.PooledItemCount;
-        }
-
-        private void RememberLargestSize(TransientResource.Size size)
-        {
-            TransientResource.Size currentSize = _lastCachedResourceSize;
-            if (size.PrewarmedAddressSize <= currentSize.PrewarmedAddressSize
-                && size.NodesCacheSize <= currentSize.NodesCacheSize)
+            if (!_cachedResourcePool.Return(transientResource))
             {
-                return;
+                _lastCachedResourceSize = transientResource.GetSize();
             }
 
-            _lastCachedResourceSize = new TransientResource.Size(
-                Math.Max(size.PrewarmedAddressSize, currentSize.PrewarmedAddressSize),
-                Math.Max(size.NodesCacheSize, currentSize.NodesCacheSize));
+            Metrics.CachedPooledResource[_cachedResourceLabel] = (long)_cachedResourcePool.PooledItemCount;
         }
     }
 
