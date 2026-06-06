@@ -106,7 +106,7 @@ public class FlatRocksDbConfigAdjusterTests
         => Assert.That(FlatRocksDbConfigAdjuster.GetColumnBlockCacheCapacity(1.GiB, columnName), Is.EqualTo((ulong)expectedCapacity));
 
     [Test]
-    public void FlatDatabase_ConfiguresSeparateBlockCachesForHotColumns()
+    public void FlatDatabase_ConfiguresBlockCachesForHotColumns()
     {
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
         _flatDbConfig.BlockCacheSizeBudget.Returns(1.GiB);
@@ -119,11 +119,27 @@ public class FlatRocksDbConfigAdjusterTests
 
         Assert.That(account.BlockCache, Is.Not.Null);
         Assert.That(storage.BlockCache, Is.Not.Null);
-        Assert.That(storageNodes.BlockCache, Is.Not.Null);
+        Assert.That(storageNodes.BlockCache, Is.Null);
         Assert.That(storage.BlockCache, Is.Not.EqualTo(account.BlockCache));
-        Assert.That(storageNodes.BlockCache, Is.Not.EqualTo(account.BlockCache));
-        Assert.That(storageNodes.BlockCache, Is.Not.EqualTo(storage.BlockCache));
-        Assert.That(_disposeStack.Count, Is.EqualTo(3));
+        Assert.That(storageNodes.RocksDbOptions, Does.Contain("block_based_table_factory.block_cache=536870912;"));
+        Assert.That(_disposeStack.Count, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void FlatDatabase_PreservesConfiguredStorageNodesBlockCache()
+    {
+        _flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        _flatDbConfig.BlockCacheSizeBudget.Returns(1.GiB);
+        _baseConfig.RocksDbOptions.Returns("base_options=true;block_based_table_factory.block_cache=123;");
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        IRocksDbConfig storageNodes = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.StorageNodes));
+
+        Assert.That(storageNodes.BlockCache, Is.Null);
+        Assert.That(storageNodes.RocksDbOptions, Does.Contain("block_based_table_factory.block_cache=123;"));
+        Assert.That(storageNodes.RocksDbOptions, Does.Not.Contain("block_based_table_factory.block_cache=536870912;"));
+        Assert.That(_disposeStack.Count, Is.Zero);
     }
 
     private sealed class TrackingDisposableStack : IDisposableStack, IDisposable

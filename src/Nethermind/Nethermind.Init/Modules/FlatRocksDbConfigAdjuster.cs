@@ -26,6 +26,7 @@ internal class FlatRocksDbConfigAdjuster(
     private const long StorageBlockCacheBudgetShare = 35;
     private const long StorageNodesBlockCacheBudgetShare = 50;
     private const long TotalBlockCacheBudgetShare = 100;
+    private const string BlockCacheOptionName = "block_based_table_factory.block_cache";
 
     private readonly ILogger _logger = logManager.GetClassLogger<FlatRocksDbConfigAdjuster>();
 
@@ -49,10 +50,21 @@ internal class FlatRocksDbConfigAdjuster(
             IntPtr? cacheHandle = null;
             if (cacheCapacity != 0)
             {
-                if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / (ulong)1.MiB):N0} MB of block cache to {columnName}");
-                HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
-                cacheHandle = cacheWrapper.Handle;
-                disposeStack.Push(cacheWrapper);
+                if (columnName == nameof(FlatDbColumns.StorageNodes))
+                {
+                    if (!HasBlockCacheOption(config))
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / (ulong)1.MiB):N0} MB of block cache to {columnName}");
+                        additionalConfig += $"{BlockCacheOptionName}={cacheCapacity};";
+                    }
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / (ulong)1.MiB):N0} MB of block cache to {columnName}");
+                    HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
+                    cacheHandle = cacheWrapper.Handle;
+                    disposeStack.Push(cacheWrapper);
+                }
             }
 
             config = new AdjustedRocksdbConfig(config, additionalConfig, config.WriteBufferSize.GetValueOrDefault(), cacheHandle);
@@ -78,4 +90,7 @@ internal class FlatRocksDbConfigAdjuster(
 
         return (ulong)(blockCacheSizeBudget * budgetShare / TotalBlockCacheBudgetShare);
     }
+
+    private static bool HasBlockCacheOption(IRocksDbConfig config) =>
+        DbOnTheRocks.ExtractOptions(config.RocksDbOptions + config.AdditionalRocksDbOptions).ContainsKey(BlockCacheOptionName);
 }
