@@ -387,51 +387,26 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
                 if (Bal is null)
                 {
-                    using ArrayPoolList<AddressAsKey> addresses = GetUniqueTransactionAddresses(block);
-                    if (addresses.Count == 0) return;
-
-                    WarmingState<ArrayPoolList<AddressAsKey>> baseState = new(envPool, addresses, parent);
+                    WarmingState<Block> baseState = new(envPool, block, parent);
 
                     ParallelUnbalancedWork.For(
                         0,
-                        addresses.Count,
+                        block.Transactions.Length,
                         parallelOptions,
                         baseState.InitThreadState,
                     static (i, state) =>
                     {
-                        state.Scope!.WorldState.WarmUp(state.Payload[i].Value);
+                        Transaction tx = state.Payload.Transactions[i];
+                        WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
 
                         return state;
                     },
-                    WarmingState<ArrayPoolList<AddressAsKey>>.FinallyAction);
+                    WarmingState<Block>.FinallyAction);
                 }
             }
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
-            }
-        }
-
-        private static ArrayPoolList<AddressAsKey> GetUniqueTransactionAddresses(Block block)
-        {
-            Transaction[] transactions = block.Transactions;
-            HashSet<AddressAsKey> unique = new(transactions.Length * 2, AddressAsKey.EqualityComparer);
-            ArrayPoolList<AddressAsKey> addresses = new(transactions.Length * 2);
-
-            foreach (Transaction tx in transactions)
-            {
-                Add(tx.SenderAddress);
-                Add(tx.To);
-            }
-
-            return addresses;
-
-            void Add(Address? address)
-            {
-                if (address is not null && unique.Add(address))
-                {
-                    addresses.Add(address);
-                }
             }
         }
 
