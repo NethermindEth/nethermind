@@ -897,6 +897,30 @@ public class FlatWorldStateScopeProviderTests
     #endregion
 
     [Test]
+    public void SnapshotBundleDispose_PublishesTransientTrieNodes_WhenRequested()
+    {
+        FlatDbConfig config = new();
+        ResourcePool resourcePool = new(config);
+        ITrieNodeCache trieNodeCache = Substitute.For<ITrieNodeCache>();
+        IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
+        ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), persistenceReader, recordDetailedMetrics: false);
+        SnapshotBundle snapshotBundle = new(
+            readOnlyBundle,
+            trieNodeCache,
+            resourcePool,
+            ResourcePool.Usage.ReadOnlyProcessingEnv);
+
+        TreePath path = TreePath.FromHexString("12");
+        Hash256 hash = Keccak.Compute([0x01]);
+        snapshotBundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+        snapshotBundle.PublishTransientTrieNodesOnDispose();
+
+        snapshotBundle.Dispose();
+
+        trieNodeCache.Received(1).Add(Arg.Any<TransientResource>());
+    }
+
+    [Test]
     public async Task Dispose_WaitsForOutstandingWarmups_BeforeDisposingBundle()
     {
         using TestContext ctx = new();

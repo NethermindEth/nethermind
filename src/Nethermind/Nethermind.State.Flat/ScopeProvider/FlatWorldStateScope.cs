@@ -83,6 +83,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
+        if (_isReadOnly)
+        {
+            _snapshotBundle.PublishTransientTrieNodesOnDispose();
+        }
     }
 
     public void Dispose()
