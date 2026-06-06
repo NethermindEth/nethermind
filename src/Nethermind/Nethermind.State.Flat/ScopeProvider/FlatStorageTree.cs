@@ -103,13 +103,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // Called by trie warmer.
     public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
     {
-        ValueHash256 key = ValueKeccak.Zero;
-        StorageTree.ComputeKeyWithLookup(index, ref key);
-        return WarmUpStorageTrie(in key, sequenceId);
-    }
-
-    internal bool WarmUpStorageTrie(in ValueHash256 key, int sequenceId)
-    {
         try
         {
             if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
@@ -119,6 +112,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
             // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
             // this is just to warm up the nodes.
+            ValueHash256 key = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(index, ref key);
+
             _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
             return true;
         }

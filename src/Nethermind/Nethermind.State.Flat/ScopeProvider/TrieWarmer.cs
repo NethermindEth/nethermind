@@ -3,11 +3,9 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -22,7 +20,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 {
     private const int BufferSize = 1024 * 16;
     private const int SlotBufferSize = 1024;
-    private const int SlotBatchSize = 128;
     private const int DisposeTimeoutMilliseconds = 1000;
 
     private readonly ILogger _logger;
@@ -49,13 +46,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         UInt256 index,
         int sequenceId);
 
-    private readonly record struct WarmedSlotJob(
-        ITrieWarmer.IStorageWarmer storageTree,
-        UInt256 index,
-        ValueHash256 storageKey,
-        int storageTreeHash,
-        int sequenceId);
-
     private readonly Processor[] _processors;
     private TaskCompletionSource<bool>? _processorsStopped;
 
@@ -79,7 +69,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     private sealed class Processor(TrieWarmer owner) : IThreadPoolWorkItem
     {
         private readonly TrieWarmer _owner = owner;
-        private readonly WarmedSlotJob[] _slotBatch = new WarmedSlotJob[SlotBatchSize];
         private int _scheduled = 0;
 
         public bool TrySchedule()
@@ -95,7 +84,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         public bool TryReacquireAfterEmptyCheck() => Interlocked.Exchange(ref _scheduled, 1) == 0;
 
-        void IThreadPoolWorkItem.Execute() => _owner.Execute(this, _slotBatch);
+        void IThreadPoolWorkItem.Execute() => _owner.Execute(this);
     }
 
     private bool HasReadyWork() => _slotJobBuffer.HasReadyItem || _jobBufferMultiThreaded.HasReadyItem;
@@ -116,7 +105,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         }
     }
 
-    private void Execute(Processor processor, WarmedSlotJob[] slotBatch)
+    private void Execute(Processor processor)
     {
         try
         {
@@ -124,16 +113,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             {
                 while (TryDequeue(out Job job))
                 {
-                    if (job.scopeOrStorageTree is ITrieWarmer.IStorageWarmer storageTree)
-                    {
-                        int slotJobCount = AddSlotJob(slotBatch, 0, storageTree, job.index, job.sequenceId);
-                        slotJobCount = TryDequeueSlotBatch(slotBatch, slotJobCount);
-                        HandleSlotBatch(slotBatch, slotJobCount);
-                    }
-                    else
-                    {
-                        HandleJob(in job);
-                    }
+                    HandleJob(in job);
                 }
 
                 processor.ClearScheduled();
@@ -170,59 +150,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         return _jobBufferMultiThreaded.TryDequeue(out job);
     }
 
-    private int TryDequeueSlotBatch(WarmedSlotJob[] slotBatch, int count)
-    {
-        while (count < slotBatch.Length && _slotJobBuffer.TryDequeue(out SlotJob slotJob))
-        {
-            count = AddSlotJob(
-                slotBatch,
-                count,
-                slotJob.storageTree,
-                slotJob.index,
-                slotJob.sequenceId);
-        }
-
-        return count;
-    }
-
-    private static int AddSlotJob(
-        WarmedSlotJob[] slotBatch,
-        int count,
-        ITrieWarmer.IStorageWarmer storageTree,
-        in UInt256 index,
-        int sequenceId)
-    {
-        ValueHash256 storageKey = ValueKeccak.Zero;
-        StorageTree.ComputeKeyWithLookup(index, ref storageKey);
-        slotBatch[count++] = new WarmedSlotJob(
-            storageTree,
-            index,
-            storageKey,
-            RuntimeHelpers.GetHashCode(storageTree),
-            sequenceId);
-        return count;
-    }
-
-    private static void HandleSlotBatch(WarmedSlotJob[] slotBatch, int count)
-    {
-        try
-        {
-            if (count > 1)
-            {
-                Array.Sort(slotBatch, 0, count, WarmedSlotJobComparer.Instance);
-            }
-
-            for (int i = 0; i < count; i++)
-            {
-                HandleSlotJob(slotBatch[i]);
-            }
-        }
-        finally
-        {
-            Array.Clear(slotBatch, 0, count);
-        }
-    }
-
     private static void HandleJob(in Job job)
     {
         try
@@ -247,30 +174,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         catch (NullReferenceException) when (IsDisposedJobTarget(in job)) { }
     }
 
-    private static void HandleSlotJob(in WarmedSlotJob job)
-    {
-        try
-        {
-            if (job.storageTree is FlatStorageTree flatStorageTree)
-            {
-                ValueHash256 storageKey = job.storageKey;
-                flatStorageTree.WarmUpStorageTrie(in storageKey, job.sequenceId);
-            }
-            else
-            {
-                job.storageTree.WarmUpStorageTrie(job.index, job.sequenceId);
-            }
-        }
-        // It can be missing when the warmer lags so much behind that the node is now gone.
-        catch (TrieNodeException) { }
-        // Because it runs in parallel, it could happen that the bundle changed, which causes this.
-        catch (NodeHashMismatchException) { }
-        // Because it runs in parallel, it could be that the scope is disposed of early.
-        catch (ObjectDisposedException) { }
-        // Scope disposal can null pooled snapshot maps while a queued warmup is already inside trie traversal.
-        catch (NullReferenceException) when (IsDisposedJobTarget(job.storageTree)) { }
-    }
-
     private static bool IsDisposedJobTarget(in Job job) =>
         job.scopeOrStorageTree switch
         {
@@ -278,29 +181,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             FlatStorageTree storageTree => storageTree.IsDisposed,
             _ => false
         };
-
-    private static bool IsDisposedJobTarget(ITrieWarmer.IStorageWarmer storageTree) =>
-        storageTree switch
-        {
-            FlatStorageTree flatStorageTree => flatStorageTree.IsDisposed,
-            _ => false
-        };
-
-    private sealed class WarmedSlotJobComparer : IComparer<WarmedSlotJob>
-    {
-        public static readonly WarmedSlotJobComparer Instance = new();
-
-        public int Compare(WarmedSlotJob x, WarmedSlotJob y)
-        {
-            int storageTreeCompare = x.storageTreeHash.CompareTo(y.storageTreeHash);
-            if (storageTreeCompare != 0) return storageTreeCompare;
-
-            int keyCompare = x.storageKey.CompareTo(y.storageKey);
-            return keyCompare != 0
-                ? keyCompare
-                : x.sequenceId.CompareTo(y.sequenceId);
-        }
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
