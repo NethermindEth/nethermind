@@ -89,10 +89,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
-        _pausePrewarmer = true;
-        // Disposed scopes never consume warmer results; invalidate queued hints before waiting
-        // so stale jobs can drain without doing RocksDB reads.
-        Interlocked.Increment(ref _hintSequenceId);
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
