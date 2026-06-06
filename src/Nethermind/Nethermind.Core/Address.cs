@@ -273,7 +273,7 @@ namespace Nethermind.Core
             return result;
         }
 
-        internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
+        public long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
     }
 
     public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>
