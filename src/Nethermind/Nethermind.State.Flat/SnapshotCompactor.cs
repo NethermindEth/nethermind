@@ -121,9 +121,9 @@ public class SnapshotCompactor(
         ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
-        ConcurrentDictionary<HashedKey<Address>, Account?> accounts = snapshot.Content.Accounts;
-        ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> storages = snapshot.Content.Storages;
-        ConcurrentDictionary<HashedKey<Address>, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
+        Dictionary<HashedKey<Address>, Account?> accounts = snapshot.Content.Accounts;
+        Dictionary<HashedKey<(Address, UInt256)>, SlotValue?> storages = snapshot.Content.Storages;
+        Dictionary<HashedKey<Address>, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
         ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> storageNodes = snapshot.Content.StorageNodes;
         ConcurrentDictionary<HashedKey<TreePath>, TrieNode> stateNodes = snapshot.Content.StateNodes;
 

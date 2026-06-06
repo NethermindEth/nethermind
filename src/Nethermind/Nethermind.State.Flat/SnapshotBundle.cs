@@ -22,11 +22,11 @@ public sealed class SnapshotBundle : IDisposable
 
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
-    private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
-    private ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> _changedSlots = null!;
+    private Dictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
+    private Dictionary<HashedKey<(Address, UInt256)>, SlotValue?> _changedSlots = null!;
     private ConcurrentDictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
     private ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> _changedStorageNodes = null!;
-    private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
+    private Dictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
 
