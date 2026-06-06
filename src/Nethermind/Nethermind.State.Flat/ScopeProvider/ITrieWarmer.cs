@@ -8,6 +8,8 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public interface ITrieWarmer
 {
+    bool IsEnabled => true;
+
     public bool PushSlotJob(
         IStorageWarmer storageTree,
         in UInt256 index,

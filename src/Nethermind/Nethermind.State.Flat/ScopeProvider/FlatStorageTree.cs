@@ -20,6 +20,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private readonly Address _address;
     private readonly IFlatDbConfig _config;
     private readonly ITrieWarmer _trieCacheWarmer;
+    private readonly bool _trieWarmingEnabled;
     private readonly FlatWorldStateScope _scope;
     private readonly SnapshotBundle _bundle;
     private readonly Hash256 _addressHash;
@@ -40,6 +41,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         _scope = scope;
         _trieCacheWarmer = trieCacheWarmer;
+        _trieWarmingEnabled = trieCacheWarmer.IsEnabled;
         _bundle = bundle;
         _address = address;
         _addressHash = address.ToAccountPath.ToHash256();
@@ -93,7 +95,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     private void WarmUpSlot(UInt256 index)
     {
-        if (_bundle.ShouldQueuePrewarm(_address, index))
+        if (_trieWarmingEnabled && _bundle.ShouldQueuePrewarm(_address, index))
         {
             if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId))
                 _scope.IncrementOutstandingWarmups();
