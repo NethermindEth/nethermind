@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.IO.Hashing;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -52,20 +53,21 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     }
 
-    public bool ShouldPrewarm(Address address)
+    public bool ShouldPrewarm(Address address, UInt256? slot)
     {
-        AddressAsKey key = address;
-        return ShouldPrewarm((ulong)key.GetHashCode64());
-    }
+        ulong hash;
+        if (slot is null)
+        {
+            hash = XxHash64.HashToUInt64(address.Bytes);
+        }
+        else
+        {
+            Span<byte> buffer = stackalloc byte[20 + 32];
+            address.Bytes.CopyTo(buffer);
+            slot.Value.ToBigEndian(buffer[20..]);
+            hash = XxHash64.HashToUInt64(buffer);
+        }
 
-    public bool ShouldPrewarm(Address address, in UInt256 slot)
-    {
-        StorageCell cell = new(address, in slot);
-        return ShouldPrewarm((ulong)cell.GetHashCode64());
-    }
-
-    private bool ShouldPrewarm(ulong hash)
-    {
         if (PrewarmedAddresses.MightContain(hash)) return false;
         PrewarmedAddresses.Add(hash);
         return true;

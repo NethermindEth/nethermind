@@ -392,9 +392,7 @@ public sealed class SnapshotBundle : IDisposable
     // The trie warmer's PushSlotJob is slightly slow due to the wake up logic.
     // It is a net improvement to check and modify the bloom filter before calling the trie warmer push
     // as most of the slot should already be queued by prewarmer.
-    public bool ShouldQueuePrewarm(Address address) => _transientResource.ShouldPrewarm(address);
-
-    public bool ShouldQueuePrewarm(Address address, in UInt256 slot) => _transientResource.ShouldPrewarm(address, in slot);
+    public bool ShouldQueuePrewarm(Address address, UInt256? slot = null) => _transientResource.ShouldPrewarm(address, slot);
 
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
