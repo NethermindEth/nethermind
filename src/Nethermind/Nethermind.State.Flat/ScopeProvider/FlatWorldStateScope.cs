@@ -139,6 +139,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         Account? account = _snapshotBundle.GetAccount(address);
 
+        HintPrewarm(address);
+
         if (_configuration.VerifyWithTrie)
         {
             Account? accTrie = _stateTree.Get(address);
@@ -151,7 +153,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return account;
     }
 
-    public void HintGet(Address address, Account? account) => _snapshotBundle.CacheAccount(address, account);
+    public void HintGet(Address address, Account? account)
+    {
+        _snapshotBundle.CacheAccount(address, account);
+        HintPrewarm(address);
+    }
 
     private void HintPrewarm(Address address)
     {
@@ -404,7 +410,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             _dirtyAccounts[key] = account;
             scope._snapshotBundle.SetAccount(key, account);
-            scope.HintPrewarm(key);
 
             if (account is null)
             {
@@ -421,11 +426,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     estimatedEntries: estimatedEntries,
                     onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot));
 
-        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
-        {
-            scope.HintPrewarm(address.Value);
+        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
-        }
 
         public void Dispose()
         {
