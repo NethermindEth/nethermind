@@ -56,7 +56,10 @@ public sealed class SnapshotCatalog(IDb db)
     // byte; wipe-and-resync.
     // v7: entry key is (To.BlockNumber, To.StateRoot, depth=To.BlockNumber-From.BlockNumber)
     // so base/compacted/persistable at the same To round-trip independently; wipe-and-resync.
-    internal const int CurrentVersion = 7;
+    // v8: blob arena files are mmap-backed — pre-extended to MaxSize with an 8-byte frontier
+    // header at offset 0 (frontier no longer derived from on-disk length); wipe-and-resync so
+    // old (length==frontier, no header) blob files are never misread.
+    internal const int CurrentVersion = 8;
 
     // Length-4 sentinel key holding the version word. Entry keys are 48 bytes, so the
     // length disambiguation is unambiguous when iterating GetAll().

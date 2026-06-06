@@ -11,29 +11,35 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// underlying arena file.
 ///
 /// <para>
-/// Wiring convention: each persisted-snapshot pool tier is a pair —
-/// <c>(ArenaManager metadata, BlobArenaManager blobs)</c>. There are two such pairs,
-/// Small (short-range, <c>To-From &lt; CompactSize</c>) and Large (everything else),
-/// instantiated side-by-side in <c>FlatWorldStateModule</c>. BlobArenaManager itself
-/// is not pool-aware — a caller picks which instance to talk to.
-/// </para>
-///
-/// <para>
-/// One id per file: a <c>BlobArenaId</c> is the underlying <c>ArenaFile.Id</c>.
-/// Many writers across many base snapshots append into the same file. The
-/// manager maintains one whole-file <see cref="ArenaReservation"/> per known
-/// id; snapshots lease the reservation, and the file is deleted when the last
-/// snapshot releases it.
+/// One id per file: a <c>BlobArenaId</c> is the file's stable numeric id. Many writers
+/// across many base snapshots append into the same file. Files are read through a
+/// read-only mmap whose resident working set is bounded by a
+/// <see cref="PageResidencyTracker"/>; snapshots lease a file and the file is deleted when
+/// the last lease is released.
 /// </para>
 /// </summary>
 public interface IBlobArenaManager : IDisposable
 {
     /// <summary>
-    /// Rehydrate the underlying file pool from on-disk file lengths. Whole-file
-    /// reservations are created lazily on first <see cref="TryLeaseFile"/>. Must
-    /// run before any <c>PersistedSnapshot</c> is constructed.
+    /// Rehydrate the underlying file pool from on disk; each file restores its frontier from
+    /// its own 8-byte header. Must run before any <c>PersistedSnapshot</c> is constructed so
+    /// <see cref="TryLeaseFile"/> can resolve the ids stored in their <c>ref_ids</c> metadata.
     /// </summary>
     void Initialize();
+
+    /// <summary>
+    /// Record a single OS-page access by a reader of blob file <paramref name="blobArenaId"/>
+    /// against the page-residency tracker. No-op when the manager has no tracker. The caller
+    /// must hold a lease on the file for the duration of the call.
+    /// </summary>
+    void TouchBlobPage(int blobArenaId, int pageIdx);
+
+    /// <summary>
+    /// Forget every page-residency-tracker entry whose OS page is fully covered by
+    /// <c>[byteOffset, byteOffset + byteSize)</c> of blob file <paramref name="arenaId"/>.
+    /// Paired with a whole-range <c>madvise(MADV_DONTNEED)</c> at the call site.
+    /// </summary>
+    void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize);
 
     /// <summary>
     /// Open a writer that appends RLP items into a blob arena file (either

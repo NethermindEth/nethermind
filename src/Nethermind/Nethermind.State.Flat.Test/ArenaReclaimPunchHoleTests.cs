@@ -72,13 +72,14 @@ public class ArenaReclaimPunchHoleTests
     }
 
     [Test]
-    public void BlobFrontierReset_TruncatesFile_ForOrphanedRange()
+    public void BlobFrontierReset_PunchesDataRange_WithoutTruncating()
     {
         const int rlpSize = 4096;
         const int rlpCount = 64;
+        const long maxFileSize = 8L * 1024 * 1024;
         string blobDir = Path.Combine(_testDir, "blob");
 
-        using BlobArenaManager blobs = new(blobDir, 8L * 1024 * 1024, PersistedSnapshotTier.Persisted);
+        using BlobArenaManager blobs = new(blobDir, maxFileSize, PersistedSnapshotTier.Persisted, pageCacheBytes: 0);
 
         ushort blobId;
         using (BlobArenaWriter writer = blobs.CreateWriter(rlpSize * rlpCount))
@@ -94,17 +95,34 @@ public class ArenaReclaimPunchHoleTests
         }
 
         string blobPath = Directory.GetFiles(blobDir).Single();
-        long lengthBefore = new FileInfo(blobPath).Length;
-        Assert.That(lengthBefore, Is.GreaterThan(0), "the writer's appends should have grown the file");
+        // The file is pre-extended to maxFileSize so the mmap is fixed for life; the frontier
+        // lives in the header, not the on-disk length.
+        Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(maxFileSize), "file pre-extended to MaxSize");
 
-        // The writer's lease is gone, so the file is orphaned — frontier reset recycles it
-        // by truncating the file back to length 0 (frees disk blocks + zeros logical length
-        // in one syscall, eliminating the sparse-tail mismatch the old punch-hole path left).
+        long blocksBefore = 0;
+        if (OperatingSystem.IsLinux())
+        {
+            Fsync(blobPath);
+            blocksBefore = StatBlocks(blobPath);
+            Assert.That(blocksBefore, Is.GreaterThan(0), "the written RLPs should occupy real disk blocks");
+        }
+
+        // The writer's lease is gone, so the file is orphaned — frontier reset recycles it by
+        // punch-holing the data range (frees disk blocks WITHOUT truncating, so the fixed-size
+        // mmap is never left pointing past EOF) and resetting the frontier back to the header.
         BlobArenaFile file = blobs.GetFile(blobId);
         blobs.TryResetOrphanedFrontier(file);
 
-        Assert.That(file.Frontier, Is.EqualTo(0), "in-memory frontier reset");
-        Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(0), "on-disk file truncated by frontier reset");
+        Assert.That(file.Frontier, Is.EqualTo((long)BlobArenaFile.HeaderSize), "in-memory frontier reset to header");
+        Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(maxFileSize), "on-disk length unchanged — mapping stays valid");
+
+        if (OperatingSystem.IsLinux())
+        {
+            long blocksAfter = StatBlocks(blobPath);
+            if (blocksAfter >= blocksBefore)
+                Assert.Ignore("filesystem does not support fallocate punch-hole");
+            Assert.That(blocksAfter, Is.LessThan(blocksBefore), "frontier reset should punch-hole the dead data range");
+        }
     }
 
     private static (SnapshotLocation, ArenaReservation) WriteReservation(ArenaManager manager, int size)

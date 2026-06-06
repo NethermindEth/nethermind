@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Numerics;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -22,9 +23,17 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// <b>One id per file.</b> A <c>BlobArenaId</c> is the file's stable numeric id
 /// (narrowed to <see cref="ushort"/>) — many writers across many base snapshots append
 /// into the same file over its lifetime, claiming the file for write via the
-/// <c>_reservedFiles</c> mutual-exclusion set and releasing on Complete. A new id is
-/// only minted when no existing file has headroom; with a typical 1 GiB max file size,
-/// the count stays well below 65535.
+/// <c>_mutableFiles</c> packing pool and releasing on Complete. A new id is only minted
+/// when no existing file has headroom; with a typical 1 GiB max file size, the count stays
+/// well below 65535.
+/// </para>
+///
+/// <para>
+/// <b>Reads</b> go through each file's read-only mmap; the resident working set is bounded by
+/// a <see cref="PageResidencyTracker"/> that issues <c>madvise(MADV_DONTNEED)</c> on evicted
+/// pages — the eviction syscall runs off the read thread on a background drain of an MPSC ring,
+/// mirroring the metadata <see cref="ArenaManager"/>. <see cref="TouchBlobPage"/> records each
+/// page access on the hot path.
 /// </para>
 ///
 /// <para>
@@ -35,6 +44,9 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// </summary>
 public sealed class BlobArenaManager : IBlobArenaManager
 {
+    /// <summary>Default page-residency-tracker budget when none is configured: 1 GiB.</summary>
+    public const long DefaultBlobPageCacheBytes = 1L << 30;
+
     private const string BlobFilePrefix = "blob_";
     private const string BlobFileExtension = ".bin";
 
@@ -53,23 +65,75 @@ public sealed class BlobArenaManager : IBlobArenaManager
     private int _nextFileId;
     private bool _disposed;
 
+    // --- Page-residency tracker + eviction dispatch (mirrors ArenaManager) ---
+    private readonly PageResidencyTracker _pageTracker;
+    // 1s tick that mirrors _pageTracker.ResidentBytes into Metrics.BlobPageTrackerResidentBytesByTier.
+    // Null when the tracker is disabled (no residency to track).
+    private readonly Timer? _metricsTimer;
+    // MPSC-used MpmcRingBuffer for queued evictions; null when the tracker is disabled.
+    private readonly MpmcRingBuffer<long>? _evictionRing;
+    private readonly SemaphoreSlim? _evictionWake;
+    private readonly CancellationTokenSource? _evictionDrainCts;
+    private readonly Task? _evictionDrainTask;
+    // 0 = drain may sleep, 1 = at least one item is queued. Producers flip 0→1 and Release; the
+    // drain resets it to 0 before draining and re-checks after to close the lost-wakeup race.
+    private int _evictionSignal;
+    // Lightweight observability — also used by tests. Never decremented.
+    private long _evictionsQueued;
+    private long _evictionsInlineFallback;
+    private long _evictionsSkippedRetouched;
+    private long _evictionsDispatched;
+
+    internal long EvictionsQueued => Volatile.Read(ref _evictionsQueued);
+    internal long EvictionsInlineFallback => Volatile.Read(ref _evictionsInlineFallback);
+    internal long EvictionsSkippedRetouched => Volatile.Read(ref _evictionsSkippedRetouched);
+    internal long EvictionsDispatched => Volatile.Read(ref _evictionsDispatched);
+
+    public PageResidencyTracker PageTracker => _pageTracker;
+
     /// <summary>
     /// Construct a blob arena manager rooted at <paramref name="basePath"/> with a per-file
     /// size cap of <paramref name="maxFileSize"/>. <paramref name="tier"/> is the
-    /// pool-tier label (small / large); passed through to every <see cref="BlobArenaFile"/>
-    /// for its <see cref="Metrics.BlobFileCountByTier"/> / <see cref="Metrics.BlobAllocatedBytesByTier"/>
-    /// contributions.
+    /// pool-tier label; passed through to every <see cref="BlobArenaFile"/> for its
+    /// <see cref="Metrics.BlobFileCountByTier"/> / <see cref="Metrics.BlobAllocatedBytesByTier"/>
+    /// contributions. <paramref name="pageCacheBytes"/> sizes the read-path
+    /// <see cref="PageResidencyTracker"/>; 0 disables it (no madvise / eviction queue).
     /// </summary>
-    public BlobArenaManager(string basePath, long maxFileSize, PersistedSnapshotTier tier)
+    public BlobArenaManager(string basePath, long maxFileSize, PersistedSnapshotTier tier, long pageCacheBytes = DefaultBlobPageCacheBytes)
     {
         _basePath = basePath;
         _maxFileSize = maxFileSize;
         _tier = tier;
         Directory.CreateDirectory(basePath);
+
+        _pageTracker = PageResidencyTracker.FromByteBudget(pageCacheBytes);
+        // Per-tier static facts: metadata footprint and configured cap. ResidentBytes is
+        // refreshed by _metricsTimer below; seed to 0 so the gauge appears immediately.
+        Metrics.BlobPageTrackerResidentBytesByTier[_tier] = 0L;
+        Metrics.BlobPageTrackerMetadataBytesByTier[_tier] = _pageTracker.MetadataBytes;
+        Metrics.BlobPageTrackerMaxBytesByTier[_tier] =
+            (long)_pageTracker.MaxCapacity * Environment.SystemPageSize;
+        // Skip the timer + eviction ring + drain task entirely when the tracker is disabled
+        // (MaxCapacity == 0): no residency to poll, no evictions to dispatch.
+        if (_pageTracker.MaxCapacity > 0)
+        {
+            _metricsTimer = new Timer(RefreshResidencyMetric, null,
+                dueTime: TimeSpan.FromSeconds(1), period: TimeSpan.FromSeconds(1));
+
+            // Eviction queue sized at 10% of the tracker's slot capacity (rounded up to the next
+            // power of two, floored at 64).
+            int ringCapacity = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(64, _pageTracker.MaxCapacity / 10));
+            _evictionRing = new MpmcRingBuffer<long>(ringCapacity);
+            _evictionWake = new SemaphoreSlim(0, int.MaxValue);
+            _evictionDrainCts = new CancellationTokenSource();
+            _evictionDrainTask = Task.Run(() => DrainEvictionsAsync(_evictionDrainCts.Token));
+        }
     }
 
     /// <summary>
-    /// Rehydrate the file pool from on-disk file lengths. Must be called before any
+    /// Rehydrate the file pool from on-disk files. Each <see cref="BlobArenaFile"/> restores
+    /// its frontier from its own 8-byte header (the on-disk length is the pre-extended
+    /// <see cref="BlobArenaFile.MaxSize"/> and no longer carries it). Must be called before any
     /// <see cref="PersistedSnapshots.PersistedSnapshot"/> is constructed so
     /// <see cref="TryLeaseFile"/> can resolve ids stored in their <c>ref_ids</c> metadata.
     /// </summary>
@@ -85,10 +149,10 @@ public sealed class BlobArenaManager : IBlobArenaManager
                 if (id < 0 || id > ushort.MaxValue) continue;
                 long len = new FileInfo(path).Length;
                 long maxSize = len > 0 ? Math.Max(len, _maxFileSize) : _maxFileSize;
-                BlobArenaFile file = new(_tier, (ushort)id, path, maxSize, frontier: len);
+                BlobArenaFile file = new(_tier, (ushort)id, path, maxSize);
                 _files[id] = file;
                 _nextFileId = Math.Max(_nextFileId, id + 1);
-                if (len < _maxFileSize) _mutableFiles.Add((ushort)id);
+                if (file.Frontier < _maxFileSize) _mutableFiles.Add((ushort)id);
             }
         }
     }
@@ -141,10 +205,12 @@ public sealed class BlobArenaManager : IBlobArenaManager
                         $"Blob arena file id space exhausted ({ushort.MaxValue + 1} files).");
                 fileId = (ushort)_nextFileId++;
                 string path = Path.Combine(_basePath, $"{BlobFilePrefix}{fileId:D4}{BlobFileExtension}");
-                file = new BlobArenaFile(_tier, fileId, path, _maxFileSize, frontier: 0);
+                // Fresh pre-extended file: the ctor seeds Frontier at HeaderSize, so the first
+                // write lands past the frontier header.
+                file = new BlobArenaFile(_tier, fileId, path, _maxFileSize);
                 _files[fileId] = file;
                 // Fresh file isn't added to _mutableFiles yet — Complete/Cancel adds it.
-                startOffset = 0;
+                startOffset = file.Frontier;
             }
 
             // The writer's lease keeps the file alive for the duration of the write. If
@@ -179,6 +245,27 @@ public sealed class BlobArenaManager : IBlobArenaManager
         _files[blobArenaId]
             ?? throw new InvalidOperationException(
                 $"Blob arena {blobArenaId} not registered with this manager.");
+
+    /// <summary>
+    /// Record a single OS-page access by a reader of blob file <paramref name="blobArenaId"/>.
+    /// Mirrors <see cref="ArenaReservation.TouchPage"/>: on a non-<see cref="TouchOutcome.Hit"/>
+    /// outcome the page just entered the working set, so it is pre-faulted via
+    /// <c>madvise(MADV_POPULATE_READ)</c>; on a displacement the evicted key is queued for an
+    /// off-thread <c>madvise(MADV_DONTNEED)</c>. The caller (the hot read path) already holds a
+    /// lease on the file, so its mapping stays valid for the duration of this call.
+    /// </summary>
+    public void TouchBlobPage(int blobArenaId, int pageIdx)
+    {
+        TouchOutcome outcome = _pageTracker.TryTouch(blobArenaId, pageIdx,
+            out int evictedArenaId, out int evictedPageIdx);
+        if (outcome == TouchOutcome.Hit) return;
+
+        BlobArenaFile? file = _files[blobArenaId];
+        file?.PopulateRead((long)pageIdx * Environment.SystemPageSize, Environment.SystemPageSize);
+
+        if (outcome == TouchOutcome.Evicted)
+            QueueEviction(evictedArenaId, evictedPageIdx);
+    }
 
     /// <summary>
     /// Called by <see cref="BlobArenaWriter.Complete"/> after the writer has set the file's
@@ -263,14 +350,14 @@ public sealed class BlobArenaManager : IBlobArenaManager
             // PersistedSnapshotRepository.Dispose flags every loaded blob with
             // PersistOnShutdown before disposing snapshots. The last snapshot's CleanUp
             // arrives here with HasOnlyManagerLease=true — without this guard we'd punch
-            // a hole over the WHOLE [0, prev) range of a file the next session needs to
-            // rehydrate intact (BlobArenaFile.CleanUp would keep the file on disk, but
-            // its bytes would all read as zeros).
+            // a hole over the data range of a file the next session needs to rehydrate
+            // intact (BlobArenaFile.CleanUp would keep the file on disk, but its bytes
+            // would all read as zeros).
             if (file.IsShutdownPreserved) return;
             long prev = file.ReportedFrontier;
-            if (prev == 0)
+            if (prev <= BlobArenaFile.HeaderSize)
             {
-                // Already at 0; make sure it's a packing candidate and exit.
+                // Already empty; make sure it's a packing candidate and exit.
                 _mutableFiles.Add(file.BlobArenaId);
                 return;
             }
@@ -278,23 +365,155 @@ public sealed class BlobArenaManager : IBlobArenaManager
             // Take the file out of the packing pool BEFORE mutating Frontier. Strictly
             // redundant with _lock + the HasOnlyManagerLease re-check (CreateWriter also
             // takes _lock), but keeps the "files in _mutableFiles have a stable Frontier"
-            // invariant locally obvious. Re-added at frontier=0 below.
+            // invariant locally obvious. Re-added at frontier=HeaderSize below.
             _mutableFiles.Remove(file.BlobArenaId);
 
-            // Reclaim the orphaned [0, prev) range while still under _lock — a racing
-            // CreateWriter would otherwise lease this file and append at offset 0, and a
-            // truncate over a range that now holds fresh data would corrupt it. ftruncate
-            // zeros the logical length AND frees all disk blocks in a single syscall;
-            // the page cache for the truncated range is implicitly invalidated.
-            file.SetFileLength(0);
+            // Reclaim the orphaned data range [HeaderSize, prev) while still under _lock — a
+            // racing CreateWriter would otherwise lease this file and append at HeaderSize, and
+            // punching a range that now holds fresh data would corrupt it. Punch-hole frees the
+            // disk blocks without changing the (pre-extended) file length, so the fixed mapping
+            // stays valid; the page-cache + tracker entries for the range are dropped too.
+            long size = prev - BlobArenaFile.HeaderSize;
+            file.PunchHole(BlobArenaFile.HeaderSize, size);
+            file.AdviseDontNeed(BlobArenaFile.HeaderSize, size);
+            ForgetTrackerRange(file.BlobArenaId, BlobArenaFile.HeaderSize, size);
 
-            file.Frontier = 0;
-            file.ReportedFrontier = 0;
+            file.Frontier = BlobArenaFile.HeaderSize;
+            file.ReportedFrontier = BlobArenaFile.HeaderSize;
+            // Persist the reset frontier durably so the next session restores an empty file.
+            file.WriteFrontierHeader(BlobArenaFile.HeaderSize);
+            file.Fsync();
             Metrics.BlobAllocatedBytesByTier.AddOrUpdate(_tier,
-                static (_, _) => 0L, static (_, b, r) => Math.Max(0, b - r), prev);
+                static (_, _) => 0L, static (_, b, r) => Math.Max(0, b - r), prev - BlobArenaFile.HeaderSize);
 
             _mutableFiles.Add(file.BlobArenaId);
         }
+    }
+
+    // --- Eviction dispatch (duplicated from ArenaManager; keyed by blob file id) ---
+
+    /// <summary>
+    /// Drop tracker entries for every fully-covered OS page in <c>[byteOffset, byteOffset+byteSize)</c>.
+    /// Mirrors <see cref="BlobArenaFile.AdviseDontNeed"/>'s page-rounding (offset rounded up, end
+    /// rounded down). Runs outside the manager lock — the tracker is independent of file lifecycle.
+    /// </summary>
+    public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize)
+    {
+        if (_pageTracker.MaxCapacity == 0 || byteSize <= 0) return;
+        int pageSize = Environment.SystemPageSize;
+        long startPage = (byteOffset + pageSize - 1) / pageSize;
+        long endPageExclusive = (byteOffset + byteSize) / pageSize;
+        long pageCount = endPageExclusive - startPage;
+        if (pageCount <= 0) return;
+        for (long p = startPage; p < endPageExclusive; p++)
+            _pageTracker.Forget(arenaId, (int)p);
+        // Whole-range Forget is paired with a whole-range MADV_DONTNEED at the call sites —
+        // the kernel has just dropped many pages at once, so refresh resident pages
+        // proportionally so its LRU doesn't bleed into our working set. Same 1:2 ratio as
+        // the single-page dispatch path.
+        TouchWarmPages((int)Math.Min(int.MaxValue, pageCount * 2));
+    }
+
+    internal void QueueEviction(int arenaId, int pageIdx)
+    {
+        // Disabled tracker (no ring) — nothing to do; TryTouch always returns Hit, but stay
+        // defensive for direct callers.
+        if (_evictionRing is null) return;
+
+        long packed = ((long)(uint)arenaId << 32) | (uint)pageIdx;
+        if (_evictionRing.TryEnqueue(packed))
+        {
+            Interlocked.Increment(ref _evictionsQueued);
+            // Wake the drain only on the empty→non-empty edge; subsequent enqueues piggy-back
+            // on the in-flight wake-up.
+            if (Interlocked.Exchange(ref _evictionSignal, 1) == 0)
+                _evictionWake!.Release();
+            return;
+        }
+
+        // Ring full — fall back to inline dispatch so the eviction is not lost.
+        Interlocked.Increment(ref _evictionsInlineFallback);
+        Metrics.BlobPageTrackerEvictionsInlineFallbackByTier.AddOrUpdate(_tier, 1L, static (_, c) => c + 1);
+        DispatchEvictionInline(arenaId, pageIdx);
+    }
+
+    private async Task DrainEvictionsAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                // Reset the signal *before* draining; if a producer enqueues mid-drain it will
+                // flip the flag back to 1 and the post-drain check picks it up.
+                Volatile.Write(ref _evictionSignal, 0);
+                while (_evictionRing!.TryDequeue(out long packed))
+                    DispatchOneEviction(packed);
+
+                if (Volatile.Read(ref _evictionSignal) != 0) continue;
+                await _evictionWake!.WaitAsync(ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutdown — drain leftovers happens in Dispose.
+        }
+    }
+
+    private void DispatchOneEviction(long packed)
+    {
+        int arenaId = (int)(packed >> 32);
+        int pageIdx = (int)packed;
+        // Re-check residency: if the page returned to the working set between enqueue and
+        // drain, skip the syscall — punishing it would just force a re-fault on the next read.
+        if (_pageTracker.ContainsPage(arenaId, pageIdx))
+        {
+            Interlocked.Increment(ref _evictionsSkippedRetouched);
+            return;
+        }
+        Interlocked.Increment(ref _evictionsDispatched);
+        Metrics.BlobPageTrackerEvictionsDispatchedByTier.AddOrUpdate(_tier, 1L, static (_, c) => c + 1);
+        DispatchEvictionInline(arenaId, pageIdx);
+    }
+
+    private void DispatchEvictionInline(int arenaId, int pageIdx)
+    {
+        BlobArenaFile? file = _files[arenaId];
+        if (file is null) return;
+        int pageSize = Environment.SystemPageSize;
+        long offset = (long)pageIdx * pageSize;
+        // madvise tolerates a stale/torn-down pointer (returns errno) so no lease is needed here;
+        // TouchWarmPages below does a userspace load and leases the file itself.
+        file.AdviseDontNeed(offset, pageSize);
+
+        // 1:2 drop-to-warm ratio (one dropped page → two refreshed pages).
+        TouchWarmPages(2);
+    }
+
+    // Refresh up to <paramref name="targetTouches"/> resident pages' kernel-side LRU position so
+    // MADV_DONTNEED on a sibling doesn't pull them out of the page cache under memory pressure.
+    private void TouchWarmPages(int targetTouches)
+    {
+        for (int i = 0; i < targetTouches; i++)
+        {
+            if (!_pageTracker.TryPickResidentPage(out int warmArenaId, out int warmPageIdx)) return;
+            BlobArenaFile? warmFile = _files[warmArenaId];
+            if (warmFile is null) continue;
+            long warmOffset = (long)warmPageIdx * Environment.SystemPageSize;
+            if (warmOffset >= warmFile.MaxSize) continue;
+            // Userspace load on a torn-down mapping would SIGSEGV (madvise tolerates a bad
+            // pointer; a raw load does not) — pin the file for the duration of the read.
+            if (!warmFile.TryAcquireLease()) continue;
+            try { warmFile.TouchByte(warmOffset); }
+            finally { warmFile.Dispose(); }
+        }
+    }
+
+    // Mirror the tracker's resident-bytes counter into the per-tier gauge. Runs on the ThreadPool
+    // from a 1s System.Threading.Timer; ResidentBytes is a single Volatile.Read.
+    private void RefreshResidencyMetric(object? _)
+    {
+        if (_disposed) return;
+        Metrics.BlobPageTrackerResidentBytesByTier[_tier] = _pageTracker.ResidentBytes;
     }
 
     public void Dispose()
@@ -303,6 +522,28 @@ public sealed class BlobArenaManager : IBlobArenaManager
         {
             if (_disposed) return;
             _disposed = true;
+        }
+
+        _metricsTimer?.Dispose();
+
+        // Stop the drain task first so it doesn't race with file disposal below.
+        _evictionDrainCts?.Cancel();
+        try { _evictionWake?.Release(); } catch (ObjectDisposedException) { /* concurrent dispose */ }
+        try { _evictionDrainTask?.GetAwaiter().GetResult(); }
+        catch (OperationCanceledException) { /* expected on shutdown */ }
+        catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException)) { /* expected */ }
+
+        // Drain any leftovers synchronously; the syscalls are cheap enough that we'd rather
+        // pay the cost than leave kernel pages cached for a process about to exit.
+        if (_evictionRing is not null)
+            while (_evictionRing.TryDequeue(out long packed))
+                DispatchOneEviction(packed);
+
+        _evictionWake?.Dispose();
+        _evictionDrainCts?.Dispose();
+
+        lock (_lock)
+        {
             for (int id = 0; id < _files.Length; id++)
             {
                 BlobArenaFile? file = _files[id];
@@ -315,6 +556,11 @@ public sealed class BlobArenaManager : IBlobArenaManager
                 file.Dispose();
             }
         }
+        _pageTracker.Dispose();
+        // Zero out per-tier gauges so a teardown doesn't leave stale entries behind.
+        Metrics.BlobPageTrackerResidentBytesByTier[_tier] = 0L;
+        Metrics.BlobPageTrackerMetadataBytesByTier[_tier] = 0L;
+        Metrics.BlobPageTrackerMaxBytesByTier[_tier] = 0L;
     }
 
     private static int ParseId(string fileName)

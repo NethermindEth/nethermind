@@ -28,6 +28,7 @@ public class FlatDbConfig : IFlatDbConfig
     public string PersistedSnapshotPath { get; set; } = "snapshots";
     public long ArenaFileSizeBytes { get; set; } = 1L * 1024 * 1024 * 1024;
     public long PersistedSnapshotArenaPageCacheBytes { get; set; } = 8L * 1024 * 1024 * 1024;
+    public long PersistedSnapshotBlobPageCacheBytes { get; set; } = 1L * 1024 * 1024 * 1024;
     public bool PersistedSnapshotFadviseOnPageEviction { get; set; } = false;
     public bool PersistedSnapshotPunchHoleOnReclaim { get; set; } = true;
     public int PersistedSnapshotMaxCompactSize { get; set; } = 1024 * 8;

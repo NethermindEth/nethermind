@@ -232,6 +232,33 @@ public static class Metrics
     [KeyIsLabel("tier")]
     public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerEvictionsInlineFallbackByTier { get; } = new();
 
+    // Blob-arena PageResidencyTracker gauges. Distinct from the PageTracker*ByTier family above,
+    // which the metadata ArenaManager owns: both managers register the same PersistedSnapshotTier,
+    // so the blob tracker needs its own keys to avoid clobbering the metadata gauges.
+    [Description("Currently-bounded resident bytes in the blob-arena page-residency tracker, by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> BlobPageTrackerResidentBytesByTier { get; } = new();
+
+    [Description("Unmanaged metadata bytes used by the blob-arena page-residency tracker (slot + meta arrays), by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> BlobPageTrackerMetadataBytesByTier { get; } = new();
+
+    [Description("Maximum bytes the blob-arena page-residency tracker can bound (configured page-cache budget), by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> BlobPageTrackerMaxBytesByTier { get; } = new();
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Blob-arena page-tracker evictions dispatched off the drain ring (madvise issued), by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> BlobPageTrackerEvictionsDispatchedByTier { get; } = new();
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Blob-arena page-tracker evictions dispatched inline because the drain ring was full, by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> BlobPageTrackerEvictionsInlineFallbackByTier { get; } = new();
+
     [DetailedMetric]
     [Description("Live arena reservations, by tier")]
     [KeyIsLabel("tier")]

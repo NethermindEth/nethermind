@@ -90,7 +90,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 return new BlobArenaManager(
                     Path.Combine(basePath, "blob"),
                     cfg.ArenaFileSizeBytes,
-                    PersistedSnapshotTier.Persisted);
+                    PersistedSnapshotTier.Persisted,
+                    cfg.PersistedSnapshotBlobPageCacheBytes);
             })
             .AddSingleton<IPersistedSnapshotRepository>((ctx) =>
             {

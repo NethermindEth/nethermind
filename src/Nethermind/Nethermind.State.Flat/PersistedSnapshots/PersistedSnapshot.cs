@@ -587,30 +587,39 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     // Worst-case Merkle-Patricia branch node: 17 entries × (1-byte prefix + 32-byte hash)
     // plus a 3-byte long-list framing header ≈ 564 bytes. Round up to 568 so the read
-    // covers any branch node in one pread.
+    // window covers any branch node in one go.
     private const int MaxTrieNodeRlpBytes = 568;
 
     private byte[] ReadBlobArenaRlp(ushort blobArenaId, int offset)
     {
         BlobArenaFile file = _blobManager.GetFile(blobArenaId);
-        Span<byte> buf = stackalloc byte[MaxTrieNodeRlpBytes];
-        int bytesRead = file.RandomRead(offset, buf);
-        Rlp.ValueDecoderContext ctx = new(buf[..bytesRead]);
+        int pageSize = Environment.SystemPageSize;
+        // Clamp the read window to the mapped end so the tail near the frontier never addresses
+        // past MaxSize (offset < Frontier ≤ MaxSize, so the window is always backed/sparse-zero).
+        int available = (int)Math.Min((long)MaxTrieNodeRlpBytes, file.MaxSize - offset);
+        // Report the touched OS page(s) to the page-residency tracker before reading. The writer
+        // keeps a trie-node RLP within one logical page, but the read window can still straddle an
+        // OS-page boundary, so touch both ends (a same-page second touch is a cheap Hit).
+        int firstPage = offset / pageSize;
+        int lastPage = (offset + available - 1) / pageSize;
+        _blobManager.TouchBlobPage(blobArenaId, firstPage);
+        if (lastPage != firstPage) _blobManager.TouchBlobPage(blobArenaId, lastPage);
+
+        ReadOnlySpan<byte> raw = file.GetSpan(offset, available);
+        Rlp.ValueDecoderContext ctx = new(raw);
         int totalLength = ctx.PeekNextRlpLength();
-        if (totalLength > bytesRead)
+        if (totalLength > available)
             throw new InvalidDataException(
                 $"Trie-node RLP at blob arena {blobArenaId}+{offset} declares {totalLength} bytes " +
-                $"but only {bytesRead} were read (MaxTrieNodeRlpBytes = {MaxTrieNodeRlpBytes}).");
-        byte[] result = new byte[totalLength];
-        buf[..totalLength].CopyTo(result);
-        return result;
+                $"but only {available} are available (MaxTrieNodeRlpBytes = {MaxTrieNodeRlpBytes}).");
+        return raw[..totalLength].ToArray();
     }
 
     public void AdviseDontNeed() => _reservation.AdviseDontNeed();
 
     /// <summary>
-    /// Issue <c>posix_fadvise(WILLNEED)</c> over this base snapshot's contiguous trie-RLP
-    /// region so the kernel prefetches it ahead of a random-access read pass. No-op for
+    /// Issue <c>madvise(MADV_POPULATE_READ)</c> over this base snapshot's contiguous trie-RLP
+    /// mmap region so the kernel pre-faults it ahead of a random-access read pass. No-op for
     /// compacted / persistable snapshots (<see cref="BlobRange.None"/>) or empty regions.
     /// </summary>
     /// <remarks>
@@ -621,13 +630,13 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public void AdviseWillNeedBlobRange()
     {
         if (BlobRange.IsEmpty) return;
-        _blobManager.GetFile(BlobRange.BlobArenaId).FadviseWillNeed(BlobRange.Offset, BlobRange.Length);
+        _blobManager.GetFile(BlobRange.BlobArenaId).PopulateRead(BlobRange.Offset, BlobRange.Length);
     }
 
     /// <summary>
-    /// Issue <c>posix_fadvise(DONTNEED)</c> over this base snapshot's contiguous trie-RLP
-    /// region, dropping it from the OS page cache. No-op for compacted / persistable
-    /// snapshots (<see cref="BlobRange.None"/>) or empty regions.
+    /// Issue <c>madvise(MADV_DONTNEED)</c> over this base snapshot's contiguous trie-RLP mmap
+    /// region, dropping it from the resident set, and forget the matching page-tracker entries.
+    /// No-op for compacted / persistable snapshots (<see cref="BlobRange.None"/>) or empty regions.
     /// </summary>
     /// <remarks>
     /// The counterpart to <see cref="AdviseWillNeedBlobRange"/>: called once the persistable
@@ -637,7 +646,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public void AdviseDontNeedBlobRange()
     {
         if (BlobRange.IsEmpty) return;
-        _blobManager.GetFile(BlobRange.BlobArenaId).FadviseDontNeed(BlobRange.Offset, BlobRange.Length);
+        _blobManager.GetFile(BlobRange.BlobArenaId).AdviseDontNeed(BlobRange.Offset, BlobRange.Length);
+        _blobManager.ForgetTrackerRange(BlobRange.BlobArenaId, BlobRange.Offset, BlobRange.Length);
     }
 
     /// <summary>

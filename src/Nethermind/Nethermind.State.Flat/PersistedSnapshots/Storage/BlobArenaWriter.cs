@@ -14,7 +14,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// <para>
 /// Page-aligned padding: before writing an RLP that would otherwise cross a 4 KiB
 /// OS-page boundary, leading pad bytes push the value into the next page. The pad
-/// is computed against the file-absolute frontier (files start at offset 0). Trie-node
+/// is computed against the file-absolute frontier (the data region starts past the
+/// <see cref="BlobArenaFile.HeaderSize"/> frontier header). Trie-node
 /// RLP is bounded well below 4 KiB (worst-case branch ≈ 532 bytes), so the simple
 /// "pad if it would cross" rule never has to split an oversize value. The pad bytes
 /// are inert because the HSST reader recovers value bounds from per-entry length
@@ -140,6 +141,10 @@ public sealed class BlobArenaWriter : IDisposable
         // candidate for the next writer's packing scan and pushes the post-write
         // frontier delta to the per-tier allocated-bytes gauge.
         _file.Frontier = _written;
+        // Persist the advanced frontier into the file header so a restart restores it (the
+        // on-disk length is pre-extended to MaxSize and can't carry the frontier). Durability
+        // is the caller's Fsync, which the convert path runs before recording the catalog entry.
+        _file.WriteFrontierHeader(_written);
         _manager.OnWriteCompleted(_file, hasHeadroom: _file.Frontier < _file.MaxSize);
     }
 

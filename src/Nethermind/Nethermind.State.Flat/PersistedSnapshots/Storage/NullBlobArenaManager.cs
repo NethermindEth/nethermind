@@ -18,6 +18,10 @@ public sealed class NullBlobArenaManager : IBlobArenaManager
 
     public void Initialize() { }
 
+    public void TouchBlobPage(int blobArenaId, int pageIdx) { }
+
+    public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize) { }
+
     public BlobArenaWriter CreateWriter(long estimatedSize) =>
         throw new InvalidOperationException("NullBlobArenaManager cannot create writers.");
 
