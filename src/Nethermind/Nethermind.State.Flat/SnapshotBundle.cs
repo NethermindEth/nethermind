@@ -29,7 +29,6 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
-    private bool _publishTransientTrieNodesOnDispose;
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
@@ -395,11 +394,6 @@ public sealed class SnapshotBundle : IDisposable
     // as most of the slot should already be queued by prewarmer.
     public bool ShouldQueuePrewarm(Address address, UInt256? slot = null) => _transientResource.ShouldPrewarm(address, slot);
 
-    /// <summary>
-    /// Publishes trie nodes warmed by this bundle into the shared trie-node cache when the bundle is disposed.
-    /// </summary>
-    public void PublishTransientTrieNodesOnDispose() => _publishTransientTrieNodesOnDispose = true;
-
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
@@ -463,24 +457,9 @@ public sealed class SnapshotBundle : IDisposable
         _selfDestructedAccountAddresses = null!;
 
         _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);
-        ReturnTransientResource();
+        _resourcePool.ReturnCachedResource(_usage, _transientResource);
         _readOnlySnapshotBundle.Dispose();
 
         Metrics.ActiveSnapshotBundle--;
-    }
-
-    private void ReturnTransientResource()
-    {
-        try
-        {
-            if (_publishTransientTrieNodesOnDispose && _transientResource.CachedNodes != 0)
-            {
-                _trieNodeCache.Add(_transientResource);
-            }
-        }
-        finally
-        {
-            _resourcePool.ReturnCachedResource(_usage, _transientResource);
-        }
     }
 }

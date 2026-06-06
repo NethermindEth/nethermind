@@ -64,7 +64,7 @@ public class FlatWorldStateManager(
             codeDb,
             flatDbManager,
             configuration,
-            trieWarmer,
+            new NoopTrieWarmer(),
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             logManager,
             isReadOnly: true);
