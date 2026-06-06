@@ -260,7 +260,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
-    public void ClearStorageMap() => _storages.Clear();
+    public void ClearStorageMap() => _storages.ResetAndClear();
 
     private PerContractState GetOrCreateStorage(Address address)
     {
