@@ -76,6 +76,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             RootHash = currentStateId.StateRoot.ToCommitment()
         };
+        _warmupStateTree.RootRef = _stateTree.RootRef;
 
         _configuration = configuration;
         _logManager = logManager;
