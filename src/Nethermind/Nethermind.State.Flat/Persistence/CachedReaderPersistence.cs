@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -24,9 +23,6 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     private readonly Task _clearTimerTask;
 
     private RefCountingPersistenceReader? _cachedReader;
-    private ConcurrentDictionary<AddressAsKey, Account?> _accountCache = new();
-    private ConcurrentDictionary<StorageCell, CachedSlotValue> _slotCache = new();
-    private int _cacheGeneration;
     private int _isDisposed;
 
     public CachedReaderPersistence(IPersistence inner,
@@ -82,7 +78,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
             if (cachedReader is null)
             {
                 _cachedReader = cachedReader = new RefCountingPersistenceReader(
-                    new CachedPersistenceReader(_inner.CreateReader(), this, Volatile.Read(ref _cacheGeneration)),
+                    _inner.CreateReader(),
                     _logger
                 );
             }
@@ -113,14 +109,6 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         RefCountingPersistenceReader? cachedReader = _cachedReader;
         _cachedReader = null;
         cachedReader?.Dispose();
-        ClearValueCaches();
-    }
-
-    private void ClearValueCaches()
-    {
-        Interlocked.Exchange(ref _accountCache, new ConcurrentDictionary<AddressAsKey, Account?>());
-        Interlocked.Exchange(ref _slotCache, new ConcurrentDictionary<StorageCell, CachedSlotValue>());
-        Interlocked.Increment(ref _cacheGeneration);
     }
 
     public async ValueTask DisposeAsync()
@@ -155,86 +143,5 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
             // not in lock as it has its own lock
             parent.ClearReaderCache();
         }
-    }
-
-    private readonly struct CachedSlotValue(bool found, SlotValue value)
-    {
-        public bool Found { get; } = found;
-        public SlotValue Value { get; } = value;
-    }
-
-    private sealed class CachedPersistenceReader(IPersistence.IPersistenceReader inner, CachedReaderPersistence parent, int cacheGeneration)
-        : IPersistence.IPersistenceReader
-    {
-        public Account? GetAccount(Address address)
-        {
-            if (!IsCurrentCacheGeneration)
-            {
-                return inner.GetAccount(address);
-            }
-
-            AddressAsKey key = address;
-            ConcurrentDictionary<AddressAsKey, Account?> cache = parent._accountCache;
-            if (cache.TryGetValue(key, out Account? account))
-            {
-                return account;
-            }
-
-            account = inner.GetAccount(address);
-            if (IsCurrentCacheGeneration)
-            {
-                cache.TryAdd(key, account);
-            }
-            return account;
-        }
-
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
-        {
-            if (!IsCurrentCacheGeneration)
-            {
-                return inner.TryGetSlot(address, in slot, ref outValue);
-            }
-
-            StorageCell key = new(address, in slot);
-            ConcurrentDictionary<StorageCell, CachedSlotValue> cache = parent._slotCache;
-            if (cache.TryGetValue(key, out CachedSlotValue cachedSlot))
-            {
-                outValue = cachedSlot.Value;
-                return cachedSlot.Found;
-            }
-
-            bool found = inner.TryGetSlot(address, in slot, ref outValue);
-            if (IsCurrentCacheGeneration)
-            {
-                cache.TryAdd(key, new CachedSlotValue(found, outValue));
-            }
-            return found;
-        }
-
-        private bool IsCurrentCacheGeneration => Volatile.Read(ref parent._cacheGeneration) == cacheGeneration;
-
-        public StateId CurrentState => inner.CurrentState;
-
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-            inner.TryLoadStateRlp(path, flags);
-
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-            inner.TryLoadStorageRlp(address, path, flags);
-
-        public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
-            inner.GetAccountRaw(in addrHash);
-
-        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) =>
-            inner.TryGetStorageRaw(in addrHash, in slotHash, ref value);
-
-        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
-            inner.CreateAccountIterator(in startKey, in endKey);
-
-        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
-            inner.CreateStorageIterator(in accountKey, in startSlotKey, in endSlotKey);
-
-        public bool IsPreimageMode => inner.IsPreimageMode;
-
-        public void Dispose() => inner.Dispose();
     }
 }
