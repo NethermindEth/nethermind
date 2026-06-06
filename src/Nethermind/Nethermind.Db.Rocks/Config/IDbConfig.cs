@@ -130,33 +130,21 @@ public interface IDbConfig : IConfig
 
     string? FlatAccountDbRocksDbOptions { get; set; }
     string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
-    [ConfigItem(Description = "Flat account column RocksDB row-cache size in bytes. Default: null (disabled).")]
-    ulong? FlatAccountDbRowCacheSize { get; set; }
 
     string? FlatStorageDbRocksDbOptions { get; set; }
     string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
-    [ConfigItem(Description = "Flat storage column RocksDB row-cache size in bytes. Default: null (disabled).")]
-    ulong? FlatStorageDbRowCacheSize { get; set; }
 
     string? FlatStateNodesDbRocksDbOptions { get; set; }
     string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
-    [ConfigItem(Description = "Flat state-nodes column RocksDB row-cache size in bytes. Default: null (disabled).")]
-    ulong? FlatStateNodesDbRowCacheSize { get; set; }
 
     string? FlatStateTopNodesDbRocksDbOptions { get; set; }
     string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
-    [ConfigItem(Description = "Flat state-top-nodes column RocksDB row-cache size in bytes. Default: null (disabled).")]
-    ulong? FlatStateTopNodesDbRowCacheSize { get; set; }
 
     string? FlatStorageNodesDbRocksDbOptions { get; set; }
     string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
-    [ConfigItem(Description = "Flat storage-nodes column RocksDB row-cache size in bytes. Default: null (disabled).")]
-    ulong? FlatStorageNodesDbRowCacheSize { get; set; }
 
     string? FlatFallbackNodesDbRocksDbOptions { get; set; }
     string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
-    [ConfigItem(Description = "Flat fallback-nodes column RocksDB row-cache size in bytes. Default: null (disabled).")]
-    ulong? FlatFallbackNodesDbRowCacheSize { get; set; }
 
     string? PreimageDbRocksDbOptions { get; set; }
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }

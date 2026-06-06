@@ -357,7 +357,6 @@ public class DbConfig : IDbConfig
         "max_write_buffer_number=4;" +
         "";
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
-    public ulong? FlatAccountDbRowCacheSize { get; set; }
 
     public string? FlatStorageDbRocksDbOptions { get; set; } =
         // Keep last level bloom filter. Take up most index memory
@@ -375,7 +374,6 @@ public class DbConfig : IDbConfig
         "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
-    public ulong? FlatStorageDbRowCacheSize { get; set; }
 
     const string? FlatDbCommonTrieOptions =
         "level_compaction_dynamic_level_bytes=true;" +
@@ -390,7 +388,6 @@ public class DbConfig : IDbConfig
         "max_write_buffer_number=4;" +
         "";
     public string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
-    public ulong? FlatStateNodesDbRowCacheSize { get; set; }
 
     // So not written as much so lower buffer size
     public string? FlatStateNodesDbRocksDbOptions { get; set; } =
@@ -399,7 +396,6 @@ public class DbConfig : IDbConfig
         "max_write_buffer_number=4;" +
         "";
     public string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
-    public ulong? FlatStateTopNodesDbRowCacheSize { get; set; }
 
     // Most writes
     public string? FlatStorageNodesDbRocksDbOptions { get; set; } =
@@ -410,7 +406,6 @@ public class DbConfig : IDbConfig
         "max_write_buffer_number=8;" +
         "";
     public string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
-    public ulong? FlatStorageNodesDbRowCacheSize { get; set; }
 
     public string? FlatFallbackNodesDbRocksDbOptions { get; set; } =
         FlatDbCommonTrieOptions +
@@ -418,7 +413,6 @@ public class DbConfig : IDbConfig
         "max_bytes_for_level_base=4000000;" +
         "";
     public string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
-    public ulong? FlatFallbackNodesDbRowCacheSize { get; set; }
 
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
