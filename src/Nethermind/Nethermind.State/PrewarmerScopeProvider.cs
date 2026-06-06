@@ -222,15 +222,15 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                if (readDeduplicator is not null)
+                if (readDeduplicator is not null && isPrewarmer)
                 {
-                    value = isPrewarmer
-                        ? LoadFromTreeStorageDeduplicated(in storageCell)
-                        : LoadFromTreeStorageJoiningInFlightDeduplicated(in storageCell);
+                    value = LoadFromTreeStorageDeduplicated(in storageCell);
                 }
                 else
                 {
-                    value = LoadAndBackfillStorage(in storageCell);
+                    value = LoadFromTreeStorage(in storageCell);
+                    // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
+                    preBlockCache.Set(in storageCell, value);
                 }
 
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
@@ -249,35 +249,6 @@ public class PrewarmerScopeProvider(
                 : baseStorageTree.Get(storageCell.Hash);
         }
 
-        private byte[] LoadAndBackfillStorage(in StorageCell storageCell)
-        {
-            byte[] value = LoadFromTreeStorage(in storageCell);
-            // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
-            preBlockCache.Set(in storageCell, value);
-            return value;
-        }
-
-        private byte[] LoadFromTreeStorageJoiningInFlightDeduplicated(in StorageCell storageCell)
-        {
-            System.Threading.Lock gate = readDeduplicator!.GetStorageLock(in storageCell);
-            if (gate.TryEnter())
-            {
-                gate.Exit();
-                return LoadAndBackfillStorage(in storageCell);
-            }
-
-            using (gate.EnterScope())
-            {
-                if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
-                {
-                    Db.Metrics.IncrementStorageTreeCache();
-                    return value;
-                }
-            }
-
-            return LoadAndBackfillStorage(in storageCell);
-        }
-
         private byte[] LoadFromTreeStorageDeduplicated(in StorageCell storageCell)
         {
             System.Threading.Lock gate = readDeduplicator!.GetStorageLock(in storageCell);
@@ -289,7 +260,9 @@ public class PrewarmerScopeProvider(
                     return value;
                 }
 
-                return LoadAndBackfillStorage(in storageCell);
+                value = LoadFromTreeStorage(in storageCell);
+                preBlockCache.Set(in storageCell, value);
+                return value;
             }
         }
 
