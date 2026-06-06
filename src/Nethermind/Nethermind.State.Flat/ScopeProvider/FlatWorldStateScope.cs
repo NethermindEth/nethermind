@@ -257,6 +257,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
             }
             catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                // Warming is best-effort and self-heals on a read miss. Swallow non-cancellation faults
+                // here so the returned task stays RanToCompletion: BranchProcessor.WaitAndClear drains it
+                // with GetResult() and would otherwise fail an already-executed block on a prefetch error.
+                ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                if (logger.IsError) logger.Error("HintBal read warming faulted; ignoring (reads self-heal)", ex);
+            }
             finally
             {
                 accountChanges.Dispose();
@@ -275,6 +283,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
+        CancellationToken token = parallelOptions.CancellationToken;
+        if (token.IsCancellationRequested) return;
+
         int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
@@ -290,6 +301,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         for (int i = 0; i < accountChanges.Count; i++)
         {
             if (accounts[i] is null) continue;
+            if (token.IsCancellationRequested) return;
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
@@ -300,6 +312,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             foreach (UInt256 readKey in ac.StorageReads)
                 jobs[idx++] = (address, selfDestructIdx, readKey, ComputeSlotHash(readKey), addrPrefix);
         }
+
+        if (token.IsCancellationRequested) return;
 
         // Issue persistence reads in on-disk key order. The flat storage key is
         // addrHash[0..4] ++ slotHash ++ addrHash[4..20], so ordering by (addrHash prefix, slotHash)
