@@ -317,6 +317,25 @@ public class ScopeProviderTests(bool useFlat)
         Assert.That(inner.StorageReads, Is.EqualTo(1));
     }
 
+    [Test]
+    public async Task PrewarmerWrappedScope_DeduplicatesConcurrentAccountMisses()
+    {
+        PreBlockCaches caches = new();
+        PrewarmerReadDeduplicator readDeduplicator = new();
+        CountingScopeProvider inner = new();
+        PrewarmerScopeProvider prewarmer = new(inner, caches, LimboLogs.Instance, readDeduplicator: readDeduplicator);
+
+        using IWorldStateScopeProvider.IScope scope1 = prewarmer.BeginScope(null);
+        using IWorldStateScopeProvider.IScope scope2 = prewarmer.BeginScope(null);
+
+        Account[] values = await Task.WhenAll(
+            Task.Run(() => scope1.Get(TestItem.AddressA)),
+            Task.Run(() => scope2.Get(TestItem.AddressA)));
+
+        Assert.That(values[0], Is.EqualTo(values[1]));
+        Assert.That(inner.AccountReads, Is.EqualTo(1));
+    }
+
 #nullable enable
     private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
