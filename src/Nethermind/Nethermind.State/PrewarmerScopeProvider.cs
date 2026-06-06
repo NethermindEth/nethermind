@@ -85,12 +85,21 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
-        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => new StorageTreeWrapper(
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
+        {
+            AddressAsKey addressAsKey = address;
+            if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
+            {
+                baseScope.HintGet(address, account);
+            }
+
+            return new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
                 storageCache,
                 address,
                 isPrewarmer,
                 readDeduplicator);
+        }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
