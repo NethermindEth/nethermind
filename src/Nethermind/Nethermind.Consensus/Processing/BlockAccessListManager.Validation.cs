@@ -283,7 +283,9 @@ public partial class BlockAccessListManager
         if (preBlockCaches?.ReadCoverageEnabled == true)
         {
             // Coverage path: reads aren't materialized; the worker counted this slice's distinct
-            // chargeable reads from its coverage at slice return.
+            // chargeable reads from its coverage at slice return. The narrowing is safe - the EIP-7928
+            // chargeable-read count stays far below int.MaxValue at any feasible block gas limit.
+            Debug.Assert(slice.ChargeableReadCount <= int.MaxValue, "chargeable read count exceeds int range");
             _generatedChargeableStorageReads += (int)slice.ChargeableReadCount;
         }
         else

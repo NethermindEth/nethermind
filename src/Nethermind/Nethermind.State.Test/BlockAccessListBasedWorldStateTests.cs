@@ -105,6 +105,14 @@ public class BlockAccessListBasedWorldStateTests
             Assert.That(bws.Get(new StorageCell(TestItem.AddressA, 5)).ToArray(), Is.EqualTo(prefetched));
             // Slot 7 was not prefetched: fall back to the parent reader (trie) value.
             Assert.That(bws.Get(new StorageCell(TestItem.AddressA, 7)).ToArray(), Is.EqualTo(new byte[] { 7, 7 }));
+
+            // The miss read through to the parent and cached the value in the destination (self-heal):
+            // Set(ordinal, value) fired, so the slot now resolves straight from the destination.
+            Assert.That(caches.StorageReadPlan!.TryGetGlobalReadOrdinal(TestItem.AddressA, 7, out int ordinal7), Is.True);
+            Assert.That(caches.StorageValueDestination!.TryGet(ordinal7, out byte[]? cached7), Is.True, "destination-miss read-through must cache the value");
+            Assert.That(cached7, Is.EqualTo(new byte[] { 7, 7 }));
+            // A subsequent access returns the same value, now served from the destination.
+            Assert.That(bws.Get(new StorageCell(TestItem.AddressA, 7)).ToArray(), Is.EqualTo(new byte[] { 7, 7 }));
         }
     }
 

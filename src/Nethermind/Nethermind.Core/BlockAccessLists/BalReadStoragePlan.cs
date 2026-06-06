@@ -95,6 +95,9 @@ public sealed class BalReadStoragePlan
                 return entry.Account.Address;
             }
         }
+        // Unreachable: callers only map ordinals drawn from this plan, so one always lands in an account.
+        // Address.Zero is a valid address, so it is a poor sentinel - assert rather than return it silently.
+        Debug.Assert(false, "ordinal out of range");
         return Address.Zero;
     }
 
