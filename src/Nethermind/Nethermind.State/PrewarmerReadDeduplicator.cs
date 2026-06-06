@@ -9,7 +9,7 @@ namespace Nethermind.State;
 
 public sealed class PrewarmerReadDeduplicator
 {
-    private const int LockCount = 1 << 12;
+    private const int LockCount = 1 << 14;
     private const int LockMask = LockCount - 1;
 
     private readonly Lock[] _storageLocks = CreateLocks();
