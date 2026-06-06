@@ -584,9 +584,13 @@ public class ParallelTransactionProcessor(
 
             return Status.Ok;
         }
-        catch (AbortParallelExecutionException e)
+        catch (AbortParallelExecutionException)
         {
-            blockingTx = e.BlockingRead.TxIndex;
+            // Payload is on a thread-static, not on the exception instance — the exception is
+            // a cached singleton thrown via ExceptionDispatchInfo and carries no per-throw
+            // state. Safe to read here because the abort and the catch are on the same worker
+            // thread (the EVM call stack never crosses threads).
+            blockingTx = AbortParallelExecutionException.LastBlocker.TxIndex;
             return Status.ReadError;
         }
         finally

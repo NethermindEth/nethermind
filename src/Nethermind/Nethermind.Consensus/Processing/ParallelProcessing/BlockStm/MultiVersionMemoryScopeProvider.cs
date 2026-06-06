@@ -94,7 +94,7 @@ public class MultiVersionMemoryScopeProvider(
             Status status = multiVersionMemory.TryRead(location, txIndex, out TxVersion readVersion, out object? value);
             Account? result = status switch
             {
-                Status.ReadError => throw new AbortParallelExecutionException(in readVersion),
+                Status.ReadError => AbortParallelExecutionException.ThrowAndReturn<Account?>(in readVersion),
                 Status.NotFound => baseScope.Get(address),
                 Status.Ok => (Account?)value,
                 _ => throw new ArgumentOutOfRangeException(nameof(status), status, $"Unknown multi version memory read status: {status}")
@@ -172,7 +172,7 @@ public class MultiVersionMemoryScopeProvider(
             {
                 if (!allPriorCommitted && !feeAccumulator.IsCommitted(i))
                 {
-                    throw new AbortParallelExecutionException(new TxVersion(i, 0));
+                    AbortParallelExecutionException.Throw(new TxVersion(i, 0));
                 }
 
                 ParallelStateKey feeKey = ParallelStateKey.ForFee(feeKind, i);
@@ -180,9 +180,11 @@ public class MultiVersionMemoryScopeProvider(
                 switch (status)
                 {
                     case Status.ReadError:
-                        throw new AbortParallelExecutionException(in feeVersion);
+                        AbortParallelExecutionException.Throw(in feeVersion);
+                        break;
                     case Status.NotFound:
-                        throw new AbortParallelExecutionException(new TxVersion(i, 0));
+                        AbortParallelExecutionException.Throw(new TxVersion(i, 0));
+                        break;
                 }
 
                 readSet.Add(new Read(feeKey, feeVersion));
@@ -246,7 +248,7 @@ public class MultiVersionMemoryScopeProvider(
                 Status status = multiVersionMemory.TryRead(key, txIndex, out version, out value);
                 if (status == Status.ReadError)
                 {
-                    throw new AbortParallelExecutionException(in version);
+                    AbortParallelExecutionException.Throw(in version);
                 }
                 return status;
             }
