@@ -79,7 +79,8 @@ public interface IBlocksConfig : IConfig
     bool BlockStmEnabled { get; set; }
 
     [ConfigItem(
-        Description = "Worker concurrency for block-STM parallel execution. Default `0` means logical-processor-count.",
+        Description = "Worker concurrency for block-STM parallel execution. " +
+                      "Default `0` uses 75% of logical processors (min 1), leaving headroom for CL traffic, RPC, and sync threads.",
         DefaultValue = "0",
         HiddenFromDocs = true)]
     int BlockStmConcurrency { get; set; }

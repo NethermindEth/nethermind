@@ -13,5 +13,9 @@ namespace Nethermind.State;
 /// </summary>
 public static class EmptyStorageTreeShortCircuit
 {
-    public static bool Disabled;
+    // volatile: written once during single-threaded DI bootstrap (BlockStmModule) and read
+    // from many worker threads thereafter. Thread-creation already publishes the value via
+    // an implicit fence, but the explicit volatile makes the publish-once-then-read-only
+    // contract visible to the reader.
+    public static volatile bool Disabled;
 }

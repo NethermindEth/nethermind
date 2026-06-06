@@ -52,7 +52,11 @@ public sealed class ParallelScheduler(int txCount, ObjectPool<HashSet<int>> setP
         if (_done) return;
 
         int observedCount = Volatile.Read(ref _decreaseCount);
-        bool done = Math.Min(_executionIndex, _validationIndex) >= txCount
+        // Volatile.Read on the indexes (not plain loads): both are mutated by
+        // Interlocked.Increment / InterlockedEx.Min on other threads. x86 (TSO) tolerates a
+        // plain load here, but on ARM64 a plain load can observe a stale value after a peer
+        // worker's release-write, giving a false-negative "not done" and stranding workers.
+        bool done = Math.Min(Volatile.Read(ref _executionIndex), Volatile.Read(ref _validationIndex)) >= txCount
                     && Volatile.Read(ref _activeTasks) == 0
                     && observedCount == Volatile.Read(ref _decreaseCount);
         if (done)
@@ -177,6 +181,13 @@ public sealed class ParallelScheduler(int txCount, ObjectPool<HashSet<int>> setP
             // ownership transition (FinishExecution could have Interlocked.Exchange'd the
             // slot to null between GetDependencySet and the lock). If it did, the blocker
             // is past Executed already; treat as already-done.
+            //
+            // FRAGILITY: this lock pins `set` (the HashSet instance) but does NOT pin the
+            // dependency-slot to it — ResumeDependencies on the same blocker can Exchange
+            // the slot to null and return the set to the pool while we hold the lock. The
+            // re-check below is what makes the path safe: it short-circuits before we touch
+            // set. Do not add code between the re-check and the set.Add(...) branch that
+            // assumes `set` is still owned by this blocker.
             if (Volatile.Read(ref _txDependencies[blockingTxIndex]) != set)
             {
                 added = false;

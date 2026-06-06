@@ -48,11 +48,19 @@ public static class Metrics
 
     internal static void ReportBlock(in ParallelBlockMetrics snapshot)
     {
-        LastBlockParallelizationPercent = snapshot.ParallelizationPercent;
-        Interlocked.Add(ref TxCount, LastBlockTxCount = snapshot.TxCount);
-        Interlocked.Add(ref Reexecutions, LastBlockReexecutions = snapshot.Reexecutions);
-        Interlocked.Add(ref Revalidations, LastBlockRevalidations = snapshot.Revalidations);
-        Interlocked.Add(ref BlockedReads, LastBlockBlockedReads = snapshot.BlockedReads);
+        // Gauges: monitoring threads read these asynchronously, so a slightly stale read is
+        // acceptable but a torn / reordered read is not. Volatile.Write pins ordering and
+        // forces a 64-bit aligned single store (the Interlocked.Add below also serves as a
+        // release fence for the gauge writes that precede each Add).
+        Volatile.Write(ref LastBlockParallelizationPercent, snapshot.ParallelizationPercent);
+        Volatile.Write(ref LastBlockTxCount, snapshot.TxCount);
+        Interlocked.Add(ref TxCount, snapshot.TxCount);
+        Volatile.Write(ref LastBlockReexecutions, snapshot.Reexecutions);
+        Interlocked.Add(ref Reexecutions, snapshot.Reexecutions);
+        Volatile.Write(ref LastBlockRevalidations, snapshot.Revalidations);
+        Interlocked.Add(ref Revalidations, snapshot.Revalidations);
+        Volatile.Write(ref LastBlockBlockedReads, snapshot.BlockedReads);
+        Interlocked.Add(ref BlockedReads, snapshot.BlockedReads);
     }
 
     /// <summary>

@@ -38,6 +38,10 @@ public class BlockStmTransactionsExecutor(
 
     // Pools for per-tx aggregate collections used in PushChanges. Large maximumRetained so a
     // single high-tx-count block fully recycles between blocks instead of repeatedly allocating.
+    // Static so the cap is process-wide rather than per-executor — production runs one
+    // executor so the distinction is academic; tests that spin up multiple executors (e.g.
+    // DualBlockchain) share the pool, which is fine since Return clears each object before
+    // handing it back.
     private const int AggregatePoolCapacity = 1024;
     private static readonly ObjectPool<Dictionary<Address, Account?>> AccountUpdatesPool =
         new DefaultObjectPool<Dictionary<Address, Account?>>(new ClearingDictPolicy<Address, Account?>(), AggregatePoolCapacity);
@@ -81,7 +85,11 @@ public class BlockStmTransactionsExecutor(
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
     {
         // Genesis, system txs, and Optimism deposit txs need strict ordering; fall back
-        // to the wrapped sequential executor.
+        // to the wrapped sequential executor. This is a full-block fallback: a single deposit
+        // tx surrenders the parallelism for every regular tx in the block. Splitting the run
+        // (sequential prefix/suffix + parallel middle) is on the backlog — the current
+        // executor doesn't have a "skip this tx" entry point so the all-or-nothing decision
+        // lives here.
         if (block.IsGenesis || ContainsSequentialOnlyTxs(block.Transactions))
         {
             return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
@@ -125,6 +133,11 @@ public class BlockStmTransactionsExecutor(
         try
         {
             using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, parallelTransactionProcessor, blockMetrics, _concurrencyLevel);
+            // sync-over-async: ProcessTransactions is sync by interface and called from the
+            // block-processing thread (which carries no SynchronizationContext, ruling out
+            // the classic ASP.NET deadlock). Run() returns when all worker Tasks complete,
+            // so we only tie up the calling thread for the parallel execution duration. If
+            // BlockProcessor is ever made async end-to-end, switch this to `await`.
             parallelRunner.Run().GetAwaiter().GetResult();
             ThrowIfInvalidResults(block, transactions, results);
             FinalizeGasUsed(block, receipts);
@@ -325,6 +338,13 @@ public class BlockStmTransactionsExecutor(
         ValueHash256 newCodeHash = account.CodeHash.ValueHash256;
         if (oldCodeHash == newCodeHash) return;
 
+        // Invariant: blockCodeWrites accumulates code bytes from every incarnation including
+        // aborted ones, but this lookup is keyed on the FINAL committed account's CodeHash
+        // — so we only re-insert bytes whose hash is referenced by the final write-set.
+        // Code is content-addressed, so re-inserting bytes already on disk is idempotent.
+        // If a future change adds code-hashes to blockCodeWrites from a different source
+        // (e.g. fallback path), filter the dict to final-incarnation hashes before this loop
+        // or the invariant breaks.
         if (blockCodeWrites.TryGetValue(newCodeHash, out byte[]? code))
         {
             worldState.InsertCode(address, newCodeHash, code, spec);

@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
@@ -13,7 +12,7 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 /// later txs' reads from earlier txs' writes, to flag re-execution dependencies, and to
 /// validate a tx's read-set against the current memory state.
 /// </summary>
-public sealed class MultiVersionMemory(int txCount)
+public sealed class MultiVersionMemory
 {
     public static readonly object SelfDestructMonit = new();
 
@@ -29,18 +28,27 @@ public sealed class MultiVersionMemory(int txCount)
     }
 
     // Per-tx write-sets: lock-free reads on the hot path.
-    private readonly ConcurrentDictionary<ParallelStateKey, Value>[] _data = Enumerable.Range(0, txCount)
-        .Select(_ => new ConcurrentDictionary<ParallelStateKey, Value>())
-        .ToArray();
+    private readonly ConcurrentDictionary<ParallelStateKey, Value>[] _data;
 
     // Per-key writer index — lets TryRead jump straight to the relevant writer slot.
     private readonly ConcurrentDictionary<ParallelStateKey, WriterList> _keyWriters = new();
 
     // Latest published write locations per tx — used to detect removed keys on re-record and drive ConvertWritesToEstimates.
-    private readonly HashSet<ParallelStateKey>?[] _lastWrittenLocations = new HashSet<ParallelStateKey>?[txCount];
+    private readonly HashSet<ParallelStateKey>?[] _lastWrittenLocations;
 
     // Latest published read-set per tx — used by ValidateReadSet.
-    private readonly HashSet<Read>?[] _lastReads = new HashSet<Read>?[txCount];
+    private readonly HashSet<Read>?[] _lastReads;
+
+    public MultiVersionMemory(int txCount)
+    {
+        _data = new ConcurrentDictionary<ParallelStateKey, Value>[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            _data[i] = new ConcurrentDictionary<ParallelStateKey, Value>();
+        }
+        _lastWrittenLocations = new HashSet<ParallelStateKey>?[txCount];
+        _lastReads = new HashSet<Read>?[txCount];
+    }
 
     // EIP-4788 / EIP-2935 writes captured before the parallel run; consulted as the last fallback before NotFound.
     private Dictionary<ParallelStateKey, object>? _systemOverlay;
