@@ -423,13 +423,11 @@ namespace Nethermind.Db.Test
 
             using IKeyValueStoreSnapshot snapshot = withSnapshot.CreateSnapshot();
             AssertCanGetViaAllMethod(snapshot, key, new byte[] { 4, 5, 6 });
-            Assert.That(snapshot.Get(key, ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 4, 5, 6 }));
 
             _db.Set(key, new byte[] { 5, 6, 7 });
             AssertCanGetViaAllMethod(_db, key, new byte[] { 5, 6, 7 });
 
             AssertCanGetViaAllMethod(snapshot, key, new byte[] { 4, 5, 6 });
-            Assert.That(snapshot.Get(key, ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 4, 5, 6 }));
 
             Assert.That(_db.KeyExists(new byte[] { 99, 99, 99 }), Is.False);
         }

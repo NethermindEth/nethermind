@@ -140,8 +140,6 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         private readonly Snapshot _snapshot;
         private readonly ReadOptions _sharedReadOptions;
         private readonly ReadOptions _sharedCacheMissReadOptions;
-        private readonly ReadOptions? _sharedReadAheadOptions;
-        private readonly DbOnTheRocks.IteratorManager[]? _iteratorManagers;
         private int _disposed;
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
@@ -158,7 +156,6 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _sharedReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions.SetFillCache(false);
-            _sharedReadAheadOptions = columnsDb.CreateReadAheadReadOptions(snapshot);
 
             // Single shared delegate for GetViewBetween — avoids per-reader closure allocation.
             // Note: each GetViewBetween call still creates a new ReadOptions with a finalizer;
@@ -166,9 +163,6 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
             T[] keys = CreateKeyCache(columnsDb);
             GetCachedMaxOrdinal(columnsDb, keys);
-            _iteratorManagers = _sharedReadAheadOptions is null
-                ? null
-                : new DbOnTheRocks.IteratorManager[columnsDb._cachedMaxOrdinal + 1];
             _readers = CreateReaders();
 
             static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
@@ -220,24 +214,12 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                 for (int i = 0; i < keys.Length; i++)
                 {
                     T k = keys[i];
-                    int ordinal = EnumToInt(k);
-                    ColumnFamilyHandle columnFamily = columnsDb._columnDbs[k]._columnFamily;
-                    DbOnTheRocks.IteratorManager? iteratorManager = _sharedReadAheadOptions is null
-                        ? null
-                        : new DbOnTheRocks.IteratorManager(columnsDb._db, columnFamily, _sharedReadAheadOptions);
-
-                    if (_iteratorManagers is not null)
-                    {
-                        _iteratorManagers[ordinal] = iteratorManager!;
-                    }
-
-                    readers[ordinal] = new RocksDbReader(
+                    readers[EnumToInt(k)] = new RocksDbReader(
                         columnsDb,
                         _sharedReadOptions,
                         _sharedCacheMissReadOptions,
                         readOptionsFactory,
-                        iteratorManager,
-                        columnFamily);
+                        columnFamily: columnsDb._columnDbs[k]._columnFamily);
                 }
 
                 return readers;
@@ -263,20 +245,8 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
             // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
-            if (_iteratorManagers is not null)
-            {
-                for (int i = 0; i < _iteratorManagers.Length; i++)
-                {
-                    _iteratorManagers[i]?.Dispose();
-                }
-            }
-
             RocksDbReader.DestroyReadOptions(_sharedReadOptions);
             RocksDbReader.DestroyReadOptions(_sharedCacheMissReadOptions);
-            if (_sharedReadAheadOptions is not null)
-            {
-                RocksDbReader.DestroyReadOptions(_sharedReadAheadOptions);
-            }
 
             _snapshot.Dispose();
         }

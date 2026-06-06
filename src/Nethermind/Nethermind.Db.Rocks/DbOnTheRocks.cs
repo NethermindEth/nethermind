@@ -100,7 +100,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private readonly RocksDbReader _reader;
     private bool _isUsingSharedBlockCache;
     private long _addedMemoryPressure;
-    private ulong? _readAheadSize;
 
     public DbOnTheRocks(
         string basePath,
@@ -666,8 +665,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
         // bandwidth requirement, since each read must be at least this size. This value is tuned for a batched trie
         // visitor on mainnet with 4GB memory budget and 4Gbps read bandwidth.
-        _readAheadSize = dbConfig.ReadAheadSize;
-        _readAheadReadOptions = CreateReadAheadReadOptions();
+        if (dbConfig.ReadAheadSize != 0)
+        {
+            _readAheadReadOptions = CreateReadOptions();
+            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB);
+            _readAheadReadOptions.SetTailing(true);
+        }
         #endregion
     }
 
@@ -683,25 +686,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         ReadOptions readOptions = new();
         readOptions.SetVerifyChecksums(VerifyChecksum);
-        return readOptions;
-    }
-
-    internal ReadOptions? CreateReadAheadReadOptions(Snapshot? snapshot = null)
-    {
-        if (_readAheadSize == 0) return null;
-
-        ReadOptions readOptions = CreateReadOptions();
-        if (snapshot is not null)
-        {
-            readOptions.SetSnapshot(snapshot);
-        }
-
-        readOptions.SetReadaheadSize(_readAheadSize ?? (ulong)256.KiB);
-        if (snapshot is null)
-        {
-            readOptions.SetTailing(true);
-        }
-
         return readOptions;
     }
 
@@ -1933,30 +1917,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     public IKeyValueStoreSnapshot CreateSnapshot()
     {
         Snapshot snapshot = _db.CreateSnapshot();
-        ReadOptions? readAheadOptions = CreateReadAheadReadOptions(snapshot);
-        IteratorManager? iteratorManager = readAheadOptions is null ? null : new IteratorManager(_db, null, readAheadOptions);
         return new RocksDbSnapshot(this, () =>
         {
             ReadOptions readOptions = CreateReadOptions();
             readOptions.SetSnapshot(snapshot);
             return readOptions;
-        }, null, snapshot, iteratorManager, readAheadOptions);
+        }, null, snapshot);
     }
 
     public sealed class RocksDbSnapshot(
         DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         ColumnFamilyHandle? columnFamily,
-        Snapshot snapshot,
-        IteratorManager? iteratorManager,
-        ReadOptions? readAheadOptions
-    ) : RocksDbReader(
-        mainDb,
-        readOptionsFactory,
-        iteratorManager,
-        columnFamily,
-        ownsIteratorManager: true,
-        ownedReadAheadOptions: readAheadOptions), IKeyValueStoreSnapshot
+        Snapshot snapshot
+    ) : RocksDbReader(mainDb, readOptionsFactory, null, columnFamily), IKeyValueStoreSnapshot
     {
         private int _disposed;
 
