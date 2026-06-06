@@ -22,7 +22,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
-using Nethermind.Trie;
 
 namespace Nethermind.Init.Modules;
 
@@ -50,8 +49,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
-                ctx.ResolveOptional<NodeStorageCache>()))
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()

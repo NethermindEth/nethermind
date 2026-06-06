@@ -18,11 +18,6 @@ namespace Nethermind.State.Flat;
 public sealed class SnapshotBundle : IDisposable
 {
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
-    private readonly NodeStorageCache? _nodeStorageCache;
-    private static readonly SeqlockCache<NodeKey, byte[]>.ValueFactory<SnapshotBundle> LoadStateRlpFromBundle =
-        static (in NodeKey key, SnapshotBundle bundle) => bundle._readOnlySnapshotBundle.TryLoadStateRlp(key.Path, key.Hash, ReadFlags.None);
-    private static readonly SeqlockCache<NodeKey, byte[]>.ValueFactory<SnapshotBundle> LoadStorageRlpFromBundle =
-        static (in NodeKey key, SnapshotBundle bundle) => bundle._readOnlySnapshotBundle.TryLoadStorageRlp(key.Address!, key.Path, key.Hash, ReadFlags.None);
 
 
     private SnapshotContent _currentPooledContent = null!;
@@ -51,11 +46,9 @@ public sealed class SnapshotBundle : IDisposable
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
-        SnapshotPooledList? snapshots = null,
-        NodeStorageCache? nodeStorageCache = null)
+        SnapshotPooledList? snapshots = null)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
-        _nodeStorageCache = nodeStorageCache;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
         _trieNodeCache = trieNodeCache;
         _resourcePool = resourcePool;
@@ -291,22 +284,12 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_nodeStorageCache is not null && flags == ReadFlags.None)
-        {
-            return _nodeStorageCache.GetOrAdd(new NodeKey(null, in path, hash), this, LoadStateRlpFromBundle);
-        }
-
         return _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
     }
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
-
-        if (_nodeStorageCache is not null && flags == ReadFlags.None)
-        {
-            return _nodeStorageCache.GetOrAdd(new NodeKey(address, in path, hash), this, LoadStorageRlpFromBundle);
-        }
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
