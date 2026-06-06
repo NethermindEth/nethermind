@@ -56,7 +56,7 @@ public class SnapshotBundleTests
     }
 
     [Test]
-    public void TryLoadStateRlp_UsesNodeStorageCache_ForReadAheadHints()
+    public void TryLoadStateRlp_BypassesNodeStorageCache_ForHintedReads()
     {
         ResourcePool pool = new(new FlatDbConfig { CompactSize = 2 });
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -71,26 +71,7 @@ public class SnapshotBundleTests
         Assert.That(bundle.TryLoadStateRlp(path, hash, ReadFlags.HintReadAhead), Is.EqualTo(rlp));
         Assert.That(bundle.TryLoadStateRlp(path, hash, ReadFlags.HintReadAhead), Is.EqualTo(rlp));
 
-        reader.Received(1).TryLoadStateRlp(path, ReadFlags.HintReadAhead);
-    }
-
-    [Test]
-    public void TryLoadStateRlp_BypassesNodeStorageCache_ForCacheMissHints()
-    {
-        ResourcePool pool = new(new FlatDbConfig { CompactSize = 2 });
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        TreePath path = TreePath.FromHexString("12");
-        Hash256 hash = Keccak.Zero;
-        byte[] rlp = [0xc1, 0xff];
-        reader.TryLoadStateRlp(path, ReadFlags.HintCacheMiss).Returns(rlp);
-
-        NodeStorageCache nodeStorageCache = new() { Enabled = true };
-        using SnapshotBundle bundle = CreateBundle(pool, reader, nodeStorageCache);
-
-        Assert.That(bundle.TryLoadStateRlp(path, hash, ReadFlags.HintCacheMiss), Is.EqualTo(rlp));
-        Assert.That(bundle.TryLoadStateRlp(path, hash, ReadFlags.HintCacheMiss), Is.EqualTo(rlp));
-
-        reader.Received(2).TryLoadStateRlp(path, ReadFlags.HintCacheMiss);
+        reader.Received(2).TryLoadStateRlp(path, ReadFlags.HintReadAhead);
     }
 
     private static SnapshotBundle CreateBundle(ResourcePool pool, IPersistence.IPersistenceReader reader, NodeStorageCache nodeStorageCache)

@@ -19,16 +19,10 @@ public sealed class SnapshotBundle : IDisposable
 {
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
     private readonly NodeStorageCache? _nodeStorageCache;
-    private static readonly SeqlockCache<NodeKey, byte[]>.ValueFactory<LoadRlpState> LoadStateRlpFromBundle =
-        static (in NodeKey key, LoadRlpState state) => state.Bundle._readOnlySnapshotBundle.TryLoadStateRlp(key.Path, key.Hash, state.Flags);
-    private static readonly SeqlockCache<NodeKey, byte[]>.ValueFactory<LoadRlpState> LoadStorageRlpFromBundle =
-        static (in NodeKey key, LoadRlpState state) => state.Bundle._readOnlySnapshotBundle.TryLoadStorageRlp(key.Address!, key.Path, key.Hash, state.Flags);
-
-    private readonly struct LoadRlpState(SnapshotBundle bundle, ReadFlags flags)
-    {
-        public SnapshotBundle Bundle { get; } = bundle;
-        public ReadFlags Flags { get; } = flags;
-    }
+    private static readonly SeqlockCache<NodeKey, byte[]>.ValueFactory<SnapshotBundle> LoadStateRlpFromBundle =
+        static (in NodeKey key, SnapshotBundle bundle) => bundle._readOnlySnapshotBundle.TryLoadStateRlp(key.Path, key.Hash, ReadFlags.None);
+    private static readonly SeqlockCache<NodeKey, byte[]>.ValueFactory<SnapshotBundle> LoadStorageRlpFromBundle =
+        static (in NodeKey key, SnapshotBundle bundle) => bundle._readOnlySnapshotBundle.TryLoadStorageRlp(key.Address!, key.Path, key.Hash, ReadFlags.None);
 
 
     private SnapshotContent _currentPooledContent = null!;
@@ -297,9 +291,9 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_nodeStorageCache is not null && CanUseNodeStorageCache(flags))
+        if (_nodeStorageCache is not null && flags == ReadFlags.None)
         {
-            return _nodeStorageCache.GetOrAdd(new NodeKey(null, in path, hash), new LoadRlpState(this, flags), LoadStateRlpFromBundle);
+            return _nodeStorageCache.GetOrAdd(new NodeKey(null, in path, hash), this, LoadStateRlpFromBundle);
         }
 
         return _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
@@ -309,16 +303,13 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_nodeStorageCache is not null && CanUseNodeStorageCache(flags))
+        if (_nodeStorageCache is not null && flags == ReadFlags.None)
         {
-            return _nodeStorageCache.GetOrAdd(new NodeKey(address, in path, hash), new LoadRlpState(this, flags), LoadStorageRlpFromBundle);
+            return _nodeStorageCache.GetOrAdd(new NodeKey(address, in path, hash), this, LoadStorageRlpFromBundle);
         }
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
-
-    private static bool CanUseNodeStorageCache(ReadFlags flags) =>
-        (flags & (ReadFlags.HintCacheMiss | ReadFlags.SkipDuplicateRead)) == 0;
 
     // This is called only during trie commit
     public void SetStateNode(in TreePath path, TrieNode newNode)
