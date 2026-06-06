@@ -107,8 +107,9 @@ public class ColumnsDbTests
         Assert.That(_db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
     }
 
-    [Test]
-    public void SmokeTest_Snapshot()
+    [TestCase(ReadFlags.None)]
+    [TestCase(ReadFlags.HintReadAhead)]
+    public void SmokeTest_Snapshot(ReadFlags readFlags)
     {
         IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
         IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
@@ -121,7 +122,7 @@ public class ColumnsDbTests
         Assert.That(colA.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
 
         Assert.That(snapshot.GetColumn(ReceiptsColumns.Blocks)
-            .Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            .Get(TestItem.KeccakA.Bytes, readFlags), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
     }
 
     [Test]

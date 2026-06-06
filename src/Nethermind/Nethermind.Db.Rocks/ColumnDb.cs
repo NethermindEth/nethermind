@@ -169,6 +169,10 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     public IKeyValueStoreSnapshot CreateSnapshot()
     {
         Snapshot snapshot = _rocksDb.CreateSnapshot();
+        ReadOptions? readAheadOptions = _mainDb.CreateReadAheadReadOptions(snapshot);
+        DbOnTheRocks.IteratorManager? iteratorManager = readAheadOptions is null
+            ? null
+            : new DbOnTheRocks.IteratorManager(_rocksDb, _columnFamily, readAheadOptions);
 
         return new DbOnTheRocks.RocksDbSnapshot(
             _mainDb,
@@ -179,6 +183,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                 return readOptions;
             },
             _columnFamily,
-            snapshot);
+            snapshot,
+            iteratorManager,
+            readAheadOptions);
     }
 }

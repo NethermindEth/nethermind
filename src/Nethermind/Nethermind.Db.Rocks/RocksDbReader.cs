@@ -26,12 +26,16 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
     DbOnTheRocks.IteratorManager? iteratorManager = null,
-    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
+    ColumnFamilyHandle? columnFamily = null,
+    bool ownsIteratorManager = false,
+    ReadOptions? ownedReadAheadOptions = null) : ISortedKeyValueStore, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
     private readonly DbOnTheRocks.IteratorManager? _iteratorManager = iteratorManager;
     private readonly ColumnFamilyHandle? _columnFamily = columnFamily;
+    private readonly bool _ownsIteratorManager = ownsIteratorManager;
+    private readonly ReadOptions? _ownedReadAheadOptions = ownedReadAheadOptions;
 
     private readonly ReadOptions _options = options;
     private readonly ReadOptions _hintCacheMissOptions = hintCacheMissOptions;
@@ -41,8 +45,18 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         DbOnTheRocks.IteratorManager? iteratorManager = null,
-        ColumnFamilyHandle? columnFamily = null)
-        : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily)
+        ColumnFamilyHandle? columnFamily = null,
+        bool ownsIteratorManager = false,
+        ReadOptions? ownedReadAheadOptions = null)
+        : this(
+            mainDb,
+            readOptionsFactory(),
+            readOptionsFactory(),
+            readOptionsFactory,
+            iteratorManager,
+            columnFamily,
+            ownsIteratorManager,
+            ownedReadAheadOptions)
     {
         _ownsReadOptions = true;
         _hintCacheMissOptions.SetFillCache(false);
@@ -57,6 +71,15 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
         DestroyReadOptions(_options);
         DestroyReadOptions(_hintCacheMissOptions);
+        if (_ownsIteratorManager)
+        {
+            _iteratorManager?.Dispose();
+        }
+
+        if (_ownedReadAheadOptions is not null)
+        {
+            DestroyReadOptions(_ownedReadAheadOptions);
+        }
     }
 
     /// <summary>
