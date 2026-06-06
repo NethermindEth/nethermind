@@ -104,7 +104,7 @@ public class BlockStmTransactionsExecutor(
         }
         ParallelBlockMetricsCollector blockMetrics = new(txCount);
         FeeAccumulator feeAccumulator = new(txCount, block.Header.GasBeneficiary, _blockExecutionContext.Spec.FeeCollector);
-        ParallelScheduler scheduler = new(txCount, _setPool);
+        using ParallelScheduler scheduler = new(txCount, _setPool);
         // Block-level concurrent aggregate of every code-write performed by any tx's EVM.
         // Per-tx resettable scopes use a read-only codeDb so their InsertCode is dropped —
         // TrackingCodeDb captures writes here so PushChanges can replay onto the main state.

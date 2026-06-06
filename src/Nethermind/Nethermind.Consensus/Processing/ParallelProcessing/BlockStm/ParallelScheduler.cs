@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 /// needs work. When transactions finish out-of-order or a dependency is detected, the
 /// indexes are decreased and transactions are re-validated or re-executed.
 /// </remarks>
-public sealed class ParallelScheduler(int txCount, ObjectPool<HashSet<int>> setPool)
+public sealed class ParallelScheduler(int txCount, ObjectPool<HashSet<int>> setPool) : IDisposable
 {
     private int _executionIndex;
     private int _validationIndex;
@@ -32,12 +32,19 @@ public sealed class ParallelScheduler(int txCount, ObjectPool<HashSet<int>> setP
     private readonly HashSet<int>?[] _txDependencies = new HashSet<int>?[txCount];
     private volatile bool _done;
 
+    // Workers park on this when NextTask returns empty; producers Set on every event that
+    // can newly make a task claimable (DecreaseIndex on either index, Done transition). The
+    // event's kernel handle is created lazily by ManualResetEventSlim only when a worker
+    // actually blocks, so well-balanced blocks pay zero kernel cost.
+    private readonly ManualResetEventSlim _workAvailable = new(initialState: true);
+
     public bool Done => _done;
 
     private void DecreaseIndex(ref int index, int targetValue)
     {
         InterlockedEx.Min(ref index, targetValue);
         Interlocked.Increment(ref _decreaseCount);
+        _workAvailable.Set();
     }
 
     private void CheckDone()
@@ -48,8 +55,52 @@ public sealed class ParallelScheduler(int txCount, ObjectPool<HashSet<int>> setP
         bool done = Math.Min(_executionIndex, _validationIndex) >= txCount
                     && Volatile.Read(ref _activeTasks) == 0
                     && observedCount == Volatile.Read(ref _decreaseCount);
-        if (done) _done = true;
+        if (done)
+        {
+            _done = true;
+            _workAvailable.Set();
+        }
     }
+
+    /// <summary>
+    /// Block until a producer signals that a task may have become claimable, the block is
+    /// <see cref="Done"/>, or <paramref name="token"/> fires. Safe to call from worker loops
+    /// after a bounded spin.
+    /// </summary>
+    /// <remarks>
+    /// Reset-then-recheck order is load-bearing. A producer publishes state (DecreaseIndex
+    /// or <see cref="_done"/>) <em>before</em> Set; a consumer Resets <em>before</em> the
+    /// final HasReadyWork check. Any Set lost to the Reset is recovered by HasReadyWork
+    /// observing the prior publish; any state change after the Reset is recovered by Wait
+    /// returning when the producer Sets.
+    /// </remarks>
+    public void WaitForWork(CancellationToken token)
+    {
+        if (HasReadyWork()) return;
+
+        _workAvailable.Reset();
+        if (HasReadyWork())
+        {
+            // Restore the signal so any peer worker that raced past its own Reset isn't left
+            // blocked while we proceed to grab the work.
+            _workAvailable.Set();
+            return;
+        }
+        _workAvailable.Wait(token);
+    }
+
+    private bool HasReadyWork()
+    {
+        if (_done) return true;
+        int valIdx = Volatile.Read(ref _validationIndex);
+        int execIdx = Volatile.Read(ref _executionIndex);
+        // Validation lags execution, or there is at least one execution slot to claim.
+        // Conservative — extra wakes are harmless (the worker re-spins) but missed wakes
+        // would deadlock.
+        return valIdx < execIdx || execIdx < txCount;
+    }
+
+    public void Dispose() => _workAvailable.Dispose();
 
     private TxVersion FetchNext(ref int index, int requiredStatus, int newStatus)
     {

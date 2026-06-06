@@ -61,7 +61,7 @@ public class ParallelSchedulerTests
     [Test]
     public void Pool_returned_at_most_once_per_finish()
     {
-        ParallelScheduler scheduler = NewScheduler(2, out TrackingHashSetPool pool);
+        using ParallelScheduler scheduler = NewScheduler(2, out TrackingHashSetPool pool);
 
         TxTask tx0 = FetchExecution(scheduler);
         TxTask tx1 = FetchExecution(scheduler);
@@ -80,7 +80,7 @@ public class ParallelSchedulerTests
     [Test]
     public void Abort_returns_false_when_blocker_already_executed()
     {
-        ParallelScheduler scheduler = NewScheduler(2, out _);
+        using ParallelScheduler scheduler = NewScheduler(2, out _);
 
         TxTask tx0 = FetchExecution(scheduler);
         TxTask tx1 = FetchExecution(scheduler);
@@ -98,7 +98,7 @@ public class ParallelSchedulerTests
     [Test]
     public void Resumed_task_has_bumped_incarnation()
     {
-        ParallelScheduler scheduler = NewScheduler(2, out _);
+        using ParallelScheduler scheduler = NewScheduler(2, out _);
 
         TxTask tx0 = FetchExecution(scheduler);
         TxTask tx1 = FetchExecution(scheduler);
@@ -114,7 +114,7 @@ public class ParallelSchedulerTests
     [Test]
     public void Single_tx_block_completes_after_FinishExecution()
     {
-        ParallelScheduler scheduler = NewScheduler(1, out _);
+        using ParallelScheduler scheduler = NewScheduler(1, out _);
 
         TxTask tx0 = FetchExecution(scheduler);
         Assert.That(tx0.TxVersion.TxIndex, Is.EqualTo(0));

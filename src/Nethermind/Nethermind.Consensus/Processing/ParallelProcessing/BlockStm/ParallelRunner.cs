@@ -40,16 +40,34 @@ public sealed class ParallelRunner(
         try
         {
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
+            // Bounded CPU spin (~10 PAUSEs, ~100 ns) absorbs sub-microsecond scheduling gaps
+            // without paying a kernel transition. Past the PAUSE region we park on the
+            // scheduler's wake event so the core is free for the trie warmer and we stop
+            // ping-ponging _activeTasks / _executionIndex between worker L1 caches.
+            SpinWait spinner = default;
             TxTask task = scheduler.NextTask();
             do
             {
-                // Three task kinds; only one task per transaction is active at a time.
-                task = task switch
+                if (task.IsEmpty)
                 {
-                    { IsEmpty: true } => scheduler.NextTask(),
-                    { Validating: false } => TryExecute(task),
-                    { Validating: true } => NeedsReexecution(task.TxVersion)
-                };
+                    if (spinner.NextSpinWillYield)
+                    {
+                        spinner.Reset();
+                        scheduler.WaitForWork(token);
+                    }
+                    else
+                    {
+                        // sleep1Threshold: -1 disables the Sleep(1) escalation — the event
+                        // wait above handles long idleness.
+                        spinner.SpinOnce(sleep1Threshold: -1);
+                    }
+                    task = scheduler.NextTask();
+                }
+                else
+                {
+                    spinner.Reset();
+                    task = task.Validating ? NeedsReexecution(task.TxVersion) : TryExecute(task);
+                }
             } while (!scheduler.Done && !token.IsCancellationRequested);
         }
         catch
