@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
@@ -18,7 +21,7 @@ public class FlatRocksDbConfigAdjusterTests
 {
     private IRocksDbConfigFactory _baseFactory = null!;
     private IFlatDbConfig _flatDbConfig = null!;
-    private IDisposableStack _disposeStack = null!;
+    private TrackingDisposableStack _disposeStack = null!;
     private IRocksDbConfig _baseConfig = null!;
 
     [SetUp]
@@ -26,7 +29,7 @@ public class FlatRocksDbConfigAdjusterTests
     {
         _baseFactory = Substitute.For<IRocksDbConfigFactory>();
         _flatDbConfig = Substitute.For<IFlatDbConfig>();
-        _disposeStack = Substitute.For<IDisposableStack>();
+        _disposeStack = new TrackingDisposableStack();
         _baseConfig = Substitute.For<IRocksDbConfig>();
 
         _baseConfig.RocksDbOptions.Returns("base_options=true;");
@@ -34,6 +37,9 @@ public class FlatRocksDbConfigAdjusterTests
 
         _baseFactory.GetForDatabase(Arg.Any<string>(), Arg.Any<string>()).Returns(_baseConfig);
     }
+
+    [TearDown]
+    public void TearDown() => _disposeStack.Dispose();
 
     [Test]
     public void NonFlatDatabase_ReturnsBaseConfig()
@@ -61,6 +67,8 @@ public class FlatRocksDbConfigAdjusterTests
         Assert.That(result.RocksDbOptions, Does.Not.Contain("optimize_filters_for_hits"));
         Assert.That(result.RocksDbOptions, Does.Not.Contain("partition_filters"));
         Assert.That(result.RocksDbOptions, Does.Not.Contain("kTwoLevelIndexSearch"));
+        Assert.That(result.BlockCache, Is.Null);
+        Assert.That(_disposeStack.Count, Is.Zero);
     }
 
     [Test]
@@ -89,5 +97,51 @@ public class FlatRocksDbConfigAdjusterTests
         adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
 
         _baseFactory.Received(1).GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
+    }
+
+    [TestCase(nameof(FlatDbColumns.Account), 161_061_273L)]
+    [TestCase(nameof(FlatDbColumns.Storage), 375_809_638L)]
+    [TestCase(nameof(FlatDbColumns.StorageNodes), 536_870_912L)]
+    public void FlatDatabase_AssignsBlockCacheBudgetToHotColumns(string columnName, long expectedCapacity)
+        => Assert.That(FlatRocksDbConfigAdjuster.GetColumnBlockCacheCapacity(1.GiB, columnName), Is.EqualTo((ulong)expectedCapacity));
+
+    [Test]
+    public void FlatDatabase_ConfiguresSeparateBlockCachesForHotColumns()
+    {
+        _flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        _flatDbConfig.BlockCacheSizeBudget.Returns(1.GiB);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        IRocksDbConfig account = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
+        IRocksDbConfig storage = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Storage));
+        IRocksDbConfig storageNodes = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.StorageNodes));
+
+        Assert.That(account.BlockCache, Is.Not.Null);
+        Assert.That(storage.BlockCache, Is.Not.Null);
+        Assert.That(storageNodes.BlockCache, Is.Not.Null);
+        Assert.That(storage.BlockCache, Is.Not.EqualTo(account.BlockCache));
+        Assert.That(storageNodes.BlockCache, Is.Not.EqualTo(account.BlockCache));
+        Assert.That(storageNodes.BlockCache, Is.Not.EqualTo(storage.BlockCache));
+        Assert.That(_disposeStack.Count, Is.EqualTo(3));
+    }
+
+    private sealed class TrackingDisposableStack : IDisposableStack, IDisposable
+    {
+        private readonly List<IDisposable> _items = [];
+
+        public int Count => _items.Count;
+
+        public void Push(IAsyncDisposable item) => throw new NotSupportedException();
+
+        public void Push(IDisposable item) => _items.Add(item);
+
+        public void Dispose()
+        {
+            for (int i = _items.Count - 1; i >= 0; i--)
+            {
+                _items[i].Dispose();
+            }
+        }
     }
 }
