@@ -317,6 +317,35 @@ public class ScopeProviderTests(bool useFlat)
         Assert.That(inner.StorageReads, Is.EqualTo(1));
     }
 
+    [Test]
+    public async Task MainWrappedScope_JoinsInFlightPrewarmerStorageMiss()
+    {
+        PreBlockCaches caches = new();
+        PrewarmerReadDeduplicator readDeduplicator = new();
+        using CountingScopeProvider inner = new(blockStorageReads: true);
+        PrewarmerScopeProvider prewarmer = new(inner, caches, LimboLogs.Instance, readDeduplicator: readDeduplicator);
+        PrewarmerScopeProvider main = new(inner, caches, LimboLogs.Instance, isPrewarmer: false, readDeduplicator: readDeduplicator);
+
+        using IWorldStateScopeProvider.IScope prewarmerScope = prewarmer.BeginScope(null);
+        using IWorldStateScopeProvider.IScope mainScope = main.BeginScope(null);
+
+        IWorldStateScopeProvider.IStorageTree prewarmerStorage = prewarmerScope.CreateStorageTree(TestItem.AddressA);
+        IWorldStateScopeProvider.IStorageTree mainStorage = mainScope.CreateStorageTree(TestItem.AddressA);
+
+        Task<byte[]> prewarmerTask = Task.Run(() => prewarmerStorage.Get((UInt256)1));
+        Assert.That(inner.WaitForStorageRead(TimeSpan.FromSeconds(5)), Is.True);
+
+        Task<byte[]> mainTask = Task.Run(() => mainStorage.Get((UInt256)1));
+        await Task.Delay(50);
+        Assert.That(mainTask.IsCompleted, Is.False);
+
+        inner.ReleaseStorageRead();
+        byte[][] values = await Task.WhenAll(prewarmerTask, mainTask);
+
+        Assert.That(values[0], Is.SameAs(values[1]));
+        Assert.That(inner.StorageReads, Is.EqualTo(1));
+    }
+
 #nullable enable
     private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
@@ -337,17 +366,29 @@ public class ScopeProviderTests(bool useFlat)
     }
 #nullable disable
 
-    private sealed class CountingScopeProvider : IWorldStateScopeProvider
+    private sealed class CountingScopeProvider(bool blockStorageReads = false) : IWorldStateScopeProvider, IDisposable
     {
         private readonly Account _account = new((UInt256)1);
         private readonly byte[] _value = [1];
+        private readonly ManualResetEventSlim _storageReadStarted = blockStorageReads ? new(initialState: false) : null;
+        private readonly ManualResetEventSlim _releaseStorageRead = blockStorageReads ? new(initialState: false) : null;
 
         public int AccountReads;
         public int StorageReads;
 
+        public bool WaitForStorageRead(TimeSpan timeout) => _storageReadStarted?.Wait(timeout) ?? true;
+
+        public void ReleaseStorageRead() => _releaseStorageRead?.Set();
+
         public bool HasRoot(BlockHeader baseBlock) => true;
 
         public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock) => new Scope(this);
+
+        public void Dispose()
+        {
+            _storageReadStarted?.Dispose();
+            _releaseStorageRead?.Dispose();
+        }
 
         private sealed class Scope(CountingScopeProvider parent) : IWorldStateScopeProvider.IScope
         {
@@ -392,6 +433,8 @@ public class ScopeProviderTests(bool useFlat)
             public byte[] Get(in UInt256 index)
             {
                 Interlocked.Increment(ref parent.StorageReads);
+                parent._storageReadStarted?.Set();
+                parent._releaseStorageRead?.Wait();
                 Thread.Sleep(25);
                 return parent._value;
             }
