@@ -42,7 +42,7 @@ public class FlatWorldStateScopeProviderTests
         public Snapshot? LastCommittedSnapshot { get; set; }
         public TransientResource? LastCreatedCachedResource { get; set; }
 
-        public TestContext(FlatDbConfig? config = null)
+        public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
         {
             config ??= new FlatDbConfig();
 
@@ -80,6 +80,11 @@ public class FlatWorldStateScopeProviderTests
                     .AddSingleton<IFlatDbConfig>(config)
                     .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()))
                 ;
+
+            if (trieWarmer is not null)
+            {
+                _containerBuilder.RegisterInstance(trieWarmer).As<ITrieWarmer>();
+            }
 
             // Externally owned because snapshot bundle take ownership
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
@@ -159,6 +164,34 @@ public class FlatWorldStateScopeProviderTests
         }
 
         public bool StillNeeded(in StorageCell storageCell) => false;
+    }
+
+    private sealed class RecordingTrieWarmer : ITrieWarmer
+    {
+        public int AddressJobs { get; private set; }
+        public int SlotJobs { get; private set; }
+
+        public void OnEnterScope() { }
+
+        public void OnExitScope() { }
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            AddressJobs++;
+            return true;
+        }
+
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            SlotJobs++;
+            return true;
+        }
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            SlotJobs++;
+            return true;
+        }
     }
 
 
@@ -264,6 +297,49 @@ public class FlatWorldStateScopeProviderTests
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
         Assert.That(storageTree.Get(slotIndex), Is.EqualTo(writtenSlotValue));
+    }
+
+    [Test]
+    public void AccountRead_DoesNotQueueStateTrieWarmup()
+    {
+        RecordingTrieWarmer trieWarmer = new();
+        using TestContext ctx = new(trieWarmer: trieWarmer);
+
+        Address testAddress = TestItem.AddressA;
+        Account persistedAccount = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(persistedAccount);
+
+        Assert.That(ctx.Scope.Get(testAddress), Is.EqualTo(persistedAccount));
+        ctx.Scope.HintGet(testAddress, persistedAccount);
+
+        Assert.That(trieWarmer.AddressJobs, Is.Zero);
+    }
+
+    [Test]
+    public void AccountWrite_QueuesStateTrieWarmup()
+    {
+        RecordingTrieWarmer trieWarmer = new();
+        using TestContext ctx = new(trieWarmer: trieWarmer);
+
+        using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = ctx.Scope.StartWriteBatch(1);
+        writeBatch.Set(TestItem.AddressA, TestItem.GenerateRandomAccount());
+
+        Assert.That(trieWarmer.AddressJobs, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void StorageWrite_QueuesStateTrieWarmupForDirtyStorageRoot()
+    {
+        RecordingTrieWarmer trieWarmer = new();
+        using TestContext ctx = new(trieWarmer: trieWarmer);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = ctx.Scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storageBatch.Set(1, [0x01]);
+        }
+
+        Assert.That(trieWarmer.AddressJobs, Is.EqualTo(1));
     }
 
     [Test]
