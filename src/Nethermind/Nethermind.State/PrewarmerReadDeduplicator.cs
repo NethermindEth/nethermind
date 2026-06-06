@@ -12,12 +12,7 @@ public sealed class PrewarmerReadDeduplicator
     private const int LockCount = 1 << 14;
     private const int LockMask = LockCount - 1;
 
-    private readonly Lock[] _accountLocks = CreateLocks();
     private readonly Lock[] _storageLocks = CreateLocks();
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Lock GetAccountLock(in AddressAsKey address)
-        => _accountLocks[(int)address.GetHashCode64() & LockMask];
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Lock GetStorageLock(in StorageCell storageCell)

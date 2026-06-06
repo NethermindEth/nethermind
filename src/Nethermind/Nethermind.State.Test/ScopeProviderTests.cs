@@ -296,25 +296,6 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public async Task PrewarmerWrappedScope_DeduplicatesConcurrentAccountMisses()
-    {
-        PreBlockCaches caches = new();
-        PrewarmerReadDeduplicator readDeduplicator = new();
-        CountingScopeProvider inner = new();
-        PrewarmerScopeProvider prewarmer = new(inner, caches, LimboLogs.Instance, readDeduplicator: readDeduplicator);
-
-        using IWorldStateScopeProvider.IScope scope1 = prewarmer.BeginScope(null);
-        using IWorldStateScopeProvider.IScope scope2 = prewarmer.BeginScope(null);
-
-        Account[] accounts = await Task.WhenAll(
-            Task.Run(() => scope1.Get(TestItem.AddressA)),
-            Task.Run(() => scope2.Get(TestItem.AddressA)));
-
-        Assert.That(accounts[0], Is.SameAs(accounts[1]));
-        Assert.That(inner.AccountReads, Is.EqualTo(1));
-    }
-
-    [Test]
     public async Task PrewarmerWrappedScope_DeduplicatesConcurrentStorageMisses()
     {
         PreBlockCaches caches = new();
