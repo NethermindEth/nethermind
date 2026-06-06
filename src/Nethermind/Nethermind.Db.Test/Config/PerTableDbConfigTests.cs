@@ -4,6 +4,7 @@
 using System;
 using System.Reflection;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.State.Flat;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test.Config;
@@ -71,6 +72,20 @@ public class PerTableDbConfigTests
 
         PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
         Assert.That(config.MaxOpenFiles, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void FlatStorageNodesDefault_UsesCommonFlatOptionsOnly()
+    {
+        DbConfig dbConfig = new();
+
+        PerTableDbConfig config = new(dbConfig, nameof(DbNames.Flat), nameof(FlatDbColumns.StorageNodes), validate: false);
+
+        Assert.That(config.RocksDbOptions, Does.Contain("block_based_table_factory.block_restart_interval=4;"));
+        Assert.That(config.RocksDbOptions, Does.Not.Contain("block_based_table_factory.block_restart_interval=8;"));
+        Assert.That(config.RocksDbOptions, Does.Not.Contain("max_bytes_for_level_base=350000000;"));
+        Assert.That(config.RocksDbOptions, Does.Not.Contain("write_buffer_size=64000000;"));
+        Assert.That(config.RocksDbOptions, Does.Not.Contain("max_write_buffer_number=8;"));
     }
 
     [Test]
