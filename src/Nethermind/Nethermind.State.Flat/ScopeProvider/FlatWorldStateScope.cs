@@ -60,7 +60,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CodeDb = codeDb;
         _commitTarget = commitTarget;
 
-        _concurrencyQuota = new ConcurrencyController(Math.Min(Environment.ProcessorCount, 8)); // Used during tree commit.
+        _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _stateTree = new(
             new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
             logManager
