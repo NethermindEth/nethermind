@@ -22,9 +22,6 @@ internal class FlatRocksDbConfigAdjuster(
     ILogManager logManager)
     : IRocksDbConfigFactory
 {
-    private const double FlatAccountBlockCacheRatio = 0.5;
-    private const double FlatStorageBlockCacheRatio = 1 - FlatAccountBlockCacheRatio;
-
     private readonly ILogger _logger = logManager.GetClassLogger<FlatRocksDbConfigAdjuster>();
 
     public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
@@ -46,7 +43,7 @@ internal class FlatRocksDbConfigAdjuster(
             IntPtr? cacheHandle = null;
             if (columnName == nameof(FlatDbColumns.Account))
             {
-                ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * FlatAccountBlockCacheRatio);
+                ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.3);
                 if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / (ulong)1.MiB):N0} MB of block cache to account");
                 HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
                 cacheHandle = cacheWrapper.Handle;
@@ -55,7 +52,7 @@ internal class FlatRocksDbConfigAdjuster(
 
             if (columnName == nameof(FlatDbColumns.Storage))
             {
-                ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * FlatStorageBlockCacheRatio);
+                ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.7);
                 if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / (ulong)1.MiB):N0} MB of block cache to storage");
                 HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
                 cacheHandle = cacheWrapper.Handle;
