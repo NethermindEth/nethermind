@@ -139,7 +139,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         Account? account = _snapshotBundle.GetAccount(address);
 
-        if (account is not null) HintPrewarm(address);
+        HintPrewarm(address);
 
         if (_configuration.VerifyWithTrie)
         {
@@ -156,7 +156,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void HintGet(Address address, Account? account)
     {
         _snapshotBundle.CacheAccount(address, account);
-        if (account is not null) HintPrewarm(address);
+        HintPrewarm(address);
     }
 
     private void HintPrewarm(Address address)

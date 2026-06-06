@@ -42,7 +42,7 @@ public class FlatWorldStateScopeProviderTests
         public Snapshot? LastCommittedSnapshot { get; set; }
         public TransientResource? LastCreatedCachedResource { get; set; }
 
-        public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
+        public TestContext(FlatDbConfig? config = null)
         {
             config ??= new FlatDbConfig();
 
@@ -80,11 +80,6 @@ public class FlatWorldStateScopeProviderTests
                     .AddSingleton<IFlatDbConfig>(config)
                     .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()))
                 ;
-
-            if (trieWarmer is not null)
-            {
-                _containerBuilder.AddSingleton<ITrieWarmer>(_ => trieWarmer);
-            }
 
             // Externally owned because snapshot bundle take ownership
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
@@ -654,36 +649,6 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
         Assert.That(ctx.LastCommittedSnapshot!.AccountsCount, Is.EqualTo(0));
         Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(address, out _), Is.False);
-    }
-
-    [Test]
-    public void TestGetMissingAccountDoesNotQueueTrieWarmup()
-    {
-        ITrieWarmer trieWarmer = Substitute.For<ITrieWarmer>();
-        using TestContext ctx = new(trieWarmer: trieWarmer);
-        FlatWorldStateScope scope = ctx.Scope;
-
-        Assert.That(scope.Get(TestItem.AddressA), Is.Null);
-
-        trieWarmer.DidNotReceive().PushAddressJob(Arg.Any<ITrieWarmer.IAddressWarmer>(), Arg.Any<Address>(), Arg.Any<int>());
-    }
-
-    [Test]
-    public void TestGetExistingAccountQueuesTrieWarmup()
-    {
-        ITrieWarmer trieWarmer = Substitute.For<ITrieWarmer>();
-        trieWarmer.PushAddressJob(Arg.Any<ITrieWarmer.IAddressWarmer>(), Arg.Any<Address>(), Arg.Any<int>())
-            .Returns(true);
-
-        using TestContext ctx = new(trieWarmer: trieWarmer);
-        FlatWorldStateScope scope = ctx.Scope;
-        Address address = TestItem.AddressA;
-        Account account = TestItem.GenerateRandomAccount();
-        ctx.PersistenceReader.GetAccount(address).Returns(account);
-
-        Assert.That(scope.Get(address), Is.EqualTo(account));
-
-        trieWarmer.Received(1).PushAddressJob(scope, address, Arg.Any<int>());
     }
 
     [Test]
