@@ -295,13 +295,14 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [Test]
-    public async Task PrewarmerWrappedScope_DeduplicatesConcurrentStorageMisses()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task PrewarmerWrappedScope_DeduplicatesConcurrentStorageMisses(bool isPrewarmer)
     {
         PreBlockCaches caches = new();
         PrewarmerReadDeduplicator readDeduplicator = new();
         CountingScopeProvider inner = new();
-        PrewarmerScopeProvider prewarmer = new(inner, caches, LimboLogs.Instance, readDeduplicator: readDeduplicator);
+        PrewarmerScopeProvider prewarmer = new(inner, caches, LimboLogs.Instance, isPrewarmer: isPrewarmer, readDeduplicator: readDeduplicator);
 
         using IWorldStateScopeProvider.IScope scope1 = prewarmer.BeginScope(null);
         using IWorldStateScopeProvider.IScope scope2 = prewarmer.BeginScope(null);
