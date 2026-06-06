@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -182,21 +181,10 @@ public sealed class SnapshotBundle : IDisposable
         }
         else
         {
-            Lock gate = _transientResource.GetStateNodeLock(path);
-            using (gate.EnterScope())
-            {
-                if (_transientResource.TryGetStateNode(path, hash, out node))
-                {
-                    Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                }
-                else
-                {
-                    node = _transientResource.GetOrAddStateNode(path,
-                        DoFindStateNodeExternal(path, hash, out node)
-                            ? node
-                            : new TrieNode(NodeType.Unknown, hash));
-                }
-            }
+            node = _transientResource.GetOrAddStateNode(path,
+                DoFindStateNodeExternal(path, hash, out node)
+                    ? node
+                    : new TrieNode(NodeType.Unknown, hash));
         }
 
         return node;
@@ -253,28 +241,16 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        Hash256AsKey addressKey = (Hash256AsKey)address;
-        if (_transientResource.TryGetStorageNode(addressKey, path, hash, out TrieNode? node))
+        if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
         else
         {
-            Lock gate = _transientResource.GetStorageNodeLock(addressKey, path);
-            using (gate.EnterScope())
-            {
-                if (_transientResource.TryGetStorageNode(addressKey, path, hash, out node))
-                {
-                    Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                }
-                else
-                {
-                    node = _transientResource.GetOrAddStorageNode(addressKey, path,
-                        DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null
-                            ? node
-                            : new TrieNode(NodeType.Unknown, hash));
-                }
-            }
+            node = _transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
+                DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null
+                    ? node
+                    : new TrieNode(NodeType.Unknown, hash));
         }
 
         return node;

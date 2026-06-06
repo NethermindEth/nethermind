@@ -4,7 +4,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -194,11 +193,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
     /// </summary>
     public class ChildCache
     {
-        private const int LockCount = 1 << 14;
-        private const int LockMask = LockCount - 1;
-
         private readonly (int hashCode, TrieNode? node)[][] _shards;
-        private readonly Lock[] _locks = CreateLocks();
         private int _count = 0;
         private int _mask;
         private int _shardSize;
@@ -293,23 +288,6 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
             entry = (hashCode, trieNode);
             return trieNode;
-        }
-
-        public Lock GetLock(Hash256? address, in TreePath path)
-        {
-            (_, int hashCode) = GetShardAndHashCode(address, path);
-            return _locks[hashCode & LockMask];
-        }
-
-        private static Lock[] CreateLocks()
-        {
-            Lock[] locks = new Lock[LockCount];
-            for (int i = 0; i < locks.Length; i++)
-            {
-                locks[i] = new Lock();
-            }
-
-            return locks;
         }
     }
 }

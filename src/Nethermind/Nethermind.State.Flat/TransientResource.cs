@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Numerics;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -82,15 +81,11 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public bool TryGetStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(null, path, hash, out node);
 
-    public Lock GetStateNodeLock(in TreePath path) => Nodes.GetLock(null, path);
-
     public TrieNode GetOrAddStateNode(in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(null, path, trieNode);
 
     public void UpdateStateNode(in TreePath path, TrieNode node) => Nodes.Set(null, path, node);
 
     public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
-
-    public Lock GetStorageNodeLock(Hash256AsKey address, in TreePath path) => Nodes.GetLock(address, path);
 
     public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
 
