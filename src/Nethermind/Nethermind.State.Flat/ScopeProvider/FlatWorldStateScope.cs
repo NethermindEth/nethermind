@@ -153,11 +153,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return account;
     }
 
-    public void HintGet(Address address, Account? account)
-    {
-        _snapshotBundle.CacheAccount(address, account);
-        HintPrewarm(address);
-    }
+    public void HintGet(Address address, Account? account) => _snapshotBundle.CacheAccount(address, account);
 
     private void HintPrewarm(Address address)
     {
