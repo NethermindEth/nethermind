@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -25,7 +26,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     const BlockHeader? PreGenesis = null;
 
     IDisposable BeginScope(BlockHeader? baseBlock);
-    Task HintBal(ReadOnlyBlockAccessList bal);
+
+    /// <summary>
+    /// Starts (or restarts) background BAL read warming. <paramref name="token"/> lets the caller stop the
+    /// remaining warming promptly (e.g. once the block's transactions have executed); the returned task
+    /// completes rather than faulting when cancelled.
+    /// </summary>
+    Task HintBal(ReadOnlyBlockAccessList bal, CancellationToken token = default);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);

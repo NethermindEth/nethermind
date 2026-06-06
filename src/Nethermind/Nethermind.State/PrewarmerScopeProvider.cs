@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -150,10 +151,10 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null, CancellationToken token = default)
         {
             sink ??= new CacheSink(preBlockCache, storageCache, preBlockCaches.StorageReadPlan, preBlockCaches.StorageValueDestination);
-            return baseScope.HintBal(bal, sink);
+            return baseScope.HintBal(bal, sink, token);
         }
 
         private sealed class CacheSink(

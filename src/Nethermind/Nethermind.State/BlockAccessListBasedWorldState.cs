@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -131,7 +132,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
-    public Task HintBal(ReadOnlyBlockAccessList bal) => _innerWorldState.HintBal(bal);
+    public Task HintBal(ReadOnlyBlockAccessList bal, CancellationToken token = default) => _innerWorldState.HintBal(bal, token);
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {

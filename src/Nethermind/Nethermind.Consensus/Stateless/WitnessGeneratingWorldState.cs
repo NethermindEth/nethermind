@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Collections.Pooled;
 using Nethermind.Core;
@@ -290,7 +291,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     public void ResetTransient() => inner.ResetTransient();
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => inner.BeginScope(baseBlock);
-    public Task HintBal(ReadOnlyBlockAccessList bal) => inner.HintBal(bal);
+    public Task HintBal(ReadOnlyBlockAccessList bal, CancellationToken token = default) => inner.HintBal(bal, token);
 
     public void CreateEmptyAccountIfDeleted(Address address)
     {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -81,7 +82,7 @@ public interface IWorldStateScopeProvider
         /// <param name="bal">The Block Access List describing addresses and storage slots to prefetch.</param>
         /// <param name="sink">Optional sink that receives each account/slot value read during the pass.</param>
         /// <returns>A task that completes when the asynchronous warmup finishes.</returns>
-        Task HintBal(ReadOnlyBlockAccessList bal, IAsyncBalReaderSink? sink = null);
+        Task HintBal(ReadOnlyBlockAccessList bal, IAsyncBalReaderSink? sink = null, CancellationToken token = default);
     }
 
     /// <summary>

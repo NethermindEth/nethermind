@@ -164,7 +164,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+    public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null, CancellationToken cancellationToken = default)
     {
         int accountCount = bal.AccountChanges.Count;
         if (accountCount == 0) return Task.CompletedTask;
@@ -174,7 +174,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         CancelHintBal();
 
-        _hintBalCts = new CancellationTokenSource();
+        // Link the caller's token (e.g. the block processor's tx-complete background cancel) with our own
+        // re-hint/dispose cancellation, so the per-iteration checks below stop warming promptly on either.
+        _hintBalCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationToken token = _hintBalCts.Token;
         int snapshot = _hintSequenceId;
 

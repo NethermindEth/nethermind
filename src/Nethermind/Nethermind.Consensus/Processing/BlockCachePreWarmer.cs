@@ -97,7 +97,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     // Large read sets get an exact-sized ordinal destination the prefetch fills and
                     // parallel execution consumes; small sets stay on the associative StorageCache.
                     _preBlockCaches.BuildStorageReadDestination(bal);
-                    return _stateProvider.HintBal(bal);
+                    // Pass the prewarm cancellation token so warming stops promptly once the block's
+                    // transactions have executed, instead of running to completion in the background.
+                    return _stateProvider.HintBal(bal, cancellationToken);
                 }
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
