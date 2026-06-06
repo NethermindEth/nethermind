@@ -83,18 +83,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             {
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
-                ParallelOptions addressParallelOptions = new()
-                {
-                    MaxDegreeOfParallelism = Math.Max(1, _concurrencyLevel / 2),
-                    CancellationToken = cancellationToken
-                };
 
                 // BAL makes speculative tx execution redundant — when BAL-based read warming
                 // is in use, drive warmup directly off the suggested block's access list.
                 ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                AddressWarmer addressWarmer = new(addressParallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
+                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
                 return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
