@@ -50,15 +50,22 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     }
 
     [SkipLocalsInit]
-    public bool ShouldPrewarm(Address address, UInt256? slot)
+    public bool ShouldPrewarm(Address address)
     {
         ulong hash = (ulong)address.GetHashCode64();
-        if (slot is not null)
-        {
-            UInt256 slotValue = slot.Value;
-            hash ^= (ulong)SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in slotValue)));
-        }
+        return ShouldPrewarm(hash);
+    }
 
+    [SkipLocalsInit]
+    public bool ShouldPrewarm(Address address, in UInt256 slot)
+    {
+        ulong hash = (ulong)address.GetHashCode64();
+        hash ^= (ulong)SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in slot)));
+        return ShouldPrewarm(hash);
+    }
+
+    private bool ShouldPrewarm(ulong hash)
+    {
         if (PrewarmedAddresses.MightContain(hash)) return false;
         PrewarmedAddresses.Add(hash);
         return true;
