@@ -13,7 +13,12 @@ namespace Nethermind.Consensus.Stateless;
 public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
 {
     private static readonly HeaderDecoder _decoder = new();
+    // Not thread-safe: a pooled rent is reset then used on a single thread, so no synchronization is
+    // needed. Concurrent use of one instance would require it.
     private long _lowestRequestedHeader = long.MaxValue;
+
+    /// <summary>Resets BLOCKHASH bookkeeping so this instance can be reused across pooled rents.</summary>
+    public void Reset() => _lowestRequestedHeader = long.MaxValue;
 
     public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null)
     {
@@ -39,21 +44,30 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
             ? (int)(parentHeader.Number - _lowestRequestedHeader + 1)
             : 1;
         int index = count - 1;
-        ArrayPoolList<byte[]> headers = new(count, count)
+        ArrayPoolList<byte[]> headers = new(count, count);
+        try
         {
-            [index--] = _decoder.Encode(parentHeader).Bytes
-        };
+            headers[index--] = _decoder.Encode(parentHeader).Bytes;
 
-        if (index >= 0)
-        {
-            for (long i = parentHeader.Number - 1; i >= _lowestRequestedHeader; i--)
+            if (index >= 0)
             {
-                currentHash = parentHeader.ParentHash!;
-                parentHeader = inner.Get(currentHash, i) ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
-                headers[index--] = _decoder.Encode(parentHeader).Bytes;
+                for (long i = parentHeader.Number - 1; i >= _lowestRequestedHeader; i--)
+                {
+                    currentHash = parentHeader.ParentHash!;
+                    parentHeader = inner.Get(currentHash, i)
+                        ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
+                    headers[index--] = _decoder.Encode(parentHeader).Bytes;
+                }
             }
-        }
 
-        return headers;
+            return headers;
+        }
+        catch
+        {
+            // A missing ancestor (reorg/prune mid-walk) leaves the partially-filled list holding pooled
+            // buffers — return them before propagating.
+            headers.Dispose();
+            throw;
+        }
     }
 }

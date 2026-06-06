@@ -225,7 +225,12 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
     public bool Contains(Hash256 blockHash) => _blocks.ContainsKey(blockHash);
 
-    public void Clear() => _blocks.Clear();
+    public void Clear()
+    {
+        _blocks.Clear();
+        _flatCache.Clear();
+        Interlocked.Exchange(ref _minBlock, int.MaxValue);
+    }
 
     public void Dispose() => Clear();
 
