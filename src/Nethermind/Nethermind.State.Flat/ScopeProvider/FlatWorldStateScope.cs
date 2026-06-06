@@ -24,7 +24,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
-    private readonly bool _trieWarmingEnabled;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
 
@@ -81,7 +80,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _configuration = configuration;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
-        _trieWarmingEnabled = trieCacheWarmer.IsEnabled;
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
@@ -163,7 +161,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private void HintPrewarm(Address address)
     {
-        if (_trieWarmingEnabled && _snapshotBundle.ShouldQueuePrewarm(address))
+        if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
             if (_warmer.PushAddressJob(this, address, _hintSequenceId))
                 Interlocked.Increment(ref _outstandingWarmups);
@@ -202,8 +200,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (_trieWarmingEnabled
-                        && _snapshotBundle.ShouldQueuePrewarm(address)
+                    if (_snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
@@ -242,8 +239,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         foreach (ReadOnlySlotChanges slotChanges in storageChanges)
                         {
                             UInt256 key = slotChanges.Key;
-                            if (_trieWarmingEnabled
-                                && _snapshotBundle.ShouldQueuePrewarm(address, key)
+                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
                                 && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
                                 Interlocked.Increment(ref _outstandingWarmups);
                         }
