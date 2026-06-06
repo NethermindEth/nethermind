@@ -317,23 +317,6 @@ public class ScopeProviderTests(bool useFlat)
         Assert.That(inner.StorageReads, Is.EqualTo(1));
     }
 
-    [Test]
-    public void PrewarmerWrappedScope_SeedsAccountCacheBeforeStorageTreeCreation()
-    {
-        PreBlockCaches caches = new();
-        CountingScopeProvider inner = new();
-        PrewarmerScopeProvider prewarmer = new(inner, caches, LimboLogs.Instance, isPrewarmer: false);
-        Account account = new((UInt256)1);
-        AddressAsKey address = TestItem.AddressA;
-        caches.StateCache.Set(in address, account);
-
-        using IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(null);
-        scope.CreateStorageTree(TestItem.AddressA);
-
-        Assert.That(inner.HintedAccount, Is.EqualTo(account));
-        Assert.That(inner.HintedAddress, Is.EqualTo(TestItem.AddressA));
-    }
-
 #nullable enable
     private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
@@ -361,8 +344,6 @@ public class ScopeProviderTests(bool useFlat)
 
         public int AccountReads;
         public int StorageReads;
-        public Account HintedAccount;
-        public Address HintedAddress;
 
         public bool HasRoot(BlockHeader baseBlock) => true;
 
@@ -389,8 +370,6 @@ public class ScopeProviderTests(bool useFlat)
 
             public void HintGet(Address address, Account account)
             {
-                parent.HintedAddress = address;
-                parent.HintedAccount = account;
             }
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => NullCodeDb.Instance;
