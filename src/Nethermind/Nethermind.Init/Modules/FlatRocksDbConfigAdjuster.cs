@@ -22,12 +22,12 @@ internal class FlatRocksDbConfigAdjuster(
     ILogManager logManager)
     : IRocksDbConfigFactory
 {
-    private const long AccountBlockCacheBudgetShare = 15;
-    private const long StorageBlockCacheBudgetShare = 25;
+    private const long AccountBlockCacheBudgetShare = 10;
+    private const long StorageBlockCacheBudgetShare = 20;
     private const long StateTopNodesBlockCacheBudgetShare = 5;
-    private const long StateNodesBlockCacheBudgetShare = 15;
-    private const long StorageNodesBlockCacheBudgetShare = 25;
-    private const long FallbackNodesBlockCacheBudgetShare = 15;
+    private const long StateNodesBlockCacheBudgetShare = 10;
+    private const long StorageNodesBlockCacheBudgetShare = 35;
+    private const long FallbackNodesBlockCacheBudgetShare = 20;
     private const long TotalBlockCacheBudgetShare = 100;
     private const string BlockCacheOptionName = "block_based_table_factory.block_cache";
 
