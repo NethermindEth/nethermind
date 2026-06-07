@@ -25,7 +25,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ISnapshotRepository _snapshotRepository;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly IResourcePool _resourcePool;
-    private readonly PersistedReadCache _persistedReadCache = new();
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
@@ -156,15 +155,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private void PersistIfNeeded(in StateId latestSnapshot)
     {
-        StateId previousPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         _persistenceManager.AddToPersistence(latestSnapshot);
 
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
-        if (currentPersistedStateId != previousPersistedStateId)
-        {
-            _persistedReadCache.Clear();
-        }
 
         _snapshotRepository.RemoveStatesUntil(currentPersistedStateId);
         ClearReadOnlyBundleCache();
@@ -316,7 +310,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
 
-            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _persistedReadCache, _enableDetailedMetrics);
+            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics);
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
@@ -429,7 +423,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         _snapshotRepository.RemoveStatesUntil(persistedState);
 
-        _persistedReadCache.Clear();
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();
 

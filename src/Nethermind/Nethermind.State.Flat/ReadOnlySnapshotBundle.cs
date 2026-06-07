@@ -21,18 +21,9 @@ namespace Nethermind.State.Flat;
 public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
-    PersistedReadCache persistedReadCache,
     bool recordDetailedMetrics)
     : RefCountingDisposable
 {
-    public ReadOnlySnapshotBundle(
-        SnapshotPooledList snapshots,
-        IPersistence.IPersistenceReader persistenceReader,
-        bool recordDetailedMetrics)
-        : this(snapshots, persistenceReader, new PersistedReadCache(), recordDetailedMetrics)
-    {
-    }
-
     public int SnapshotCount => snapshots.Count;
     private bool _isDisposed;
 
@@ -64,14 +55,7 @@ public sealed class ReadOnlySnapshotBundle(
         }
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        if (persistedReadCache.TryGetAccount(address, out Account? account))
-        {
-            if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, account is null ? _readAccountPersistenceNullLabel : _readAccountPersistenceLabel);
-            return account;
-        }
-
-        account = persistenceReader.GetAccount(address);
-        persistedReadCache.SetAccount(address, account);
+        Account? account = persistenceReader.GetAccount(address);
         if (account == null)
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);
@@ -121,21 +105,11 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        if (persistedReadCache.TryGetSlot(key.Key.Item1, key.Key.Item2, out byte[]? cachedValue))
-        {
-            if (recordDetailedMetrics)
-            {
-                Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, cachedValue is null || cachedValue.IsZero() ? _readStoragePersistenceNullLabel : _readStoragePersistenceLabel);
-            }
-
-            return cachedValue;
-        }
-
         SlotValue outSlotValue = new();
+
+        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
         byte[]? value = outSlotValue.ToEvmBytes();
-        persistedReadCache.SetSlot(key.Key.Item1, key.Key.Item2, value);
 
         if (recordDetailedMetrics)
         {
