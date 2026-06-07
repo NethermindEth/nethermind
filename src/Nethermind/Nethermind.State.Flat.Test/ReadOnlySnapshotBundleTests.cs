@@ -26,8 +26,8 @@ public class ReadOnlySnapshotBundleTests
     private Snapshot MakeSnapshot(Action<SnapshotContent>? populate = null) =>
         FlatTestHelpers.MakeSnapshot(_pool, populate);
 
-    private static ReadOnlySnapshotBundle Bundle(SnapshotPooledList snapshots, IPersistence.IPersistenceReader? reader = null, bool recordDetailedMetrics = false, FlatReadCache? readCache = null) =>
-        new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics, readCache);
+    private static ReadOnlySnapshotBundle Bundle(SnapshotPooledList snapshots, IPersistence.IPersistenceReader? reader = null, bool recordDetailedMetrics = false) =>
+        new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics);
 
     [TestCase(true)]
     [TestCase(false)]
@@ -57,42 +57,6 @@ public class ReadOnlySnapshotBundleTests
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
         Assert.That(bundle.GetAccount(address), Is.EqualTo(account));
-    }
-
-    [Test]
-    public void GetAccount_UsesReadCache_ForPersistenceFallback()
-    {
-        Address address = TestItem.AddressA;
-        Account account = TestItem.GenerateIndexedAccount(1);
-        FlatReadCache readCache = new();
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.GetAccount(address).Returns(account);
-
-        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, readCache: readCache);
-
-        Assert.That(bundle.GetAccount(address), Is.EqualTo(account));
-        Assert.That(bundle.GetAccount(address), Is.EqualTo(account));
-        reader.Received(1).GetAccount(address);
-    }
-
-    [Test]
-    public void GetAccount_ReadCache_InvalidatedBySnapshotAccountChange()
-    {
-        Address address = TestItem.AddressA;
-        Account original = TestItem.GenerateIndexedAccount(1);
-        Account changed = TestItem.GenerateIndexedAccount(2);
-        FlatReadCache readCache = new();
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.GetAccount(address).Returns(original);
-
-        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, readCache: readCache);
-        Assert.That(bundle.GetAccount(address), Is.EqualTo(original));
-
-        using Snapshot snapshot = MakeSnapshot(c => c.Accounts[new HashedKey<Address>(address)] = changed);
-        readCache.Invalidate(snapshot);
-
-        Assert.That(bundle.GetAccount(address), Is.EqualTo(original));
-        reader.Received(2).GetAccount(address);
     }
 
     [TestCase(true)]
@@ -159,60 +123,6 @@ public class ReadOnlySnapshotBundleTests
 
         // Default SlotValue.ToEvmBytes() is the canonical zero (single 0x00 byte).
         Assert.That(bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
-    }
-
-    [Test]
-    public void GetSlot_UsesReadCache_ForPersistenceFallback()
-    {
-        Address address = TestItem.AddressA;
-        UInt256 index = 1;
-        FlatReadCache readCache = new();
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryGetSlot(address, index, ref Arg.Any<SlotValue>()).Returns(false);
-
-        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, readCache: readCache);
-
-        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
-        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
-        reader.Received(1).TryGetSlot(address, index, ref Arg.Any<SlotValue>());
-    }
-
-    [Test]
-    public void GetSlot_ReadCache_InvalidatedBySnapshotStorageChange()
-    {
-        Address address = TestItem.AddressA;
-        UInt256 index = 1;
-        FlatReadCache readCache = new();
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryGetSlot(address, index, ref Arg.Any<SlotValue>()).Returns(false);
-
-        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, readCache: readCache);
-        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
-
-        using Snapshot snapshot = MakeSnapshot(c => c.Storages[new HashedKey<(Address, UInt256)>((address, index))] = SlotValue.FromSpanWithoutLeadingZero([0x01]));
-        readCache.Invalidate(snapshot);
-
-        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
-        reader.Received(2).TryGetSlot(address, index, ref Arg.Any<SlotValue>());
-    }
-
-    [Test]
-    public void GetSlot_ReadCache_InvalidatedBySnapshotSelfDestruct()
-    {
-        Address address = TestItem.AddressA;
-        UInt256 index = 1;
-        FlatReadCache readCache = new();
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryGetSlot(address, index, ref Arg.Any<SlotValue>()).Returns(false);
-
-        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, readCache: readCache);
-        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
-
-        using Snapshot snapshot = MakeSnapshot(c => c.SelfDestructedStorageAddresses[new HashedKey<Address>(address)] = true);
-        readCache.Invalidate(snapshot);
-
-        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
-        reader.Received(2).TryGetSlot(address, index, ref Arg.Any<SlotValue>());
     }
 
     [Test]

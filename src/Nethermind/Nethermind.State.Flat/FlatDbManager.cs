@@ -25,7 +25,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ISnapshotRepository _snapshotRepository;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly IResourcePool _resourcePool;
-    private readonly FlatReadCache _readCache = new();
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
@@ -250,7 +249,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // Special case for pregenesis. Note: nethermind always tries to generate genesis.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, _readCache);
+            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics);
         }
 
         long sw = 0;
@@ -311,7 +310,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
 
-            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics, _readCache);
+            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics);
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
@@ -338,8 +337,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             snapshot.Dispose();
             return;
         }
-
-        _readCache.Invalidate(snapshot);
 
         if (!_snapshotRepository.TryAddSnapshot(snapshot))
         {
@@ -428,7 +425,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();
-        _readCache.Clear();
 
         if (_logger.IsInfo) _logger.Info($"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
     }
@@ -445,7 +441,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) == 1) return;
 
         ClearReadOnlyBundleCache();
-        _readCache.Clear();
         _cancelTokenSource.Cancel();
 
         _compactorJobs.Writer.Complete();
