@@ -106,11 +106,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     private void WarmUpSlot(UInt256 index)
     {
-        if (_tree.RootHash == Keccak.EmptyTreeHash)
-        {
-            return;
-        }
-
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
             if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId))
