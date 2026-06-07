@@ -46,6 +46,10 @@ public static class Metrics
     [Description("Percent of transactions executed without re-execution in the last parallel block.")]
     public static long LastBlockParallelizationPercent;
 
+    [GaugeMetric]
+    [Description("Maximum number of incarnations any single transaction reached in the last parallel block. 1 = no re-execution; large values indicate concentrated conflicts on a single tx.")]
+    public static long LastBlockMaxIncarnations;
+
     internal static void ReportBlock(in ParallelBlockMetrics snapshot)
     {
         // Gauges: monitoring threads read these asynchronously, so a slightly stale read is
@@ -53,6 +57,7 @@ public static class Metrics
         // forces a 64-bit aligned single store (the Interlocked.Add below also serves as a
         // release fence for the gauge writes that precede each Add).
         Volatile.Write(ref LastBlockParallelizationPercent, snapshot.ParallelizationPercent);
+        Volatile.Write(ref LastBlockMaxIncarnations, snapshot.MaxIncarnations);
         Volatile.Write(ref LastBlockTxCount, snapshot.TxCount);
         Interlocked.Add(ref TxCount, snapshot.TxCount);
         Volatile.Write(ref LastBlockReexecutions, snapshot.Reexecutions);
@@ -75,6 +80,7 @@ public static class Metrics
         Interlocked.Exchange(ref Revalidations, 0);
         Interlocked.Exchange(ref BlockedReads, 0);
         LastBlockParallelizationPercent = 0;
+        LastBlockMaxIncarnations = 0;
         Interlocked.Exchange(ref LastBlockTxCount, 0);
         Interlocked.Exchange(ref LastBlockReexecutions, 0);
         Interlocked.Exchange(ref LastBlockRevalidations, 0);
@@ -82,10 +88,15 @@ public static class Metrics
     }
 
     /// <summary>
-    /// Calculates the parallelization percent for the given block.
+    /// Percent of transactions that committed on their first execution attempt — i.e., did
+    /// not need any re-execution due to a read conflict.
     /// </summary>
     /// <param name="txCount">Number of transactions in the block.</param>
-    /// <param name="dependentTransactions">Number of transactions with dependencies.</param>
+    /// <param name="dependentTransactions">
+    /// Number of <em>unique</em> txs that needed at least one re-execution. Not the total
+    /// count of re-execution events — multiple incarnations of the same tx still count as one
+    /// dependent tx, so a single hot conflict can't tank the reported parallelism.
+    /// </param>
     /// <returns>Parallelization percent in the range 0-100.</returns>
     public static int CalculateParallelizationPercent(int txCount, long dependentTransactions)
     {
@@ -103,16 +114,21 @@ public static class Metrics
 /// Snapshot of parallel block metrics captured after processing.
 /// </summary>
 /// <param name="TxCount">Number of transactions in the block.</param>
-/// <param name="Reexecutions">Number of re-execution attempts.</param>
-/// <param name="Revalidations">Number of validation aborts.</param>
-/// <param name="BlockedReads">Number of blocked read aborts.</param>
-/// <param name="ParallelizationPercent">Percent of transactions executed without re-execution.</param>
+/// <param name="Reexecutions">Total number of re-execution attempts across all txs (events, not unique txs).</param>
+/// <param name="Revalidations">Number of validation aborts (one cause of re-execution).</param>
+/// <param name="BlockedReads">Number of blocked read aborts (the other cause of re-execution).</param>
+/// <param name="ParallelizationPercent">Percent of txs that committed on their first attempt.</param>
+/// <param name="MaxIncarnations">
+/// Highest incarnation count reached by any single tx. 1 = no re-execution anywhere; large
+/// values surface concentrated conflicts on one tx that the percent alone hides.
+/// </param>
 public readonly record struct ParallelBlockMetrics(
     int TxCount,
     long Reexecutions,
     long Revalidations,
     long BlockedReads,
-    long ParallelizationPercent)
+    long ParallelizationPercent,
+    int MaxIncarnations)
 {
-    public static ParallelBlockMetrics Empty => new(0, 0, 0, 0, 100);
+    public static ParallelBlockMetrics Empty => new(0, 0, 0, 0, 100, 0);
 }

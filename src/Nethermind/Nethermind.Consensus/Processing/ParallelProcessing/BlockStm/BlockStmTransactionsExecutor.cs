@@ -510,7 +510,7 @@ public class BlockStmTransactionsExecutor(
                 ? $"FAIL {failedCount} first={firstFailedIndex} {firstFailedResult.ErrorDescription}"
                 : "FAIL (exception)";
 
-        _logger.Info($"Parallel block {block.Number,10} | txs {snapshot.TxCount,6} | gas {block.Header.GasUsed,10:N0} | reexec {snapshot.Reexecutions,5} | reval {snapshot.Revalidations,5} | blocked {snapshot.BlockedReads,5} | parallel {snapshot.ParallelizationPercent,3}% | {status}");
+        _logger.Info($"Parallel block {block.Number,10} | txs {snapshot.TxCount,6} | gas {block.Header.GasUsed,10:N0} | reexec {snapshot.Reexecutions,5} | reval {snapshot.Revalidations,5} | blocked {snapshot.BlockedReads,5} | parallel {snapshot.ParallelizationPercent,3}% | hot {snapshot.MaxIncarnations,3} | {status}");
     }
 
     // Per-worker tracers each see one tx, so the outer tracer's EndBlockTrace can't

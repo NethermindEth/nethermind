@@ -42,17 +42,27 @@ public sealed class ParallelBlockMetricsCollector(int txCount)
         long reexecutions = 0;
         long revalidations = 0;
         long blockedReads = 0;
+        int dependentTxs = 0;
+        int maxIncarnations = txCount > 0 ? 1 : 0;
 
         for (int i = 0; i < txCount; i++)
         {
-            reexecutions += _executionAttempts[i];
+            int attempts = _executionAttempts[i];
+            reexecutions += attempts;
             revalidations += _validationFailures[i];
             blockedReads += _blockedReads[i];
+
+            // "Dependent" = needed at least one re-execution. Counting unique txs (not events)
+            // is what gives parallelizationPercent its honest meaning — one badly-contended tx
+            // re-executing 20 times shouldn't shrink the reported parallelism the way summing
+            // raw events would.
+            if (attempts > 1) dependentTxs++;
+            if (attempts > maxIncarnations) maxIncarnations = attempts;
         }
 
         reexecutions -= txCount;
 
-        long parallelizationPercent = Metrics.CalculateParallelizationPercent(txCount, reexecutions);
-        return new ParallelBlockMetrics(txCount, reexecutions, revalidations, blockedReads, parallelizationPercent);
+        long parallelizationPercent = Metrics.CalculateParallelizationPercent(txCount, dependentTxs);
+        return new ParallelBlockMetrics(txCount, reexecutions, revalidations, blockedReads, parallelizationPercent, maxIncarnations);
     }
 }
