@@ -15,7 +15,7 @@ internal sealed partial class PersistentStorageProvider
 {
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
-        if (_toUpdateRoots.Count >= 16)
+        if (_toUpdateRoots.Count >= 32)
             UpdateRootHashesMultiThread(writeBatch);
         else
             UpdateRootHashesSingleThread(writeBatch);
