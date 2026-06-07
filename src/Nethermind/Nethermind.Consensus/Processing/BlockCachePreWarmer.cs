@@ -194,12 +194,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Block block = blockState.Block;
             if (block.Transactions.Length == 0) return;
 
-            if (!HasDuplicateSender(block))
-            {
-                WarmupIndependentTransactions(blockState, parallelOptions);
-                return;
-            }
-
             // Group transactions by sender to process same-sender transactions sequentially
             // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
             Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
@@ -259,54 +253,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void WarmupIndependentTransactions(BlockState blockState, ParallelOptions parallelOptions)
-    {
-        Transaction[] transactions = blockState.Block.Transactions;
-
-        ParallelUnbalancedWork.For(
-            0,
-            transactions.Length,
-            parallelOptions,
-            (blockState, transactions, parallelOptions.CancellationToken),
-            static (txIndex, tupleState) =>
-            {
-                (BlockState blockState, Transaction[] transactions, CancellationToken token) = tupleState;
-                if (token.IsCancellationRequested) return tupleState;
-
-                IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
-                try
-                {
-                    using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                    BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-                    scope.TransactionProcessor.SetBlockExecutionContext(context);
-                    WarmupSingleTransaction(scope, transactions[txIndex], txIndex, blockState);
-                }
-                finally
-                {
-                    blockState.PreWarmer._envPool.Return(env);
-                }
-
-                return tupleState;
-            });
-    }
-
-    private static bool HasDuplicateSender(Block block)
-    {
-        Transaction[] transactions = block.Transactions;
-        HashSet<AddressAsKey> senders = new(transactions.Length);
-
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            Address sender = transactions[i].SenderAddress!;
-            if (!senders.Add(sender)) return true;
-        }
-
-        return false;
-    }
-
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
     {
-        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new(block.Transactions.Length);
+        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
