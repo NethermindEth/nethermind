@@ -60,11 +60,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
         EvmMetrics.IncrementStorageWrites();
-        if (!storageCell.IsHash)
-        {
-            GetOrCreateStorage(storageCell.Address).HintChange(storageCell.Index, newValue);
-        }
-
         base.Set(in storageCell, newValue);
     }
 
@@ -466,12 +461,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 valueChanges = new StorageChangeTrace(valueChanges.Before, value);
             }
-        }
 
-        public void HintChange(in UInt256 index, byte[] value)
-        {
-            EnsureStorageTree();
-            _backend.HintSet(in index, value);
+            if (!storageCell.IsHash)
+            {
+                EnsureStorageTree();
+                _backend.HintSet(storageCell.Index, value);
+            }
         }
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
