@@ -313,41 +313,28 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
-        int totalSlots = CountSinkSlotJobs(accountChanges, accounts);
+        int totalSlots = 0;
+        for (int i = 0; i < accountChanges.Count; i++)
+        {
+            if (accounts[i] is null) continue;
+            totalSlots += accountChanges[i].StorageChanges.Length
+                       + accountChanges[i].StorageReads.Length;
+        }
+
         if (totalSlots == 0) return;
 
         using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
         int idx = 0;
-        int remainingBlockSlots = MaxBalSinkSlotsPerBlock;
         for (int i = 0; i < accountChanges.Count; i++)
         {
             if (accounts[i] is null) continue;
-
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
-            int remainingAccountSlots = Math.Min(MaxBalSinkSlotsPerAccount, remainingBlockSlots);
-
             foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
-            {
-                if (remainingAccountSlots == 0) break;
                 jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
-                remainingAccountSlots--;
-                remainingBlockSlots--;
-            }
-
-            if (remainingAccountSlots != 0)
-            {
-                foreach (UInt256 readKey in ac.StorageReads)
-                {
-                    if (remainingAccountSlots == 0) break;
-                    jobs[idx++] = (address, selfDestructIdx, readKey);
-                    remainingAccountSlots--;
-                    remainingBlockSlots--;
-                }
-            }
-
-            if (remainingBlockSlots == 0) break;
+            foreach (UInt256 readKey in ac.StorageReads)
+                jobs[idx++] = (address, selfDestructIdx, readKey);
         }
 
         Parallel.For(0, idx, parallelOptions, (j) =>
@@ -356,28 +343,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         });
-    }
-
-    private const int MaxBalSinkSlotsPerAccount = 1024;
-    private const int MaxBalSinkSlotsPerBlock = 4096;
-
-    private static int CountSinkSlotJobs(ArrayPoolList<ReadOnlyAccountChanges> accountChanges, Account?[] accounts)
-    {
-        int totalSlots = 0;
-        int remainingBlockSlots = MaxBalSinkSlotsPerBlock;
-        for (int i = 0; i < accountChanges.Count; i++)
-        {
-            if (accounts[i] is null) continue;
-
-            int slotCount = accountChanges[i].StorageChanges.Length
-                          + accountChanges[i].StorageReads.Length;
-            int count = Math.Min(slotCount, Math.Min(MaxBalSinkSlotsPerAccount, remainingBlockSlots));
-            totalSlots += count;
-            remainingBlockSlots -= count;
-            if (remainingBlockSlots == 0) break;
-        }
-
-        return totalSlots;
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
