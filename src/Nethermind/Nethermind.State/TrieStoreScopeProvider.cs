@@ -317,8 +317,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         StorageTree storageTree,
         Action<Address, Hash256> onRootUpdated,
         AddressAsKey address,
-        bool commit = false,
-        int directSetLimit = StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH) : IWorldStateScopeProvider.IStorageWriteBatch
+        bool commit = false) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
         public const int MIN_ENTRIES_TO_BATCH = 16;
@@ -327,7 +326,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         private bool _wasSetCalled = false;
 
         private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
-            estimatedEntries > directSetLimit
+            estimatedEntries > MIN_ENTRIES_TO_BATCH
                 ? new(estimatedEntries)
                 : null;
 

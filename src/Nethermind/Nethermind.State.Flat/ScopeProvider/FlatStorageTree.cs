@@ -15,8 +15,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
-    private const int FlatStorageBulkSetDirectLimit = 3;
-
     private readonly StorageTree _tree;
     private readonly StorageTree _warmupStorageTree;
     private readonly Address _address;
@@ -161,8 +159,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 _tree,
                 onRootUpdated,
                 _address,
-                commit: true,
-                directSetLimit: FlatStorageBulkSetDirectLimit);
+                commit: true);
 
         return new StorageTreeBulkWriteBatch(
             storageTreeBulkWriteBatch,
