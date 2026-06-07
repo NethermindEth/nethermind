@@ -24,8 +24,10 @@ internal class FlatRocksDbConfigAdjuster(
 {
     private const long AccountBlockCacheBudgetShare = 15;
     private const long StorageBlockCacheBudgetShare = 25;
-    private const long StateNodesBlockCacheBudgetShare = 20;
-    private const long StorageNodesBlockCacheBudgetShare = 40;
+    private const long StateTopNodesBlockCacheBudgetShare = 5;
+    private const long StateNodesBlockCacheBudgetShare = 15;
+    private const long StorageNodesBlockCacheBudgetShare = 25;
+    private const long FallbackNodesBlockCacheBudgetShare = 15;
     private const long TotalBlockCacheBudgetShare = 100;
     private const string BlockCacheOptionName = "block_based_table_factory.block_cache";
 
@@ -85,8 +87,10 @@ internal class FlatRocksDbConfigAdjuster(
         {
             nameof(FlatDbColumns.Account) => AccountBlockCacheBudgetShare,
             nameof(FlatDbColumns.Storage) => StorageBlockCacheBudgetShare,
+            nameof(FlatDbColumns.StateTopNodes) => StateTopNodesBlockCacheBudgetShare,
             nameof(FlatDbColumns.StateNodes) => StateNodesBlockCacheBudgetShare,
             nameof(FlatDbColumns.StorageNodes) => StorageNodesBlockCacheBudgetShare,
+            nameof(FlatDbColumns.FallbackNodes) => FallbackNodesBlockCacheBudgetShare,
             _ => 0,
         };
 
