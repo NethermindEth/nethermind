@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
@@ -23,21 +24,33 @@ internal sealed partial class PersistentStorageProvider
 
     private void UpdateRootHashesMultiThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
-        // We can recalculate the roots in parallel as they are all independent tries
+        // Storage roots are independent across contracts → recompute in parallel.
+        //
+        // Setup must stay serial: writeBatch.CreateStorageWriteBatch reaches into the scope
+        // provider's per-address storage map (non-concurrent Dictionary), so concurrent
+        // creation would race. Pre-resolve the write batches here, then hand items into the
+        // worker pool for ProcessStorageChanges (which is the expensive part — it walks each
+        // tree's dirty paths and BulkSets writes on Dispose).
         using ArrayPoolList<(
             AddressAsKey Key, PerContractState ContractState,
             IWorldStateScopeProvider.IStorageWriteBatch WriteBatch
-            )> storages = _storages
-                // Only consider contracts that actually have pending changes
-                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
-                // Schedule larger changes first to help balance the work
-                .OrderByDescending(kv => kv.Value.EstimatedChanges)
-                .Select((kv) => (
-                    kv.Key,
-                    kv.Value,
-                    writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
-                ))
-                .ToPooledList(_storages.Count);
+            )> storages = new(_toUpdateRoots.Count);
+
+        foreach (KeyValuePair<AddressAsKey, PerContractState> kv in _storages)
+        {
+            if (!_toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) || !hasChanges) continue;
+            storages.Add((
+                kv.Key,
+                kv.Value,
+                writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)));
+        }
+
+        if (storages.Count == 0) return;
+
+        // Sort heaviest contracts first: HEFT-style head start for the slowest work items, so
+        // the tail of the parallel loop isn't a single long task waiting on a free worker.
+        // ParallelUnbalancedWork's work-stealing absorbs imbalance from there.
+        storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges - a.ContractState.EstimatedChanges);
 
         ParallelUnbalancedWork.For(
             0,
