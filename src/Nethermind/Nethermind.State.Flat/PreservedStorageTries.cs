@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -17,8 +18,8 @@ public sealed class PreservedStorageTries
 
     private const int MaxStoredTries = 2048;
 
-    private readonly object _lock = new();
-    private readonly Dictionary<AddressAsKey, Entry> _entries = [];
+    private readonly object _storeLock = new();
+    private readonly ConcurrentDictionary<AddressAsKey, Entry> _entries = [];
     private readonly Queue<(AddressAsKey Key, uint Generation)> _insertionOrder = new();
     private uint _generation;
 
@@ -38,28 +39,24 @@ public sealed class PreservedStorageTries
         }
 
         AddressAsKey key = address;
-        lock (_lock)
+        if (!_entries.TryRemove(key, out Entry? entry))
         {
-            if (!_entries.TryGetValue(key, out Entry? entry))
-            {
-                tree = null!;
-                rebinder = null!;
-                return false;
-            }
-
-            _entries.Remove(key);
-            if (entry.StorageRoot != storageRoot)
-            {
-                tree = null!;
-                rebinder = null!;
-                return false;
-            }
-
-            entry.Rebind(newBundle, newQuota);
-            tree = entry.Tree;
-            rebinder = entry.Rebind;
-            return true;
+            tree = null!;
+            rebinder = null!;
+            return false;
         }
+
+        if (entry.StorageRoot != storageRoot)
+        {
+            tree = null!;
+            rebinder = null!;
+            return false;
+        }
+
+        entry.Rebind(newBundle, newQuota);
+        tree = entry.Tree;
+        rebinder = entry.Rebind;
+        return true;
     }
 
     public void Store(Address address, StorageTree tree, Rebinder rebinder, Hash256 storageRoot)
@@ -67,7 +64,7 @@ public sealed class PreservedStorageTries
         if (storageRoot == Keccak.EmptyTreeHash) return;
 
         AddressAsKey key = address;
-        lock (_lock)
+        lock (_storeLock)
         {
             uint generation = unchecked(++_generation);
             _entries[key] = new Entry(tree, rebinder, storageRoot, generation);
@@ -82,7 +79,7 @@ public sealed class PreservedStorageTries
         {
             if (_entries.TryGetValue(item.Key, out Entry? entry) && entry.Generation == item.Generation)
             {
-                _entries.Remove(item.Key);
+                _entries.TryRemove(new KeyValuePair<AddressAsKey, Entry>(item.Key, entry));
             }
         }
     }
