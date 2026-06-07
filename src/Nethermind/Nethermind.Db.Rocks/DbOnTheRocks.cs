@@ -1754,19 +1754,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         private readonly RocksDb _rocksDb;
         private readonly ColumnFamilyHandle? _cf;
         private readonly ReadOptions? _readOptions;
-        private readonly Timer _timer;
+        private readonly Timer? _timer;
         private bool _isDisposed;
 
         // This is about once every two second maybe at max throughput.
         private const int IteratorUsageLimit = 1000000;
 
-        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, ReadOptions? readOptions)
+        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, ReadOptions? readOptions, bool enableCleanupTimer = true)
         {
             _rocksDb = rocksDb;
             _cf = cf;
             _readOptions = readOptions;
 
-            _timer = new Timer(OnTimer, null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
+            _timer = enableCleanupTimer
+                ? new Timer(OnTimer, null, TimeSpan.Zero, TimeSpan.FromSeconds(10))
+                : null;
         }
 
         private void OnTimer(object? state)
@@ -1781,7 +1783,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             if (_isDisposed) return;
             _isDisposed = true;
-            _timer.Dispose();
+            _timer?.Dispose();
             _readaheadIterators.DisposeAll();
             _readaheadIterators2.DisposeAll();
             _readaheadIterators3.DisposeAll();

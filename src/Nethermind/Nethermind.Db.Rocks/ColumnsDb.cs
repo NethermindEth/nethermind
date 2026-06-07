@@ -145,6 +145,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
         // This eliminates the dictionary + backing array allocation per snapshot.
         private readonly RocksDbReader[] _readers;
+        private readonly DbOnTheRocks.IteratorManager[] _iteratorManagers;
 
         public ColumnDbSnapshot(ColumnsDb<T> columnsDb, Snapshot snapshot)
         {
@@ -163,6 +164,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
             T[] keys = CreateKeyCache(columnsDb);
             GetCachedMaxOrdinal(columnsDb, keys);
+            _iteratorManagers = CreateIteratorManagers();
             _readers = CreateReaders();
 
             static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
@@ -207,6 +209,22 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                 columnsDb._cachedMaxOrdinal = max;
             }
 
+            DbOnTheRocks.IteratorManager[] CreateIteratorManagers()
+            {
+                DbOnTheRocks.IteratorManager[] managers = new DbOnTheRocks.IteratorManager[columnsDb._cachedMaxOrdinal + 1];
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    T k = keys[i];
+                    managers[EnumToInt(k)] = new DbOnTheRocks.IteratorManager(
+                        columnsDb._db,
+                        columnsDb._columnDbs[k]._columnFamily,
+                        _sharedReadOptions,
+                        enableCleanupTimer: false);
+                }
+
+                return managers;
+            }
+
             // Build flat array of readers indexed by column ordinal
             RocksDbReader[] CreateReaders()
             {
@@ -219,6 +237,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                         _sharedReadOptions,
                         _sharedCacheMissReadOptions,
                         readOptionsFactory,
+                        iteratorManager: _iteratorManagers[EnumToInt(k)],
                         columnFamily: columnsDb._columnDbs[k]._columnFamily);
                 }
 
@@ -242,6 +261,11 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+            for (int i = 0; i < _iteratorManagers.Length; i++)
+            {
+                _iteratorManagers[i]?.Dispose();
+            }
 
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
             // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
