@@ -87,9 +87,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _warmupStateTree = new(
             new StateTrieStoreWarmerAdapter(snapshotBundle),
-            logManager);
-        _warmupStateTree.SetRootHash(stateRoot, false);
-        _warmupStateTree.RootRef = _stateTree.RootRef;
+            logManager
+        )
+        {
+            RootHash = stateRoot
+        };
 
         _configuration = configuration;
         _logManager = logManager;
