@@ -22,6 +22,10 @@ internal class FlatRocksDbConfigAdjuster(
     ILogManager logManager)
     : IRocksDbConfigFactory
 {
+    private const long AccountBlockCacheBudgetShare = 15;
+    private const long StorageBlockCacheBudgetShare = 35;
+    private const long StorageNodesBlockCacheBudgetShare = 50;
+    private const long TotalBlockCacheBudgetShare = 100;
     private const string BlockCacheOptionName = "block_based_table_factory.block_cache";
 
     private readonly ILogger _logger = logManager.GetClassLogger<FlatRocksDbConfigAdjuster>();
@@ -42,12 +46,7 @@ internal class FlatRocksDbConfigAdjuster(
                                    "block_based_table_factory.index_type=kTwoLevelIndexSearch;";
             }
 
-            ulong cacheCapacity = GetColumnBlockCacheCapacity(
-                flatDbConfig.BlockCacheSizeBudget,
-                columnName,
-                flatDbConfig.BlockCacheAccountShare,
-                flatDbConfig.BlockCacheStorageShare,
-                flatDbConfig.BlockCacheStorageNodesShare);
+            ulong cacheCapacity = GetColumnBlockCacheCapacity(flatDbConfig.BlockCacheSizeBudget, columnName);
             IntPtr? cacheHandle = null;
             if (cacheCapacity != 0)
             {
@@ -74,37 +73,22 @@ internal class FlatRocksDbConfigAdjuster(
         return config;
     }
 
-    internal static ulong GetColumnBlockCacheCapacity(
-        long blockCacheSizeBudget,
-        string? columnName,
-        long accountShare = 10,
-        long storageShare = 25,
-        long storageNodesShare = 65)
+    internal static ulong GetColumnBlockCacheCapacity(long blockCacheSizeBudget, string? columnName)
     {
         if (blockCacheSizeBudget <= 0)
         {
             return 0;
         }
 
-        accountShare = Math.Max(0, accountShare);
-        storageShare = Math.Max(0, storageShare);
-        storageNodesShare = Math.Max(0, storageNodesShare);
-
-        long totalShare = accountShare + storageShare + storageNodesShare;
-        if (totalShare == 0)
-        {
-            return 0;
-        }
-
         long budgetShare = columnName switch
         {
-            nameof(FlatDbColumns.Account) => accountShare,
-            nameof(FlatDbColumns.Storage) => storageShare,
-            nameof(FlatDbColumns.StorageNodes) => storageNodesShare,
+            nameof(FlatDbColumns.Account) => AccountBlockCacheBudgetShare,
+            nameof(FlatDbColumns.Storage) => StorageBlockCacheBudgetShare,
+            nameof(FlatDbColumns.StorageNodes) => StorageNodesBlockCacheBudgetShare,
             _ => 0,
         };
 
-        return (ulong)(blockCacheSizeBudget * budgetShare / totalShare);
+        return (ulong)(blockCacheSizeBudget * budgetShare / TotalBlockCacheBudgetShare);
     }
 
     private static bool HasBlockCacheOption(IRocksDbConfig config) =>

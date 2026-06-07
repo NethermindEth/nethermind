@@ -21,8 +21,5 @@ public class FlatDbConfig : IFlatDbConfig
     public int MinReorgDepth { get; set; } = 128;
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public long BlockCacheSizeBudget { get; set; } = 2.GiB;
-    public long BlockCacheAccountShare { get; set; } = 10;
-    public long BlockCacheStorageShare { get; set; } = 25;
-    public long BlockCacheStorageNodesShare { get; set; } = 65;
     public long TrieCacheMemoryBudget { get; set; } = 512.MiB;
 }

@@ -34,9 +34,6 @@ public class FlatRocksDbConfigAdjusterTests
 
         _baseConfig.RocksDbOptions.Returns("base_options=true;");
         _baseConfig.WriteBufferSize.Returns((ulong)64_000_000);
-        _flatDbConfig.BlockCacheAccountShare.Returns(10L);
-        _flatDbConfig.BlockCacheStorageShare.Returns(25L);
-        _flatDbConfig.BlockCacheStorageNodesShare.Returns(65L);
 
         _baseFactory.GetForDatabase(Arg.Any<string>(), Arg.Any<string>()).Returns(_baseConfig);
     }
@@ -102,17 +99,11 @@ public class FlatRocksDbConfigAdjusterTests
         _baseFactory.Received(1).GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
     }
 
-    [TestCase(nameof(FlatDbColumns.Account), 107_374_182L)]
-    [TestCase(nameof(FlatDbColumns.Storage), 268_435_456L)]
-    [TestCase(nameof(FlatDbColumns.StorageNodes), 697_932_185L)]
+    [TestCase(nameof(FlatDbColumns.Account), 161_061_273L)]
+    [TestCase(nameof(FlatDbColumns.Storage), 375_809_638L)]
+    [TestCase(nameof(FlatDbColumns.StorageNodes), 536_870_912L)]
     public void FlatDatabase_AssignsBlockCacheBudgetToHotColumns(string columnName, long expectedCapacity)
         => Assert.That(FlatRocksDbConfigAdjuster.GetColumnBlockCacheCapacity(1.GiB, columnName), Is.EqualTo((ulong)expectedCapacity));
-
-    [Test]
-    public void FlatDatabase_AssignsBlockCacheBudgetWithConfiguredShares()
-        => Assert.That(
-            FlatRocksDbConfigAdjuster.GetColumnBlockCacheCapacity(1.GiB, nameof(FlatDbColumns.StorageNodes), 15, 35, 50),
-            Is.EqualTo((ulong)536_870_912L));
 
     [Test]
     public void FlatDatabase_ConfiguresBlockCachesForHotColumns()
@@ -130,7 +121,7 @@ public class FlatRocksDbConfigAdjusterTests
         Assert.That(storage.BlockCache, Is.Not.Null);
         Assert.That(storageNodes.BlockCache, Is.Null);
         Assert.That(storage.BlockCache, Is.Not.EqualTo(account.BlockCache));
-        Assert.That(storageNodes.RocksDbOptions, Does.Contain("block_based_table_factory.block_cache=697932185;"));
+        Assert.That(storageNodes.RocksDbOptions, Does.Contain("block_based_table_factory.block_cache=536870912;"));
         Assert.That(_disposeStack.Count, Is.EqualTo(2));
     }
 
@@ -147,7 +138,7 @@ public class FlatRocksDbConfigAdjusterTests
 
         Assert.That(storageNodes.BlockCache, Is.Null);
         Assert.That(storageNodes.RocksDbOptions, Does.Contain("block_based_table_factory.block_cache=123;"));
-        Assert.That(storageNodes.RocksDbOptions, Does.Not.Contain("block_based_table_factory.block_cache=697932185;"));
+        Assert.That(storageNodes.RocksDbOptions, Does.Not.Contain("block_based_table_factory.block_cache=536870912;"));
         Assert.That(_disposeStack.Count, Is.Zero);
     }
 

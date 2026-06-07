@@ -10,15 +10,6 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "2147483648")]
     long BlockCacheSizeBudget { get; set; }
 
-    [ConfigItem(Description = "EXPERIMENTAL / benchmark-only. Share of the flat Account column block cache budget.", DefaultValue = "10", HiddenFromDocs = true)]
-    long BlockCacheAccountShare { get; set; }
-
-    [ConfigItem(Description = "EXPERIMENTAL / benchmark-only. Share of the flat Storage column block cache budget.", DefaultValue = "25", HiddenFromDocs = true)]
-    long BlockCacheStorageShare { get; set; }
-
-    [ConfigItem(Description = "EXPERIMENTAL / benchmark-only. Share of the flat StorageNodes column block cache budget.", DefaultValue = "65", HiddenFromDocs = true)]
-    long BlockCacheStorageNodesShare { get; set; }
-
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     int CompactSize { get; set; }
 
