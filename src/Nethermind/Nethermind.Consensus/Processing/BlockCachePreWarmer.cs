@@ -284,7 +284,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
 
-            worldState.WarmUp(senderAddress);
+            if (!worldState.AccountExists(senderAddress))
+            {
+                worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+            }
 
             if (blockState.Spec.UseTxAccessLists)
             {
