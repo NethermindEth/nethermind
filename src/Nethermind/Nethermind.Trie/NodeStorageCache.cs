@@ -30,6 +30,7 @@ public sealed class NodeStorageCache
     {
         bool wasEnabled = _enabled;
         _enabled = false;
+        _cache.Clear();
         return wasEnabled;
     }
 }
