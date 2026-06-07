@@ -28,8 +28,6 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
-    private const int MaxTransactionWarmupCount = 128;
-
     private readonly int _concurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
@@ -242,8 +240,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             // Group transactions by sender to process same-sender transactions sequentially
             // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            int transactionWarmupCount = Math.Min(block.Transactions.Length, MaxTransactionWarmupCount);
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block, transactionWarmupCount);
+            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
 
             try
             {
@@ -268,12 +265,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
                             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
                             scope.TransactionProcessor.SetBlockExecutionContext(context);
+                            ITxTracer cancellationTracer = NullTxTracer.Instance.WithCancellation(token);
 
                             // Sequential within the same sender-state changes propagate correctly
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                WarmupSingleTransaction(scope, tx, txIndex, blockState, cancellationTracer, token);
                             }
                         }
                         finally
@@ -300,11 +298,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block, int transactionCount)
+    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
 
-        for (int i = 0; i < transactionCount; i++)
+        for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction tx = block.Transactions[i];
             Address sender = tx.SenderAddress!;
@@ -324,10 +322,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
-        BlockState blockState)
+        BlockState blockState,
+        ITxTracer cancellationTracer,
+        CancellationToken cancellationToken)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
 
@@ -341,9 +343,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList); // eip-2930
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, cancellationTracer);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
