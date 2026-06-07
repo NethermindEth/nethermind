@@ -13,7 +13,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb, ISortedKeyValueStore, IReadOnlyNativeKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
+public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
@@ -53,11 +53,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IReadOnlyNativeKeyValueStore,
     bool IReadOnlyKeyValueStore.KeyExists(ReadOnlySpan<byte> key) => _reader.KeyExists(key);
 
     void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> key) => _reader.DangerousReleaseMemory(key);
-
-    ReadOnlySpan<byte> IReadOnlyNativeKeyValueStore.GetNativeSlice(scoped ReadOnlySpan<byte> key, out IntPtr handle, ReadFlags flags) =>
-        _reader.GetNativeSlice(key, out handle, flags);
-
-    void IReadOnlyNativeKeyValueStore.DangerousReleaseHandle(IntPtr handle) => _reader.DangerousReleaseHandle(handle);
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
         _mainDb.SetWithColumnFamily(key, _columnFamily, value, flags);

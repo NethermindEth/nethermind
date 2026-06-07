@@ -183,6 +183,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
     ) : BasePersistence.IFlatReader
         where TFlatReader : struct, BasePersistence.IHashedFlatReader
     {
+        private const int AccountSpanBufferSize = 256;
         private TFlatReader _flatReader = flatReader;
 
         public Account? GetAccount(Address address)
@@ -190,7 +191,15 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             ValueHash256 fakeHash = ValueKeccak.Zero;
             address.Bytes.CopyTo(fakeHash.BytesAsSpan);
 
-            return _flatReader.GetAccount(fakeHash, AccountDecoder.Slim);
+            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
+            int responseSize = _flatReader.GetAccount(fakeHash, valueBuffer);
+            if (responseSize == 0)
+            {
+                return null;
+            }
+
+            Rlp.ValueDecoderContext ctx = new(valueBuffer[..responseSize]);
+            return AccountDecoder.Slim.Decode(ref ctx);
         }
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)

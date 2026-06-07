@@ -172,23 +172,7 @@ public static class BasePersistence
 
     public interface IHashedFlatReader
     {
-        private const int AccountSpanBufferSize = 256;
-
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
-
-        public Account? GetAccount(in ValueHash256 address, AccountDecoder accountDecoder)
-        {
-            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
-            int responseSize = GetAccount(address, valueBuffer);
-            if (responseSize == 0)
-            {
-                return null;
-            }
-
-            Rlp.ValueDecoderContext ctx = new(valueBuffer[..responseSize]);
-            return accountDecoder.Decode(ref ctx);
-        }
-
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
@@ -309,8 +293,18 @@ public static class BasePersistence
         private readonly int _accountSpanBufferSize = 256;
         private TFlatReader _flatReader = flatReader;
 
-        public Account? GetAccount(Address address) =>
-            _flatReader.GetAccount(address.ToAccountPath, _accountDecoder);
+        public Account? GetAccount(Address address)
+        {
+            Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
+            int responseSize = _flatReader.GetAccount(address.ToAccountPath, valueBuffer);
+            if (responseSize == 0)
+            {
+                return null;
+            }
+
+            Rlp.ValueDecoderContext ctx = new(valueBuffer[..responseSize]);
+            return _accountDecoder.Decode(ref ctx);
+        }
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {

@@ -26,7 +26,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
     DbOnTheRocks.IteratorManager? iteratorManager = null,
-    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IReadOnlyNativeKeyValueStore, IDisposable
+    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
@@ -97,14 +97,6 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
-
-    public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out IntPtr handle, ReadFlags flags = ReadFlags.None)
-    {
-        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
-        return _mainDb.GetNativeSlice(key, _columnFamily, out handle, readOptions);
-    }
-
-    public void DangerousReleaseHandle(IntPtr handle) => _mainDb.DangerousReleaseHandle(handle);
 
     public bool KeyExists(ReadOnlySpan<byte> key) => _mainDb.KeyExistsWithColumn(key, _columnFamily);
 
