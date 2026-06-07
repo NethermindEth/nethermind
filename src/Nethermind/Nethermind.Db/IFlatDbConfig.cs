@@ -10,7 +10,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "2147483648")]
     long BlockCacheSizeBudget { get; set; }
 
-    [ConfigItem(Description = "Compact size", DefaultValue = "32")]
+    [ConfigItem(Description = "Compact size", DefaultValue = "64")]
     int CompactSize { get; set; }
 
     [ConfigItem(Description = "Enabled", DefaultValue = "false")]
