@@ -370,6 +370,32 @@ public class BlockCachePreWarmerTests
         Assert.That(new UInt256(populatedStorage, isBigEndian: true), Is.EqualTo((UInt256)0x99));
     }
 
+    [Test]
+    public void WriteHintCache_ApplySeeds_RefreshesStateAndClearsStaleStorage()
+    {
+        PreBlockCaches preBlockCaches = new();
+        PrewarmerWriteHintCache writeHintCache = new();
+
+        AddressAsKey accountKey = TestItem.AddressA;
+        StorageCell staleCell = new(TestItem.AddressA, 1);
+        StorageCell seededCell = new(TestItem.AddressB, 10);
+
+        preBlockCaches.StateCache.Set(in accountKey, new Account((UInt256)1));
+        preBlockCaches.StorageCache.Set(in staleCell, [0x11]);
+
+        writeHintCache.AddStateSeed(TestItem.AddressA, new Account((UInt256)2));
+        writeHintCache.AddStorageClear();
+        writeHintCache.AddStorageSeed(TestItem.AddressB, 10, [0x22]);
+
+        writeHintCache.ApplySeeds(preBlockCaches);
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in accountKey, out Account? account), Is.True);
+        Assert.That(account!.Balance, Is.EqualTo((UInt256)2));
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in staleCell, out _), Is.False);
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in seededCell, out byte[]? value), Is.True);
+        Assert.That(value, Is.EqualTo(new byte[] { 0x22 }));
+    }
+
     private BlockCachePreWarmer CreatePreWarmerFromConfig(bool parallelExecution, bool parallelExecutionBatchRead)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();

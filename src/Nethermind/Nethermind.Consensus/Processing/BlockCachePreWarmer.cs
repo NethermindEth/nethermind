@@ -20,6 +20,7 @@ using Nethermind.Evm.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -36,6 +37,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly PrewarmerWriteHintCache? _writeHintCache;
     private readonly bool _parallelExecutionEnabled;
+    private readonly Lock _cacheStateLock = new();
+    private Hash256? _cachedStateHeadHash;
+    private long _cachedStateHeadNumber = -1;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -113,14 +117,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_preBlockCaches is not null && ShouldPreWarm(spec))
         {
-            CacheType result = _preBlockCaches.ClearCaches();
-            _writeHintCache?.Clear();
-            _nodeStorageCache.ClearCaches();
-            _nodeStorageCache.Enabled = true;
-            if (result != default)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
-            }
+            PrepareCaches(parent);
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
@@ -150,17 +147,85 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
 
+    public void PrepareCaches(BlockHeader? parent)
+    {
+        if (!CanReuseWarmState(parent))
+        {
+            ClearWarmState();
+        }
+
+        _preBlockCaches.PrecompileCache.NoResizeClear();
+        _writeHintCache?.ClearWarmupHints();
+        _nodeStorageCache.ClearCaches();
+        _nodeStorageCache.Enabled = true;
+    }
+
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
         _writeHintCache?.Clear();
         cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
+        ClearCachedStateHead();
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
 
+    public CacheType ClearCaches(BlockHeader? processedBlock)
+    {
+        if (processedBlock?.Hash is null || _writeHintCache is null)
+        {
+            return ClearCaches();
+        }
+
+        if (_logger.IsDebug) _logger.Debug("Handing off pre-warmed caches");
+        CacheType cachesCleared = CacheType.None;
+        cachesCleared |= _preBlockCaches.PrecompileCache.NoResizeClear() ? CacheType.Precompile : CacheType.None;
+        _writeHintCache.ApplySeeds(_preBlockCaches);
+        _writeHintCache.Clear();
+        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
+        SetCachedStateHead(processedBlock);
+        if (_logger.IsDebug) _logger.Debug($"Handed off caches: {cachesCleared}");
+        return cachesCleared;
+    }
+
     public void Dispose() => (_envPool as IDisposable)?.Dispose();
+
+    private bool CanReuseWarmState(BlockHeader? parent)
+    {
+        if (parent?.Hash is null) return false;
+
+        using (_cacheStateLock.EnterScope())
+        {
+            return _cachedStateHeadNumber == parent.Number && _cachedStateHeadHash == parent.Hash;
+        }
+    }
+
+    private void ClearWarmState()
+    {
+        _preBlockCaches.StorageCache.Clear();
+        _preBlockCaches.StateCache.Clear();
+        _writeHintCache?.Clear();
+        ClearCachedStateHead();
+    }
+
+    private void SetCachedStateHead(BlockHeader processedBlock)
+    {
+        using (_cacheStateLock.EnterScope())
+        {
+            _cachedStateHeadNumber = processedBlock.Number;
+            _cachedStateHeadHash = processedBlock.Hash;
+        }
+    }
+
+    private void ClearCachedStateHead()
+    {
+        using (_cacheStateLock.EnterScope())
+        {
+            _cachedStateHeadNumber = -1;
+            _cachedStateHeadHash = null;
+        }
+    }
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {

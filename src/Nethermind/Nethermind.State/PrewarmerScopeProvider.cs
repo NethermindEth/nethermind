@@ -97,15 +97,21 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
+            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = baseScope.StartWriteBatch(estimatedAccountNum);
+            if (!isPrewarmer && writeHintCache is not null)
+            {
+                writeBatch = new SeedRecordingWriteBatch(writeBatch, writeHintCache);
+            }
+
             if (!_measureMetric)
             {
-                return baseScope.StartWriteBatch(estimatedAccountNum);
+                return writeBatch;
             }
 
             _writeBatchTime = Stopwatch.GetTimestamp();
             long sw = Stopwatch.GetTimestamp();
             return new WriteBatchLifetimeMeasurer(
-                baseScope.StartWriteBatch(estimatedAccountNum),
+                writeBatch,
                 _metricObserver,
                 sw,
                 isPrewarmer);
@@ -313,5 +319,47 @@ public class PrewarmerScopeProvider(
         public void Set(Address key, Account? account) => baseWriteBatch.Set(key, account);
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries);
+    }
+
+    private sealed class SeedRecordingWriteBatch(
+        IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch,
+        PrewarmerWriteHintCache writeHintCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    {
+        public void Dispose() => baseWriteBatch.Dispose();
+
+        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
+        {
+            add => baseWriteBatch.OnAccountUpdated += value;
+            remove => baseWriteBatch.OnAccountUpdated -= value;
+        }
+
+        public void Set(Address key, Account? account)
+        {
+            baseWriteBatch.Set(key, account);
+            writeHintCache.AddStateSeed(key, account);
+        }
+
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
+            => new SeedRecordingStorageWriteBatch(baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries), key, writeHintCache);
+    }
+
+    private sealed class SeedRecordingStorageWriteBatch(
+        IWorldStateScopeProvider.IStorageWriteBatch baseWriteBatch,
+        Address address,
+        PrewarmerWriteHintCache writeHintCache) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public void Dispose() => baseWriteBatch.Dispose();
+
+        public void Set(in UInt256 index, byte[] value)
+        {
+            baseWriteBatch.Set(in index, value);
+            writeHintCache.AddStorageSeed(address, in index, value);
+        }
+
+        public void Clear()
+        {
+            baseWriteBatch.Clear();
+            writeHintCache.AddStorageClear();
+        }
     }
 }
