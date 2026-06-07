@@ -88,8 +88,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // is in use, drive warmup directly off the suggested block's access list.
                 ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
 
+                // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
+                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal, warmTransactionAddresses: false);
+                ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-                return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, bal is not null, cancellationToken));
+                return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
             }
         }
 
@@ -115,7 +118,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public void Dispose() => (_envPool as IDisposable)?.Dispose();
 
-    private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, bool hasBal, CancellationToken cancellationToken)
+    private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
         try
         {
@@ -123,7 +126,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
-            if (!hasBal)
+            if (!addressWarmer.HasBal)
             {
                 WarmupTransactions(blockState, parallelOptions);
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
@@ -134,6 +137,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         catch (Exception ex)
         {
             _logger.DebugWarn($"Error pre-warming {suggestedBlock.Number}. {ex}");
+        }
+        finally
+        {
+            // Don't complete the task until address warmer is also done.
+            addressWarmer.Wait();
+            addressWarmer.Dispose();
         }
     }
 
