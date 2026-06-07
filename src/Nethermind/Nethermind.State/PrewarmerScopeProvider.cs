@@ -153,11 +153,8 @@ public class PrewarmerScopeProvider(
             else
             {
                 account = GetFromBaseTree(in addressAsKey);
-                if (isPrewarmer)
-                {
-                    // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
-                    preBlockCache.Set(in addressAsKey, account);
-                }
+                // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
+                preBlockCache.Set(in addressAsKey, account);
 
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }
@@ -238,11 +235,8 @@ public class PrewarmerScopeProvider(
                 else
                 {
                     value = LoadFromTreeStorage(in storageCell);
-                    if (isPrewarmer)
-                    {
-                        // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
-                        preBlockCache.Set(in storageCell, value);
-                    }
+                    // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
+                    preBlockCache.Set(in storageCell, value);
                 }
 
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
