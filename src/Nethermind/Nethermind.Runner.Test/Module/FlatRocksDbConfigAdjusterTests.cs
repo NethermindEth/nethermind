@@ -119,12 +119,10 @@ public class FlatRocksDbConfigAdjusterTests
 
         Assert.That(account.BlockCache, Is.Not.Null);
         Assert.That(storage.BlockCache, Is.Not.Null);
-        Assert.That(storageNodes.BlockCache, Is.Not.Null);
+        Assert.That(storageNodes.BlockCache, Is.Null);
         Assert.That(storage.BlockCache, Is.Not.EqualTo(account.BlockCache));
-        Assert.That(storageNodes.BlockCache, Is.Not.EqualTo(account.BlockCache));
-        Assert.That(storageNodes.BlockCache, Is.Not.EqualTo(storage.BlockCache));
-        Assert.That(storageNodes.RocksDbOptions, Does.Not.Contain("block_based_table_factory.block_cache=536870912;"));
-        Assert.That(_disposeStack.Count, Is.EqualTo(3));
+        Assert.That(storageNodes.RocksDbOptions, Does.Contain("block_based_table_factory.block_cache=536870912;"));
+        Assert.That(_disposeStack.Count, Is.EqualTo(2));
     }
 
     [Test]
