@@ -54,9 +54,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> key) => _reader.DangerousReleaseMemory(key);
 
-    void IReadOnlyKeyValueStore.MultiGet(ReadOnlySpan<byte[]> keys, Span<byte[]?> results, ReadFlags flags) =>
-        _reader.MultiGet(keys, results, flags);
-
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
         _mainDb.SetWithColumnFamily(key, _columnFamily, value, flags);
 

@@ -705,9 +705,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _reader.DangerousReleaseMemory(span);
 
-    void IReadOnlyKeyValueStore.MultiGet(ReadOnlySpan<byte[]> keys, Span<byte[]?> results, ReadFlags flags) =>
-        _reader.MultiGet(keys, results, flags);
-
     internal byte[]? GetWithIterator(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, IteratorManager iteratorManager, ReadFlags flags, out bool success)
     {
         success = true;
@@ -888,34 +885,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 CreateMarkerIfCorrupt(e);
                 throw;
             }
-        }
-    }
-
-    internal void MultiGetWithColumnFamily(byte[][] keys, ColumnFamilyHandle? cf, ReadOptions readOptions, Span<byte[]?> results)
-    {
-        ObjectDisposedException.ThrowIf(_isDisposing, this);
-
-        UpdateReadMetrics();
-
-        try
-        {
-            ColumnFamilyHandle[]? columnFamilies = null;
-            if (cf is not null)
-            {
-                columnFamilies = new ColumnFamilyHandle[keys.Length];
-                Array.Fill(columnFamilies, cf);
-            }
-
-            KeyValuePair<byte[], byte[]?>[] pairs = _db.MultiGet(keys, columnFamilies, readOptions);
-            for (int i = 0; i < pairs.Length; i++)
-            {
-                results[i] = pairs[i].Value;
-            }
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
         }
     }
 

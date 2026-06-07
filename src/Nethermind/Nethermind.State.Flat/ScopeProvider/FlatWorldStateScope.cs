@@ -306,8 +306,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }, token);
     }
 
-    private const int SinkSlotChunkSize = 64;
-
     private void RunSinkSlotReads(
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
         Account?[] accounts,
@@ -315,65 +313,44 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
-        using ArrayPoolList<(int AccountIndex, int SlotStart)> chunks = new(0);
+        int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
             if (accounts[i] is null) continue;
-            int slotCount = accountChanges[i].StorageChanges.Length + accountChanges[i].StorageReads.Length;
-            for (int start = 0; start < slotCount; start += SinkSlotChunkSize)
-            {
-                chunks.Add((i, start));
-            }
+            totalSlots += accountChanges[i].StorageChanges.Length
+                       + accountChanges[i].StorageReads.Length;
         }
 
-        if (chunks.Count == 0) return;
+        if (totalSlots == 0) return;
 
-        Parallel.For(0, chunks.Count, parallelOptions, (i) =>
+        using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
+        int idx = 0;
+        for (int i = 0; i < accountChanges.Count; i++)
+        {
+            if (accounts[i] is null) continue;
+            ReadOnlyAccountChanges ac = accountChanges[i];
+            Address address = ac.Address;
+            int selfDestructIdx = selfDestructIdxs[i];
+            foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
+                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
+            foreach (UInt256 readKey in ac.StorageReads)
+                jobs[idx++] = (address, selfDestructIdx, readKey);
+        }
+
+        Parallel.For(0, idx, parallelOptions, (j) =>
         {
             if (_pausePrewarmer) return;
-            (int accountIndex, int slotStart) = chunks[i];
-            ReadOnlyAccountChanges ac = accountChanges[accountIndex];
-            int slotCount = ac.StorageChanges.Length + ac.StorageReads.Length;
-            int chunkLength = Math.Min(SinkSlotChunkSize, slotCount - slotStart);
-            ReadSlotChunkToSink(sink, ac, selfDestructIdxs[accountIndex], slotStart, chunkLength);
+            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         });
     }
 
-    private void ReadSlotChunkToSink(
-        IWorldStateScopeProvider.IAsyncBalReaderSink sink,
-        ReadOnlyAccountChanges accountChanges,
-        int selfDestructIdx,
-        int slotStart,
-        int chunkLength)
+    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
     {
-        Address address = accountChanges.Address;
-        int changeCount = accountChanges.StorageChanges.Length;
-        Span<UInt256> slots = stackalloc UInt256[SinkSlotChunkSize];
-        Span<byte[]?> values = new byte[]?[chunkLength];
-
-        int count = 0;
-        for (int i = slotStart; i < slotStart + chunkLength; i++)
-        {
-            UInt256 slot = i < changeCount
-                ? accountChanges.StorageChanges[i].Key
-                : accountChanges.StorageReads[i - changeCount];
-            StorageCell cell = new(address, in slot);
-            if (sink.StillNeeded(in cell))
-            {
-                slots[count++] = slot;
-            }
-        }
-
-        if (count == 0) return;
-
-        _snapshotBundle.GetSlotBatch(address, slots[..count], selfDestructIdx, values[..count]);
-
-        for (int i = 0; i < count; i++)
-        {
-            StorageCell cell = new(address, slots[i]);
-            byte[]? raw = values[i];
-            sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
-        }
+        StorageCell cell = new(address, in slot);
+        if (!sink.StillNeeded(in cell)) return;
+        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
+        sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }

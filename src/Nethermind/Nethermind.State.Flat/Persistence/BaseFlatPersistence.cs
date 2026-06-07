@@ -86,55 +86,32 @@ public static class BaseFlatPersistence
 
             Span<byte> value = buffer[..resultSize];
 
-            DecodeSlotValue(value, ref outValue);
+            // Bypass bounds check on the slice - the length is already validated by the if guard above.
+            // This writes the variable-length DB value into the end of the 32-byte struct.
+            int len = value.Length;
+            if (len == SlotValue.ByteCount)
+            {
+                outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
+            }
+            else
+            {
+                ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
+
+                // Zero-initialize the leading bytes before copying the value
+                Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
+
+                ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
+
+                Unsafe.CopyBlockUnaligned(
+                    ref destPtr,
+                    ref MemoryMarshal.GetReference(value),
+                    (uint)len);
+            }
 
             return true;
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
-
-        public void TryGetStorageBatch(in ValueHash256 address, ReadOnlySpan<ValueHash256> slots, Span<SlotValue> outValues, Span<bool> found)
-        {
-            int n = slots.Length;
-            byte[][] keys = new byte[n][];
-            for (int i = 0; i < n; i++)
-            {
-                byte[] key = new byte[StorageKeyLength];
-                EncodeStorageKeyHashedWithShortPrefix(key, address, slots[i]);
-                keys[i] = key;
-            }
-
-            byte[]?[] values = new byte[]?[n];
-            storage.MultiGet(keys, values);
-
-            for (int i = 0; i < n; i++)
-            {
-                byte[]? value = values[i];
-                if (value is null || value.Length == 0)
-                {
-                    found[i] = false;
-                    continue;
-                }
-
-                DecodeSlotValue(value, ref outValues[i]);
-                found[i] = true;
-            }
-        }
-
-        private static void DecodeSlotValue(ReadOnlySpan<byte> value, ref SlotValue outValue)
-        {
-            int len = value.Length;
-            if (len == SlotValue.ByteCount)
-            {
-                outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
-                return;
-            }
-
-            ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
-            Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
-            ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
-            Unsafe.CopyBlockUnaligned(ref destPtr, ref MemoryMarshal.GetReference(value), (uint)len);
-        }
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey)
         {

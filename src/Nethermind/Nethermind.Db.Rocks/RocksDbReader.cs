@@ -96,12 +96,6 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
     }
 
-    public void MultiGet(ReadOnlySpan<byte[]> keys, Span<byte[]?> results, ReadFlags flags = ReadFlags.None)
-    {
-        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
-        _mainDb.MultiGetWithColumnFamily(keys.ToArray(), _columnFamily, readOptions, results);
-    }
-
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
 
     public bool KeyExists(ReadOnlySpan<byte> key) => _mainDb.KeyExistsWithColumn(key, _columnFamily);

@@ -31,13 +31,6 @@ public interface IPersistence
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
-        void TryGetSlotBatch(Address address, ReadOnlySpan<UInt256> slots, Span<SlotValue> outValues, Span<bool> found)
-        {
-            for (int i = 0; i < slots.Length; i++)
-            {
-                found[i] = TryGetSlot(address, slots[i], ref outValues[i]);
-            }
-        }
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);

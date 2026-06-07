@@ -126,62 +126,6 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
-    public void GetSlotBatch(Address address, ReadOnlySpan<UInt256> indices, int selfDestructStateIdx, Span<byte[]?> results)
-    {
-        GuardDispose();
-
-        int n = indices.Length;
-        Span<int> missIndices = n <= 256 ? stackalloc int[n] : new int[n];
-        Span<UInt256> missSlots = n <= 256 ? stackalloc UInt256[n] : new UInt256[n];
-        int missCount = 0;
-
-        for (int i = 0; i < n; i++)
-        {
-            HashedKey<(Address, UInt256)> key = new((address, indices[i]));
-            if (TryResolveSlotFromSnapshotChain(key, selfDestructStateIdx, out byte[]? value))
-            {
-                results[i] = value;
-                continue;
-            }
-
-            missIndices[missCount] = i;
-            missSlots[missCount] = indices[i];
-            missCount++;
-        }
-
-        if (missCount == 0) return;
-
-        Span<SlotValue> valueScratch = missCount <= 256 ? stackalloc SlotValue[missCount] : new SlotValue[missCount];
-        Span<bool> foundScratch = missCount <= 256 ? stackalloc bool[missCount] : new bool[missCount];
-        persistenceReader.TryGetSlotBatch(address, missSlots[..missCount], valueScratch, foundScratch);
-
-        for (int i = 0; i < missCount; i++)
-        {
-            results[missIndices[i]] = foundScratch[i] ? valueScratch[i].ToEvmBytes() : null;
-        }
-    }
-
-    private bool TryResolveSlotFromSnapshotChain(HashedKey<(Address, UInt256)> key, int selfDestructStateIdx, out byte[]? value)
-    {
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-        {
-            if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
-            {
-                value = slotValue?.ToEvmBytes();
-                return true;
-            }
-
-            if (i <= selfDestructStateIdx)
-            {
-                value = null;
-                return true;
-            }
-        }
-
-        value = null;
-        return false;
-    }
-
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
         TryFindStateNodes(path, out node);
 
