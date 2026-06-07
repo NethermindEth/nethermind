@@ -138,7 +138,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 continue;
             }
 
-            if (!_committedThisRound.Add(change!.StorageCell))
+            if (_committedThisRound.Contains(change!.StorageCell))
             {
                 if (isTracing && change.ChangeType == ChangeType.JustCache)
                 {
@@ -153,6 +153,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 tracer!.ReportStorageRead(change.StorageCell);
             }
 
+            _committedThisRound.Add(change.StorageCell);
             int forAssertion = _intraBlockCache[change.StorageCell].Pop();
             if (forAssertion != currentPosition - i)
             {
