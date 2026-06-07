@@ -19,19 +19,22 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        // Block-STM has its own per-block MVCC memoization, so the block-level prewarmer's
-        // PreBlockCaches state fill would be duplicated work competing with the worker pool.
-        if (blocksConfig.PreWarmStateOnBlockProcessing && !blocksConfig.BlockStmEnabled)
+        if (!blocksConfig.PreWarmStateOnBlockProcessing) return;
+
+        // NodeStorageCache (trie-node RLP cache) is independent of speculative-execution
+        // warmup: PruningTrieStateFactory wraps the main world store with it, and
+        // WorldStateManager also wraps _readOnlyTrieStore (used by Block-STM workers' resettable
+        // world state) when it sees the cache via DI. So we always register it when prewarming
+        // is enabled — Block-STM benefits from the trie-node cache even though it skips
+        // PreBlockCaches and PrewarmerScopeProvider.
+        builder.AddSingleton<NodeStorageCache>();
+
+        // The full speculative-execution prewarmer (PrewarmerScopeProvider + PreBlockCaches +
+        // PrecompileCachedCodeInfoRepository) duplicates work Block-STM already does via MVMM,
+        // so only wire it on the sequential path.
+        if (!blocksConfig.BlockStmEnabled)
         {
-            builder
-
-                // Note: There is a special logic for this in `PruningTrieStateFactory`.
-                .AddSingleton<NodeStorageCache>()
-
-                // Note: Need a small modification to have this work on all branch processor due to the shared
-                // NodeStorageCache and the FrozenDictionary and the fact that some processing does not have
-                // branch processor, and use block processor instead.
-                .AddSingleton<IMainProcessingModule, PrewarmerMainProcessingModule>();
+            builder.AddSingleton<IMainProcessingModule, PrewarmerMainProcessingModule>();
         }
     }
 

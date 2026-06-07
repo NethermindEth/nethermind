@@ -12,7 +12,17 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public sealed class PreCachedTrieStore : ITrieStore
+/// <summary>
+/// <see cref="PreCachedTrieStore"/> variant typed as <see cref="IReadOnlyTrieStore"/> so it can
+/// substitute for an <c>AsReadOnly()</c> result. The wrap is read-only by construction — every
+/// mutating method on the inner store is forwarded but the cache layer only sits in front of
+/// the read methods.
+/// </summary>
+public sealed class ReadOnlyPreCachedTrieStore(IReadOnlyTrieStore inner, NodeStorageCache cache)
+    : PreCachedTrieStore(inner, cache), IReadOnlyTrieStore
+{ }
+
+public class PreCachedTrieStore : ITrieStore
 {
     private readonly ITrieStore _inner;
     private readonly NodeStorageCache _preBlockCache;

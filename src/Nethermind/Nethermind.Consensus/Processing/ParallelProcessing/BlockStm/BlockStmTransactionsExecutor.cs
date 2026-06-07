@@ -20,6 +20,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 
@@ -31,7 +32,8 @@ public class BlockStmTransactionsExecutor(
     IWorldState stateProvider,
     IBlocksConfig blocksConfig,
     ILogManager logManager,
-    BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
+    BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null,
+    NodeStorageCache? nodeStorageCache = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly ObjectPool<HashSet<int>> _setPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>());
@@ -122,6 +124,13 @@ public class BlockStmTransactionsExecutor(
         // of the block. The base scope is read-only during the parallel run (writes go through
         // MVMM, not through the base) so cached entries are invariant for the block.
         BlockBaseReadCache baseReadCache = new();
+        // NodeStorageCache (trie-node RLP cache) sits inside the resettable world state's
+        // read-only trie store (wired in WorldStateManager when DI hands us a non-null
+        // singleton). Wipe entries from the prior block and enable population for this one —
+        // disable in finally so the per-block memory doesn't accumulate across blocks that
+        // fall back to the sequential executor (genesis, system-only blocks).
+        nodeStorageCache?.ClearCaches();
+        if (nodeStorageCache is not null) nodeStorageCache.Enabled = true;
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         IReleaseSpec spec = _blockExecutionContext.Spec;
@@ -154,6 +163,7 @@ public class BlockStmTransactionsExecutor(
         }
         finally
         {
+            nodeStorageCache?.ClearCaches();
             while (envPool.TryTake(out ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv? env))
             {
                 env.Dispose();

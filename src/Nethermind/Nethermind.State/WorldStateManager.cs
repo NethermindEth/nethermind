@@ -8,6 +8,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State.SnapServer;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -30,13 +31,21 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
         IDbProvider dbProvider,
         ILogManager logManager,
         IPruningConfig pruningConfig,
-        ILastNStateRootTracker lastNStateRootTracker = null
+        ILastNStateRootTracker lastNStateRootTracker = null,
+        NodeStorageCache? nodeStorageCache = null
     )
     {
         _dbProvider = dbProvider;
         _worldState = worldState;
         _trieStore = trieStore;
-        _readOnlyTrieStore = trieStore.AsReadOnly();
+        // When a process-wide NodeStorageCache is registered (Block-STM or sequential prewarmer
+        // setups), wrap the read-only trie store with it so resettable world states created by
+        // CreateResettableWorldState — which Block-STM workers use — also benefit from
+        // RLP-node caching, not just the main scope provider built in PruningTrieStateFactory.
+        IReadOnlyTrieStore readOnly = trieStore.AsReadOnly();
+        _readOnlyTrieStore = nodeStorageCache is not null
+            ? new ReadOnlyPreCachedTrieStore(readOnly, nodeStorageCache)
+            : readOnly;
         _logManager = logManager;
         _boundaryStore = new StateBoundaryStore(dbProvider.StateDb, _logManager);
 
