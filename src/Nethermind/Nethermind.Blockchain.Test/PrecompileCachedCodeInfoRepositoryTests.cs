@@ -5,6 +5,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -160,6 +162,69 @@ public class PrecompileCachedCodeInfoRepositoryTests
         // Assert - should only run once due to caching
         Assert.That(runCount, Is.EqualTo(1));
         Assert.That(cache.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void CachedPrecompile_CoalescesConcurrentMisses_ForSameInput()
+    {
+        int runCount = 0;
+        using ManualResetEventSlim enteredRun = new(initialState: false);
+        using ManualResetEventSlim secondAttemptStarted = new(initialState: false);
+        using ManualResetEventSlim releaseRun = new(initialState: false);
+        BlockingTestPrecompile precompile = new(
+            onRun: () =>
+            {
+                Interlocked.Increment(ref runCount);
+                enteredRun.Set();
+                Assert.That(releaseRun.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            });
+        Address precompileAddress = Address.FromNumber(100);
+
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
+        {
+            [precompileAddress] = new(precompile)
+        }.ToFrozenDictionary();
+
+        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
+        precompileProvider.GetPrecompiles().Returns(precompiles);
+
+        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
+
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+
+        byte[] input = [1, 2, 3];
+        byte[] sameInput = [1, 2, 3];
+
+        Task<Result<byte[]>> first = Task.Run(() => codeInfo.Precompile!.Run(input, Prague.Instance));
+        Assert.That(enteredRun.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+        Task<Result<byte[]>> second = Task.Run(() =>
+        {
+            secondAttemptStarted.Set();
+            return codeInfo.Precompile!.Run(sameInput, Prague.Instance);
+        });
+        Assert.That(secondAttemptStarted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        Thread.Sleep(100);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Volatile.Read(ref runCount), Is.EqualTo(1));
+            Assert.That(second.IsCompleted, Is.False);
+        }
+
+        releaseRun.Set();
+        Task.WaitAll(first, second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(1));
+            Assert.That(first.Result.Data, Is.EqualTo(input));
+            Assert.That(second.Result.Data, Is.EqualTo(input));
+            Assert.That(cache.Count, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -524,6 +589,21 @@ public class PrecompileCachedCodeInfoRepositoryTests
         {
             onRun?.Invoke();
             return fixedOutput ?? inputData.ToArray();
+        }
+    }
+
+    private class BlockingTestPrecompile(Action onRun) : IPrecompile
+    {
+        public bool SupportsCaching => true;
+
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+
+        public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        {
+            onRun();
+            return inputData.ToArray();
         }
     }
 
