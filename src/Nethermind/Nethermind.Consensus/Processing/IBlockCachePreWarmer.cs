@@ -13,9 +13,7 @@ namespace Nethermind.Consensus.Processing;
 
 public interface IBlockCachePreWarmer : IDisposable
 {
-    void PrepareCaches(BlockHeader? parent) { }
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists);
     CacheType ClearCaches();
-    CacheType ClearCaches(BlockHeader? processedBlock) => ClearCaches();
     bool IsBalReadWarmingEnabled(IReleaseSpec spec);
 }

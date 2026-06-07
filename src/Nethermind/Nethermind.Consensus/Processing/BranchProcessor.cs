@@ -30,6 +30,7 @@ public class BranchProcessor(
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
+    private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
@@ -83,7 +84,6 @@ public class BranchProcessor(
             // Start prewarming as early as possible
             WaitForCacheClear();
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            preWarmer?.PrepareCaches(baseBlock);
             preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
@@ -107,10 +107,6 @@ public class BranchProcessor(
                 // If prewarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
                 backgroundCancellation ??= new CancellationTokenSource();
-                if (preWarmTask is null)
-                {
-                    preWarmer?.PrepareCaches(preBlockBaseBlock);
-                }
                 preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
                 prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
@@ -126,7 +122,12 @@ public class BranchProcessor(
 
                 if (preWarmTask is null)
                 {
-                    preWarmer?.PrepareCaches(preBlockBaseBlock);
+                    // Even though we skip prewarming we still need to ensure the caches are cleared
+                    CacheType result = preWarmer?.ClearCaches() ?? default;
+                    if (result != default)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
+                    }
                 }
 
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
@@ -138,7 +139,7 @@ public class BranchProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
-                QueueClearCaches(preWarmTask, processedBlock.Header);
+                QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
                 {
@@ -213,16 +214,16 @@ public class BranchProcessor(
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 
-    private void QueueClearCaches(Task? preWarmTask, BlockHeader? processedBlock = null)
+    private void QueueClearCaches(Task? preWarmTask)
     {
         if (preWarmTask is not null)
         {
             // Can start clearing caches in background
-            _clearTask = preWarmTask.ContinueWith(_ => preWarmer?.ClearCaches(processedBlock), TaskContinuationOptions.RunContinuationsAsynchronously);
+            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
         }
         else if (preWarmer is not null)
         {
-            _clearTask = Task.Run(() => preWarmer.ClearCaches(processedBlock));
+            _clearTask = Task.Run(preWarmer.ClearCaches);
         }
     }
 
