@@ -25,11 +25,11 @@ internal sealed partial class PersistentStorageProvider
     {
         // We can recalculate the roots in parallel as they are all independent tries
         using ArrayPoolList<StorageRootUpdate> storages = new(_toUpdateRoots.Count);
-        foreach (KeyValuePair<AddressAsKey, bool> kvp in _toUpdateRoots)
+        foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
         {
-            if (!kvp.Value || !_storages.TryGetValue(kvp.Key, out PerContractState? contractState)) continue;
+            if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges) continue;
 
-            storages.Add(new StorageRootUpdate(kvp.Key, contractState));
+            storages.Add(new StorageRootUpdate(kvp.Key, kvp.Value));
         }
 
         // Schedule larger changes first to help balance the work.
@@ -45,13 +45,22 @@ internal sealed partial class PersistentStorageProvider
             0,
             storages.Count,
             RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-            (storages, writes: 0, skips: 0),
+            (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
             static (i, state) =>
             {
                 ref StorageRootUpdate kvp = ref state.storages.GetRef(i);
                 (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch!);
 
-                state.writes += writes;
+                if (writes == 0)
+                {
+                    // Mark as no changes; we set as false rather than removing so
+                    // as not to modify the non-concurrent collection without synchronization
+                    state.toUpdateRoots[kvp.Key] = false;
+                }
+                else
+                {
+                    state.writes += writes;
+                }
 
                 state.skips += skipped;
 
