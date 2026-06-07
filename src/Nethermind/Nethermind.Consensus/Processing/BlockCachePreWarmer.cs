@@ -294,6 +294,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList); // eip-2930
             }
 
+            if (tx.To is not null && blockState.Spec.IsPrecompile(tx.To))
+            {
+                if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Skipped speculative precompile warmup for tx[{txIndex}] {tx.Hash}.");
+                return;
+            }
+
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");

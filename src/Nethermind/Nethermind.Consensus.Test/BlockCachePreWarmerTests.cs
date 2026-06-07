@@ -15,12 +15,16 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Container;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Threading;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -316,6 +320,43 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.EqualTo(expectWarmed), $"ParallelExec={parallelExecution}, BALs={hasBal}, BatchRead={batchRead} => warmed={expectWarmed}");
     }
 
+    [TestCase(false, 1, TestName = "Regular transaction uses speculative warmup")]
+    [TestCase(true, 0, TestName = "Precompile transaction skips speculative warmup")]
+    public async Task PreWarmCaches_WithTopLevelPrecompileTransaction_SkipsSpeculativeTxExecution(bool toPrecompile, int expectedWarmupCalls)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        int warmupCalls = 0;
+
+        WarmupCountingPolicy countingPolicy = new(envFactory, preBlockCaches, () => Interlocked.Increment(ref warmupCalls));
+        using BlockCachePreWarmer preWarmer = new(
+            countingPolicy,
+            maxPoolSize: 10,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        Address to = toPrecompile ? PrecompiledAddresses.ModExp : TestItem.AddressC;
+        Transaction tx = Build.A.Transaction
+            .WithNonce(0)
+            .WithTo(to)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(warmupCalls, Is.EqualTo(expectedWarmupCalls));
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "sender account should still be pre-warmed");
+    }
+
     [Test]
     public async Task ParentReaderEnvPolicy_SharesBalWarmupCachesAndPopulatesMisses()
     {
@@ -488,6 +529,65 @@ public class BlockCachePreWarmerTests
             }
 
             public void Dispose() => inner.Dispose();
+        }
+    }
+
+    private sealed class WarmupCountingPolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        Action recordWarmup)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        private readonly Action _recordWarmup = recordWarmup;
+
+        public IReadOnlyTxProcessorSource Create() =>
+            new WarmupCountingEnv(factory.Create(caches), _recordWarmup);
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        private sealed class WarmupCountingEnv(
+            IReadOnlyTxProcessorSource inner,
+            Action recordWarmup)
+            : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
+                new WarmupCountingScope(inner.Build(baseBlock), recordWarmup);
+
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class WarmupCountingScope(
+            IReadOnlyTxProcessingScope inner,
+            Action recordWarmup)
+            : IReadOnlyTxProcessingScope
+        {
+            public ITransactionProcessor TransactionProcessor { get; } =
+                new WarmupCountingTransactionProcessor(inner.TransactionProcessor, recordWarmup);
+            public IWorldState WorldState => inner.WorldState;
+
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class WarmupCountingTransactionProcessor(
+            ITransactionProcessor inner,
+            Action recordWarmup)
+            : ITransactionProcessor
+        {
+            public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
+            {
+                if (options.HasFlag(ExecutionOptions.Warmup))
+                {
+                    recordWarmup();
+                }
+
+                return inner.Process(transaction, txTracer, options);
+            }
+
+            public void SetBlockExecutionContext(BlockHeader blockHeader) =>
+                inner.SetBlockExecutionContext(blockHeader);
+
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
+                inner.SetBlockExecutionContext(in blockExecutionContext);
         }
     }
 
