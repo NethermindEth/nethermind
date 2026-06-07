@@ -187,11 +187,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private void HintPrewarm(Address address)
     {
-        if (_snapshotBundle.ShouldQueuePrewarm(address))
-        {
-            if (_warmer.PushAddressJob(this, address, _hintSequenceId))
-                Interlocked.Increment(ref _outstandingWarmups);
-        }
     }
 
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
@@ -225,10 +220,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
-
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
-                        && _warmer.PushAddressJob(this, address, snapshot))
-                        Interlocked.Increment(ref _outstandingWarmups);
 
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
