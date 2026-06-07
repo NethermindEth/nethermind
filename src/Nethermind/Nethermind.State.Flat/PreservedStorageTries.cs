@@ -15,7 +15,7 @@ public sealed class PreservedStorageTries
 {
     public delegate void Rebinder(SnapshotBundle bundle, ConcurrencyController quota);
 
-    private const int MaxStoredTries = 512;
+    private const int MaxStoredTries = 2048;
 
     private readonly object _lock = new();
     private readonly Dictionary<AddressAsKey, Entry> _entries = [];
