@@ -17,10 +17,6 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class SnapshotBundle : IDisposable
 {
-    private const int MinPrepareCapacity = 64;
-    private const int StateNodeCapacityMultiplier = 3;
-    private const int StorageNodeCapacityMultiplier = 4;
-
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
 
 
@@ -33,7 +29,6 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
-    private int _preparedStorageEntries = 0;
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
@@ -69,57 +64,11 @@ public sealed class SnapshotBundle : IDisposable
 
     private void ExpandCurrentPooledContent()
     {
-        RefreshCurrentPooledContent();
-        _preparedStorageEntries = 0;
-    }
-
-    private void RefreshCurrentPooledContent()
-    {
         _changedAccounts = _currentPooledContent.Accounts;
         _changedSlots = _currentPooledContent.Storages;
         _changedStorageNodes = _currentPooledContent.StorageNodes;
         _changedStateNodes = _currentPooledContent.StateNodes;
         _selfDestructedAccountAddresses = _currentPooledContent.SelfDestructedStorageAddresses;
-    }
-
-    internal void PrepareAccountWrites(int estimatedAccounts)
-    {
-        if (!ShouldPrepareWriteCapacity() || estimatedAccounts < MinPrepareCapacity) return;
-
-        if (_currentPooledContent.PrepareWriteCapacity(
-            accountsCapacity: estimatedAccounts,
-            storagesCapacity: 0,
-            stateNodesCapacity: ScaleCapacity(estimatedAccounts, StateNodeCapacityMultiplier),
-            storageNodesCapacity: 0))
-        {
-            RefreshCurrentPooledContent();
-        }
-    }
-
-    internal void PrepareStorageWrites(int estimatedEntries)
-    {
-        if (!ShouldPrepareWriteCapacity() || estimatedEntries <= 0) return;
-
-        int preparedStorageEntries = Interlocked.Add(ref _preparedStorageEntries, estimatedEntries);
-        if (preparedStorageEntries < MinPrepareCapacity) return;
-
-        if (_currentPooledContent.PrepareWriteCapacity(
-            accountsCapacity: 0,
-            storagesCapacity: preparedStorageEntries,
-            stateNodesCapacity: 0,
-            storageNodesCapacity: ScaleCapacity(preparedStorageEntries, StorageNodeCapacityMultiplier)))
-        {
-            RefreshCurrentPooledContent();
-        }
-    }
-
-    private bool ShouldPrepareWriteCapacity() =>
-        _usage is ResourcePool.Usage.MainBlockProcessing or ResourcePool.Usage.PostMainBlockProcessing;
-
-    private static int ScaleCapacity(int count, int multiplier)
-    {
-        long capacity = (long)count * multiplier;
-        return capacity > int.MaxValue ? int.MaxValue : (int)capacity;
     }
 
     public Account? GetAccount(Address address) => DoGetAccount(address, false);

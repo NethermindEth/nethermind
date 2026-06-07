@@ -64,59 +64,14 @@ public class Snapshot(
 public sealed class SnapshotContent : IDisposable, IResettable
 {
     private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
-    private static readonly int ConcurrentDictionaryConcurrencyLevel = Environment.ProcessorCount;
-
-    private int _accountsCapacity = 0;
-    private int _storagesCapacity = 0;
-    private int _stateNodesCapacity = 0;
-    private int _storageNodesCapacity = 0;
 
     // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
-    public ConcurrentDictionary<HashedKey<Address>, Account?> Accounts { get; private set; } = new();
-    public ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages { get; private set; } = new();
-    public ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses { get; } = new();
+    public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
+    public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
+    public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    public ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes { get; private set; } = new();
-    public ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes { get; private set; } = new();
-
-    public bool PrepareWriteCapacity(
-        int accountsCapacity,
-        int storagesCapacity,
-        int stateNodesCapacity,
-        int storageNodesCapacity)
-    {
-        bool changed = false;
-
-        if (accountsCapacity > _accountsCapacity && Accounts.IsEmpty)
-        {
-            Accounts = new ConcurrentDictionary<HashedKey<Address>, Account?>(ConcurrentDictionaryConcurrencyLevel, accountsCapacity);
-            _accountsCapacity = accountsCapacity;
-            changed = true;
-        }
-
-        if (storagesCapacity > _storagesCapacity && Storages.IsEmpty)
-        {
-            Storages = new ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?>(ConcurrentDictionaryConcurrencyLevel, storagesCapacity);
-            _storagesCapacity = storagesCapacity;
-            changed = true;
-        }
-
-        if (stateNodesCapacity > _stateNodesCapacity && StateNodes.IsEmpty)
-        {
-            StateNodes = new ConcurrentDictionary<HashedKey<TreePath>, TrieNode>(ConcurrentDictionaryConcurrencyLevel, stateNodesCapacity);
-            _stateNodesCapacity = stateNodesCapacity;
-            changed = true;
-        }
-
-        if (storageNodesCapacity > _storageNodesCapacity && StorageNodes.IsEmpty)
-        {
-            StorageNodes = new ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode>(ConcurrentDictionaryConcurrencyLevel, storageNodesCapacity);
-            _storageNodesCapacity = storageNodesCapacity;
-            changed = true;
-        }
-
-        return changed;
-    }
+    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new();
+    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new();
 
     public void Reset()
     {
