@@ -166,8 +166,10 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
         public void ReturnCachedResource(TransientResource transientResource)
         {
             Metrics.ActivePooledResource.AddBy(_cachedResourceLabel, -1);
-            _lastCachedResourceSize = transientResource.GetSize();
-            _cachedResourcePool.Return(transientResource);
+            if (!_cachedResourcePool.Return(transientResource))
+            {
+                _lastCachedResourceSize = transientResource.GetSize();
+            }
 
             Metrics.CachedPooledResource[_cachedResourceLabel] = (long)_cachedResourcePool.PooledItemCount;
         }
