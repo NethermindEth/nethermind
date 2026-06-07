@@ -73,12 +73,6 @@ public class BranchProcessor(
         CancellationTokenSource? backgroundCancellation = new();
         Task? preWarmTask = null;
 
-        // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
-        // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
-        // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
-        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
-        blockProcessor.TransactionsExecuted += CancelBackgroundWork;
-
         try
         {
             // Start prewarming as early as possible
@@ -132,13 +126,11 @@ public class BranchProcessor(
 
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
-                // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
-                CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
-
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
+                CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
                 QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
@@ -184,7 +176,6 @@ public class BranchProcessor(
         }
         finally
         {
-            blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
             worldStateCloser?.Dispose();
         }
 
