@@ -222,7 +222,7 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                if (readDeduplicator is not null)
+                if (readDeduplicator is not null && isPrewarmer)
                 {
                     value = LoadFromTreeStorageDeduplicated(in storageCell);
                 }
