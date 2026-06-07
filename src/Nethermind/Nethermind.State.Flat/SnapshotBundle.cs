@@ -145,6 +145,78 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
     }
 
+    public void GetSlotBatch(Address address, ReadOnlySpan<UInt256> indices, int selfDestructStateIdx, Span<byte[]?> results)
+    {
+        GuardDispose();
+
+        int n = indices.Length;
+        Span<int> readOnlyIndices = n <= 256 ? stackalloc int[n] : new int[n];
+        Span<UInt256> readOnlySlots = n <= 256 ? stackalloc UInt256[n] : new UInt256[n];
+        int readOnlyCount = 0;
+
+        int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
+        bool selfDestructedInCurrentBundle = selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount;
+
+        for (int i = 0; i < n; i++)
+        {
+            UInt256 index = indices[i];
+            HashedKey<(Address, UInt256)> key = new((address, index));
+
+            if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
+            {
+                results[i] = slotValue?.ToEvmBytes();
+                continue;
+            }
+
+            if (selfDestructedInCurrentBundle)
+            {
+                results[i] = null;
+                continue;
+            }
+
+            if (TryResolveFromOwnSnapshots(key, currentBundleSelfDestructIdx, out byte[]? value))
+            {
+                results[i] = value;
+                continue;
+            }
+
+            readOnlyIndices[readOnlyCount] = i;
+            readOnlySlots[readOnlyCount] = index;
+            readOnlyCount++;
+        }
+
+        if (readOnlyCount == 0) return;
+
+        Span<byte[]?> readOnlyResults = new byte[]?[readOnlyCount];
+        _readOnlySnapshotBundle.GetSlotBatch(address, readOnlySlots[..readOnlyCount], selfDestructStateIdx, readOnlyResults);
+
+        for (int i = 0; i < readOnlyCount; i++)
+        {
+            results[readOnlyIndices[i]] = readOnlyResults[i];
+        }
+    }
+
+    private bool TryResolveFromOwnSnapshots(HashedKey<(Address, UInt256)> key, int currentBundleSelfDestructIdx, out byte[]? value)
+    {
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
+            {
+                value = slotValue?.ToEvmBytes();
+                return true;
+            }
+
+            if (i <= currentBundleSelfDestructIdx)
+            {
+                value = null;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
         GuardDispose();
