@@ -98,7 +98,7 @@ public sealed class EraStore : IEraStore
         }
 
         if (!hasEraFile)
-            throw new EraException($"No relevant erae files in directory {directory}.");
+            throw new EraException($"No relevant era files (.ere or .erae) found for network '{networkName}' in directory {directory}.");
 
         _blockRange = new Lazy<(long, long)>(() =>
         {
