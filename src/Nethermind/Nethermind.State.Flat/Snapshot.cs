@@ -64,17 +64,14 @@ public class Snapshot(
 public sealed class SnapshotContent : IDisposable, IResettable
 {
     private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
-    private const int TrieNodeDictionaryInitialCapacity = 1024;
 
     // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
     public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes =
-        new(Nethermind.Core.Collections.CollectionExtensions.LockPartitions, TrieNodeDictionaryInitialCapacity);
-    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes =
-        new(Nethermind.Core.Collections.CollectionExtensions.LockPartitions, TrieNodeDictionaryInitialCapacity);
+    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new();
+    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new();
 
     public void Reset()
     {
