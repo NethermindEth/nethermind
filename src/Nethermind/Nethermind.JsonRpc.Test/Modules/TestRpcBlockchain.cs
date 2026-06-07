@@ -128,6 +128,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
+            public Builder<T> WithFlatDb(bool useFlatDb)
+            {
+                _blockchain.UseFlatDb = useFlatDb;
+                return this;
+            }
+
             public Builder<T> WithEthRpcModule(Func<TestRpcBlockchain, IEthRpcModule> builder)
             {
                 _blockchain._ethRpcModuleBuilder = builder;
