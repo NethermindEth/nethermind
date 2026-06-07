@@ -28,6 +28,8 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
+    private const int MaxTransactionWarmupCount = 128;
+
     private readonly int _concurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
@@ -240,7 +242,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             // Group transactions by sender to process same-sender transactions sequentially
             // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
+            int transactionWarmupCount = Math.Min(block.Transactions.Length, MaxTransactionWarmupCount);
+            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block, transactionWarmupCount);
 
             try
             {
@@ -297,11 +300,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
+    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block, int transactionCount)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
 
-        for (int i = 0; i < block.Transactions.Length; i++)
+        for (int i = 0; i < transactionCount; i++)
         {
             Transaction tx = block.Transactions[i];
             Address sender = tx.SenderAddress!;
