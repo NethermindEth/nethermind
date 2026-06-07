@@ -21,7 +21,6 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
@@ -34,7 +33,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly ILogger _logger;
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
-    private readonly PrewarmerWriteHintCache? _writeHintCache;
     private readonly bool _parallelExecutionEnabled;
 
     public BlockCachePreWarmer(
@@ -44,30 +42,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PreBlockCaches preBlockCaches,
         ILogManager logManager
     ) : this(
-        envFactory,
-        blocksConfig,
-        nodeStorageCache,
-        preBlockCaches,
-        writeHintCache: null,
-        logManager)
-    {
-    }
-
-    public BlockCachePreWarmer(
-        PrewarmerEnvFactory envFactory,
-        IBlocksConfig blocksConfig,
-        NodeStorageCache nodeStorageCache,
-        PreBlockCaches preBlockCaches,
-        PrewarmerWriteHintCache? writeHintCache,
-        ILogManager logManager
-    ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
         Environment.ProcessorCount * 2,
         blocksConfig.PreWarmStateConcurrency,
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        writeHintCache,
         logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
@@ -78,27 +58,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager)
-        : this(
-            poolPolicy,
-            maxPoolSize,
-            concurrency,
-            parallelExecutionBatchRead,
-            nodeStorageCache,
-            preBlockCaches,
-            writeHintCache: null,
-            logManager)
-    {
-    }
-
-    internal BlockCachePreWarmer(
-        IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
-        int maxPoolSize,
-        int concurrency,
-        bool parallelExecutionBatchRead,
-        NodeStorageCache nodeStorageCache,
-        PreBlockCaches preBlockCaches,
-        PrewarmerWriteHintCache? writeHintCache,
-        ILogManager logManager)
     {
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
@@ -106,7 +65,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
         _nodeStorageCache = nodeStorageCache;
-        _writeHintCache = writeHintCache;
     }
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
@@ -114,7 +72,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (_preBlockCaches is not null && ShouldPreWarm(spec))
         {
             CacheType result = _preBlockCaches.ClearCaches();
-            _writeHintCache?.Clear();
             _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
             if (result != default)
@@ -154,7 +111,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
-        _writeHintCache?.Clear();
         cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;

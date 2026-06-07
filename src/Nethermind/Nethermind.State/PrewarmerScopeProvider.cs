@@ -45,14 +45,13 @@ public class PrewarmerScopeProvider(
     PreBlockCaches preBlockCaches,
     ILogManager logManager,
     bool isPrewarmer = true,
-    PrewarmerReadDeduplicator? readDeduplicator = null,
-    PrewarmerWriteHintCache? writeHintCache = null
+    PrewarmerReadDeduplicator? readDeduplicator = null
 ) : IWorldStateScopeProvider, IPreBlockCaches
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
-        => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, logManager, isPrewarmer, readDeduplicator, writeHintCache);
+        => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, logManager, isPrewarmer, readDeduplicator);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !isPrewarmer;
@@ -62,8 +61,7 @@ public class PrewarmerScopeProvider(
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
         bool isPrewarmer,
-        PrewarmerReadDeduplicator? readDeduplicator,
-        PrewarmerWriteHintCache? writeHintCache) : IWorldStateScopeProvider.IScope
+        PrewarmerReadDeduplicator? readDeduplicator) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
@@ -92,8 +90,7 @@ public class PrewarmerScopeProvider(
                 storageCache,
                 address,
                 isPrewarmer,
-                readDeduplicator,
-                writeHintCache);
+                readDeduplicator);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
@@ -201,15 +198,13 @@ public class PrewarmerScopeProvider(
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool isPrewarmer,
-        PrewarmerReadDeduplicator? readDeduplicator,
-        PrewarmerWriteHintCache? writeHintCache) : IWorldStateScopeProvider.IStorageTree
+        PrewarmerReadDeduplicator? readDeduplicator) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
         private readonly Address address = address;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly PrewarmerReadDeduplicator? readDeduplicator = readDeduplicator;
-        private readonly PrewarmerWriteHintCache? writeHintCache = writeHintCache;
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels = isPrewarmer ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
@@ -224,7 +219,6 @@ public class PrewarmerScopeProvider(
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 Db.Metrics.IncrementStorageTreeCache();
-                TryWarmWriteHint(in index, value);
             }
             else
             {
@@ -244,24 +238,7 @@ public class PrewarmerScopeProvider(
             return value;
         }
 
-        public void HintSet(in UInt256 index, byte[]? value)
-        {
-            if (isPrewarmer)
-            {
-                writeHintCache?.AddStorageWrite(address, in index);
-            }
-
-            baseStorageTree.HintSet(in index, value);
-        }
-
-        private void TryWarmWriteHint(in UInt256 index, byte[] value)
-        {
-            if (isPrewarmer || writeHintCache?.HasStorageWrites != true) return;
-            if (writeHintCache.MightWrite(address, in index))
-            {
-                baseStorageTree.HintSet(in index, value);
-            }
-        }
+        public void HintSet(in UInt256 index, byte[]? value) => baseStorageTree.HintSet(in index, value);
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {

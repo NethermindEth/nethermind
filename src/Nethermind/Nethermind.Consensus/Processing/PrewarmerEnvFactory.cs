@@ -14,8 +14,7 @@ public class PrewarmerEnvFactory(
     IWorldStateManager worldStateManager,
     ILogManager logManager,
     ILifetimeScope parentLifetime,
-    PrewarmerReadDeduplicator readDeduplicator,
-    PrewarmerWriteHintCache writeHintCache)
+    PrewarmerReadDeduplicator readDeduplicator)
 {
     public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches)
     {
@@ -24,8 +23,7 @@ public class PrewarmerEnvFactory(
             preBlockCaches,
             logManager,
             isPrewarmer: true,
-            readDeduplicator: readDeduplicator,
-            writeHintCache: writeHintCache
+            readDeduplicator: readDeduplicator
         );
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
