@@ -106,24 +106,28 @@ public class ResourcePoolTests
     [Test]
     public void Test_CachedResourcePool_RespectsCapacity()
     {
-        // For MainBlockProcessing: capacity = 2
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
+        int capacity = Math.Clamp(_config.MaxInFlightCompactJob, 2, _config.CompactSize + 8);
+        List<TransientResource> resources = [];
 
-        TransientResource r1 = _resourcePool.GetCachedResource(usage);
-        TransientResource r2 = _resourcePool.GetCachedResource(usage);
-        TransientResource r3 = _resourcePool.GetCachedResource(usage);
+        for (int i = 0; i < capacity + 1; i++)
+        {
+            resources.Add(_resourcePool.GetCachedResource(usage));
+        }
 
-        _resourcePool.ReturnCachedResource(usage, r1);
-        _resourcePool.ReturnCachedResource(usage, r2);
-        _resourcePool.ReturnCachedResource(usage, r3); // This one should be disposed
+        foreach (TransientResource resource in resources)
+        {
+            _resourcePool.ReturnCachedResource(usage, resource);
+        }
 
-        TransientResource p1 = _resourcePool.GetCachedResource(usage);
-        TransientResource p2 = _resourcePool.GetCachedResource(usage);
-        TransientResource p3 = _resourcePool.GetCachedResource(usage);
+        for (int i = capacity - 1; i >= 0; i--)
+        {
+            TransientResource pooledResource = _resourcePool.GetCachedResource(usage);
+            Assert.That(pooledResource, Is.SameAs(resources[i]));
+        }
 
-        Assert.That(p1, Is.SameAs(r2)); // LIFO
-        Assert.That(p2, Is.SameAs(r1));
-        Assert.That(p3, Is.Not.SameAs(r3));
+        TransientResource newResource = _resourcePool.GetCachedResource(usage);
+        Assert.That(resources.Contains(newResource), Is.False);
     }
 
     [Test]
