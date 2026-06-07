@@ -393,6 +393,54 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_does_not_wait_for_prewarmer_tail_after_successful_block()
+    {
+        DeferredPreWarmer preWarmer = new();
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
+
+        Task<Block[]> processingTask = Task.Run(() => branchProcessor.Process(
+            null,
+            new List<Block> { BuildPreWarmedBlock() },
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance));
+
+        bool completedBeforePrewarmer = processingTask.Wait(TimeSpan.FromSeconds(1));
+        preWarmer.CompleteFirstWarmup();
+        Assert.That(processingTask.Wait(TimeSpan.FromSeconds(1)), Is.True, "processing task should finish after releasing the prewarmer");
+
+        Assert.That(completedBeforePrewarmer, Is.True, "successful block processing should return before the cancelled prewarmer tail completes");
+        Assert.That(processingTask.Result, Has.Length.EqualTo(1));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_waits_for_queued_cache_clear_before_next_block()
+    {
+        DeferredPreWarmer preWarmer = new();
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
+
+        Task<Block[]> firstProcessingTask = Task.Run(() => branchProcessor.Process(
+            null,
+            new List<Block> { BuildPreWarmedBlock() },
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance));
+
+        Assert.That(firstProcessingTask.Wait(TimeSpan.FromSeconds(1)), Is.True, "first block should not wait for the prewarmer tail");
+
+        Task<Block[]> secondProcessingTask = Task.Run(() => branchProcessor.Process(
+            null,
+            new List<Block> { BuildPreWarmedBlock() },
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance));
+
+        Assert.That(secondProcessingTask.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "next block must wait for the previous prewarmer cache clear");
+
+        preWarmer.CompleteFirstWarmup();
+
+        Assert.That(secondProcessingTask.Wait(TimeSpan.FromSeconds(1)), Is.True, "next block should continue after cache clear");
+        Assert.That(preWarmer.ClearCount, Is.GreaterThanOrEqualTo(1));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_unsubscribes_from_TransactionsExecuted_after_processing()
     {
         (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) = CreateProcessorAndBranch();
@@ -494,6 +542,37 @@ public class BlockProcessorTests
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public void Dispose() { }
     }
+
+    private sealed class DeferredPreWarmer : IBlockCachePreWarmer
+    {
+        private readonly TaskCompletionSource _firstWarmup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _warmupCount;
+        private int _clearCount;
+
+        public int ClearCount => Volatile.Read(ref _clearCount);
+
+        public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
+            CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
+            => Interlocked.Increment(ref _warmupCount) == 1 ? _firstWarmup.Task : Task.CompletedTask;
+
+        public void CompleteFirstWarmup() => _firstWarmup.TrySetResult();
+
+        public CacheType ClearCaches()
+        {
+            Interlocked.Increment(ref _clearCount);
+            return default;
+        }
+
+        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
+
+        public void Dispose() { }
+    }
+
+    private static Block BuildPreWarmedBlock()
+        => Build.A.Block
+            .WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject)
+            .WithTransactions(3, MuirGlacier.Instance)
+            .TestObject;
 
     public static IEnumerable<TestCaseData> BlockValidationTransactionsExecutor_bal_validation_cases()
     {
