@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -13,9 +14,13 @@ namespace Nethermind.State.Flat.Persistence;
 
 public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader
 {
+    private const int AccountCacheCapacity = 1 << 18;
+    private const int StorageCacheCapacity = 1 << 20;
     private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
     private readonly IPersistence.IPersistenceReader _innerReader;
+    private readonly AssociativeCache<AddressAsKey, CachedAccount> _accountCache = new(AccountCacheCapacity);
+    private readonly AssociativeCache<StorageCell, CachedSlot> _slotCache = new(StorageCacheCapacity);
     private CancellationTokenSource? _cts = new();
     public RefCountingPersistenceReader(IPersistence.IPersistenceReader innerReader, ILogger logger)
     {
@@ -35,11 +40,32 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         });
     }
 
-    public Account? GetAccount(Address address) =>
-        _innerReader.GetAccount(address);
+    public Account? GetAccount(Address address)
+    {
+        AddressAsKey key = address;
+        if (_accountCache.TryGet(in key, out CachedAccount? cachedAccount) && cachedAccount is not null)
+        {
+            return cachedAccount.Value;
+        }
 
-    public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
-        _innerReader.TryGetSlot(address, in slot, ref outValue);
+        Account? account = _innerReader.GetAccount(address);
+        _accountCache.Set(in key, new CachedAccount(account));
+        return account;
+    }
+
+    public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+    {
+        StorageCell key = new(address, in slot);
+        if (_slotCache.TryGet(in key, out CachedSlot? cachedSlot) && cachedSlot is not null)
+        {
+            outValue = cachedSlot.Value;
+            return cachedSlot.Found;
+        }
+
+        bool found = _innerReader.TryGetSlot(address, in slot, ref outValue);
+        _slotCache.Set(in key, new CachedSlot(found, outValue));
+        return found;
+    }
 
     public StateId CurrentState => _innerReader.CurrentState;
 
@@ -70,4 +96,15 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     }
 
     public bool TryAcquire() => TryAcquireLease();
+
+    private sealed class CachedAccount(Account? value)
+    {
+        public Account? Value { get; } = value;
+    }
+
+    private sealed class CachedSlot(bool found, SlotValue value)
+    {
+        public bool Found { get; } = found;
+        public SlotValue Value { get; } = value;
+    }
 }
