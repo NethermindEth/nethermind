@@ -31,6 +31,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly PreservedPatriciaTrie? _preservedPatriciaTrie;
+    private readonly PreservedStorageTries? _preservedStorageTries;
     private readonly PreservedPatriciaTrie.Rebinder? _stateTreeRebinder;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private bool _isDisposed = false;
@@ -57,6 +58,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         PreservedPatriciaTrie? preservedPatriciaTrie = null,
+        PreservedStorageTries? preservedStorageTries = null,
         bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
@@ -64,6 +66,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CodeDb = codeDb;
         _commitTarget = commitTarget;
         _preservedPatriciaTrie = preservedPatriciaTrie;
+        _preservedStorageTries = preservedStorageTries;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         Hash256 stateRoot = currentStateId.StateRoot.ToCommitment();
@@ -377,7 +380,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _concurrencyQuota,
             storageRoot,
             address,
-            _logManager);
+            _logManager,
+            _preservedStorageTries);
 
         return storage;
     }
@@ -395,6 +399,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
         _stateTree.Commit();
+
+        if (_preservedStorageTries is not null)
+        {
+            foreach (FlatStorageTree storage in _storages.Values)
+            {
+                storage.ReturnToPreservedStore();
+            }
+        }
 
         _storages.Clear();
 

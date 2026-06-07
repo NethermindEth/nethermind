@@ -26,6 +26,9 @@ public class FlatScopeProvider(
     private readonly PreservedPatriciaTrie? _preservedPatriciaTrie = configuration.PreservePatriciaTrie && !isReadOnly
         ? new PreservedPatriciaTrie()
         : null;
+    private readonly PreservedStorageTries? _preservedStorageTries = configuration.PreserveStorageTrieCount > 0 && !isReadOnly
+        ? new PreservedStorageTries(configuration.PreserveStorageTrieCount)
+        : null;
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
@@ -43,6 +46,7 @@ public class FlatScopeProvider(
             trieWarmer,
             logManager,
             preservedPatriciaTrie: _preservedPatriciaTrie,
+            preservedStorageTries: _preservedStorageTries,
             isReadOnly: isReadOnly);
     }
 }

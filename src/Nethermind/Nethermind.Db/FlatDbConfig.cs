@@ -12,6 +12,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool PreservePatriciaTrie { get; set; } = false;
+    public int PreserveStorageTrieCount { get; set; } = 0;
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;

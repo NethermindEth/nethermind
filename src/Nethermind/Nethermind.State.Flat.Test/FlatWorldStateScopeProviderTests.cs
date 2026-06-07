@@ -86,6 +86,11 @@ public class FlatWorldStateScopeProviderTests
                 _containerBuilder.AddSingleton<PreservedPatriciaTrie>();
             }
 
+            if (config.PreserveStorageTrieCount > 0)
+            {
+                _containerBuilder.AddSingleton(_ => new PreservedStorageTries(config.PreserveStorageTrieCount));
+            }
+
             // Externally owned because snapshot bundle take ownership
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
                 .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
@@ -730,6 +735,48 @@ public class FlatWorldStateScopeProviderTests
 
         Assert.That(scope.Get(addr1), Is.EqualTo(acc1));
         Assert.That(scope.Get(addr2), Is.EqualTo(acc2));
+    }
+
+    [Test]
+    public void PreserveStorageTrie_AllowsMultipleCommitsInScope()
+    {
+        using TestContext ctx = new(new FlatDbConfig { PreserveStorageTrieCount = 16 });
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address address = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        byte[] value1 = { 0x11 };
+        byte[] value2 = { 0x22 };
+
+        Account initialAccount = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(address).Returns(initialAccount);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+            storageBatch.Set(slot1, value1);
+            storageBatch.Dispose();
+        }
+        scope.Commit(1);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+            storageBatch.Set(slot2, value2);
+            storageBatch.Dispose();
+        }
+        scope.Commit(2);
+
+        TestMemDb testDb = new();
+        RawScopedTrieStore trieStore = new(testDb);
+        StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
+        expectedTree.Set(slot1, value1);
+        expectedTree.Set(slot2, value2);
+        expectedTree.UpdateRootHash();
+
+        Account? resultAccount = scope.Get(address);
+        Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
     }
 
     #endregion
