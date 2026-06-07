@@ -89,7 +89,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal, warmTransactionAddresses: false);
+                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
                 return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
