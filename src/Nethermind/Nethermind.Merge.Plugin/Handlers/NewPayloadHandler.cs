@@ -46,7 +46,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IBeaconPivot _beaconPivot;
     private readonly IBlockCacheService _blockCacheService;
     private readonly IBlockProcessingQueue _processingQueue;
-    private readonly IBlockPreprocessorStep? _blockPreprocessorStep;
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
@@ -75,77 +74,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
-        IBlockPreprocessorStep blockPreprocessorStep,
         ILogManager logManager)
-        : this(
-            payloadPreparationService,
-            blockValidator,
-            blockTree,
-            poSSwitcher,
-            beaconSyncStrategy,
-            beaconPivot,
-            blockCacheService,
-            processingQueue,
-            invalidChainTracker,
-            mergeSyncController,
-            mergeConfig,
-            receiptConfig,
-            stateReader,
-            logManager,
-            blockPreprocessorStep)
-    {
-    }
-
-    public NewPayloadHandler(
-        IPayloadPreparationService payloadPreparationService,
-        IBlockValidator blockValidator,
-        IBlockTree blockTree,
-        IPoSSwitcher poSSwitcher,
-        IBeaconSyncStrategy beaconSyncStrategy,
-        IBeaconPivot beaconPivot,
-        IBlockCacheService blockCacheService,
-        IBlockProcessingQueue processingQueue,
-        IInvalidChainTracker invalidChainTracker,
-        IMergeSyncController mergeSyncController,
-        IMergeConfig mergeConfig,
-        IReceiptConfig receiptConfig,
-        IStateReader stateReader,
-        ILogManager logManager)
-        : this(
-            payloadPreparationService,
-            blockValidator,
-            blockTree,
-            poSSwitcher,
-            beaconSyncStrategy,
-            beaconPivot,
-            blockCacheService,
-            processingQueue,
-            invalidChainTracker,
-            mergeSyncController,
-            mergeConfig,
-            receiptConfig,
-            stateReader,
-            logManager,
-            blockPreprocessorStep: null)
-    {
-    }
-
-    private NewPayloadHandler(
-        IPayloadPreparationService payloadPreparationService,
-        IBlockValidator blockValidator,
-        IBlockTree blockTree,
-        IPoSSwitcher poSSwitcher,
-        IBeaconSyncStrategy beaconSyncStrategy,
-        IBeaconPivot beaconPivot,
-        IBlockCacheService blockCacheService,
-        IBlockProcessingQueue processingQueue,
-        IInvalidChainTracker invalidChainTracker,
-        IMergeSyncController mergeSyncController,
-        IMergeConfig mergeConfig,
-        IReceiptConfig receiptConfig,
-        IStateReader stateReader,
-        ILogManager logManager,
-        IBlockPreprocessorStep? blockPreprocessorStep)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -155,7 +84,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _beaconPivot = beaconPivot;
         _blockCacheService = blockCacheService;
         _processingQueue = processingQueue;
-        _blockPreprocessorStep = blockPreprocessorStep;
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
@@ -438,7 +366,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        Task? recoverDataTask = StartRecoverData(block);
         ValidationCompletion blockProcessed =
             _blockValidationTasks.GetOrAdd(
                 block.Hash!,
@@ -472,9 +399,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 _ => null
             };
 
-            await WaitForRecovery(recoverDataTask, timeoutTask);
-            recoverDataTask = null;
-
             if (!result.HasValue)
             {
                 // we don't know the result of processing the block, either because
@@ -499,15 +423,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
         finally
         {
-            if (recoverDataTask is { IsCompleted: true })
-            {
-                await recoverDataTask;
-            }
-            else
-            {
-                ObserveRecoveryFailure(recoverDataTask);
-            }
-
             // Blocks that exit before the processing queue publishes BlockRemoved would otherwise
             // leave their completion source pinned in _blockValidationTasks forever.
             _blockValidationTasks.TryRemove(block.Hash!, out _);
@@ -515,29 +430,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         return (TryCacheResult(result ?? ValidationResult.Syncing, validationMessage), validationMessage);
     }
-
-    private Task? StartRecoverData(Block block)
-        => _blockPreprocessorStep is null || block.Transactions.Length <= 3
-            ? null
-            : Task.Run(() => _blockPreprocessorStep.RecoverData(block));
-
-    private static async Task WaitForRecovery(Task? recoverDataTask, Task timeoutTask)
-    {
-        if (recoverDataTask is null) return;
-
-        Task firstToComplete = await Task.WhenAny(timeoutTask, recoverDataTask);
-        if (firstToComplete == timeoutTask)
-        {
-            throw new TimeoutException();
-        }
-
-        await recoverDataTask;
-    }
-
-    private void ObserveRecoveryFailure(Task? recoverDataTask) =>
-        recoverDataTask?.ContinueWith(
-            task => _logger.DebugError("NewPayload background sender recovery failed", task.Exception),
-            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
 
     private void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
     {
