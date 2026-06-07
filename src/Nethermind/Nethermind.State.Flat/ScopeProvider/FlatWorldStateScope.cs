@@ -34,6 +34,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PreservedPatriciaTrie.Rebinder? _stateTreeRebinder;
     private readonly PreservedStorageTries? _preservedStorageTries;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+    private readonly ConcurrentQueue<AddressAsKey> _storagesToCommit = new();
     private List<FlatStorageTree>? _preservableStorages;
     private bool _isDisposed = false;
     private Hash256? _lastCommittedStateRoot;
@@ -411,8 +412,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
 
-        // Storage tree commits already happened during WriteBatch.Dispose() via
-        // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
+        CommitDirtyStorageTrees();
         _stateTree.Commit();
 
         StateId newStateId = new(blockNumber, RootHash);
@@ -442,6 +442,42 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _currentStateId = newStateId;
         _lastCommittedStateRoot = newStateId.StateRoot.ToCommitment();
         _pausePrewarmer = false;
+    }
+
+    private void CommitDirtyStorageTrees()
+    {
+        if (_storagesToCommit.IsEmpty) return;
+
+        using ArrayPoolListRef<Task> commitTask = new(_storagesToCommit.Count);
+        HashSet<AddressAsKey> committed = [];
+
+        while (_storagesToCommit.TryDequeue(out AddressAsKey address))
+        {
+            if (!committed.Add(address)) continue;
+            if (!_storages.TryGetValue(address, out FlatStorageTree? storage)) continue;
+
+            if (_concurrencyQuota.TryRequestConcurrencyQuota())
+            {
+                commitTask.Add(Task.Factory.StartNew(static ctx =>
+                {
+                    (FlatWorldStateScope scope, FlatStorageTree storage) = ((FlatWorldStateScope, FlatStorageTree))ctx!;
+                    try
+                    {
+                        storage.CommitTree();
+                    }
+                    finally
+                    {
+                        scope._concurrencyQuota.ReturnConcurrencyQuota();
+                    }
+                }, (this, storage), CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
+            }
+            else
+            {
+                storage.CommitTree();
+            }
+        }
+
+        Task.WaitAll(commitTask.AsSpan());
     }
 
     // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
@@ -477,8 +513,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     estimatedEntries: estimatedEntries,
                     onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot));
 
-        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
+        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
+        {
+            scope._storagesToCommit.Enqueue(address);
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
+        }
 
         public void Dispose()
         {
