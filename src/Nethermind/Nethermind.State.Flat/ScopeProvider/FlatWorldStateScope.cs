@@ -461,7 +461,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             _dirtyAccounts[key] = account;
             scope._snapshotBundle.SetAccount(key, account);
-            scope.HintPrewarm(key);
 
             if (account is null)
             {
