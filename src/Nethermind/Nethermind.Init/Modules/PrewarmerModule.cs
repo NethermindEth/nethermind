@@ -40,6 +40,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
                 .AddSingleton<PrewarmerReadDeduplicator>()
+                .AddSingleton<PrewarmerWriteHintCache>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
 
                 // This class create the block processing env with worldstate that populate the cache
@@ -54,7 +55,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                         ctx.Resolve<PreBlockCaches>(),
                         ctx.Resolve<ILogManager>(),
                         isPrewarmer: false,
-                        readDeduplicator: ctx.Resolve<PrewarmerReadDeduplicator>()
+                        readDeduplicator: ctx.Resolve<PrewarmerReadDeduplicator>(),
+                        writeHintCache: ctx.Resolve<PrewarmerWriteHintCache>()
                     );
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
