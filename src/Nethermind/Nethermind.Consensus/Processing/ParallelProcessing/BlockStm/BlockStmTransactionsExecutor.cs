@@ -567,6 +567,22 @@ public class ParallelTransactionProcessor(
             transactionProcessor.SetBlockExecutionContext(in txContext);
 
             bool result = results[txIndex] = transactionProcessor.Execute(transaction, tracer);
+
+            // Speculative-prewarm run: scope saw an Estimate on incarnation 0, suppressed the
+            // throw, and let the EVM keep going so BlockBaseReadCache picked up base reads
+            // past the abort point. Discard every effect (writes, receipts, fee marks) and
+            // return ReadError so the scheduler parks us on the original blocker exactly as
+            // if we'd thrown at the first Estimate. Re-execution at incarnation >= 1 will
+            // overwrite results[txIndex] and receipts[txIndex] with the real values; the
+            // runner's metrics.RecordBlockedRead fires on the ReadError return.
+            if (env.WorldStateScopeProvider.IsSpeculative)
+            {
+                receipts[txIndex] = null;
+                env.WorldStateScopeProvider.WriteSet.Clear();
+                blockingTx = env.WorldStateScopeProvider.SpeculativeBlocker.TxIndex;
+                return Status.ReadError;
+            }
+
             if (!result)
             {
                 // Failed: publish zero-fee keys + MarkCommitted so later coinbase readers don't livelock; readSet still published so prior-tx funding triggers re-validation.

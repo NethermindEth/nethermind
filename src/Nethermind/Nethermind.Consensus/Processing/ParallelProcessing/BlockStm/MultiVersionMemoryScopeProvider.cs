@@ -31,11 +31,31 @@ public class MultiVersionMemoryScopeProvider(
     private readonly Dictionary<ParallelStateKey, object> _pooledWriteSet = new(InitialWriteSetCapacity);
     private readonly Stack<PooledStorageWriteBatch> _storageBatchPool = new();
 
+    // Speculative-prewarm state for incarnation-0 attempts. When the first ReadError fires
+    // on incarnation 0 we record the blocker, suppress the throw, substitute zero/null for
+    // that read and every later Estimate read in the same scope, and let the EVM keep
+    // executing. The point is *not* a correct execution — it's that the
+    // <see cref="BlockBaseReadCache"/> picks up every base read past the abort point, so
+    // the eventual re-execution (incarnation >= 1) gets a much warmer cache. The executor
+    // discards everything (Commit, Record, MarkCommitted are all skipped) and returns
+    // Status.ReadError as if the throw had fired at the first ReadError.
+    private TxVersion _speculativeBlocker = TxVersion.Empty;
+
     /// <summary>Targets the next <see cref="BeginScope"/> at this tx version.</summary>
     public void SetTxVersion(in TxVersion version) => _version = version;
 
     public HashSet<Read> ReadSet { get; private set; } = null!;
     public Dictionary<ParallelStateKey, object> WriteSet { get; private set; } = null!;
+
+    /// <summary>
+    /// True when the current scope entered speculative-prewarm mode. Executor checks this
+    /// after EVM exit and treats the run as <c>Status.ReadError</c> with
+    /// <see cref="SpeculativeBlocker"/> as the parking target.
+    /// </summary>
+    public bool IsSpeculative => !_speculativeBlocker.IsEmpty;
+
+    /// <summary>Blocking tx version recorded by the first ReadError that triggered speculation.</summary>
+    public TxVersion SpeculativeBlocker => _speculativeBlocker;
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
@@ -45,7 +65,27 @@ public class MultiVersionMemoryScopeProvider(
         ReadSet = new HashSet<Read>(InitialReadSetCapacity);
         _pooledWriteSet.Clear();
         WriteSet = _pooledWriteSet;
+        _speculativeBlocker = TxVersion.Empty;
         return new MultiVersionMemoryScope(this, _version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, _writeSetLock, blockCodeWrites, baseReadCache);
+    }
+
+    /// <summary>
+    /// Try to enter (or remain in) speculative-prewarm mode. Only incarnation 0 is eligible:
+    /// for incarnation &gt;= 1 the cache should already be warm from the prior speculative
+    /// run, so we want to fail fast on the real blocker rather than burn CPU twice.
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> if speculation is active (caller substitutes sentinel and continues);
+    /// <c>false</c> if the caller should throw the real abort.
+    /// </returns>
+    internal bool TryEnterSpeculative(in TxVersion blocker, int incarnation)
+    {
+        if (incarnation != 0) return false;
+        if (_speculativeBlocker.IsEmpty)
+        {
+            _speculativeBlocker = blocker;
+        }
+        return true;
     }
 
     private PooledStorageWriteBatch RentStorageBatch(Address address)
@@ -94,18 +134,32 @@ public class MultiVersionMemoryScopeProvider(
             ParallelStateKey location = ParallelStateKey.ForAccount(address);
 
             Status status = multiVersionMemory.TryRead(location, txIndex, out TxVersion readVersion, out object? value);
-            Account? result = status switch
+            Account? result;
+            switch (status)
             {
-                Status.ReadError => AbortParallelExecutionException.ThrowAndReturn<Account?>(in readVersion),
-                Status.NotFound => ReadBaseAccount(address),
-                Status.Ok => (Account?)value,
-                _ => throw new ArgumentOutOfRangeException(nameof(status), status, $"Unknown multi version memory read status: {status}")
-            };
+                case Status.Ok:
+                    result = (Account?)value;
+                    break;
+                case Status.NotFound:
+                    result = ReadBaseAccount(address);
+                    break;
+                case Status.ReadError when owner.TryEnterSpeculative(in readVersion, version.Incarnation):
+                    // Speculative-prewarm: substitute "account does not exist". The EVM treats
+                    // this as a fresh account (zero balance / nonce / no code), keeps running,
+                    // and every base read it triggers populates the block-base cache for the
+                    // eventual real re-execution. Skip readSet — this isn't a real dep.
+                    return null;
+                case Status.ReadError:
+                    return AbortParallelExecutionException.ThrowAndReturn<Account?>(in readVersion);
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(status), status, $"Unknown multi version memory read status: {status}");
+            }
 
             readSet.Add(new Read(location, readVersion));
 
+            // Fee-recipient dependency tracking is irrelevant in spec mode: the run is discarded.
             FeeRecipientKind? feeKind = feeAccumulator.GetFeeKind(address);
-            if (feeKind == FeeRecipientKind.None)
+            if (feeKind == FeeRecipientKind.None || owner.IsSpeculative)
             {
                 return result;
             }
@@ -133,7 +187,7 @@ public class MultiVersionMemoryScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
-            new MultiVersionMemoryStorageTree(address, version.TxIndex, baseScope.CreateStorageTree(address), multiVersionMemory, readSet, baseReadCache);
+            new MultiVersionMemoryStorageTree(address, version.TxIndex, version.Incarnation, owner, baseScope.CreateStorageTree(address), multiVersionMemory, readSet, baseReadCache);
 
         /// <summary>
         /// Read-through the shared block-base cache before going to <c>baseScope</c>. Workers
@@ -191,6 +245,7 @@ public class MultiVersionMemoryScopeProvider(
             {
                 if (!allPriorCommitted && !feeAccumulator.IsCommitted(i))
                 {
+                    if (owner.TryEnterSpeculative(new TxVersion(i, 0), version.Incarnation)) return;
                     AbortParallelExecutionException.Throw(new TxVersion(i, 0));
                 }
 
@@ -199,9 +254,11 @@ public class MultiVersionMemoryScopeProvider(
                 switch (status)
                 {
                     case Status.ReadError:
+                        if (owner.TryEnterSpeculative(in feeVersion, version.Incarnation)) return;
                         AbortParallelExecutionException.Throw(in feeVersion);
                         break;
                     case Status.NotFound:
+                        if (owner.TryEnterSpeculative(new TxVersion(i, 0), version.Incarnation)) return;
                         AbortParallelExecutionException.Throw(new TxVersion(i, 0));
                         break;
                 }
@@ -213,6 +270,8 @@ public class MultiVersionMemoryScopeProvider(
         private class MultiVersionMemoryStorageTree(
             Address address,
             int txIndex,
+            int incarnation,
+            MultiVersionMemoryScopeProvider owner,
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
             MultiVersionMemory multiVersionMemory,
             HashSet<Read> readSet,
@@ -286,6 +345,17 @@ public class MultiVersionMemoryScopeProvider(
                 Status status = multiVersionMemory.TryRead(key, txIndex, out version, out value);
                 if (status == Status.ReadError)
                 {
+                    if (owner.TryEnterSpeculative(in version, incarnation))
+                    {
+                        // Spec mode: downgrade ReadError to NotFound so the caller falls through
+                        // to the base storage tree and populates BlockBaseReadCache. The base
+                        // value is whatever the pre-block state has — wrong from this tx's
+                        // perspective (it should be the in-flight lower tx's write) but right
+                        // as a *cache fill* for the eventual re-execution at incarnation >= 1.
+                        value = null;
+                        version = TxVersion.Empty;
+                        return Status.NotFound;
+                    }
                     AbortParallelExecutionException.Throw(in version);
                 }
                 return status;
