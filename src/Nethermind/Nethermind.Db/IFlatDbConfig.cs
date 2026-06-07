@@ -37,6 +37,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     int MinReorgDepth { get; set; }
 
+    [ConfigItem(Description = "EXPERIMENTAL / benchmark-only. Preserve the warmed Patricia account trie across consecutive writable flat-state scopes when the parent state root matches exactly.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreservePatriciaTrie { get; set; }
+
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
 

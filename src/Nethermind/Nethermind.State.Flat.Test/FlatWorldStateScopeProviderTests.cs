@@ -81,6 +81,11 @@ public class FlatWorldStateScopeProviderTests
                     .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()))
                 ;
 
+            if (config.PreservePatriciaTrie)
+            {
+                _containerBuilder.AddSingleton<PreservedPatriciaTrie>();
+            }
+
             // Externally owned because snapshot bundle take ownership
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
                 .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
@@ -696,6 +701,33 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(2);
 
         // Verify scope Sees both
+        Assert.That(scope.Get(addr1), Is.EqualTo(acc1));
+        Assert.That(scope.Get(addr2), Is.EqualTo(acc2));
+    }
+
+    [Test]
+    public void PreservePatriciaTrie_AllowsMultipleCommitsInScope()
+    {
+        using TestContext ctx = new(new FlatDbConfig { PreservePatriciaTrie = true });
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address addr1 = TestItem.AddressA;
+        Address addr2 = TestItem.AddressB;
+        Account acc1 = new(100, 1000);
+        Account acc2 = new(200, 2000);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(addr1, acc1);
+        }
+        scope.Commit(1);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(addr2, acc2);
+        }
+        scope.Commit(2);
+
         Assert.That(scope.Get(addr1), Is.EqualTo(acc1));
         Assert.That(scope.Get(addr2), Is.EqualTo(acc2));
     }

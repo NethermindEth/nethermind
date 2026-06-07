@@ -30,8 +30,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
+    private readonly PreservedPatriciaTrie? _preservedPatriciaTrie;
+    private readonly PreservedPatriciaTrie.Rebinder? _stateTreeRebinder;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private bool _isDisposed = false;
+    private Hash256? _lastCommittedStateRoot;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
     // tasks within the trie warmer's ring buffer.
@@ -53,28 +56,37 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
+        PreservedPatriciaTrie? preservedPatriciaTrie = null,
         bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
+        _preservedPatriciaTrie = preservedPatriciaTrie;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
-        _stateTree = new(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
-            logManager
-        )
+        Hash256 stateRoot = currentStateId.StateRoot.ToCommitment();
+        if (preservedPatriciaTrie is not null && preservedPatriciaTrie.TryTake(stateRoot, snapshotBundle, _concurrencyQuota, out StateTree reusedTree))
         {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
+            _stateTree = reusedTree;
+        }
+        else
+        {
+            StateTrieStoreAdapter adapter = new(snapshotBundle, _concurrencyQuota);
+            _stateTreeRebinder = preservedPatriciaTrie is not null ? adapter.Rebind : null;
+            _stateTree = new(adapter, logManager)
+            {
+                RootHash = stateRoot
+            };
+        }
 
         _warmupStateTree = new(
             new StateTrieStoreWarmerAdapter(snapshotBundle),
             logManager
         )
         {
-            RootHash = currentStateId.StateRoot.ToCommitment()
+            RootHash = stateRoot
         };
 
         _configuration = configuration;
@@ -90,8 +102,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
         WaitForOutstandingWarmups();
+        ReturnPreservedPatriciaTrie();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
+    }
+
+    private void ReturnPreservedPatriciaTrie()
+    {
+        if (_preservedPatriciaTrie is null) return;
+
+        if (_lastCommittedStateRoot is not null && _stateTree.RootHash == _lastCommittedStateRoot)
+        {
+            _preservedPatriciaTrie.StoreAnchored(_stateTree, _stateTreeRebinder, _lastCommittedStateRoot);
+            return;
+        }
+
+        _preservedPatriciaTrie.TryStoreCleared();
     }
 
     private void CancelHintBal()
@@ -390,6 +416,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
 
         _currentStateId = newStateId;
+        _lastCommittedStateRoot = newStateId.StateRoot.ToCommitment();
         _pausePrewarmer = false;
     }
 
