@@ -100,8 +100,9 @@ public class FlatRocksDbConfigAdjusterTests
     }
 
     [TestCase(nameof(FlatDbColumns.Account), 161_061_273L)]
-    [TestCase(nameof(FlatDbColumns.Storage), 375_809_638L)]
-    [TestCase(nameof(FlatDbColumns.StorageNodes), 536_870_912L)]
+    [TestCase(nameof(FlatDbColumns.Storage), 268_435_456L)]
+    [TestCase(nameof(FlatDbColumns.StateNodes), 214_748_364L)]
+    [TestCase(nameof(FlatDbColumns.StorageNodes), 429_496_729L)]
     public void FlatDatabase_AssignsBlockCacheBudgetToHotColumns(string columnName, long expectedCapacity)
         => Assert.That(FlatRocksDbConfigAdjuster.GetColumnBlockCacheCapacity(1.GiB, columnName), Is.EqualTo((ulong)expectedCapacity));
 
@@ -115,14 +116,17 @@ public class FlatRocksDbConfigAdjusterTests
 
         IRocksDbConfig account = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
         IRocksDbConfig storage = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Storage));
+        IRocksDbConfig stateNodes = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.StateNodes));
         IRocksDbConfig storageNodes = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.StorageNodes));
 
         Assert.That(account.BlockCache, Is.Not.Null);
         Assert.That(storage.BlockCache, Is.Not.Null);
+        Assert.That(stateNodes.BlockCache, Is.Not.Null);
         Assert.That(storageNodes.BlockCache, Is.Null);
         Assert.That(storage.BlockCache, Is.Not.EqualTo(account.BlockCache));
-        Assert.That(storageNodes.RocksDbOptions, Does.Contain("block_based_table_factory.block_cache=536870912;"));
-        Assert.That(_disposeStack.Count, Is.EqualTo(2));
+        Assert.That(stateNodes.BlockCache, Is.Not.EqualTo(account.BlockCache));
+        Assert.That(storageNodes.RocksDbOptions, Does.Contain("block_based_table_factory.block_cache=429496729;"));
+        Assert.That(_disposeStack.Count, Is.EqualTo(3));
     }
 
     [Test]
