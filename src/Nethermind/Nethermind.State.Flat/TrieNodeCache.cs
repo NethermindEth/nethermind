@@ -102,10 +102,10 @@ public sealed class TrieNodeCache : ITrieNodeCache
         {
             for (int i = 0; i < ShardCount; i++)
             {
-                (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
+                TrieNodeCache.ChildCache.Entry[] shard = transientResource.Nodes.Shards[i];
                 for (int j = 0; j < shard.Length; j++)
                 {
-                    if (shard[j].node is { } newNode) newNode.PrunePersistedRecursively(1);
+                    if (shard[j].Node is { } newNode) newNode.PrunePersistedRecursively(1);
 
                 }
             }
@@ -130,10 +130,11 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         Parallel.For(0, ShardCount, (i) =>
         {
-            (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
+            TrieNodeCache.ChildCache.Entry[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is { } newNode) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
+                TrieNodeCache.ChildCache.Entry entry = shard[j];
+                if (entry.Node is { } newNode) AddToCacheWithHashCode(i, entry.HashCode, newNode);
             }
         });
 
@@ -193,19 +194,23 @@ public sealed class TrieNodeCache : ITrieNodeCache
     /// </summary>
     public class ChildCache
     {
-        private readonly (int hashCode, TrieNode? node)[][] _shards;
+        public readonly record struct Entry(int HashCode, TrieNode? Node);
+
+        private const int Associativity = 2;
+
+        private readonly Entry[][] _shards;
         private int _count = 0;
         private int _mask;
         private int _shardSize;
 
         public int Count => _count;
-        public int Capacity => _shards.Length * _shardSize;
-        public (int hashCode, TrieNode? node)[][] Shards => _shards;
+        public int Capacity => _shards.Length * _shardSize * Associativity;
+        public Entry[][] Shards => _shards;
 
         public ChildCache(int size)
         {
             int powerOfTwoSize = (int)BitOperations.RoundUpToPowerOf2((uint)(size + ShardCount - 1) / ShardCount);
-            _shards = new (int, TrieNode?)[ShardCount][];
+            _shards = new Entry[ShardCount][];
             _mask = powerOfTwoSize - 1;
             _shardSize = powerOfTwoSize;
             CreateCacheArray(_shardSize);
@@ -213,7 +218,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         private void CreateCacheArray(int size)
         {
-            for (int i = 0; i < ShardCount; i++) _shards[i] = new (int, TrieNode?)[size];
+            for (int i = 0; i < ShardCount; i++) _shards[i] = new Entry[size * Associativity];
         }
 
         public void Reset()
@@ -240,53 +245,76 @@ public sealed class TrieNodeCache : ITrieNodeCache
         public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
         {
             (int shardIdx, int hashCode) = GetShardAndHashCode(address, path);
-            int idx = hashCode & _mask;
-            (int hashCode, TrieNode? node) entry = _shards[shardIdx][idx]; // Copy struct once
+            int idx = (hashCode & _mask) * Associativity;
+            Entry[] shard = _shards[shardIdx];
 
-            if (entry.hashCode != hashCode)
+            for (int i = 0; i < Associativity; i++)
             {
-                node = null;
-                return false;
+                Entry entry = shard[idx + i]; // Copy struct once
+                if (entry.HashCode != hashCode) continue;
+
+                TrieNode? maybeNode = entry.Node; // Store it to prevent concurrency issue
+                if (maybeNode is not null && maybeNode.Keccak == hash)
+                {
+                    node = maybeNode;
+                    return true;
+                }
             }
 
-            TrieNode? maybeNode = entry.node; // Store it to prevent concurrency issue
-            if (maybeNode is null || maybeNode.Keccak != hash)
-            {
-                node = null;
-                return false;
-            }
-
-            node = maybeNode;
-            return true;
+            node = null;
+            return false;
         }
 
         public void Set(Hash256? address, in TreePath path, TrieNode node)
         {
             (int shard, int hashCode) = GetShardAndHashCode(address, path);
-            int idx = hashCode & _mask;
+            int idx = (hashCode & _mask) * Associativity;
+            Entry[] entries = _shards[shard];
 
             _count++; // Track count
 
-            _shards[shard][idx] = (hashCode, node);
+            for (int i = 0; i < Associativity; i++)
+            {
+                Entry entry = entries[idx + i];
+                if (entry.Node is null || entry.HashCode == hashCode)
+                {
+                    entries[idx + i] = new Entry(hashCode, node);
+                    return;
+                }
+            }
+
+            entries[idx] = entries[idx + 1];
+            entries[idx + 1] = new Entry(hashCode, node);
         }
 
         public TrieNode GetOrAdd(Hash256? address, in TreePath path, TrieNode trieNode)
         {
             (int shard, int hashCode) = GetShardAndHashCode(address, path);
-            int idx = hashCode & _mask;
+            int idx = (hashCode & _mask) * Associativity;
+            Entry[] entries = _shards[shard];
 
-            ref (int hashCode, TrieNode? node) entry = ref _shards[shard][idx];
-            TrieNode? maybeNode = entry.node; // Store it to prevent concurrency issue
-            if (maybeNode is not null)
+            for (int i = 0; i < Associativity; i++)
             {
-                if (maybeNode.Keccak == trieNode.Keccak) return maybeNode;
-            }
-            else
-            {
-                _count++; // Track count
+                Entry entry = entries[idx + i];
+                TrieNode? maybeNode = entry.Node; // Store it to prevent concurrency issue
+                if (maybeNode is not null && entry.HashCode == hashCode && maybeNode.Keccak == trieNode.Keccak)
+                {
+                    return maybeNode;
+                }
             }
 
-            entry = (hashCode, trieNode);
+            for (int i = 0; i < Associativity; i++)
+            {
+                if (entries[idx + i].Node is null)
+                {
+                    _count++; // Track count
+                    entries[idx + i] = new Entry(hashCode, trieNode);
+                    return trieNode;
+                }
+            }
+
+            entries[idx] = entries[idx + 1];
+            entries[idx + 1] = new Entry(hashCode, trieNode);
             return trieNode;
         }
     }
