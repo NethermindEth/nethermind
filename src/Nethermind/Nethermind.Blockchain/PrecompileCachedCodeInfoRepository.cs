@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -67,10 +66,6 @@ public class PrecompileCachedCodeInfoRepository(
         IPrecompile precompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) : IPrecompile
     {
-        private const int MissLockCount = 1 << 12;
-        private const int MissLockMask = MissLockCount - 1;
-        private static readonly Lock[] MissLocks = CreateMissLocks();
-
         public long BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
@@ -79,15 +74,8 @@ public class PrecompileCachedCodeInfoRepository(
         {
             ReadOnlyMemory<byte> effectiveInput = precompile.NormalizeInput(inputData);
             PreBlockCaches.PrecompileCacheKey key = new(address, effectiveInput);
-            if (cache.TryGetValue(key, out Result<byte[]> result))
-                return result;
-
-            Lock missLock = MissLocks[key.GetHashCode() & MissLockMask];
-            using (missLock.EnterScope())
+            if (!cache.TryGetValue(key, out Result<byte[]> result))
             {
-                if (cache.TryGetValue(key, out result))
-                    return result;
-
                 result = precompile.Run(inputData, releaseSpec);
 
                 // no need to spend memory on caching invalid-length inputs
@@ -102,17 +90,6 @@ public class PrecompileCachedCodeInfoRepository(
             }
 
             return result;
-        }
-
-        private static Lock[] CreateMissLocks()
-        {
-            Lock[] locks = new Lock[MissLockCount];
-            for (int i = 0; i < locks.Length; i++)
-            {
-                locks[i] = new Lock();
-            }
-
-            return locks;
         }
     }
 }
