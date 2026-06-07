@@ -319,7 +319,6 @@ public sealed class SnapshotBundle : IDisposable
         // Note: Hot path
         _trieChanged = true;
         _changedStorageNodes[(addr, path)] = newNode;
-        _transientResource.UpdateStorageNode(addr, path, newNode);
     }
 
     public void SetAccount(Address address, Account? account) =>
