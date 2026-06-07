@@ -32,7 +32,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly StateTree _stateTree;
     private readonly PreservedPatriciaTrie? _preservedPatriciaTrie;
     private readonly PreservedPatriciaTrie.Rebinder? _stateTreeRebinder;
+    private readonly PreservedStorageTries? _preservedStorageTries;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+    private List<FlatStorageTree>? _preservableStorages;
     private bool _isDisposed = false;
     private Hash256? _lastCommittedStateRoot;
 
@@ -57,6 +59,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         PreservedPatriciaTrie? preservedPatriciaTrie = null,
+        PreservedStorageTries? preservedStorageTries = null,
         bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
@@ -64,6 +67,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CodeDb = codeDb;
         _commitTarget = commitTarget;
         _preservedPatriciaTrie = preservedPatriciaTrie;
+        _preservedStorageTries = preservedStorageTries;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         Hash256 stateRoot = currentStateId.StateRoot.ToCommitment();
@@ -102,9 +106,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
         WaitForOutstandingWarmups();
+        ReturnPreservedStorageTries();
         ReturnPreservedPatriciaTrie();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
+    }
+
+    private void ReturnPreservedStorageTries()
+    {
+        if (_preservableStorages is null) return;
+
+        foreach (FlatStorageTree storage in _preservableStorages)
+        {
+            storage.Preserve();
+        }
+
+        _preservableStorages.Clear();
     }
 
     private void ReturnPreservedPatriciaTrie()
@@ -260,6 +277,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             _concurrencyQuota,
                             storageRoot,
                             address,
+                            preservedStorageTries: null,
                             _logManager);
 
                         foreach (ReadOnlySlotChanges slotChanges in storageChanges)
@@ -377,6 +395,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _concurrencyQuota,
             storageRoot,
             address,
+            _preservedStorageTries,
             _logManager);
 
         return storage;
@@ -396,10 +415,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
         _stateTree.Commit();
 
-        _storages.Clear();
-
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
+        if (shouldAddSnapshot && _preservedStorageTries is not null && _storages.Count != 0)
+        {
+            _preservableStorages ??= new List<FlatStorageTree>(_storages.Count);
+            _preservableStorages.AddRange(_storages.Values);
+        }
+
+        _storages.Clear();
         (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
 
         if (shouldAddSnapshot)
