@@ -18,7 +18,8 @@ public class MultiVersionMemoryScopeProvider(
     IWorldStateScopeProvider baseProvider,
     MultiVersionMemory multiVersionMemory,
     FeeAccumulator feeAccumulator,
-    ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites)
+    ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites,
+    BlockBaseReadCache baseReadCache)
     : IWorldStateScopeProvider
 {
     private const int InitialReadSetCapacity = 32;
@@ -44,7 +45,7 @@ public class MultiVersionMemoryScopeProvider(
         ReadSet = new HashSet<Read>(InitialReadSetCapacity);
         _pooledWriteSet.Clear();
         WriteSet = _pooledWriteSet;
-        return new MultiVersionMemoryScope(this, _version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, _writeSetLock, blockCodeWrites);
+        return new MultiVersionMemoryScope(this, _version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, _writeSetLock, blockCodeWrites, baseReadCache);
     }
 
     private PooledStorageWriteBatch RentStorageBatch(Address address)
@@ -76,7 +77,8 @@ public class MultiVersionMemoryScopeProvider(
         HashSet<Read> readSet,
         Dictionary<ParallelStateKey, object> writeSet,
         object writeSetLock,
-        ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites) : IWorldStateScopeProvider.IScope
+        ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites,
+        BlockBaseReadCache baseReadCache) : IWorldStateScopeProvider.IScope
     {
         private readonly TrackingCodeDb _codeDb = new(baseScope.CodeDb, blockCodeWrites);
 
@@ -95,7 +97,7 @@ public class MultiVersionMemoryScopeProvider(
             Account? result = status switch
             {
                 Status.ReadError => AbortParallelExecutionException.ThrowAndReturn<Account?>(in readVersion),
-                Status.NotFound => baseScope.Get(address),
+                Status.NotFound => ReadBaseAccount(address),
                 Status.Ok => (Account?)value,
                 _ => throw new ArgumentOutOfRangeException(nameof(status), status, $"Unknown multi version memory read status: {status}")
             };
@@ -131,7 +133,24 @@ public class MultiVersionMemoryScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
-            new MultiVersionMemoryStorageTree(address, version.TxIndex, baseScope.CreateStorageTree(address), multiVersionMemory, readSet);
+            new MultiVersionMemoryStorageTree(address, version.TxIndex, baseScope.CreateStorageTree(address), multiVersionMemory, readSet, baseReadCache);
+
+        /// <summary>
+        /// Read-through the shared block-base cache before going to <c>baseScope</c>. Workers
+        /// that have already faulted in this address get a dictionary hit instead of a trie /
+        /// flat-snapshot traversal. See <see cref="BlockBaseReadCache"/> for the invariant
+        /// that makes this safe.
+        /// </summary>
+        private Account? ReadBaseAccount(Address address)
+        {
+            if (baseReadCache.TryGetAccount(address, out Account? cached))
+            {
+                return cached;
+            }
+            Account? read = baseScope.Get(address);
+            baseReadCache.SetAccount(address, read);
+            return read;
+        }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
             new MultiVersionMemoryWriteBatch(owner, writeSet, writeSetLock);
@@ -196,27 +215,29 @@ public class MultiVersionMemoryScopeProvider(
             int txIndex,
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
             MultiVersionMemory multiVersionMemory,
-            HashSet<Read> readSet)
+            HashSet<Read> readSet,
+            BlockBaseReadCache baseReadCache)
             : IWorldStateScopeProvider.IStorageTree
         {
             public Hash256 RootHash => baseStorageTree.RootHash;
 
             public byte[] Get(in UInt256 index) =>
                 GetStorageValue(
-                    ParallelStateKey.ForStorage(new StorageCell(address, index)),
-                    static (scope, location) => scope.Get(location.StorageCell.Index));
+                    new StorageCell(address, index),
+                    static (scope, cell) => scope.Get(cell.Index));
 
             public void HintSet(in UInt256 index, byte[]? value) => baseStorageTree.HintSet(in index, value);
 
             public byte[] Get(in ValueHash256 hash) =>
                 GetStorageValue(
-                    ParallelStateKey.ForStorage(new StorageCell(address, hash)),
-                    static (scope, location) => scope.Get(location.StorageCell.Hash));
+                    new StorageCell(address, hash),
+                    static (scope, cell) => scope.Get(cell.Hash));
 
             private byte[] GetStorageValue(
-                ParallelStateKey location,
-                Func<IWorldStateScopeProvider.IStorageTree, ParallelStateKey, byte[]> getFromStorage)
+                StorageCell cell,
+                Func<IWorldStateScopeProvider.IStorageTree, StorageCell, byte[]> getFromStorage)
             {
+                ParallelStateKey location = ParallelStateKey.ForStorage(cell);
                 ParallelStateKey clearKey = ParallelStateKey.ForStorageClear(address);
 
                 Status valueStatus = TryRead(location, out TxVersion valueVersion, out object? value);
@@ -239,8 +260,25 @@ public class MultiVersionMemoryScopeProvider(
                     return (byte[])value!;
                 }
 
-                byte[] baseValue = getFromStorage(baseStorageTree, location);
+                byte[] baseValue = ReadBaseSlot(in cell, getFromStorage);
                 return hasClear ? VirtualMachineStatics.BytesZero : baseValue;
+            }
+
+            /// <summary>
+            /// Memoize base-storage reads through <see cref="BlockBaseReadCache"/> so the same
+            /// uncached slot doesn't get re-traversed by every worker that falls through MVMM.
+            /// Safe because the resettable storage tree under <c>baseStorageTree</c> is
+            /// read-only for the duration of the block.
+            /// </summary>
+            private byte[] ReadBaseSlot(in StorageCell cell, Func<IWorldStateScopeProvider.IStorageTree, StorageCell, byte[]> getFromStorage)
+            {
+                if (baseReadCache.TryGetStorage(in cell, out byte[] cached))
+                {
+                    return cached;
+                }
+                byte[] read = getFromStorage(baseStorageTree, cell);
+                baseReadCache.SetStorage(in cell, read);
+                return read;
             }
 
             private Status TryRead(ParallelStateKey key, out TxVersion version, out object? value)

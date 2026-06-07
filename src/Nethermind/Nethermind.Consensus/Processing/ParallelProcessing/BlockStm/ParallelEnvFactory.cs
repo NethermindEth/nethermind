@@ -15,18 +15,26 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing.BlockStm;
 public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime)
 {
     /// <summary>Builds one parallel-execution env intended to be pooled per worker for a block.</summary>
-    /// <remarks>Must not wrap in a populating prewarmer — its writes to the shared PreBlockCaches.StateCache would shadow MVMM and poison later txs.</remarks>
+    /// <remarks>
+    /// Must not wrap in a populating <c>PrewarmerScopeProvider</c>: its writes go through
+    /// <c>StartWriteBatch</c>, which would shadow MVMM and poison later txs. The
+    /// <see cref="BlockBaseReadCache"/> we do pass is read-only over the base scope — it
+    /// only memoizes the <c>Status.NotFound</c> fall-through, which is safe because the
+    /// resettable base scope is read-only during the parallel run.
+    /// </remarks>
     public ParallelAutoReadOnlyTxProcessingEnv Create(
         MultiVersionMemory multiVersionMemory,
         FeeAccumulator feeAccumulator,
         ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites,
+        BlockBaseReadCache baseReadCache,
         IReleaseSpec spec)
     {
         MultiVersionMemoryScopeProvider worldState = new(
             worldStateManager.CreateResettableWorldState(),
             multiVersionMemory,
             feeAccumulator,
-            blockCodeWrites
+            blockCodeWrites,
+            baseReadCache
         );
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope(builder =>

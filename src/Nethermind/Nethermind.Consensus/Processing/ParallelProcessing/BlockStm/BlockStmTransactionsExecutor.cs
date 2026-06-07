@@ -118,13 +118,17 @@ public class BlockStmTransactionsExecutor(
         // TrackingCodeDb captures writes here so PushChanges can replay onto the main state.
         // Codehashes are content-addressed so concurrent writes are idempotent.
         ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites = new();
+        // Shared across workers so the first read of a base account/slot warms it for the rest
+        // of the block. The base scope is read-only during the parallel run (writes go through
+        // MVMM, not through the base) so cached entries are invariant for the block.
+        BlockBaseReadCache baseReadCache = new();
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         IReleaseSpec spec = _blockExecutionContext.Spec;
         // One env per worker, reused across every tx that worker handles.
         ConcurrentBag<ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv> envPool = [];
         ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv CreateEnv() =>
-            parallelEnvFactory.Create(multiVersionMemory, feeAccumulator, blockCodeWrites, spec);
+            parallelEnvFactory.Create(multiVersionMemory, feeAccumulator, blockCodeWrites, baseReadCache, spec);
         for (int i = 0; i < _concurrencyLevel; i++)
         {
             envPool.Add(CreateEnv());
