@@ -76,7 +76,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             if (Interlocked.CompareExchange(ref _scheduled, 1, 0) != 0) return false;
 
             _owner.OnProcessorScheduled();
-            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: true);
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
             return true;
         }
 
@@ -131,9 +131,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         }
         finally
         {
-            processor.ClearScheduled();
             OnProcessorStopped();
-            if (!Volatile.Read(ref _isDisposed) && HasReadyWork()) KickProcessors();
         }
     }
 
