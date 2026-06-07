@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -140,6 +139,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
+    private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
+
     public void SelfDestruct()
     {
         _bundle.Clear(_address, _addressHash);
@@ -151,10 +152,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public void Preserve() => _preservedStorageTries?.Store(_address, _tree, _storageTreeRebinder, _tree.RootHash);
 
-    internal IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(
-        int estimatedEntries,
-        Action<Address, Hash256> onRootUpdated,
-        Action<Address, ArrayPoolList<ChangedSlot>> onSlotsChanged)
+    public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch = new(
                 estimatedEntries,
@@ -165,25 +163,18 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         return new StorageTreeBulkWriteBatch(
             storageTreeBulkWriteBatch,
-            this,
-            estimatedEntries,
-            onSlotsChanged
+            this
         );
     }
 
     private class StorageTreeBulkWriteBatch(
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
-        FlatStorageTree storageTree,
-        int estimatedEntries,
-        Action<Address, ArrayPoolList<ChangedSlot>> onSlotsChanged) : IWorldStateScopeProvider.IStorageWriteBatch
+        FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        private ArrayPoolList<ChangedSlot>? _changedSlots;
-
         public void Set(in UInt256 index, byte[] value)
         {
             storageTreeBulkWriteBatch.Set(in index, value);
-            (_changedSlots ??= new ArrayPoolList<ChangedSlot>(Math.Max(estimatedEntries, 1)))
-                .Add(new ChangedSlot(index, SnapshotBundle.ToSlotValue(value)));
+            storageTree.Set(index, value);
         }
 
         public void Clear()
@@ -192,30 +183,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             storageTree.SelfDestruct();
         }
 
-        public void Dispose()
-        {
-            ArrayPoolList<ChangedSlot>? changedSlots = _changedSlots;
-            bool transferred = false;
-
-            try
-            {
-                storageTreeBulkWriteBatch.Dispose();
-
-                if (changedSlots is not null && changedSlots.Count != 0)
-                {
-                    onSlotsChanged(storageTree._address, changedSlots);
-                    transferred = true;
-                }
-            }
-            finally
-            {
-                if (!transferred)
-                {
-                    changedSlots?.Dispose();
-                }
-
-                _changedSlots = null;
-            }
-        }
+        public void Dispose() => storageTreeBulkWriteBatch.Dispose();
     }
 }

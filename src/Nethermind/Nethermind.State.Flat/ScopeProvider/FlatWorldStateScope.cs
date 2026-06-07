@@ -454,8 +454,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
-        private readonly ConcurrentQueue<(AddressAsKey Address, ArrayPoolList<ChangedSlot> Slots)> _dirtySlots = new();
-        private HashSet<AddressAsKey>? _deletedAccounts;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
@@ -466,15 +464,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             if (account is null)
             {
-                (_deletedAccounts ??= []).Add(key);
-
                 // This may not get called by the storage write batch as the worldstate does not try to update storage
                 // at all if the end account is null. This is not a problem for trie, but is a problem for flat.
                 scope.CreateStorageTreeImpl(key).SelfDestruct();
-            }
-            else
-            {
-                _deletedAccounts?.Remove(key);
             }
         }
 
@@ -483,21 +475,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 .CreateStorageTreeImpl(address)
                 .CreateWriteBatch(
                     estimatedEntries: estimatedEntries,
-                    onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot),
-                    onSlotsChanged: MarkChangedSlots);
+                    onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot));
 
         private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
-
-        private void MarkChangedSlots(Address address, ArrayPoolList<ChangedSlot> slots) =>
-            _dirtySlots.Enqueue((address, slots));
 
         public void Dispose()
         {
             try
             {
-                FlushChangedSlots();
-
                 while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
                 {
                     (AddressAsKey key, Hash256 storageRoot) = entry;
@@ -527,9 +513,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
             finally
             {
-                DisposePendingSlotLists();
                 _dirtyAccounts.Clear();
-                _deletedAccounts?.Clear();
 
                 Interlocked.Increment(ref scope._hintSequenceId);
             }
@@ -537,32 +521,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account) =>
                 logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
-        }
-
-        private void FlushChangedSlots()
-        {
-            while (_dirtySlots.TryDequeue(out (AddressAsKey Address, ArrayPoolList<ChangedSlot> Slots) entry))
-            {
-                try
-                {
-                    if (_deletedAccounts?.Contains(entry.Address) != true)
-                    {
-                        scope._snapshotBundle.SetChangedSlots(entry.Address.Value, entry.Slots);
-                    }
-                }
-                finally
-                {
-                    entry.Slots.Dispose();
-                }
-            }
-        }
-
-        private void DisposePendingSlotLists()
-        {
-            while (_dirtySlots.TryDequeue(out (AddressAsKey Address, ArrayPoolList<ChangedSlot> Slots) entry))
-            {
-                entry.Slots.Dispose();
-            }
         }
     }
 }

@@ -12,12 +12,6 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
-internal readonly struct ChangedSlot(UInt256 index, SlotValue? value)
-{
-    public readonly UInt256 Index = index;
-    public readonly SlotValue? Value = value;
-}
-
 /// <summary>
 /// A mutable bundle wrapping a <see cref="ReadOnlySnapshotBundle"/> with a write buffer backed by <see cref="SnapshotContent"/>.
 /// </summary>
@@ -334,27 +328,20 @@ public sealed class SnapshotBundle : IDisposable
     public void CacheAccount(Address address, Account? account) =>
         _transientResource.SetAccount(address, account);
 
-    public void SetChangedSlot(Address address, in UInt256 index, byte[] value) =>
-        SetChangedSlotValue(address, in index, ToSlotValue(value));
-
-    internal void SetChangedSlots(Address address, ArrayPoolList<ChangedSlot> slots)
+    public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
     {
-        for (int i = 0; i < slots.Count; i++)
-        {
-            ref ChangedSlot slot = ref slots.GetRef(i);
-            SetChangedSlotValue(address, in slot.Index, slot.Value);
-        }
-    }
-
-    internal static SlotValue? ToSlotValue(byte[] value) =>
-        value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes)
-            ? null
-            : SlotValue.FromSpanWithoutLeadingZero(value);
-
-    private void SetChangedSlotValue(Address address, in UInt256 index, SlotValue? value)
-    {
+        // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
+        // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
+        // lower down.
         HashedKey<(Address, UInt256)> key = new((address, index));
-        _changedSlots[key] = value;
+        if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
+        {
+            _changedSlots[key] = null;
+        }
+        else
+        {
+            _changedSlots[key] = SlotValue.FromSpanWithoutLeadingZero(value);
+        }
     }
 
     // Also called SelfDestruct
