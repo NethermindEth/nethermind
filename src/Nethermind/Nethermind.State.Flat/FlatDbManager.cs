@@ -34,6 +34,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _compactorTask;
     private readonly Channel<StateId> _compactorJobs;
 
+    // And here in parallel.
+    // The node cache is kinda important for performance, so we want it populated as quickly as possible.
+    private readonly Task _populateTrieNodeCacheTask;
+    private readonly Channel<TransientResource> _populateTrieNodeCacheJobs;
+
     // Then eventually a compacted snapshot will be sent here where this will decide what to persist exactly
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
@@ -84,9 +89,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
+        _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(config.MaxInFlightCompactJob);
         _persistenceJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
 
         _compactorTask = RunCompactor(_cancelTokenSource.Token);
+        _populateTrieNodeCacheTask = RunTrieCachePopulator(_cancelTokenSource.Token);
         _persistenceTask = RunPersistence(_cancelTokenSource.Token);
         _clearBundleCacheTask = RunClearBundleCache(_cancelTokenSource.Token);
     }
@@ -156,6 +163,24 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _snapshotRepository.RemoveStatesUntil(currentPersistedStateId);
         ClearReadOnlyBundleCache();
         ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(currentPersistedStateId.BlockNumber));
+    }
+
+    private async Task RunTrieCachePopulator(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (TransientResource cachedResource in _populateTrieNodeCacheJobs.Reader.ReadAllAsync(cancellationToken))
+            {
+                await NotifyWhenSlow("Populating trie node cache", () =>
+                {
+                    PopulateTrieNodeCache(cachedResource);
+                    return Task.CompletedTask;
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     private void PopulateTrieNodeCache(TransientResource transientResource)
@@ -327,7 +352,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         else
         {
-            PopulateTrieNodeCache(transientResource);
+            if (!_populateTrieNodeCacheJobs.Writer.TryWrite(transientResource))
+            {
+                // Queue full, return to pool instead of leaking
+                _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+            }
 
             if (!_compactorJobs.Writer.TryWrite(endBlock))
             {
@@ -415,9 +444,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _cancelTokenSource.Cancel();
 
         _compactorJobs.Writer.Complete();
+        _populateTrieNodeCacheJobs.Writer.Complete();
         _persistenceJobs.Writer.Complete();
 
         await _compactorTask;
+        await _populateTrieNodeCacheTask;
         await _persistenceTask;
         await _clearBundleCacheTask;
 
