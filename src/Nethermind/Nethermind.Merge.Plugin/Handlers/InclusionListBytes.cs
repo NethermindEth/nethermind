@@ -8,11 +8,6 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-/// <summary>
-/// engine_getInclusionListV1 response: a pool-owned list of pool-owned tx byte buffers.
-/// Serializes as a JSON array of hex strings (each inner entry via ArrayPoolListByteHexConverter).
-/// Dispose returns every rented buffer — both the outer container and each inner tx-bytes list.
-/// </summary>
 public sealed class InclusionListBytes(int capacity) : IReadOnlyList<ArrayPoolList<byte>>, IDisposable
 {
     private readonly ArrayPoolList<ArrayPoolList<byte>> _items = new(capacity);

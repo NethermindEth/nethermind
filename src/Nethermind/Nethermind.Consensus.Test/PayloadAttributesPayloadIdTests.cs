@@ -10,10 +10,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
 
-/// <summary>
-/// FCUv5 calls with the same parent/timestamp but different IL must produce different
-/// payload ids — otherwise the second caller hits the producer cache and gets the wrong block.
-/// </summary>
 public class PayloadAttributesPayloadIdTests
 {
     private static BlockHeader Parent() => Build.A.BlockHeader.WithHash(TestItem.KeccakA).TestObject;
