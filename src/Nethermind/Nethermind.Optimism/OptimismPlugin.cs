@@ -55,31 +55,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public string SealEngineType => Core.SealEngineType.Optimism;
 
-    public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
-
-    public IBlockProducer InitBlockProducer()
-    {
-        StepDependencyException.ThrowIfNull(_api);
-
-        OptimismGasLimitCalculator gasLimitCalculator = new();
-
-        IBlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.CreatePersistent();
-
-        return new OptimismPostMergeBlockProducer(
-            new OptimismPayloadTxSource(),
-            producerEnv.TxSource,
-            producerEnv.ChainProcessor,
-            producerEnv.BlockTree,
-            producerEnv.ReadOnlyStateProvider,
-            gasLimitCalculator,
-            _api.SealEngine,
-            new ManualTimestamper(),
-            _api.SpecProvider,
-            _api.SpecHelper,
-            _api.LogManager,
-            _api.Config<IBlocksConfig>());
-    }
-
     #endregion
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
@@ -194,11 +169,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         return Task.CompletedTask;
     }
 
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new StandardBlockProducerRunner(
-            DefaultBlockProductionTrigger,
-            _api!.BlockTree!,
-            blockProducer);
-
     public bool MustInitialize => true;
 
     public Type ApiType => typeof(OptimismNethermindApi);
@@ -221,6 +191,10 @@ public class OptimismModule(ChainSpec chainSpec) : Module
                 .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
             .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
             .AddSingleton<ICostHelper, OptimismCostHelper>()
+
+            .AddSingleton<OptimismBlockProducerFactory>()
+            .Bind<IBlockProducerFactory, OptimismBlockProducerFactory>()
+            .Bind<IBlockProducerRunnerFactory, OptimismBlockProducerFactory>()
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()

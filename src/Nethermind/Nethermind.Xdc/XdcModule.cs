@@ -58,6 +58,9 @@ public class XdcModule : Module
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
 
             .Add<StartXdcBlockProducer>()
+            .AddSingleton<XdcBlockProducerFactory>()
+            .Bind<IBlockProducerFactory, XdcBlockProducerFactory>()
+            .Bind<IBlockProducerRunnerFactory, XdcBlockProducerFactory>()
 
 
             // stores

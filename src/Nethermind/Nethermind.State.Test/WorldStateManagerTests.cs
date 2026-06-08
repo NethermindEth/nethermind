@@ -80,6 +80,8 @@ public class WorldStateManagerTests
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IConfigProvider configProvider = new ConfigProvider();
+        // Asserts the pruning trie store's BestPersistedState reorg announcement; a patricia-only concept.
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
         int reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
         IFinalizedStateProvider manualFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
         manualFinalizedStateProvider.FinalizedBlockNumber.Returns(lastBlock - reorgDepth);

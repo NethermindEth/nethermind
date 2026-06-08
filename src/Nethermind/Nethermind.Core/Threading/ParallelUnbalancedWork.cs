@@ -184,7 +184,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Gets the shared counter for indices.
         /// </summary>
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
-        public SemaphoreSlim Event { get; } = new(initialCount: 0);
+
+        public ManualResetEventSlim Event { get; } = new(initialState: false);
         private int _activeThreads = threads;
         private int _faulted;
         private ExceptionDispatchInfo? _exception;
@@ -233,7 +234,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
 
             if (remaining == 0)
             {
-                Event.Release();
+                Event.Set();
             }
 
             return remaining;
