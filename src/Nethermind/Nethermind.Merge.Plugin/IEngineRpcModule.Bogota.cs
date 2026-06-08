@@ -3,7 +3,6 @@
 
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;

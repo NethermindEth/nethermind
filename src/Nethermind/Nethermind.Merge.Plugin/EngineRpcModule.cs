@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core.Collections;
 using Nethermind.Api;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
