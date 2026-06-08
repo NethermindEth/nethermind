@@ -188,13 +188,10 @@ internal static class InputGenerator
         _ => $"Unknown ({chainId})"
     };
 
-    internal static ISpecProvider GetSpecProvider(ulong chainId)
-    {
-        if (!ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainId, out IForkAwareSpecProvider? specProvider))
-            throw new ArgumentException($"Unknown chain id: {chainId}", nameof(chainId));
-
-        return specProvider;
-    }
+    internal static ISpecProvider GetSpecProvider(ulong chainId) =>
+        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainId, out IForkAwareSpecProvider? specProvider)
+            ? specProvider
+            : throw new ArgumentException($"Unknown chain id: {chainId}", nameof(chainId));
 
     private static SszPublicKeys[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
     {
