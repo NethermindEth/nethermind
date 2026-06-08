@@ -66,7 +66,7 @@ public static class PersistedSnapshotBuilder
     private static readonly Comparison<ValueAddress> ValueAddressComparer = (a, b) =>
         a.AsSpan.SequenceCompareTo(b.AsSpan);
 
-    public static void Build<TWriter, TReader, TPin>(Snapshot snapshot, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    public static void Build<TWriter, TReader, TPin>(Snapshot snapshot, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter bloom, HsstBTreeOptions? slotOptions = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // To stay off the LOH, we keep only the unmanaged sort keys in NativeMemoryList
         // (off-heap) and re-fetch the TrieNode value from the source ConcurrentDictionary
@@ -189,7 +189,7 @@ public static class PersistedSnapshotBuilder
 
             // Column 0x01: Per-address column keyed by raw Address. Inner sub-tags
             // 0x00..0x02 cover account RLP, self-destruct, and slots.
-            WritePerAddressColumn<TWriter, TReader, TPin>(ref outer, snapshot, sortedStorages, uniqueAddresses, blobWriter, bloom);
+            WritePerAddressColumn<TWriter, TReader, TPin>(ref outer, snapshot, sortedStorages, uniqueAddresses, blobWriter, bloom, slotOptions);
 
             // Column 0x00: Metadata
             WriteMetadataColumn<TWriter, TReader, TPin>(ref outer, snapshot, blobWriter.BlobArenaId);
@@ -260,7 +260,8 @@ public static class PersistedSnapshotBuilder
         NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages,
         NativeMemoryList<ValueAddress> uniqueAddresses,
         BlobArenaWriter blobWriter,
-        BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        BloomFilter bloom,
+        HsstBTreeOptions? slotOptions) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         const int slotPrefixLength = 30;
         const int slotSuffixLength = 32 - slotPrefixLength;
@@ -364,7 +365,7 @@ public static class PersistedSnapshotBuilder
             // tags in strictly descending order.
             {
                 ref TWriter slotWriter = ref perAddr.BeginValueWrite();
-                using HsstPartitionedBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers.Buffers, slotPrefixLength);
+                using HsstPartitionedBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers.Buffers, slotPrefixLength, slotOptions);
 
                 while (storageIdx < sortedStorages.Count &&
                     sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))

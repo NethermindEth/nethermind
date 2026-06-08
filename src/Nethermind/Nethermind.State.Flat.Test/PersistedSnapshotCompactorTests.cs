@@ -314,6 +314,58 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
+    /// Verifies the configurable upper/lower partition thresholds actually plumb through
+    /// <c>IFlatDbConfig</c> into the base build: a very low
+    /// <c>PersistedSnapshotSlotPartitionThresholdBytes</c> (plus
+    /// <c>PersistedSnapshotSlotHashtableMinBytes = 0</c>) forces a 100-distinct-prefix contract
+    /// into a hashtable-bearing partitioned (0x08) layout, and every slot still round-trips
+    /// through the real mmap reader. The config value reaching the builder without breaking
+    /// reads is the behavior under test.
+    /// </summary>
+    [Test]
+    public void Config_LowSlotPartitionThreshold_PartitionsAndRoundTrips()
+    {
+        const int slotCount = 100;
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            // 100 × 30-byte prefixes = 3000 bytes ≫ 512-byte upper threshold ⇒ several partitions.
+            FlatDbConfig config = new()
+            {
+                PersistedSnapshotSlotPartitionThresholdBytes = 512,
+                PersistedSnapshotSlotHashtableMinBytes = 0,
+            };
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 4 * 1024 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Persisted);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), config, new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            repo.LoadFromCatalog();
+
+            SnapshotContent c = new();
+            c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
+            for (int id = 1; id <= slotCount; id++)
+                c.Storages[(TestItem.AddressA, DistinctPrefixSlot(id))] = new SlotValue(DistinctPrefixSlotValue(id));
+
+            PersistedSnapshot baseSnap = repo.ConvertSnapshotToPersistedSnapshot(
+                new Snapshot(new StateId(0, Keccak.EmptyTreeHash), new StateId(1, Keccak.Compute("s1")), c, _pool, ResourcePool.Usage.MainBlockProcessing));
+            try
+            {
+                for (int id = 1; id <= slotCount; id++)
+                {
+                    SlotValue slot = default;
+                    Assert.That(baseSnap.TryGetSlot(TestItem.AddressA, DistinctPrefixSlot(id), ref slot), Is.True, $"slot {id} missing");
+                    Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(DistinctPrefixSlotValue(id)).AsReadOnlySpan.ToArray()), $"slot {id} value mismatch");
+                }
+            }
+            finally { baseSnap.Dispose(); }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir)) Directory.Delete(testDir, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Regression for the matchCount==1 byte-copy fast path in NWayMergePerAddressColumn.
     /// Each successful <c>HsstReader.TrySeek</c> narrows the reader's internal bound to
     /// the matched sub-tag's value scope, so sibling sub-tag seeks must reset the bound

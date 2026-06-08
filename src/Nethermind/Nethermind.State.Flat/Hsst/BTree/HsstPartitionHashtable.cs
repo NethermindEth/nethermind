@@ -54,7 +54,10 @@ internal static class HsstPartitionHashtable
     /// </summary>
     internal static int BucketCountLog2For(int keyCount)
     {
-        int target = Math.Max(1, (keyCount + 3) / 4);
+        // >> 2 (not / 4) keeps this module free of integer division entirely — bucket
+        // selection at lookup time is a power-of-two mask (see BucketIndex), and this
+        // build-time sizing avoids div/mod too.
+        int target = Math.Max(1, (keyCount + 3) >> 2);
         int log2 = Math.Max(1, BitOperations.Log2((uint)(target - 1)) + 1);
         return Math.Min(log2, MaxBucketCountLog2);
     }

@@ -204,4 +204,41 @@ public class HsstPartitionedBTreeTests
             Assert.That(partitioned[i].key, Is.EqualTo(Key(i)));
         }
     }
+
+    // Crossing the configurable upper threshold (PartitionThresholdBytes) is what splits the
+    // blob into multiple partitions (→ 0x08); staying under it leaves a single partition that,
+    // sub-HashtableMinBytes, degrades to a plain 0x07. Every key must read back either way.
+    [TestCase(300L, 0, 50, (byte)0x08)]            // over upper threshold → multi-partition + hashtable
+    [TestCase(300L, int.MaxValue, 50, (byte)0x08)] // over upper threshold, no hashtable → still multi-partition 0x08
+    [TestCase(4L * 1024 * 1024, 4096, 5, (byte)0x07)] // under both thresholds → single partition degrades to 0x07
+    public void Upper_Threshold_Controls_Partitioning_And_Reads_Stay_Correct(
+        long partitionThresholdBytes, int hashtableMinBytes, int count, byte expectedTail)
+    {
+        HsstBTreeOptions opts = new() { PartitionThresholdBytes = partitionThresholdBytes, HashtableMinBytes = hashtableMinBytes };
+        byte[] data = BuildPartitioned(count, opts);
+
+        Assert.That(data[^1], Is.EqualTo(expectedTail), "partition layout (0x08) must engage exactly when the upper threshold is exceeded");
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(HsstTestUtil.TryGet(data, Key(i), out byte[] value), Is.True, $"key {i} not found (incl. keys in non-first partitions)");
+            Assert.That(value, Is.EqualTo(Val(i)), $"wrong value for key {i}");
+        }
+    }
+
+    // The bucket index must be a power-of-two mask of the hash, never an integer division/modulo.
+    [Test]
+    public void BucketIndex_Uses_PowerOfTwo_Mask()
+    {
+        foreach (int log2 in new[] { 1, 2, 4, 8, 16 })
+        {
+            int numBuckets = 1 << log2;
+            for (int s = 0; s < 64; s++)
+            {
+                ulong h = HsstPartitionHashtable.Hash(Key(s));
+                int idx = HsstPartitionHashtable.BucketIndex(h, log2);
+                Assert.That(idx, Is.EqualTo((int)(h & ((1UL << log2) - 1))), "BucketIndex must equal hash & (NumBuckets-1)");
+                Assert.That(idx, Is.InRange(0, numBuckets - 1));
+            }
+        }
+    }
 }
