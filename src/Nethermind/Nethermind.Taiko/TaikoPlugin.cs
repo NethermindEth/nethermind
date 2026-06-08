@@ -121,12 +121,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public bool MustInitialize => true;
 
-    // IConsensusPlugin
-
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _) => throw new NotSupportedException();
-
-    public IBlockProducer InitBlockProducer() => throw new NotSupportedException();
-
     public string SealEngineType => Core.SealEngineType.Taiko;
 
     public IModule Module => new TaikoModule();
