@@ -323,6 +323,72 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
+    /// Persistence-side iteration over a partitioned ADDRESS column (0x0A): the bloom-rebuild
+    /// scan (<see cref="PersistedSnapshotBloomBuilder"/> → <see cref="PersistedSnapshotScanner"/>
+    /// → <see cref="HsstRefEnumerator{TReader,TPin}"/>) must walk every address entry. Builds a
+    /// partitioned-address base snapshot, rebuilds its bloom by scanning, and asserts every
+    /// address + slot key is present — i.e. the enumerator visited all partitions.
+    /// </summary>
+    [Test]
+    public void Scan_PartitionedAddressColumn_BloomRebuild_VisitsAllEntries()
+    {
+        const int addrCount = 64; // 64 × 20 = 1280 key bytes ≫ 200-byte threshold ⇒ multi-partition 0x0A
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 4 * 1024 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Persisted);
+            FlatDbConfig config = new()
+            {
+                PersistedSnapshotSlotPartitionThresholdBytes = 200,
+                PersistedSnapshotSlotHashtableMinBytes = 0,
+            };
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), config, new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            repo.LoadFromCatalog();
+
+            SnapshotContent c = new();
+            for (int id = 1; id <= addrCount; id++)
+            {
+                Address addr = DistinctAddress(id);
+                c.Accounts[addr] = Build.An.Account.WithBalance((UInt256)id).TestObject;
+                c.Storages[(addr, DistinctPrefixSlot(id))] = new SlotValue(DistinctPrefixSlotValue(id));
+            }
+
+            PersistedSnapshot baseSnap = repo.ConvertSnapshotToPersistedSnapshot(
+                new Snapshot(new StateId(0, Keccak.EmptyTreeHash), new StateId(1, Keccak.Compute("s1")), c, _pool, ResourcePool.Usage.MainBlockProcessing));
+            try
+            {
+                using WholeReadSession session = baseSnap.BeginWholeReadSession();
+                WholeReadSessionReader reader = session.GetReader();
+
+                // Precondition: the address column really is partitioned (0x0A), so the scan
+                // exercises the partitioned enumerator rather than the plain 0x01 walk.
+                Assert.That(PersistedSnapshotReader.TryGetAddressColumnBound<WholeReadSessionReader, NoOpPin>(
+                    in reader, out Bound addrCol), Is.True);
+                Span<byte> tailByte = stackalloc byte[1];
+                Assert.That(reader.TryRead(addrCol.Offset + addrCol.Length - 1, tailByte), Is.True);
+                Assert.That((IndexType)tailByte[0], Is.EqualTo(IndexType.PartitionedBTree), "address column must be multi-partition 0x0A");
+
+                // The persistence bloom-rebuild scan must visit every address (and its slot).
+                BloomFilter rebuilt = PersistedSnapshotBloomBuilder.Build(session, baseSnap, bitsPerKey: 12.0);
+                for (int id = 1; id <= addrCount; id++)
+                {
+                    Address addr = DistinctAddress(id);
+                    ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(addr);
+                    Assert.That(rebuilt.MightContain(addrKey), Is.True, $"address {id} not visited by the scan");
+                    Assert.That(rebuilt.MightContain(PersistedSnapshotBloomBuilder.SlotKey(addrKey, DistinctPrefixSlot(id))), Is.True, $"slot {id} not visited by the scan");
+                }
+            }
+            finally { baseSnap.Dispose(); }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir)) Directory.Delete(testDir, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// End-to-end of the partitioned ADDRESS column (key-after-value 0x0A / 0x0B) on the
     /// COMPACTION path. A low address-partition threshold + zero hashtable-min (both reuse the
     /// slot-options config) forces the merged 64-address column through
