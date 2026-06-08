@@ -134,26 +134,14 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            IEnumerable<BlockHeader?> GetHeaders()
+            static IEnumerable<long> BlockNumbers(long from, long count)
             {
-                int count = 0;
-                long currentNumber = fromBlock.Number;
-                long targetNumber = toBlock.Number;
-
-                while (count < maxBlockDepth && currentNumber <= targetNumber)
-                {
-                    BlockHeader? header = _blockFinder.FindHeader(currentNumber);
-                    if (header is null) yield break;
-
-                    yield return header;
-                    currentNumber++;
-                    count++;
-                }
+                for (long i = 0; i < count; i++) yield return from + i;
             }
 
             long rangeSize = Math.Min(maxBlockDepth, toBlock.Number - fromBlock.Number + 1);
             bool tryParallel = rangeSize >= _rpcConfigGetLogsThreads;
-            return FilterLogsInBlocksParallel(filter, GetHeaders(), cancellationToken, tryParallel);
+            return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), cancellationToken, tryParallel);
         }
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken) =>
