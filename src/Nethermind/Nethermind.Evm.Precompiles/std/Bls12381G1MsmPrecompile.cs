@@ -14,11 +14,11 @@ namespace Nethermind.Evm.Precompiles;
 public partial class Bls12381G1MsmPrecompile
 {
     [SkipLocalsInit]
-    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         Metrics.Bls12381G1MsmPrecompile++;
 
-        if (!ValidateInputLength(inputData, releaseSpec))
+        if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;
 
         // use Mul to optimize single point multiplication

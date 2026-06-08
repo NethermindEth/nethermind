@@ -13,7 +13,7 @@ public partial class BN254PairingCheckPrecompile
     {
         Metrics.Bn254PairingPrecompile++;
 
-        if (!ValidateInputLength(inputData, releaseSpec))
+        if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;
 
         byte[] output = new byte[32];
