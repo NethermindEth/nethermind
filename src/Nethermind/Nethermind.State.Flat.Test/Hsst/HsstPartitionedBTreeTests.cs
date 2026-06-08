@@ -280,6 +280,39 @@ public class HsstPartitionedBTreeTests
         }
     }
 
+    // The struct-of-arrays bucket (8 tags then 8 offsets) round-trips through TryInsert /
+    // MatchMask / OffsetAt, the SIMD and scalar match masks agree, tag collisions surface all
+    // matching ways, and a 9th insert overflows.
+    [Test]
+    public void Hashtable_Bucket_Codec_RoundTrips()
+    {
+        static ulong H(uint tag) => (ulong)tag << 32; // bucketCountLog2 = 0 ⇒ bucket 0; Tag(h) = tag (≥1)
+
+        Span<byte> bucket = stackalloc byte[HsstPartitionHashtable.BucketBytes];
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(5), 100), Is.True); // way 0, tag 5
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(9), 200), Is.True); // way 1, tag 9
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(5), 300), Is.True); // way 2, tag 5 (collision)
+
+        // SIMD path agrees with the scalar reference.
+        foreach (uint probe in new uint[] { 5, 9, 1234 })
+            Assert.That(HsstPartitionHashtable.MatchMask(bucket, probe), Is.EqualTo(HsstPartitionHashtable.MatchMaskScalar(bucket, probe)), $"mask mismatch for {probe}");
+
+        // tag 5 → ways 0 and 2; tag 9 → way 1; absent tag → no match.
+        Assert.That(HsstPartitionHashtable.MatchMask(bucket, 5), Is.EqualTo(0b101u));
+        Assert.That(HsstPartitionHashtable.MatchMask(bucket, 9), Is.EqualTo(0b010u));
+        Assert.That(HsstPartitionHashtable.MatchMask(bucket, 1234), Is.EqualTo(0u));
+
+        // Offsets read back from the matched ways.
+        Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 0), Is.EqualTo(100u));
+        Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 1), Is.EqualTo(200u));
+        Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 2), Is.EqualTo(300u));
+
+        // Fill to 8 ways, then the 9th overflows (best-effort drop).
+        for (uint i = 0; i < 5; i++)
+            Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(20 + i), 400 + i), Is.True);
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(99), 999), Is.False, "9th insert into a full bucket must overflow");
+    }
+
     // The bucket index must be a power-of-two mask of the hash, never an integer division/modulo.
     [Test]
     public void BucketIndex_Uses_PowerOfTwo_Mask()

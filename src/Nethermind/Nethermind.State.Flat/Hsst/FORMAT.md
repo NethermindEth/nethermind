@@ -283,18 +283,23 @@ record, so the only access after the directory seek is the bucket cache line):
 [Bucket_0][Bucket_1]…[Bucket_{NumBuckets-1}]
 ```
 
-Each bucket is **64 bytes** = 8 ways × 8 bytes; each way is
-`[Offset: u32 LE][Tag: u32 LE]`:
+Each bucket is **64 bytes** holding 8 ways in a **struct-of-arrays** layout — the 8
+tags first, then the 8 offsets — so a reader can scan all 8 tags with one 256-bit
+equality compare:
 
-- **`Offset`** is the entry's flag-byte position stored as the **backward
-  distance from the hashtable start**: `Offset = HashtableOffset − EntryOffset`
-  (entries always precede the hashtable, so the distance is positive and, within
-  one ≤ 2 GiB partition, fits in `u32`). The reader recovers the absolute entry
-  position as `entry_abs = hashtable_abs − Offset` where `hashtable_abs =
-  bound.Offset + HashtableOffset`.
-- **`Tag`** is `(u32)(hash >> 32)`, forced to be ≥ 1. **`Tag == 0` marks an
-  empty way.** Live ways are filled from way 0 upward, so a reader may stop
-  scanning a bucket at the first empty way.
+```
+[Tag_0: u32 LE]…[Tag_7: u32 LE][Offset_0: u32 LE]…[Offset_7: u32 LE]
+```
+
+- **`Tag_i`** is `(u32)(hash >> 32)`, forced to be ≥ 1. **`Tag == 0` marks an empty
+  way.** Since live tags are ≥ 1, an equality scan for a target tag never matches an
+  empty way. Way `i`'s tag sits at byte `i·4`.
+- **`Offset_i`** is the entry's flag-byte position stored as the **backward distance
+  from the hashtable start**: `Offset = HashtableOffset − EntryOffset` (entries
+  always precede the hashtable, so the distance is positive and, within one ≤ 2 GiB
+  partition, fits in `u32`). It sits at byte `32 + i·4`. The reader recovers the
+  absolute entry position as `entry_abs = hashtable_abs − Offset` where
+  `hashtable_abs = bound.Offset + HashtableOffset`.
 - `bucket = hash & (NumBuckets − 1)`; `hash` is the 64-bit mixing hash of the
   full key (the writer and reader share one hash function).
 - The table is **best-effort**: if more than 8 keys land in one bucket, the
@@ -308,10 +313,11 @@ Each bucket is **64 bytes** = 8 ways × 8 bytes; each way is
    whole-blob bound) for the largest partition-first-key ≤ the target → the
    20+prefix metadata record.
 2. If `HashtableBucketCountLog2 > 0`: `bucket = hash & (NumBuckets − 1)`; read the
-   64-byte bucket at `bound.Offset + HashtableOffset + bucket·64`; scan its 8 ways
-   for `Tag == (u32)(hash >> 32)`. On a tag match, decode the entry at
-   `bound.Offset + HashtableOffset − Offset` and verify the full key; on success
-   the lookup is done. Stop at the first empty way (`Tag == 0`).
+   64-byte bucket at `bound.Offset + HashtableOffset + bucket·64`; compare all 8
+   tags against `(u32)(hash >> 32)` (one 256-bit equality compare) to get a mask of
+   matching ways. For each matching way, decode the entry at
+   `bound.Offset + HashtableOffset − Offset` and verify the full key; on the first
+   verified match the lookup is done.
 3. On any hashtable miss (absent table, no tag match, or key mismatch), descend
    the inner B-tree from `InnerRootOffset` (bounded above by `InnerScopeEnd`,
    seeded with `InnerRootPrefix`).

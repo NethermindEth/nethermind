@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.State.Flat.Hsst.BTree;
@@ -154,17 +155,18 @@ internal static class HsstPartitionedBTreeReader
             Span<byte> bucketBuf = stackalloc byte[HsstPartitionHashtable.BucketBytes];
             if (reader.TryRead(bucketAbs, bucketBuf))
             {
-                for (int way = 0; way < HsstPartitionHashtable.WaysPerBucket; way++)
+                // One 256-bit equality scan over the 8 tags → a bitmask of candidate ways.
+                uint matchMask = HsstPartitionHashtable.MatchMask(bucketBuf, tag);
+                while (matchMask != 0)
                 {
-                    uint wayTag = HsstPartitionHashtable.WayTag(bucketBuf, way);
-                    if (wayTag == 0) break; // empty way → no further live entries in this bucket
-                    if (wayTag != tag) continue;
-                    long entryAbs = bound.Offset + hashtableOffset - HsstPartitionHashtable.WayOffset(bucketBuf, way);
+                    int way = BitOperations.TrailingZeroCount(matchMask);
+                    long entryAbs = bound.Offset + hashtableOffset - HsstPartitionHashtable.OffsetAt(bucketBuf, way);
                     // DecodeEntry verifies the full key under exactMatch, so a tag collision
-                    // with a different key returns false and we keep scanning.
+                    // with a different key returns false and we try the next matching way.
                     if (HsstBTreeReader.DecodeEntry<TReader, TPin>(in reader, bound, entryAbs, key,
                             exactMatch: true, keyFirst: true, keyLength, out resultBound))
                         return true;
+                    matchMask &= matchMask - 1;
                 }
             }
         }

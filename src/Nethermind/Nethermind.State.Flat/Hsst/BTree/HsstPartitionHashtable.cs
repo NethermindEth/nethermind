@@ -5,6 +5,8 @@ using System;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 namespace Nethermind.State.Flat.Hsst.BTree;
 
@@ -15,22 +17,25 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// <see cref="HsstPartitionedBTreeReader"/>.
 /// </summary>
 /// <remarks>
-/// A hashtable is an array of <see cref="NumBuckets"/> cache-line buckets. Each bucket is
-/// <see cref="BucketBytes"/> (64) bytes = <see cref="WaysPerBucket"/> (8) ways of
-/// <see cref="WayBytes"/> (8) bytes; each way is <c>[Offset: u32 LE][Tag: u32 LE]</c>.
-/// <c>Tag == 0</c> marks an empty way; live placements force the tag to be ≥ 1 and fill a
-/// bucket from way 0 upward, so a reader may stop at the first empty way. <c>Offset</c> is
-/// the entry's flag-byte position stored as the backward distance from the hashtable start
+/// A hashtable is an array of cache-line buckets. Each bucket is <see cref="BucketBytes"/>
+/// (64) bytes laid out struct-of-arrays so the tags can be scanned with one SIMD compare:
+/// <c>[Tag_0..Tag_7: 8×u32 LE][Offset_0..Offset_7: 8×u32 LE]</c> (tags in <c>[0,32)</c>,
+/// offsets in <c>[32,64)</c>). <c>Tag == 0</c> marks an empty way; live placements force the
+/// tag to be ≥ 1, so the equality scan never matches an empty way. <c>Offset_i</c> is the
+/// entry's flag-byte position stored as the backward distance from the hashtable start
 /// (<c>Offset = HashtableOffset − EntryOffset</c>), recovered as
 /// <c>entry_abs = hashtable_abs − Offset</c>. The table is best-effort: a key whose bucket
-/// already holds 8 live ways is dropped, and the reader falls back to the partition's
-/// inner B-tree.
+/// already holds 8 live tags is dropped, and the reader falls back to the partition's inner
+/// B-tree.
 /// </remarks>
 internal static class HsstPartitionHashtable
 {
     internal const int BucketBytes = 64;
     internal const int WaysPerBucket = 8;
-    internal const int WayBytes = 8;
+    /// <summary>Byte width of a tag / an offset slot (both u32).</summary>
+    internal const int SlotBytes = 4;
+    /// <summary>Byte offset of the offsets section within a bucket (the tags fill <c>[0, 32)</c>).</summary>
+    internal const int OffsetsSectionStart = WaysPerBucket * SlotBytes;
 
     /// <summary>
     /// Fixed size of a directory metadata record (before the inner-root prefix bytes):
@@ -119,7 +124,7 @@ internal static class HsstPartitionHashtable
     /// <summary>
     /// Insert <paramref name="backwardOffset"/> (= HashtableOffset − EntryOffset, must fit
     /// u32) into <paramref name="buckets"/> for <paramref name="hash"/>. Returns false on
-    /// bucket overflow (8 live ways) — the caller drops the key (best-effort).
+    /// bucket overflow (8 live tags) — the caller drops the key (best-effort).
     /// </summary>
     internal static bool TryInsert(Span<byte> buckets, int bucketCountLog2, ulong hash, long backwardOffset)
     {
@@ -128,22 +133,39 @@ internal static class HsstPartitionHashtable
         Span<byte> b = buckets.Slice(bucket * BucketBytes, BucketBytes);
         for (int way = 0; way < WaysPerBucket; way++)
         {
-            Span<byte> slot = b.Slice(way * WayBytes, WayBytes);
-            if (BinaryPrimitives.ReadUInt32LittleEndian(slot[4..]) != 0) continue; // occupied
-            BinaryPrimitives.WriteUInt32LittleEndian(slot, (uint)backwardOffset);
-            BinaryPrimitives.WriteUInt32LittleEndian(slot[4..], tag);
+            Span<byte> tagSlot = b.Slice(way * SlotBytes, SlotBytes);
+            if (BinaryPrimitives.ReadUInt32LittleEndian(tagSlot) != 0) continue; // occupied
+            BinaryPrimitives.WriteUInt32LittleEndian(tagSlot, tag);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(OffsetsSectionStart + way * SlotBytes, SlotBytes), (uint)backwardOffset);
             return true;
         }
         return false;
     }
 
-    /// <summary>Tag stored in way <paramref name="way"/> of a 64-byte <paramref name="bucket"/> (0 = empty).</summary>
+    /// <summary>
+    /// Bit mask of the ways in <paramref name="bucket"/> whose tag equals <paramref name="tag"/>
+    /// (bit <c>i</c> set ⇒ way <c>i</c> matches). Scans all 8 tags with a single 256-bit
+    /// equality compare where supported; empty ways (tag 0) never match a live tag (≥ 1).
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static uint WayTag(scoped ReadOnlySpan<byte> bucket, int way) =>
-        BinaryPrimitives.ReadUInt32LittleEndian(bucket.Slice(way * WayBytes + 4, 4));
+    internal static uint MatchMask(scoped ReadOnlySpan<byte> bucket, uint tag) =>
+        Vector256.IsHardwareAccelerated && BitConverter.IsLittleEndian
+            ? Vector256.Equals(Vector256.LoadUnsafe(ref MemoryMarshal.GetReference(bucket)).AsUInt32(), Vector256.Create(tag))
+                .ExtractMostSignificantBits()
+            : MatchMaskScalar(bucket, tag);
 
-    /// <summary>Backward offset stored in way <paramref name="way"/> of a 64-byte <paramref name="bucket"/>.</summary>
+    /// <summary>Endian-correct scalar equivalent of <see cref="MatchMask"/> (fallback + test cross-check).</summary>
+    internal static uint MatchMaskScalar(scoped ReadOnlySpan<byte> bucket, uint tag)
+    {
+        uint mask = 0;
+        for (int way = 0; way < WaysPerBucket; way++)
+            if (BinaryPrimitives.ReadUInt32LittleEndian(bucket.Slice(way * SlotBytes, SlotBytes)) == tag)
+                mask |= 1u << way;
+        return mask;
+    }
+
+    /// <summary>Backward offset stored for way <paramref name="way"/> of a 64-byte <paramref name="bucket"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static uint WayOffset(scoped ReadOnlySpan<byte> bucket, int way) =>
-        BinaryPrimitives.ReadUInt32LittleEndian(bucket.Slice(way * WayBytes, 4));
+    internal static uint OffsetAt(scoped ReadOnlySpan<byte> bucket, int way) =>
+        BinaryPrimitives.ReadUInt32LittleEndian(bucket.Slice(OffsetsSectionStart + way * SlotBytes, SlotBytes));
 }
