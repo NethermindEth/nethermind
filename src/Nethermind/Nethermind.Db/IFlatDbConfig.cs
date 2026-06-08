@@ -28,7 +28,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Flat db layout", DefaultValue = "Flat")]
     FlatLayout Layout { get; set; }
 
-    [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
+    [ConfigItem(Description = "Maximum number of compaction jobs that may be queued ahead of block processing. When the queue is full, block commit blocks until the compactor drains. Set to 0 (or less) for an unbounded queue that never blocks block processing (use only when compaction reliably keeps up, e.g. small CompactSize).", DefaultValue = "32")]
     int MaxInFlightCompactJob { get; set; }
 
     [ConfigItem(Description = "Max reorg depth", DefaultValue = "256")]
@@ -36,6 +36,9 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     int MinReorgDepth { get; set; }
+
+    [ConfigItem(Description = "Lower bound, in bytes, for the RocksDB write buffer (memtable) size of the flat-state columns. The per-batch adjuster never shrinks a column's memtable below this value. Raising it lets frequent small persistence batches (small CompactSize) coalesce and deduplicate in the memtable instead of churning L0, decoupling write amplification from CompactSize.", DefaultValue = "16777216")]
+    long PersistenceWriteBufferFloor { get; set; }
 
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }

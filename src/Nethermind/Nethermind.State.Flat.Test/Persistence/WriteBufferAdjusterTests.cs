@@ -79,6 +79,35 @@ public class WriteBufferAdjusterTests
         _columnDb.Received(expectedSetWriteBufferCallCount).SetWriteBuffer(Arg.Any<long>());
     }
 
+    [Test]
+    public void OnBatchDisposed_WithRaisedFloor_DoesNotShrinkBelowFloor()
+    {
+        const long floor = 128L * 1024 * 1024;
+        WriteBufferAdjuster sut = new(_db, floor);
+
+        // A tiny batch would normally be clamped down to the 16 MB default floor; the configured floor wins.
+        WriteBufferAdjuster.CountingWriteBatch store = (WriteBufferAdjuster.CountingWriteBatch)sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+        store.Set(new byte[20], null);
+        sut.OnBatchDisposed();
+
+        _columnDb.Received(1).SetWriteBuffer(floor);
+    }
+
+    [Test]
+    public void OnBatchDisposed_WithFloorAboveCap_AllowsGrowthUpToFloor()
+    {
+        const long floor = 512L * 1024 * 1024; // above the 256 MB per-batch cap
+        WriteBufferAdjuster sut = new(_db, floor);
+
+        // With floor above the growth cap, the effective range collapses to [floor, floor]; any write must not
+        // throw (Math.Clamp requires min <= max) and must resolve to the floor.
+        WriteBufferAdjuster.CountingWriteBatch store = (WriteBufferAdjuster.CountingWriteBatch)sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+        store.Set(new byte[64], null);
+        sut.OnBatchDisposed();
+
+        _columnDb.Received(1).SetWriteBuffer(floor);
+    }
+
     private sealed class StubWriteBatch : IWriteBatch
     {
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = default) { }

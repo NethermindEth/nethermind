@@ -6,9 +6,9 @@ using Nethermind.Db;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
+public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, IFlatDbConfig? config = null) : IPersistence
 {
-    private readonly WriteBufferAdjuster _adjuster = new(db);
+    private readonly WriteBufferAdjuster _adjuster = new(db, config?.PersistenceWriteBufferFloor ?? WriteBufferAdjuster.DefaultWriteBufferFloor);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
 
     public void Flush() => db.Flush();
