@@ -30,7 +30,7 @@ internal sealed partial class PersistentStorageProvider
         // provider's per-address storage map (non-concurrent Dictionary), so concurrent
         // creation would race. Pre-resolve the write batches here, then hand items into the
         // worker pool for ProcessStorageChanges (which is the expensive part — it walks each
-        // tree's dirty paths and BulkSets writes on Dispose).
+        // We can recalculate the roots in parallel as they are all independent tries
         using ArrayPoolList<(
             AddressAsKey Key, PerContractState ContractState,
             IWorldStateScopeProvider.IStorageWriteBatch WriteBatch
