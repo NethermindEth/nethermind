@@ -30,7 +30,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0)
         : this(arrayPool, capacity, startingCount, clearFirst: true) { }
 
-    private ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount, bool clearFirst)
+    private ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount, bool clearFirst = true)
     {
         _arrayPool = arrayPool;
 
