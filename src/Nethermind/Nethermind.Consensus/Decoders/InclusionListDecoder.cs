@@ -35,11 +35,6 @@ public class InclusionListDecoder(
         return buffer;
     }
 
-    /// <summary>
-    /// Pool-rented variant of <see cref="Encode(Transaction)"/>. The returned list's
-    /// <see cref="ArrayPoolList{T}.Count"/> equals the exact RLP length (so JSON hex serialisation
-    /// writes only that many bytes, not the larger rented buffer). Caller owns disposal.
-    /// </summary>
     public static ArrayPoolList<byte> EncodePooled(Transaction transaction)
     {
         TxDecoder decoder = TxDecoder.Instance;
