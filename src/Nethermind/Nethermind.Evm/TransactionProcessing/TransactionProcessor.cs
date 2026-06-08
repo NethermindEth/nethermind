@@ -231,9 +231,21 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
 
-            return useSimpleTransferFastPath
-                ? ExecuteSimpleTransfer(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, recipient!, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee)
-                : ExecuteEvmTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee, preloadedCodeInfo, preloadedDelegationAddress);
+            if (ShouldExecuteEvm(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas,
+                    gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee,
+                    preloadedCodeInfo, preloadedDelegationAddress,
+                    out TransactionResult transactionResult))
+            {
+                transactionResult = useSimpleTransferFastPath
+                    ? ExecuteSimpleTransfer(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount,
+                        recipient!, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas,
+                        in senderReservedGasPayment, in blobBaseFee)
+                    : ExecuteEvmTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount,
+                        in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment,
+                        in blobBaseFee, preloadedCodeInfo, preloadedDelegationAddress);
+            }
+
+            return transactionResult;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -465,7 +477,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void UpdateHeaderGasUsedAndPayFees(
+        protected void UpdateHeaderGasUsedAndPayFees(
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
@@ -496,7 +508,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private TransactionResult FinalizeTransaction(
+        protected TransactionResult FinalizeTransaction(
             Transaction tx,
             IReleaseSpec spec,
             ITxTracer tracer,
@@ -578,6 +590,30 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             gasAvailable = TGasPolicy.CreateAvailableFromIntrinsic(tx.GasLimit, intrinsicGas.Standard, spec);
             return TransactionResult.Ok;
+        }
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected virtual bool ShouldExecuteEvm(Transaction tx,
+            BlockHeader header,
+            IReleaseSpec spec,
+            ITxTracer tracer,
+            ExecutionOptions opts,
+            bool restore,
+            bool commit,
+            bool deleteCallerAccount,
+            in IntrinsicGas<TGasPolicy> intrinsicGas,
+            TGasPolicy gasAvailable,
+            in UInt256 opcodeGasPrice,
+            in UInt256 premiumPerGas,
+            in UInt256 senderReservedGasPayment,
+            in UInt256 blobBaseFee,
+            CodeInfo? preloadedCodeInfo,
+            Address? preloadedDelegationAddress,
+            out TransactionResult transactionResult)
+        {
+            transactionResult = TransactionResult.Ok;
+            return true;
         }
 
         private TransactionResult Apply8037DelegationRefunds(
