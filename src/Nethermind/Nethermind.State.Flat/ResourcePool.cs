@@ -19,9 +19,7 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
     private readonly Dictionary<Usage, ResourcePoolCategory> _categories = new()
     {
         // For main BlockProcessing once a compacted snapshot is persisted, all `flatConfig.CompactSize` snapshot content will be returned.
-        // Cached resources are returned asynchronously after trie-node cache population, so keep enough warm resources
-        // to cover the in-flight queue without allowing the pool to grow beyond the matching snapshot-content pool.
-        { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, flatConfig.CompactSize + 8, GetMainCachedResourcePoolSize(flatConfig)) },
+        { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, flatConfig.CompactSize + 8, 2) },
 
         // PostMainBlockProcessing is a special usage right after the commit of `MainBlockProcessing` which only commit once and never modified.
         { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1) },
@@ -45,9 +43,6 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
     };
 
     public SnapshotContent GetSnapshotContent(Usage usage) => _categories[usage].GetSnapshotContent();
-
-    private static int GetMainCachedResourcePoolSize(IFlatDbConfig flatConfig) =>
-        Math.Clamp(flatConfig.MaxInFlightCompactJob, 2, flatConfig.CompactSize + 8);
 
     public void ReturnSnapshotContent(Usage usage, SnapshotContent snapshotContent) => _categories[usage].ReturnSnapshotContent(snapshotContent);
 

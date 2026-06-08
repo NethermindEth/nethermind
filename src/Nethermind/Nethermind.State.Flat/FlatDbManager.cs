@@ -89,7 +89,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
-        _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(config.MaxInFlightCompactJob);
+        _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(1);
         _persistenceJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
 
         _compactorTask = RunCompactor(_cancelTokenSource.Token);
