@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
@@ -15,7 +15,7 @@ internal sealed partial class PersistentStorageProvider
 {
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
-        if (_toUpdateRoots.Count >= 16)
+        if (_toUpdateRoots.Count >= 3)
             UpdateRootHashesMultiThread(writeBatch);
         else
             UpdateRootHashesSingleThread(writeBatch);
@@ -24,22 +24,20 @@ internal sealed partial class PersistentStorageProvider
     private void UpdateRootHashesMultiThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
         // We can recalculate the roots in parallel as they are all independent tries
-        using ArrayPoolList<StorageRootUpdate> storages = new(_toUpdateRoots.Count);
-        foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
-        {
-            if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges) continue;
-
-            storages.Add(new StorageRootUpdate(kvp.Key, kvp.Value));
-        }
-
-        // Schedule larger changes first to help balance the work.
-        storages.Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
-
-        for (int i = 0; i < storages.Count; i++)
-        {
-            ref StorageRootUpdate storage = ref storages.GetRef(i);
-            storage.WriteBatch = writeBatch.CreateStorageWriteBatch(storage.Key, storage.ContractState.EstimatedChanges);
-        }
+        using ArrayPoolList<(
+            AddressAsKey Key, PerContractState ContractState,
+            IWorldStateScopeProvider.IStorageWriteBatch WriteBatch
+            )> storages = _storages
+                // Only consider contracts that actually have pending changes
+                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
+                // Schedule larger changes first to help balance the work
+                .OrderByDescending(kv => kv.Value.EstimatedChanges)
+                .Select((kv) => (
+                    kv.Key,
+                    kv.Value,
+                    writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
+                ))
+                .ToPooledList(_storages.Count);
 
         ParallelUnbalancedWork.For(
             0,
@@ -48,8 +46,8 @@ internal sealed partial class PersistentStorageProvider
             (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
             static (i, state) =>
             {
-                ref StorageRootUpdate kvp = ref state.storages.GetRef(i);
-                (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch!);
+                ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) kvp = ref state.storages.GetRef(i);
+                (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
 
                 if (writes == 0)
                 {
@@ -70,10 +68,4 @@ internal sealed partial class PersistentStorageProvider
         );
     }
 
-    private struct StorageRootUpdate(AddressAsKey key, PerContractState contractState)
-    {
-        public readonly AddressAsKey Key = key;
-        public readonly PerContractState ContractState = contractState;
-        public IWorldStateScopeProvider.IStorageWriteBatch? WriteBatch;
-    }
 }
