@@ -97,6 +97,15 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                 }
                 matched = default;
                 return false;
+            case IndexType.PartitionedBTreeKeyFirst:
+                if (HsstPartitionedBTreeReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound partBound))
+                {
+                    _bound = partBound;
+                    matched = partBound;
+                    return true;
+                }
+                matched = default;
+                return false;
             case IndexType.PackedArray:
                 if (HsstPackedArrayReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound flatBound))
                 {

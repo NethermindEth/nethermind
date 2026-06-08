@@ -140,7 +140,16 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <see cref="Add"/>.
     /// </para>
     /// </remarks>
-    public HsstBTreeBuilder(ref TWriter writer, ref HsstBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false)
+    /// <param name="baseOffsetOverride">
+    /// Reference origin for every offset this builder records (entry index pointers and
+    /// node child offsets). Defaults (<c>-1</c>) to the writer position at construction —
+    /// i.e. this HSST's own byte 0, the standalone case. A composite container that nests
+    /// several builders into one larger blob (the partitioned builder) passes the
+    /// container's byte 0 so all partitions and the directory share one byte-0-relative
+    /// coordinate system readable with a single whole-blob bound. Page-alignment math is
+    /// unaffected (it keys off <see cref="IByteBufferWriter.FirstOffset"/>, not this).
+    /// </param>
+    public HsstBTreeBuilder(ref TWriter writer, ref HsstBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false, long baseOffsetOverride = -1)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(keyLength, -1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLength, 255);
@@ -148,7 +157,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         HsstBTreeOptions opts = options ?? HsstBTreeOptions.Default;
 
         _writer = ref writer;
-        _baseOffset = _writer.Written;
+        _baseOffset = baseOffsetOverride >= 0 ? baseOffsetOverride : _writer.Written;
         _options = opts;
         _keyLength = keyLength;
         _keyFirst = keyFirst;
@@ -283,7 +292,16 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// FullKey byte 0 (EntryStart).
     /// </summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value) =>
-        AddImpl(key, value, requireAligned: false);
+        AddImpl(key, value, requireAligned: false, out _);
+
+    /// <summary>
+    /// <see cref="Add(System.ReadOnlySpan{byte},System.ReadOnlySpan{byte})"/> that also
+    /// outs the entry's recorded index pointer — <c>EntryStart</c> (FullKey/flag byte) in
+    /// key-first mode, <c>MetadataStart</c> otherwise — measured from this builder's base
+    /// offset. Used by the partitioned builder to populate its per-partition hashtable.
+    /// </summary>
+    public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value, out long entryStart) =>
+        AddImpl(key, value, requireAligned: false, out entryStart);
 
     /// <summary>
     /// Try to add an entry such that the whole entry block — the key, its LEB128
@@ -309,10 +327,20 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// without a signal, use <see cref="Add"/>.
     /// </summary>
     public bool TryAddAligned(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value) =>
-        AddImpl(key, value, requireAligned: true);
+        AddImpl(key, value, requireAligned: true, out _);
 
-    private bool AddImpl(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value, bool requireAligned)
+    /// <summary>
+    /// <see cref="TryAddAligned(System.ReadOnlySpan{byte},System.ReadOnlySpan{byte})"/>
+    /// that also outs the entry's recorded index pointer on success
+    /// (see <see cref="Add(System.ReadOnlySpan{byte},System.ReadOnlySpan{byte},out long)"/>);
+    /// <paramref name="entryStart"/> is <c>-1</c> when the aligned add is rejected.
+    /// </summary>
+    public bool TryAddAligned(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value, out long entryStart) =>
+        AddImpl(key, value, requireAligned: true, out entryStart);
+
+    private bool AddImpl(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value, bool requireAligned, out long entryStart)
     {
+        entryStart = -1;
         ref HsstBTreeBuilderBuffers bufs = ref Buffers;
         // +1 for the leading per-entry flag byte.
         int lebSize = Leb128.EncodedSize((long)value.Length);
@@ -320,7 +348,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         int lcp = MaybeFlushBeforeEntry(ref bufs, key, entryLen);
         // requireAligned==false: best-effort alignment, entry lands unaligned on failure.
         if (!TryAlign(entryLen) && requireAligned) return false;
-        AddCore(ref bufs, key, value, lebSize, lcp);
+        AddCore(ref bufs, key, value, lebSize, lcp, out entryStart);
         return true;
     }
 
@@ -349,7 +377,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <see cref="OnEntryAdded"/> so the per-key
     /// LCP loop runs once per buffered <see cref="Add"/>.
     /// </summary>
-    private void AddCore(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value, int lebSize, int precomputedLcp)
+    private void AddCore(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value, int lebSize, int precomputedLcp, out long entryStartOut)
     {
         if (_keyLength < 0)
         {
@@ -403,6 +431,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         }
         _writer.Advance(totalLen);
 
+        entryStartOut = entryPos;
         EmitEntryBookkeeping(ref bufs, key, entryPos, precomputedLcp);
     }
 
@@ -444,7 +473,64 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// HSST (the builder enforces uniformity); 0 when the build was empty and no length
     /// was declared.
     /// </summary>
-    public unsafe void Build()
+    public void Build() => Build(indexTypeOverride: null);
+
+    /// <summary>
+    /// Build the index region and append the trailer. <paramref name="indexTypeOverride"/>
+    /// replaces the trailer's final <see cref="IndexType"/> byte when non-null — used by
+    /// the partitioned builder to stamp its directory B-tree as
+    /// <see cref="IndexType.PartitionedBTreeKeyFirst"/> while reusing the ordinary
+    /// key-first build. When null the byte is the natural
+    /// <see cref="IndexType.BTreeKeyFirst"/> / <see cref="IndexType.BTree"/> for this builder.
+    /// </summary>
+    public void Build(IndexType? indexTypeOverride)
+    {
+        int rootSize = BuildIndexCore(out int rootPrefixLen);
+
+        // Trailing layout: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
+        // IndexType is the last byte of the HSST. Empty builds (_keyLength still -1
+        // because no Add() / FinishValueWrite was called) record KeyLength = 0 and
+        // RootPrefixLen = 0; the reader never decodes any keys in that case.
+        // CopyRootPrefixBytes writes the prefix bytes directly into the head of the
+        // trailer span — no intermediate buffer needed.
+        int trailerKeyLength = _keyLength < 0 ? 0 : _keyLength;
+        int trailerLen = 5 + rootPrefixLen;
+        Span<byte> tail = _writer.GetSpan(trailerLen);
+        if (rootPrefixLen > 0) CopyRootPrefixBytes(tail[..rootPrefixLen]);
+        tail[rootPrefixLen] = (byte)rootPrefixLen;
+        tail[rootPrefixLen + 1] = (byte)rootSize;
+        tail[rootPrefixLen + 2] = (byte)(rootSize >> 8);
+        tail[rootPrefixLen + 3] = (byte)trailerKeyLength;
+        tail[rootPrefixLen + 4] = (byte)(indexTypeOverride ?? (_keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree));
+        _writer.Advance(trailerLen);
+    }
+
+    /// <summary>
+    /// Build the index region but write <b>no trailer</b>, surfacing the root descriptor so
+    /// a composite container (the partitioned builder) can record it externally and place
+    /// further bytes (e.g. a hashtable, or the next partition) immediately after the index.
+    /// Returns the root node's common-prefix length, copying those prefix bytes into
+    /// <paramref name="rootPrefixDest"/>; outs the root node's base-relative start offset
+    /// (<paramref name="rootOffset"/>) and its byte length (<paramref name="rootSize"/>).
+    /// On return the writer sits immediately past the index region.
+    /// </summary>
+    public int BuildIndexOnly(out long rootOffset, out int rootSize, scoped Span<byte> rootPrefixDest)
+    {
+        rootSize = BuildIndexCore(out int rootPrefixLen);
+        // The root is the last node written, so its first byte sits rootSize bytes back
+        // from the current writer position; express it relative to this builder's base.
+        rootOffset = (_writer.Written - rootSize) - _baseOffset;
+        if (rootPrefixLen > 0) CopyRootPrefixBytes(rootPrefixDest[..rootPrefixLen]);
+        return rootPrefixLen;
+    }
+
+    /// <summary>
+    /// Shared by <see cref="Build(IndexType?)"/> and <see cref="BuildIndexOnly"/>: flush
+    /// trailing entries, run the single-entry post-process, build the B-tree index region,
+    /// and validate the root fits the trailer fields. Returns the root node byte size and
+    /// outs its common-prefix length.
+    /// </summary>
+    private int BuildIndexCore(out int rootPrefixLen)
     {
         int maxIntermediateEntries = _options.MaxIntermediateEntries;
         int maxIntermediateBytes = _options.MaxIntermediateBytes;
@@ -476,29 +562,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // FlushPendingNotOnCurrentPage). BuildIndex propagates first-keys as it walks
         // up the tree, so no read-back is required.
         int rootSize = BuildIndex(absoluteIndexStart, maxIntermediateEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
-        int rootPrefixLen = _rootPrefixLen;
+        rootPrefixLen = _rootPrefixLen;
 
         if ((uint)rootSize > ushort.MaxValue)
             throw new InvalidOperationException($"Root node size {rootSize} exceeds u16 trailer field");
         if ((uint)rootPrefixLen > byte.MaxValue)
             throw new InvalidOperationException($"Root prefix length {rootPrefixLen} exceeds u8 trailer field");
-
-        // Trailing layout: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
-        // IndexType is the last byte of the HSST. Empty builds (_keyLength still -1
-        // because no Add() / FinishValueWrite was called) record KeyLength = 0 and
-        // RootPrefixLen = 0; the reader never decodes any keys in that case.
-        // CopyRootPrefixBytes writes the prefix bytes directly into the head of the
-        // trailer span — no intermediate buffer needed.
-        int trailerKeyLength = _keyLength < 0 ? 0 : _keyLength;
-        int trailerLen = 5 + rootPrefixLen;
-        Span<byte> tail = _writer.GetSpan(trailerLen);
-        if (rootPrefixLen > 0) CopyRootPrefixBytes(tail[..rootPrefixLen]);
-        tail[rootPrefixLen] = (byte)rootPrefixLen;
-        tail[rootPrefixLen + 1] = (byte)rootSize;
-        tail[rootPrefixLen + 2] = (byte)(rootSize >> 8);
-        tail[rootPrefixLen + 3] = (byte)trailerKeyLength;
-        tail[rootPrefixLen + 4] = (byte)(_keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree);
-        _writer.Advance(trailerLen);
+        return rootSize;
     }
 
     /// <summary>

@@ -63,4 +63,16 @@ public enum IndexType : byte
     /// builder requires <c>Add(key, valueSpan)</c>.
     /// </summary>
     BTreeKeyFirst = 0x07,
+    /// <summary>
+    /// Partitioned key-first B-tree HSST. The blob is split into K partitions, each a
+    /// self-contained <see cref="BTreeKeyFirst"/>-shaped data + index region optionally
+    /// followed by a 64-byte-aligned 8-way hashtable; a trailing directory B-tree maps
+    /// each partition's first key to its metadata (inner root offset, scope end, hashtable
+    /// offset + bucket count). A reader floor-seeks the directory, then either probes the
+    /// partition hashtable in a single cache-line read (jumping straight to the entry) or,
+    /// on a miss, falls back to walking the partition's inner B-tree. Selected for the
+    /// large slot-prefix HSSTs whose deep B-tree walk is memory-latency bound. See
+    /// FORMAT.md for the full layout / lookup procedure.
+    /// </summary>
+    PartitionedBTreeKeyFirst = 0x08,
 }

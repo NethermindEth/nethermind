@@ -43,7 +43,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
-    private enum VariantKind : byte { Empty, PackedArray, BTree, BTreeKeyFirst, TwoByteSlotValue, TwoByteSlotValueLarge }
+    private enum VariantKind : byte { Empty, PackedArray, BTree, BTreeKeyFirst, PartitionedBTreeKeyFirst, TwoByteSlotValue, TwoByteSlotValueLarge }
 
     // Struct envelope: only thing that needs to live on the value is the
     // discriminator and the variant references. All mutable
@@ -53,6 +53,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     private readonly VariantKind _kind;
     private readonly HsstPackedArrayEnumerator<TReader, TPin>? _packed;
     private readonly HsstBTreeEnumerator<TReader, TPin>? _btree;
+    private readonly HsstPartitionedBTreeEnumerator<TReader, TPin>? _partitioned;
     private readonly HsstTwoByteSlotValueEnumerator<TReader, TPin>? _tbsv;
     private readonly HsstTwoByteSlotValueLargeEnumerator<TReader, TPin>? _tbsvLarge;
 
@@ -85,6 +86,10 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             case IndexType.BTreeKeyFirst:
                 _btree = new HsstBTreeEnumerator<TReader, TPin>(in reader, scope, keyFirst: true);
                 _kind = VariantKind.BTreeKeyFirst;
+                break;
+            case IndexType.PartitionedBTreeKeyFirst:
+                _partitioned = new HsstPartitionedBTreeEnumerator<TReader, TPin>(in reader, scope);
+                _kind = VariantKind.PartitionedBTreeKeyFirst;
                 break;
             // DenseByteIndex is used for the persisted-snapshot outer + per-address
             // containers, which the merge code accesses directly via TryGet rather
@@ -147,6 +152,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         VariantKind.PackedArray => _packed!.Count,
         VariantKind.BTree => _btree!.Count,
         VariantKind.BTreeKeyFirst => _btree!.Count,
+        VariantKind.PartitionedBTreeKeyFirst => _partitioned!.Count,
         VariantKind.TwoByteSlotValue => _tbsv!.Count,
         VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.Count,
         _ => 0,
@@ -157,6 +163,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         VariantKind.PackedArray => _packed!.MoveNext(),
         VariantKind.BTree => _btree!.MoveNext(in reader),
         VariantKind.BTreeKeyFirst => _btree!.MoveNext(in reader),
+        VariantKind.PartitionedBTreeKeyFirst => _partitioned!.MoveNext(in reader),
         VariantKind.TwoByteSlotValue => _tbsv!.MoveNext(in reader),
         VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.MoveNext(in reader),
         _ => false,
@@ -172,6 +179,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         VariantKind.PackedArray => _packed!.CurrentKey,
         VariantKind.BTree => _btree!.CurrentKey,
         VariantKind.BTreeKeyFirst => _btree!.CurrentKey,
+        VariantKind.PartitionedBTreeKeyFirst => _partitioned!.CurrentKey,
         VariantKind.TwoByteSlotValue => _tbsv!.CurrentKey,
         VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentKey,
         _ => default,
@@ -225,6 +233,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         VariantKind.PackedArray => _packed!.CurrentValue,
         VariantKind.BTree => _btree!.CurrentValue,
         VariantKind.BTreeKeyFirst => _btree!.CurrentValue,
+        VariantKind.PartitionedBTreeKeyFirst => _partitioned!.CurrentValue,
         VariantKind.TwoByteSlotValue => _tbsv!.CurrentValue,
         VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentValue,
         _ => default,
@@ -235,6 +244,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         VariantKind.PackedArray => _packed!.CurrentMetadataStart,
         VariantKind.BTree => _btree!.CurrentMetadataStart,
         VariantKind.BTreeKeyFirst => _btree!.CurrentMetadataStart,
+        VariantKind.PartitionedBTreeKeyFirst => _partitioned!.CurrentMetadataStart,
         VariantKind.TwoByteSlotValue => _tbsv!.CurrentMetadataStart,
         VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentMetadataStart,
         _ => 0,

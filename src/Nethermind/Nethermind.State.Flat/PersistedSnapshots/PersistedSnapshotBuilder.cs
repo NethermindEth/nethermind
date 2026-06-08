@@ -281,7 +281,7 @@ public static class PersistedSnapshotBuilder
         // ArrayPool / NativeMemory once per slot subtree. Using the container class
         // (rather than a stack local) lets us pass `ref Buffers` into the builder ctor
         // and have the container's `using` handle Dispose at scope end.
-        using HsstBTreeBuilderBuffersContainer slotPrefixBuffers = new();
+        using HsstPartitionedBTreeBuilderBuffersContainer slotPrefixBuffers = new();
 
         // Pooled staging buffer for the per-prefix sub-slot HSST. The slot-prefix
         // BTree is built in key-first mode (IndexType.BTreeKeyFirst) so its outer
@@ -364,7 +364,7 @@ public static class PersistedSnapshotBuilder
             // tags in strictly descending order.
             {
                 ref TWriter slotWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers.Buffers, slotPrefixLength, keyFirst: true);
+                using HsstPartitionedBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers.Buffers, slotPrefixLength);
 
                 while (storageIdx < sortedStorages.Count &&
                     sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))

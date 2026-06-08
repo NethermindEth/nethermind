@@ -78,6 +78,38 @@ public sealed record HsstBTreeOptions
     /// byte-length gate.</summary>
     public int MinIntermediateBytes { get; init; } = DefaultMinIntermediateBytes;
 
+    /// <summary>Default per-partition key-bytes budget for the partitioned
+    /// (<see cref="IndexType.PartitionedBTreeKeyFirst"/>) builder — once the running sum
+    /// of entry key bytes reaches this, the partition is closed at the next group
+    /// boundary and a fresh one starts. 4 MiB.</summary>
+    public const long DefaultPartitionThresholdBytes = 4L * 1024 * 1024;
+
+    /// <summary>Hard cap on a single partition's on-disk span for the partitioned
+    /// builder. The per-partition hashtable stores each entry as a backward
+    /// <c>u32</c> distance from the hashtable start, so every entry must sit below
+    /// 4 GiB before its partition's hashtable; 2 GiB leaves headroom for the inner
+    /// index + alignment that follow the data region. This is a correctness bound,
+    /// not a tuning knob.</summary>
+    public const long DefaultPartitionMaxSpanBytes = 2L * 1024 * 1024 * 1024;
+
+    /// <summary>Default minimum partition key-bytes below which the partitioned
+    /// builder skips the per-partition hashtable entirely — a one- or two-level
+    /// B-tree already reaches the entry, so a hashtable would not help. 4 KiB.</summary>
+    public const int DefaultHashtableMinBytes = 4 * 1024;
+
+    /// <summary>Per-partition key-bytes budget for the partitioned builder; a partition
+    /// is closed once the running sum of its entry key bytes reaches this.</summary>
+    public long PartitionThresholdBytes { get; init; } = DefaultPartitionThresholdBytes;
+
+    /// <summary>Hard cap on a single partition's on-disk span (see
+    /// <see cref="DefaultPartitionMaxSpanBytes"/>); the builder closes a partition before
+    /// it can exceed this regardless of <see cref="PartitionThresholdBytes"/>.</summary>
+    public long PartitionMaxSpanBytes { get; init; } = DefaultPartitionMaxSpanBytes;
+
+    /// <summary>Minimum partition key-bytes below which no per-partition hashtable is
+    /// written (the inner B-tree alone is used).</summary>
+    public int HashtableMinBytes { get; init; } = DefaultHashtableMinBytes;
+
     /// <summary>Shared default instance — used when callers pass <c>null</c>.</summary>
     public static HsstBTreeOptions Default { get; } = new();
 }

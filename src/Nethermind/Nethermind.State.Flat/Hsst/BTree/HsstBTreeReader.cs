@@ -167,7 +167,7 @@ internal static class HsstBTreeReader
     /// derives the value position back-referentially from <c>flagByteStart − valueLength</c>.
     /// </summary>
     [SkipLocalsInit]
-    private static bool DecodeEntry<TReader, TPin>(
+    internal static bool DecodeEntry<TReader, TPin>(
         scoped in TReader reader, Bound bound, long absFlagByteStart,
         scoped ReadOnlySpan<byte> key, bool exactMatch, bool keyFirst,
         int trailerKeyLength, out Bound resultBound)
