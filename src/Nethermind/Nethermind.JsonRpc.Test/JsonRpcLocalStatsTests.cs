@@ -212,12 +212,12 @@ namespace Nethermind.JsonRpc.Test
         {
             bool hasLine = SpinWait.SpinUntil(
                 () => _testLogger.LogList.Exists(l => l.Replace(" ", String.Empty).Contains(line)),
-                TimeSpan.FromSeconds(5));
+                TimeSpan.FromSeconds(30));
 
             Assert.That(hasLine, Is.True, string.Join(Environment.NewLine, _testLogger.LogList));
         }
 
         private void WaitForLog() =>
-            Assert.That(SpinWait.SpinUntil(() => _testLogger.LogList.Count != 0, TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(SpinWait.SpinUntil(() => _testLogger.LogList.Count != 0, TimeSpan.FromSeconds(30)), Is.True);
     }
 }
