@@ -220,10 +220,9 @@ namespace Nethermind.Xdc
 
             if (!IsMyTurn(proposalParent, round, proposalSpec)) return;
 
-            // If the HighestQC block is a fork that was never processed, build its state now before proposing.
-            // ForceProcessing bypasses the IsBetterThanHead TD check (fork has equal TD to head).
-            // We wait for BlockRemoved rather than NewHeadBlock — the block producer takes proposalParent
-            // explicitly, so no head update is needed, just the state.
+            // HighestQC fork block has never been processed — build its state now so we can propose on top of it.
+            // ForceProcessing + DoNotUpdateHead: bypass the TD check and skip head update (only state matters).
+            // XdcBlockTree never reorgs to equal-TD non-self-mined blocks; block producer uses proposalParent directly.
             if (!_stateReader.HasStateForBlock(proposalParent))
             {
                 Block? unprocessedParent = _blockTree.FindBlock(proposalParent.Hash!, BlockTreeLookupOptions.None, blockNumber: proposalParent.Number);
@@ -245,7 +244,7 @@ namespace Nethermind.Xdc
                 _processingQueue.BlockRemoved += OnBlockRemoved;
                 try
                 {
-                    await _processingQueue.Enqueue(unprocessedParent, ProcessingOptions.ForceProcessing);
+                    await _processingQueue.Enqueue(unprocessedParent, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead);
                     ProcessingResult result = await tcs.Task.WaitAsync(ct);
                     if (result != ProcessingResult.Success)
                     {

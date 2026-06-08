@@ -252,15 +252,15 @@ internal class ProposedBlockTests
 
         Assert.That(result, Is.EqualTo(AddBlockResult.Added));
 
-        Assert.That(mainChain.StateReader.HasStateForBlock(mainBlock.Header),  Is.True);
-        Assert.That(mainChain.StateReader.HasStateForBlock(forkBlock.Header),  Is.False);
+        Assert.That(mainChain.StateReader.HasStateForBlock(mainBlock.Header), Is.True);
+        Assert.That(mainChain.StateReader.HasStateForBlock(externalForkBlock.Header), Is.False);
 
         mainChain.StartHotStuffModule();
 
         mainChain.CreateAndCommitQC((XdcBlockHeader)forkBlock.Header);
         await mainChain.TriggerBlockProposal();
 
-        Assert.That(mainChain.StateReader.HasStateForBlock(forkBlock.Header), Is.True);
+        Assert.That(mainChain.StateReader.HasStateForBlock(externalForkBlock.Header), Is.True);
         Assert.That(mainChain.BlockTree.Head!.Header.ParentHash, Is.EqualTo(externalForkBlock.Hash));
     }
 }
