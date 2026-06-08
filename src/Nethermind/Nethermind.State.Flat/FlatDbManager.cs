@@ -126,10 +126,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
 
-        if (_snapshotCompactor.DoCompactSnapshot(stateId))
-        {
-            ClearReadOnlyBundleCache();
-        }
+        // Compacted snapshots are an alternate assembly of the same state range; cached read-only bundles remain
+        // valid and are cleared on persistence or by the periodic cache sweep.
+        _snapshotCompactor.DoCompactSnapshot(stateId);
 
         // Trigger persistence job.
         await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
