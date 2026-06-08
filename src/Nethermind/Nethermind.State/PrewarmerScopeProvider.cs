@@ -44,22 +44,30 @@ public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     PreBlockCaches preBlockCaches,
     ILogManager logManager,
-    bool isPrewarmer = true
+    bool isPrewarmer = true,
+    PrewarmerReadDeduplicator? readDeduplicator = null
 ) : IWorldStateScopeProvider, IPreBlockCaches
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, logManager, isPrewarmer);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+        => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, logManager, isPrewarmer, readDeduplicator);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !isPrewarmer;
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(
+        IWorldStateScopeProvider.IScope baseScope,
+        PreBlockCaches preBlockCaches,
+        ILogManager logManager,
+        bool isPrewarmer,
+        PrewarmerReadDeduplicator? readDeduplicator) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
+        private readonly PrewarmerReadDeduplicator? readDeduplicator = readDeduplicator;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels = isPrewarmer ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
@@ -81,7 +89,8 @@ public class PrewarmerScopeProvider(
                 baseScope.CreateStorageTree(address),
                 storageCache,
                 address,
-                isPrewarmer);
+                isPrewarmer,
+                readDeduplicator);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
@@ -187,12 +196,14 @@ public class PrewarmerScopeProvider(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
-        bool isPrewarmer) : IWorldStateScopeProvider.IStorageTree
+        bool isPrewarmer,
+        PrewarmerReadDeduplicator? readDeduplicator) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
         private readonly Address address = address;
         private readonly bool isPrewarmer = isPrewarmer;
+        private readonly PrewarmerReadDeduplicator? readDeduplicator = readDeduplicator;
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels = isPrewarmer ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
@@ -210,9 +221,17 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                value = LoadFromTreeStorage(in storageCell);
-                // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
-                preBlockCache.Set(in storageCell, value);
+                if (readDeduplicator is not null && isPrewarmer)
+                {
+                    value = LoadFromTreeStorageDeduplicated(in storageCell);
+                }
+                else
+                {
+                    value = LoadFromTreeStorage(in storageCell);
+                    // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
+                    preBlockCache.Set(in storageCell, value);
+                }
+
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
             return value;
@@ -227,6 +246,23 @@ public class PrewarmerScopeProvider(
             return !storageCell.IsHash
                 ? baseStorageTree.Get(storageCell.Index)
                 : baseStorageTree.Get(storageCell.Hash);
+        }
+
+        private byte[] LoadFromTreeStorageDeduplicated(in StorageCell storageCell)
+        {
+            System.Threading.Lock gate = readDeduplicator!.GetStorageLock(in storageCell);
+            using (gate.EnterScope())
+            {
+                if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
+                {
+                    Db.Metrics.IncrementStorageTreeCache();
+                    return value;
+                }
+
+                value = LoadFromTreeStorage(in storageCell);
+                preBlockCache.Set(in storageCell, value);
+                return value;
+            }
         }
 
         public byte[] Get(in ValueHash256 hash) =>
