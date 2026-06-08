@@ -7,6 +7,14 @@ using Nethermind.Stateless.Execution.IO;
 
 namespace Nethermind.Stateless.Execution;
 
+/// <remarks>
+/// Stateless fixtures can pin a named fork independently of the base chain's transition schedule.
+/// For activations at or after the supplied active fork, <see cref="GetSpec(ForkActivation)"/> returns
+/// the pinned release spec; earlier activations continue to use the base provider.
+/// Merge transition metadata (<see cref="MergeBlockNumber"/>, <see cref="TerminalTotalDifficulty"/>)
+/// remains delegated to the base provider, so it can describe the underlying chain schedule rather than
+/// the pinned stateless fork.
+/// </remarks>
 internal sealed class StatelessSpecProvider(
     IForkAwareSpecProvider baseProvider,
     ForkActivation activeForkActivation,
@@ -28,6 +36,8 @@ internal sealed class StatelessSpecProvider(
     public ulong NetworkId => baseProvider.NetworkId;
 
     public ulong ChainId => baseProvider.ChainId;
+
+    public string SealEngine => baseProvider.SealEngine;
 
     public ForkActivation[] TransitionActivations => baseProvider.TransitionActivations;
 
