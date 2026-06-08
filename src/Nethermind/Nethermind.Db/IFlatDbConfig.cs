@@ -28,7 +28,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Flat db layout", DefaultValue = "Flat")]
     FlatLayout Layout { get; set; }
 
-    [ConfigItem(Description = "Maximum number of compaction jobs that may be queued ahead of block processing. When the queue is full, block commit blocks until the compactor drains. Set to 0 (or less) for an unbounded queue that never blocks block processing (use only when compaction reliably keeps up, e.g. small CompactSize).", DefaultValue = "32")]
+    [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
     int MaxInFlightCompactJob { get; set; }
 
     [ConfigItem(Description = "Max reorg depth", DefaultValue = "256")]

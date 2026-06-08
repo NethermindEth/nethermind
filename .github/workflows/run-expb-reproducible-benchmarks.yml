@@ -603,6 +603,13 @@ jobs:
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
 
+          # Default the FlatDb write-buffer floor to 64 MB for flat-layout benchmarks unless explicitly
+          # overridden. Stops small-CompactSize persistence batches from shrinking RocksDB memtables, which
+          # cuts write amplification under back-to-back payloads. Override via additional_extra_flags.
+          if [[ "${STATE_LAYOUT:-}" == "flat" ]] && ! grep -qi "PersistenceWriteBufferFloor" "${flags_file}"; then
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"--FlatDb.PersistenceWriteBufferFloor=67108864\"]" "${RENDERED_CONFIG_FILE}"
+          fi
+
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
       - name: Install or upgrade expb
@@ -1668,6 +1675,13 @@ jobs:
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
+
+          # Default the FlatDb write-buffer floor to 64 MB for flat-layout benchmarks unless explicitly
+          # overridden. Stops small-CompactSize persistence batches from shrinking RocksDB memtables, which
+          # cuts write amplification under back-to-back payloads. Override via additional_extra_flags.
+          if [[ "${STATE_LAYOUT:-}" == "flat" ]] && ! grep -qi "PersistenceWriteBufferFloor" "${flags_file}"; then
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"--FlatDb.PersistenceWriteBufferFloor=67108864\"]" "${RENDERED_CONFIG_FILE}"
+          fi
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 

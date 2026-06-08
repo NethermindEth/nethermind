@@ -88,13 +88,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
-        // MaxInFlightCompactJob <= 0 means an unbounded queue: AddSnapshot never blocks block processing waiting
-        // for the compactor to drain. Only safe when compaction reliably keeps up (e.g. small CompactSize), otherwise
-        // snapshots accumulate in memory without backpressure.
-        int maxInFlight = config.MaxInFlightCompactJob;
-        _compactorJobs = maxInFlight <= 0 ? Channel.CreateUnbounded<StateId>() : Channel.CreateBounded<StateId>(maxInFlight);
+        _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
         _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(1);
-        _persistenceJobs = maxInFlight <= 0 ? Channel.CreateUnbounded<StateId>() : Channel.CreateBounded<StateId>(maxInFlight);
+        _persistenceJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
 
         _compactorTask = RunCompactor(_cancelTokenSource.Token);
         _populateTrieNodeCacheTask = RunTrieCachePopulator(_cancelTokenSource.Token);
