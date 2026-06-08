@@ -93,6 +93,37 @@ public class DatabasePurgerTests
         Assert.DoesNotThrow(() => DatabasePurger.Purge(missing, preserveNetwork: true, _logger));
     }
 
+    [Test]
+    public void DeleteOrphan_removes_directory_when_present()
+    {
+        string orphan = Path.Combine(_tempDir, "bloom");
+        Directory.CreateDirectory(orphan);
+        File.WriteAllText(Path.Combine(orphan, "0000.bloom"), "stale");
+
+        DatabasePurger.DeleteOrphan(_tempDir, "bloom", _logger);
+
+        Assert.That(Directory.Exists(orphan), Is.False);
+    }
+
+    [Test]
+    public void DeleteOrphan_is_noop_when_directory_missing()
+    {
+        Assert.DoesNotThrow(() => DatabasePurger.DeleteOrphan(_tempDir, "bloom", _logger));
+        Assert.That(Directory.Exists(_tempDir), Is.True, "other databases must be untouched");
+    }
+
+    [Test]
+    public void DeleteOrphan_does_not_touch_other_directories()
+    {
+        string orphan = Path.Combine(_tempDir, "bloom");
+        Directory.CreateDirectory(orphan);
+
+        DatabasePurger.DeleteOrphan(_tempDir, "bloom", _logger);
+
+        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.State)), Is.True);
+        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.PeersDb)), Is.True);
+    }
+
     private static void CreateTestDbLayout(string basePath)
     {
         // Chain databases
