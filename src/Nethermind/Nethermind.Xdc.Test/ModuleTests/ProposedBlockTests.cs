@@ -216,7 +216,7 @@ internal class ProposedBlockTests
         using XdcTestBlockchain forkChain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true, keys: keys);
 
 
-        int blockCount = 0;
+        int blockCount = 10;
 
         for (int i = 0; i < blockCount; i++)
         {

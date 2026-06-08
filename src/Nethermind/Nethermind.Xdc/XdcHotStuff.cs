@@ -257,7 +257,12 @@ namespace Nethermind.Xdc
                 {
                     _processingQueue.BlockRemoved -= OnBlockRemoved;
                 }
-                // fall through — state is now available
+
+                if (!_stateReader.HasStateForBlock(proposalParent))
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Round {round}: state still unavailable for #{proposalParent.Number} after processing, skipping proposal.");
+                    return;
+                }
             }
 
             if (!TryAdvance(ref _highestSelfMinedRound, (long)round)) return;
