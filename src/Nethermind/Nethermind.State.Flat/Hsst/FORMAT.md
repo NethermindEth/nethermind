@@ -45,7 +45,7 @@ A compact, immutable binary format for sorted key/value tables.
 | **TwoByteSlotValueLarge** | `[IndexType: u8 = 0x06][KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u24 LE]…[Offset_{N-1}: u24 LE][Value_0]…[Value_{N-1}]` |
 | **BTreeKeyFirst** | `[Data Region (key-first entries + inline page-local leaves)][Index Region (intermediates only)][RootPrefix: RootPrefixLen bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x07]` |
 | **PartitionedBTreeKeyFirst** | `[Partition_0]…[Partition_{K-1}][Directory Index Region][DirRootPrefix: DirRootPrefixLen bytes][DirRootPrefixLen: u8][DirRootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x08]` (each partition = `[key-first Data Region][Inner Index Region][(pad to 64)][Hashtable]`; see its section) |
-| **SinglePartitionHashtableBTreeKeyFirst** | `[key-first Data Region][Inner Index Region][(pad to 64)][Hashtable][InnerRootPrefix: prefixLen bytes][Metadata: 26 bytes][KeyLength: u8][IndexType: u8 = 0x09]` (the single-partition form of 0x08: no directory; the partition metadata sits in the trailer — see its section) |
+| **SinglePartitionHashtableBTreeKeyFirst** | `[key-first Data Region][Inner Index Region][(pad to 64)][Hashtable][InnerRootPrefix: prefixLen bytes][Metadata: 28 bytes][KeyLength: u8][IndexType: u8 = 0x09]` (the single-partition form of 0x08: no directory; the partition metadata sits in the trailer — see its section) |
 
 The **index type byte** selects the variant by enumerated value (not a
 bitfield). For every variant except `TwoByteSlotValue` /
@@ -254,11 +254,11 @@ start), so a partition's inner index can be walked with the whole-blob bound.
 are each partition's **first key** and whose values are a fixed partition
 metadata record. It shares the partitioned HSST's `0x08` trailer (so a tail-byte
 read dispatches the whole blob, and a directory floor-seek reuses the ordinary
-`0x07` tree-walk over the whole-blob bound). The metadata record is **26 bytes**
+`0x07` tree-walk over the whole-blob bound). The metadata record is **28 bytes**
 plus the inner root's prefix bytes:
 
 ```
-[InnerRootOffset: 6 LE][InnerScopeEnd: 6 LE][HashtableOffset: 6 LE][DataRegionStart: 6 LE][HashtableBucketCountLog2: u8][InnerRootPrefixLen: u8][InnerRootPrefix: InnerRootPrefixLen bytes]
+[InnerRootOffset: 6 LE][InnerScopeEnd: 6 LE][HashtableOffset: 6 LE][DataRegionStart: 6 LE][HashtableBucketCount: u24][InnerRootPrefixLen: u8][InnerRootPrefix: InnerRootPrefixLen bytes]
 ```
 
 - **`InnerRootOffset`** — byte-0-relative start of the partition's inner B-tree
@@ -266,13 +266,13 @@ plus the inner root's prefix bytes:
 - **`InnerScopeEnd`** — byte-0-relative end of the partition's Inner Index
   Region (the upper edge available to that partition's nodes).
 - **`HashtableOffset`** — byte-0-relative, 64-byte-aligned start of the
-  partition's hashtable. Only meaningful when `HashtableBucketCountLog2 > 0`.
+  partition's hashtable. Only meaningful when `HashtableBucketCount > 0`.
 - **`DataRegionStart`** — byte-0-relative start of the partition's data section
   (its first entry). The reader recovers a hashtable hit's entry as
   `bound.Offset + DataRegionStart + Offset_i`. (= 0 for partition 0 / the single
   `0x09` partition.)
-- **`HashtableBucketCountLog2`** — `NumBuckets = 1 << HashtableBucketCountLog2`
-  (always ≥ 2); the hashtable region spans `NumBuckets · 64` bytes. `0` is the
+- **`HashtableBucketCount`** — the **exact** number of buckets (a `u24`, *not* a
+  power of two); the hashtable region spans `NumBuckets · 64` bytes. `0` is the
   in-format "no hashtable" sentinel (the reader would go straight to the inner
   B-tree), but **the writer never emits it for a partition**: a hashtable-less
   table is emitted as a plain `0x07` blob (no partitioning), so once a blob is
@@ -305,8 +305,10 @@ Each bucket is **64 bytes** holding 12 ways in a **struct-of-arrays** layout —
   budget; within one data section < 16 MiB this fits `u24`). It sits at byte
   `24 + i·3`. The reader recovers the absolute entry position as
   `entry_abs = bound.Offset + DataRegionStart + Offset`.
-- `bucket = hash & (NumBuckets − 1)`; `hash` is the 64-bit mixing hash of the
-  full key (the writer and reader share one hash function).
+- `bucket = ((u64)(hash & 0xFFFFFFFF) · NumBuckets) >> 32` — Lemire's multiply-shift
+  reduction of the uniform low 32 bits into `[0, NumBuckets)` (one multiply, no
+  div/mod), so `NumBuckets` can be any value, not a power of two. `hash` is the
+  64-bit mixing hash of the full key (writer and reader share one hash function).
 - The table is **best-effort**: if more than 12 keys land in one bucket, the
   overflow keys are simply not placed — a reader that fails to find its key in
   the bucket (no matching tag, or a matching tag whose entry key differs) falls
@@ -317,8 +319,8 @@ Each bucket is **64 bytes** holding 12 ways in a **struct-of-arrays** layout —
 1. Floor-seek the directory B-tree (tail-dispatch `0x08`, key-first walk over the
    whole-blob bound) for the largest partition-first-key ≤ the target → the
    26+prefix metadata record.
-2. If `HashtableBucketCountLog2 > 0`: `bucket = hash & (NumBuckets − 1)`; read the
-   64-byte bucket at `bound.Offset + HashtableOffset + bucket·64`; compare all 12
+2. If `HashtableBucketCount > 0`: `bucket = ((u64)(hash & 0xFFFFFFFF) · NumBuckets) >> 32`;
+   read the 64-byte bucket at `bound.Offset + HashtableOffset + bucket·64`; compare all 12
    tags against `(u16)(hash >> 48)` (one 256-bit equality compare) to get a mask of
    matching ways. For each matching way, decode the entry at
    `bound.Offset + DataRegionStart + Offset` and verify the full key; on the first
@@ -341,7 +343,7 @@ sorted order.
 - The hashtable costs `NumBuckets · 64` bytes per large partition (≈ 7 bytes per
   key at the builder's ~75% target load over 12-way buckets) but never has to be
   resident in full — only the one bucket a lookup touches. `NumBuckets` is a
-  builder choice recorded per partition in `HashtableBucketCountLog2`; the wire
+  builder choice recorded per partition in `HashtableBucketCount`; the wire
   format does not pin the load factor.
 
 ### SinglePartitionHashtableBTreeKeyFirst variant
@@ -354,19 +356,19 @@ partition's metadata is written straight into the trailer:
 
 ```
 [key-first Data Region][Inner Index Region][(pad to 64)][Hashtable]
-[InnerRootPrefix: prefixLen bytes][Metadata: 26 bytes][KeyLength: u8][IndexType: u8 = 0x09]
+[InnerRootPrefix: prefixLen bytes][Metadata: 28 bytes][KeyLength: u8][IndexType: u8 = 0x09]
 ```
 
 The Data Region, Inner Index Region, and Hashtable are byte-for-byte the same as a
 single `0x08` partition (all offsets byte-0-relative; hashtable ways and bucket
-layout identical). `Metadata` is the same 26-byte record a `0x08` directory would
+layout identical). `Metadata` is the same 28-byte record a `0x08` directory would
 have stored as the partition's value —
-`[InnerRootOffset: 6 LE][InnerScopeEnd: 6 LE][HashtableOffset: 6 LE][DataRegionStart: 6 LE][HashtableBucketCountLog2: u8][InnerRootPrefixLen: u8]`
+`[InnerRootOffset: 6 LE][InnerScopeEnd: 6 LE][HashtableOffset: 6 LE][DataRegionStart: 6 LE][HashtableBucketCount: u24][InnerRootPrefixLen: u8]`
 (`DataRegionStart` = 0 here) — and `InnerRootPrefix` carries the inner root's
 common-prefix bytes. The prefix is placed **before** the fixed record so a reader
-scanning from the tail reads the 26-byte record first (at `HSST_end − 2 − 26`),
+scanning from the tail reads the 28-byte record first (at `HSST_end − 2 − 28`),
 learns `InnerRootPrefixLen`, then reads the prefix (at
-`HSST_end − 2 − 26 − InnerRootPrefixLen`).
+`HSST_end − 2 − 28 − InnerRootPrefixLen`).
 
 **Lookup procedure** (exact match): read the trailer metadata, then — identical to
 the `0x08` per-partition steps — probe the hashtable bucket and, on a miss, descend
@@ -953,7 +955,7 @@ Tests that pin the wire format (rename / re-anchor when bytes move):
   `IndexType_Byte_Is_BTreeKeyFirst_At_Tail` and round-trip tests for the
   key-first variant (`0x07`).
 - `Nethermind.State.Flat.Test/Hsst/HsstPartitionedBTreeTests.cs` —
-  `IndexType_Byte_Is_PartitionedBTreeKeyFirst_At_Tail`, the 26-byte directory
+  `IndexType_Byte_Is_PartitionedBTreeKeyFirst_At_Tail`, the 28-byte directory
   record / 64-byte hashtable layout, multi-partition split, hashtable hit,
   collision/overflow→fallback, and enumeration-order parity for the partitioned
   variant (`0x08`); the single-partition-with-hashtable trailer (`0x09`) and its

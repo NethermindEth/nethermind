@@ -47,17 +47,18 @@ internal static class HsstPartitionHashtable
     /// <summary>
     /// Fixed size of a directory / single-partition metadata record (before the inner-root
     /// prefix bytes):
-    /// <c>[InnerRootOffset: 6][InnerScopeEnd: 6][HashtableOffset: 6][DataRegionStart: 6][HashtableBucketCountLog2: u8][InnerRootPrefixLen: u8]</c>.
+    /// <c>[InnerRootOffset: 6][InnerScopeEnd: 6][HashtableOffset: 6][DataRegionStart: 6][HashtableBucketCount: u24][InnerRootPrefixLen: u8]</c>.
     /// </summary>
-    internal const int DirRecordFixedSize = 26;
+    internal const int DirRecordFixedSize = 28;
 
-    /// <summary>Hard cap on the bucket-count log2 (16M buckets ≈ 1 GiB) — a runaway guard;
-    /// real partitions are bounded by the key-bytes / span thresholds well below this.</summary>
-    internal const int MaxBucketCountLog2 = 24;
+    /// <summary>Hard cap on the bucket count (≈ 16 M buckets, ≈ 1 GiB region) — a runaway guard
+    /// that fits the u24 record field; real partitions are bounded by the key-bytes / 16 MiB
+    /// span thresholds well below this.</summary>
+    internal const int MaxBucketCount = (1 << 24) - 1;
 
     /// <summary>Target hashtable load factor (keys / total ways), as a percent. Higher packs
     /// keys more densely (less memory) at the cost of more bucket overflow → more B-tree
-    /// fallback on lookups. Drives <see cref="BucketCountLog2For"/>'s sizing only; the
+    /// fallback on lookups. Drives <see cref="BucketCountFor"/>'s sizing only; the
     /// lookup-time bucket selection (<see cref="BucketIndex"/>) is unaffected.</summary>
     internal const int TargetUtilizationPercent = 75;
 
@@ -65,27 +66,22 @@ internal static class HsstPartitionHashtable
     /// <see cref="TargetUtilizationPercent"/> (= 12 × 75% = 9).</summary>
     internal const int TargetKeysPerBucket = WaysPerBucket * TargetUtilizationPercent / 100;
 
-    /// <summary>Byte size of a hashtable with <paramref name="bucketCountLog2"/> buckets.</summary>
+    /// <summary>Byte size of a hashtable with <paramref name="bucketCount"/> buckets.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static long RegionSize(int bucketCountLog2) => (long)BucketBytes << bucketCountLog2;
+    internal static long RegionSize(int bucketCount) => (long)bucketCount * BucketBytes;
 
     /// <summary>
-    /// Pick the bucket-count log2 for a partition of <paramref name="keyCount"/> keys: the
-    /// smallest power of two whose 12-way capacity meets the <see cref="TargetUtilizationPercent"/>
-    /// load (buckets ≈ ceil(keyCount / <see cref="TargetKeysPerBucket"/>)). Always ≥ 1 (so
-    /// NumBuckets ≥ 2, keeping log2 = 0 free as the "no hashtable" sentinel), capped at
-    /// <see cref="MaxBucketCountLog2"/>. The divide here is build-time sizing only; lookup-time
-    /// bucket selection (<see cref="BucketIndex"/>) stays a power-of-two mask.
+    /// Pick the (non-power-of-two) bucket count for a partition of <paramref name="keyCount"/>
+    /// keys: exactly <c>ceil(keyCount / <see cref="TargetKeysPerBucket"/>)</c> so a 12-way
+    /// bucket meets the <see cref="TargetUtilizationPercent"/> load with no power-of-two
+    /// rounding. At least 1, capped at <see cref="MaxBucketCount"/>; lookup-time selection uses
+    /// Lemire reduction (<see cref="BucketIndex"/>), so any count works.
     /// </summary>
-    internal static int BucketCountLog2For(int keyCount)
-    {
-        int target = Math.Max(1, (keyCount + TargetKeysPerBucket - 1) / TargetKeysPerBucket);
-        int log2 = Math.Max(1, BitOperations.Log2((uint)(target - 1)) + 1);
-        return Math.Min(log2, MaxBucketCountLog2);
-    }
+    internal static int BucketCountFor(int keyCount)
+        => Math.Clamp((keyCount + TargetKeysPerBucket - 1) / TargetKeysPerBucket, 1, MaxBucketCount);
 
-    /// <summary>64-bit mixing hash of <paramref name="key"/>; the bucket index is its low
-    /// bits and the way tag its high 16 bits. Identical on the write and read sides.</summary>
+    /// <summary>64-bit mixing hash of <paramref name="key"/>; the bucket index is a Lemire
+    /// reduction of its low 32 bits and the way tag its high 16 bits. Identical on write/read.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong Hash(scoped ReadOnlySpan<byte> key)
     {
@@ -117,9 +113,14 @@ internal static class HsstPartitionHashtable
         return h;
     }
 
-    /// <summary>Bucket index for <paramref name="hash"/> in a table of <c>1 &lt;&lt; bucketCountLog2</c> buckets.</summary>
+    /// <summary>
+    /// Bucket index for <paramref name="hash"/> in a table of <paramref name="bucketCount"/>
+    /// buckets via Lemire's multiply-shift reduction — `(low32 · bucketCount) >> 32` maps the
+    /// uniform low 32 bits into <c>[0, bucketCount)</c> with one multiply, no div/mod, and works
+    /// for any (non-power-of-two) count. The low 32 bits are disjoint from the tag's high 16.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static int BucketIndex(ulong hash, int bucketCountLog2) => (int)(hash & ((1UL << bucketCountLog2) - 1));
+    internal static int BucketIndex(ulong hash, int bucketCount) => (int)(((ulong)(uint)hash * (ulong)bucketCount) >> 32);
 
     /// <summary>Way tag for <paramref name="hash"/> — the high 16 bits, forced to ≥ 1 so 0 stays the empty marker.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -136,10 +137,10 @@ internal static class HsstPartitionHashtable
     /// offset overflow (defensive — never under the 16 MiB split) — the caller drops the key
     /// (best-effort, reader falls back to the inner B-tree).
     /// </summary>
-    internal static bool TryInsert(Span<byte> buckets, int bucketCountLog2, ulong hash, long offset)
+    internal static bool TryInsert(Span<byte> buckets, int bucketCount, ulong hash, long offset)
     {
         if (offset < 0 || offset > MaxOffset) return false;
-        int bucket = BucketIndex(hash, bucketCountLog2);
+        int bucket = BucketIndex(hash, bucketCount);
         ushort tag = Tag(hash);
         Span<byte> b = buckets.Slice(bucket * BucketBytes, BucketBytes);
         for (int way = 0; way < WaysPerBucket; way++)

@@ -51,7 +51,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     private bool _lastHadHashtable;
     private long _lastInnerScopeEnd;
     private long _lastHashtableOffset;
-    private int _lastBucketCountLog2;
+    private int _lastBucketCount;
     private long _lastDataRegionStart;
 
     /// <param name="keyLength">Fixed key length (0–255) for every entry and every directory key.</param>
@@ -74,7 +74,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         _lastHadHashtable = false;
         _lastInnerScopeEnd = 0;
         _lastHashtableOffset = 0;
-        _lastBucketCountLog2 = 0;
+        _lastBucketCount = 0;
         _lastDataRegionStart = 0;
         _inner = default;
     }
@@ -177,7 +177,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     /// Append a <see cref="IndexType.SinglePartitionHashtableBTreeKeyFirst"/> (0x09) trailer for
     /// the lone partition: the 20-byte hashtable metadata record straight in the trailer (no
     /// directory B-tree), laid out so a tail scan can locate it. Layout (low→high):
-    /// <c>[InnerRootPrefix: prefixLen][Metadata: 26][KeyLength: u8][IndexType: u8]</c> — the
+    /// <c>[InnerRootPrefix: prefixLen][Metadata: 28][KeyLength: u8][IndexType: u8]</c> — the
     /// prefix precedes the fixed record so the reader reads the record first (it carries
     /// prefixLen) and then the prefix bytes before it. The metadata is the same
     /// <see cref="HsstPartitionHashtable.DirRecordFixedSize"/>-byte record the directory would
@@ -192,7 +192,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         Span<byte> tail = _writer.GetSpan(trailerLen);
         if (prefixLen > 0) _buffers.RootPrefixScratch.AsSpan(0, prefixLen).CopyTo(tail);
         Span<byte> rec = tail.Slice(prefixLen, recSize);
-        WriteRecord(rec, _lastRootOffset, _lastInnerScopeEnd, _lastHashtableOffset, _lastDataRegionStart, _lastBucketCountLog2, prefixLen);
+        WriteRecord(rec, _lastRootOffset, _lastInnerScopeEnd, _lastHashtableOffset, _lastDataRegionStart, _lastBucketCount, prefixLen);
         tail[prefixLen + recSize] = (byte)_keyLength;
         tail[prefixLen + recSize + 1] = (byte)IndexType.SinglePartitionHashtableBTreeKeyFirst;
         _writer.Advance(trailerLen);
@@ -227,15 +227,15 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
 
         int keyCount = _buffers.AccumHashes.Count;
         long hashtableOffset = 0;
-        int bucketCountLog2 = 0;
+        int bucketCount = 0;
         bool sole = closedByBuild && _buffers.DirValueLengths.Count == 0; // the whole blob is this one partition
         bool wantHashtable = keyCount > 0 && (!sole || _accumKeyBytes > _options.HashtableMinBytes);
         if (wantHashtable)
         {
             PadTo64();
             hashtableOffset = _writer.Written - _hsstBase;
-            bucketCountLog2 = HsstPartitionHashtable.BucketCountLog2For(keyCount);
-            int regionSize = checked((int)HsstPartitionHashtable.RegionSize(bucketCountLog2));
+            bucketCount = HsstPartitionHashtable.BucketCountFor(keyCount);
+            int regionSize = checked((int)HsstPartitionHashtable.RegionSize(bucketCount));
             Span<byte> buckets = _writer.GetSpan(regionSize);
             buckets[..regionSize].Clear();
 
@@ -247,22 +247,22 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
                 // data section size (< 16 MiB by the span split) so it fits u24. The inner
                 // index sits after the data section and is not addressed here.
                 long forward = offsets[i] - dataRegionStart;
-                HsstPartitionHashtable.TryInsert(buckets, bucketCountLog2, hashes[i], forward);
+                HsstPartitionHashtable.TryInsert(buckets, bucketCount, hashes[i], forward);
             }
             _writer.Advance(regionSize);
         }
 
-        EncodeDirValue(innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCountLog2, rootPrefix[..rootPrefixLen]);
+        EncodeDirValue(innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix[..rootPrefixLen]);
 
         // Stash this partition's descriptor for the single-partition fast paths in Build().
         _lastRootOffset = innerRootOffset;
         _lastRootSize = innerRootSize;
         _lastRootPrefixLen = rootPrefixLen;
         rootPrefix[..rootPrefixLen].CopyTo(_buffers.RootPrefixScratch);
-        _lastHadHashtable = bucketCountLog2 > 0;
+        _lastHadHashtable = bucketCount > 0;
         _lastInnerScopeEnd = innerScopeEnd;
         _lastHashtableOffset = hashtableOffset;
-        _lastBucketCountLog2 = bucketCountLog2;
+        _lastBucketCount = bucketCount;
         _lastDataRegionStart = dataRegionStart;
 
         _partitionOpen = false;
@@ -280,27 +280,27 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         _writer.Advance(pad);
     }
 
-    private void EncodeDirValue(long innerRootOffset, long innerScopeEnd, long hashtableOffset, long dataRegionStart, int bucketCountLog2, scoped ReadOnlySpan<byte> rootPrefix)
+    private void EncodeDirValue(long innerRootOffset, long innerScopeEnd, long hashtableOffset, long dataRegionStart, int bucketCount, scoped ReadOnlySpan<byte> rootPrefix)
     {
         Span<byte> rec = stackalloc byte[HsstPartitionHashtable.DirRecordFixedSize];
-        WriteRecord(rec, innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCountLog2, rootPrefix.Length);
+        WriteRecord(rec, innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix.Length);
         _buffers.DirValues.AddRange(rec);
         if (rootPrefix.Length > 0) _buffers.DirValues.AddRange(rootPrefix);
         _buffers.DirValueLengths.Add(HsstPartitionHashtable.DirRecordFixedSize + rootPrefix.Length);
     }
 
     /// <summary>
-    /// Write the 26-byte partition metadata record (shared by the directory value and the 0x09
-    /// trailer): <c>[InnerRootOffset 6][InnerScopeEnd 6][HashtableOffset 6][DataRegionStart 6][BucketCountLog2 u8][InnerRootPrefixLen u8]</c>.
+    /// Write the 28-byte partition metadata record (shared by the directory value and the 0x09
+    /// trailer): <c>[InnerRootOffset 6][InnerScopeEnd 6][HashtableOffset 6][DataRegionStart 6][HashtableBucketCount u24][InnerRootPrefixLen u8]</c>.
     /// </summary>
-    private static void WriteRecord(Span<byte> rec, long innerRootOffset, long innerScopeEnd, long hashtableOffset, long dataRegionStart, int bucketCountLog2, int rootPrefixLen)
+    private static void WriteRecord(Span<byte> rec, long innerRootOffset, long innerScopeEnd, long hashtableOffset, long dataRegionStart, int bucketCount, int rootPrefixLen)
     {
         WriteU48(rec, innerRootOffset);
         WriteU48(rec[6..], innerScopeEnd);
         WriteU48(rec[12..], hashtableOffset);
         WriteU48(rec[18..], dataRegionStart);
-        rec[24] = (byte)bucketCountLog2;
-        rec[25] = (byte)rootPrefixLen;
+        WriteU24(rec[24..], bucketCount);
+        rec[27] = (byte)rootPrefixLen;
     }
 
     private static void WriteU48(Span<byte> dest, long value)
@@ -311,5 +311,12 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         dest[3] = (byte)(value >> 24);
         dest[4] = (byte)(value >> 32);
         dest[5] = (byte)(value >> 40);
+    }
+
+    private static void WriteU24(Span<byte> dest, int value)
+    {
+        dest[0] = (byte)value;
+        dest[1] = (byte)(value >> 8);
+        dest[2] = (byte)(value >> 16);
     }
 }

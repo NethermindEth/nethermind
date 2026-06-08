@@ -53,8 +53,8 @@ internal static class HsstPartitionedBTreeReader
         long innerScopeEnd = ReadU48(rec[6..]);
         long hashtableOffset = ReadU48(rec[12..]);
         long dataRegionStart = ReadU48(rec[18..]);
-        int bucketCountLog2 = rec[24];
-        int rootPrefixLen = rec[25];
+        int bucketCount = ReadU24(rec[24..]);
+        int rootPrefixLen = rec[27];
 
         scoped ReadOnlySpan<byte> rootPrefix = default;
         if (rootPrefixLen > 0)
@@ -66,7 +66,7 @@ internal static class HsstPartitionedBTreeReader
         }
 
         return ProbeAndFallback<TReader, TPin>(in reader, bound, key, exactMatch, keyLength,
-            innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCountLog2, rootPrefix, out resultBound);
+            innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix, out resultBound);
     }
 
     /// <summary>0x09 lookup: read the single partition's metadata from the trailer, then probe + fall back.</summary>
@@ -81,16 +81,16 @@ internal static class HsstPartitionedBTreeReader
         Span<byte> prefixBuf = stackalloc byte[256];
         if (!ReadSinglePartitionTrailer<TReader, TPin>(in reader, bound, out int keyLength,
                 out long innerRootOffset, out long innerScopeEnd, out long hashtableOffset,
-                out long dataRegionStart, out int bucketCountLog2, prefixBuf, out int rootPrefixLen))
+                out long dataRegionStart, out int bucketCount, prefixBuf, out int rootPrefixLen))
             return false;
 
         return ProbeAndFallback<TReader, TPin>(in reader, bound, key, exactMatch, keyLength,
-            innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCountLog2, prefixBuf[..rootPrefixLen], out resultBound);
+            innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCount, prefixBuf[..rootPrefixLen], out resultBound);
     }
 
     /// <summary>
     /// Parse the <see cref="IndexType.SinglePartitionHashtableBTreeKeyFirst"/> (0x09) trailer.
-    /// Tail layout (low→high): <c>[InnerRootPrefix: prefixLen][Metadata: 26][KeyLength: u8][IndexType: u8]</c>.
+    /// Tail layout (low→high): <c>[InnerRootPrefix: prefixLen][Metadata: 28][KeyLength: u8][IndexType: u8]</c>.
     /// Reads the fixed record first (it carries prefixLen), then the prefix bytes that precede it
     /// into <paramref name="rootPrefixDest"/>. Shared by the reader and enumerator.
     /// </summary>
@@ -98,14 +98,14 @@ internal static class HsstPartitionedBTreeReader
     internal static bool ReadSinglePartitionTrailer<TReader, TPin>(
         scoped in TReader reader, Bound bound,
         out int keyLength, out long innerRootOffset, out long innerScopeEnd,
-        out long hashtableOffset, out long dataRegionStart, out int bucketCountLog2,
+        out long hashtableOffset, out long dataRegionStart, out int bucketCount,
         scoped Span<byte> rootPrefixDest, out int rootPrefixLen)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         keyLength = 0;
         innerRootOffset = innerScopeEnd = hashtableOffset = dataRegionStart = 0;
-        bucketCountLog2 = rootPrefixLen = 0;
+        bucketCount = rootPrefixLen = 0;
 
         int recSize = HsstPartitionHashtable.DirRecordFixedSize;
         if (bound.Length < 2 + recSize) return false;
@@ -121,8 +121,8 @@ internal static class HsstPartitionedBTreeReader
         innerScopeEnd = ReadU48(rec[6..]);
         hashtableOffset = ReadU48(rec[12..]);
         dataRegionStart = ReadU48(rec[18..]);
-        bucketCountLog2 = rec[24];
-        rootPrefixLen = rec[25];
+        bucketCount = ReadU24(rec[24..]);
+        rootPrefixLen = rec[27];
 
         if (rootPrefixLen > 0)
         {
@@ -141,17 +141,17 @@ internal static class HsstPartitionedBTreeReader
     private static bool ProbeAndFallback<TReader, TPin>(
         scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key, bool exactMatch,
         int keyLength, long innerRootOffset, long innerScopeEnd, long hashtableOffset,
-        long dataRegionStart, int bucketCountLog2, scoped ReadOnlySpan<byte> rootPrefix, out Bound resultBound)
+        long dataRegionStart, int bucketCount, scoped ReadOnlySpan<byte> rootPrefix, out Bound resultBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         resultBound = default;
 
         // Hashtable probe — exact lookups only (floor/iteration use the sorted tree).
-        if (exactMatch && bucketCountLog2 > 0)
+        if (exactMatch && bucketCount > 0)
         {
             ulong hash = HsstPartitionHashtable.Hash(key);
-            int bucket = HsstPartitionHashtable.BucketIndex(hash, bucketCountLog2);
+            int bucket = HsstPartitionHashtable.BucketIndex(hash, bucketCount);
             ushort tag = HsstPartitionHashtable.Tag(hash);
             long bucketAbs = bound.Offset + hashtableOffset + (long)bucket * HsstPartitionHashtable.BucketBytes;
             Span<byte> bucketBuf = stackalloc byte[HsstPartitionHashtable.BucketBytes];
@@ -188,4 +188,7 @@ internal static class HsstPartitionedBTreeReader
         | ((long)src[3] << 24)
         | ((long)src[4] << 32)
         | ((long)src[5] << 40);
+
+    private static int ReadU24(scoped ReadOnlySpan<byte> src) =>
+        src[0] | (src[1] << 8) | (src[2] << 16);
 }

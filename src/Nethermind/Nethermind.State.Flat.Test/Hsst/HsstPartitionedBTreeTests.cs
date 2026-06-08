@@ -275,14 +275,15 @@ public class HsstPartitionedBTreeTests
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.PartitionedBTreeKeyFirst), "expected a multi-partition 0x08 blob");
 
         // The top-level tree of a 0x08 blob IS the directory; walk it directly and check each
-        // partition's metadata record carries a hashtable (bucketCountLog2 at record byte 24 > 0).
+        // partition's metadata record carries a hashtable (u24 HashtableBucketCount at record bytes 24..27 > 0).
         SpanByteReader reader = new(data);
         HsstBTreeEnumerator<SpanByteReader, NoOpPin> dir = new(in reader, new Bound(0, data.Length), keyFirst: true);
         int partitions = 0;
         while (dir.MoveNext(in reader))
         {
-            Bound meta = dir.CurrentValue;
-            Assert.That(data[(int)meta.Offset + 24], Is.GreaterThan((byte)0), $"partition {partitions} has no hashtable");
+            int o = (int)dir.CurrentValue.Offset;
+            int bucketCount = data[o + 24] | (data[o + 25] << 8) | (data[o + 26] << 16);
+            Assert.That(bucketCount, Is.GreaterThan(0), $"partition {partitions} has no hashtable");
             partitions++;
         }
         Assert.That(partitions, Is.GreaterThan(1), "test must produce multiple partitions");
@@ -295,8 +296,8 @@ public class HsstPartitionedBTreeTests
         }
     }
 
-    // BucketCountLog2For sizes the table for the configured target utilization; capacity always
-    // holds every key and the load never exceeds the target ceiling.
+    // BucketCountFor sizes the table to exactly ceil(keyCount / 9) buckets — no power-of-two
+    // rounding — so capacity holds every key and the load is at the ~75% target.
     [Test]
     public void BucketCount_Targets_Configured_Utilization()
     {
@@ -306,11 +307,11 @@ public class HsstPartitionedBTreeTests
 
         foreach (int keyCount in new[] { 7, 48, 49, 137, 1000, 100_000 })
         {
-            int log2 = HsstPartitionHashtable.BucketCountLog2For(keyCount);
-            long capacity = (1L << log2) * HsstPartitionHashtable.WaysPerBucket;
+            int buckets = HsstPartitionHashtable.BucketCountFor(keyCount);
+            Assert.That(buckets, Is.EqualTo((keyCount + 8) / 9), $"bucket count for {keyCount} must be ceil(k/9), not a power of two");
+            long capacity = (long)buckets * HsstPartitionHashtable.WaysPerBucket;
             Assert.That(capacity, Is.GreaterThanOrEqualTo(keyCount), $"capacity must hold all {keyCount} keys");
-            double load = (double)keyCount / capacity;
-            Assert.That(load, Is.LessThanOrEqualTo(0.75 + 1e-9), $"load {load:F3} for {keyCount} keys exceeds 75% target");
+            Assert.That((double)keyCount / capacity, Is.LessThanOrEqualTo(0.75 + 1e-9), $"load for {keyCount} keys exceeds 75% target");
         }
     }
 
@@ -321,12 +322,12 @@ public class HsstPartitionedBTreeTests
     [Test]
     public void Hashtable_Bucket_Codec_RoundTrips()
     {
-        static ulong H(ushort tag) => (ulong)tag << 48; // bucketCountLog2 = 0 ⇒ bucket 0; Tag(h) = tag (≥1)
+        static ulong H(ushort tag) => (ulong)tag << 48; // bucketCount 1 ⇒ Lemire always picks bucket 0; Tag(h) = tag (≥1)
 
         Span<byte> bucket = stackalloc byte[HsstPartitionHashtable.BucketBytes];
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(5), 100), Is.True);       // way 0, tag 5
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(9), 200), Is.True);       // way 1, tag 9
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(5), 0xFFFFFF), Is.True);  // way 2, tag 5 (collision), max u24 offset
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(5), 100), Is.True);       // way 0, tag 5
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(9), 200), Is.True);       // way 1, tag 9
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(5), 0xFFFFFF), Is.True);  // way 2, tag 5 (collision), max u24 offset
 
         // SIMD path agrees with the scalar reference.
         foreach (ushort probe in new ushort[] { 5, 9, 1234 })
@@ -344,27 +345,27 @@ public class HsstPartitionedBTreeTests
 
         // Fill to 12 ways, then the 13th overflows (best-effort drop).
         for (ushort i = 0; i < 9; i++)
-            Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H((ushort)(20 + i)), 300 + i), Is.True);
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(99), 999), Is.False, "13th insert into a full bucket must overflow");
+            Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H((ushort)(20 + i)), 300 + i), Is.True);
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(99), 999), Is.False, "13th insert into a full bucket must overflow");
 
         // u24 offset guard: an offset beyond MaxOffset is rejected; the ceiling itself fits.
         Span<byte> b2 = stackalloc byte[HsstPartitionHashtable.BucketBytes];
-        Assert.That(HsstPartitionHashtable.TryInsert(b2, 0, H(7), HsstPartitionHashtable.MaxOffset + 1L), Is.False, "offset > u24 must be rejected");
-        Assert.That(HsstPartitionHashtable.TryInsert(b2, 0, H(7), HsstPartitionHashtable.MaxOffset), Is.True, "offset at the u24 ceiling fits");
+        Assert.That(HsstPartitionHashtable.TryInsert(b2, 1, H(7), HsstPartitionHashtable.MaxOffset + 1L), Is.False, "offset > u24 must be rejected");
+        Assert.That(HsstPartitionHashtable.TryInsert(b2, 1, H(7), HsstPartitionHashtable.MaxOffset), Is.True, "offset at the u24 ceiling fits");
     }
 
-    // The bucket index must be a power-of-two mask of the hash, never an integer division/modulo.
+    // Bucket selection is Lemire's multiply-shift (no integer division/modulo) and works for
+    // any non-power-of-two bucket count, always landing in [0, numBuckets).
     [Test]
-    public void BucketIndex_Uses_PowerOfTwo_Mask()
+    public void BucketIndex_Uses_Lemire_Reduction()
     {
-        foreach (int log2 in new[] { 1, 2, 4, 8, 16 })
+        foreach (int numBuckets in new[] { 1, 3, 5, 23, 1000, 65537 })
         {
-            int numBuckets = 1 << log2;
             for (int s = 0; s < 64; s++)
             {
                 ulong h = HsstPartitionHashtable.Hash(Key(s));
-                int idx = HsstPartitionHashtable.BucketIndex(h, log2);
-                Assert.That(idx, Is.EqualTo((int)(h & ((1UL << log2) - 1))), "BucketIndex must equal hash & (NumBuckets-1)");
+                int idx = HsstPartitionHashtable.BucketIndex(h, numBuckets);
+                Assert.That(idx, Is.EqualTo((int)(((ulong)(uint)h * (ulong)numBuckets) >> 32)), "BucketIndex must equal the Lemire reduction of the low 32 bits");
                 Assert.That(idx, Is.InRange(0, numBuckets - 1));
             }
         }
