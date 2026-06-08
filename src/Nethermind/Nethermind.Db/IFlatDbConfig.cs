@@ -7,7 +7,7 @@ namespace Nethermind.Db;
 
 public interface IFlatDbConfig : IConfig
 {
-    [ConfigItem(Description = "Block cache size budget", DefaultValue = "2147483648")]
+    [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
     long BlockCacheSizeBudget { get; set; }
 
     [ConfigItem(Description = "Compact size", DefaultValue = "2048")]
@@ -37,7 +37,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     int MinReorgDepth { get; set; }
 
-    [ConfigItem(Description = "EXPERIMENTAL / benchmark-only. Preserve warmed Patricia account and storage tries across consecutive writable flat-state scopes when their roots match exactly.", DefaultValue = "true", HiddenFromDocs = true)]
+    [ConfigItem(Description = "EXPERIMENTAL / benchmark-only. Preserve warmed Patricia account and storage tries across consecutive writable flat-state scopes when their roots match exactly.", DefaultValue = "false", HiddenFromDocs = true)]
     bool PreservePatriciaTrie { get; set; }
 
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
@@ -46,7 +46,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
     long TrieCacheMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "4")]
+    [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]

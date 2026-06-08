@@ -161,10 +161,11 @@ public class BranchProcessor(
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
+                // Make sure the prewarm task is finished before we reset the state
+                WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();
-                preWarmTask = null;
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
