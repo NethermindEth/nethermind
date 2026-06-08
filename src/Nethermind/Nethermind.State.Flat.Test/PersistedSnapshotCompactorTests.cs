@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Db;
 using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Hsst.BTree;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -369,6 +370,13 @@ public class PersistedSnapshotCompactorTests
                 Span<byte> tailByte = stackalloc byte[1];
                 Assert.That(reader.TryRead(addrCol.Offset + addrCol.Length - 1, tailByte), Is.True);
                 Assert.That((IndexType)tailByte[0], Is.EqualTo(IndexType.PartitionedBTree), "address column must be multi-partition 0x0A");
+
+                // Explicitly confirm there really is more than one partition: the 0x0A blob's
+                // top-level tree IS the directory (key-first), one entry per partition.
+                int partitions = 0;
+                HsstBTreeEnumerator<WholeReadSessionReader, NoOpPin> dir = new(in reader, addrCol, keyFirst: true);
+                while (dir.MoveNext(in reader)) partitions++;
+                Assert.That(partitions, Is.GreaterThan(1), "test must span multiple address partitions");
 
                 // The persistence bloom-rebuild scan must visit every address (and its slot).
                 BloomFilter rebuilt = PersistedSnapshotBloomBuilder.Build(session, baseSnap, bitsPerKey: 12.0);
