@@ -211,6 +211,7 @@ public class HsstPartitionedBTreeTests
     [TestCase(300L, 0, 50, (byte)0x08)]            // over upper threshold → multi-partition + hashtable
     [TestCase(300L, int.MaxValue, 50, (byte)0x08)] // over upper threshold, no hashtable → still multi-partition 0x08
     [TestCase(4L * 1024 * 1024, 4096, 5, (byte)0x07)] // under both thresholds → single partition degrades to 0x07
+    [TestCase(4L * 1024 * 1024, 0, 50, (byte)0x09)]  // single partition + hashtable → 0x09 (no directory)
     public void Upper_Threshold_Controls_Partitioning_And_Reads_Stay_Correct(
         long partitionThresholdBytes, int hashtableMinBytes, int count, byte expectedTail)
     {
@@ -222,6 +223,60 @@ public class HsstPartitionedBTreeTests
         {
             Assert.That(HsstTestUtil.TryGet(data, Key(i), out byte[] value), Is.True, $"key {i} not found (incl. keys in non-first partitions)");
             Assert.That(value, Is.EqualTo(Val(i)), $"wrong value for key {i}");
+        }
+    }
+
+    // One partition that warrants a hashtable drops the (single-entry) directory and emits 0x09,
+    // with the hashtable metadata in the trailer. Hit, fallback (floor), and iteration all work.
+    [Test]
+    public void Single_Partition_With_Hashtable_Is_0x09()
+    {
+        const int count = 60;
+        // Default 4 MiB partition threshold ⇒ one partition; HashtableMinBytes=0 ⇒ it gets a hashtable.
+        byte[] data = BuildPartitioned(count, new HsstBTreeOptions { HashtableMinBytes = 0 });
+
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.SinglePartitionHashtableBTreeKeyFirst), "single partition + hashtable must be 0x09");
+
+        // Hashtable-hit path: every key resolves with the right value.
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(HsstTestUtil.TryGet(data, Key(i), out byte[] value), Is.True, $"key {i}");
+            Assert.That(value, Is.EqualTo(Val(i)), $"value {i}");
+        }
+
+        // Absent key (above range) → not found.
+        Assert.That(HsstTestUtil.TryGet(data, Key(count + 500), out _), Is.False);
+
+        // Floor skips the hashtable → exercises the inner-B-tree fallback in 0x09.
+        Assert.That(HsstTestUtil.TryGetFloor(data, Key(count + 500), out byte[] floorVal), Is.True);
+        Assert.That(floorVal, Is.EqualTo(Val(count - 1)));
+
+        // Enumeration walks the inner B-tree directly → same sequence as the plain 0x07 build.
+        List<(byte[] key, byte[] val)> partitioned = Enumerate(data);
+        List<(byte[] key, byte[] val)> plain = Enumerate(BuildPlainKeyFirst(count));
+        Assert.That(partitioned.Count, Is.EqualTo(count));
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(partitioned[i].key, Is.EqualTo(plain[i].key), $"key mismatch at {i}");
+            Assert.That(partitioned[i].val, Is.EqualTo(plain[i].val), $"value mismatch at {i}");
+        }
+    }
+
+    // BucketCountLog2For sizes the table for the configured target utilization; capacity always
+    // holds every key and the load never exceeds the target ceiling.
+    [Test]
+    public void BucketCount_Targets_Configured_Utilization()
+    {
+        Assert.That(HsstPartitionHashtable.TargetUtilizationPercent, Is.EqualTo(75));
+        Assert.That(HsstPartitionHashtable.TargetKeysPerBucket, Is.EqualTo(6));
+
+        foreach (int keyCount in new[] { 7, 48, 49, 137, 1000, 100_000 })
+        {
+            int log2 = HsstPartitionHashtable.BucketCountLog2For(keyCount);
+            long capacity = (1L << log2) * HsstPartitionHashtable.WaysPerBucket;
+            Assert.That(capacity, Is.GreaterThanOrEqualTo(keyCount), $"capacity must hold all {keyCount} keys");
+            double load = (double)keyCount / capacity;
+            Assert.That(load, Is.LessThanOrEqualTo(0.75 + 1e-9), $"load {load:F3} for {keyCount} keys exceeds 75% target");
         }
     }
 

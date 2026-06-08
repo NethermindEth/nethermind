@@ -41,13 +41,17 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     private long _partitionStartAbs;
     private long _accumKeyBytes;
 
-    // Most-recently-closed partition's inner-root descriptor, used by the single-partition
-    // fast path in Build() to emit a plain 0x07 trailer (byte-identical to a non-partitioned
-    // key-first build) so small contracts pay no directory/hashtable overhead.
+    // Most-recently-closed partition's descriptor, used by the single-partition fast paths in
+    // Build(): a plain 0x07 trailer when it has no hashtable (byte-identical to a non-partitioned
+    // key-first build), or a 0x09 trailer carrying the hashtable metadata when it does — either
+    // way skipping the directory B-tree.
     private long _lastRootOffset;
     private int _lastRootSize;
     private int _lastRootPrefixLen;
     private bool _lastHadHashtable;
+    private long _lastInnerScopeEnd;
+    private long _lastHashtableOffset;
+    private int _lastBucketCountLog2;
 
     /// <param name="keyLength">Fixed key length (0–255) for every entry and every directory key.</param>
     public HsstPartitionedBTreeBuilder(ref TWriter writer, ref HsstPartitionedBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null)
@@ -67,6 +71,9 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         _lastRootSize = 0;
         _lastRootPrefixLen = 0;
         _lastHadHashtable = false;
+        _lastInnerScopeEnd = 0;
+        _lastHashtableOffset = 0;
+        _lastBucketCountLog2 = 0;
         _inner = default;
     }
 
@@ -94,21 +101,28 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Close the final partition (if open), then either emit the directory B-tree + 0x08
-    /// trailer, or — when the whole blob collapsed to a single hashtable-less partition —
-    /// append a plain 0x07 trailer so the output is byte-identical to a non-partitioned
-    /// key-first build (zero overhead for small contracts).
+    /// Close the final partition (if open), then emit one of three trailers depending on how
+    /// the blob collapsed:
+    /// <list type="bullet">
+    /// <item>single partition, no hashtable → a plain <see cref="IndexType.BTreeKeyFirst"/>
+    /// (0x07) trailer (byte-identical to a non-partitioned key-first build);</item>
+    /// <item>single partition, with hashtable →
+    /// <see cref="IndexType.SinglePartitionHashtableBTreeKeyFirst"/> (0x09) — the hashtable
+    /// metadata in the trailer, no directory B-tree;</item>
+    /// <item>multiple partitions → the directory B-tree +
+    /// <see cref="IndexType.PartitionedBTreeKeyFirst"/> (0x08).</item>
+    /// </list>
     /// </summary>
     public void Build()
     {
         if (_partitionOpen) ClosePartition();
 
-        // Single-partition fast path: the lone partition's inner index is already a complete
-        // 0x07 data + index region (byte-0-relative offsets == partition-relative for the
-        // first partition); just append its 0x07 trailer instead of a directory layer.
-        if (_buffers.DirValueLengths.Count == 1 && !_lastHadHashtable)
+        // Single-partition fast paths: the lone partition's inner index is already a complete
+        // byte-0-relative data + index region, so we skip the (useless, single-entry) directory.
+        if (_buffers.DirValueLengths.Count == 1)
         {
-            WriteSingleBTreeKeyFirstTrailer();
+            if (!_lastHadHashtable) WriteSingleBTreeKeyFirstTrailer();
+            else WriteSinglePartitionHashtableTrailer();
             return;
         }
 
@@ -155,6 +169,34 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         _writer.Advance(trailerLen);
     }
 
+    /// <summary>
+    /// Append a <see cref="IndexType.SinglePartitionHashtableBTreeKeyFirst"/> (0x09) trailer for
+    /// the lone partition: the 20-byte hashtable metadata record straight in the trailer (no
+    /// directory B-tree), laid out so a tail scan can locate it. Layout (low→high):
+    /// <c>[InnerRootPrefix: prefixLen][Metadata: 20][KeyLength: u8][IndexType: u8]</c> — the
+    /// prefix precedes the fixed record so the reader reads the record first (it carries
+    /// prefixLen) and then the prefix bytes before it. The metadata is the same 20-byte
+    /// <see cref="HsstPartitionHashtable.DirRecordFixedSize"/> record the directory would have
+    /// held as the partition's value.
+    /// </summary>
+    private void WriteSinglePartitionHashtableTrailer()
+    {
+        int prefixLen = _lastRootPrefixLen;
+        int recSize = HsstPartitionHashtable.DirRecordFixedSize;
+        int trailerLen = prefixLen + recSize + 2;
+        Span<byte> tail = _writer.GetSpan(trailerLen);
+        if (prefixLen > 0) _buffers.RootPrefixScratch.AsSpan(0, prefixLen).CopyTo(tail);
+        Span<byte> rec = tail.Slice(prefixLen, recSize);
+        WriteU48(rec, _lastRootOffset);
+        WriteU48(rec[6..], _lastInnerScopeEnd);
+        WriteU48(rec[12..], _lastHashtableOffset);
+        rec[18] = (byte)_lastBucketCountLog2;
+        rec[19] = (byte)prefixLen;
+        tail[prefixLen + recSize] = (byte)_keyLength;
+        tail[prefixLen + recSize + 1] = (byte)IndexType.SinglePartitionHashtableBTreeKeyFirst;
+        _writer.Advance(trailerLen);
+    }
+
     private void OpenPartition(scoped ReadOnlySpan<byte> firstKey)
     {
         _partitionStartAbs = _writer.Written;
@@ -198,12 +240,15 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
 
         EncodeDirValue(innerRootOffset, innerScopeEnd, hashtableOffset, bucketCountLog2, rootPrefix[..rootPrefixLen]);
 
-        // Stash this partition's root descriptor for the single-partition fast path in Build().
+        // Stash this partition's descriptor for the single-partition fast paths in Build().
         _lastRootOffset = innerRootOffset;
         _lastRootSize = innerRootSize;
         _lastRootPrefixLen = rootPrefixLen;
         rootPrefix[..rootPrefixLen].CopyTo(_buffers.RootPrefixScratch);
         _lastHadHashtable = bucketCountLog2 > 0;
+        _lastInnerScopeEnd = innerScopeEnd;
+        _lastHashtableOffset = hashtableOffset;
+        _lastBucketCountLog2 = bucketCountLog2;
 
         _partitionOpen = false;
         _buffers.AccumHashes.Clear();

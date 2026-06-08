@@ -42,22 +42,31 @@ internal static class HsstPartitionHashtable
     /// real partitions are bounded by the key-bytes / span thresholds well below this.</summary>
     internal const int MaxBucketCountLog2 = 24;
 
+    /// <summary>Target hashtable load factor (keys / total ways), as a percent. Higher packs
+    /// keys more densely (less memory) at the cost of more bucket overflow → more B-tree
+    /// fallback on lookups. Drives <see cref="BucketCountLog2For"/>'s sizing only; the
+    /// lookup-time bucket selection (<see cref="BucketIndex"/>) is unaffected.</summary>
+    internal const int TargetUtilizationPercent = 75;
+
+    /// <summary>Target keys per 8-way bucket implied by <see cref="TargetUtilizationPercent"/>
+    /// (= <see cref="WaysPerBucket"/> × 75% = 6).</summary>
+    internal const int TargetKeysPerBucket = WaysPerBucket * TargetUtilizationPercent / 100;
+
     /// <summary>Byte size of a hashtable with <paramref name="bucketCountLog2"/> buckets.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static long RegionSize(int bucketCountLog2) => (long)BucketBytes << bucketCountLog2;
 
     /// <summary>
     /// Pick the bucket-count log2 for a partition of <paramref name="keyCount"/> keys: the
-    /// smallest power of two giving ≈ 8-way capacity at ~50% load (capacity = buckets·8,
-    /// target ≈ 2·keyCount ⇒ buckets ≈ keyCount/4). Always ≥ 1 (so NumBuckets ≥ 2, keeping
-    /// log2 = 0 free as the "no hashtable" sentinel), capped at <see cref="MaxBucketCountLog2"/>.
+    /// smallest power of two whose 8-way capacity meets the <see cref="TargetUtilizationPercent"/>
+    /// load (buckets ≈ ceil(keyCount / <see cref="TargetKeysPerBucket"/>)). Always ≥ 1 (so
+    /// NumBuckets ≥ 2, keeping log2 = 0 free as the "no hashtable" sentinel), capped at
+    /// <see cref="MaxBucketCountLog2"/>. The divide here is build-time sizing only; lookup-time
+    /// bucket selection (<see cref="BucketIndex"/>) stays a power-of-two mask.
     /// </summary>
     internal static int BucketCountLog2For(int keyCount)
     {
-        // >> 2 (not / 4) keeps this module free of integer division entirely — bucket
-        // selection at lookup time is a power-of-two mask (see BucketIndex), and this
-        // build-time sizing avoids div/mod too.
-        int target = Math.Max(1, (keyCount + 3) >> 2);
+        int target = Math.Max(1, (keyCount + TargetKeysPerBucket - 1) / TargetKeysPerBucket);
         int log2 = Math.Max(1, BitOperations.Log2((uint)(target - 1)) + 1);
         return Math.Min(log2, MaxBucketCountLog2);
     }

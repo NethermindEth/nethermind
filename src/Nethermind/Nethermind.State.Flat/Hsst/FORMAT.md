@@ -45,6 +45,7 @@ A compact, immutable binary format for sorted key/value tables.
 | **TwoByteSlotValueLarge** | `[IndexType: u8 = 0x06][KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u24 LE]…[Offset_{N-1}: u24 LE][Value_0]…[Value_{N-1}]` |
 | **BTreeKeyFirst** | `[Data Region (key-first entries + inline page-local leaves)][Index Region (intermediates only)][RootPrefix: RootPrefixLen bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x07]` |
 | **PartitionedBTreeKeyFirst** | `[Partition_0]…[Partition_{K-1}][Directory Index Region][DirRootPrefix: DirRootPrefixLen bytes][DirRootPrefixLen: u8][DirRootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x08]` (each partition = `[key-first Data Region][Inner Index Region][(pad to 64)][Hashtable]`; see its section) |
+| **SinglePartitionHashtableBTreeKeyFirst** | `[key-first Data Region][Inner Index Region][(pad to 64)][Hashtable][InnerRootPrefix: prefixLen bytes][Metadata: 20 bytes][KeyLength: u8][IndexType: u8 = 0x09]` (the single-partition form of 0x08: no directory; the partition metadata sits in the trailer — see its section) |
 
 The **index type byte** selects the variant by enumerated value (not a
 bitfield). For every variant except `TwoByteSlotValue` /
@@ -62,6 +63,7 @@ byte instead (see their sections below):
 | `0x06` | `TwoByteSlotValueLarge` | Identical shape to `TwoByteSlotValue` but u24 LE offsets, raising the values-section cap to ~16 MiB. Picked when the u16 sibling can't fit the payload. |
 | `0x07` | `BTreeKeyFirst` | Same overall layout as `BTree` but per-entry bytes are key-first (`[FullKey][LEB128 ValueLength][Value]`) and leaves hold pointers to the FullKey byte 0 (EntryStart). Selected by callers whose values are large nested HSSTs so the outer entry's metadata sits at the entry's front, parallel to the inner HSST's keys-first layout. Same root-prefix-in-trailer convention as `0x01`. |
 | `0x08` | `PartitionedBTreeKeyFirst` | A `BTreeKeyFirst` table split into K partitions, each optionally carrying a per-partition open-addressed hashtable that lets a reader jump to an entry in one cache-line probe instead of a multi-level tree walk. A trailing directory B-tree maps partition-first-keys to partition metadata. The directory dispatches as a tail-byte `0x08`; its index nodes are bit-identical to `0x01`/`0x07` index nodes. All in-blob offsets are measured from byte 0 of the whole partitioned HSST. See its section. |
+| `0x09` | `SinglePartitionHashtableBTreeKeyFirst` | The degenerate single-partition form of `0x08` that carries a hashtable: the would-be 1-entry directory (whose key never discriminates) is dropped and the partition's hashtable metadata is written directly into the trailer. A reader reads the fixed tail record and goes straight to the hashtable probe, falling back to the partition's inner key-first B-tree. (The single-partition *no-hashtable* case stays `0x07`.) See its section. |
 
 Other values are reserved for future index strategies. The root B-tree node
 lives just before the BTree trailer
@@ -324,9 +326,40 @@ sorted order.
   `BTreeKeyFirst`).
 - A partition's on-disk span is bounded to < 4 GiB by the `u32` hashtable
   `Offset`; writers split a partition before it reaches that bound.
-- The hashtable costs `NumBuckets · 64` bytes per large partition (≈ 16 bytes per
-  key at a 50%-ish load over 8-way buckets) but never has to be resident in full
-  — only the one bucket a lookup touches.
+- The hashtable costs `NumBuckets · 64` bytes per large partition (≈ 11 bytes per
+  key at the builder's ~75% target load over 8-way buckets) but never has to be
+  resident in full — only the one bucket a lookup touches. `NumBuckets` is a
+  builder choice recorded per partition in `HashtableBucketCountLog2`; the wire
+  format does not pin the load factor.
+
+### SinglePartitionHashtableBTreeKeyFirst variant
+
+`SinglePartitionHashtableBTreeKeyFirst` (IndexType `0x09`) is the special case of
+`PartitionedBTreeKeyFirst` where the table collapsed to **exactly one partition
+that warrants a hashtable**. With a single partition the directory B-tree would
+hold one entry whose key can never discriminate, so it is omitted entirely and the
+partition's metadata is written straight into the trailer:
+
+```
+[key-first Data Region][Inner Index Region][(pad to 64)][Hashtable]
+[InnerRootPrefix: prefixLen bytes][Metadata: 20 bytes][KeyLength: u8][IndexType: u8 = 0x09]
+```
+
+The Data Region, Inner Index Region, and Hashtable are byte-for-byte the same as a
+single `0x08` partition (all offsets byte-0-relative; hashtable ways and bucket
+layout identical). `Metadata` is the same 20-byte record a `0x08` directory would
+have stored as the partition's value —
+`[InnerRootOffset: 6 LE][InnerScopeEnd: 6 LE][HashtableOffset: 6 LE][HashtableBucketCountLog2: u8][InnerRootPrefixLen: u8]`
+— and `InnerRootPrefix` carries the inner root's common-prefix bytes. The prefix is
+placed **before** the fixed record so a reader scanning from the tail reads the
+20-byte record first (at `HSST_end − 2 − 20`), learns `InnerRootPrefixLen`, then
+reads the prefix (at `HSST_end − 2 − 20 − InnerRootPrefixLen`).
+
+**Lookup procedure** (exact match): read the trailer metadata, then — identical to
+the `0x08` per-partition steps — probe the hashtable bucket and, on a miss, descend
+the inner B-tree from `InnerRootOffset` (bounded by `InnerScopeEnd`, seeded with
+`InnerRootPrefix`). There is no directory walk. Floor lookups and iteration skip the
+hashtable and walk the inner B-tree directly (it holds every entry in key order).
 
 ### PackedArray variant
 
@@ -801,6 +834,9 @@ Writers / encoders:
   64-byte-aligned per-partition hashtables, and builds the trailing directory
   B-tree. Relies on `HsstBTreeBuilder`'s `baseOffsetOverride` (byte-0-relative
   offsets), `Add(..., out entryStart)`, `BuildIndexOnly`, and `Build(IndexType)`.
+  When the build collapses to one partition it emits `0x07` (no hashtable) or
+  `SinglePartitionHashtableBTreeKeyFirst` (0x09, hashtable metadata in the trailer)
+  instead of a directory.
 - `Hsst/BTree/HsstPartitionHashtable.cs` — shared hashtable layout constants,
   the key→hash function, and bucket/way encode/decode used by both the
   partitioned builder and reader (single source of truth for `0x08` hashtables).
@@ -833,7 +869,8 @@ Writers / encoders:
 Readers / decoders:
 - `Hsst/HsstReader.cs` — point-query dispatcher; reads the trailing
   `IndexType` byte and routes to the per-variant reader (including the
-  `PartitionedBTreeKeyFirst` (0x08) branch into `HsstPartitionedBTreeReader`).
+  `PartitionedBTreeKeyFirst` (0x08) and `SinglePartitionHashtableBTreeKeyFirst`
+  (0x09) branches into `HsstPartitionedBTreeReader`).
   For the keys-first two-byte-slot variants it instead dispatches on the leading
   `IndexType` byte (byte 0) via its `TrySeekTwoByteSlot` entry point.
 - `Hsst/BTree/HsstBTreeReader.cs` — `BTree` / `BTreeKeyFirst` tree walk:
@@ -841,9 +878,10 @@ Readers / decoders:
   and decodes the matched entry. `DecodeEntry` / `TrySeekFromRoot` are reused by
   the partitioned reader.
 - `Hsst/BTree/HsstPartitionedBTreeReader.cs` — `PartitionedBTreeKeyFirst` (0x08)
-  lookup: directory floor-seek (reusing `HsstBTreeReader`), single-bucket
-  hashtable probe, and partition-inner-tree fallback (reusing
-  `HsstBTreeReader.TrySeekFromRoot`).
+  and `SinglePartitionHashtableBTreeKeyFirst` (0x09) lookup: 0x08 floor-seeks the
+  directory (reusing `HsstBTreeReader`) and 0x09 reads the metadata from the trailer
+  (`ReadSinglePartitionTrailer`); both share `ProbeAndFallback` (single-bucket
+  hashtable probe + inner-tree fallback via `HsstBTreeReader.TrySeekFromRoot`).
 - `Hsst/BTree/BTreeNodeReader.cs` — parses a single B-tree index node forward
   from its start offset; owns the on-disk header decode and the floor-search
   dispatch.
@@ -871,6 +909,8 @@ Iterators / mergers:
   end-anchored ancestor frames. Also handles `PartitionedBTreeKeyFirst` (0x08)
   by walking the directory left-to-right and draining each partition's inner
   index in order (the hashtable is ignored — partitions are already key-sorted).
+  `SinglePartitionHashtableBTreeKeyFirst` (0x09) is enumerated directly via this
+  enumerator's trailer-free constructor (one partition, hashtable ignored).
 - `Hsst/PackedArray/HsstPackedArrayEnumerator.cs`,
   `Hsst/TwoByteSlot/HsstTwoByteSlotValueEnumerator.cs`,
   `Hsst/TwoByteSlot/HsstTwoByteSlotValueLargeEnumerator.cs` — per-variant
@@ -903,7 +943,8 @@ Tests that pin the wire format (rename / re-anchor when bytes move):
   `IndexType_Byte_Is_PartitionedBTreeKeyFirst_At_Tail`, the 20-byte directory
   record / 64-byte hashtable layout, multi-partition split, hashtable hit,
   collision/overflow→fallback, and enumeration-order parity for the partitioned
-  variant (`0x08`).
+  variant (`0x08`); the single-partition-with-hashtable trailer (`0x09`) and its
+  hashtable-hit / fallback / enumeration round-trips; bucket-count utilization.
 - `Nethermind.State.Flat.Test/Hsst/HsstDenseByteIndexTests.cs` — trailer
   layout (including `OffsetSize` selection) and descending-tag value
   layout invariants.
