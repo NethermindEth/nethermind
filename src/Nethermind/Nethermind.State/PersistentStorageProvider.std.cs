@@ -24,12 +24,6 @@ internal sealed partial class PersistentStorageProvider
 
     private void UpdateRootHashesMultiThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
-        // Storage roots are independent across contracts → recompute in parallel.
-        //
-        // Setup must stay serial: writeBatch.CreateStorageWriteBatch reaches into the scope
-        // provider's per-address storage map (non-concurrent Dictionary), so concurrent
-        // creation would race. Pre-resolve the write batches here, then hand items into the
-        // worker pool for ProcessStorageChanges (which is the expensive part — it walks each
         // We can recalculate the roots in parallel as they are all independent tries
         using ArrayPoolList<(
             AddressAsKey Key, PerContractState ContractState,
