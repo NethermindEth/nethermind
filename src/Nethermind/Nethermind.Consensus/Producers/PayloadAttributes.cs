@@ -86,7 +86,7 @@ public class PayloadAttributes
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
         + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
-        + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list digest (EIP-7805)
+        + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list digest
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {

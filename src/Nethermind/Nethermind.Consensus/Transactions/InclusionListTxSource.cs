@@ -16,8 +16,6 @@ public class InclusionListTxSource(
     ISpecProvider? specProvider,
     Logging.ILogManager? logManager) : ITxSource
 {
-    // Lazy: test stubs construct with null deps (decoder/recoverer null-check on ctor). The lazy
-    // race is harmless — the decoder is stateless, duplicate instances behave identically.
     private InclusionListDecoder? _decoder;
     private InclusionListDecoder Decoder => _decoder ??= new InclusionListDecoder(ecdsa, specProvider, logManager);
     private IEnumerable<Transaction> _inclusionListTransactions = [];

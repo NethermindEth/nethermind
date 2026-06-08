@@ -120,6 +120,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         bool isTrace = _logger.IsTrace;
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
+        // FOCIL: with a non-empty IL we can't take the EmptyBlock shortcut — tx selection must run
+        // so IL txs are included, else our own ValidateInclusionList would self-reject the draft.
         IBlockProducer.Flags flags = payloadAttributes.InclusionListTransactions is { Length: > 0 }
             ? IBlockProducer.Flags.DontSeal
             : IBlockProducer.Flags.PrepareEmptyBlock;

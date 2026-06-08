@@ -31,8 +31,7 @@ namespace Nethermind.Consensus.Processing
             if (block.InclusionListTransactions is not null)
             {
                 // FOCIL: skip-errors so an adversarial IL tx with valid RLP but invalid signature
-                // leaves SenderAddress null (validator treats as not-appendable) rather than
-                // surfacing a JSON-RPC error from engine_newPayloadV6.
+                // leaves SenderAddress null (validator treats as not-appendable) rather than throwing.
                 RecoverData(block.InclusionListTransactions, spec, skipErrors: true);
             }
         }

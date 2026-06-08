@@ -155,8 +155,6 @@ public class BlockValidator(
         IReleaseSpec spec = _specProvider.GetSpec(processedBlock.Header);
         if (!spec.InclusionListsEnabled) return true;
 
-        // IL is a CL artifact attached via engine API; a null list means non-engine path (genesis, RLP
-        // import) where IL doesn't apply. engine_newPayloadV6 enforces non-null upstream.
         if (suggestedBlock.InclusionListTransactions is null) return true;
 
         processedBlock.InclusionListTransactions = suggestedBlock.InclusionListTransactions;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
@@ -51,7 +52,6 @@ public static class TxsDecoder
     }
 
 #if !ZK_EVM
-    // Parallel infra has ~50μs startup; only worthwhile when the workload amortises that.
     private const int ParallelDecodeThreshold = 16;
 
     private static bool TryDecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors, out TransactionDecodingResult result)
@@ -62,15 +62,12 @@ public static class TxsDecoder
             return false;
         }
 
-        // Declared non-nullable but null slots are legal at runtime (CLR doesn't distinguish T[]
-        // from T?[]). On the !skipErrors path, the first thrown decode aborts via state.Stop() so
-        // we never observe nulls.
         Transaction[] slots = new Transaction[txData.Length];
         string? error = null;
         int firstError = int.MaxValue;
         object errorGate = new();
 
-        System.Threading.Tasks.Parallel.For(0, txData.Length, (i, state) =>
+        Parallel.For(0, txData.Length, (i, state) =>
         {
             try
             {
@@ -106,7 +103,6 @@ public static class TxsDecoder
             return true;
         }
 
-        // Parallel.For doesn't preserve a contiguous prefix when skipErrors leaves nulls — compact in place.
         int j = 0;
         for (int i = 0; i < slots.Length; i++)
         {

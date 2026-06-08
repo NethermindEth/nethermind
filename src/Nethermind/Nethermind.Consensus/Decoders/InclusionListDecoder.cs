@@ -10,11 +10,6 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Decoders;
 
-/// <summary>
-/// EIP-7805 (FOCIL) IL transaction codec: skip-errors RLP decode + skip-errors sender/EIP-7702
-/// recovery, both delegated to shared infrastructure. Per spec, unparsable items are dropped and
-/// failed recoveries leave SenderAddress null (validator treats null-sender as not-appendable).
-/// </summary>
 public class InclusionListDecoder(
     IEthereumEcdsa? ecdsa,
     ISpecProvider? specProvider,
@@ -30,7 +25,13 @@ public class InclusionListDecoder(
     }
 
     public static byte[] Encode(Transaction transaction)
-        => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+    {
+        TxDecoder decoder = TxDecoder.Instance;
+        byte[] buffer = new byte[decoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping)];
+        RlpStream stream = new(buffer);
+        decoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
+        return buffer;
+    }
 
     public static byte[][] Encode(Transaction[] transactions)
     {

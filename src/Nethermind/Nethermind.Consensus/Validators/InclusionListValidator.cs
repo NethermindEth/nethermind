@@ -21,8 +21,6 @@ public static class InclusionListValidator
         // FOCIL is conditional: no gas left for a base-cost transfer → nothing is appendable.
         if (block.GasUsed + Transaction.BaseTxGasCost > block.GasLimit) return true;
 
-        // Stack-allocate the inclusion bitmap when IL fits the spec cap; heap-alloc the unreachable
-        // oversize path — engine API enforces the byte cap upstream, which bounds tx count.
         Span<bool> included = il.Length <= Eip7805Constants.MaxTransactionsPerInclusionList
             ? stackalloc bool[il.Length]
             : new bool[il.Length];
