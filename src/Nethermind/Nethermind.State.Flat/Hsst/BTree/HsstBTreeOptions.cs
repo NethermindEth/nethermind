@@ -93,9 +93,12 @@ public sealed record HsstBTreeOptions
     /// tuning knob.</summary>
     public const long DefaultPartitionMaxSpanBytes = 16L * 1024 * 1024;
 
-    /// <summary>Default minimum partition key-bytes below which the partitioned
-    /// builder skips the per-partition hashtable entirely — a one- or two-level
-    /// B-tree already reaches the entry, so a hashtable would not help. 4 KiB.</summary>
+    /// <summary>Minimum key-bytes for a <b>whole single-partition blob</b> to bother with a
+    /// hashtable. Below this the blob is emitted as a plain key-first B-tree (0x07) with no
+    /// directory and no hashtable — a one- or two-level B-tree already reaches the entry — to
+    /// save the space. This gates partitioning itself: once a blob partitions (a 0x08 directory
+    /// or a 0x09 single partition), <b>every</b> partition carries a hashtable, so a directory
+    /// never holds a hashtable-less partition. 4 KiB.</summary>
     public const int DefaultHashtableMinBytes = 4 * 1024;
 
     /// <summary>Per-partition key-bytes budget for the partitioned builder; a partition
@@ -107,8 +110,8 @@ public sealed record HsstBTreeOptions
     /// it can exceed this regardless of <see cref="PartitionThresholdBytes"/>.</summary>
     public long PartitionMaxSpanBytes { get; init; } = DefaultPartitionMaxSpanBytes;
 
-    /// <summary>Minimum partition key-bytes below which no per-partition hashtable is
-    /// written (the inner B-tree alone is used).</summary>
+    /// <summary>Minimum key-bytes for a single-partition blob to use a hashtable; below it the
+    /// blob is a plain 0x07 B-tree (no partitioning). See <see cref="DefaultHashtableMinBytes"/>.</summary>
     public int HashtableMinBytes { get; init; } = DefaultHashtableMinBytes;
 
     /// <summary>Shared default instance — used when callers pass <c>null</c>.</summary>

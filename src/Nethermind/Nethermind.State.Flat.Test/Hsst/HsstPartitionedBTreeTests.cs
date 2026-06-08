@@ -209,7 +209,7 @@ public class HsstPartitionedBTreeTests
     // blob into multiple partitions (→ 0x08); staying under it leaves a single partition that,
     // sub-HashtableMinBytes, degrades to a plain 0x07. Every key must read back either way.
     [TestCase(300L, 0, 50, (byte)0x08)]            // over upper threshold → multi-partition + hashtable
-    [TestCase(300L, int.MaxValue, 50, (byte)0x08)] // over upper threshold, no hashtable → still multi-partition 0x08
+    [TestCase(300L, int.MaxValue, 50, (byte)0x08)] // multi-partition: HashtableMinBytes does NOT suppress per-partition hashtables → still 0x08, reads OK
     [TestCase(4L * 1024 * 1024, 4096, 5, (byte)0x07)] // under both thresholds → single partition degrades to 0x07
     [TestCase(4L * 1024 * 1024, 0, 50, (byte)0x09)]  // single partition + hashtable → 0x09 (no directory)
     public void Upper_Threshold_Controls_Partitioning_And_Reads_Stay_Correct(
@@ -259,6 +259,39 @@ public class HsstPartitionedBTreeTests
         {
             Assert.That(partitioned[i].key, Is.EqualTo(plain[i].key), $"key mismatch at {i}");
             Assert.That(partitioned[i].val, Is.EqualTo(plain[i].val), $"value mismatch at {i}");
+        }
+    }
+
+    // Once a blob partitions, EVERY partition carries a hashtable — even tail partitions far
+    // below HashtableMinBytes. A hashtable-less table is a plain 0x07 blob, never a directory
+    // partition. (Fails on the old per-partition HashtableMinBytes gate.)
+    [Test]
+    public void MultiPartition_All_Partitions_Have_Hashtable()
+    {
+        const int count = 55;
+        // Tiny partition threshold ⇒ several partitions, each (incl. the tail) well under the
+        // default 4 KiB HashtableMinBytes.
+        byte[] data = BuildPartitioned(count, new HsstBTreeOptions { PartitionThresholdBytes = 300 });
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PartitionedBTreeKeyFirst), "expected a multi-partition 0x08 blob");
+
+        // The top-level tree of a 0x08 blob IS the directory; walk it directly and check each
+        // partition's metadata record carries a hashtable (bucketCountLog2 at record byte 24 > 0).
+        SpanByteReader reader = new(data);
+        HsstBTreeEnumerator<SpanByteReader, NoOpPin> dir = new(in reader, new Bound(0, data.Length), keyFirst: true);
+        int partitions = 0;
+        while (dir.MoveNext(in reader))
+        {
+            Bound meta = dir.CurrentValue;
+            Assert.That(data[(int)meta.Offset + 24], Is.GreaterThan((byte)0), $"partition {partitions} has no hashtable");
+            partitions++;
+        }
+        Assert.That(partitions, Is.GreaterThan(1), "test must produce multiple partitions");
+
+        // And every key still reads back.
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(HsstTestUtil.TryGet(data, Key(i), out byte[] value), Is.True, $"key {i}");
+            Assert.That(value, Is.EqualTo(Val(i)), $"value {i}");
         }
     }
 

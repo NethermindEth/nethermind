@@ -96,10 +96,12 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         _accumKeyBytes += key.Length;
 
         // Every Add is a valid split point (one self-contained entry), so close as soon as
-        // either trigger fires. The span guard is the correctness bound (u32 hashtable offset).
+        // either trigger fires. The span guard is the correctness bound (u24 forward offset).
+        // A mid-stream close means the blob is partitioning, so the partition always gets a
+        // hashtable (closedByBuild: false).
         long span = _writer.Written - _partitionStartAbs;
         if (_accumKeyBytes >= _options.PartitionThresholdBytes || span >= _options.PartitionMaxSpanBytes)
-            ClosePartition();
+            ClosePartition(closedByBuild: false);
     }
 
     /// <summary>
@@ -117,7 +119,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     /// </summary>
     public void Build()
     {
-        if (_partitionOpen) ClosePartition();
+        if (_partitionOpen) ClosePartition(closedByBuild: true);
 
         // Single-partition fast paths: the lone partition's inner index is already a complete
         // byte-0-relative data + index region, so we skip the (useless, single-entry) directory.
@@ -206,7 +208,16 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         _partitionOpen = true;
     }
 
-    private void ClosePartition()
+    /// <param name="closedByBuild">
+    /// True when called for the final open partition at <see cref="Build"/> (end of input),
+    /// false when a mid-stream threshold in <see cref="Add"/> forces a split. A hashtable is
+    /// built for every partition that has keys — the only exception is the **sole** partition
+    /// (closed by Build with no prior partitions) when it is under <c>HashtableMinBytes</c>:
+    /// that blob is emitted as plain 0x07 with no hashtable at all (no partition). Once a blob
+    /// partitions, every partition is hashtabled, so a directory never holds a hashtable-less
+    /// partition.
+    /// </param>
+    private void ClosePartition(bool closedByBuild)
     {
         Span<byte> rootPrefix = stackalloc byte[256];
         int rootPrefixLen = _inner.BuildIndexOnly(out long innerRootOffset, out int innerRootSize, rootPrefix);
@@ -217,7 +228,9 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         int keyCount = _buffers.AccumHashes.Count;
         long hashtableOffset = 0;
         int bucketCountLog2 = 0;
-        if (_accumKeyBytes > _options.HashtableMinBytes && keyCount > 0)
+        bool sole = closedByBuild && _buffers.DirValueLengths.Count == 0; // the whole blob is this one partition
+        bool wantHashtable = keyCount > 0 && (!sole || _accumKeyBytes > _options.HashtableMinBytes);
+        if (wantHashtable)
         {
             PadTo64();
             hashtableOffset = _writer.Written - _hsstBase;

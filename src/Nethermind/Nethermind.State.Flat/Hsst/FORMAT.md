@@ -271,11 +271,12 @@ plus the inner root's prefix bytes:
   (its first entry). The reader recovers a hashtable hit's entry as
   `bound.Offset + DataRegionStart + Offset_i`. (= 0 for partition 0 / the single
   `0x09` partition.)
-- **`HashtableBucketCountLog2`** — `0` means **no hashtable** for this partition
-  (small partitions skip it; the reader goes straight to the inner B-tree).
-  Otherwise `NumBuckets = 1 << HashtableBucketCountLog2` (always ≥ 2, so `0` is
-  an unambiguous "absent" sentinel); the hashtable region spans
-  `NumBuckets · 64` bytes.
+- **`HashtableBucketCountLog2`** — `NumBuckets = 1 << HashtableBucketCountLog2`
+  (always ≥ 2); the hashtable region spans `NumBuckets · 64` bytes. `0` is the
+  in-format "no hashtable" sentinel (the reader would go straight to the inner
+  B-tree), but **the writer never emits it for a partition**: a hashtable-less
+  table is emitted as a plain `0x07` blob (no partitioning), so once a blob is
+  partitioned (`0x08`/`0x09`) every partition has a hashtable (`> 0`).
 - **`InnerRootPrefixLen` / `InnerRootPrefix`** — the inner root node's
   common-key-prefix bytes (the root has no parent to inherit them from, exactly
   as a `0x07` trailer's `RootPrefix`); fed to the inner-tree walk on fallback.
