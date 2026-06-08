@@ -3,6 +3,8 @@
 
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -31,6 +33,21 @@ public class InclusionListDecoder(
         RlpStream stream = new(buffer);
         decoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
         return buffer;
+    }
+
+    /// <summary>
+    /// Pool-rented variant of <see cref="Encode(Transaction)"/>. The returned list's
+    /// <see cref="ArrayPoolList{T}.Count"/> equals the exact RLP length (so JSON hex serialisation
+    /// writes only that many bytes, not the larger rented buffer). Caller owns disposal.
+    /// </summary>
+    public static ArrayPoolList<byte> EncodePooled(Transaction transaction)
+    {
+        TxDecoder decoder = TxDecoder.Instance;
+        int length = decoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
+        ArrayPoolList<byte> result = new(length, length);
+        RlpStream stream = new(new CappedArray<byte>(result.UnsafeGetInternalArray(), length));
+        decoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
+        return result;
     }
 
     public static byte[][] Encode(Transaction[] transactions)

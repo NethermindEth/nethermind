@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -47,9 +48,9 @@ public class InclusionListBuilderTests
         pool.GetPendingTransactions().Returns(txs);
         InclusionListBuilder builder = new(pool);
 
-        List<byte[]> il = builder.GetInclusionList().ToList();
+        using InclusionListBytes il = builder.GetInclusionList();
 
-        int totalBytes = il.Sum(t => t.Length);
+        int totalBytes = il.Sum(t => t.Count);
         Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
         Assert.That(il, Is.Not.Empty);
     }
@@ -63,9 +64,9 @@ public class InclusionListBuilderTests
         pool.GetPendingTransactions().Returns([huge, tiny]);
         InclusionListBuilder builder = new(pool);
 
-        List<byte[]> il = builder.GetInclusionList().ToList();
+        using InclusionListBytes il = builder.GetInclusionList();
 
-        int totalBytes = il.Sum(t => t.Length);
+        int totalBytes = il.Sum(t => t.Count);
         Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
     }
 
@@ -77,13 +78,13 @@ public class InclusionListBuilderTests
         pool.GetPendingTransactions().Returns(txs);
         InclusionListBuilder builder = new(pool);
 
-        byte[][] ilBytes = builder.GetInclusionList().ToArray();
+        using InclusionListBytes ilBytes = builder.GetInclusionList();
 
-        // Round-trip: every yielded byte[] must decode to a pool-known tx hash.
+        // Round-trip: every yielded byte buffer must decode to a pool-known tx hash.
         HashSet<Hash256> originals = [.. txs.Select(t => t.Hash!)];
-        foreach (byte[] bytes in ilBytes)
+        foreach (ArrayPoolList<byte> bytes in ilBytes)
         {
-            Rlp.ValueDecoderContext ctx = new(bytes);
+            Rlp.ValueDecoderContext ctx = new(bytes.AsSpan());
             Transaction decoded = TxDecoder.Instance.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
             Assert.That(originals, Does.Contain(decoded.Hash!));
         }

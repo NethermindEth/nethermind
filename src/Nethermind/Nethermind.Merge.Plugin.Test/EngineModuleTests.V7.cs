@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -10,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
@@ -165,17 +167,18 @@ public partial class EngineModuleTests
         chain.TxPool.SubmitTx(tx1, TxHandlingOptions.PersistentBroadcast);
         chain.TxPool.SubmitTx(tx2, TxHandlingOptions.PersistentBroadcast);
 
-        using ArrayPoolList<byte[]>? inclusionList = (await rpc.engine_getInclusionListV1(chain.BlockTree.HeadHash)).Data;
+        using InclusionListBytes inclusionList = (await rpc.engine_getInclusionListV1(chain.BlockTree.HeadHash)).Data!;
 
         byte[] tx1Bytes = Rlp.Encode(tx1).Bytes;
         byte[] tx2Bytes = Rlp.Encode(tx2).Bytes;
+        byte[][] inclusionListBytes = inclusionList.Select(b => b.AsSpan().ToArray()).ToArray();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(inclusionList, Is.Not.Null);
-            Assert.That(inclusionList, Has.Count.EqualTo(2));
-            Assert.That(inclusionList, Does.Contain(tx1Bytes));
-            Assert.That(inclusionList, Does.Contain(tx2Bytes));
+            Assert.That(inclusionList.Count, Is.EqualTo(2));
+            Assert.That(inclusionListBytes, Does.Contain(tx1Bytes));
+            Assert.That(inclusionListBytes, Does.Contain(tx2Bytes));
         }
     }
 

@@ -4,7 +4,6 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.TxPool;
@@ -18,23 +17,22 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// <see cref="MergeErrorCodes.UnknownParent"/> (-38007) when the block hash is unknown.
 /// </summary>
 public class GetInclusionListTransactionsHandler(ITxPool? txPool, IBlockFinder? blockFinder)
-    : IHandler<Hash256, ArrayPoolList<byte[]>>
+    : IHandler<Hash256, InclusionListBytes>
 {
     private readonly InclusionListBuilder? _inclusionListBuilder = txPool is null ? null : new(txPool);
 
-    public ResultWrapper<ArrayPoolList<byte[]>> Handle(Hash256 blockHash)
+    public ResultWrapper<InclusionListBytes> Handle(Hash256 blockHash)
     {
         if (_inclusionListBuilder is null || blockFinder is null)
         {
-            return ResultWrapper<ArrayPoolList<byte[]>>.Success(ArrayPoolList<byte[]>.Empty());
+            return ResultWrapper<InclusionListBytes>.Success(new InclusionListBytes(0));
         }
 
         if (blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is null)
         {
-            return ResultWrapper<ArrayPoolList<byte[]>>.Fail($"unknown parent block {blockHash}", MergeErrorCodes.UnknownParent);
+            return ResultWrapper<InclusionListBytes>.Fail($"unknown parent block {blockHash}", MergeErrorCodes.UnknownParent);
         }
 
-        ArrayPoolList<byte[]> txBytes = new(Eip7805Constants.MaxTransactionsPerInclusionList, _inclusionListBuilder.GetInclusionList());
-        return ResultWrapper<ArrayPoolList<byte[]>>.Success(txBytes);
+        return ResultWrapper<InclusionListBytes>.Success(_inclusionListBuilder.GetInclusionList());
     }
 }

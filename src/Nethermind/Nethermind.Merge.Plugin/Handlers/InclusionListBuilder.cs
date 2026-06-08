@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
 public class InclusionListBuilder(ITxPool txPool)
 {
-    public IEnumerable<byte[]> GetInclusionList() =>
-        DecodeTransactionsUpToLimit(ReservoirSampleNonBlobTxs(txPool.GetPendingTransactions()));
+    public InclusionListBytes GetInclusionList() =>
+        EncodeTransactionsUpToLimit(ReservoirSampleNonBlobTxs(txPool.GetPendingTransactions()));
 
     // Reservoir sample (Algorithm R + final Fisher-Yates) keeps memory at O(N=MaxTxs) for any
     // mempool size. The earlier .Where(...).Shuffle(...) path materialised the entire filtered
@@ -56,27 +56,30 @@ public class InclusionListBuilder(ITxPool txPool)
         return reservoir;
     }
 
-    private static IEnumerable<byte[]> DecodeTransactionsUpToLimit(Transaction[] txs)
+    private static InclusionListBytes EncodeTransactionsUpToLimit(Transaction[] txs)
     {
+        InclusionListBytes result = new(txs.Length);
         int size = 0;
         foreach (Transaction tx in txs)
         {
-            byte[] txBytes = InclusionListDecoder.Encode(tx);
+            ArrayPoolList<byte> txBytes = InclusionListDecoder.EncodePooled(tx);
 
             // skip tx if it's too big to fit in the inclusion list
-            if (size + txBytes.Length > Eip7805Constants.MaxBytesPerInclusionList)
+            if (size + txBytes.Count > Eip7805Constants.MaxBytesPerInclusionList)
             {
+                txBytes.Dispose();
                 continue;
             }
 
-            size += txBytes.Length;
-            yield return txBytes;
+            size += txBytes.Count;
+            result.Add(txBytes);
 
             // impossible to fit another tx in the inclusion list
             if (size + Eip7805Constants.MinTransactionSizeBytesUpper > Eip7805Constants.MaxBytesPerInclusionList)
             {
-                yield break;
+                break;
             }
         }
+        return result;
     }
 }

@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -17,7 +18,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Builds an inclusion list from the local mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<ArrayPoolList<byte[]>>> engine_getInclusionListV1(Hash256 blockHash);
+    Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256 blockHash);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",

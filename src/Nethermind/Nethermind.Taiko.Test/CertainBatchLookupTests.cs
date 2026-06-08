@@ -321,7 +321,7 @@ public class CertainBatchLookupTests
         Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
         Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
         Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
-        Substitute.For<IHandler<Hash256, ArrayPoolList<byte[]>>>(),
+        Substitute.For<IHandler<Hash256, InclusionListBytes>>(),
         new Nethermind.Consensus.Transactions.InclusionListTxSource(null, null, null),
         Substitute.For<IEngineRequestsTracker>(),
         specProvider,

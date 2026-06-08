@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin;
@@ -20,7 +21,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     /// returns an IL of pending mempool txs for <paramref name="blockHash"/>.
     /// The CL aggregates per-committee ILs and feeds the result back via FCUv5 / newPayloadV6.
     /// </summary>
-    public Task<ResultWrapper<ArrayPoolList<byte[]>>> engine_getInclusionListV1(Hash256 blockHash)
+    public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256 blockHash)
         => getInclusionListTransactionsHandler.Handle(blockHash);
 
     /// <summary>
