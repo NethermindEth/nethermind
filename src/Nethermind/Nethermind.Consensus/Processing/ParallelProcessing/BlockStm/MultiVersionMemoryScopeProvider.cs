@@ -19,7 +19,8 @@ public class MultiVersionMemoryScopeProvider(
     MultiVersionMemory multiVersionMemory,
     FeeAccumulator feeAccumulator,
     ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites,
-    BlockBaseReadCache baseReadCache)
+    BlockBaseReadCache baseReadCache,
+    ConcurrentQueue<List<Read>> readSetPool)
     : IWorldStateScopeProvider
 {
     private const int InitialReadSetCapacity = 32;
@@ -44,7 +45,7 @@ public class MultiVersionMemoryScopeProvider(
     /// <summary>Targets the next <see cref="BeginScope"/> at this tx version.</summary>
     public void SetTxVersion(in TxVersion version) => _version = version;
 
-    public HashSet<Read> ReadSet { get; private set; } = null!;
+    public List<Read> ReadSet { get; private set; } = null!;
     public Dictionary<ParallelStateKey, object> WriteSet { get; private set; } = null!;
 
     /// <summary>
@@ -61,12 +62,37 @@ public class MultiVersionMemoryScopeProvider(
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
-        // ReadSet is retained by MVMM._lastReads for validation; can't safely pool without a hand-off scheme.
-        ReadSet = new HashSet<Read>(InitialReadSetCapacity);
+        // Rent a read-set buffer from the block-level pool. After this tx's Record, ownership
+        // transfers to MVMM._lastReads — we'll get a fresh rental at the next BeginScope. The
+        // executor drains MVMM back to the pool after PushChanges, when all validators are
+        // quiesced, so the post-Record list is safely reusable for the next block.
+        if (!readSetPool.TryDequeue(out List<Read>? list))
+        {
+            list = new List<Read>(InitialReadSetCapacity);
+        }
+        else
+        {
+            list.Clear();
+        }
+        ReadSet = list;
         _pooledWriteSet.Clear();
         WriteSet = _pooledWriteSet;
         _speculativeBlocker = TxVersion.Empty;
         return new MultiVersionMemoryScope(this, _version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, _writeSetLock, blockCodeWrites, baseReadCache);
+    }
+
+    /// <summary>
+    /// Returns the scope provider's currently-rented read-set buffer to the pool. Call after
+    /// the last <see cref="BeginScope"/> on this worker if its tx aborted (and therefore
+    /// didn't Record) — otherwise the buffer would leak across blocks.
+    /// </summary>
+    internal void ReturnUnusedReadSet()
+    {
+        if (ReadSet is { } list)
+        {
+            readSetPool.Enqueue(list);
+            ReadSet = null!;
+        }
     }
 
     /// <summary>
@@ -114,7 +140,7 @@ public class MultiVersionMemoryScopeProvider(
         IWorldStateScopeProvider.IScope baseScope,
         MultiVersionMemory multiVersionMemory,
         FeeAccumulator feeAccumulator,
-        HashSet<Read> readSet,
+        List<Read> readSet,
         Dictionary<ParallelStateKey, object> writeSet,
         object writeSetLock,
         ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites,
@@ -274,7 +300,7 @@ public class MultiVersionMemoryScopeProvider(
             MultiVersionMemoryScopeProvider owner,
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
             MultiVersionMemory multiVersionMemory,
-            HashSet<Read> readSet,
+            List<Read> readSet,
             BlockBaseReadCache baseReadCache)
             : IWorldStateScopeProvider.IStorageTree
         {

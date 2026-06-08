@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,6 +28,7 @@ public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeS
         FeeAccumulator feeAccumulator,
         ConcurrentDictionary<ValueHash256, byte[]> blockCodeWrites,
         BlockBaseReadCache baseReadCache,
+        ConcurrentQueue<List<Read>> readSetPool,
         IReleaseSpec spec)
     {
         MultiVersionMemoryScopeProvider worldState = new(
@@ -34,7 +36,8 @@ public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeS
             multiVersionMemory,
             feeAccumulator,
             blockCodeWrites,
-            baseReadCache
+            baseReadCache,
+            readSetPool
         );
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope(builder =>

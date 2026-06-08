@@ -38,6 +38,13 @@ public class BlockStmTransactionsExecutor(
 {
     private readonly ObjectPool<HashSet<int>> _setPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>());
 
+    // Block-stable pool of read-set buffers. Each tx attempt rents one via
+    // MultiVersionMemoryScopeProvider.BeginScope; ownership transfers to MVMM on Record. At
+    // the end of ProcessTransactions (after PushChanges, when no validator is alive) we drain
+    // MVMM's _lastReads back here. Persistent across blocks so steady-state allocations of
+    // List<Read> are zero.
+    private readonly ConcurrentQueue<List<Read>> _readSetPool = new();
+
     // Pools for per-tx aggregate collections used in PushChanges. Large maximumRetained so a
     // single high-tx-count block fully recycles between blocks instead of repeatedly allocating.
     // Static so the cap is process-wide rather than per-executor — production runs one
@@ -137,7 +144,7 @@ public class BlockStmTransactionsExecutor(
         // One env per worker, reused across every tx that worker handles.
         ConcurrentBag<ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv> envPool = [];
         ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv CreateEnv() =>
-            parallelEnvFactory.Create(multiVersionMemory, feeAccumulator, blockCodeWrites, baseReadCache, spec);
+            parallelEnvFactory.Create(multiVersionMemory, feeAccumulator, blockCodeWrites, baseReadCache, _readSetPool, spec);
         for (int i = 0; i < _concurrencyLevel; i++)
         {
             envPool.Add(CreateEnv());
@@ -164,8 +171,20 @@ public class BlockStmTransactionsExecutor(
         finally
         {
             nodeStorageCache?.ClearCaches();
+            // Drain MVMM's published read-sets back to the pool — safe here because the
+            // parallel runner returned (no live validators) and PushChanges has consumed the
+            // write-sets. Per-env still-rented read-sets (the last attempt was an abort, so it
+            // didn't Record and ownership stayed on the scope provider) come back via
+            // ReturnUnusedReadSet below.
+            ConcurrentQueue<List<Read>> pool = _readSetPool;
+            multiVersionMemory.DrainReadSets(list =>
+            {
+                list.Clear();
+                pool.Enqueue(list);
+            });
             while (envPool.TryTake(out ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv? env))
             {
+                env.WorldStateScopeProvider.ReturnUnusedReadSet();
                 env.Dispose();
             }
             ParallelBlockMetrics snapshot = blockMetrics.Snapshot();
