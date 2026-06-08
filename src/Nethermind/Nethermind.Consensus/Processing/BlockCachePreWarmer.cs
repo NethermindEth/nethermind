@@ -36,7 +36,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly PrewarmerWriteHintCache? _writeHintCache;
     private readonly bool _parallelExecutionEnabled;
-    private readonly bool _preWarmStateWithTransactions;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -66,7 +65,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Environment.ProcessorCount * 2,
         blocksConfig.PreWarmStateConcurrency,
         blocksConfig.ParallelExecutionBatchRead,
-        blocksConfig.PreWarmStateWithTransactions,
         nodeStorageCache,
         preBlockCaches,
         writeHintCache,
@@ -85,7 +83,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             maxPoolSize,
             concurrency,
             parallelExecutionBatchRead,
-            preWarmStateWithTransactions: true,
             nodeStorageCache,
             preBlockCaches,
             writeHintCache: null,
@@ -98,7 +95,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         int maxPoolSize,
         int concurrency,
         bool parallelExecutionBatchRead,
-        bool preWarmStateWithTransactions,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         PrewarmerWriteHintCache? writeHintCache,
@@ -106,7 +102,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
-        _preWarmStateWithTransactions = preWarmStateWithTransactions;
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
@@ -177,10 +172,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (!addressWarmer.HasBal)
             {
-                if (_preWarmStateWithTransactions)
-                {
-                    WarmupTransactions(blockState, parallelOptions);
-                }
+                WarmupTransactions(blockState, parallelOptions);
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
             }
 

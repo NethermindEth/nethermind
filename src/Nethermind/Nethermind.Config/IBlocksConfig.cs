@@ -40,9 +40,6 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether to pre-warm the state when processing blocks. This can lead to an up to 2x speed-up in the main loop block processing.", DefaultValue = "True")]
     bool PreWarmStateOnBlockProcessing { get; set; }
 
-    [ConfigItem(Description = "Whether state prewarming should run speculative transaction execution. When disabled, the prewarmer still warms sender, recipient, system transaction, withdrawal, and BAL state.", DefaultValue = "True", HiddenFromDocs = true)]
-    bool PreWarmStateWithTransactions { get; set; }
-
     [ConfigItem(Description = "Whether to cache precompile results when processing blocks.", DefaultValue = "True", HiddenFromDocs = true)]
     bool CachePrecompilesOnBlockProcessing { get; set; }
 
